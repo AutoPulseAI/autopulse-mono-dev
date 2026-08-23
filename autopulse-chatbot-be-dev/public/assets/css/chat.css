@@ -1,0 +1,1698 @@
+:root{
+    --chat_blue: #4272FF;
+
+    --primary: #FF4605;
+    --primary-light: #FFF0EB;
+    --black: #0F141E;
+    --dark: #222732;
+    --dark-light: #2F3B48;
+    --secondary: #99A1B2;
+    --gray: #EFF3FA;
+    --white: #ffffff;
+    --border-color: rgba(52, 59, 74, 0.05);
+    --red: #ff0000;
+    --green: #198754;
+    --card-icons: #a7a7a7;
+    --tw: #1fbed6;
+    --fb: #1877F2;
+    --yb: #CD201F;
+    --ln: #0077b5;
+    --wh: #25d366;
+    --yellow: #FFFAEC;
+    --blue: #43a9e7;
+
+    --brown: #964B00;
+}
+
+.chatboxAi .form-control:focus, .chatboxAi .btn-check:focus+.btn, .chatboxAi .btn:focus, .form-select:focus {
+    background-color: unset;
+    border-color: unset;
+    outline: 0;
+    box-shadow: none;
+}
+.chatboxAi a {
+    text-decoration: unset !important;
+    cursor: pointer !important;
+}
+:focus-visible {
+    outline: none !important;
+}
+.chatboxAi .text_secondary {
+    color: var(--secondary);
+}
+
+.chatboxAi .chatbx_main{
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    background: #fff;
+    border: 1px solid rgba(36, 39, 44, .1);
+    box-shadow: 0px 6px 10px rgba(0, 0, 0, .05);
+    border-radius: 16px;
+    display: flex;
+    overflow: hidden;
+    visibility: hidden;
+    z-index: 1040;
+}
+.chatboxAi .chatbx_main.chat_open.fullScreen{
+    border-radius: 0;
+}
+.chatboxAi .chatbx_main.chat_open{
+    visibility:visible;
+}
+.chatboxAi .chatbx_car_card_main .owl-stage{
+    transition: unset !important;
+}
+.chatboxAi .chatbx_primary, .chatboxAi .chatbx_main.collapsed .chatbx_secondary, .chatboxAi .chatbx_main.chat_open.auth_true .chatbx_secondary{
+    position: relative;
+    width: 350px;
+    height: 550px;
+    background-color: var(--white);
+}
+.chatboxAi .chatbx_primary{
+    z-index: 5;
+}
+.chatboxAi .chatbx_secondary .chatbx_car_details_main{
+    position: relative;
+    border-right: 1px solid rgba(36, 39, 44, .1);
+
+}
+.chatboxAi .chatbx_main .chatbx_secondary .chatbx_car_details_main{
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 0;
+    background-color: var(--white);
+    overflow: hidden;
+
+}
+.chatboxAi .chatbx_main.collapsed .chatbx_secondary .chatbx_car_details_main{
+    width: 100%;
+    overflow: unset;
+}
+
+.chatboxAi .chatbx_main.chat_open.auth_true .chatbx_history{
+    width: 100%;
+    background-color: var(--white);
+}
+.chatboxAi .hisbar{
+    display: none;
+}
+
+.chatboxAi .chatbx_main.collapsed.fullScreen .chatbx_primary, .chatboxAi .chatbx_main.collapsed.fullScreen .chatbx_secondary, .chatboxAi .chatbx_main.fullScreen .chatbx_secondary{
+    height: 100% !important;
+    border-left: 1px solid rgba(36, 39, 44, .1);
+}
+
+.chatboxAi .chatbx_main .chatbx_secondary .chatbx_car_details{
+    opacity: 0;
+    /* -webkit-transition: all 1s ease;
+    -moz-transition: all 1s ease;
+    transition: all 1s ease; */
+}
+.chatboxAi .chatbx_main.collapsed .chatbx_secondary .chatbx_car_details{
+    opacity: 1;
+}
+
+.chatboxAi .chatbx_head{
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: var(--dark);
+}
+.chatboxAi .chatbx_head img{
+    width: 100px;
+}
+.chatboxAi .chatbx_primary .chatbx_head a{
+    color: var(--white);
+}
+.chatboxAi .chatbx_window{
+    position: relative;
+    /* height: 450px; */
+    overflow-y: auto ;
+    overflow-x: hidden ;
+}
+.chatboxAi .chatbx_main.fullScreen .chatbx_response {
+    height: 100%;
+    border-right: 1px solid rgba(36, 39, 44, .1);
+}
+.chatboxAi .chatbx_response .chatbx_msg_l, .chatboxAi .chatbx_car_card_main, .chatboxAi .chatbx_msg_l.chatbx_msg_loader_inn{
+    position: relative;
+    margin-left: 32px;
+    display: block;
+}
+.chatboxAi .chatbx_response .chatbx_msg_l:before, .chatboxAi .chatbx_car_card_main:before, .chatboxAi .chatbx_msg_l.chatbx_msg_loader_inn:before {
+    content: '';
+    background:url('../images/auto/auto_short.png');
+    width: 28px;
+    height: 28px;
+    background-position: center; 
+    background-repeat: no-repeat;
+    background-size: cover;
+    display: block;
+    position: absolute;
+    left: -32px;
+    top: 0;
+}
+.chatboxAi .chatbx_response .chatbx_msg_r, .chatboxAi .chatbx_response .chatbx_msg_l, .chatboxAi .chatbx_msg_l.chatbx_msg_loader_inn {
+    max-width: 82%;
+    line-height: 18px;
+    font-size: 15px;
+    margin-bottom: 8px;
+    display: block;
+    position: relative;
+}
+.chatboxAi .chatbx_response .chatbx_msg_r small, .chatboxAi .chatbx_response .chatbx_msg_l small {
+    padding: 8px;
+    display: inline-block;
+    position: relative;
+}
+.chatboxAi .chatbx_response .chatbx_msg_r span, .chatboxAi .chatbx_response .chatbx_msg_l span, .chatboxAi .chatbx_car_card_main span {
+    font-size: 11px;
+    color: var(--secondary);
+    display: block;
+    margin-top: 3px;
+}
+.chatboxAi .chatbx_response .chatbx_msg_r {
+    margin-left: auto;
+    text-align: end;
+}
+.chatboxAi .chatbx_response .chatbx_msg_r small {
+    background-color: var(--primary-light);
+    border-radius: 8px 0 8px 8px;
+}
+.chatboxAi .chatbx_response .chatbx_msg_l small {
+    background-color: var(--gray);
+    border-radius: 0 8px 8px 8px;
+}
+
+.chatboxAi .chatbx_car_card_main{
+    position: relative;
+    max-width: 82%;
+    margin-bottom: 8px;
+    display: block;
+}
+.chatboxAi .chatbx_car_card{
+    position: relative;
+    background: #fff;
+    border: 1px solid rgba(36, 39, 44, .1);
+    /* box-shadow: 0px 6px 10px rgba(0, 0, 0, .05); */
+    border-radius: 16px;
+    overflow: hidden;
+}
+.chatboxAi .chatbx_car_card_main .owl-nav{
+    margin-top: 8px;
+    text-align: center;
+}
+.chatboxAi .chatbx_car_card_main .owl-nav button i {
+    width: 36px;
+    height: 36px;
+    font-size: 15px;
+    margin: 0 2px;
+}
+.chatboxAi .chatbx_car_card img{
+    position: relative;
+    width: 100%;
+    max-height: 165px;
+}
+.chatboxAi .chatbx_carcard_content{
+    position: relative;
+    padding: 8px;
+}
+.chatboxAi .chatbx_carcard_content h3{
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 300;
+    min-height: 42px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.chatboxAi .chatbx_carcard_loc_price {
+    display: flex;
+    align-items: self-start;
+}
+.chatboxAi .chatbx_carcard_loc_price .chatbx_car_loc {
+    display: flex;
+    align-items: baseline;
+    color: var(--secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+.chatboxAi .chatbx_carcard_loc_price h5 {
+    font-size: 18px;
+    font-weight: 800;
+    margin-left: auto;
+    margin-bottom: 0;
+}
+
+.chatboxAi .chatbx_carcard_btns .btn_chatbx_card{
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    border-top: 1px solid rgba(36, 39, 44, .1);
+    color: var(--primary);
+}
+.chatboxAi .chatbx_carcard_btns .btn_chatbx_card:hover{
+    text-decoration: underline;
+}
+.chatboxAi .chatbx_input{
+    position: relative;
+    border-top: 1px solid rgba(36, 39, 44, .1);
+}
+.chatboxAi .chatbx_input a{
+    color: var(--primary);
+    cursor: pointer;
+}
+.chatboxAi .chatbx_input .form-control{
+    padding-bottom: 8px;
+}
+.chatboxAi .chatbx_input small{
+    font-size: 11px;
+    line-height: 11px;
+    padding-bottom: 6px;
+    display: block;
+    padding-left: 12px;
+}
+
+.chatboxAi .chatbx_head, .chatboxAi .chatbx_response, .chatboxAi .chatbx_fixed_btm, .chatboxAi .chatbx_head .btn_short, .chatboxAi .explore_main .explore_list, .chatboxAi .explore_main .explore_filters{
+    padding: 12px;
+}
+.chatboxAi .chatbx_head, .chatboxAi .chatbx_response{
+    overflow: hidden;
+}
+
+
+/* Btn */
+.chatboxAi .chatbx_fixed_btm{
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    text-align: center;
+    background-color: var(--white);
+}
+.chatboxAi .btn_chatbx{
+    position: relative;
+    border: 1px solid var(--primary);
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary);
+    display: inline-block;
+    cursor: pointer !important;
+    text-align: center;
+}
+.chatboxAi .btn_chatbx:hover, .chatboxAi .btn_chatbx:focus{
+    border: 1px solid var(--primary);
+    background-color: var(--primary);
+    color: var(--white);
+}
+
+.chatboxAi .btn_chatbx_fill{
+    position: relative;
+    border: 1px solid var(--primary);
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--white);
+    background-color: var(--primary);
+    display: inline-block;
+    cursor: pointer !important;
+    text-align: center;
+}
+.chatboxAi .btn_chatbx_fill:hover, .btn_chatbx_fill:focus{
+    border: 1px solid var(--primary);
+    background-color: var(--white);
+    color: var(--primary);
+}
+
+
+/* Car Details */
+.chatboxAi .chatbx_car_details .chatbx_subhead{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background-color: transparent;
+    z-index: 1;
+}
+.chatboxAi .chatbx_car_details .chatbx_subhead a i{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--white);
+    height: 32px;
+    width: 32px;
+    font-size: 13px;
+    border-radius: 50%;
+    color: var(--dark-light);
+}
+.chatboxAi .chatbx_car_details {
+    position: relative;
+}
+.chatboxAi .chatbx_car_details img{
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+}
+.chatboxAi .chatbx_cardetails_content{
+    padding: 16px 12px;
+}
+.chatboxAi .chatbx_cardetails_content h3{
+    font-size: 18px;
+    font-weight: 700;
+}
+.chatboxAi .chatbx_cardetails_loc {
+    color: var(--secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.chatboxAi .chatbx_cardetails_specs{
+    margin: 12px 0;
+}
+.chatboxAi .chatbx_cardetails_specs ul{
+    padding: 0;
+    margin: 0;
+}
+.chatboxAi .chatbx_cardetails_specs ul{
+    list-style: none;
+}
+.chatboxAi .chatbx_cardetails_spec{
+    margin-bottom: 6px;
+}
+.chatboxAi .chatbx_cardetails_spec i{
+    color: var(--primary);
+    margin-right: 4px;
+    font-size: 15px;
+    display: inline-block;
+    vertical-align: top;
+    line-height: 24px;
+}
+.chatboxAi .chatbx_cardetails_spec p small{
+    color: var(--secondary);
+    font-size: 11px;
+    font-weight: 400;
+}
+.chatboxAi .chatbx_cardetails_spec p{
+    font-size: 13px;
+    font-weight: 400;
+    margin-bottom: 0;
+    line-height: 18px;
+}
+
+.chatboxAi .chatbx_cardetails_price{
+    position: relative;
+    text-align: center;
+}
+.chatboxAi .chatbx_cardetails_price h5{
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+.chatboxAi .chatbx_cardetails_price small{
+    color: var(--secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+.chatboxAi .chatbx_cardetails_price span{
+    font-size: 18px;
+    font-weight: 800;
+    margin-left: auto;
+    margin-bottom: 0;
+}
+
+.chatboxAi .chatbx_cardetails_btn{
+    position: relative;
+    width: 86%;
+    margin: 0 auto;
+}
+
+/* Full Screen */
+.chatboxAi .chatbx_main.fullScreen{
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    /* width: 90%; */
+    margin: 0 auto;
+    justify-content: center;
+    background-color: var(--gray);
+}
+.chatboxAi .chatbx_main.fullScreen .chatbx_primary{
+    height: 100%;
+}
+.chatboxAi .chatbx_main.fullScreen .chatbx_primary, .chatboxAi .chatbx_main.fullScreen .chatbx_car_card_main {
+    width: 97%;
+    max-width: 97%;
+}
+
+
+/* Req Info */
+.chatboxAi .chatbx_req_info, .chatbx_fulldetail_info, .chatbx_fulldetail_info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--white);
+    z-index: 15;
+    height: 100%;
+    display: none;
+}
+.chatboxAi .chatbx_req_info .chatbx_req_info_inn {
+    display: none;
+    padding: 16px 12px;
+}
+.chatboxAi .chatbx_req_info.chatbxreq_show, .chatboxAi .chatbx_fulldetail_info.chatbxdetails_show{
+    display: block;
+
+}
+.chatboxAi .chatboxAi .chatbx_req_info.chatbxreq_show .chatbx_req_info_inn {
+    display: block;
+}
+.chatboxAi .chatbx_req_info .details_req_info{
+    font-size: 15px;
+}
+.chatboxAi .req_in_border {
+    border: 0;
+    border-bottom: 1px solid var(--secondary);
+    background-color: rgba(239, 243, 250, 0.3);
+}
+.chatboxAi .chatbx_req_info .details_req_info .req_in_border.req_in_wsm {
+    width: 90px;
+}
+.chatboxAi .chatbx_req_info .details_req_info span {
+    line-height: 32px;
+}
+.chatboxAi .chatbx_main.collapsed.fullScreen .chatbx_secondary{
+    height: 100%;
+}
+
+/* Chat open btn */
+.chatboxAi .chatboxO{
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1040;
+}
+.chatboxAi .banner_chatbox_icon{
+    width: 40px;
+    height: 40px;
+    background-color: var(--chat_blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--white);
+}
+.chatboxAi .banner_chatbox_icon{
+    width: 56px;
+    height: 56px;
+    border: 6px solid var(--white);
+}
+
+/* banner chat open */
+.chatboxAi .banner_chatbox_o a{
+    display: flex;
+    align-items: start;
+    margin-top: 16px;
+}
+.chatboxAi .chatboxO .banner_chatbox_o a{
+    align-items: center;
+    display: block;
+}
+.chatboxAi .banner_chatbox_text{
+    position: relative;
+    background-color: var(--chat_blue);
+    color: var(--white);
+    font-size: 20px;
+    padding: 5px 10px;
+    border-radius: 0 6px 6px 0;
+    margin-left: 12px;
+    max-width: 80%;
+}
+.chatboxAi .banner_chatbox_text:before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-right: 7px solid var(--chat_blue);
+    display: inline-block;
+    position: absolute;
+    left: -7px;
+    top: 18px;
+}
+.chatboxAi .chatboxO .banner_chatbox_text{
+    border-radius: 6px 0 0 6px;
+    margin-left: 0;
+    margin-right: 12px;
+    font-size: 14px;
+}
+.chatboxAi .chatboxO .banner_chatbox_text:before{
+    display: none;
+}
+.chatboxAi .chatboxO .banner_chatbox_text:after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 7px solid var(--chat_blue);
+    display: inline-block;
+    position: absolute;
+    right: 22px;
+    bottom: -7px;
+}
+
+/* History */
+.chatboxAi .chatbx_history_head{
+    position: relative;
+    /* background-color: var(--gray); */
+    padding: 12px;
+}
+.chatboxAi .chatbx_history_head .search_chat{
+    float: right;
+}
+.chatboxAi .chatbx_history_head .input-group{
+    padding-top: 12px;
+}
+.chatboxAi .chatbx_history_head .input-group .form-control{
+    border-color: #6c757d !important;
+    background: transparent !important;
+}
+.chatboxAi .chatbx_history_head .input-group .form-control, .chatbx_history_head .input-group button{
+    border-radius: 20px;
+}
+
+.chatboxAi .new_chat_btn {
+    background-color: var(--gray);
+    color: var(--dark) !important;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    border: 1px solid var(--gray);
+}
+.chatboxAi .search_chat{
+    color: var(--dark) !important;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted {
+    margin-bottom: 12px;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted:last-child{
+    margin-bottom: 0;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted p {
+    margin-bottom: 6px;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted p{
+    color: var(--secondary);
+    font-size: 11px;
+    font-weight: 400;
+}
+.chatboxAi .chatbx_history_list {
+    position: relative;
+    padding: 12px;
+    overflow-y: auto;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted a{
+    font-size: 13px;
+    font-weight: 400;
+    margin-bottom: 0;
+    line-height: 18px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    color: var(--dark);
+    display: block;
+    padding: 6px;
+}
+.chatboxAi .chatbx_history_list .chatbx_history_list_sorted a:hover{
+    background-color: var(--gray);
+}
+
+
+/* Chatbox login header */
+.chatboxAi .chatbx_login_btn{
+    background-color: var(--white);
+    color: var(--dark) !important;
+    padding: 2px 10px;
+    border-radius: 15px;
+    font-size: 14px;
+    border: 1px solid var(--white);
+
+}
+.chatboxAi .chatbx_login_btn:hover{
+    background-color: transparent;
+    color: var(--white) !important;
+}
+
+/* loading */
+.chatboxAi .chatbx_msg_loader {
+    position: relative;
+    padding: 0 12px;
+}
+.chatboxAi .chatbx_msg_loader_inn{
+    position: relative;
+    background-color: var(--gray);
+    padding: 10px 12px;
+    border-radius: 0 8px 8px 8px;
+    display: flex !important;
+    align-items: center;
+}
+.chatboxAi .dot-pulse {
+    position: relative;
+    left: -9999px;
+    width: 5px;
+    height: 5px;
+    border-radius: 5px;
+    background-color: var(--secondary);
+    color: var(--secondary);
+    box-shadow: 9999px 0 0 -5px;
+    animation: dot-pulse 1.5s infinite linear;
+    animation-delay: 0.25s;
+    margin-left: 26px;
+  }
+  .chatboxAi .dot-pulse::before, .dot-pulse::after {
+    content: "";
+    display: inline-block;
+    position: absolute;
+    top: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 5px;
+    background-color: var(--secondary);
+    color: var(--secondary);
+  }
+  .chatboxAi .dot-pulse::before {
+    box-shadow: 9984px 0 0 -5px;
+    animation: dot-pulse-before 1.5s infinite linear;
+    animation-delay: 0s;
+  }
+  .chatboxAi .dot-pulse::after {
+    box-shadow: 10014px 0 0 -5px;
+    animation: dot-pulse-after 1.5s infinite linear;
+    animation-delay: 0.5s;
+  }
+  
+  @keyframes dot-pulse-before {
+    0% {
+      box-shadow: 9984px 0 0 -5px;
+    }
+    30% {
+      box-shadow: 9984px 0 0 2px;
+    }
+    60%, 100% {
+      box-shadow: 9984px 0 0 -5px;
+    }
+  }
+  @keyframes dot-pulse {
+    0% {
+      box-shadow: 9999px 0 0 -5px;
+    }
+    30% {
+      box-shadow: 9999px 0 0 2px;
+    }
+    60%, 100% {
+      box-shadow: 9999px 0 0 -5px;
+    }
+  }
+  @keyframes dot-pulse-after {
+    0% {
+      box-shadow: 10014px 0 0 -5px;
+    }
+    30% {
+      box-shadow: 10014px 0 0 2px;
+    }
+    60%, 100% {
+      box-shadow: 10014px 0 0 -5px;
+    }
+  }
+
+  /* Minimize */
+  .chatboxAi .chatbx_main.minimize .chatbx_car_details, .chatboxAi .chatbx_main.minimize .chatbx_window, .chatboxAi .chatbx_main.minimize .chatbx_input{
+    display: none;
+  }
+  .chatboxAi .chatbx_main.minimize .chatbx_primary, .chatboxAi .chatbx_main.minimize .chatbx_secondary{
+    height: auto;
+  }
+  .chatbx_main.minimize .full_screen, .chatboxAi .chatbx_main.minimize .chatboxO a, .chatboxAi .chatbx_disable{
+    pointer-events: none;
+    cursor: default;
+  }
+  .chatboxAi .chatbx_disable{
+    color: var(--secondary) !important;
+  }
+
+  /* Close Msg */
+  .chatboxAi .chatbx_close_conf{
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1120;
+  }
+  .chatboxAi .chatbx_close_msg {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 260px;
+    background-color: var(--white);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+  .chatboxAi .btn.btn_chatbx.chatbx_close_yes, .chatboxAi .btn.btn_chatbx.chatbx_close_no {
+    font-size: 15px;
+    padding: 4px 16px;
+    border-radius: 7px;
+}
+
+.chatboxAi .chatbx_cars_slides.owl-carousel .owl-nav.disabled{
+    display: block !important;
+}
+.chatboxAi .thumbnail_imgs .item{
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* Full Details */
+.chatboxAi .chatbx_detail_full {
+    position: relative;
+   padding: 0 12px; 
+   overflow-y: auto;
+   overflow-x: hidden;
+}
+.chatboxAi .car_details_slider{
+    margin-bottom: 12px;
+}
+.chatboxAi .chatbx_detail_full .main_slider{
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+/* Fevorite Like */
+.chatboxAi .like_share_icon {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+}
+
+.chatboxAi .like_share_icon i {
+    cursor: pointer !important;
+}
+
+.chatboxAi .like_share_icon .form-check.fevCheck {
+    padding: 0;
+    margin-bottom: 0;
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.chatboxAi .like_share_icon .form-check.fevCheck label, .chatboxAi .like_share_icon .share_icon{
+    width: 32px;
+    height: 32px;
+    color: var(--dark-light);
+    background-color: var(--gray);
+    border-radius: 50%;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    -webkit-transition: all 0.3s ease;
+    -moz-transition: all 0.3s ease;
+    transition: all 0.3s ease;
+    cursor: pointer !important;
+    border: 1px solid var(--border-color);
+}
+.chatboxAi .like_share_icon .form-check.fevCheck label:hover, .chatboxAi .like_share_icon .share_icon:hover {
+    box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15) !important;
+}
+.chatboxAi .like_share_icon .form-check.fevCheck label:hover{
+    color: var(--red);
+}
+.chatboxAi .like_share_icon .share_icon:hover{
+    color: var(--primary);
+}
+/* .like_share_icon.details_like_share .form-check.fevCheck label, .like_share_icon.details_like_share .share_icon{
+    width: 40px;
+    height: 40px;
+    color: var(--dark-light);
+    background-color: var(--gray);
+    border-radius: 50%;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    -webkit-transition: all 0.3s ease;
+    -moz-transition: all 0.3s ease;
+    transition: all 0.3s ease;
+} */
+
+.chatboxAi .like_share_icon .form-check.fevCheck .form-check-input {
+    display: none;
+}
+
+.chatboxAi .like_share_icon .form-check.fevCheck .form-check-input:checked+.form-check-label #heart-icon {
+    color: var(--red);
+}
+
+.chatboxAi .like_share_icon {
+    color: var(--card-icons);
+    font-size: 18px;
+}
+
+.chatboxAi .like_share_icon .form-check.fevCheck .fas {
+    color: var(--red);
+}
+
+/* All photos */
+.chatboxAi .view_all_photos {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    z-index: 2;
+}
+
+.chatboxAi .view_all_photos .all_photos {
+    background-color: var(--white);
+    padding: 5px 7px;
+    border-radius: 5px;
+    color: var(--dark-light);
+    font-size: 13px;
+    cursor: pointer;
+    -webkit-transition: all 0.3s ease;
+    -moz-transition: all 0.3s ease;
+    transition: all 0.3s ease;
+}
+
+.chatboxAi .view_all_photos .all_photos:hover {
+    background-color: var(--primary);
+    color: var(--white);
+}
+
+/* Car Title - details */
+.chatboxAi .btn_theme {
+    color: var(--white);
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.chatboxAi .btn_theme:hover,
+.chatboxAi .btn_theme:focus {
+    background-color: var(--white);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.chatboxAi .car_details_right_top {
+    background-color: var(--gray);
+    border-radius: 16px;
+    padding-bottom: 12px;
+    border: 1px solid rgba(36, 39, 44, .1);
+    box-shadow: 0px 6px 10px rgba(0, 0, 0, .05);
+}
+
+.chatboxAi .car_details_right_top .btm_gray p {
+    margin-bottom: 0;
+    color: var(--secondary);
+    text-align: center;
+    font-weight: 300;
+}
+
+.chatboxAi .car_details_right_inn {
+    background-color: var(--white);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    padding: 12px;
+}
+
+.chatboxAi .car_details_spec {
+    position: relative;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.chatboxAi .car_details_spec .car_year {
+    color: var(--primary);
+    background-color: var(--primary-light);
+    border: 1px solid var(--primary);
+    padding: 3px 6px;
+    border-radius: 5px;
+    margin-right: 12px;
+}
+
+.chatboxAi .car_details_spec .car_loc {
+    color: var(--secondary);
+    font-weight: 300;
+}
+
+.chatboxAi .car_title_price_specs h4 {
+    font-size: 22px;
+    font-weight: 300;
+    margin-bottom: 6px;
+}
+
+.chatboxAi .car_title_price_specs .car_spec_short {
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--secondary);
+    margin-bottom: 12px;
+}
+
+.chatboxAi .car_title_price_specs h5 {
+    font-size: 28px;
+    font-weight: 900;
+    margin-bottom: 20px;
+}
+
+.chatboxAi .car_details_right_top .btn {
+    font-size: 16px;
+    font-weight: 300;
+}
+
+.chatboxAi .req_in_border {
+    border: 0;
+    border-bottom: 1px solid var(--secondary);
+    background-color: rgba(239, 243, 250, 0.3);
+}
+
+.chatboxAi .req_in_border.req_in_wsm {
+    width: 100px;
+}
+
+.chatboxAi .details_req_info p {
+    margin-bottom: 0;
+}
+
+.chatboxAi .details_req_info span {
+    line-height: 34px;
+}
+
+.chatboxAi .details_req_info form p label.error {
+    display: none !important;
+}
+
+.chatboxAi .req_in_border.error {
+    border-color: var(--red) !important;
+}
+
+/* Details info tabs */
+.chatboxAi .details_info_tabs {
+    position: relative;
+    margin: 0;
+    padding: 12px 0;
+    position: -webkit-sticky;
+    position: sticky;
+    z-index: 10;
+    background-color: var(--white);
+}
+
+.chatboxAi .details_info_tabs a {
+    position: relative;
+    padding: 6px 10px;
+    color: var(--dark-light);
+    background-color: var(--gray);
+    border-radius: 30px;
+    font-size: 12px;
+    text-transform: uppercase;
+    display: inline-block;
+    cursor: pointer !important;
+}
+
+.chatboxAi .details_info_tabs a:hover {
+    color: var(--white);
+    background-color: var(--dark-light);
+}
+
+.chatboxAi .details_tab_content {
+    background: #fff;
+    border: 1px solid rgba(36, 39, 44, .1);
+    box-shadow: 0px 6px 10px rgba(0, 0, 0, .05);
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: inline-block;
+    width: 100%;
+}
+.chatboxAi .tab_content_head h3 {
+    font-weight: 700;
+    font-size: 18px;
+    line-height: 18px;
+    color: var(--dark);
+    margin-bottom: 12px;
+}
+.chatboxAi .specs_list ul,
+.chatboxAi .features_list ul {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 0;
+}
+
+.chatboxAi .specs_left p,
+.chatboxAi .specs_right p,
+.chatboxAi .feature_inn p {
+    font-size: 14px;
+    font-weight: 300;
+    margin-bottom: 10px;
+}
+
+.chatboxAi .specs_left p {
+    color: var(--secondary);
+}
+
+.chatboxAi .specs_right p {
+    color: var(--dark-light);
+    text-align: end;
+}
+
+.chatboxAi .feature_inn p i {
+    color: var(--green);
+}
+
+.chatboxAi .details_tab_content hr {
+    background-color: var(--secondary);
+    margin-top: 6px;
+}
+
+/* Collapse */
+.chatboxAi .details_features .accordion-button {
+    font-size: 18px;
+    font-weight: 500;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.chatboxAi .details_features .accordion-item:first-child .accordion-button {
+    padding-top: 0;
+}
+
+.chatboxAi .details_features .accordion-button:focus {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.chatboxAi .details_features .accordion-button:not(.collapsed) {
+    color: var(--dark-light);
+    background-color: var(--white);
+    box-shadow: none;
+}
+
+.chatboxAi .details_features .accordion-body {
+    padding: 12px 0;
+}
+
+.chatboxAi .details_features .accordion-button:not(.collapsed)::after {
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23FF4605'><path fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/></svg>") !important;
+}
+
+/* Explore More */
+.chatboxAi .chatbx_explore_card.chatbx_car_card {
+    background-color: var(--dark);
+    border: 0;
+}
+.chatboxAi .chatbx_explore_card a{
+    color: var(--white);
+}
+.chatboxAi .chatbx_explore_card.chatbx_car_card .car_spec {
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+.chatboxAi .chatbx_explore_card.chatbx_car_card hr {
+    margin-bottom: 10px;
+    border-color: rgba(36, 39, 44, .1);
+}
+
+.chatboxAi .chatbx_explore_card .car_spec_year {
+    color: var(--white);
+    background-color: var(--primary);
+    padding: 4px 6px;
+    border-radius: 5px;
+    margin-right: 12px;
+}
+
+.chatboxAi .chatbx_explore_card .car_spec_info {
+    color: var(--secondary);
+}
+
+.chatboxAi .chatbx_explore_card .car_spec_info hr {
+    margin: 10px 0;
+}
+
+.chatboxAi .chatbx_explore_card .like_share_icon{
+    left: auto;
+}
+
+/* Explore Filter */
+
+.chatboxAi .filter_head_reset {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(36, 39, 44, .1);
+}
+
+.chatboxAi .filter_head {
+    font-weight: 600;
+}
+
+/* Reset Filter */
+.chatboxAi .reset_filter {
+    position: relative;
+    text-align: right;
+}
+
+.chatboxAi .reset_filter a {
+    color: var(--primary);
+}
+
+/* Filter Btns */
+.chatboxAi .listing_filter_btns {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+/* .offcanvas_close,
+.listing_filter_icon {
+    display: none;
+} */
+
+.chatboxAi .listing_filter_btns .btn-check+label {
+    color: var(--dark-light);
+    background-color: var(--gray);
+    border: 1px solid var(--gray);
+}
+
+.chatboxAi .listing_filter_btns .btn-check:checked+label,
+.chatboxAi .listing_filter_btns .btn-check:focus+label {
+    color: var(--primary);
+    background-color: var(--primary-light);
+    border: 1px solid var(--primary);
+}
+
+.chatboxAi .filterbox_bg {
+    background: #fff;
+    border: 1px solid rgba(36, 39, 44, .1);
+    /* box-shadow: 0px 6px 10px rgba(0, 0, 0, .05); */
+    border-radius: 12px;
+    padding: 12px 0;
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.chatboxAi .listing_filter_form label {
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.chatboxAi .collapse_head {
+    color: var(--dark-light) !important;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.chatboxAi .form-check-input:checked {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.chatboxAi .listing_searchbx,
+.chatboxAi .checkbox_list,
+.chatboxAi .select_filter,
+.chatboxAi .collapse_head,
+.chatboxAi .zip_rad_filter {
+    padding: 0 16px;
+}
+.chatboxAi .zip_rad_filter .btn{
+    margin-top: 6px;
+}
+
+.chatboxAi .range_slider {
+    padding: 0 16px;
+}
+
+.chatboxAi .checkbox_list,
+.chatboxAi .select_filter {
+    margin-top: 16px;
+    margin-bottom: 0;
+    overflow-y: auto;
+    max-height: 250px;
+}
+
+.chatboxAi .checkbox_list li {
+    margin-bottom: 6px;
+}
+
+.chatboxAi .collapse_head .collapse_icon {
+    color: var(--secondary);
+}
+
+.chatboxAi .collapse_head.collapsed .collapse_icon .fa-plus,
+.chatboxAi .collapse_head .collapse_icon .fa-minus {
+    display: block;
+}
+
+.chatboxAi .collapse_head.collapsed .collapse_icon .fa-minus,
+.chatboxAi .collapse_head .collapse_icon .fa-plus {
+    display: none;
+}
+
+.chatboxAi .checkbox_list .form-check-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.chatboxAi .checkbox_list .form-check-label .filter_count {
+    color: var(--secondary);
+}
+
+.chatboxAi .filter_colorSq {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    margin-right: 6px;
+}
+
+.chatboxAi .filter_bodyimg {
+    height: 18px;
+    display: flex;
+    align-items: center;
+    margin-right: 6px;
+}
+
+.chatboxAi .filter_bodyimg img {
+    width: 100%;
+    height: 100%;
+}
+
+
+/* Range Slider */
+.chatboxAi .range_slider {
+    position: relative;
+    width: 100%;
+    background-color: #ffffff;
+    border-radius: 10px;
+    margin: 16px 0 12px;
+}
+
+.chatboxAi .range_slider_bar {
+    position: relative;
+    min-height: 20px;
+}
+
+.chatboxAi .range_slider input[type="range"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 100%;
+    outline: none;
+    position: absolute;
+    margin: auto;
+    top: 0;
+    bottom: 0;
+    background-color: transparent;
+    pointer-events: none;
+}
+
+.chatboxAi .range_slider .slider-track {
+    width: 100%;
+    height: 5px;
+    position: absolute;
+    margin: auto;
+    top: 0;
+    bottom: 0;
+    border-radius: 5px;
+}
+
+.chatboxAi .range_slider input[type="range"]::-webkit-slider-runnable-track {
+    -webkit-appearance: none;
+    height: 5px;
+}
+
+.chatboxAi .range_slider input[type="range"]::-moz-range-track {
+    -moz-appearance: none;
+    height: 5px;
+}
+
+.chatboxAi .range_slider input[type="range"]::-ms-track {
+    appearance: none;
+    height: 5px;
+}
+
+.chatboxAi .range_slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 20px;
+    width: 20px;
+    background-color: var(--primary);
+    cursor: pointer;
+    margin-top: -9px;
+    pointer-events: auto;
+    border-radius: 50%;
+}
+
+.chatboxAi .range_slider input[type="range"]::-moz-range-thumb {
+    -webkit-appearance: none;
+    height: 14px;
+    width: 14px;
+    cursor: pointer;
+    border-radius: 50%;
+    background-color: var(--primary);
+    pointer-events: auto;
+    border: none;
+}
+
+.chatboxAi .range_slider input[type="range"]::-ms-thumb {
+    appearance: none;
+    height: 14px;
+    width: 14px;
+    cursor: pointer;
+    border-radius: 50%;
+    background-color: var(--primary);
+    pointer-events: auto;
+}
+
+.chatboxAi .range_slider input[type="range"]:active::-webkit-slider-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--primary);
+}
+
+.chatboxAi .range_slider .values {
+    color: var(--primary);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.chatboxAi .range_slider .values span:last-child {
+    margin-left: auto;
+}
+
+.chatboxAi .price-inputs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.chatboxAi .price-inputs input[type="text"] {
+    width: 82px;
+    margin: 0;
+    padding: 5px 3px;
+    text-align: center;
+    border: 1px solid #ced4da;
+    border-radius: 5px;
+}
+.chatboxAi .price-inputs span{
+    margin: 0 2px;
+}
+.chatboxAi #priceRange, .chatboxAi #yearRange, .chatboxAi #mileageRange {
+    margin-top: 20px;
+}
+
+.chatboxAi .range_slider .noUi-horizontal {
+    height: 6px;
+}
+
+.chatboxAi .range_slider .noUi-horizontal .noUi-handle {
+    width: 18px;
+    height: 18px;
+    top: -7px;
+    border-radius: 20px;
+    box-shadow: none;
+    background: var(--primary);
+    right: -10px;
+}
+
+.chatboxAi .range_slider .noUi-connect {
+    background: var(--primary) !important;
+}
+
+.chatboxAi .range_slider .noUi-handle:after,
+.chatboxAi .noUi-handle:before {
+    display: none !important;
+}
+/* Range Slider End */
+
+/* Bootstrap Offcanvas */
+/* .offcanvas-collapse {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 100%;
+    width: 42%;
+    padding: 60px 30px 16px;
+    overflow-y: auto;
+    visibility: hidden;
+    background-color: var(--white);
+    transition: transform .3s ease-in-out, visibility .3s ease-in-out;
+    z-index: 1030;
+}
+
+.offcanvas-collapse.open {
+    visibility: visible;
+    transform: translateX(100%);
+}
+
+.offcanvas_close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 15px;
+    padding: 10px;
+    border-radius: 50%;
+    background-color: var(--white);
+    z-index: 1100;
+} */
+
+.chatboxAi .listing_filter_close{
+    margin-bottom: 10px;
+    text-align: end;
+}
+.chatboxAi .chatbx_main.chat_open.fullScreen .listing_filter_close, .chatboxAi .chatbx_main.chat_open.fullScreen .listing_filter_icon{
+    display: none;
+}
+.chatboxAi .offcanvas_close,
+.chatboxAi .listing_filter_icon {
+    display: block;
+}
+
+.chatboxAi .listing_filter_icon .navbar-toggler {
+    padding: 0;
+    font-size: 16px;
+    color: var(--dark-light);
+    white-space: nowrap;
+}
+.chatboxAi .listing_sort .form-select{
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+/* @media (min-width: 992px){ */
+.chatboxAi .chatbx_main.chat_open.fullScreen .explore_filters_col{
+        display: block;
+    }
+    .chatboxAi .chatbx_main.chat_open.fullScreen .explore_filters_col{
+        position: relative;
+    }
+    .chatboxAi .chatbx_main.chat_open .listingFilterOpen .explore_filters_col{
+        display: block;
+    }
+    .chatboxAi .chatbx_main.chat_open .explore_filters_col{
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 300;
+        background-color: var(--white);
+        overflow-y: auto;
+        display: none;
+    }
+    .chatboxAi .chatbx_main.chat_open .listingFilterOpen{
+        overflow: hidden !important;
+    }
+    .chatboxAi .chatbx_main.chat_open.fullScreen .listingFilterOpen{
+        overflow-y: auto !important;
+    }
+/* } */
+
+/* Auth Forms */
+.chatboxAi .auth_forms, .chatboxAi .userinfo_forms {
+    display: flex;
+    align-items: center;
+    width: 300px;
+    margin: 0px auto;
+    padding: 16px 0;
+    min-height: inherit;
+}
+.chatboxAi .auth_forms, .chatboxAi .auth_forms .form-control, .chatboxAi .auth_forms .auth_sociallinks .btn span, .chatboxAi .listing_sort .form-select {
+    font-size: 15px;
+}
+.chatboxAi .auth_forms .auth_ortext{
+    padding: 15px 0;
+}
+.chatboxAi .auth_forms .auth_ortext p small::before,
+.chatboxAi .auth_forms .auth_ortext p small::after {
+    display: inline-block;
+    content: "";
+    border-top: 1px solid var(--secondary);
+    width: 15%;
+    margin: 0 15px;
+    transform: translateY(-4px);
+}
+.chatboxAi .auth_forms .auth_ortext p small{
+    color: var(--secondary);
+}
+.chatboxAi .auth_forms .auth_sociallinks .btn{
+    border: 1px solid #ced4da;
+}
+.chatboxAi .auth_forms .auth_sociallinks .btn{
+    display: flex;
+    align-items: center;
+}
+.chatboxAi .auth_forms .auth_sociallinks .btn img{
+    width: 24px;
+}
+.chatboxAi .auth_forms .auth_sociallinks .btn span{
+    margin: 0 auto;
+}
+.chatboxAi .auth_forms .auth_sociallinks .btn:hover, .chatboxAi .auth_forms .auth_sociallinks .btn:focus{
+    border-color: var(--dark);
+}
+
+
+/* RESPONSIVE */
+@media (max-width: 1024px){
+    .chatboxAi .banner_chatbox_text {
+        font-size: 18px;
+    }
+
+    /* Favorite Like */
+    .chatboxAi .like_share_icon .form-check.fevCheck label, .chatboxAi .like_share_icon .share_icon{
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+    .chatboxAi .like_share_icon.details_like_share .form-check.fevCheck label, .chatboxAi .like_share_icon.details_like_share .share_icon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+}
+@media (max-width: 991px){
+    .chatboxAi .hisbar{
+        display: block;
+    }
+    .chatboxAi .chatbx_main.chat_open.auth_true .chatbx_secondary{
+        position: absolute;
+        width: 100%;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+    }
+    .chatboxAi .history_show{
+        position: relative;
+        width: 250px !important;
+        height: 100%;
+        background-color: var(--gray);
+        z-index: 10;
+    }
+    .chatboxAi .chatbx_main.collapsed .chatbx_secondary {
+        width: 300px;
+    }
+
+    /* Favorite Like */
+    .chatboxAi .like_share_icon .form-check.fevCheck label, .chatboxAi .like_share_icon .share_icon{
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+    }
+    .chatboxAi .like_share_icon.details_like_share .form-check.fevCheck label, .chatboxAi .like_share_icon.details_like_share .share_icon {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    /* All photos */
+    .chatboxAi .view_all_photos .all_photos {
+        padding: 5px 6px;
+        border-radius: 5px;
+        font-size: 13px;
+    }
+
+    /* Listing Filter */
+    .chatboxAi .chatbx_main.chat_open.fullScreen .listing_filter_close, .chatboxAi .chatbx_main.chat_open.fullScreen .listing_filter_icon{
+        display: block;
+    }
+    .chatboxAi .chatbx_main.chat_open.fullScreen .explore_filters_col{
+        position: absolute;
+        display: none;
+    }
+    .chatboxAi .chatbx_main.chat_open .listingFilterOpen .explore_filters_col {
+        display: block;
+    }
+    .chatboxAi .chatbx_main.chat_open.fullScreen .listingFilterOpen {
+        overflow-y: hidden !important;
+    }
+}
+@media (max-width: 600px){
+    .chatboxAi .chatboxO {
+        bottom: 16px;
+        right: 16px;
+    }
+    .chatboxAi .chatbx_main.collapsed .chatbx_secondary {
+        width: 350px;
+        position: absolute;
+        left: 0;
+        z-index: 100;
+        border-radius: 16px;
+    }
+    .chatboxAi .chatbx_main.chat_open.fullScreen.collapsed .chatbx_secondary{
+        width: 100%;
+        border-radius: 0;
+    }
+    .chatboxAi .chatbx_main.fullScreen .chatbx_primary {
+        width: 100%;
+        max-width: 100%;
+    }
+    .chatboxAi .chatbx_main.fullScreen .chatbx_car_card_main, .chatboxAi .chatbx_car_card_main{
+        width: 270px;
+        max-width: 270px;
+    }
+}

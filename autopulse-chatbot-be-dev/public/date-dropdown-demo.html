@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Date Dropdowns Demo - AutoPulse</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .demo-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .feature-highlight {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .code-example {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+        }
+        .demo-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="text-center mb-4">
+            <h1>📅 Cascading Date Dropdowns</h1>
+            <p class="lead">Smart date selection with automatic defaults and validation</p>
+        </div>
+
+        <div class="feature-highlight">
+            <h3>✨ Key Features</h3>
+            <ul class="mb-0">
+                <li><strong>Year → Month → Date</strong> cascading selection</li>
+                <li><strong>Automatic defaults:</strong> May (5th month) and 2nd day</li>
+                <li><strong>Smart validation:</strong> Correct number of days per month</li>
+                <li><strong>Responsive design:</strong> Works on all devices</li>
+                <li><strong>Easy integration:</strong> Simple Blade component</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h3>🎯 Demo 1: Basic Date Selection</h3>
+            <p>Default behavior with current year, May month, and 2nd date:</p>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="demo1_year" class="form-label">Year</label>
+                    <select id="demo1_year" class="form-select" onchange="updateMonthDropdown('demo1')">
+                        <option value="">Select Year</option>
+                        <option value="2023">2023</option>
+                        <option value="2024" selected>2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="demo1_month" class="form-label">Month</label>
+                    <select id="demo1_month" class="form-select" onchange="updateDateDropdown('demo1')">
+                        <option value="">Select Month</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5" selected>May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="demo1_date" class="form-label">Date</label>
+                    <select id="demo1_date" class="form-select">
+                        <option value="">Select Date</option>
+                        <option value="1">1</option>
+                        <option value="2" selected>2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                        <option value="13">13</option>
+                        <option value="14">14</option>
+                        <option value="15">15</option>
+                        <option value="16">16</option>
+                        <option value="17">17</option>
+                        <option value="18">18</option>
+                        <option value="19">19</option>
+                        <option value="20">20</option>
+                        <option value="21">21</option>
+                        <option value="22">22</option>
+                        <option value="23">23</option>
+                        <option value="24">24</option>
+                        <option value="25">25</option>
+                        <option value="26">26</option>
+                        <option value="27">27</option>
+                        <option value="28">28</option>
+                        <option value="29">29</option>
+                        <option value="30">30</option>
+                        <option value="31">31</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                <strong>Selected Date:</strong> <span id="demo1_result">2024-05-02</span>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h3>🎯 Demo 2: Custom Defaults</h3>
+            <p>Set to year 2025, March, and 15th:</p>
+            <button class="btn btn-primary" onclick="setCustomDate()">Set Custom Date</button>
+            <div class="mt-3">
+                <strong>Selected Date:</strong> <span id="demo2_result">Not set</span>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h3>🔧 How to Use</h3>
+            <p>Include this component in your Blade templates:</p>
+            
+            <div class="code-example">
+                &lt;x-date-dropdowns 
+                    name="birth_date" 
+                    id="birth-date-dropdowns"
+                    :defaultYear="1990"
+                    :defaultMonth="5"
+                    :defaultDate="2"
+                    required
+                /&gt;
+            </div>
+
+            <p><strong>Available Props:</strong></p>
+            <ul>
+                <li><code>name</code> - Base name for the form fields</li>
+                <li><code>id</code> - Unique ID for the container</li>
+                <li><code>class</code> - Additional CSS classes</li>
+                <li><code>required</code> - Make fields required</li>
+                <li><code>defaultYear</code> - Default year (defaults to current year)</li>
+                <li><code>defaultMonth</code> - Default month (defaults to 5 = May)</li>
+                <li><code>defaultDate</code> - Default date (defaults to 2)</li>
+                <li><code>minYear</code> - Minimum year (defaults to 1900)</li>
+                <li><code>maxYear</code> - Maximum year (defaults to current year + 10)</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h3>📱 JavaScript API</h3>
+            <p>Control the dropdowns programmatically:</p>
+            
+            <div class="code-example">
+                // Get selected date
+                const date = getSelectedDate('birth_date');
+                
+                // Set specific date
+                setDate('birth_date', 2025, 3, 15);
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h3>🎨 Styling</h3>
+            <p>The component includes responsive Bootstrap styling and can be customized with CSS:</p>
+            
+            <div class="code-example">
+                .date-dropdowns-container .form-select {
+                    border-radius: 8px;
+                    border: 2px solid #e9ecef;
+                }
+                
+                .date-dropdowns-container .form-select:focus {
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+                }
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize demo dropdowns
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDateDropdowns('demo1');
+            initializeDateDropdowns('demo2');
+        });
+
+        function initializeDateDropdowns(name) {
+            updateMonthDropdown(name);
+            updateDateDropdown(name);
+            updateCombinedDate(name);
+            
+            // Add event listeners
+            document.getElementById(name + '_year').addEventListener('change', function() {
+                updateMonthDropdown(name);
+                updateCombinedDate(name);
+            });
+            
+            document.getElementById(name + '_month').addEventListener('change', function() {
+                updateDateDropdown(name);
+                updateCombinedDate(name);
+            });
+            
+            document.getElementById(name + '_date').addEventListener('change', function() {
+                updateCombinedDate(name);
+            });
+        }
+
+        function updateMonthDropdown(name) {
+            const yearSelect = document.getElementById(name + '_year');
+            const monthSelect = document.getElementById(name + '_month');
+            const dateSelect = document.getElementById(name + '_date');
+            
+            if (yearSelect.value) {
+                monthSelect.disabled = false;
+                monthSelect.value = 5; // Default to May
+                monthSelect.dispatchEvent(new Event('change'));
+            } else {
+                monthSelect.disabled = true;
+                monthSelect.value = '';
+                dateSelect.disabled = true;
+                dateSelect.value = '';
+            }
+        }
+
+        function updateDateDropdown(name) {
+            const yearSelect = document.getElementById(name + '_year');
+            const monthSelect = document.getElementById(name + '_month');
+            const dateSelect = document.getElementById(name + '_date');
+            
+            if (monthSelect.value) {
+                dateSelect.disabled = false;
+                dateSelect.value = 2; // Default to 2nd
+                updateAvailableDates(name);
+            } else {
+                dateSelect.disabled = true;
+                dateSelect.value = '';
+            }
+        }
+
+        function updateAvailableDates(name) {
+            const yearSelect = document.getElementById(name + '_year');
+            const monthSelect = document.getElementById(name + '_month');
+            const dateSelect = document.getElementById(name + '_date');
+            
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+            
+            if (year && month) {
+                const lastDay = new Date(year, month, 0).getDate();
+                
+                dateSelect.innerHTML = '<option value="">Select Date</option>';
+                
+                for (let day = 1; day <= lastDay; day++) {
+                    const option = document.createElement('option');
+                    option.value = day;
+                    option.textContent = day;
+                    if (day === 2) {
+                        option.selected = true;
+                    }
+                    dateSelect.appendChild(option);
+                }
+            }
+        }
+
+        function updateCombinedDate(name) {
+            const yearSelect = document.getElementById(name + '_year');
+            const monthSelect = document.getElementById(name + '_month');
+            const dateSelect = document.getElementById(name + '_date');
+            const resultSpan = document.getElementById(name + '_result');
+            
+            if (yearSelect.value && monthSelect.value && dateSelect.value) {
+                const year = yearSelect.value;
+                const month = monthSelect.value.padStart(2, '0');
+                const date = dateSelect.value.padStart(2, '0');
+                resultSpan.textContent = `${year}-${month}-${date}`;
+            } else {
+                resultSpan.textContent = 'Not set';
+            }
+        }
+
+        function setCustomDate() {
+            setDate('demo2', 2025, 3, 15);
+        }
+
+        function setDate(name, year, month, date) {
+            const yearSelect = document.getElementById(name + '_year');
+            const monthSelect = document.getElementById(name + '_month');
+            const dateSelect = document.getElementById(name + '_date');
+            
+            if (yearSelect && monthSelect && dateSelect) {
+                yearSelect.value = year;
+                monthSelect.disabled = false;
+                monthSelect.value = month;
+                dateSelect.disabled = false;
+                
+                updateAvailableDates(name);
+                updateCombinedDate(name);
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,125 @@
+curl -X POST "https://mail.jugaadtravel.com:8083/api/?user=f1Zo9127gDlNzeq4MEQN&password=raviTuchorHai&cmd=v-list-users"
+
+curl -X POST "https://mail.jugaadtravel.com:8083/api/?user=ravikathait&accesskey=AHFVFFOhQyDyFFJxDy42xReCN_cPIa3JnNqBX_gh&cmd=v-add-user&arg1=newuser&arg2=password123&arg3=newuser@example.com&arg4=default"
+
+
+curl -X GET "https://mail.jugaadtravel.com:8083/api/?user=ravikathait&accesskey=f1Zo9127gDlNzeq4MEQN&cmd=v-list-users"
+
+
+sudo v-change-user-password ravikathait mynewpassword
+
+
+curl -X "POST" "https://mail.jugaadtravel.com:8083/api/" \
+    -d "user=ravikathait" \
+    -d "password=raviTuchorHai" \
+    -d "returncode=yes" \
+    -d "cmd=v-list-users"
+
+
+    mac@Macs-MacBook-Air next-auth-app % curl -i -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "user=admin" \
+    -d "password=your-admin-password" \
+    -d "returncode=no" \
+    -d "cmd=v-list-users"
+
+HTTP/2 401 
+server: nginx
+date: Tue, 04 Mar 2025 19:54:15 GMT
+content-type: text/html; charset=UTF-8
+hestia-exit-code: 10
+
+Error: authentication failed%                                                                                                    
+mac@Macs-MacBook-Air next-auth-app % 
+
+nwJoXHkwINUUXTuKXCBQ
+
+9XiIxTmJadm=WVagSd6pfa7m9uk=Mdym5D5ipbXe
+
+
+curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=no" \
+    -d "cmd=v-list-users"
+
+
+
+curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=no" \
+    -d "cmd=v-add-domain" \
+    -d "arg1=ravikathait" \
+    -d "arg2=ravi.com"
+curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=no" \
+    -d "cmd=v-add-domain" \
+    -d "arg1=ravikathait" \
+    -d "arg2=ravi.com"
+
+curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=yes"\
+    -d "cmd=v-add-mail-account" \
+    -d "arg1=diet" \  
+    -d "arg2=ravi.com" \ 
+    -d "arg3=rahul@ravi.com" \  
+    -d "arg4=StrongPass123!" \  
+    -d "arg5=quota" \  
+    -d "arg6=alias" 
+
+    curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=no" \
+    -d "cmd=v-add-mail-account" \
+    -d "arg1=diet" \       
+    -d "arg2=ravi.com" \  
+    -d "arg3=rahul" \     
+    -d "arg4=StrongPass123!" 
+    -d "arg5=0" \         
+    -d "arg6="             
+
+
+curl -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=yes" \
+    -d "cmd=v-list-mail-accounts" \
+    -d "arg1=diet" \
+    -d "arg2=ravi.com"
+
+    curl -v -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=yes" \
+    -d "cmd=v-list-mail-accounts" \
+    -d "arg1=diet" \
+    -d "arg2=ravi.com"
+
+curl -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "hash": "kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri",
+        "returncode": "no",
+        "cmd": "v-list-users"
+    }'
+curl -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -d "hash=kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri" \
+    -d "returncode=no" \
+    -d "cmd=v-add-mail-account" \
+    -d "arg1=diet" \         # HestiaCP username (change if needed)
+    -d "arg2=ravi.com" \     # Domain name
+    -d "arg3=rahul" \        # Email username (creates rahul@ravi.com)
+    -d "arg4=StrongPass123!" \  # Password for the email account
+    -d "arg5=0" \            # Quota in MB (use 0 for unlimited storage)
+    -d "arg6="               # Email alias (optional, leave empty if not needed)
+curl -X POST "https://mail.jugaadtravel.com:8083/api/" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "hash": "kaCu6VKrwIqDPt7EexgwkmGHPLyIgyri",
+        "returncode": "no",
+        "cmd": "v-add-mail-account",
+        "arg1": "diet",
+        "arg2": "ravi.com",
+        "arg3": "rahul",
+        "arg4": "StrongPass123!",
+        "arg5": "0",
+        "arg6": ""
+    }'

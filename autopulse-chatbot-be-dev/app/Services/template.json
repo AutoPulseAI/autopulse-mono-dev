@@ -1,0 +1,892 @@
+{
+  "settings": {
+    "analysis": {
+      "normalizer": {
+        "lowercase_normalizer": {
+          "type": "custom",
+          "char_filter": [],
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "accident_history": {
+        "type": "boolean"
+      },
+      "ad_spend": {
+        "type": "float"
+      },
+      "apr": {
+        "type": "float"
+      },
+      "base_exterior_color": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "base_interior_color": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "body_subtype": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "body_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_address": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_city": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_latitude": {
+        "type": "float"
+      },
+      "car_longitude": {
+        "type": "float"
+      },
+      "car_seller_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_state": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_street": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "car_zip": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "carfax_1_owner": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "carfax_clean_title": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "cargo_volume": {
+        "type": "float"
+      },
+      "category": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "city": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "city_mpg": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "country": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "credit_score_required": {
+        "type": "integer"
+      },
+      "curb_weight": {
+        "type": "float"
+      },
+      "currency_indicator": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "customer_rating": {
+        "type": "float"
+      },
+      "cylinders": {
+        "type": "float"
+      },
+      "dealer_id": {
+        "type": "integer"
+      },
+      "dealer_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "dealership_group_id": {
+        "type": "integer"
+      },
+      "dealership_group_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "depreciation_rate": {
+        "type": "float"
+      },
+      "dol": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "dom": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "dom_180": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "dom_active": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "doors": {
+        "type": "integer"
+      },
+      "down_payment": {
+        "type": "float"
+      },
+      "down_payment_percentage": {
+        "type": "float"
+      },
+      "drivetrain": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "engine": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "engine_block": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "engine_size": {
+        "type": "float"
+      },
+      "exterior_color": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "f_down_pay": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "f_down_pay_per": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "f_emi": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "features": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "finance_rate": {
+        "type": "float"
+      },
+      "first_scraped_at": {
+        "type": "date"
+      },
+      "fuel_economy_rating": {
+        "type": "float"
+      },
+      "fuel_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "gross_vehicle_weight_rating": {
+        "type": "float"
+      },
+      "heading": {
+        "type": "search_as_you_type",
+        "max_shingle_size": 3
+      },
+      "high_value_features": {
+        "type": "nested",  
+        "properties": {
+          "category": {
+            "type": "text"
+          },
+          "description": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256,
+                "normalizer": "lowercase_normalizer"
+              }
+            }
+          },
+          "type": {
+            "type": "text"
+          }
+        }
+      },
+      "highway_mpg": {
+        "type": "float"
+      },
+      "horsepower": {
+        "type": "float"
+      },
+      "id": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "in_transit": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "in_transit_at": {
+        "type": "date"
+      },
+      "in_transit_days": {
+        "type": "integer"
+      },
+      "incentives": {
+        "type": "float"
+      },
+      "insurance_cost": {
+        "type": "float"
+      },
+      "interior_color": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "inventory_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "is_certified": {
+        "type": "boolean"
+      },
+      "is_searchable": {
+        "type": "integer"
+      },
+      "is_transfer": {
+        "type": "boolean"
+      },
+      "l_down_pay": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "l_emi": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "latitude": {
+        "type": "float"
+      },
+      "lease_payment": {
+        "type": "float"
+      },
+      "lease_term": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "listing_date": {
+        "type": "date",
+        "format": "yyyy-MM-dd"
+      },
+      "listing_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "loan_apr": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "loan_term": {
+        "type": "integer"
+      },
+      "location": {
+        "type": "geo_point"
+      },
+      "location_id": {
+        "type": "integer"
+      },
+      "longitude": {
+        "type": "float"
+      },
+      "maintenance_cost": {
+        "type": "float"
+      },
+      "make": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "max_payload": {
+        "type": "float"
+      },
+      "message": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "miles": {
+        "type": "float"
+      },
+      "miles_indicator": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "model": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "model_code": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "monthly_payment": {
+        "type": "float"
+      },
+      "more_info": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "mpg_city": {
+        "type": "float"
+      },
+      "mpg_highway": {
+        "type": "float"
+      },
+      "msrp": {
+        "type": "float"
+      },
+      "options": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "overall_height": {
+        "type": "float"
+      },
+      "overall_length": {
+        "type": "float"
+      },
+      "overall_width": {
+        "type": "float"
+      },
+      "passenger_volume": {
+        "type": "float"
+      },
+      "photo_links": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "photo_url": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "price": {
+        "type": "float"
+      },
+      "price_reduction": {
+        "type": "float"
+      },
+      "residual_value": {
+        "type": "float"
+      },
+      "review_count": {
+        "type": "integer"
+      },
+      "s3": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              }
+            }
+          },
+          "key": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              }
+            }
+          }
+        }
+      },
+      "safety_rating": {
+        "type": "float"
+      },
+      "sales_date": {
+        "type": "date",
+        "format": "yyyy-MM-dd"
+      },
+      "scraped_at": {
+        "type": "date"
+      },
+      "search_ranking": {
+        "type": "float"
+      },
+      "seller_comments": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "seller_email": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "seller_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "seller_phone": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "seller_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "service_date": {
+        "type": "date",
+        "format": "yyyy-MM-dd"
+      },
+      "sold_date": {
+        "type": "date",
+        "format": "yyyy-MM-dd"
+      },
+      "source": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "state": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "status_date": {
+        "type": "date"
+      },
+      "stock_no": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "street": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "sub_dealership_group_id": {
+        "type": "integer"
+      },
+      "sub_dealership_group_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "taxonomy_vin": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "torque": {
+        "type": "float"
+      },
+      "towing_capacity": {
+        "type": "float"
+      },
+      "trade_in_value": {
+        "type": "float"
+      },
+      "transmission": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "trim": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "vehicle_type": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "vin": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      },
+      "warranty_duration": {
+        "type": "integer"
+      },
+      "warranty_mileage": {
+        "type": "integer"
+      },
+      "website_id": {
+        "type": "integer"
+      },
+      "wheelbase": {
+        "type": "float"
+      },
+      "year": {
+        "type": "integer"
+      },
+      "zip": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256,
+            "normalizer": "lowercase_normalizer"
+          }
+        }
+      }
+    }
+  }
+}

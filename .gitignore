@@ -1,0 +1,41 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+.venv/
+venv/
+myenv/
+pulse-env/
+__pycache__/
+*.py[cod]
+
+# PHP
+vendor/
+
+# Logs
+*.log
+logs/
+
+# Database dumps / backups
+*.bson
+*.archive
+*.archive.gz
+*.gz
+*.sql
+*.dump
+backup/
+backups/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

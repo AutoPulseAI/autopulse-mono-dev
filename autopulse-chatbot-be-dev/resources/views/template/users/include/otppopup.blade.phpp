@@ -1,0 +1,572 @@
+<!-- User Login Modal -->
+<div class="modal fade" id="userLoginModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="position-relative">
+            <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+            <div class="row">
+                <div class="col col-md-4 col-12">
+                    <div class="modal_left">
+                        <img src="{{asset('assets/images/login_image.png') }}" alt="Image" class="img-fluid">
+                    </div>
+                </div>
+                <div class="col col-md-8 col-12 d-flex align-items-center rightscreen" id="loginscreen">
+                    <!--<div class="position-relative modal_right">
+                        <h3>Save time-Create your one-time passcode</h3>
+                        
+                         <p>You will receive the OTP via automated voice call on your mobile. </p>
+
+                       
+
+                        <form id="login" >
+                            @csrf
+                            <div class="position-relative d-flex">
+                                <select name="dial_code" id="dial_code" class="form-select country_code">
+                                    @foreach(config('constants.COUNTRY_CODE') as $country)
+                                        <option value="+{{ $country['code'] }}"> {{ $country['name'] }} (+{{ $country['code'] }}) </option>
+                                    @endforeach
+                                   
+                                </select>
+                                <input name="phone_number" id="phone_number" type="text"  class="form-control required" placeholder="Enter Phone Number">
+                            </div>
+                            <label id="phone_number-error" class="error" for="phone_number"></label>
+                            <div class="position-relative">
+                                <button type="button"  id="loginbtn"  class="btn btn_theme w-100"  >Send OTP</button>
+                            </div> 
+                              
+                            
+                        </form>
+                                                    
+                     
+
+                        <div class="position-relative agree_text text-center">
+                            <p class="mb-0 text_secondary"><small>By continuing I agree with the <a href="{{ route('privacy') }}" target="blank">Privacy Policy</a>,&nbsp;<a href="{{ route('term') }}" target="blank">Terms & Conditions</a></small></p>
+                        </div>
+                    </div>-->
+                    <div class="position-relative modal_right">
+                        <h3>Login in Autopulse</h3>
+                        <p>for Better Experience, Order tracking & Regular updates</p>
+
+                        <form action="" id="login" >
+                            <div class="position-relative">
+                                <input name="email" type="text"  class="form-control required email" placeholder="Email">
+                            </div>
+                            <div class="position-relative">
+                                <input type="password" name="password" class="form-control required" id="passwordInput" placeholder="Password">
+                                <button class="btn border-0 position-absolute end-0 top-0 bottom-0 px-3 link-primary" type="button" id="togglePassword">Show</button>
+                            </div>
+                            <div class="position-relative d-flex align-items-center justify-content-between mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="" id="defaultCheck1">
+                                    <label class="form-check-label" for="defaultCheck1"><small>Keep me signed in</small></label>
+                                </div>
+                                <a class="link-primary" data-bs-toggle="modal" data-bs-target="#forgotPassModal" data-bs-dismiss="modal"><small>Forgot Password</small></a>
+                            </div>
+                            <div class="position-relative">
+                                <button type="submit" class="btn btn_theme w-100" >Login</button>
+                            </div>                            
+                        </form>
+
+                        <div class="position-relative auth_ortext text-center">
+                            <p class="mb-0 text_secondary"><small>Or</small></p>
+                        </div>
+
+                        <div class="position-relative auth_sociallinks">
+                            <a href="{{ route('social.redirect','google') }}" class="btn w-100 mb-2"><img src="{{ asset('assets/images/social/google.png') }}" alt=""><span>Continue with Google</span></a>
+                            <a href="{{ route('social.redirect','linkedin') }}" class="btn w-100 mb-2"><img src="{{ asset('assets/images/social/li.png') }}" alt=""><span>Continue with LinkedIN</span></a>
+                            <a href="{{ route('social.redirect','facebook') }}" class="btn w-100 mb-2"><img src="{{ asset('assets/images/social/fb.png') }}" alt=""><span>Continue with Facebook</span></a>
+                        </div>
+                        <div class="position-relative text-center">
+                            <p class="my-3"><span class="text_secondary">Do not have an account?</span>&nbsp;<a class="link-primary" data-bs-target="#RegisterModal" data-bs-toggle="modal" data-bs-dismiss="modal">Sign Up</a></p>
+                        </div>
+                        <div class="position-relative agree_text text-center">
+                            <p class="mb-0 text_secondary"><small>By continuing, I agree with the <a href="" target="blank">Privacy Policy</a>,&nbsp;<a href="" target="blank">Terms & Conditions</a></small></p>
+                        </div>
+                    </div>
+                    
+                </div>
+                <div class="col col-md-8 col-12 d-flex align-items-center rightscreen" id="otpscreen" style="display:none !important;">
+                    <div class="position-relative modal_right">
+                        <h3>Save time-Create your one-time passcode</h3>
+                        <p id="otpmsg">OTP has been sent to +0-0000000000</p>
+
+                        <!-- <form action=""> -->
+
+                        <form id="otpform"> 
+                            @csrf
+                            <div  class="position-relative" >
+                                <input type="text" maxlength="6" name="otp" id ="otp" class="required form-control " placeholder="Enter OTP" />
+                                <input type="hidden" name="phone_number" id="phone_number_added" />
+                                <input type="hidden" name="dial_code" id="dial_code_hidden" />
+                            </div>
+                            <div class="resend_otp">
+                                <a href="javascript:;" onclick="resend()" id="resendbtn" class="disabled">Resend OTP</a>
+                                <span id="timer">00:20</span>
+                            </div>
+                            <div class="position-relative">
+                                <button type="button" id="verify" class="btn btn_theme w-100"  >Verify OTP</button>
+                            </div> 
+                          
+                            
+                        </form>
+                           
+
+                                                      
+                        <!-- </form> -->
+
+                        <div class="position-relative agree_text text-center">
+                            <p class="mb-0 text_secondary"><small>By continuing I agree with the <a href="{{ route('privacy') }}" target="blank">Privacy Policy</a>,&nbsp;<a href="{{ route('term') }}" target="blank">Terms & Conditions</a></small></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col col-md-8 col-12 d-flex align-items-center rightscreen" id="profilestep" style="display:none !important;">
+                    <div class="position-relative modal_right">
+                        <h3>Logged in Successfully</h3>
+                        <p>Please provide some more information for better communication</p>
+                        <form action="{{ route('updateProfile') }}" id="update_profile"  enctype="multipart/form-data">  
+                            @csrf
+                            <div class="row">
+                                <div class="col col-6">
+                                    <input type="text" id="name" name="name" placeholder="Enter First Name*" value="" class="form-control required">
+                                   
+                                </div>
+                                <div class="col col-6">
+                                    <input type="text" id="last_name"  name="last_name" placeholder="Enter Last Name*" value="" class="form-control required">   
+                                </div>
+                                <div class="col col-12">
+                                    <input type="text" id="email"  name="email" placeholder="Enter email*" value="" class="form-control email required">   
+                                </div>
+                                <div class="position-relative">
+                                    <button type="button" class="btn btn_theme w-100" >Continue</button>
+                                </div> 
+                            </div>                                                       
+                       </form>
+
+                        <div class="position-relative agree_text text-center">
+                            <p class="mb-0 text_secondary"><small>By continuing I agree with the <a href="{{ route('privacy') }}" target="blank">Privacy Policy</a>,&nbsp;<a href="{{ route('term') }}" target="blank">Terms & Conditions</a></small></p>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User Confirmation Forgot Modal -->
+<div class="modal fade" id="forgotPassConfModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+        <div class="modal-body">
+            <div class="position-relative">
+                <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <div class="row">
+                    <div class="col col-lg-4 col-12">
+                        <div class="modal_left">
+                            <img src="./assets/images/login_image.png" alt="Image" class="img-fluid">
+                        </div>
+                    </div>
+                    <div class="col col-lg-8 col-12 d-flex align-items-center">
+                        <div class="position-relative modal_right text-center">
+                            <div class="conf_check">
+                                <img src="./assets/images/check.png" alt="check">
+                            </div>
+                            <h3 class="text_primary">A password reset link has been sent to your Email ID!</h3>
+                            <div class="position-relative">
+                                <p class="my-3"><a class="link-primary">Did not received the password reset link?</a></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Register Modal -->
+<div class="modal fade" id="RegisterModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="position-relative">
+            <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+            <div class="row">
+                <div class="col col-lg-5 col-12">
+                    <div class="modal_left">
+                        <img src="./assets/images/login_image.png" alt="Image" class="img-fluid">
+                    </div>
+                </div>
+                <div class="col col-lg-7 col-12 d-flex align-items-center">
+                    <div class="position-relative modal_right">
+                        <h3>Create Account in Autopulse!</h3>
+                        <p>for Better Experience, Order tracking & Regular updates</p>
+
+                        <!-- <form action=""> -->
+                            <div class="row gx-2">
+                                <div class="col col-6">
+                                    <div class="position-relative">
+                                        <input type="text" class="form-control" placeholder="First Name">
+                                    </div>
+                                </div>
+                                <div class="col col-6">
+                                    <div class="position-relative">
+                                        <input type="text" class="form-control" placeholder="Last Name">
+                                    </div>
+                                </div>
+                                <div class="col col-12">
+                                    <div class="position-relative">
+                                        <input type="text" class="form-control" placeholder="Email">
+                                    </div>
+                                </div>
+                                <div class="col col-12">
+                                    <div class="position-relative">
+                                        <input type="password" class="form-control" placeholder="Password">
+                                    </div>
+                                </div>
+                                <div class="col col-12">
+                                    <div class="position-relative">
+                                        <input type="password" class="form-control" placeholder="Confirm Password">
+                                    </div>
+                                </div>
+
+                                <div class="position-relative">
+                                    <button type="submit" class="btn btn_theme w-100" data-bs-target="#registerConfModal" data-bs-toggle="modal" data-bs-dismiss="modal">Register</button>
+                                </div>                            
+                            </div>                            
+                        <!-- </form> -->
+
+                        <div class="position-relative text-center">
+                            <p class="my-3"><span class="text_secondary">Aleady have an account?</span>&nbsp;<a class="link-primary" data-bs-target="#userLoginModal" data-bs-toggle="modal" data-bs-dismiss="modal">Login Now</a></p>
+                        </div>
+
+                        <div class="position-relative agree_text text-center">
+                            <p class="mb-0 text_secondary"><small>By continuing, I agree with the <a href="" target="blank">Privacy Policy</a>,&nbsp;<a href="" target="blank">Terms & Conditions</a></small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User Reg Comfirmation Modal -->
+<div class="modal fade" id="registerConfModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-body">
+                <div class="position-relative">
+                    <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                    <div class="row">
+                        <div class="col col-lg-4 col-12">
+                            <div class="modal_left">
+                                <img src="./assets/images/login_image.png" alt="Image" class="img-fluid">
+                            </div>
+                        </div>
+                        <div class="col col-lg-8 col-12 d-flex align-items-center">
+                            <div class="position-relative modal_right text-center">
+                                <div class="conf_check">
+                                    <img src="./assets/images/check.png" alt="check">
+                                </div>
+                                <h3 class="text_primary">A Verification link has been sent to your Email ID!</h3>
+                                <div class="position-relative">
+                                    <p class="my-3"><a class="link-primary">Resend the Link</a></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+  <!-- Are you sure? You want to logout? Modal -->
+<div class="modal fade" id="logoutConfirmationModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+        <div class="modal-body">
+            <div class="position-relative logout_confirmation_modal">
+                <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <div class="row">
+                    <div class="col col-12">
+                        <div class="position-relative">
+                            <div class="modal_heading">
+                                <h3>Confirm</h3>
+                            </div>
+
+                            <div class="position-relative logout_icon_text">
+                                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                                <h5>Are you sure? You want to logout?</h5>
+                            </div>        
+                            
+                            <div class="position-relative text-center mb-3">
+                                <a href="{{route('logout')}}" class="btn btn_theme_light">Yes</a>
+                                <a data-bs-dismiss="modal" class="btn btn_secondary_light">No</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Are you sure? You want to logout? Modal -->
+<div class="modal fade" id="thank_you" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+        <div class="modal-body">
+            <div class="position-relative logout_confirmation_modal">
+                <button type="button" class="btn-close modal_close_btn" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <div class="row">
+                    <div class="col col-12">
+                        <div class="position-relative">
+                            <div class="modal_heading">
+                                <h3></h3>
+                            </div>
+
+                            <div class="position-relative logout_icon_text">
+                               
+                                <h5 class="successmsgdiv"></h5>
+                            </div>        
+                            
+                           
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Share Modal -->
+<div id="share-popup" class="share-popup" style="display: none;">
+    <div class="share-popup-content">
+        <p class="d-flex align-items-center"><span>Share</span><span class="close ms-auto" onclick="closeSharePopup()">&times;</span></p>
+        <div class="share_modal_icon">
+            <a href="#" id="share-facebook" onclick="shareToFb(event, this)">
+                <i class="fab fa-facebook-f"></i>
+                <p>Facebook</p>
+            </a>
+            <a href="#" id="share-twitter" onclick="shareToTwitter(event, this)">
+                <i class="fab fa-twitter"></i>
+                <p>Twitter</p>
+            </a>
+            <a href="#" id="share-linkedin" onclick="shareToLinkedIn(event, this)">
+                <i class="fab fa-linkedin-in"></i>
+                <p>Linkedin</p>
+            </a>
+            <a href="#" id="share-whatsapp" onclick="shareToWhatsApp(event, this)">
+                <i class="fab fa-whatsapp"></i>
+                <p>Whatsapp</p>
+            </a>
+        </div>
+    </div>
+</div>
+
+
+@push ('after-scripts')
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.19.3/jquery.validate.min.js" integrity="sha512-37T7leoNS06R80c8Ulq7cdCDU5MNQBwlYoy1TX/WUsLFC2eYNqtKlV0QjH7r8JpG/S0GUMZwebnVFLPd6SU5yg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+
+function resend(){
+    //alert()
+    $('#loginbtn').trigger('click');
+}  
+$('#login').on('keypress', function(event) {
+   
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            $('#loginbtn').trigger('click');
+        }
+});
+$('#otpform').on('keypress', function(event) {
+   
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            $('#verify').trigger('click');
+        }
+});
+
+function startTimer(duration, display) {
+    var timer = duration, minutes, seconds;
+    setInterval(function () {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
+
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+        display.textContent = minutes + ":" + seconds;
+
+        if (--timer < 0) {
+            timer = 0;
+            $('#resendbtn').show();
+            document.getElementById("resendButton").classList.remove('disabled');
+        }
+    }, 1000);
+}
+$('#loginbtn').click(function(e){
+    $('#phone_number').removeClass('phone_numbererror');
+    if($('#login').valid())
+    {    url = '{{ route("generateOtp") }}';
+        var formData = $('#login').serialize();
+        var originalText = $('#loginbtn').text();
+       
+            // Change the text of the button to indicate processing
+        $('#loginbtn').text('Please wait...').prop('disabled', true);
+
+        runajax(url, formData, 'post', '', 'json', function(output) {
+            
+            $('#loginbtn').text(originalText).prop('disabled', false);
+            if (output.success) 
+            {
+                
+                //$('.modal').modal('hide');
+                $('.rightscreen').hide();
+                $('.rightscreen').removeClass('d-flex')
+                $('#otpscreen').addClass('d-flex');
+                $('#otpscreen').show();
+                $('#phone_number_added').val($('#phone_number').val());
+                $('#dial_code_hidden').val($('#dial_code').val());
+                $('#otpmsg').html('You will receive the OTP via automated voice call on your mobile '+ $('#dial_code').val() +$('#phone_number').val());
+                $('#resendbtn').hide();
+                startTimer(60, document.getElementById("timer"));
+                
+            }else{
+                if (output.data.length === 0) {
+                    key = 'phone_number'
+                    existvalue= $('#'+key).val();
+                        jQuery.validator.addMethod(key+"error", function(value, element) {
+                            return this.optional(element) || value !== existvalue;
+                        }, jQuery.validator.format(output.message));
+                        $('#'+key).addClass(key+"error");
+                        jQuery('#'+key).valid();
+                } else {
+                    for (var key in output.data){
+                    
+                        existvalue= $('#'+key).val();
+                        jQuery.validator.addMethod(key+"error", function(value, element) {
+                            return this.optional(element) || value !== existvalue;
+                        }, jQuery.validator.format(output.data[key][0]));
+                        $('#'+key).addClass(key+"error");
+                        jQuery('#'+key).valid();
+                    }
+                }
+                    
+            }
+        }); 
+    }
+})
+$('#verify').click(function(e){
+    if($('#otpform').valid())
+    {    url = '{{ route("validateOtp") }}';
+        var formData = $('#otpform').serialize();
+        runajax(url, formData, 'post', '', 'json', function(output) {
+            
+            
+            if (output.success) 
+            {
+                data  = output.data
+                const hasFirstName = data.hasOwnProperty('name') && data.name && data.name.trim() !== '';
+                const hasLastName = data.hasOwnProperty('last_name') && data.last_name && data.last_name.trim() !== '';
+
+                if(hasFirstName && hasLastName){
+                    //window.location.reload()
+                    data  = output.data
+                    $('.modal').modal('hide');
+                    updateUserProfile(data,'{{route("favourite") }}','{{route("dashboard") }}');
+                }else{
+
+                    $('.rightscreen').hide();
+                    $('.rightscreen').removeClass('d-flex')
+                    $('#profilestep').addClass('d-flex');
+                    $('#profilestep').show();
+                    //$('.modal').modal('hide');
+                    //$('#loggedInModal').modal('show');
+                }
+                
+            }else{
+                
+                // for (var key in output.data){
+                    key ="otp";
+                    existvalue= $('#otp').val();
+                    jQuery.validator.addMethod(key+"error", function(value, element) {
+                        return this.optional(element) || value !== existvalue;
+                    }, jQuery.validator.format(output.message));
+                    $('#'+key).addClass(key+"error");
+                    jQuery('#'+key).valid();
+                //}
+                    
+            }
+        }); 
+    }
+    })
+
+    $('#update_profile button').click(function(e){
+    e.preventDefault();
+    $('#update_profile button').text('Please wait...');
+    $('#update_profile button').attr('disabled','disabled');
+    
+    if($('#update_profile').valid())
+    {    
+        url = '{{route('updateProfile')}}';
+
+        var formData = new FormData($('#update_profile')[0]);
+        
+        uploadajax(url, formData, 'post', '', 'json', function(output) {
+            // var output = JSON.parse(res);
+            $('#update_profile button').text('Update Profile ');
+            $('#update_profile button').removeAttr('disabled');
+            if (output.success) 
+            {
+                $('#update_profile')[0].reset();	
+                //window.location.reload();
+                data  = output.data
+                $('.modal').modal('hide');
+                updateUserProfile(data,'{{route("favourite") }}','{{route("dashboard") }}');
+               // $('#thank_you').modal('show');
+                
+            }else{
+                
+                for (var key in output.data){
+                
+                    existvalue= $('#'+key).val();
+                    jQuery.validator.addMethod(key+"error", function(value, element) {
+                        return this.optional(element) || value !== existvalue;
+                    }, jQuery.validator.format(output.data[key][0]));
+                    $('#'+key).addClass(key+"error");
+                    jQuery('#'+key).valid();
+                }
+                    
+            }
+        }); 
+    }else{
+        $('#update_profile button').text('Update Profile');
+        $('#update_profile button').removeAttr('disabled');
+    }
+});
+</script>
+@endpush

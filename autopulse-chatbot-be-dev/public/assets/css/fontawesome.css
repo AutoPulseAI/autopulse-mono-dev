@@ -1,0 +1,6215 @@
+/*!
+ * Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com
+ * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
+ * Copyright 2024 Fonticons, Inc.
+ */
+.fa {
+  font-family: var(--chat-style-family, "Font Awesome 6 Free");
+  font-weight: var(--chat-style, 900); }
+
+.chat-solid,
+.chat-regular,
+.chat-brands,
+.fas,
+.far,
+.fab,
+.chat-sharp-solid,
+.chat-classic,
+.fa {
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  display: var(--chat-display, inline-block);
+  font-style: normal;
+  font-variant: normal;
+  line-height: 1;
+  text-rendering: auto; }
+
+.fas,
+.chat-classic,
+.chat-solid,
+.far,
+.chat-regular {
+  font-family: 'Font Awesome 6 Free'; }
+
+.fab,
+.chat-brands {
+  font-family: 'Font Awesome 6 Brands'; }
+
+.chat-1x {
+  font-size: 1em; }
+
+.chat-2x {
+  font-size: 2em; }
+
+.chat-3x {
+  font-size: 3em; }
+
+.chat-4x {
+  font-size: 4em; }
+
+.chat-5x {
+  font-size: 5em; }
+
+.chat-6x {
+  font-size: 6em; }
+
+.chat-7x {
+  font-size: 7em; }
+
+.chat-8x {
+  font-size: 8em; }
+
+.chat-9x {
+  font-size: 9em; }
+
+.chat-10x {
+  font-size: 10em; }
+
+.chat-2xs {
+  font-size: 0.625em;
+  line-height: 0.1em;
+  vertical-align: 0.225em; }
+
+.chat-xs {
+  font-size: 0.75em;
+  line-height: 0.08333em;
+  vertical-align: 0.125em; }
+
+.chat-sm {
+  font-size: 0.875em;
+  line-height: 0.07143em;
+  vertical-align: 0.05357em; }
+
+.chat-lg {
+  font-size: 1.25em;
+  line-height: 0.05em;
+  vertical-align: -0.075em; }
+
+.chat-xl {
+  font-size: 1.5em;
+  line-height: 0.04167em;
+  vertical-align: -0.125em; }
+
+.chat-2xl {
+  font-size: 2em;
+  line-height: 0.03125em;
+  vertical-align: -0.1875em; }
+
+.chat-fw {
+  text-align: center;
+  width: 1.25em; }
+
+.chat-ul {
+  list-style-type: none;
+  margin-left: var(--chat-li-margin, 2.5em);
+  padding-left: 0; }
+  .chat-ul > li {
+    position: relative; }
+
+.chat-li {
+  left: calc(-1 * var(--chat-li-width, 2em));
+  position: absolute;
+  text-align: center;
+  width: var(--chat-li-width, 2em);
+  line-height: inherit; }
+
+.chat-border {
+  border-color: var(--chat-border-color, #eee);
+  border-radius: var(--chat-border-radius, 0.1em);
+  border-style: var(--chat-border-style, solid);
+  border-width: var(--chat-border-width, 0.08em);
+  padding: var(--chat-border-padding, 0.2em 0.25em 0.15em); }
+
+.chat-pull-left {
+  float: left;
+  margin-right: var(--chat-pull-margin, 0.3em); }
+
+.chat-pull-right {
+  float: right;
+  margin-left: var(--chat-pull-margin, 0.3em); }
+
+.chat-beat {
+  animation-name: chat-beat;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, ease-in-out); }
+
+.chat-bounce {
+  animation-name: chat-bounce;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, cubic-bezier(0.28, 0.84, 0.42, 1)); }
+
+.chat-fade {
+  animation-name: chat-fade;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, cubic-bezier(0.4, 0, 0.6, 1)); }
+
+.chat-beat-fade {
+  animation-name: chat-beat-fade;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, cubic-bezier(0.4, 0, 0.6, 1)); }
+
+.chat-flip {
+  animation-name: chat-flip;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, ease-in-out); }
+
+.chat-shake {
+  animation-name: chat-shake;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, linear); }
+
+.chat-spin {
+  animation-name: chat-spin;
+  animation-delay: var(--chat-animation-delay, 0s);
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 2s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, linear); }
+
+.chat-spin-reverse {
+  --chat-animation-direction: reverse; }
+
+.chat-pulse,
+.chat-spin-pulse {
+  animation-name: chat-spin;
+  animation-direction: var(--chat-animation-direction, normal);
+  animation-duration: var(--chat-animation-duration, 1s);
+  animation-iteration-count: var(--chat-animation-iteration-count, infinite);
+  animation-timing-function: var(--chat-animation-timing, steps(8)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-beat,
+  .chat-bounce,
+  .chat-fade,
+  .chat-beat-fade,
+  .chat-flip,
+  .chat-pulse,
+  .chat-shake,
+  .chat-spin,
+  .chat-spin-pulse {
+    animation-delay: -1ms;
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+    transition-delay: 0s;
+    transition-duration: 0s; } }
+
+@keyframes chat-beat {
+  0%, 90% {
+    transform: scale(1); }
+  45% {
+    transform: scale(var(--chat-beat-scale, 1.25)); } }
+
+@keyframes chat-bounce {
+  0% {
+    transform: scale(1, 1) translateY(0); }
+  10% {
+    transform: scale(var(--chat-bounce-start-scale-x, 1.1), var(--chat-bounce-start-scale-y, 0.9)) translateY(0); }
+  30% {
+    transform: scale(var(--chat-bounce-jump-scale-x, 0.9), var(--chat-bounce-jump-scale-y, 1.1)) translateY(var(--chat-bounce-height, -0.5em)); }
+  50% {
+    transform: scale(var(--chat-bounce-land-scale-x, 1.05), var(--chat-bounce-land-scale-y, 0.95)) translateY(0); }
+  57% {
+    transform: scale(1, 1) translateY(var(--chat-bounce-rebound, -0.125em)); }
+  64% {
+    transform: scale(1, 1) translateY(0); }
+  100% {
+    transform: scale(1, 1) translateY(0); } }
+
+@keyframes chat-fade {
+  50% {
+    opacity: var(--chat-fade-opacity, 0.4); } }
+
+@keyframes chat-beat-fade {
+  0%, 100% {
+    opacity: var(--chat-beat-fade-opacity, 0.4);
+    transform: scale(1); }
+  50% {
+    opacity: 1;
+    transform: scale(var(--chat-beat-fade-scale, 1.125)); } }
+
+@keyframes chat-flip {
+  50% {
+    transform: rotate3d(var(--chat-flip-x, 0), var(--chat-flip-y, 1), var(--chat-flip-z, 0), var(--chat-flip-angle, -180deg)); } }
+
+@keyframes chat-shake {
+  0% {
+    transform: rotate(-15deg); }
+  4% {
+    transform: rotate(15deg); }
+  8%, 24% {
+    transform: rotate(-18deg); }
+  12%, 28% {
+    transform: rotate(18deg); }
+  16% {
+    transform: rotate(-22deg); }
+  20% {
+    transform: rotate(22deg); }
+  32% {
+    transform: rotate(-12deg); }
+  36% {
+    transform: rotate(12deg); }
+  40%, 100% {
+    transform: rotate(0deg); } }
+
+@keyframes chat-spin {
+  0% {
+    transform: rotate(0deg); }
+  100% {
+    transform: rotate(360deg); } }
+
+.chat-rotate-90 {
+  transform: rotate(90deg); }
+
+.chat-rotate-180 {
+  transform: rotate(180deg); }
+
+.chat-rotate-270 {
+  transform: rotate(270deg); }
+
+.chat-flip-horizontal {
+  transform: scale(-1, 1); }
+
+.chat-flip-vertical {
+  transform: scale(1, -1); }
+
+.chat-flip-both,
+.chat-flip-horizontal.chat-flip-vertical {
+  transform: scale(-1, -1); }
+
+.chat-rotate-by {
+  transform: rotate(var(--chat-rotate-angle, 0)); }
+
+.chat-stack {
+  display: inline-block;
+  height: 2em;
+  line-height: 2em;
+  position: relative;
+  vertical-align: middle;
+  width: 2.5em; }
+
+.chat-stack-1x,
+.chat-stack-2x {
+  left: 0;
+  position: absolute;
+  text-align: center;
+  width: 100%;
+  z-index: var(--chat-stack-z-index, auto); }
+
+.chat-stack-1x {
+  line-height: inherit; }
+
+.chat-stack-2x {
+  font-size: 2em; }
+
+.chat-inverse {
+  color: var(--chat-inverse, #fff); }
+
+/* Font Awesome uses the Unicode Private Use Area (PUA) to ensure screen
+readers do not read off random characters that represent icons */
+
+.chat-0::before {
+  content: "\30"; }
+
+.chat-1::before {
+  content: "\31"; }
+
+.chat-2::before {
+  content: "\32"; }
+
+.chat-3::before {
+  content: "\33"; }
+
+.chat-4::before {
+  content: "\34"; }
+
+.chat-5::before {
+  content: "\35"; }
+
+.chat-6::before {
+  content: "\36"; }
+
+.chat-7::before {
+  content: "\37"; }
+
+.chat-8::before {
+  content: "\38"; }
+
+.chat-9::before {
+  content: "\39"; }
+
+.chat-fill-drip::before {
+  content: "\f576"; }
+
+.chat-arrows-to-circle::before {
+  content: "\e4bd"; }
+
+.chat-circle-chevron-right::before {
+  content: "\f138"; }
+
+.chat-chevron-circle-right::before {
+  content: "\f138"; }
+
+.chat-at::before {
+  content: "\40"; }
+
+.chat-trash-can::before {
+  content: "\f2ed"; }
+
+.chat-trash-alt::before {
+  content: "\f2ed"; }
+
+.chat-text-height::before {
+  content: "\f034"; }
+
+.chat-user-xmark::before {
+  content: "\f235"; }
+
+.chat-user-times::before {
+  content: "\f235"; }
+
+.chat-stethoscope::before {
+  content: "\f0f1"; }
+
+.chat-message::before {
+  content: "\f27a"; }
+
+.chat-comment-alt::before {
+  content: "\f27a"; }
+
+.chat-info::before {
+  content: "\f129"; }
+
+.chat-down-left-and-up-right-to-center::before {
+  content: "\f422"; }
+
+.chat-compress-alt::before {
+  content: "\f422"; }
+
+.chat-explosion::before {
+  content: "\e4e9"; }
+
+.chat-file-lines::before {
+  content: "\f15c"; }
+
+.chat-file-alt::before {
+  content: "\f15c"; }
+
+.chat-file-text::before {
+  content: "\f15c"; }
+
+.chat-wave-square::before {
+  content: "\f83e"; }
+
+.chat-ring::before {
+  content: "\f70b"; }
+
+.chat-building-un::before {
+  content: "\e4d9"; }
+
+.chat-dice-three::before {
+  content: "\f527"; }
+
+.chat-calendar-days::before {
+  content: "\f073"; }
+
+.chat-calendar-alt::before {
+  content: "\f073"; }
+
+.chat-anchor-circle-check::before {
+  content: "\e4aa"; }
+
+.chat-building-circle-arrow-right::before {
+  content: "\e4d1"; }
+
+.chat-volleyball::before {
+  content: "\f45f"; }
+
+.chat-volleyball-ball::before {
+  content: "\f45f"; }
+
+.chat-arrows-up-to-line::before {
+  content: "\e4c2"; }
+
+.chat-sort-down::before {
+  content: "\f0dd"; }
+
+.chat-sort-desc::before {
+  content: "\f0dd"; }
+
+.chat-circle-minus::before {
+  content: "\f056"; }
+
+.chat-minus-circle::before {
+  content: "\f056"; }
+
+.chat-door-open::before {
+  content: "\f52b"; }
+
+.chat-right-from-bracket::before {
+  content: "\f2f5"; }
+
+.chat-sign-out-alt::before {
+  content: "\f2f5"; }
+
+.chat-atom::before {
+  content: "\f5d2"; }
+
+.chat-soap::before {
+  content: "\e06e"; }
+
+.chat-icons::before {
+  content: "\f86d"; }
+
+.chat-heart-music-camera-bolt::before {
+  content: "\f86d"; }
+
+.chat-microphone-lines-slash::before {
+  content: "\f539"; }
+
+.chat-microphone-alt-slash::before {
+  content: "\f539"; }
+
+.chat-bridge-circle-check::before {
+  content: "\e4c9"; }
+
+.chat-pump-medical::before {
+  content: "\e06a"; }
+
+.chat-fingerprint::before {
+  content: "\f577"; }
+
+.chat-hand-point-right::before {
+  content: "\f0a4"; }
+
+.chat-magnifying-glass-location::before {
+  content: "\f689"; }
+
+.chat-search-location::before {
+  content: "\f689"; }
+
+.chat-forward-step::before {
+  content: "\f051"; }
+
+.chat-step-forward::before {
+  content: "\f051"; }
+
+.chat-face-smile-beam::before {
+  content: "\f5b8"; }
+
+.chat-smile-beam::before {
+  content: "\f5b8"; }
+
+.chat-flag-checkered::before {
+  content: "\f11e"; }
+
+.chat-football::before {
+  content: "\f44e"; }
+
+.chat-football-ball::before {
+  content: "\f44e"; }
+
+.chat-school-circle-exclamation::before {
+  content: "\e56c"; }
+
+.chat-crop::before {
+  content: "\f125"; }
+
+.chat-angles-down::before {
+  content: "\f103"; }
+
+.chat-angle-double-down::before {
+  content: "\f103"; }
+
+.chat-users-rectangle::before {
+  content: "\e594"; }
+
+.chat-people-roof::before {
+  content: "\e537"; }
+
+.chat-people-line::before {
+  content: "\e534"; }
+
+.chat-beer-mug-empty::before {
+  content: "\f0fc"; }
+
+.chat-beer::before {
+  content: "\f0fc"; }
+
+.chat-diagram-predecessor::before {
+  content: "\e477"; }
+
+.chat-arrow-up-long::before {
+  content: "\f176"; }
+
+.chat-long-arrow-up::before {
+  content: "\f176"; }
+
+.chat-fire-flame-simple::before {
+  content: "\f46a"; }
+
+.chat-burn::before {
+  content: "\f46a"; }
+
+.chat-person::before {
+  content: "\f183"; }
+
+.chat-male::before {
+  content: "\f183"; }
+
+.chat-laptop::before {
+  content: "\f109"; }
+
+.chat-file-csv::before {
+  content: "\f6dd"; }
+
+.chat-menorah::before {
+  content: "\f676"; }
+
+.chat-truck-plane::before {
+  content: "\e58f"; }
+
+.chat-record-vinyl::before {
+  content: "\f8d9"; }
+
+.chat-face-grin-stars::before {
+  content: "\f587"; }
+
+.chat-grin-stars::before {
+  content: "\f587"; }
+
+.chat-bong::before {
+  content: "\f55c"; }
+
+.chat-spaghetti-monster-flying::before {
+  content: "\f67b"; }
+
+.chat-pastafarianism::before {
+  content: "\f67b"; }
+
+.chat-arrow-down-up-across-line::before {
+  content: "\e4af"; }
+
+.chat-spoon::before {
+  content: "\f2e5"; }
+
+.chat-utensil-spoon::before {
+  content: "\f2e5"; }
+
+.chat-jar-wheat::before {
+  content: "\e517"; }
+
+.chat-envelopes-bulk::before {
+  content: "\f674"; }
+
+.chat-mail-bulk::before {
+  content: "\f674"; }
+
+.chat-file-circle-exclamation::before {
+  content: "\e4eb"; }
+
+.chat-circle-h::before {
+  content: "\f47e"; }
+
+.chat-hospital-symbol::before {
+  content: "\f47e"; }
+
+.chat-pager::before {
+  content: "\f815"; }
+
+.chat-address-book::before {
+  content: "\f2b9"; }
+
+.chat-contact-book::before {
+  content: "\f2b9"; }
+
+.chat-strikethrough::before {
+  content: "\f0cc"; }
+
+.chat-k::before {
+  content: "\4b"; }
+
+.chat-landmark-flag::before {
+  content: "\e51c"; }
+
+.chat-pencil::before {
+  content: "\f303"; }
+
+.chat-pencil-alt::before {
+  content: "\f303"; }
+
+.chat-backward::before {
+  content: "\f04a"; }
+
+.chat-caret-right::before {
+  content: "\f0da"; }
+
+.chat-comments::before {
+  content: "\f086"; }
+
+.chat-paste::before {
+  content: "\f0ea"; }
+
+.chat-file-clipboard::before {
+  content: "\f0ea"; }
+
+.chat-code-pull-request::before {
+  content: "\e13c"; }
+
+.chat-clipboard-list::before {
+  content: "\f46d"; }
+
+.chat-truck-ramp-box::before {
+  content: "\f4de"; }
+
+.chat-truck-loading::before {
+  content: "\f4de"; }
+
+.chat-user-check::before {
+  content: "\f4fc"; }
+
+.chat-vial-virus::before {
+  content: "\e597"; }
+
+.chat-sheet-plastic::before {
+  content: "\e571"; }
+
+.chat-blog::before {
+  content: "\f781"; }
+
+.chat-user-ninja::before {
+  content: "\f504"; }
+
+.chat-person-arrow-up-from-line::before {
+  content: "\e539"; }
+
+.chat-scroll-torah::before {
+  content: "\f6a0"; }
+
+.chat-torah::before {
+  content: "\f6a0"; }
+
+.chat-broom-ball::before {
+  content: "\f458"; }
+
+.chat-quidditch::before {
+  content: "\f458"; }
+
+.chat-quidditch-broom-ball::before {
+  content: "\f458"; }
+
+.chat-toggle-off::before {
+  content: "\f204"; }
+
+.chat-box-archive::before {
+  content: "\f187"; }
+
+.chat-archive::before {
+  content: "\f187"; }
+
+.chat-person-drowning::before {
+  content: "\e545"; }
+
+.chat-arrow-down-9-1::before {
+  content: "\f886"; }
+
+.chat-sort-numeric-desc::before {
+  content: "\f886"; }
+
+.chat-sort-numeric-down-alt::before {
+  content: "\f886"; }
+
+.chat-face-grin-tongue-squint::before {
+  content: "\f58a"; }
+
+.chat-grin-tongue-squint::before {
+  content: "\f58a"; }
+
+.chat-spray-can::before {
+  content: "\f5bd"; }
+
+.chat-truck-monster::before {
+  content: "\f63b"; }
+
+.chat-w::before {
+  content: "\57"; }
+
+.chat-earth-africa::before {
+  content: "\f57c"; }
+
+.chat-globe-africa::before {
+  content: "\f57c"; }
+
+.chat-rainbow::before {
+  content: "\f75b"; }
+
+.chat-circle-notch::before {
+  content: "\f1ce"; }
+
+.chat-tablet-screen-button::before {
+  content: "\f3fa"; }
+
+.chat-tablet-alt::before {
+  content: "\f3fa"; }
+
+.chat-paw::before {
+  content: "\f1b0"; }
+
+.chat-cloud::before {
+  content: "\f0c2"; }
+
+.chat-trowel-bricks::before {
+  content: "\e58a"; }
+
+.chat-face-flushed::before {
+  content: "\f579"; }
+
+.chat-flushed::before {
+  content: "\f579"; }
+
+.chat-hospital-user::before {
+  content: "\f80d"; }
+
+.chat-tent-arrow-left-right::before {
+  content: "\e57f"; }
+
+.chat-gavel::before {
+  content: "\f0e3"; }
+
+.chat-legal::before {
+  content: "\f0e3"; }
+
+.chat-binoculars::before {
+  content: "\f1e5"; }
+
+.chat-microphone-slash::before {
+  content: "\f131"; }
+
+.chat-box-tissue::before {
+  content: "\e05b"; }
+
+.chat-motorcycle::before {
+  content: "\f21c"; }
+
+.chat-bell-concierge::before {
+  content: "\f562"; }
+
+.chat-concierge-bell::before {
+  content: "\f562"; }
+
+.chat-pen-ruler::before {
+  content: "\f5ae"; }
+
+.chat-pencil-ruler::before {
+  content: "\f5ae"; }
+
+.chat-people-arrows::before {
+  content: "\e068"; }
+
+.chat-people-arrows-left-right::before {
+  content: "\e068"; }
+
+.chat-mars-and-venus-burst::before {
+  content: "\e523"; }
+
+.chat-square-caret-right::before {
+  content: "\f152"; }
+
+.chat-caret-square-right::before {
+  content: "\f152"; }
+
+.chat-scissors::before {
+  content: "\f0c4"; }
+
+.chat-cut::before {
+  content: "\f0c4"; }
+
+.chat-sun-plant-wilt::before {
+  content: "\e57a"; }
+
+.chat-toilets-portable::before {
+  content: "\e584"; }
+
+.chat-hockey-puck::before {
+  content: "\f453"; }
+
+.chat-table::before {
+  content: "\f0ce"; }
+
+.chat-magnifying-glass-arrow-right::before {
+  content: "\e521"; }
+
+.chat-tachograph-digital::before {
+  content: "\f566"; }
+
+.chat-digital-tachograph::before {
+  content: "\f566"; }
+
+.chat-users-slash::before {
+  content: "\e073"; }
+
+.chat-clover::before {
+  content: "\e139"; }
+
+.chat-reply::before {
+  content: "\f3e5"; }
+
+.chat-mail-reply::before {
+  content: "\f3e5"; }
+
+.chat-star-and-crescent::before {
+  content: "\f699"; }
+
+.chat-house-fire::before {
+  content: "\e50c"; }
+
+.chat-square-minus::before {
+  content: "\f146"; }
+
+.chat-minus-square::before {
+  content: "\f146"; }
+
+.chat-helicopter::before {
+  content: "\f533"; }
+
+.chat-compass::before {
+  content: "\f14e"; }
+
+.chat-square-caret-down::before {
+  content: "\f150"; }
+
+.chat-caret-square-down::before {
+  content: "\f150"; }
+
+.chat-file-circle-question::before {
+  content: "\e4ef"; }
+
+.chat-laptop-code::before {
+  content: "\f5fc"; }
+
+.chat-swatchbook::before {
+  content: "\f5c3"; }
+
+.chat-prescription-bottle::before {
+  content: "\f485"; }
+
+.chat-bars::before {
+  content: "\f0c9"; }
+
+.chat-navicon::before {
+  content: "\f0c9"; }
+
+.chat-people-group::before {
+  content: "\e533"; }
+
+.chat-hourglass-end::before {
+  content: "\f253"; }
+
+.chat-hourglass-3::before {
+  content: "\f253"; }
+
+.chat-heart-crack::before {
+  content: "\f7a9"; }
+
+.chat-heart-broken::before {
+  content: "\f7a9"; }
+
+.chat-square-up-right::before {
+  content: "\f360"; }
+
+.chat-external-link-square-alt::before {
+  content: "\f360"; }
+
+.chat-face-kiss-beam::before {
+  content: "\f597"; }
+
+.chat-kiss-beam::before {
+  content: "\f597"; }
+
+.chat-film::before {
+  content: "\f008"; }
+
+.chat-ruler-horizontal::before {
+  content: "\f547"; }
+
+.chat-people-robbery::before {
+  content: "\e536"; }
+
+.chat-lightbulb::before {
+  content: "\f0eb"; }
+
+.chat-caret-left::before {
+  content: "\f0d9"; }
+
+.chat-circle-exclamation::before {
+  content: "\f06a"; }
+
+.chat-exclamation-circle::before {
+  content: "\f06a"; }
+
+.chat-school-circle-xmark::before {
+  content: "\e56d"; }
+
+.chat-arrow-right-from-bracket::before {
+  content: "\f08b"; }
+
+.chat-sign-out::before {
+  content: "\f08b"; }
+
+.chat-circle-chevron-down::before {
+  content: "\f13a"; }
+
+.chat-chevron-circle-down::before {
+  content: "\f13a"; }
+
+.chat-unlock-keyhole::before {
+  content: "\f13e"; }
+
+.chat-unlock-alt::before {
+  content: "\f13e"; }
+
+.chat-cloud-showers-heavy::before {
+  content: "\f740"; }
+
+.chat-headphones-simple::before {
+  content: "\f58f"; }
+
+.chat-headphones-alt::before {
+  content: "\f58f"; }
+
+.chat-sitemap::before {
+  content: "\f0e8"; }
+
+.chat-circle-dollar-to-slot::before {
+  content: "\f4b9"; }
+
+.chat-donate::before {
+  content: "\f4b9"; }
+
+.chat-memory::before {
+  content: "\f538"; }
+
+.chat-road-spikes::before {
+  content: "\e568"; }
+
+.chat-fire-burner::before {
+  content: "\e4f1"; }
+
+.chat-flag::before {
+  content: "\f024"; }
+
+.chat-hanukiah::before {
+  content: "\f6e6"; }
+
+.chat-feather::before {
+  content: "\f52d"; }
+
+.chat-volume-low::before {
+  content: "\f027"; }
+
+.chat-volume-down::before {
+  content: "\f027"; }
+
+.chat-comment-slash::before {
+  content: "\f4b3"; }
+
+.chat-cloud-sun-rain::before {
+  content: "\f743"; }
+
+.chat-compress::before {
+  content: "\f066"; }
+
+.chat-wheat-awn::before {
+  content: "\e2cd"; }
+
+.chat-wheat-alt::before {
+  content: "\e2cd"; }
+
+.chat-ankh::before {
+  content: "\f644"; }
+
+.chat-hands-holding-child::before {
+  content: "\e4fa"; }
+
+.chat-asterisk::before {
+  content: "\2a"; }
+
+.chat-square-check::before {
+  content: "\f14a"; }
+
+.chat-check-square::before {
+  content: "\f14a"; }
+
+.chat-peseta-sign::before {
+  content: "\e221"; }
+
+.chat-heading::before {
+  content: "\f1dc"; }
+
+.chat-header::before {
+  content: "\f1dc"; }
+
+.chat-ghost::before {
+  content: "\f6e2"; }
+
+.chat-list::before {
+  content: "\f03a"; }
+
+.chat-list-squares::before {
+  content: "\f03a"; }
+
+.chat-square-phone-flip::before {
+  content: "\f87b"; }
+
+.chat-phone-square-alt::before {
+  content: "\f87b"; }
+
+.chat-cart-plus::before {
+  content: "\f217"; }
+
+.chat-gamepad::before {
+  content: "\f11b"; }
+
+.chat-circle-dot::before {
+  content: "\f192"; }
+
+.chat-dot-circle::before {
+  content: "\f192"; }
+
+.chat-face-dizzy::before {
+  content: "\f567"; }
+
+.chat-dizzy::before {
+  content: "\f567"; }
+
+.chat-egg::before {
+  content: "\f7fb"; }
+
+.chat-house-medical-circle-xmark::before {
+  content: "\e513"; }
+
+.chat-campground::before {
+  content: "\f6bb"; }
+
+.chat-folder-plus::before {
+  content: "\f65e"; }
+
+.chat-futbol::before {
+  content: "\f1e3"; }
+
+.chat-futbol-ball::before {
+  content: "\f1e3"; }
+
+.chat-soccer-ball::before {
+  content: "\f1e3"; }
+
+.chat-paintbrush::before {
+  content: "\f1fc"; }
+
+.chat-paint-brush::before {
+  content: "\f1fc"; }
+
+.chat-lock::before {
+  content: "\f023"; }
+
+.chat-gas-pump::before {
+  content: "\f52f"; }
+
+.chat-hot-tub-person::before {
+  content: "\f593"; }
+
+.chat-hot-tub::before {
+  content: "\f593"; }
+
+.chat-map-location::before {
+  content: "\f59f"; }
+
+.chat-map-marked::before {
+  content: "\f59f"; }
+
+.chat-house-flood-water::before {
+  content: "\e50e"; }
+
+.chat-tree::before {
+  content: "\f1bb"; }
+
+.chat-bridge-lock::before {
+  content: "\e4cc"; }
+
+.chat-sack-dollar::before {
+  content: "\f81d"; }
+
+.chat-pen-to-square::before {
+  content: "\f044"; }
+
+.chat-edit::before {
+  content: "\f044"; }
+
+.chat-car-side::before {
+  content: "\f5e4"; }
+
+.chat-share-nodes::before {
+  content: "\f1e0"; }
+
+.chat-share-alt::before {
+  content: "\f1e0"; }
+
+.chat-heart-circle-minus::before {
+  content: "\e4ff"; }
+
+.chat-hourglass-half::before {
+  content: "\f252"; }
+
+.chat-hourglass-2::before {
+  content: "\f252"; }
+
+.chat-microscope::before {
+  content: "\f610"; }
+
+.chat-sink::before {
+  content: "\e06d"; }
+
+.chat-bag-shopping::before {
+  content: "\f290"; }
+
+.chat-shopping-bag::before {
+  content: "\f290"; }
+
+.chat-arrow-down-z-a::before {
+  content: "\f881"; }
+
+.chat-sort-alpha-desc::before {
+  content: "\f881"; }
+
+.chat-sort-alpha-down-alt::before {
+  content: "\f881"; }
+
+.chat-mitten::before {
+  content: "\f7b5"; }
+
+.chat-person-rays::before {
+  content: "\e54d"; }
+
+.chat-users::before {
+  content: "\f0c0"; }
+
+.chat-eye-slash::before {
+  content: "\f070"; }
+
+.chat-flask-vial::before {
+  content: "\e4f3"; }
+
+.chat-hand::before {
+  content: "\f256"; }
+
+.chat-hand-paper::before {
+  content: "\f256"; }
+
+.chat-om::before {
+  content: "\f679"; }
+
+.chat-worm::before {
+  content: "\e599"; }
+
+.chat-house-circle-xmark::before {
+  content: "\e50b"; }
+
+.chat-plug::before {
+  content: "\f1e6"; }
+
+.chat-chevron-up::before {
+  content: "\f077"; }
+
+.chat-hand-spock::before {
+  content: "\f259"; }
+
+.chat-stopwatch::before {
+  content: "\f2f2"; }
+
+.chat-face-kiss::before {
+  content: "\f596"; }
+
+.chat-kiss::before {
+  content: "\f596"; }
+
+.chat-bridge-circle-xmark::before {
+  content: "\e4cb"; }
+
+.chat-face-grin-tongue::before {
+  content: "\f589"; }
+
+.chat-grin-tongue::before {
+  content: "\f589"; }
+
+.chat-chess-bishop::before {
+  content: "\f43a"; }
+
+.chat-face-grin-wink::before {
+  content: "\f58c"; }
+
+.chat-grin-wink::before {
+  content: "\f58c"; }
+
+.chat-ear-deaf::before {
+  content: "\f2a4"; }
+
+.chat-deaf::before {
+  content: "\f2a4"; }
+
+.chat-deafness::before {
+  content: "\f2a4"; }
+
+.chat-hard-of-hearing::before {
+  content: "\f2a4"; }
+
+.chat-road-circle-check::before {
+  content: "\e564"; }
+
+.chat-dice-five::before {
+  content: "\f523"; }
+
+.chat-square-rss::before {
+  content: "\f143"; }
+
+.chat-rss-square::before {
+  content: "\f143"; }
+
+.chat-land-mine-on::before {
+  content: "\e51b"; }
+
+.chat-i-cursor::before {
+  content: "\f246"; }
+
+.chat-stamp::before {
+  content: "\f5bf"; }
+
+.chat-stairs::before {
+  content: "\e289"; }
+
+.chat-i::before {
+  content: "\49"; }
+
+.chat-hryvnia-sign::before {
+  content: "\f6f2"; }
+
+.chat-hryvnia::before {
+  content: "\f6f2"; }
+
+.chat-pills::before {
+  content: "\f484"; }
+
+.chat-face-grin-wide::before {
+  content: "\f581"; }
+
+.chat-grin-alt::before {
+  content: "\f581"; }
+
+.chat-tooth::before {
+  content: "\f5c9"; }
+
+.chat-v::before {
+  content: "\56"; }
+
+.chat-bangladeshi-taka-sign::before {
+  content: "\e2e6"; }
+
+.chat-bicycle::before {
+  content: "\f206"; }
+
+.chat-staff-snake::before {
+  content: "\e579"; }
+
+.chat-rod-asclepius::before {
+  content: "\e579"; }
+
+.chat-rod-snake::before {
+  content: "\e579"; }
+
+.chat-staff-aesculapius::before {
+  content: "\e579"; }
+
+.chat-head-side-cough-slash::before {
+  content: "\e062"; }
+
+.chat-truck-medical::before {
+  content: "\f0f9"; }
+
+.chat-ambulance::before {
+  content: "\f0f9"; }
+
+.chat-wheat-awn-circle-exclamation::before {
+  content: "\e598"; }
+
+.chat-snowman::before {
+  content: "\f7d0"; }
+
+.chat-mortar-pestle::before {
+  content: "\f5a7"; }
+
+.chat-road-barrier::before {
+  content: "\e562"; }
+
+.chat-school::before {
+  content: "\f549"; }
+
+.chat-igloo::before {
+  content: "\f7ae"; }
+
+.chat-joint::before {
+  content: "\f595"; }
+
+.chat-angle-right::before {
+  content: "\f105"; }
+
+.chat-horse::before {
+  content: "\f6f0"; }
+
+.chat-q::before {
+  content: "\51"; }
+
+.chat-g::before {
+  content: "\47"; }
+
+.chat-notes-medical::before {
+  content: "\f481"; }
+
+.chat-temperature-half::before {
+  content: "\f2c9"; }
+
+.chat-temperature-2::before {
+  content: "\f2c9"; }
+
+.chat-thermometer-2::before {
+  content: "\f2c9"; }
+
+.chat-thermometer-half::before {
+  content: "\f2c9"; }
+
+.chat-dong-sign::before {
+  content: "\e169"; }
+
+.chat-capsules::before {
+  content: "\f46b"; }
+
+.chat-poo-storm::before {
+  content: "\f75a"; }
+
+.chat-poo-bolt::before {
+  content: "\f75a"; }
+
+.chat-face-frown-open::before {
+  content: "\f57a"; }
+
+.chat-frown-open::before {
+  content: "\f57a"; }
+
+.chat-hand-point-up::before {
+  content: "\f0a6"; }
+
+.chat-money-bill::before {
+  content: "\f0d6"; }
+
+.chat-bookmark::before {
+  content: "\f02e"; }
+
+.chat-align-justify::before {
+  content: "\f039"; }
+
+.chat-umbrella-beach::before {
+  content: "\f5ca"; }
+
+.chat-helmet-un::before {
+  content: "\e503"; }
+
+.chat-bullseye::before {
+  content: "\f140"; }
+
+.chat-bacon::before {
+  content: "\f7e5"; }
+
+.chat-hand-point-down::before {
+  content: "\f0a7"; }
+
+.chat-arrow-up-from-bracket::before {
+  content: "\e09a"; }
+
+.chat-folder::before {
+  content: "\f07b"; }
+
+.chat-folder-blank::before {
+  content: "\f07b"; }
+
+.chat-file-waveform::before {
+  content: "\f478"; }
+
+.chat-file-medical-alt::before {
+  content: "\f478"; }
+
+.chat-radiation::before {
+  content: "\f7b9"; }
+
+.chat-chart-simple::before {
+  content: "\e473"; }
+
+.chat-mars-stroke::before {
+  content: "\f229"; }
+
+.chat-vial::before {
+  content: "\f492"; }
+
+.chat-gauge::before {
+  content: "\f624"; }
+
+.chat-dashboard::before {
+  content: "\f624"; }
+
+.chat-gauge-med::before {
+  content: "\f624"; }
+
+.chat-tachometer-alt-average::before {
+  content: "\f624"; }
+
+.chat-wand-magic-sparkles::before {
+  content: "\e2ca"; }
+
+.chat-magic-wand-sparkles::before {
+  content: "\e2ca"; }
+
+.chat-e::before {
+  content: "\45"; }
+
+.chat-pen-clip::before {
+  content: "\f305"; }
+
+.chat-pen-alt::before {
+  content: "\f305"; }
+
+.chat-bridge-circle-exclamation::before {
+  content: "\e4ca"; }
+
+.chat-user::before {
+  content: "\f007"; }
+
+.chat-school-circle-check::before {
+  content: "\e56b"; }
+
+.chat-dumpster::before {
+  content: "\f793"; }
+
+.chat-van-shuttle::before {
+  content: "\f5b6"; }
+
+.chat-shuttle-van::before {
+  content: "\f5b6"; }
+
+.chat-building-user::before {
+  content: "\e4da"; }
+
+.chat-square-caret-left::before {
+  content: "\f191"; }
+
+.chat-caret-square-left::before {
+  content: "\f191"; }
+
+.chat-highlighter::before {
+  content: "\f591"; }
+
+.chat-key::before {
+  content: "\f084"; }
+
+.chat-bullhorn::before {
+  content: "\f0a1"; }
+
+.chat-globe::before {
+  content: "\f0ac"; }
+
+.chat-synagogue::before {
+  content: "\f69b"; }
+
+.chat-person-half-dress::before {
+  content: "\e548"; }
+
+.chat-road-bridge::before {
+  content: "\e563"; }
+
+.chat-location-arrow::before {
+  content: "\f124"; }
+
+.chat-c::before {
+  content: "\43"; }
+
+.chat-tablet-button::before {
+  content: "\f10a"; }
+
+.chat-building-lock::before {
+  content: "\e4d6"; }
+
+.chat-pizza-slice::before {
+  content: "\f818"; }
+
+.chat-money-bill-wave::before {
+  content: "\f53a"; }
+
+.chat-chart-area::before {
+  content: "\f1fe"; }
+
+.chat-area-chart::before {
+  content: "\f1fe"; }
+
+.chat-house-flag::before {
+  content: "\e50d"; }
+
+.chat-person-circle-minus::before {
+  content: "\e540"; }
+
+.chat-ban::before {
+  content: "\f05e"; }
+
+.chat-cancel::before {
+  content: "\f05e"; }
+
+.chat-camera-rotate::before {
+  content: "\e0d8"; }
+
+.chat-spray-can-sparkles::before {
+  content: "\f5d0"; }
+
+.chat-air-freshener::before {
+  content: "\f5d0"; }
+
+.chat-star::before {
+  content: "\f005"; }
+
+.chat-repeat::before {
+  content: "\f363"; }
+
+.chat-cross::before {
+  content: "\f654"; }
+
+.chat-box::before {
+  content: "\f466"; }
+
+.chat-venus-mars::before {
+  content: "\f228"; }
+
+.chat-arrow-pointer::before {
+  content: "\f245"; }
+
+.chat-mouse-pointer::before {
+  content: "\f245"; }
+
+.chat-maximize::before {
+  content: "\f31e"; }
+
+.chat-expand-arrows-alt::before {
+  content: "\f31e"; }
+
+.chat-charging-station::before {
+  content: "\f5e7"; }
+
+.chat-shapes::before {
+  content: "\f61f"; }
+
+.chat-triangle-circle-square::before {
+  content: "\f61f"; }
+
+.chat-shuffle::before {
+  content: "\f074"; }
+
+.chat-random::before {
+  content: "\f074"; }
+
+.chat-person-running::before {
+  content: "\f70c"; }
+
+.chat-running::before {
+  content: "\f70c"; }
+
+.chat-mobile-retro::before {
+  content: "\e527"; }
+
+.chat-grip-lines-vertical::before {
+  content: "\f7a5"; }
+
+.chat-spider::before {
+  content: "\f717"; }
+
+.chat-hands-bound::before {
+  content: "\e4f9"; }
+
+.chat-file-invoice-dollar::before {
+  content: "\f571"; }
+
+.chat-plane-circle-exclamation::before {
+  content: "\e556"; }
+
+.chat-x-ray::before {
+  content: "\f497"; }
+
+.chat-spell-check::before {
+  content: "\f891"; }
+
+.chat-slash::before {
+  content: "\f715"; }
+
+.chat-computer-mouse::before {
+  content: "\f8cc"; }
+
+.chat-mouse::before {
+  content: "\f8cc"; }
+
+.chat-arrow-right-to-bracket::before {
+  content: "\f090"; }
+
+.chat-sign-in::before {
+  content: "\f090"; }
+
+.chat-shop-slash::before {
+  content: "\e070"; }
+
+.chat-store-alt-slash::before {
+  content: "\e070"; }
+
+.chat-server::before {
+  content: "\f233"; }
+
+.chat-virus-covid-slash::before {
+  content: "\e4a9"; }
+
+.chat-shop-lock::before {
+  content: "\e4a5"; }
+
+.chat-hourglass-start::before {
+  content: "\f251"; }
+
+.chat-hourglass-1::before {
+  content: "\f251"; }
+
+.chat-blender-phone::before {
+  content: "\f6b6"; }
+
+.chat-building-wheat::before {
+  content: "\e4db"; }
+
+.chat-person-breastfeeding::before {
+  content: "\e53a"; }
+
+.chat-right-to-bracket::before {
+  content: "\f2f6"; }
+
+.chat-sign-in-alt::before {
+  content: "\f2f6"; }
+
+.chat-venus::before {
+  content: "\f221"; }
+
+.chat-passport::before {
+  content: "\f5ab"; }
+
+.chat-thumbtack-slash::before {
+  content: "\e68f"; }
+
+.chat-thumb-tack-slash::before {
+  content: "\e68f"; }
+
+.chat-heart-pulse::before {
+  content: "\f21e"; }
+
+.chat-heartbeat::before {
+  content: "\f21e"; }
+
+.chat-people-carry-box::before {
+  content: "\f4ce"; }
+
+.chat-people-carry::before {
+  content: "\f4ce"; }
+
+.chat-temperature-high::before {
+  content: "\f769"; }
+
+.chat-microchip::before {
+  content: "\f2db"; }
+
+.chat-crown::before {
+  content: "\f521"; }
+
+.chat-weight-hanging::before {
+  content: "\f5cd"; }
+
+.chat-xmarks-lines::before {
+  content: "\e59a"; }
+
+.chat-file-prescription::before {
+  content: "\f572"; }
+
+.chat-weight-scale::before {
+  content: "\f496"; }
+
+.chat-weight::before {
+  content: "\f496"; }
+
+.chat-user-group::before {
+  content: "\f500"; }
+
+.chat-user-friends::before {
+  content: "\f500"; }
+
+.chat-arrow-up-a-z::before {
+  content: "\f15e"; }
+
+.chat-sort-alpha-up::before {
+  content: "\f15e"; }
+
+.chat-chess-knight::before {
+  content: "\f441"; }
+
+.chat-face-laugh-squint::before {
+  content: "\f59b"; }
+
+.chat-laugh-squint::before {
+  content: "\f59b"; }
+
+.chat-wheelchair::before {
+  content: "\f193"; }
+
+.chat-circle-arrow-up::before {
+  content: "\f0aa"; }
+
+.chat-arrow-circle-up::before {
+  content: "\f0aa"; }
+
+.chat-toggle-on::before {
+  content: "\f205"; }
+
+.chat-person-walking::before {
+  content: "\f554"; }
+
+.chat-walking::before {
+  content: "\f554"; }
+
+.chat-l::before {
+  content: "\4c"; }
+
+.chat-fire::before {
+  content: "\f06d"; }
+
+.chat-bed-pulse::before {
+  content: "\f487"; }
+
+.chat-procedures::before {
+  content: "\f487"; }
+
+.chat-shuttle-space::before {
+  content: "\f197"; }
+
+.chat-space-shuttle::before {
+  content: "\f197"; }
+
+.chat-face-laugh::before {
+  content: "\f599"; }
+
+.chat-laugh::before {
+  content: "\f599"; }
+
+.chat-folder-open::before {
+  content: "\f07c"; }
+
+.chat-heart-circle-plus::before {
+  content: "\e500"; }
+
+.chat-code-fork::before {
+  content: "\e13b"; }
+
+.chat-city::before {
+  content: "\f64f"; }
+
+.chat-microphone-lines::before {
+  content: "\f3c9"; }
+
+.chat-microphone-alt::before {
+  content: "\f3c9"; }
+
+.chat-pepper-hot::before {
+  content: "\f816"; }
+
+.chat-unlock::before {
+  content: "\f09c"; }
+
+.chat-colon-sign::before {
+  content: "\e140"; }
+
+.chat-headset::before {
+  content: "\f590"; }
+
+.chat-store-slash::before {
+  content: "\e071"; }
+
+.chat-road-circle-xmark::before {
+  content: "\e566"; }
+
+.chat-user-minus::before {
+  content: "\f503"; }
+
+.chat-mars-stroke-up::before {
+  content: "\f22a"; }
+
+.chat-mars-stroke-v::before {
+  content: "\f22a"; }
+
+.chat-champagne-glasses::before {
+  content: "\f79f"; }
+
+.chat-glass-cheers::before {
+  content: "\f79f"; }
+
+.chat-clipboard::before {
+  content: "\f328"; }
+
+.chat-house-circle-exclamation::before {
+  content: "\e50a"; }
+
+.chat-file-arrow-up::before {
+  content: "\f574"; }
+
+.chat-file-upload::before {
+  content: "\f574"; }
+
+.chat-wifi::before {
+  content: "\f1eb"; }
+
+.chat-wifi-3::before {
+  content: "\f1eb"; }
+
+.chat-wifi-strong::before {
+  content: "\f1eb"; }
+
+.chat-bath::before {
+  content: "\f2cd"; }
+
+.chat-bathtub::before {
+  content: "\f2cd"; }
+
+.chat-underline::before {
+  content: "\f0cd"; }
+
+.chat-user-pen::before {
+  content: "\f4ff"; }
+
+.chat-user-edit::before {
+  content: "\f4ff"; }
+
+.chat-signature::before {
+  content: "\f5b7"; }
+
+.chat-stroopwafel::before {
+  content: "\f551"; }
+
+.chat-bold::before {
+  content: "\f032"; }
+
+.chat-anchor-lock::before {
+  content: "\e4ad"; }
+
+.chat-building-ngo::before {
+  content: "\e4d7"; }
+
+.chat-manat-sign::before {
+  content: "\e1d5"; }
+
+.chat-not-equal::before {
+  content: "\f53e"; }
+
+.chat-border-top-left::before {
+  content: "\f853"; }
+
+.chat-border-style::before {
+  content: "\f853"; }
+
+.chat-map-location-dot::before {
+  content: "\f5a0"; }
+
+.chat-map-marked-alt::before {
+  content: "\f5a0"; }
+
+.chat-jedi::before {
+  content: "\f669"; }
+
+.chat-square-poll-vertical::before {
+  content: "\f681"; }
+
+.chat-poll::before {
+  content: "\f681"; }
+
+.chat-mug-hot::before {
+  content: "\f7b6"; }
+
+.chat-car-battery::before {
+  content: "\f5df"; }
+
+.chat-battery-car::before {
+  content: "\f5df"; }
+
+.chat-gift::before {
+  content: "\f06b"; }
+
+.chat-dice-two::before {
+  content: "\f528"; }
+
+.chat-chess-queen::before {
+  content: "\f445"; }
+
+.chat-glasses::before {
+  content: "\f530"; }
+
+.chat-chess-board::before {
+  content: "\f43c"; }
+
+.chat-building-circle-check::before {
+  content: "\e4d2"; }
+
+.chat-person-chalkboard::before {
+  content: "\e53d"; }
+
+.chat-mars-stroke-right::before {
+  content: "\f22b"; }
+
+.chat-mars-stroke-h::before {
+  content: "\f22b"; }
+
+.chat-hand-back-fist::before {
+  content: "\f255"; }
+
+.chat-hand-rock::before {
+  content: "\f255"; }
+
+.chat-square-caret-up::before {
+  content: "\f151"; }
+
+.chat-caret-square-up::before {
+  content: "\f151"; }
+
+.chat-cloud-showers-water::before {
+  content: "\e4e4"; }
+
+.chat-chart-bar::before {
+  content: "\f080"; }
+
+.chat-bar-chart::before {
+  content: "\f080"; }
+
+.chat-hands-bubbles::before {
+  content: "\e05e"; }
+
+.chat-hands-wash::before {
+  content: "\e05e"; }
+
+.chat-less-than-equal::before {
+  content: "\f537"; }
+
+.chat-train::before {
+  content: "\f238"; }
+
+.chat-eye-low-vision::before {
+  content: "\f2a8"; }
+
+.chat-low-vision::before {
+  content: "\f2a8"; }
+
+.chat-crow::before {
+  content: "\f520"; }
+
+.chat-sailboat::before {
+  content: "\e445"; }
+
+.chat-window-restore::before {
+  content: "\f2d2"; }
+
+.chat-square-plus::before {
+  content: "\f0fe"; }
+
+.chat-plus-square::before {
+  content: "\f0fe"; }
+
+.chat-torii-gate::before {
+  content: "\f6a1"; }
+
+.chat-frog::before {
+  content: "\f52e"; }
+
+.chat-bucket::before {
+  content: "\e4cf"; }
+
+.chat-image::before {
+  content: "\f03e"; }
+
+.chat-microphone::before {
+  content: "\f130"; }
+
+.chat-cow::before {
+  content: "\f6c8"; }
+
+.chat-caret-up::before {
+  content: "\f0d8"; }
+
+.chat-screwdriver::before {
+  content: "\f54a"; }
+
+.chat-folder-closed::before {
+  content: "\e185"; }
+
+.chat-house-tsunami::before {
+  content: "\e515"; }
+
+.chat-square-nfi::before {
+  content: "\e576"; }
+
+.chat-arrow-up-from-ground-water::before {
+  content: "\e4b5"; }
+
+.chat-martini-glass::before {
+  content: "\f57b"; }
+
+.chat-glass-martini-alt::before {
+  content: "\f57b"; }
+
+.chat-rotate-left::before {
+  content: "\f2ea"; }
+
+.chat-rotate-back::before {
+  content: "\f2ea"; }
+
+.chat-rotate-backward::before {
+  content: "\f2ea"; }
+
+.chat-undo-alt::before {
+  content: "\f2ea"; }
+
+.chat-table-columns::before {
+  content: "\f0db"; }
+
+.chat-columns::before {
+  content: "\f0db"; }
+
+.chat-lemon::before {
+  content: "\f094"; }
+
+.chat-head-side-mask::before {
+  content: "\e063"; }
+
+.chat-handshake::before {
+  content: "\f2b5"; }
+
+.chat-gem::before {
+  content: "\f3a5"; }
+
+.chat-dolly::before {
+  content: "\f472"; }
+
+.chat-dolly-box::before {
+  content: "\f472"; }
+
+.chat-smoking::before {
+  content: "\f48d"; }
+
+.chat-minimize::before {
+  content: "\f78c"; }
+
+.chat-compress-arrows-alt::before {
+  content: "\f78c"; }
+
+.chat-monument::before {
+  content: "\f5a6"; }
+
+.chat-snowplow::before {
+  content: "\f7d2"; }
+
+.chat-angles-right::before {
+  content: "\f101"; }
+
+.chat-angle-double-right::before {
+  content: "\f101"; }
+
+.chat-cannabis::before {
+  content: "\f55f"; }
+
+.chat-circle-play::before {
+  content: "\f144"; }
+
+.chat-play-circle::before {
+  content: "\f144"; }
+
+.chat-tablets::before {
+  content: "\f490"; }
+
+.chat-ethernet::before {
+  content: "\f796"; }
+
+.chat-euro-sign::before {
+  content: "\f153"; }
+
+.chat-eur::before {
+  content: "\f153"; }
+
+.chat-euro::before {
+  content: "\f153"; }
+
+.chat-chair::before {
+  content: "\f6c0"; }
+
+.chat-circle-check::before {
+  content: "\f058"; }
+
+.chat-check-circle::before {
+  content: "\f058"; }
+
+.chat-circle-stop::before {
+  content: "\f28d"; }
+
+.chat-stop-circle::before {
+  content: "\f28d"; }
+
+.chat-compass-drafting::before {
+  content: "\f568"; }
+
+.chat-drafting-compass::before {
+  content: "\f568"; }
+
+.chat-plate-wheat::before {
+  content: "\e55a"; }
+
+.chat-icicles::before {
+  content: "\f7ad"; }
+
+.chat-person-shelter::before {
+  content: "\e54f"; }
+
+.chat-neuter::before {
+  content: "\f22c"; }
+
+.chat-id-badge::before {
+  content: "\f2c1"; }
+
+.chat-marker::before {
+  content: "\f5a1"; }
+
+.chat-face-laugh-beam::before {
+  content: "\f59a"; }
+
+.chat-laugh-beam::before {
+  content: "\f59a"; }
+
+.chat-helicopter-symbol::before {
+  content: "\e502"; }
+
+.chat-universal-access::before {
+  content: "\f29a"; }
+
+.chat-circle-chevron-up::before {
+  content: "\f139"; }
+
+.chat-chevron-circle-up::before {
+  content: "\f139"; }
+
+.chat-lari-sign::before {
+  content: "\e1c8"; }
+
+.chat-volcano::before {
+  content: "\f770"; }
+
+.chat-person-walking-dashed-line-arrow-right::before {
+  content: "\e553"; }
+
+.chat-sterling-sign::before {
+  content: "\f154"; }
+
+.chat-gbp::before {
+  content: "\f154"; }
+
+.chat-pound-sign::before {
+  content: "\f154"; }
+
+.chat-viruses::before {
+  content: "\e076"; }
+
+.chat-square-person-confined::before {
+  content: "\e577"; }
+
+.chat-user-tie::before {
+  content: "\f508"; }
+
+.chat-arrow-down-long::before {
+  content: "\f175"; }
+
+.chat-long-arrow-down::before {
+  content: "\f175"; }
+
+.chat-tent-arrow-down-to-line::before {
+  content: "\e57e"; }
+
+.chat-certificate::before {
+  content: "\f0a3"; }
+
+.chat-reply-all::before {
+  content: "\f122"; }
+
+.chat-mail-reply-all::before {
+  content: "\f122"; }
+
+.chat-suitcase::before {
+  content: "\f0f2"; }
+
+.chat-person-skating::before {
+  content: "\f7c5"; }
+
+.chat-skating::before {
+  content: "\f7c5"; }
+
+.chat-filter-circle-dollar::before {
+  content: "\f662"; }
+
+.chat-funnel-dollar::before {
+  content: "\f662"; }
+
+.chat-camera-retro::before {
+  content: "\f083"; }
+
+.chat-circle-arrow-down::before {
+  content: "\f0ab"; }
+
+.chat-arrow-circle-down::before {
+  content: "\f0ab"; }
+
+.chat-file-import::before {
+  content: "\f56f"; }
+
+.chat-arrow-right-to-file::before {
+  content: "\f56f"; }
+
+.chat-square-arrow-up-right::before {
+  content: "\f14c"; }
+
+.chat-external-link-square::before {
+  content: "\f14c"; }
+
+.chat-box-open::before {
+  content: "\f49e"; }
+
+.chat-scroll::before {
+  content: "\f70e"; }
+
+.chat-spa::before {
+  content: "\f5bb"; }
+
+.chat-location-pin-lock::before {
+  content: "\e51f"; }
+
+.chat-pause::before {
+  content: "\f04c"; }
+
+.chat-hill-avalanche::before {
+  content: "\e507"; }
+
+.chat-temperature-empty::before {
+  content: "\f2cb"; }
+
+.chat-temperature-0::before {
+  content: "\f2cb"; }
+
+.chat-thermometer-0::before {
+  content: "\f2cb"; }
+
+.chat-thermometer-empty::before {
+  content: "\f2cb"; }
+
+.chat-bomb::before {
+  content: "\f1e2"; }
+
+.chat-registered::before {
+  content: "\f25d"; }
+
+.chat-address-card::before {
+  content: "\f2bb"; }
+
+.chat-contact-card::before {
+  content: "\f2bb"; }
+
+.chat-vcard::before {
+  content: "\f2bb"; }
+
+.chat-scale-unbalanced-flip::before {
+  content: "\f516"; }
+
+.chat-balance-scale-right::before {
+  content: "\f516"; }
+
+.chat-subscript::before {
+  content: "\f12c"; }
+
+.chat-diamond-turn-right::before {
+  content: "\f5eb"; }
+
+.chat-directions::before {
+  content: "\f5eb"; }
+
+.chat-burst::before {
+  content: "\e4dc"; }
+
+.chat-house-laptop::before {
+  content: "\e066"; }
+
+.chat-laptop-house::before {
+  content: "\e066"; }
+
+.chat-face-tired::before {
+  content: "\f5c8"; }
+
+.chat-tired::before {
+  content: "\f5c8"; }
+
+.chat-money-bills::before {
+  content: "\e1f3"; }
+
+.chat-smog::before {
+  content: "\f75f"; }
+
+.chat-crutch::before {
+  content: "\f7f7"; }
+
+.chat-cloud-arrow-up::before {
+  content: "\f0ee"; }
+
+.chat-cloud-upload::before {
+  content: "\f0ee"; }
+
+.chat-cloud-upload-alt::before {
+  content: "\f0ee"; }
+
+.chat-palette::before {
+  content: "\f53f"; }
+
+.chat-arrows-turn-right::before {
+  content: "\e4c0"; }
+
+.chat-vest::before {
+  content: "\e085"; }
+
+.chat-ferry::before {
+  content: "\e4ea"; }
+
+.chat-arrows-down-to-people::before {
+  content: "\e4b9"; }
+
+.chat-seedling::before {
+  content: "\f4d8"; }
+
+.chat-sprout::before {
+  content: "\f4d8"; }
+
+.chat-left-right::before {
+  content: "\f337"; }
+
+.chat-arrows-alt-h::before {
+  content: "\f337"; }
+
+.chat-boxes-packing::before {
+  content: "\e4c7"; }
+
+.chat-circle-arrow-left::before {
+  content: "\f0a8"; }
+
+.chat-arrow-circle-left::before {
+  content: "\f0a8"; }
+
+.chat-group-arrows-rotate::before {
+  content: "\e4f6"; }
+
+.chat-bowl-food::before {
+  content: "\e4c6"; }
+
+.chat-candy-cane::before {
+  content: "\f786"; }
+
+.chat-arrow-down-wide-short::before {
+  content: "\f160"; }
+
+.chat-sort-amount-asc::before {
+  content: "\f160"; }
+
+.chat-sort-amount-down::before {
+  content: "\f160"; }
+
+.chat-cloud-bolt::before {
+  content: "\f76c"; }
+
+.chat-thunderstorm::before {
+  content: "\f76c"; }
+
+.chat-text-slash::before {
+  content: "\f87d"; }
+
+.chat-remove-format::before {
+  content: "\f87d"; }
+
+.chat-face-smile-wink::before {
+  content: "\f4da"; }
+
+.chat-smile-wink::before {
+  content: "\f4da"; }
+
+.chat-file-word::before {
+  content: "\f1c2"; }
+
+.chat-file-powerpoint::before {
+  content: "\f1c4"; }
+
+.chat-arrows-left-right::before {
+  content: "\f07e"; }
+
+.chat-arrows-h::before {
+  content: "\f07e"; }
+
+.chat-house-lock::before {
+  content: "\e510"; }
+
+.chat-cloud-arrow-down::before {
+  content: "\f0ed"; }
+
+.chat-cloud-download::before {
+  content: "\f0ed"; }
+
+.chat-cloud-download-alt::before {
+  content: "\f0ed"; }
+
+.chat-children::before {
+  content: "\e4e1"; }
+
+.chat-chalkboard::before {
+  content: "\f51b"; }
+
+.chat-blackboard::before {
+  content: "\f51b"; }
+
+.chat-user-large-slash::before {
+  content: "\f4fa"; }
+
+.chat-user-alt-slash::before {
+  content: "\f4fa"; }
+
+.chat-envelope-open::before {
+  content: "\f2b6"; }
+
+.chat-handshake-simple-slash::before {
+  content: "\e05f"; }
+
+.chat-handshake-alt-slash::before {
+  content: "\e05f"; }
+
+.chat-mattress-pillow::before {
+  content: "\e525"; }
+
+.chat-guarani-sign::before {
+  content: "\e19a"; }
+
+.chat-arrows-rotate::before {
+  content: "\f021"; }
+
+.chat-refresh::before {
+  content: "\f021"; }
+
+.chat-sync::before {
+  content: "\f021"; }
+
+.chat-fire-extinguisher::before {
+  content: "\f134"; }
+
+.chat-cruzeiro-sign::before {
+  content: "\e152"; }
+
+.chat-greater-than-equal::before {
+  content: "\f532"; }
+
+.chat-shield-halved::before {
+  content: "\f3ed"; }
+
+.chat-shield-alt::before {
+  content: "\f3ed"; }
+
+.chat-book-atlas::before {
+  content: "\f558"; }
+
+.chat-atlas::before {
+  content: "\f558"; }
+
+.chat-virus::before {
+  content: "\e074"; }
+
+.chat-envelope-circle-check::before {
+  content: "\e4e8"; }
+
+.chat-layer-group::before {
+  content: "\f5fd"; }
+
+.chat-arrows-to-dot::before {
+  content: "\e4be"; }
+
+.chat-archway::before {
+  content: "\f557"; }
+
+.chat-heart-circle-check::before {
+  content: "\e4fd"; }
+
+.chat-house-chimney-crack::before {
+  content: "\f6f1"; }
+
+.chat-house-damage::before {
+  content: "\f6f1"; }
+
+.chat-file-zipper::before {
+  content: "\f1c6"; }
+
+.chat-file-archive::before {
+  content: "\f1c6"; }
+
+.chat-square::before {
+  content: "\f0c8"; }
+
+.chat-martini-glass-empty::before {
+  content: "\f000"; }
+
+.chat-glass-martini::before {
+  content: "\f000"; }
+
+.chat-couch::before {
+  content: "\f4b8"; }
+
+.chat-cedi-sign::before {
+  content: "\e0df"; }
+
+.chat-italic::before {
+  content: "\f033"; }
+
+.chat-table-cells-column-lock::before {
+  content: "\e678"; }
+
+.chat-church::before {
+  content: "\f51d"; }
+
+.chat-comments-dollar::before {
+  content: "\f653"; }
+
+.chat-democrat::before {
+  content: "\f747"; }
+
+.chat-z::before {
+  content: "\5a"; }
+
+.chat-person-skiing::before {
+  content: "\f7c9"; }
+
+.chat-skiing::before {
+  content: "\f7c9"; }
+
+.chat-road-lock::before {
+  content: "\e567"; }
+
+.chat-a::before {
+  content: "\41"; }
+
+.chat-temperature-arrow-down::before {
+  content: "\e03f"; }
+
+.chat-temperature-down::before {
+  content: "\e03f"; }
+
+.chat-feather-pointed::before {
+  content: "\f56b"; }
+
+.chat-feather-alt::before {
+  content: "\f56b"; }
+
+.chat-p::before {
+  content: "\50"; }
+
+.chat-snowflake::before {
+  content: "\f2dc"; }
+
+.chat-newspaper::before {
+  content: "\f1ea"; }
+
+.chat-rectangle-ad::before {
+  content: "\f641"; }
+
+.chat-ad::before {
+  content: "\f641"; }
+
+.chat-circle-arrow-right::before {
+  content: "\f0a9"; }
+
+.chat-arrow-circle-right::before {
+  content: "\f0a9"; }
+
+.chat-filter-circle-xmark::before {
+  content: "\e17b"; }
+
+.chat-locust::before {
+  content: "\e520"; }
+
+.chat-sort::before {
+  content: "\f0dc"; }
+
+.chat-unsorted::before {
+  content: "\f0dc"; }
+
+.chat-list-ol::before {
+  content: "\f0cb"; }
+
+.chat-list-1-2::before {
+  content: "\f0cb"; }
+
+.chat-list-numeric::before {
+  content: "\f0cb"; }
+
+.chat-person-dress-burst::before {
+  content: "\e544"; }
+
+.chat-money-check-dollar::before {
+  content: "\f53d"; }
+
+.chat-money-check-alt::before {
+  content: "\f53d"; }
+
+.chat-vector-square::before {
+  content: "\f5cb"; }
+
+.chat-bread-slice::before {
+  content: "\f7ec"; }
+
+.chat-language::before {
+  content: "\f1ab"; }
+
+.chat-face-kiss-wink-heart::before {
+  content: "\f598"; }
+
+.chat-kiss-wink-heart::before {
+  content: "\f598"; }
+
+.chat-filter::before {
+  content: "\f0b0"; }
+
+.chat-question::before {
+  content: "\3f"; }
+
+.chat-file-signature::before {
+  content: "\f573"; }
+
+.chat-up-down-left-right::before {
+  content: "\f0b2"; }
+
+.chat-arrows-alt::before {
+  content: "\f0b2"; }
+
+.chat-house-chimney-user::before {
+  content: "\e065"; }
+
+.chat-hand-holding-heart::before {
+  content: "\f4be"; }
+
+.chat-puzzle-piece::before {
+  content: "\f12e"; }
+
+.chat-money-check::before {
+  content: "\f53c"; }
+
+.chat-star-half-stroke::before {
+  content: "\f5c0"; }
+
+.chat-star-half-alt::before {
+  content: "\f5c0"; }
+
+.chat-code::before {
+  content: "\f121"; }
+
+.chat-whiskey-glass::before {
+  content: "\f7a0"; }
+
+.chat-glass-whiskey::before {
+  content: "\f7a0"; }
+
+.chat-building-circle-exclamation::before {
+  content: "\e4d3"; }
+
+.chat-magnifying-glass-chart::before {
+  content: "\e522"; }
+
+.chat-arrow-up-right-from-square::before {
+  content: "\f08e"; }
+
+.chat-external-link::before {
+  content: "\f08e"; }
+
+.chat-cubes-stacked::before {
+  content: "\e4e6"; }
+
+.chat-won-sign::before {
+  content: "\f159"; }
+
+.chat-krw::before {
+  content: "\f159"; }
+
+.chat-won::before {
+  content: "\f159"; }
+
+.chat-virus-covid::before {
+  content: "\e4a8"; }
+
+.chat-austral-sign::before {
+  content: "\e0a9"; }
+
+.chat-f::before {
+  content: "\46"; }
+
+.chat-leaf::before {
+  content: "\f06c"; }
+
+.chat-road::before {
+  content: "\f018"; }
+
+.chat-taxi::before {
+  content: "\f1ba"; }
+
+.chat-cab::before {
+  content: "\f1ba"; }
+
+.chat-person-circle-plus::before {
+  content: "\e541"; }
+
+.chat-chart-pie::before {
+  content: "\f200"; }
+
+.chat-pie-chart::before {
+  content: "\f200"; }
+
+.chat-bolt-lightning::before {
+  content: "\e0b7"; }
+
+.chat-sack-xmark::before {
+  content: "\e56a"; }
+
+.chat-file-excel::before {
+  content: "\f1c3"; }
+
+.chat-file-contract::before {
+  content: "\f56c"; }
+
+.chat-fish-fins::before {
+  content: "\e4f2"; }
+
+.chat-building-flag::before {
+  content: "\e4d5"; }
+
+.chat-face-grin-beam::before {
+  content: "\f582"; }
+
+.chat-grin-beam::before {
+  content: "\f582"; }
+
+.chat-object-ungroup::before {
+  content: "\f248"; }
+
+.chat-poop::before {
+  content: "\f619"; }
+
+.chat-location-pin::before {
+  content: "\f041"; }
+
+.chat-map-marker::before {
+  content: "\f041"; }
+
+.chat-kaaba::before {
+  content: "\f66b"; }
+
+.chat-toilet-paper::before {
+  content: "\f71e"; }
+
+.chat-helmet-safety::before {
+  content: "\f807"; }
+
+.chat-hard-hat::before {
+  content: "\f807"; }
+
+.chat-hat-hard::before {
+  content: "\f807"; }
+
+.chat-eject::before {
+  content: "\f052"; }
+
+.chat-circle-right::before {
+  content: "\f35a"; }
+
+.chat-arrow-alt-circle-right::before {
+  content: "\f35a"; }
+
+.chat-plane-circle-check::before {
+  content: "\e555"; }
+
+.chat-face-rolling-eyes::before {
+  content: "\f5a5"; }
+
+.chat-meh-rolling-eyes::before {
+  content: "\f5a5"; }
+
+.chat-object-group::before {
+  content: "\f247"; }
+
+.chat-chart-line::before {
+  content: "\f201"; }
+
+.chat-line-chart::before {
+  content: "\f201"; }
+
+.chat-mask-ventilator::before {
+  content: "\e524"; }
+
+.chat-arrow-right::before {
+  content: "\f061"; }
+
+.chat-signs-post::before {
+  content: "\f277"; }
+
+.chat-map-signs::before {
+  content: "\f277"; }
+
+.chat-cash-register::before {
+  content: "\f788"; }
+
+.chat-person-circle-question::before {
+  content: "\e542"; }
+
+.chat-h::before {
+  content: "\48"; }
+
+.chat-tarp::before {
+  content: "\e57b"; }
+
+.chat-screwdriver-wrench::before {
+  content: "\f7d9"; }
+
+.chat-tools::before {
+  content: "\f7d9"; }
+
+.chat-arrows-to-eye::before {
+  content: "\e4bf"; }
+
+.chat-plug-circle-bolt::before {
+  content: "\e55b"; }
+
+.chat-heart::before {
+  content: "\f004"; }
+
+.chat-mars-and-venus::before {
+  content: "\f224"; }
+
+.chat-house-user::before {
+  content: "\e1b0"; }
+
+.chat-home-user::before {
+  content: "\e1b0"; }
+
+.chat-dumpster-fire::before {
+  content: "\f794"; }
+
+.chat-house-crack::before {
+  content: "\e3b1"; }
+
+.chat-martini-glass-citrus::before {
+  content: "\f561"; }
+
+.chat-cocktail::before {
+  content: "\f561"; }
+
+.chat-face-surprise::before {
+  content: "\f5c2"; }
+
+.chat-surprise::before {
+  content: "\f5c2"; }
+
+.chat-bottle-water::before {
+  content: "\e4c5"; }
+
+.chat-circle-pause::before {
+  content: "\f28b"; }
+
+.chat-pause-circle::before {
+  content: "\f28b"; }
+
+.chat-toilet-paper-slash::before {
+  content: "\e072"; }
+
+.chat-apple-whole::before {
+  content: "\f5d1"; }
+
+.chat-apple-alt::before {
+  content: "\f5d1"; }
+
+.chat-kitchen-set::before {
+  content: "\e51a"; }
+
+.chat-r::before {
+  content: "\52"; }
+
+.chat-temperature-quarter::before {
+  content: "\f2ca"; }
+
+.chat-temperature-1::before {
+  content: "\f2ca"; }
+
+.chat-thermometer-1::before {
+  content: "\f2ca"; }
+
+.chat-thermometer-quarter::before {
+  content: "\f2ca"; }
+
+.chat-cube::before {
+  content: "\f1b2"; }
+
+.chat-bitcoin-sign::before {
+  content: "\e0b4"; }
+
+.chat-shield-dog::before {
+  content: "\e573"; }
+
+.chat-solar-panel::before {
+  content: "\f5ba"; }
+
+.chat-lock-open::before {
+  content: "\f3c1"; }
+
+.chat-elevator::before {
+  content: "\e16d"; }
+
+.chat-money-bill-transfer::before {
+  content: "\e528"; }
+
+.chat-money-bill-trend-up::before {
+  content: "\e529"; }
+
+.chat-house-flood-water-circle-arrow-right::before {
+  content: "\e50f"; }
+
+.chat-square-poll-horizontal::before {
+  content: "\f682"; }
+
+.chat-poll-h::before {
+  content: "\f682"; }
+
+.chat-circle::before {
+  content: "\f111"; }
+
+.chat-backward-fast::before {
+  content: "\f049"; }
+
+.chat-fast-backward::before {
+  content: "\f049"; }
+
+.chat-recycle::before {
+  content: "\f1b8"; }
+
+.chat-user-astronaut::before {
+  content: "\f4fb"; }
+
+.chat-plane-slash::before {
+  content: "\e069"; }
+
+.chat-trademark::before {
+  content: "\f25c"; }
+
+.chat-basketball::before {
+  content: "\f434"; }
+
+.chat-basketball-ball::before {
+  content: "\f434"; }
+
+.chat-satellite-dish::before {
+  content: "\f7c0"; }
+
+.chat-circle-up::before {
+  content: "\f35b"; }
+
+.chat-arrow-alt-circle-up::before {
+  content: "\f35b"; }
+
+.chat-mobile-screen-button::before {
+  content: "\f3cd"; }
+
+.chat-mobile-alt::before {
+  content: "\f3cd"; }
+
+.chat-volume-high::before {
+  content: "\f028"; }
+
+.chat-volume-up::before {
+  content: "\f028"; }
+
+.chat-users-rays::before {
+  content: "\e593"; }
+
+.chat-wallet::before {
+  content: "\f555"; }
+
+.chat-clipboard-check::before {
+  content: "\f46c"; }
+
+.chat-file-audio::before {
+  content: "\f1c7"; }
+
+.chat-burger::before {
+  content: "\f805"; }
+
+.chat-hamburger::before {
+  content: "\f805"; }
+
+.chat-wrench::before {
+  content: "\f0ad"; }
+
+.chat-bugs::before {
+  content: "\e4d0"; }
+
+.chat-rupee-sign::before {
+  content: "\f156"; }
+
+.chat-rupee::before {
+  content: "\f156"; }
+
+.chat-file-image::before {
+  content: "\f1c5"; }
+
+.chat-circle-question::before {
+  content: "\f059"; }
+
+.chat-question-circle::before {
+  content: "\f059"; }
+
+.chat-plane-departure::before {
+  content: "\f5b0"; }
+
+.chat-handshake-slash::before {
+  content: "\e060"; }
+
+.chat-book-bookmark::before {
+  content: "\e0bb"; }
+
+.chat-code-branch::before {
+  content: "\f126"; }
+
+.chat-hat-cowboy::before {
+  content: "\f8c0"; }
+
+.chat-bridge::before {
+  content: "\e4c8"; }
+
+.chat-phone-flip::before {
+  content: "\f879"; }
+
+.chat-phone-alt::before {
+  content: "\f879"; }
+
+.chat-truck-front::before {
+  content: "\e2b7"; }
+
+.chat-cat::before {
+  content: "\f6be"; }
+
+.chat-anchor-circle-exclamation::before {
+  content: "\e4ab"; }
+
+.chat-truck-field::before {
+  content: "\e58d"; }
+
+.chat-route::before {
+  content: "\f4d7"; }
+
+.chat-clipboard-question::before {
+  content: "\e4e3"; }
+
+.chat-panorama::before {
+  content: "\e209"; }
+
+.chat-comment-medical::before {
+  content: "\f7f5"; }
+
+.chat-teeth-open::before {
+  content: "\f62f"; }
+
+.chat-file-circle-minus::before {
+  content: "\e4ed"; }
+
+.chat-tags::before {
+  content: "\f02c"; }
+
+.chat-wine-glass::before {
+  content: "\f4e3"; }
+
+.chat-forward-fast::before {
+  content: "\f050"; }
+
+.chat-fast-forward::before {
+  content: "\f050"; }
+
+.chat-face-meh-blank::before {
+  content: "\f5a4"; }
+
+.chat-meh-blank::before {
+  content: "\f5a4"; }
+
+.chat-square-parking::before {
+  content: "\f540"; }
+
+.chat-parking::before {
+  content: "\f540"; }
+
+.chat-house-signal::before {
+  content: "\e012"; }
+
+.chat-bars-progress::before {
+  content: "\f828"; }
+
+.chat-tasks-alt::before {
+  content: "\f828"; }
+
+.chat-faucet-drip::before {
+  content: "\e006"; }
+
+.chat-cart-flatbed::before {
+  content: "\f474"; }
+
+.chat-dolly-flatbed::before {
+  content: "\f474"; }
+
+.chat-ban-smoking::before {
+  content: "\f54d"; }
+
+.chat-smoking-ban::before {
+  content: "\f54d"; }
+
+.chat-terminal::before {
+  content: "\f120"; }
+
+.chat-mobile-button::before {
+  content: "\f10b"; }
+
+.chat-house-medical-flag::before {
+  content: "\e514"; }
+
+.chat-basket-shopping::before {
+  content: "\f291"; }
+
+.chat-shopping-basket::before {
+  content: "\f291"; }
+
+.chat-tape::before {
+  content: "\f4db"; }
+
+.chat-bus-simple::before {
+  content: "\f55e"; }
+
+.chat-bus-alt::before {
+  content: "\f55e"; }
+
+.chat-eye::before {
+  content: "\f06e"; }
+
+.chat-face-sad-cry::before {
+  content: "\f5b3"; }
+
+.chat-sad-cry::before {
+  content: "\f5b3"; }
+
+.chat-audio-description::before {
+  content: "\f29e"; }
+
+.chat-person-military-to-person::before {
+  content: "\e54c"; }
+
+.chat-file-shield::before {
+  content: "\e4f0"; }
+
+.chat-user-slash::before {
+  content: "\f506"; }
+
+.chat-pen::before {
+  content: "\f304"; }
+
+.chat-tower-observation::before {
+  content: "\e586"; }
+
+.chat-file-code::before {
+  content: "\f1c9"; }
+
+.chat-signal::before {
+  content: "\f012"; }
+
+.chat-signal-5::before {
+  content: "\f012"; }
+
+.chat-signal-perfect::before {
+  content: "\f012"; }
+
+.chat-bus::before {
+  content: "\f207"; }
+
+.chat-heart-circle-xmark::before {
+  content: "\e501"; }
+
+.chat-house-chimney::before {
+  content: "\e3af"; }
+
+.chat-home-lg::before {
+  content: "\e3af"; }
+
+.chat-window-maximize::before {
+  content: "\f2d0"; }
+
+.chat-face-frown::before {
+  content: "\f119"; }
+
+.chat-frown::before {
+  content: "\f119"; }
+
+.chat-prescription::before {
+  content: "\f5b1"; }
+
+.chat-shop::before {
+  content: "\f54f"; }
+
+.chat-store-alt::before {
+  content: "\f54f"; }
+
+.chat-floppy-disk::before {
+  content: "\f0c7"; }
+
+.chat-save::before {
+  content: "\f0c7"; }
+
+.chat-vihara::before {
+  content: "\f6a7"; }
+
+.chat-scale-unbalanced::before {
+  content: "\f515"; }
+
+.chat-balance-scale-left::before {
+  content: "\f515"; }
+
+.chat-sort-up::before {
+  content: "\f0de"; }
+
+.chat-sort-asc::before {
+  content: "\f0de"; }
+
+.chat-comment-dots::before {
+  content: "\f4ad"; }
+
+.chat-commenting::before {
+  content: "\f4ad"; }
+
+.chat-plant-wilt::before {
+  content: "\e5aa"; }
+
+.chat-diamond::before {
+  content: "\f219"; }
+
+.chat-face-grin-squint::before {
+  content: "\f585"; }
+
+.chat-grin-squint::before {
+  content: "\f585"; }
+
+.chat-hand-holding-dollar::before {
+  content: "\f4c0"; }
+
+.chat-hand-holding-usd::before {
+  content: "\f4c0"; }
+
+.chat-bacterium::before {
+  content: "\e05a"; }
+
+.chat-hand-pointer::before {
+  content: "\f25a"; }
+
+.chat-drum-steelpan::before {
+  content: "\f56a"; }
+
+.chat-hand-scissors::before {
+  content: "\f257"; }
+
+.chat-hands-praying::before {
+  content: "\f684"; }
+
+.chat-praying-hands::before {
+  content: "\f684"; }
+
+.chat-arrow-rotate-right::before {
+  content: "\f01e"; }
+
+.chat-arrow-right-rotate::before {
+  content: "\f01e"; }
+
+.chat-arrow-rotate-forward::before {
+  content: "\f01e"; }
+
+.chat-redo::before {
+  content: "\f01e"; }
+
+.chat-biohazard::before {
+  content: "\f780"; }
+
+.chat-location-crosshairs::before {
+  content: "\f601"; }
+
+.chat-location::before {
+  content: "\f601"; }
+
+.chat-mars-double::before {
+  content: "\f227"; }
+
+.chat-child-dress::before {
+  content: "\e59c"; }
+
+.chat-users-between-lines::before {
+  content: "\e591"; }
+
+.chat-lungs-virus::before {
+  content: "\e067"; }
+
+.chat-face-grin-tears::before {
+  content: "\f588"; }
+
+.chat-grin-tears::before {
+  content: "\f588"; }
+
+.chat-phone::before {
+  content: "\f095"; }
+
+.chat-calendar-xmark::before {
+  content: "\f273"; }
+
+.chat-calendar-times::before {
+  content: "\f273"; }
+
+.chat-child-reaching::before {
+  content: "\e59d"; }
+
+.chat-head-side-virus::before {
+  content: "\e064"; }
+
+.chat-user-gear::before {
+  content: "\f4fe"; }
+
+.chat-user-cog::before {
+  content: "\f4fe"; }
+
+.chat-arrow-up-1-9::before {
+  content: "\f163"; }
+
+.chat-sort-numeric-up::before {
+  content: "\f163"; }
+
+.chat-door-closed::before {
+  content: "\f52a"; }
+
+.chat-shield-virus::before {
+  content: "\e06c"; }
+
+.chat-dice-six::before {
+  content: "\f526"; }
+
+.chat-mosquito-net::before {
+  content: "\e52c"; }
+
+.chat-bridge-water::before {
+  content: "\e4ce"; }
+
+.chat-person-booth::before {
+  content: "\f756"; }
+
+.chat-text-width::before {
+  content: "\f035"; }
+
+.chat-hat-wizard::before {
+  content: "\f6e8"; }
+
+.chat-pen-fancy::before {
+  content: "\f5ac"; }
+
+.chat-person-digging::before {
+  content: "\f85e"; }
+
+.chat-digging::before {
+  content: "\f85e"; }
+
+.chat-trash::before {
+  content: "\f1f8"; }
+
+.chat-gauge-simple::before {
+  content: "\f629"; }
+
+.chat-gauge-simple-med::before {
+  content: "\f629"; }
+
+.chat-tachometer-average::before {
+  content: "\f629"; }
+
+.chat-book-medical::before {
+  content: "\f7e6"; }
+
+.chat-poo::before {
+  content: "\f2fe"; }
+
+.chat-quote-right::before {
+  content: "\f10e"; }
+
+.chat-quote-right-alt::before {
+  content: "\f10e"; }
+
+.chat-shirt::before {
+  content: "\f553"; }
+
+.chat-t-shirt::before {
+  content: "\f553"; }
+
+.chat-tshirt::before {
+  content: "\f553"; }
+
+.chat-cubes::before {
+  content: "\f1b3"; }
+
+.chat-divide::before {
+  content: "\f529"; }
+
+.chat-tenge-sign::before {
+  content: "\f7d7"; }
+
+.chat-tenge::before {
+  content: "\f7d7"; }
+
+.chat-headphones::before {
+  content: "\f025"; }
+
+.chat-hands-holding::before {
+  content: "\f4c2"; }
+
+.chat-hands-clapping::before {
+  content: "\e1a8"; }
+
+.chat-republican::before {
+  content: "\f75e"; }
+
+.chat-arrow-left::before {
+  content: "\f060"; }
+
+.chat-person-circle-xmark::before {
+  content: "\e543"; }
+
+.chat-ruler::before {
+  content: "\f545"; }
+
+.chat-align-left::before {
+  content: "\f036"; }
+
+.chat-dice-d6::before {
+  content: "\f6d1"; }
+
+.chat-restroom::before {
+  content: "\f7bd"; }
+
+.chat-j::before {
+  content: "\4a"; }
+
+.chat-users-viewfinder::before {
+  content: "\e595"; }
+
+.chat-file-video::before {
+  content: "\f1c8"; }
+
+.chat-up-right-from-square::before {
+  content: "\f35d"; }
+
+.chat-external-link-alt::before {
+  content: "\f35d"; }
+
+.chat-table-cells::before {
+  content: "\f00a"; }
+
+.chat-th::before {
+  content: "\f00a"; }
+
+.chat-file-pdf::before {
+  content: "\f1c1"; }
+
+.chat-book-bible::before {
+  content: "\f647"; }
+
+.chat-bible::before {
+  content: "\f647"; }
+
+.chat-o::before {
+  content: "\4f"; }
+
+.chat-suitcase-medical::before {
+  content: "\f0fa"; }
+
+.chat-medkit::before {
+  content: "\f0fa"; }
+
+.chat-user-secret::before {
+  content: "\f21b"; }
+
+.chat-otter::before {
+  content: "\f700"; }
+
+.chat-person-dress::before {
+  content: "\f182"; }
+
+.chat-female::before {
+  content: "\f182"; }
+
+.chat-comment-dollar::before {
+  content: "\f651"; }
+
+.chat-business-time::before {
+  content: "\f64a"; }
+
+.chat-briefcase-clock::before {
+  content: "\f64a"; }
+
+.chat-table-cells-large::before {
+  content: "\f009"; }
+
+.chat-th-large::before {
+  content: "\f009"; }
+
+.chat-book-tanakh::before {
+  content: "\f827"; }
+
+.chat-tanakh::before {
+  content: "\f827"; }
+
+.chat-phone-volume::before {
+  content: "\f2a0"; }
+
+.chat-volume-control-phone::before {
+  content: "\f2a0"; }
+
+.chat-hat-cowboy-side::before {
+  content: "\f8c1"; }
+
+.chat-clipboard-user::before {
+  content: "\f7f3"; }
+
+.chat-child::before {
+  content: "\f1ae"; }
+
+.chat-lira-sign::before {
+  content: "\f195"; }
+
+.chat-satellite::before {
+  content: "\f7bf"; }
+
+.chat-plane-lock::before {
+  content: "\e558"; }
+
+.chat-tag::before {
+  content: "\f02b"; }
+
+.chat-comment::before {
+  content: "\f075"; }
+
+.chat-cake-candles::before {
+  content: "\f1fd"; }
+
+.chat-birthday-cake::before {
+  content: "\f1fd"; }
+
+.chat-cake::before {
+  content: "\f1fd"; }
+
+.chat-envelope::before {
+  content: "\f0e0"; }
+
+.chat-angles-up::before {
+  content: "\f102"; }
+
+.chat-angle-double-up::before {
+  content: "\f102"; }
+
+.chat-paperclip::before {
+  content: "\f0c6"; }
+
+.chat-arrow-right-to-city::before {
+  content: "\e4b3"; }
+
+.chat-ribbon::before {
+  content: "\f4d6"; }
+
+.chat-lungs::before {
+  content: "\f604"; }
+
+.chat-arrow-up-9-1::before {
+  content: "\f887"; }
+
+.chat-sort-numeric-up-alt::before {
+  content: "\f887"; }
+
+.chat-litecoin-sign::before {
+  content: "\e1d3"; }
+
+.chat-border-none::before {
+  content: "\f850"; }
+
+.chat-circle-nodes::before {
+  content: "\e4e2"; }
+
+.chat-parachute-box::before {
+  content: "\f4cd"; }
+
+.chat-indent::before {
+  content: "\f03c"; }
+
+.chat-truck-field-un::before {
+  content: "\e58e"; }
+
+.chat-hourglass::before {
+  content: "\f254"; }
+
+.chat-hourglass-empty::before {
+  content: "\f254"; }
+
+.chat-mountain::before {
+  content: "\f6fc"; }
+
+.chat-user-doctor::before {
+  content: "\f0f0"; }
+
+.chat-user-md::before {
+  content: "\f0f0"; }
+
+.chat-circle-info::before {
+  content: "\f05a"; }
+
+.chat-info-circle::before {
+  content: "\f05a"; }
+
+.chat-cloud-meatball::before {
+  content: "\f73b"; }
+
+.chat-camera::before {
+  content: "\f030"; }
+
+.chat-camera-alt::before {
+  content: "\f030"; }
+
+.chat-square-virus::before {
+  content: "\e578"; }
+
+.chat-meteor::before {
+  content: "\f753"; }
+
+.chat-car-on::before {
+  content: "\e4dd"; }
+
+.chat-sleigh::before {
+  content: "\f7cc"; }
+
+.chat-arrow-down-1-9::before {
+  content: "\f162"; }
+
+.chat-sort-numeric-asc::before {
+  content: "\f162"; }
+
+.chat-sort-numeric-down::before {
+  content: "\f162"; }
+
+.chat-hand-holding-droplet::before {
+  content: "\f4c1"; }
+
+.chat-hand-holding-water::before {
+  content: "\f4c1"; }
+
+.chat-water::before {
+  content: "\f773"; }
+
+.chat-calendar-check::before {
+  content: "\f274"; }
+
+.chat-braille::before {
+  content: "\f2a1"; }
+
+.chat-prescription-bottle-medical::before {
+  content: "\f486"; }
+
+.chat-prescription-bottle-alt::before {
+  content: "\f486"; }
+
+.chat-landmark::before {
+  content: "\f66f"; }
+
+.chat-truck::before {
+  content: "\f0d1"; }
+
+.chat-crosshairs::before {
+  content: "\f05b"; }
+
+.chat-person-cane::before {
+  content: "\e53c"; }
+
+.chat-tent::before {
+  content: "\e57d"; }
+
+.chat-vest-patches::before {
+  content: "\e086"; }
+
+.chat-check-double::before {
+  content: "\f560"; }
+
+.chat-arrow-down-a-z::before {
+  content: "\f15d"; }
+
+.chat-sort-alpha-asc::before {
+  content: "\f15d"; }
+
+.chat-sort-alpha-down::before {
+  content: "\f15d"; }
+
+.chat-money-bill-wheat::before {
+  content: "\e52a"; }
+
+.chat-cookie::before {
+  content: "\f563"; }
+
+.chat-arrow-rotate-left::before {
+  content: "\f0e2"; }
+
+.chat-arrow-left-rotate::before {
+  content: "\f0e2"; }
+
+.chat-arrow-rotate-back::before {
+  content: "\f0e2"; }
+
+.chat-arrow-rotate-backward::before {
+  content: "\f0e2"; }
+
+.chat-undo::before {
+  content: "\f0e2"; }
+
+.chat-hard-drive::before {
+  content: "\f0a0"; }
+
+.chat-hdd::before {
+  content: "\f0a0"; }
+
+.chat-face-grin-squint-tears::before {
+  content: "\f586"; }
+
+.chat-grin-squint-tears::before {
+  content: "\f586"; }
+
+.chat-dumbbell::before {
+  content: "\f44b"; }
+
+.chat-rectangle-list::before {
+  content: "\f022"; }
+
+.chat-list-alt::before {
+  content: "\f022"; }
+
+.chat-tarp-droplet::before {
+  content: "\e57c"; }
+
+.chat-house-medical-circle-check::before {
+  content: "\e511"; }
+
+.chat-person-skiing-nordic::before {
+  content: "\f7ca"; }
+
+.chat-skiing-nordic::before {
+  content: "\f7ca"; }
+
+.chat-calendar-plus::before {
+  content: "\f271"; }
+
+.chat-plane-arrival::before {
+  content: "\f5af"; }
+
+.chat-circle-left::before {
+  content: "\f359"; }
+
+.chat-arrow-alt-circle-left::before {
+  content: "\f359"; }
+
+.chat-train-subway::before {
+  content: "\f239"; }
+
+.chat-subway::before {
+  content: "\f239"; }
+
+.chat-chart-gantt::before {
+  content: "\e0e4"; }
+
+.chat-indian-rupee-sign::before {
+  content: "\e1bc"; }
+
+.chat-indian-rupee::before {
+  content: "\e1bc"; }
+
+.chat-inr::before {
+  content: "\e1bc"; }
+
+.chat-crop-simple::before {
+  content: "\f565"; }
+
+.chat-crop-alt::before {
+  content: "\f565"; }
+
+.chat-money-bill-1::before {
+  content: "\f3d1"; }
+
+.chat-money-bill-alt::before {
+  content: "\f3d1"; }
+
+.chat-left-long::before {
+  content: "\f30a"; }
+
+.chat-long-arrow-alt-left::before {
+  content: "\f30a"; }
+
+.chat-dna::before {
+  content: "\f471"; }
+
+.chat-virus-slash::before {
+  content: "\e075"; }
+
+.chat-minus::before {
+  content: "\f068"; }
+
+.chat-subtract::before {
+  content: "\f068"; }
+
+.chat-chess::before {
+  content: "\f439"; }
+
+.chat-arrow-left-long::before {
+  content: "\f177"; }
+
+.chat-long-arrow-left::before {
+  content: "\f177"; }
+
+.chat-plug-circle-check::before {
+  content: "\e55c"; }
+
+.chat-street-view::before {
+  content: "\f21d"; }
+
+.chat-franc-sign::before {
+  content: "\e18f"; }
+
+.chat-volume-off::before {
+  content: "\f026"; }
+
+.chat-hands-asl-interpreting::before {
+  content: "\f2a3"; }
+
+.chat-american-sign-language-interpreting::before {
+  content: "\f2a3"; }
+
+.chat-asl-interpreting::before {
+  content: "\f2a3"; }
+
+.chat-hands-american-sign-language-interpreting::before {
+  content: "\f2a3"; }
+
+.chat-gear::before {
+  content: "\f013"; }
+
+.chat-cog::before {
+  content: "\f013"; }
+
+.chat-droplet-slash::before {
+  content: "\f5c7"; }
+
+.chat-tint-slash::before {
+  content: "\f5c7"; }
+
+.chat-mosque::before {
+  content: "\f678"; }
+
+.chat-mosquito::before {
+  content: "\e52b"; }
+
+.chat-star-of-david::before {
+  content: "\f69a"; }
+
+.chat-person-military-rifle::before {
+  content: "\e54b"; }
+
+.chat-cart-shopping::before {
+  content: "\f07a"; }
+
+.chat-shopping-cart::before {
+  content: "\f07a"; }
+
+.chat-vials::before {
+  content: "\f493"; }
+
+.chat-plug-circle-plus::before {
+  content: "\e55f"; }
+
+.chat-place-of-worship::before {
+  content: "\f67f"; }
+
+.chat-grip-vertical::before {
+  content: "\f58e"; }
+
+.chat-arrow-turn-up::before {
+  content: "\f148"; }
+
+.chat-level-up::before {
+  content: "\f148"; }
+
+.chat-u::before {
+  content: "\55"; }
+
+.chat-square-root-variable::before {
+  content: "\f698"; }
+
+.chat-square-root-alt::before {
+  content: "\f698"; }
+
+.chat-clock::before {
+  content: "\f017"; }
+
+.chat-clock-four::before {
+  content: "\f017"; }
+
+.chat-backward-step::before {
+  content: "\f048"; }
+
+.chat-step-backward::before {
+  content: "\f048"; }
+
+.chat-pallet::before {
+  content: "\f482"; }
+
+.chat-faucet::before {
+  content: "\e005"; }
+
+.chat-baseball-bat-ball::before {
+  content: "\f432"; }
+
+.chat-s::before {
+  content: "\53"; }
+
+.chat-timeline::before {
+  content: "\e29c"; }
+
+.chat-keyboard::before {
+  content: "\f11c"; }
+
+.chat-caret-down::before {
+  content: "\f0d7"; }
+
+.chat-house-chimney-medical::before {
+  content: "\f7f2"; }
+
+.chat-clinic-medical::before {
+  content: "\f7f2"; }
+
+.chat-temperature-three-quarters::before {
+  content: "\f2c8"; }
+
+.chat-temperature-3::before {
+  content: "\f2c8"; }
+
+.chat-thermometer-3::before {
+  content: "\f2c8"; }
+
+.chat-thermometer-three-quarters::before {
+  content: "\f2c8"; }
+
+.chat-mobile-screen::before {
+  content: "\f3cf"; }
+
+.chat-mobile-android-alt::before {
+  content: "\f3cf"; }
+
+.chat-plane-up::before {
+  content: "\e22d"; }
+
+.chat-piggy-bank::before {
+  content: "\f4d3"; }
+
+.chat-battery-half::before {
+  content: "\f242"; }
+
+.chat-battery-3::before {
+  content: "\f242"; }
+
+.chat-mountain-city::before {
+  content: "\e52e"; }
+
+.chat-coins::before {
+  content: "\f51e"; }
+
+.chat-khanda::before {
+  content: "\f66d"; }
+
+.chat-sliders::before {
+  content: "\f1de"; }
+
+.chat-sliders-h::before {
+  content: "\f1de"; }
+
+.chat-folder-tree::before {
+  content: "\f802"; }
+
+.chat-network-wired::before {
+  content: "\f6ff"; }
+
+.chat-map-pin::before {
+  content: "\f276"; }
+
+.chat-hamsa::before {
+  content: "\f665"; }
+
+.chat-cent-sign::before {
+  content: "\e3f5"; }
+
+.chat-flask::before {
+  content: "\f0c3"; }
+
+.chat-person-pregnant::before {
+  content: "\e31e"; }
+
+.chat-wand-sparkles::before {
+  content: "\f72b"; }
+
+.chat-ellipsis-vertical::before {
+  content: "\f142"; }
+
+.chat-ellipsis-v::before {
+  content: "\f142"; }
+
+.chat-ticket::before {
+  content: "\f145"; }
+
+.chat-power-off::before {
+  content: "\f011"; }
+
+.chat-right-long::before {
+  content: "\f30b"; }
+
+.chat-long-arrow-alt-right::before {
+  content: "\f30b"; }
+
+.chat-flag-usa::before {
+  content: "\f74d"; }
+
+.chat-laptop-file::before {
+  content: "\e51d"; }
+
+.chat-tty::before {
+  content: "\f1e4"; }
+
+.chat-teletype::before {
+  content: "\f1e4"; }
+
+.chat-diagram-next::before {
+  content: "\e476"; }
+
+.chat-person-rifle::before {
+  content: "\e54e"; }
+
+.chat-house-medical-circle-exclamation::before {
+  content: "\e512"; }
+
+.chat-closed-captioning::before {
+  content: "\f20a"; }
+
+.chat-person-hiking::before {
+  content: "\f6ec"; }
+
+.chat-hiking::before {
+  content: "\f6ec"; }
+
+.chat-venus-double::before {
+  content: "\f226"; }
+
+.chat-images::before {
+  content: "\f302"; }
+
+.chat-calculator::before {
+  content: "\f1ec"; }
+
+.chat-people-pulling::before {
+  content: "\e535"; }
+
+.chat-n::before {
+  content: "\4e"; }
+
+.chat-cable-car::before {
+  content: "\f7da"; }
+
+.chat-tram::before {
+  content: "\f7da"; }
+
+.chat-cloud-rain::before {
+  content: "\f73d"; }
+
+.chat-building-circle-xmark::before {
+  content: "\e4d4"; }
+
+.chat-ship::before {
+  content: "\f21a"; }
+
+.chat-arrows-down-to-line::before {
+  content: "\e4b8"; }
+
+.chat-download::before {
+  content: "\f019"; }
+
+.chat-face-grin::before {
+  content: "\f580"; }
+
+.chat-grin::before {
+  content: "\f580"; }
+
+.chat-delete-left::before {
+  content: "\f55a"; }
+
+.chat-backspace::before {
+  content: "\f55a"; }
+
+.chat-eye-dropper::before {
+  content: "\f1fb"; }
+
+.chat-eye-dropper-empty::before {
+  content: "\f1fb"; }
+
+.chat-eyedropper::before {
+  content: "\f1fb"; }
+
+.chat-file-circle-check::before {
+  content: "\e5a0"; }
+
+.chat-forward::before {
+  content: "\f04e"; }
+
+.chat-mobile::before {
+  content: "\f3ce"; }
+
+.chat-mobile-android::before {
+  content: "\f3ce"; }
+
+.chat-mobile-phone::before {
+  content: "\f3ce"; }
+
+.chat-face-meh::before {
+  content: "\f11a"; }
+
+.chat-meh::before {
+  content: "\f11a"; }
+
+.chat-align-center::before {
+  content: "\f037"; }
+
+.chat-book-skull::before {
+  content: "\f6b7"; }
+
+.chat-book-dead::before {
+  content: "\f6b7"; }
+
+.chat-id-card::before {
+  content: "\f2c2"; }
+
+.chat-drivers-license::before {
+  content: "\f2c2"; }
+
+.chat-outdent::before {
+  content: "\f03b"; }
+
+.chat-dedent::before {
+  content: "\f03b"; }
+
+.chat-heart-circle-exclamation::before {
+  content: "\e4fe"; }
+
+.chat-house::before {
+  content: "\f015"; }
+
+.chat-home::before {
+  content: "\f015"; }
+
+.chat-home-alt::before {
+  content: "\f015"; }
+
+.chat-home-lg-alt::before {
+  content: "\f015"; }
+
+.chat-calendar-week::before {
+  content: "\f784"; }
+
+.chat-laptop-medical::before {
+  content: "\f812"; }
+
+.chat-b::before {
+  content: "\42"; }
+
+.chat-file-medical::before {
+  content: "\f477"; }
+
+.chat-dice-one::before {
+  content: "\f525"; }
+
+.chat-kiwi-bird::before {
+  content: "\f535"; }
+
+.chat-arrow-right-arrow-left::before {
+  content: "\f0ec"; }
+
+.chat-exchange::before {
+  content: "\f0ec"; }
+
+.chat-rotate-right::before {
+  content: "\f2f9"; }
+
+.chat-redo-alt::before {
+  content: "\f2f9"; }
+
+.chat-rotate-forward::before {
+  content: "\f2f9"; }
+
+.chat-utensils::before {
+  content: "\f2e7"; }
+
+.chat-cutlery::before {
+  content: "\f2e7"; }
+
+.chat-arrow-up-wide-short::before {
+  content: "\f161"; }
+
+.chat-sort-amount-up::before {
+  content: "\f161"; }
+
+.chat-mill-sign::before {
+  content: "\e1ed"; }
+
+.chat-bowl-rice::before {
+  content: "\e2eb"; }
+
+.chat-skull::before {
+  content: "\f54c"; }
+
+.chat-tower-broadcast::before {
+  content: "\f519"; }
+
+.chat-broadcast-tower::before {
+  content: "\f519"; }
+
+.chat-truck-pickup::before {
+  content: "\f63c"; }
+
+.chat-up-long::before {
+  content: "\f30c"; }
+
+.chat-long-arrow-alt-up::before {
+  content: "\f30c"; }
+
+.chat-stop::before {
+  content: "\f04d"; }
+
+.chat-code-merge::before {
+  content: "\f387"; }
+
+.chat-upload::before {
+  content: "\f093"; }
+
+.chat-hurricane::before {
+  content: "\f751"; }
+
+.chat-mound::before {
+  content: "\e52d"; }
+
+.chat-toilet-portable::before {
+  content: "\e583"; }
+
+.chat-compact-disc::before {
+  content: "\f51f"; }
+
+.chat-file-arrow-down::before {
+  content: "\f56d"; }
+
+.chat-file-download::before {
+  content: "\f56d"; }
+
+.chat-caravan::before {
+  content: "\f8ff"; }
+
+.chat-shield-cat::before {
+  content: "\e572"; }
+
+.chat-bolt::before {
+  content: "\f0e7"; }
+
+.chat-zap::before {
+  content: "\f0e7"; }
+
+.chat-glass-water::before {
+  content: "\e4f4"; }
+
+.chat-oil-well::before {
+  content: "\e532"; }
+
+.chat-vault::before {
+  content: "\e2c5"; }
+
+.chat-mars::before {
+  content: "\f222"; }
+
+.chat-toilet::before {
+  content: "\f7d8"; }
+
+.chat-plane-circle-xmark::before {
+  content: "\e557"; }
+
+.chat-yen-sign::before {
+  content: "\f157"; }
+
+.chat-cny::before {
+  content: "\f157"; }
+
+.chat-jpy::before {
+  content: "\f157"; }
+
+.chat-rmb::before {
+  content: "\f157"; }
+
+.chat-yen::before {
+  content: "\f157"; }
+
+.chat-ruble-sign::before {
+  content: "\f158"; }
+
+.chat-rouble::before {
+  content: "\f158"; }
+
+.chat-rub::before {
+  content: "\f158"; }
+
+.chat-ruble::before {
+  content: "\f158"; }
+
+.chat-sun::before {
+  content: "\f185"; }
+
+.chat-guitar::before {
+  content: "\f7a6"; }
+
+.chat-face-laugh-wink::before {
+  content: "\f59c"; }
+
+.chat-laugh-wink::before {
+  content: "\f59c"; }
+
+.chat-horse-head::before {
+  content: "\f7ab"; }
+
+.chat-bore-hole::before {
+  content: "\e4c3"; }
+
+.chat-industry::before {
+  content: "\f275"; }
+
+.chat-circle-down::before {
+  content: "\f358"; }
+
+.chat-arrow-alt-circle-down::before {
+  content: "\f358"; }
+
+.chat-arrows-turn-to-dots::before {
+  content: "\e4c1"; }
+
+.chat-florin-sign::before {
+  content: "\e184"; }
+
+.chat-arrow-down-short-wide::before {
+  content: "\f884"; }
+
+.chat-sort-amount-desc::before {
+  content: "\f884"; }
+
+.chat-sort-amount-down-alt::before {
+  content: "\f884"; }
+
+.chat-less-than::before {
+  content: "\3c"; }
+
+.chat-angle-down::before {
+  content: "\f107"; }
+
+.chat-car-tunnel::before {
+  content: "\e4de"; }
+
+.chat-head-side-cough::before {
+  content: "\e061"; }
+
+.chat-grip-lines::before {
+  content: "\f7a4"; }
+
+.chat-thumbs-down::before {
+  content: "\f165"; }
+
+.chat-user-lock::before {
+  content: "\f502"; }
+
+.chat-arrow-right-long::before {
+  content: "\f178"; }
+
+.chat-long-arrow-right::before {
+  content: "\f178"; }
+
+.chat-anchor-circle-xmark::before {
+  content: "\e4ac"; }
+
+.chat-ellipsis::before {
+  content: "\f141"; }
+
+.chat-ellipsis-h::before {
+  content: "\f141"; }
+
+.chat-chess-pawn::before {
+  content: "\f443"; }
+
+.chat-kit-medical::before {
+  content: "\f479"; }
+
+.chat-first-aid::before {
+  content: "\f479"; }
+
+.chat-person-through-window::before {
+  content: "\e5a9"; }
+
+.chat-toolbox::before {
+  content: "\f552"; }
+
+.chat-hands-holding-circle::before {
+  content: "\e4fb"; }
+
+.chat-bug::before {
+  content: "\f188"; }
+
+.chat-credit-card::before {
+  content: "\f09d"; }
+
+.chat-credit-card-alt::before {
+  content: "\f09d"; }
+
+.chat-car::before {
+  content: "\f1b9"; }
+
+.chat-automobile::before {
+  content: "\f1b9"; }
+
+.chat-hand-holding-hand::before {
+  content: "\e4f7"; }
+
+.chat-book-open-reader::before {
+  content: "\f5da"; }
+
+.chat-book-reader::before {
+  content: "\f5da"; }
+
+.chat-mountain-sun::before {
+  content: "\e52f"; }
+
+.chat-arrows-left-right-to-line::before {
+  content: "\e4ba"; }
+
+.chat-dice-d20::before {
+  content: "\f6cf"; }
+
+.chat-truck-droplet::before {
+  content: "\e58c"; }
+
+.chat-file-circle-xmark::before {
+  content: "\e5a1"; }
+
+.chat-temperature-arrow-up::before {
+  content: "\e040"; }
+
+.chat-temperature-up::before {
+  content: "\e040"; }
+
+.chat-medal::before {
+  content: "\f5a2"; }
+
+.chat-bed::before {
+  content: "\f236"; }
+
+.chat-square-h::before {
+  content: "\f0fd"; }
+
+.chat-h-square::before {
+  content: "\f0fd"; }
+
+.chat-podcast::before {
+  content: "\f2ce"; }
+
+.chat-temperature-full::before {
+  content: "\f2c7"; }
+
+.chat-temperature-4::before {
+  content: "\f2c7"; }
+
+.chat-thermometer-4::before {
+  content: "\f2c7"; }
+
+.chat-thermometer-full::before {
+  content: "\f2c7"; }
+
+.chat-bell::before {
+  content: "\f0f3"; }
+
+.chat-superscript::before {
+  content: "\f12b"; }
+
+.chat-plug-circle-xmark::before {
+  content: "\e560"; }
+
+.chat-star-of-life::before {
+  content: "\f621"; }
+
+.chat-phone-slash::before {
+  content: "\f3dd"; }
+
+.chat-paint-roller::before {
+  content: "\f5aa"; }
+
+.chat-handshake-angle::before {
+  content: "\f4c4"; }
+
+.chat-hands-helping::before {
+  content: "\f4c4"; }
+
+.chat-location-dot::before {
+  content: "\f3c5"; }
+
+.chat-map-marker-alt::before {
+  content: "\f3c5"; }
+
+.chat-file::before {
+  content: "\f15b"; }
+
+.chat-greater-than::before {
+  content: "\3e"; }
+
+.chat-person-swimming::before {
+  content: "\f5c4"; }
+
+.chat-swimmer::before {
+  content: "\f5c4"; }
+
+.chat-arrow-down::before {
+  content: "\f063"; }
+
+.chat-droplet::before {
+  content: "\f043"; }
+
+.chat-tint::before {
+  content: "\f043"; }
+
+.chat-eraser::before {
+  content: "\f12d"; }
+
+.chat-earth-americas::before {
+  content: "\f57d"; }
+
+.chat-earth::before {
+  content: "\f57d"; }
+
+.chat-earth-america::before {
+  content: "\f57d"; }
+
+.chat-globe-americas::before {
+  content: "\f57d"; }
+
+.chat-person-burst::before {
+  content: "\e53b"; }
+
+.chat-dove::before {
+  content: "\f4ba"; }
+
+.chat-battery-empty::before {
+  content: "\f244"; }
+
+.chat-battery-0::before {
+  content: "\f244"; }
+
+.chat-socks::before {
+  content: "\f696"; }
+
+.chat-inbox::before {
+  content: "\f01c"; }
+
+.chat-section::before {
+  content: "\e447"; }
+
+.chat-gauge-high::before {
+  content: "\f625"; }
+
+.chat-tachometer-alt::before {
+  content: "\f625"; }
+
+.chat-tachometer-alt-fast::before {
+  content: "\f625"; }
+
+.chat-envelope-open-text::before {
+  content: "\f658"; }
+
+.chat-hospital::before {
+  content: "\f0f8"; }
+
+.chat-hospital-alt::before {
+  content: "\f0f8"; }
+
+.chat-hospital-wide::before {
+  content: "\f0f8"; }
+
+.chat-wine-bottle::before {
+  content: "\f72f"; }
+
+.chat-chess-rook::before {
+  content: "\f447"; }
+
+.chat-bars-staggered::before {
+  content: "\f550"; }
+
+.chat-reorder::before {
+  content: "\f550"; }
+
+.chat-stream::before {
+  content: "\f550"; }
+
+.chat-dharmachakra::before {
+  content: "\f655"; }
+
+.chat-hotdog::before {
+  content: "\f80f"; }
+
+.chat-person-walking-with-cane::before {
+  content: "\f29d"; }
+
+.chat-blind::before {
+  content: "\f29d"; }
+
+.chat-drum::before {
+  content: "\f569"; }
+
+.chat-ice-cream::before {
+  content: "\f810"; }
+
+.chat-heart-circle-bolt::before {
+  content: "\e4fc"; }
+
+.chat-fax::before {
+  content: "\f1ac"; }
+
+.chat-paragraph::before {
+  content: "\f1dd"; }
+
+.chat-check-to-slot::before {
+  content: "\f772"; }
+
+.chat-vote-yea::before {
+  content: "\f772"; }
+
+.chat-star-half::before {
+  content: "\f089"; }
+
+.chat-boxes-stacked::before {
+  content: "\f468"; }
+
+.chat-boxes::before {
+  content: "\f468"; }
+
+.chat-boxes-alt::before {
+  content: "\f468"; }
+
+.chat-link::before {
+  content: "\f0c1"; }
+
+.chat-chain::before {
+  content: "\f0c1"; }
+
+.chat-ear-listen::before {
+  content: "\f2a2"; }
+
+.chat-assistive-listening-systems::before {
+  content: "\f2a2"; }
+
+.chat-tree-city::before {
+  content: "\e587"; }
+
+.chat-play::before {
+  content: "\f04b"; }
+
+.chat-font::before {
+  content: "\f031"; }
+
+.chat-table-cells-row-lock::before {
+  content: "\e67a"; }
+
+.chat-rupiah-sign::before {
+  content: "\e23d"; }
+
+.chat-magnifying-glass::before {
+  content: "\f002"; }
+
+.chat-search::before {
+  content: "\f002"; }
+
+.chat-table-tennis-paddle-ball::before {
+  content: "\f45d"; }
+
+.chat-ping-pong-paddle-ball::before {
+  content: "\f45d"; }
+
+.chat-table-tennis::before {
+  content: "\f45d"; }
+
+.chat-person-dots-from-line::before {
+  content: "\f470"; }
+
+.chat-diagnoses::before {
+  content: "\f470"; }
+
+.chat-trash-can-arrow-up::before {
+  content: "\f82a"; }
+
+.chat-trash-restore-alt::before {
+  content: "\f82a"; }
+
+.chat-naira-sign::before {
+  content: "\e1f6"; }
+
+.chat-cart-arrow-down::before {
+  content: "\f218"; }
+
+.chat-walkie-talkie::before {
+  content: "\f8ef"; }
+
+.chat-file-pen::before {
+  content: "\f31c"; }
+
+.chat-file-edit::before {
+  content: "\f31c"; }
+
+.chat-receipt::before {
+  content: "\f543"; }
+
+.chat-square-pen::before {
+  content: "\f14b"; }
+
+.chat-pen-square::before {
+  content: "\f14b"; }
+
+.chat-pencil-square::before {
+  content: "\f14b"; }
+
+.chat-suitcase-rolling::before {
+  content: "\f5c1"; }
+
+.chat-person-circle-exclamation::before {
+  content: "\e53f"; }
+
+.chat-chevron-down::before {
+  content: "\f078"; }
+
+.chat-battery-full::before {
+  content: "\f240"; }
+
+.chat-battery::before {
+  content: "\f240"; }
+
+.chat-battery-5::before {
+  content: "\f240"; }
+
+.chat-skull-crossbones::before {
+  content: "\f714"; }
+
+.chat-code-compare::before {
+  content: "\e13a"; }
+
+.chat-list-ul::before {
+  content: "\f0ca"; }
+
+.chat-list-dots::before {
+  content: "\f0ca"; }
+
+.chat-school-lock::before {
+  content: "\e56f"; }
+
+.chat-tower-cell::before {
+  content: "\e585"; }
+
+.chat-down-long::before {
+  content: "\f309"; }
+
+.chat-long-arrow-alt-down::before {
+  content: "\f309"; }
+
+.chat-ranking-star::before {
+  content: "\e561"; }
+
+.chat-chess-king::before {
+  content: "\f43f"; }
+
+.chat-person-harassing::before {
+  content: "\e549"; }
+
+.chat-brazilian-real-sign::before {
+  content: "\e46c"; }
+
+.chat-landmark-dome::before {
+  content: "\f752"; }
+
+.chat-landmark-alt::before {
+  content: "\f752"; }
+
+.chat-arrow-up::before {
+  content: "\f062"; }
+
+.chat-tv::before {
+  content: "\f26c"; }
+
+.chat-television::before {
+  content: "\f26c"; }
+
+.chat-tv-alt::before {
+  content: "\f26c"; }
+
+.chat-shrimp::before {
+  content: "\e448"; }
+
+.chat-list-check::before {
+  content: "\f0ae"; }
+
+.chat-tasks::before {
+  content: "\f0ae"; }
+
+.chat-jug-detergent::before {
+  content: "\e519"; }
+
+.chat-circle-user::before {
+  content: "\f2bd"; }
+
+.chat-user-circle::before {
+  content: "\f2bd"; }
+
+.chat-user-shield::before {
+  content: "\f505"; }
+
+.chat-wind::before {
+  content: "\f72e"; }
+
+.chat-car-burst::before {
+  content: "\f5e1"; }
+
+.chat-car-crash::before {
+  content: "\f5e1"; }
+
+.chat-y::before {
+  content: "\59"; }
+
+.chat-person-snowboarding::before {
+  content: "\f7ce"; }
+
+.chat-snowboarding::before {
+  content: "\f7ce"; }
+
+.chat-truck-fast::before {
+  content: "\f48b"; }
+
+.chat-shipping-fast::before {
+  content: "\f48b"; }
+
+.chat-fish::before {
+  content: "\f578"; }
+
+.chat-user-graduate::before {
+  content: "\f501"; }
+
+.chat-circle-half-stroke::before {
+  content: "\f042"; }
+
+.chat-adjust::before {
+  content: "\f042"; }
+
+.chat-clapperboard::before {
+  content: "\e131"; }
+
+.chat-circle-radiation::before {
+  content: "\f7ba"; }
+
+.chat-radiation-alt::before {
+  content: "\f7ba"; }
+
+.chat-baseball::before {
+  content: "\f433"; }
+
+.chat-baseball-ball::before {
+  content: "\f433"; }
+
+.chat-jet-fighter-up::before {
+  content: "\e518"; }
+
+.chat-diagram-project::before {
+  content: "\f542"; }
+
+.chat-project-diagram::before {
+  content: "\f542"; }
+
+.chat-copy::before {
+  content: "\f0c5"; }
+
+.chat-volume-xmark::before {
+  content: "\f6a9"; }
+
+.chat-volume-mute::before {
+  content: "\f6a9"; }
+
+.chat-volume-times::before {
+  content: "\f6a9"; }
+
+.chat-hand-sparkles::before {
+  content: "\e05d"; }
+
+.chat-grip::before {
+  content: "\f58d"; }
+
+.chat-grip-horizontal::before {
+  content: "\f58d"; }
+
+.chat-share-from-square::before {
+  content: "\f14d"; }
+
+.chat-share-square::before {
+  content: "\f14d"; }
+
+.chat-child-combatant::before {
+  content: "\e4e0"; }
+
+.chat-child-rifle::before {
+  content: "\e4e0"; }
+
+.chat-gun::before {
+  content: "\e19b"; }
+
+.chat-square-phone::before {
+  content: "\f098"; }
+
+.chat-phone-square::before {
+  content: "\f098"; }
+
+.chat-plus::before {
+  content: "\2b"; }
+
+.chat-add::before {
+  content: "\2b"; }
+
+.chat-expand::before {
+  content: "\f065"; }
+
+.chat-computer::before {
+  content: "\e4e5"; }
+
+.chat-xmark::before {
+  content: "\f00d"; }
+
+.chat-close::before {
+  content: "\f00d"; }
+
+.chat-multiply::before {
+  content: "\f00d"; }
+
+.chat-remove::before {
+  content: "\f00d"; }
+
+.chat-times::before {
+  content: "\f00d"; }
+
+.chat-arrows-up-down-left-right::before {
+  content: "\f047"; }
+
+.chat-arrows::before {
+  content: "\f047"; }
+
+.chat-chalkboard-user::before {
+  content: "\f51c"; }
+
+.chat-chalkboard-teacher::before {
+  content: "\f51c"; }
+
+.chat-peso-sign::before {
+  content: "\e222"; }
+
+.chat-building-shield::before {
+  content: "\e4d8"; }
+
+.chat-baby::before {
+  content: "\f77c"; }
+
+.chat-users-line::before {
+  content: "\e592"; }
+
+.chat-quote-left::before {
+  content: "\f10d"; }
+
+.chat-quote-left-alt::before {
+  content: "\f10d"; }
+
+.chat-tractor::before {
+  content: "\f722"; }
+
+.chat-trash-arrow-up::before {
+  content: "\f829"; }
+
+.chat-trash-restore::before {
+  content: "\f829"; }
+
+.chat-arrow-down-up-lock::before {
+  content: "\e4b0"; }
+
+.chat-lines-leaning::before {
+  content: "\e51e"; }
+
+.chat-ruler-combined::before {
+  content: "\f546"; }
+
+.chat-copyright::before {
+  content: "\f1f9"; }
+
+.chat-equals::before {
+  content: "\3d"; }
+
+.chat-blender::before {
+  content: "\f517"; }
+
+.chat-teeth::before {
+  content: "\f62e"; }
+
+.chat-shekel-sign::before {
+  content: "\f20b"; }
+
+.chat-ils::before {
+  content: "\f20b"; }
+
+.chat-shekel::before {
+  content: "\f20b"; }
+
+.chat-sheqel::before {
+  content: "\f20b"; }
+
+.chat-sheqel-sign::before {
+  content: "\f20b"; }
+
+.chat-map::before {
+  content: "\f279"; }
+
+.chat-rocket::before {
+  content: "\f135"; }
+
+.chat-photo-film::before {
+  content: "\f87c"; }
+
+.chat-photo-video::before {
+  content: "\f87c"; }
+
+.chat-folder-minus::before {
+  content: "\f65d"; }
+
+.chat-store::before {
+  content: "\f54e"; }
+
+.chat-arrow-trend-up::before {
+  content: "\e098"; }
+
+.chat-plug-circle-minus::before {
+  content: "\e55e"; }
+
+.chat-sign-hanging::before {
+  content: "\f4d9"; }
+
+.chat-sign::before {
+  content: "\f4d9"; }
+
+.chat-bezier-curve::before {
+  content: "\f55b"; }
+
+.chat-bell-slash::before {
+  content: "\f1f6"; }
+
+.chat-tablet::before {
+  content: "\f3fb"; }
+
+.chat-tablet-android::before {
+  content: "\f3fb"; }
+
+.chat-school-flag::before {
+  content: "\e56e"; }
+
+.chat-fill::before {
+  content: "\f575"; }
+
+.chat-angle-up::before {
+  content: "\f106"; }
+
+.chat-drumstick-bite::before {
+  content: "\f6d7"; }
+
+.chat-holly-berry::before {
+  content: "\f7aa"; }
+
+.chat-chevron-left::before {
+  content: "\f053"; }
+
+.chat-bacteria::before {
+  content: "\e059"; }
+
+.chat-hand-lizard::before {
+  content: "\f258"; }
+
+.chat-notdef::before {
+  content: "\e1fe"; }
+
+.chat-disease::before {
+  content: "\f7fa"; }
+
+.chat-briefcase-medical::before {
+  content: "\f469"; }
+
+.chat-genderless::before {
+  content: "\f22d"; }
+
+.chat-chevron-right::before {
+  content: "\f054"; }
+
+.chat-retweet::before {
+  content: "\f079"; }
+
+.chat-car-rear::before {
+  content: "\f5de"; }
+
+.chat-car-alt::before {
+  content: "\f5de"; }
+
+.chat-pump-soap::before {
+  content: "\e06b"; }
+
+.chat-video-slash::before {
+  content: "\f4e2"; }
+
+.chat-battery-quarter::before {
+  content: "\f243"; }
+
+.chat-battery-2::before {
+  content: "\f243"; }
+
+.chat-radio::before {
+  content: "\f8d7"; }
+
+.chat-baby-carriage::before {
+  content: "\f77d"; }
+
+.chat-carriage-baby::before {
+  content: "\f77d"; }
+
+.chat-traffic-light::before {
+  content: "\f637"; }
+
+.chat-thermometer::before {
+  content: "\f491"; }
+
+.chat-vr-cardboard::before {
+  content: "\f729"; }
+
+.chat-hand-middle-finger::before {
+  content: "\f806"; }
+
+.chat-percent::before {
+  content: "\25"; }
+
+.chat-percentage::before {
+  content: "\25"; }
+
+.chat-truck-moving::before {
+  content: "\f4df"; }
+
+.chat-glass-water-droplet::before {
+  content: "\e4f5"; }
+
+.chat-display::before {
+  content: "\e163"; }
+
+.chat-face-smile::before {
+  content: "\f118"; }
+
+.chat-smile::before {
+  content: "\f118"; }
+
+.chat-thumbtack::before {
+  content: "\f08d"; }
+
+.chat-thumb-tack::before {
+  content: "\f08d"; }
+
+.chat-trophy::before {
+  content: "\f091"; }
+
+.chat-person-praying::before {
+  content: "\f683"; }
+
+.chat-pray::before {
+  content: "\f683"; }
+
+.chat-hammer::before {
+  content: "\f6e3"; }
+
+.chat-hand-peace::before {
+  content: "\f25b"; }
+
+.chat-rotate::before {
+  content: "\f2f1"; }
+
+.chat-sync-alt::before {
+  content: "\f2f1"; }
+
+.chat-spinner::before {
+  content: "\f110"; }
+
+.chat-robot::before {
+  content: "\f544"; }
+
+.chat-peace::before {
+  content: "\f67c"; }
+
+.chat-gears::before {
+  content: "\f085"; }
+
+.chat-cogs::before {
+  content: "\f085"; }
+
+.chat-warehouse::before {
+  content: "\f494"; }
+
+.chat-arrow-up-right-dots::before {
+  content: "\e4b7"; }
+
+.chat-splotch::before {
+  content: "\f5bc"; }
+
+.chat-face-grin-hearts::before {
+  content: "\f584"; }
+
+.chat-grin-hearts::before {
+  content: "\f584"; }
+
+.chat-dice-four::before {
+  content: "\f524"; }
+
+.chat-sim-card::before {
+  content: "\f7c4"; }
+
+.chat-transgender::before {
+  content: "\f225"; }
+
+.chat-transgender-alt::before {
+  content: "\f225"; }
+
+.chat-mercury::before {
+  content: "\f223"; }
+
+.chat-arrow-turn-down::before {
+  content: "\f149"; }
+
+.chat-level-down::before {
+  content: "\f149"; }
+
+.chat-person-falling-burst::before {
+  content: "\e547"; }
+
+.chat-award::before {
+  content: "\f559"; }
+
+.chat-ticket-simple::before {
+  content: "\f3ff"; }
+
+.chat-ticket-alt::before {
+  content: "\f3ff"; }
+
+.chat-building::before {
+  content: "\f1ad"; }
+
+.chat-angles-left::before {
+  content: "\f100"; }
+
+.chat-angle-double-left::before {
+  content: "\f100"; }
+
+.chat-qrcode::before {
+  content: "\f029"; }
+
+.chat-clock-rotate-left::before {
+  content: "\f1da"; }
+
+.chat-history::before {
+  content: "\f1da"; }
+
+.chat-face-grin-beam-sweat::before {
+  content: "\f583"; }
+
+.chat-grin-beam-sweat::before {
+  content: "\f583"; }
+
+.chat-file-export::before {
+  content: "\f56e"; }
+
+.chat-arrow-right-from-file::before {
+  content: "\f56e"; }
+
+.chat-shield::before {
+  content: "\f132"; }
+
+.chat-shield-blank::before {
+  content: "\f132"; }
+
+.chat-arrow-up-short-wide::before {
+  content: "\f885"; }
+
+.chat-sort-amount-up-alt::before {
+  content: "\f885"; }
+
+.chat-house-medical::before {
+  content: "\e3b2"; }
+
+.chat-golf-ball-tee::before {
+  content: "\f450"; }
+
+.chat-golf-ball::before {
+  content: "\f450"; }
+
+.chat-circle-chevron-left::before {
+  content: "\f137"; }
+
+.chat-chevron-circle-left::before {
+  content: "\f137"; }
+
+.chat-house-chimney-window::before {
+  content: "\e00d"; }
+
+.chat-pen-nib::before {
+  content: "\f5ad"; }
+
+.chat-tent-arrow-turn-left::before {
+  content: "\e580"; }
+
+.chat-tents::before {
+  content: "\e582"; }
+
+.chat-wand-magic::before {
+  content: "\f0d0"; }
+
+.chat-magic::before {
+  content: "\f0d0"; }
+
+.chat-dog::before {
+  content: "\f6d3"; }
+
+.chat-carrot::before {
+  content: "\f787"; }
+
+.chat-moon::before {
+  content: "\f186"; }
+
+.chat-wine-glass-empty::before {
+  content: "\f5ce"; }
+
+.chat-wine-glass-alt::before {
+  content: "\f5ce"; }
+
+.chat-cheese::before {
+  content: "\f7ef"; }
+
+.chat-yin-yang::before {
+  content: "\f6ad"; }
+
+.chat-music::before {
+  content: "\f001"; }
+
+.chat-code-commit::before {
+  content: "\f386"; }
+
+.chat-temperature-low::before {
+  content: "\f76b"; }
+
+.chat-person-biking::before {
+  content: "\f84a"; }
+
+.chat-biking::before {
+  content: "\f84a"; }
+
+.chat-broom::before {
+  content: "\f51a"; }
+
+.chat-shield-heart::before {
+  content: "\e574"; }
+
+.chat-gopuram::before {
+  content: "\f664"; }
+
+.chat-earth-oceania::before {
+  content: "\e47b"; }
+
+.chat-globe-oceania::before {
+  content: "\e47b"; }
+
+.chat-square-xmark::before {
+  content: "\f2d3"; }
+
+.chat-times-square::before {
+  content: "\f2d3"; }
+
+.chat-xmark-square::before {
+  content: "\f2d3"; }
+
+.chat-hashtag::before {
+  content: "\23"; }
+
+.chat-up-right-and-down-left-from-center::before {
+  content: "\f424"; }
+
+.chat-expand-alt::before {
+  content: "\f424"; }
+
+.chat-oil-can::before {
+  content: "\f613"; }
+
+.chat-t::before {
+  content: "\54"; }
+
+.chat-hippo::before {
+  content: "\f6ed"; }
+
+.chat-chart-column::before {
+  content: "\e0e3"; }
+
+.chat-infinity::before {
+  content: "\f534"; }
+
+.chat-vial-circle-check::before {
+  content: "\e596"; }
+
+.chat-person-arrow-down-to-line::before {
+  content: "\e538"; }
+
+.chat-voicemail::before {
+  content: "\f897"; }
+
+.chat-fan::before {
+  content: "\f863"; }
+
+.chat-person-walking-luggage::before {
+  content: "\e554"; }
+
+.chat-up-down::before {
+  content: "\f338"; }
+
+.chat-arrows-alt-v::before {
+  content: "\f338"; }
+
+.chat-cloud-moon-rain::before {
+  content: "\f73c"; }
+
+.chat-calendar::before {
+  content: "\f133"; }
+
+.chat-trailer::before {
+  content: "\e041"; }
+
+.chat-bahai::before {
+  content: "\f666"; }
+
+.chat-haykal::before {
+  content: "\f666"; }
+
+.chat-sd-card::before {
+  content: "\f7c2"; }
+
+.chat-dragon::before {
+  content: "\f6d5"; }
+
+.chat-shoe-prints::before {
+  content: "\f54b"; }
+
+.chat-circle-plus::before {
+  content: "\f055"; }
+
+.chat-plus-circle::before {
+  content: "\f055"; }
+
+.chat-face-grin-tongue-wink::before {
+  content: "\f58b"; }
+
+.chat-grin-tongue-wink::before {
+  content: "\f58b"; }
+
+.chat-hand-holding::before {
+  content: "\f4bd"; }
+
+.chat-plug-circle-exclamation::before {
+  content: "\e55d"; }
+
+.chat-link-slash::before {
+  content: "\f127"; }
+
+.chat-chain-broken::before {
+  content: "\f127"; }
+
+.chat-chain-slash::before {
+  content: "\f127"; }
+
+.chat-unlink::before {
+  content: "\f127"; }
+
+.chat-clone::before {
+  content: "\f24d"; }
+
+.chat-person-walking-arrow-loop-left::before {
+  content: "\e551"; }
+
+.chat-arrow-up-z-a::before {
+  content: "\f882"; }
+
+.chat-sort-alpha-up-alt::before {
+  content: "\f882"; }
+
+.chat-fire-flame-curved::before {
+  content: "\f7e4"; }
+
+.chat-fire-alt::before {
+  content: "\f7e4"; }
+
+.chat-tornado::before {
+  content: "\f76f"; }
+
+.chat-file-circle-plus::before {
+  content: "\e494"; }
+
+.chat-book-quran::before {
+  content: "\f687"; }
+
+.chat-quran::before {
+  content: "\f687"; }
+
+.chat-anchor::before {
+  content: "\f13d"; }
+
+.chat-border-all::before {
+  content: "\f84c"; }
+
+.chat-face-angry::before {
+  content: "\f556"; }
+
+.chat-angry::before {
+  content: "\f556"; }
+
+.chat-cookie-bite::before {
+  content: "\f564"; }
+
+.chat-arrow-trend-down::before {
+  content: "\e097"; }
+
+.chat-rss::before {
+  content: "\f09e"; }
+
+.chat-feed::before {
+  content: "\f09e"; }
+
+.chat-draw-polygon::before {
+  content: "\f5ee"; }
+
+.chat-scale-balanced::before {
+  content: "\f24e"; }
+
+.chat-balance-scale::before {
+  content: "\f24e"; }
+
+.chat-gauge-simple-high::before {
+  content: "\f62a"; }
+
+.chat-tachometer::before {
+  content: "\f62a"; }
+
+.chat-tachometer-fast::before {
+  content: "\f62a"; }
+
+.chat-shower::before {
+  content: "\f2cc"; }
+
+.chat-desktop::before {
+  content: "\f390"; }
+
+.chat-desktop-alt::before {
+  content: "\f390"; }
+
+.chat-m::before {
+  content: "\4d"; }
+
+.chat-table-list::before {
+  content: "\f00b"; }
+
+.chat-th-list::before {
+  content: "\f00b"; }
+
+.chat-comment-sms::before {
+  content: "\f7cd"; }
+
+.chat-sms::before {
+  content: "\f7cd"; }
+
+.chat-book::before {
+  content: "\f02d"; }
+
+.chat-user-plus::before {
+  content: "\f234"; }
+
+.chat-check::before {
+  content: "\f00c"; }
+
+.chat-battery-three-quarters::before {
+  content: "\f241"; }
+
+.chat-battery-4::before {
+  content: "\f241"; }
+
+.chat-house-circle-check::before {
+  content: "\e509"; }
+
+.chat-angle-left::before {
+  content: "\f104"; }
+
+.chat-diagram-successor::before {
+  content: "\e47a"; }
+
+.chat-truck-arrow-right::before {
+  content: "\e58b"; }
+
+.chat-arrows-split-up-and-left::before {
+  content: "\e4bc"; }
+
+.chat-hand-fist::before {
+  content: "\f6de"; }
+
+.chat-fist-raised::before {
+  content: "\f6de"; }
+
+.chat-cloud-moon::before {
+  content: "\f6c3"; }
+
+.chat-briefcase::before {
+  content: "\f0b1"; }
+
+.chat-person-falling::before {
+  content: "\e546"; }
+
+.chat-image-portrait::before {
+  content: "\f3e0"; }
+
+.chat-portrait::before {
+  content: "\f3e0"; }
+
+.chat-user-tag::before {
+  content: "\f507"; }
+
+.chat-rug::before {
+  content: "\e569"; }
+
+.chat-earth-europe::before {
+  content: "\f7a2"; }
+
+.chat-globe-europe::before {
+  content: "\f7a2"; }
+
+.chat-cart-flatbed-suitcase::before {
+  content: "\f59d"; }
+
+.chat-luggage-cart::before {
+  content: "\f59d"; }
+
+.chat-rectangle-xmark::before {
+  content: "\f410"; }
+
+.chat-rectangle-times::before {
+  content: "\f410"; }
+
+.chat-times-rectangle::before {
+  content: "\f410"; }
+
+.chat-window-close::before {
+  content: "\f410"; }
+
+.chat-baht-sign::before {
+  content: "\e0ac"; }
+
+.chat-book-open::before {
+  content: "\f518"; }
+
+.chat-book-journal-whills::before {
+  content: "\f66a"; }
+
+.chat-journal-whills::before {
+  content: "\f66a"; }
+
+.chat-handcuffs::before {
+  content: "\e4f8"; }
+
+.chat-triangle-exclamation::before {
+  content: "\f071"; }
+
+.chat-exclamation-triangle::before {
+  content: "\f071"; }
+
+.chat-warning::before {
+  content: "\f071"; }
+
+.chat-database::before {
+  content: "\f1c0"; }
+
+.chat-share::before {
+  content: "\f064"; }
+
+.chat-mail-forward::before {
+  content: "\f064"; }
+
+.chat-bottle-droplet::before {
+  content: "\e4c4"; }
+
+.chat-mask-face::before {
+  content: "\e1d7"; }
+
+.chat-hill-rockslide::before {
+  content: "\e508"; }
+
+.chat-right-left::before {
+  content: "\f362"; }
+
+.chat-exchange-alt::before {
+  content: "\f362"; }
+
+.chat-paper-plane::before {
+  content: "\f1d8"; }
+
+.chat-road-circle-exclamation::before {
+  content: "\e565"; }
+
+.chat-dungeon::before {
+  content: "\f6d9"; }
+
+.chat-align-right::before {
+  content: "\f038"; }
+
+.chat-money-bill-1-wave::before {
+  content: "\f53b"; }
+
+.chat-money-bill-wave-alt::before {
+  content: "\f53b"; }
+
+.chat-life-ring::before {
+  content: "\f1cd"; }
+
+.chat-hands::before {
+  content: "\f2a7"; }
+
+.chat-sign-language::before {
+  content: "\f2a7"; }
+
+.chat-signing::before {
+  content: "\f2a7"; }
+
+.chat-calendar-day::before {
+  content: "\f783"; }
+
+.chat-water-ladder::before {
+  content: "\f5c5"; }
+
+.chat-ladder-water::before {
+  content: "\f5c5"; }
+
+.chat-swimming-pool::before {
+  content: "\f5c5"; }
+
+.chat-arrows-up-down::before {
+  content: "\f07d"; }
+
+.chat-arrows-v::before {
+  content: "\f07d"; }
+
+.chat-face-grimace::before {
+  content: "\f57f"; }
+
+.chat-grimace::before {
+  content: "\f57f"; }
+
+.chat-wheelchair-move::before {
+  content: "\e2ce"; }
+
+.chat-wheelchair-alt::before {
+  content: "\e2ce"; }
+
+.chat-turn-down::before {
+  content: "\f3be"; }
+
+.chat-level-down-alt::before {
+  content: "\f3be"; }
+
+.chat-person-walking-arrow-right::before {
+  content: "\e552"; }
+
+.chat-square-envelope::before {
+  content: "\f199"; }
+
+.chat-envelope-square::before {
+  content: "\f199"; }
+
+.chat-dice::before {
+  content: "\f522"; }
+
+.chat-bowling-ball::before {
+  content: "\f436"; }
+
+.chat-brain::before {
+  content: "\f5dc"; }
+
+.chat-bandage::before {
+  content: "\f462"; }
+
+.chat-band-aid::before {
+  content: "\f462"; }
+
+.chat-calendar-minus::before {
+  content: "\f272"; }
+
+.chat-circle-xmark::before {
+  content: "\f057"; }
+
+.chat-times-circle::before {
+  content: "\f057"; }
+
+.chat-xmark-circle::before {
+  content: "\f057"; }
+
+.chat-gifts::before {
+  content: "\f79c"; }
+
+.chat-hotel::before {
+  content: "\f594"; }
+
+.chat-earth-asia::before {
+  content: "\f57e"; }
+
+.chat-globe-asia::before {
+  content: "\f57e"; }
+
+.chat-id-card-clip::before {
+  content: "\f47f"; }
+
+.chat-id-card-alt::before {
+  content: "\f47f"; }
+
+.chat-magnifying-glass-plus::before {
+  content: "\f00e"; }
+
+.chat-search-plus::before {
+  content: "\f00e"; }
+
+.chat-thumbs-up::before {
+  content: "\f164"; }
+
+.chat-user-clock::before {
+  content: "\f4fd"; }
+
+.chat-hand-dots::before {
+  content: "\f461"; }
+
+.chat-allergies::before {
+  content: "\f461"; }
+
+.chat-file-invoice::before {
+  content: "\f570"; }
+
+.chat-window-minimize::before {
+  content: "\f2d1"; }
+
+.chat-mug-saucer::before {
+  content: "\f0f4"; }
+
+.chat-coffee::before {
+  content: "\f0f4"; }
+
+.chat-brush::before {
+  content: "\f55d"; }
+
+.chat-mask::before {
+  content: "\f6fa"; }
+
+.chat-magnifying-glass-minus::before {
+  content: "\f010"; }
+
+.chat-search-minus::before {
+  content: "\f010"; }
+
+.chat-ruler-vertical::before {
+  content: "\f548"; }
+
+.chat-user-large::before {
+  content: "\f406"; }
+
+.chat-user-alt::before {
+  content: "\f406"; }
+
+.chat-train-tram::before {
+  content: "\e5b4"; }
+
+.chat-user-nurse::before {
+  content: "\f82f"; }
+
+.chat-syringe::before {
+  content: "\f48e"; }
+
+.chat-cloud-sun::before {
+  content: "\f6c4"; }
+
+.chat-stopwatch-20::before {
+  content: "\e06f"; }
+
+.chat-square-full::before {
+  content: "\f45c"; }
+
+.chat-magnet::before {
+  content: "\f076"; }
+
+.chat-jar::before {
+  content: "\e516"; }
+
+.chat-note-sticky::before {
+  content: "\f249"; }
+
+.chat-sticky-note::before {
+  content: "\f249"; }
+
+.chat-bug-slash::before {
+  content: "\e490"; }
+
+.chat-arrow-up-from-water-pump::before {
+  content: "\e4b6"; }
+
+.chat-bone::before {
+  content: "\f5d7"; }
+
+.chat-table-cells-row-unlock::before {
+  content: "\e691"; }
+
+.chat-user-injured::before {
+  content: "\f728"; }
+
+.chat-face-sad-tear::before {
+  content: "\f5b4"; }
+
+.chat-sad-tear::before {
+  content: "\f5b4"; }
+
+.chat-plane::before {
+  content: "\f072"; }
+
+.chat-tent-arrows-down::before {
+  content: "\e581"; }
+
+.chat-exclamation::before {
+  content: "\21"; }
+
+.chat-arrows-spin::before {
+  content: "\e4bb"; }
+
+.chat-print::before {
+  content: "\f02f"; }
+
+.chat-turkish-lira-sign::before {
+  content: "\e2bb"; }
+
+.chat-try::before {
+  content: "\e2bb"; }
+
+.chat-turkish-lira::before {
+  content: "\e2bb"; }
+
+.chat-dollar-sign::before {
+  content: "\24"; }
+
+.chat-dollar::before {
+  content: "\24"; }
+
+.chat-usd::before {
+  content: "\24"; }
+
+.chat-x::before {
+  content: "\58"; }
+
+.chat-magnifying-glass-dollar::before {
+  content: "\f688"; }
+
+.chat-search-dollar::before {
+  content: "\f688"; }
+
+.chat-users-gear::before {
+  content: "\f509"; }
+
+.chat-users-cog::before {
+  content: "\f509"; }
+
+.chat-person-military-pointing::before {
+  content: "\e54a"; }
+
+.chat-building-columns::before {
+  content: "\f19c"; }
+
+.chat-bank::before {
+  content: "\f19c"; }
+
+.chat-institution::before {
+  content: "\f19c"; }
+
+.chat-museum::before {
+  content: "\f19c"; }
+
+.chat-university::before {
+  content: "\f19c"; }
+
+.chat-umbrella::before {
+  content: "\f0e9"; }
+
+.chat-trowel::before {
+  content: "\e589"; }
+
+.chat-d::before {
+  content: "\44"; }
+
+.chat-stapler::before {
+  content: "\e5af"; }
+
+.chat-masks-theater::before {
+  content: "\f630"; }
+
+.chat-theater-masks::before {
+  content: "\f630"; }
+
+.chat-kip-sign::before {
+  content: "\e1c4"; }
+
+.chat-hand-point-left::before {
+  content: "\f0a5"; }
+
+.chat-handshake-simple::before {
+  content: "\f4c6"; }
+
+.chat-handshake-alt::before {
+  content: "\f4c6"; }
+
+.chat-jet-fighter::before {
+  content: "\f0fb"; }
+
+.chat-fighter-jet::before {
+  content: "\f0fb"; }
+
+.chat-square-share-nodes::before {
+  content: "\f1e1"; }
+
+.chat-share-alt-square::before {
+  content: "\f1e1"; }
+
+.chat-barcode::before {
+  content: "\f02a"; }
+
+.chat-plus-minus::before {
+  content: "\e43c"; }
+
+.chat-video::before {
+  content: "\f03d"; }
+
+.chat-video-camera::before {
+  content: "\f03d"; }
+
+.chat-graduation-cap::before {
+  content: "\f19d"; }
+
+.chat-mortar-board::before {
+  content: "\f19d"; }
+
+.chat-hand-holding-medical::before {
+  content: "\e05c"; }
+
+.chat-person-circle-check::before {
+  content: "\e53e"; }
+
+.chat-turn-up::before {
+  content: "\f3bf"; }
+
+.chat-level-up-alt::before {
+  content: "\f3bf"; }
+
+.sr-only,
+.chat-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0; }
+
+.sr-only-focusable:not(:focus),
+.chat-sr-only-focusable:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0; }

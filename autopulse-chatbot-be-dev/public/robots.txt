@@ -1,0 +1,25 @@
+User-agent: *
+
+User-agent: Googlebot
+Allow: /
+Disallow: /vehicle
+Disallow: /vehicle-detail
+
+User-agent: AdsBot-Google
+Allow: /
+Disallow: /vehicle
+Disallow: /vehicle-detail
+
+
+User-agent: AdsBot-Google-Mobile
+Allow: /
+Disallow: /vehicle
+Disallow: /vehicle-detail
+
+
+
+
+Sitemap: https://www.autopulse.ai/sitemap.xml
+
+# Reference to ads.txt
+Ads: https://www.autopulse.ai/ads.txt
