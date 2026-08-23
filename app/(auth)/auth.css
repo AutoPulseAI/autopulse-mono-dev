@@ -1,0 +1,182 @@
+@import url('https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@100..900&display=swap');
+
+:root {
+  --f-gray: #e8eaed;  /* 232 234 237 */
+  --f-dark: #121417;  /* 18 20 23 */
+  --f-darkbg: #090a0b; /* 9 10 11 */
+  --f-text: #98a1ae;  /* 152 161 174 */
+  --f-text-dark: #515a67;  /* 81 90 103 */
+  --f-border: #1b1e22;
+  --f-border-light: color-mix(in srgb, var(--f-text), transparent 80%);
+  
+
+  --white: #ffffff;
+  --blue: #47a9ff;
+  --pink: #f0466c;
+
+  --rem0-25: 0.25rem;
+  --rem0-5: 0.5rem;
+  --rem0-75: 0.75rem;
+  --rem0-9: 0.9rem;
+  --rem1: 1rem;    
+  --rem2: 2rem;
+  --rem3: 3rem;
+  --rem4: 4rem;
+  --rem5: 5rem;
+  --rem6: 6rem;
+  --rem8: 8rem;
+  --rem1-2: 1.2rem;
+  --rem1-25: 1.25rem;
+  --rem1-5: 1.5rem;
+  --rem1-75: 1.75rem;
+  --rem1-8: 1.8rem;
+  --rem2-25: 2.25rem;
+  --rem2-5: 2.5rem;
+  --rem2-6: 2.6rem;
+}
+
+body {
+    font-family: "Kumbh Sans", sans-serif !important;
+    background-color: var(--f-darkbg);
+    font-size: var(--rem1);
+}
+
+a {
+    text-decoration: none;
+}
+
+.text-muted {
+  color: var(--f-text) !important;
+}
+
+.form-text {
+  font-size: var(--rem0-75);
+  line-height: var(--rem1);
+  display: block;
+}
+.form-check-input:checked {
+  background-color: var(--blue);
+  border-color: var(--blue);
+}
+.form-check-input:focus {
+  outline: 0;
+  box-shadow: none;
+}
+.front_oauth_form .form-check-input {
+  padding: var(--rem0-5);
+}
+.front_oauth_form .form-check .form-check-label {
+  color: var(--white);
+}
+
+/* Buttons */
+.btn-frontfilled {
+    color: var(--f-dark);
+    background-color: var(--f-gray);
+    border: 1px solid var(--f-gray);
+    border-radius: var(--rem0-25);
+    padding:var(--rem0-75) var(--rem1-5);
+    font-weight: 700;
+}
+.btn-frontfilled:hover {
+    color: var(--white);
+    border-color: var(--f-gray);
+}
+
+.text_blue, .text_blue:hover {
+  color: var(--blue);
+}
+
+/* Auth */
+.front_oauth_main {
+  /* background-image: url("../../public/Images/front/trust-bg.jpg"); */
+  background: linear-gradient(160deg, #00000c 0%, 47.9689%, #00002e 83.9377%, 92.9689%, #32000b 100%);
+  background-color: var(--f-dark);
+  background-position: center; 
+  background-repeat: no-repeat;
+  background-size: cover;
+  min-height: 100vh;
+}
+.front_oauth_main a {
+  color: var(--blue);
+}
+.front_oauth_content {
+  padding: var(--rem2); 
+  background-image: linear-gradient(359.79deg, #98a1ae00 6.49%, #1472ff14 104.86%);
+  border: 1px solid var(--f-border-light);
+  border-radius: var(--rem0-25);
+}
+.front_oauth_content h1 {
+  font-size: var(--rem1-5);
+    line-height: var(--rem2);
+    font-weight: 700;
+    color: var(--f-gray);
+    margin-bottom: var(--rem1);
+}
+
+.front_oauth_content img {
+  margin-bottom: var(--rem1-5);
+}
+.front_oauth_content p {
+  color: var(--f-gray);
+}
+
+
+.front_oauth_form .form-label {
+  color: var(--f-gray);
+  font-weight: 700;
+}
+.front_oauth_form h3 {
+  font-size: var(--rem1-5);
+  line-height: var(--rem2);
+  font-weight: 700;
+  margin-bottom: var(--rem2);
+  color: var(--f-gray);
+}
+.front_oauth_form input, .front_oauth_form textarea {
+  color: var(--f-text);
+  background-color: transparent;
+  font-size: var(--rem1);
+  line-height: var(--rem1-5);
+  padding: var(--rem0-75) var(--rem1);
+  border-color: var(--f-border-light);
+  border-radius: var(--rem0-25);
+  font-weight: 400;
+}
+.front_oauth_form .form-control:focus {
+  color: var(--f-text);
+  background-color: transparent;
+  border-color: var(--f-border-light);
+  box-shadow: none;
+}
+.front_oauth_form input::placeholder, .front_oauth_form textarea::placeholder {
+  color: var(--f-text-dark);
+  opacity: 1; /* Firefox */
+}
+
+.front_oauth_form input::-ms-input-placeholder, .front_oauth_form textarea::-ms-input-placeholder { /* Edge 12-18 */
+  color: var(--f-text-dark);
+}
+.front_oauth_form a {
+  color: var(--blue);
+}
+
+
+@media (max-width: 1024px){
+    body, .front_oauth_form input, .front_oauth_form textarea {
+        font-size: var(--rem0-9);
+        padding: var(--rem0-5) var(--rem0-75);
+    }
+    .front_oauth_content h1 {
+      font-size: var(--rem1-25);
+  }
+  .btn-frontfilled, .btn-link {
+    padding: var(--rem0-5) var(--rem1);
+    --bs-btn-font-size: var(--rem0-9);
+}
+}
+@media (max-width: 600px){
+  body {
+    padding: 0;
+  }
+}

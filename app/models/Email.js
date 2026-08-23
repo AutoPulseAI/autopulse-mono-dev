@@ -1,0 +1,56 @@
+// models/Email.js
+import mongoose from 'mongoose';
+
+const emailSchema = new mongoose.Schema({
+  sender: { type: String, required: true },
+  recipient: { type: String },
+  subject: { type: String},
+  message_id: { type: String},
+  parent_conversation: { type: String },
+  date: { type: Date },
+ 
+  body: { type: mongoose.Schema.Types.Mixed }, 
+
+  mail_content: { type: String },
+  dealer_id:{ type: String,required:true },
+  headers: { type: mongoose.Schema.Types.Mixed }, 
+ 
+  timestamp: { type: Date, default: Date.now },
+  
+  // Appointment notification fields
+  is_appointment_notification: { type: Boolean, default: false },
+  appointment_notification_type: { 
+    type: String, 
+    enum: ['booking', 'update', 'no-show'], 
+    default: null 
+  },
+  
+  // Additional fields for conversation threading
+  parent_message_id: { type: String },
+  communication_type: { 
+    type: String, 
+    enum: ['email', 'sms','note'], 
+    default: 'email' 
+  },
+  message_by: { 
+    type: mongoose.Schema.Types.ObjectId, ref: 'User' 
+  },
+  status: { 
+    type: String, 
+    enum: ['sent', 'received', 'failed', 'pending', 'incoming', 'draft'], 
+    default: 'sent' 
+  },
+  lead_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
+  is_note: { type: Boolean, default: false },
+  
+  // Read/Unread tracking
+  read: { type: Boolean, default: false },
+  read_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  read_at: { type: Date }
+
+},
+{ strict: false });
+
+const Email = mongoose.models.Email || mongoose.model('Email', emailSchema);
+
+export default Email;

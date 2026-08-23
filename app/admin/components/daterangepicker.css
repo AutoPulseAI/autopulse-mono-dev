@@ -1,0 +1,36 @@
+.daterangepicker {
+  position: absolute;
+  right: 0 !important;
+  left: auto !important;
+  inset: 0 auto auto 0;
+  transform: translate(0px, 32px);
+  z-index: 50;
+  min-width: 10rem;
+  margin: 0;
+  border: 1px solid #eff2f7;
+  background-color: var(--white);
+}
+.rdrInputRanges {
+  display: none !important;
+}
+.rdrDateRangePickerWrapper {
+  border-bottom: 1px solid #eff2f7;
+}
+.rdrMonth {
+  padding-bottom: 10px;
+}
+@media (max-width: 600px) {
+  .rdrDateRangePickerWrapper {
+    display: block;
+  }
+  .rdrDefinedRangesWrapper, .rdrCalendarWrapper {
+    width: 100%;
+  }
+  .rdrStaticRangeLabel {
+    padding: 8px 16px;
+  }
+  .rdrMonthAndYearWrapper {
+    height: 40px;
+    padding-top: 0;
+  }
+}
