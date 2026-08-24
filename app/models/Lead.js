@@ -9,6 +9,11 @@
       source: { type: String, default: 'email' }, // Default value for source
 
       dealer_id:{ type: String },
+      customer_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Customer',
+        default: null,
+      },
       statusChangedAt:{type:Date},
       
       // Staff assignment field
@@ -23,6 +28,8 @@
     },
     { strict: false, timestamps: true } // Automatically add createdAt and updatedAt fields
   );
+
+  leadSchema.index({ dealer_id: 1, customer_id: 1 });
 
   const Lead = mongoose.models.Lead || mongoose.model('Lead', leadSchema);
 
