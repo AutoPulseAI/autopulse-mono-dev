@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
+import Customer from "@models/Customer";
 import Email from "@models/Email";
 import Vehicle from "@models/Vehicle";
 import { Queue } from 'bullmq';
@@ -13,6 +15,7 @@ import jwt from 'jsonwebtoken';
 import Role from '@models/Role';
 import Permission from '@models/Permission';
 import moment from 'moment-timezone';
+import { isAuthorizedForDealer } from '@lib/customerListing';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -62,6 +65,7 @@ export async function GET(req) {
     
     // Get all filter parameters
     const dealerId = url.searchParams.get("dealer_id");
+    const customerId = url.searchParams.get("customer_id");
     const assignmentFilter = url.searchParams.get("assignment"); // 'my', 'all', 'unassigned'
     const name = url.searchParams.get("name");
     const email = url.searchParams.get("email");
@@ -84,8 +88,38 @@ export async function GET(req) {
       .concat(url.searchParams.getAll("stockNumber"))
       .concat(url.searchParams.getAll("stocknumber"));
 
+    let customerFilter = null;
+    if (customerId !== null) {
+      if (!dealerId || !mongoose.isValidObjectId(customerId)) {
+        return new Response(JSON.stringify({ message: "A valid dealer_id and customer_id are required" }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (!(await isAuthorizedForDealer(currentUser, dealerId))) {
+        return new Response(JSON.stringify({ message: "Forbidden" }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      customerFilter = await Customer.findOne({
+        _id: customerId,
+        dealer_id: String(dealerId),
+      }).select("_id").lean();
+
+      if (!customerFilter) {
+        return new Response(JSON.stringify({ message: "Customer not found" }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // Build query object
     let query = { dealer_id: dealerId };
+    if (customerFilter) query.customer_id = customerFilter._id;
     let unassignedFilter = null;
     let orConditions = []; // Collect all $or conditions to combine later
     

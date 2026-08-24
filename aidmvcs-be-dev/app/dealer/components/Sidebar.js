@@ -75,6 +75,14 @@ const Sidebar = ({ isOpen, onClose }) => {
           </li>
         )}
 
+        {(hasManageLeads || hasViewAssigned) && (
+          <li>
+            <Link href="/dealer/customers" className={getLinkClass("/dealer/customers")}>
+              <i className="fa-regular fa-users"></i>Customers
+            </Link>
+          </li>
+        )}
+
         {hasManageLeads && (
           <li>
             <Link href="/dealer/campaigns" className={getLinkClass("/dealer/campaigns")}>
