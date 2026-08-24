@@ -13,6 +13,7 @@ import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead,createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
+import { linkCustomerToLead } from '../lib/customerResolver.js';
 
 // import OpenAI from 'openai'; // Unused - kept for reference
 //import EmailConversations from 'app/agency/conversations/page.js';
@@ -303,7 +304,9 @@ export async function processSMS(job) {
 
       const savedLead = await newLead.save();
       leadId = savedLead._id;
-      
+
+      await linkCustomerToLead(savedLead, { source: 'sms' });
+
       statusJustChanged = true;
       recipientphone = lead_phone || sender;
       smsText = response ||Response|| 'Thank you for contacting us!';
@@ -674,4 +677,3 @@ async function callOllama( currentSMS) {
 
 
 // Example SMS sending function (to be implemented in lib/sms.js)
-

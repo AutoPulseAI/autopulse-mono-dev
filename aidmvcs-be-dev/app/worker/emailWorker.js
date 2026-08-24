@@ -12,6 +12,7 @@ import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead, createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
+import { linkCustomerToLead } from '../lib/customerResolver.js';
 
 // Connect to the database
 await dbConnect();
@@ -272,8 +273,11 @@ export async function processEmail(job) {
         user_language: user_language.toLowerCase()
       });
       baseParentId=null;
+
       const savedLead = await newLead.save();
       leadId = savedLead._id;
+
+      await linkCustomerToLead(savedLead, { source: 'email' });
       console.log('Lead created successfully:', newLead);
       recipientEmail = (lead_mail && lead_mail !== 'NA') ? lead_mail : sender;
       emailId = null; // No parent for a new email
@@ -722,4 +726,3 @@ function formatPhoneForTwilio(phone) {
     throw new Error('Invalid phone number format');
   }
 }
-

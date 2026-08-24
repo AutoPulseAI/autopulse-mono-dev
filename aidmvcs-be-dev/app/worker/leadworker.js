@@ -13,6 +13,7 @@ import FollowUpJob from '../models/FollowUpJob.js'; // Using same Email model fo
 import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead } from '../lib/appointmentReminderService.js';
+import { linkCustomerToLead } from '../lib/customerResolver.js';
 
 export const processLead = async (job) => {
   const { leadData, action, dealer,jobData } = job.data;
@@ -62,8 +63,11 @@ export const processLead = async (job) => {
         status: 'New',
         user_language: (user_language || leadData.user_language || 'english').toLowerCase()
       });
-      const savedLead =await lead.save();
+
+      const savedLead = await lead.save();
       leadId = savedLead._id;
+
+      await linkCustomerToLead(savedLead);
 
       // Update lead with Ollama response if needed
       const updates = {};
