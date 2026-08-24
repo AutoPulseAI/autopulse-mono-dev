@@ -79,9 +79,9 @@ class AdminDealerController extends Controller
                     $params = ['rows'=>0,'start'=>0,'source'=>$value];
                     try {
                         $vehiclelist = $this->marketcheckApiClient->getDealerSource($params);
-                        if ($vehiclelist['num_found'] == 0) {
-                            $fail('No Vehicle available for this ' . $value);
-                        }
+                        //if ($vehiclelist['num_found'] == 0) {
+                        //    $fail('No Vehicle available for this ' . $value);
+                        //}
                     } catch (\Exception $e) {
                         $fail('The source ' . $value . ' is not valid.');
                     }
@@ -192,9 +192,9 @@ class AdminDealerController extends Controller
                     $params = ['rows' => 0, 'start' => 0, 'source' => $value];
                     try {
                         $vehiclelist = $this->marketcheckApiClient->getDealerSource($params);
-                        if ($vehiclelist['num_found'] == 0) {
-                            $fail('No Vehicle available for this ' . $value);
-                        }
+                        //if ($vehiclelist['num_found'] == 0) {
+                        //    $fail('No Vehicle available for this ' . $value);
+                        //}
                     } catch (\Exception $e) {
                         $fail('The source ' . $value . ' is not valid.');
                     }

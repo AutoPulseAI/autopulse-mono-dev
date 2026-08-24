@@ -1,4 +1,6 @@
 @foreach($vehicle['listings'] as $key =>$item)
+
+    
     <div class="item">
         <div class="chatbx_car_card">
             @if(!empty($item['is_certified']))

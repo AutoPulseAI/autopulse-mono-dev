@@ -8,6 +8,20 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffd43b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-award"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
     </div>
     @endif
+    <div class="like_share_icon details_like_share">
+        <!-- Toggle Favorite Button -->
+        
+
+        <!-- Share Icon -->
+        <!-- <div class="share_icon">
+            @if(isset($item['id']) && isset($item['build']['year']) && isset($item['build']['make']) && isset($item['build']['model']) && isset($item['vin']))
+                <i class="fa-regular fa-share-from-square" onclick="showSharePopup(`{{ $item['id'] }}`, 
+                    `{{ route('vehicle_detail', ['make_model_year' => $item['build']['year'].'-'.$item['build']['make'].'-'.$item['build']['model'], 'vin' => $item['vin']]) }}`, 
+                    `{{ $item['build']['year'] ?? '' }} {{ $item['build']['make'] ?? '' }} {{ $item['build']['model'] ?? '' }}`)">
+                </i>
+            @endif
+        </div> -->
+    </div>
     @if(isset($item['build']['year']) && isset($item['build']['make']) && isset($item['build']['model']) && isset($item['vin']))
         <a class="btn_chatbx_card btn_expand" data_href="{{ route('vehicle_detail',['make_model_year' => $item['build']['make'].'-'.$item['build']['model'].'-'.$item['build']['year'], 'vin' => $item['vin']]) }}" data_attr= "{{ json_encode($item) }}">
        

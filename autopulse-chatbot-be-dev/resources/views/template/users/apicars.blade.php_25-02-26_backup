@@ -14,7 +14,8 @@
                         <a href="{{ route('vechile') }} "><small><i class="fa-sharp fa-solid fa-rotate-left me-2"></i>Reset</small></a>
                     </div>
                 </div>
-                <form action="" id="searchinput">
+                <form action="" id="searchinput" class=" ">
+                  
                     <div class="listing_filter_btns">
                         <div class="position-relative">
                             <input type="radio" class="btn-check" name="car_type" id="all" value="" @if(isset($input['car_type']) && ($input['car_type']=='')) checked @endif >
@@ -40,6 +41,34 @@
                             </li>                        
                         </ul>
                     </div>
+
+                 
+                    {{--<!--div class="listing_filter_form filterbox_bg">
+                        <div class="position-relative zip_rad_filter">
+                            <div class=" row g-xl-3 g-2">
+                                <div class="col col-md-6 col-6">
+                                    <label for="">ZIP</label>
+                                  
+                                    <input type="text" id="zip" name="zip" value="{{ $input['zip']??NULL }}" class="form-control required" placeholder="">
+                                    <input type="hidden" id="latitude" name="latitude"  value="{{ $input['latitude']??NULL }}" class="form-control" placeholder="">
+                                    <input type="hidden" id="longitude" name="longitude"  value="{{ $input['longitude']??NULL }}"  class="form-control" placeholder="">
+                                    <input type="hidden" id="country" name="country"  value="{{ $input['country']??NULL }}"  class="form-control" placeholder="">
+                                </div>
+                                <div class="col col-md-6 col-6">
+                                    <label for="">Radius (miles)</label>
+                                    <input type="text" id="radius" name="radius"   value="{{ $input['radius']??NULL }}" class="form-control required" placeholder="">
+                                </div>
+                                <div class="col col-md-12 col-12 mt-0">
+                                    <div class="position-relative text-center">
+                                        <button type="button" onclick="getlatlong()" class="btn btn_theme">Search</button>
+                                    </div>
+                                </div> 
+                            </div> 
+                        </div>
+                    </div--> --}}
+                    
+
+               
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterYear" role="button" aria-expanded="false" aria-controls="filterYear">
@@ -72,7 +101,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="listing_filter_check filterbox_bg">
+
+                     
+                        <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterPrice" role="button" aria-expanded="false" aria-controls="filterPrice">
                                 <span>Price ($)</span>
@@ -96,12 +127,18 @@
                                     <input type="text" id="maxPrice"  value="{{$slider2Value }}" placeholder="$150,000">
                                 </div>
                                 <div id="priceRange"></div>
+                                
                             </div>
+                            
                             <div class="position-relative text-center">
-                                <button type="button" data-action="makepricerange" class="btn_chatbx_fill">Apply</button>
+                                    <button type="button" data-action="makepricerange" class="btn_chatbx_fill">Apply</button>
                             </div>
+
                         </div>
+                        
                     </div>
+
+                 
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterMileage" role="button" aria-expanded="false" aria-controls="filterMileage">
@@ -134,6 +171,8 @@
                             </div>
                         </div>
                     </div>
+
+                   
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterMake" role="button" aria-expanded="false" aria-controls="filterMake">
@@ -161,10 +200,12 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
                             </ul>
                         </div>
                     </div>
+
                     @if(isset($input['make']) || isset($input['popular']))
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
@@ -193,11 +234,14 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
                     @endif
+
                   
                     @if(isset($input['model']) || isset($input['popular']))
                     <div class="listing_filter_check filterbox_bg">
@@ -227,12 +271,15 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
                     @endif
 
+                   
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterTrans" role="button" aria-expanded="false" aria-controls="filterTrans">
@@ -257,10 +304,14 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
+
+                   
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterengine" role="button" aria-expanded="false" aria-controls="filterengine">
@@ -288,10 +339,14 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
+
+                    
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterFuel" role="button" aria-expanded="false" aria-controls="filterFuel">
@@ -317,7 +372,9 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
@@ -347,10 +404,16 @@
                                         <span>{{$item['item']}}</span><span class="filter_count">{{$item['count']}}</span>
                                         </label>
                                     </li>
+                                
                                 @endforeach
+                            
                             </ul>
                         </div>
                     </div>
+
+                    
+
+                  
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterBody" role="button" aria-expanded="false" aria-controls="filterBody">
@@ -376,7 +439,8 @@
                                             $defaultImagePath = asset('assets/images/suv.png');
                                             $bodyTypeImagePath = $bodyType ? asset('assets/images/bodytype/' . $bodyType . '.png') : $defaultImagePath;
                                         @endphp
-                                    <li class="form-check">                                       
+                                    <li class="form-check">
+                                       
                                         <input
                                             class="form-check-input"
                                             @if(isset($input['body_type']) && in_array($itemName, $input['body_type'])) checked @endif
@@ -396,11 +460,18 @@
                                           
                                             <span class="filter_count">{{ $facetItem['count'] }}</span>
                                         </label>
+
                                         </li>
                                     @endforeach
+
+                                
                             </ul>
                         </div>
-                    </div>                    
+                    </div>
+
+                    
+
+                    
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterExterior" role="button" aria-expanded="false" aria-controls="filterExterior">
@@ -427,6 +498,8 @@
                             </ul>
                         </div>
                     </div>
+
+                   
                     <div class="listing_filter_check filterbox_bg">
                         <div class="position-relative">
                             <a class="collapse_head collapsed" data-bs-toggle="collapse" href="#filterInterior" role="button" aria-expanded="false" aria-controls="filterInterior">
@@ -449,10 +522,13 @@
                                         <span class="d-flex align-items-center"><span class="filter_colorSq " style="background-color:{{$item }}"></span>{{$key}}</span><!--span class="filter_count">4</span-->
                                     </label>
                                 </li>
-                                @endforeach                                
+                                @endforeach
+                                
                             </ul>
                         </div>
-                    </div>                  
+                    </div>
+                   
+                  
                     <input type="hidden" name="sort_by" id="sort_by" value="{{ $input['sort_by'] ?? ''}}" >
                     <input type="hidden" name="sort_order" id="sort_order" value="{{ $input['sort_order'] ?? ''}}">
                     <input type="hidden" name="price_range" id="price_range" value="{{ $input['price_range'] ?? ''}}">
@@ -460,6 +536,7 @@
                     <input type="hidden" name="year_range" id="year_range" value="{{ $input['year_range'] ?? ''}}">
                 </form>
             </div>
+
         </div>
     </div>
     <div class="col col-12 explore_list_col">
@@ -467,7 +544,8 @@
             <a class="listing_cars_back"><span class="head_icon me-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-left"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></span>Back</a>
         </div>
         <div class="position-relative explore_list pt-0">
-            <div class="position-relative listing_filter_sort">                           
+            <div class="position-relative listing_filter_sort">
+                           
             </div>
             <div class="position-relative">
                 <!-- Car Lists -->
@@ -496,10 +574,14 @@
                         </div>
                     </div>
                 </div>
+
             </div>
             <div class="position-relative pagination_main">
                 {{ $paginator->onEachSide(1)->links('pagination::bootstrap-4') }}
             </div>
         </div>
+
     </div>
 </div>
+
+<!-- Loader -->

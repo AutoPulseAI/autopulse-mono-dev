@@ -53,19 +53,19 @@
                                     @endif
                                     <div class="col-lg-6 col-md-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label>Adf Email</label>
+                                            <label>Adf Email <span class="text-danger">*</span></label>
                                             <input type="text" name="adf_mail" id="adf_mail" value="{{ old('adf_mail', $chatbotSetting->adf_mail ?? '') }}" required>
                                         </div>
                                     </div>
                                     <div class="col-lg-6 col-md-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label>What would you like to name your AI Bot ?</label>
+                                            <label>What would you like to name your AI Bot ? <span class="text-danger">*</span></label>
                                             <input type="text" name="chatbot_name" id="chatbot_name" value="{{ old('chatbot_name', $chatbotSetting->chatbot_name ?? '') }}" required>
                                         </div>
                                     </div>
                                     <div class="col-lg-6 col-md-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="username">Dealership Name</label>
+                                            <label for="username">Dealership Name <span class="text-danger">*</span></label>
                                             <input type="text" name="dealership_name" id="dealership_name" value="{{ old('dealership_name', $chatbotSetting->dealership_name ?? '') }}" required>
                                         </div>
                                     </div>
@@ -77,13 +77,13 @@
                                     </div>
                                     <div class="col-lg-6 col-md-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="username">Logo</label>
+                                            <label for="username">Logo <span class="text-danger">*</span></label>
                                             <input type="file" name="logo" id="logo" accept="image/*" class="input-file py-3">
                                         </div>
                                     </div>
                                     <div class="col-lg-6 col-md-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="username">Icon Logo</label>
+                                            <label for="username">Icon Logo <span class="text-danger">*</span></label>
                                             <input type="file" name="icon_logo" id="icon_logo" accept="image/*" class="input-file py-3">
                                         </div>
                                     </div>

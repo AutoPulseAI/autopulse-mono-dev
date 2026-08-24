@@ -1,16 +1,11 @@
 (function() {
     var $ap; // Scoped jQuery for widget only (set after load with noConflict)
-    document.addEventListener("DOMContentLoaded", function() {
+    // document.addEventListener("DOMContentLoaded", function() {
         // Create a container for the chatbot widget
         const widgetContainer = document.createElement('div');
         widgetContainer.id = 'chatbot-widget';
        
-        //window.baseurl  = 'http://127.0.0.1:8000/';
-        //window.apiurl  = 'http://127.0.0.1:8000/api/vehicle';
-        //https://chat.autopulse.ai/
         window.baseurl  = 'https://chat.autopulse.ai/';
-       
-       
         window.apiurl  = 'https://chat.autopulse.ai/api/vehicle';
         let userId = null;
         let context = ''; // Initially empty
@@ -71,7 +66,6 @@
                 }
                 
                 // Log the idle message activity
-                console.log('Idle message sent after user inactivity');
                 
                 // Optional: Track this as an automated message
                 const idleData = {
@@ -109,8 +103,8 @@
                     conversation_id: conversation_id,
                     conversationCount: conversationCount,
                     context: context,
-                    customerId: customerId,
-                    booking_id: booking_id,
+                    customerId: getCustomerIdFromStorage(),
+                    booking_id: getBookingIdFromStorage(),
                     booking: booking,
                     
                     // Chat history (get from DOM)
@@ -121,14 +115,6 @@
                     lastActivityTime: lastActivityTime,
                     idleMessageSent: idleMessageSent,
                     
-                    // UI state
-                    isChatOpen: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').style.display !== 'none' : false,
-                    isMinimized: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').classList.contains('collapsed') : false,
-                    isFullScreen: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').classList.contains('chat_open') : false,
-                    
                     // Timestamp
                     savedAt: Date.now(),
                     
@@ -138,7 +124,6 @@
                 };
                 
                 localStorage.setItem(chatStorageKey, JSON.stringify(chatState));
-                console.log('Chat state saved:', chatState);
             } catch (e) {
                 console.error('Failed to save chat state:', e);
             }
@@ -161,7 +146,6 @@
                 }
                 
                 chatStateLoaded = true;
-                console.log('Loading chat state:', chatState);
                 return chatState;
             } catch (e) {
                 console.error('Failed to load chat state:', e);
@@ -173,13 +157,18 @@
             if (!savedState) return;
             
             try {
-                // Restore chat variables
-                conversation_id = savedState.conversation_id || '';
-                conversationCount = savedState.conversationCount || 0;
-                context = savedState.context || '';
-                customerId = savedState.customerId || null;
-                booking_id = savedState.booking_id || null;
-                booking = savedState.booking || 0;
+                // Reset variables first
+                resetChatVariables();
+                
+                // Only restore if we have valid conversation data
+                if (savedState.conversation_id) {
+                    conversation_id = savedState.conversation_id;
+                    conversationCount = savedState.conversationCount || 0;
+                    context = savedState.context || '';
+                    customerId = savedState.customerId || null;
+                    booking_id = savedState.booking_id || null;
+                    booking = savedState.booking || 0;
+                }
                 
                 // Restore idle timer state
                 isFirstRequestMade = savedState.isFirstRequestMade || false;
@@ -220,7 +209,6 @@
                     }
                 }, 100);
                 
-                console.log('Chat state restored successfully');
             } catch (e) {
                 console.error('Failed to restore chat state:', e);
             }
@@ -234,14 +222,11 @@
             const messageElements = chatResponse.querySelectorAll('.chatbx_msg_l, .chatbx_msg_r');
             
             messageElements.forEach(element => {
-                // Skip static welcome message so it isn't saved/restored multiple times
-                if (element.querySelector && element.querySelector('.welcome_message')) {
-                    return;
-                }
                 const small = element.querySelector('small');
                 const timeSpan = element.querySelector('.ch_time');
                 
-                if (small) {
+                // Skip welcome messages to prevent duplication
+                if (small && !small.classList.contains('welcome_message')) {
                     messages.push({
                         content: small.innerHTML,
                         type: element.classList.contains('chatbx_msg_r') ? 'user' : 'bot',
@@ -259,14 +244,18 @@
             const chatResponse = shadowRoot.querySelector('.chatbx_response');
             if (!chatResponse || !messages.length) return;
             
-            // Clear and re-insert a single welcome message if present
-            const existingWelcome = chatResponse.querySelector('.welcome_message');
-            const welcomeHtml = existingWelcome ? existingWelcome.closest('.chatbx_msg_l').outerHTML : '';
-            chatResponse.innerHTML = welcomeHtml || '';
+            // Clear current history except welcome message
+            const welcomeMessage = chatResponse.querySelector('.welcome_message');
+            if (welcomeMessage) {
+                const welcomeHtml = welcomeMessage.closest('.chatbx_msg_l').outerHTML;
+                chatResponse.innerHTML = welcomeHtml;
+            } else {
+                chatResponse.innerHTML = '';
+            }
             
-            // Restore messages
+            // Restore messages, filtering out any welcome messages that might have been saved
             messages.forEach(message => {
-                if (message.fullHtml) {
+                if (message.fullHtml && !message.content.includes('welcome_message')) {
                     chatResponse.innerHTML += message.fullHtml;
                 }
             });
@@ -278,11 +267,46 @@
         function clearChatState() {
             if (chatStorageKey) {
                 localStorage.removeItem(chatStorageKey);
-                console.log('Chat state cleared');
+            }
+            
+            // Also clear customer registration data
+            localStorage.removeItem('chatbotRegisteredCustomer');
+            
+            // Reset all chat variables to initial state
+            resetChatVariables();
+            
+        }
+
+        function resetChatVariables() {
+            conversation_id = '';
+            conversationCount = 0;
+            context = '';
+            customerId = null;
+            booking_id = null;
+            booking = 0;
+            isFirstRequestMade = false;
+            lastActivityTime = Date.now();
+            idleMessageSent = false;
+        }
+
+        function cleanupDuplicateWelcomeMessages() {
+            const chatResponse = shadowRoot.querySelector('.chatbx_response');
+            if (!chatResponse) return;
+            
+            const welcomeMessages = chatResponse.querySelectorAll('.welcome_message');
+            if (welcomeMessages.length > 1) {
+                // Keep only the first welcome message, remove duplicates
+                for (let i = 1; i < welcomeMessages.length; i++) {
+                    const welcomeElement = welcomeMessages[i];
+                    const messageContainer = welcomeElement.closest('.chatbx_msg_l');
+                    if (messageContainer) {
+                        messageContainer.remove();
+                    }
+                }
             }
         }
 
-        // Phase 1: Minimal bubble-only styles (no external requests on page load)
+        // Phase 1: Minimal bubble-only styles – name tag above, icon inside circle, primary color from settings
         const bubbleOnlyStyles = `
             .ap-bubble-wrap {
                 position: fixed;
@@ -290,31 +314,71 @@
                 right: 0;
                 z-index: 99999;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                --ap-primary: #c41e3a;
             }
-            .ap-bubble-wrap .ap-bubble {
+            .ap-bubble-wrap a.ap-bubble {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                cursor: pointer;
+                border: none;
+            }
+            .ap-bubble-name-tag {
+                background: var(--ap-primary);
+                color: #fff;
+                font-size: 13px;
+                font-weight: 700;
+                padding: 6px 12px;
+                border-radius: 8px 8px 0 0;
+                margin-bottom: -1px;
+                position: relative;
+                white-space: nowrap;
+            }
+            .ap-bubble-name-tag::after {
+                content: '';
+                position: absolute;
+                left: 50%;
+                bottom: -6px;
+                transform: translateX(-50%);
+                border: 6px solid transparent;
+                border-top-color: var(--ap-primary);
+                border-bottom: none;
+            }
+            .ap-bubble-circle {
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                background: #fff;
+                border: 3px solid var(--ap-primary);
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 10px 16px;
-                background: #222732;
-                color: #fff;
-                border: none;
-                border-radius: 8px 8px 0 0;
-                cursor: pointer;
+                justify-content: center;
+                overflow: hidden;
                 box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
-                font-size: 14px;
             }
-            .ap-bubble-wrap .ap-bubble:hover { background: #2F3B48; }
-            .ap-bubble-wrap .ap-bubble-icon { width: 24px; height: 24px; flex-shrink: 0; }
+            .ap-bubble-circle img#ap-bubble-icon-img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+            .ap-bubble-circle #ap-bubble-icon-fallback {
+                width: 100%;
+                height: 100%;
+                background: #e5e7eb;
+                display: block;
+            }
         `;
 
         const bubbleOnlyHtml = `
-            <div class="ap-bubble-wrap">
+            <div class="ap-bubble-wrap" id="ap-bubble-wrap">
                 <a class="ap-bubble" id="ap-bubble-btn" href="javascript:void(0)">
-                    <span class="ap-bubble-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span class="ap-bubble-name-tag" id="ap-bubble-text">Chat</span>
+                    <span class="ap-bubble-circle">
+                        <img id="ap-bubble-icon-img" src="" alt="" style="display:none;">
+                        <span id="ap-bubble-icon-fallback"></span>
                     </span>
-                    <span class="ap-bubble-text">Chat</span>
                 </a>
             </div>
         `;
@@ -325,7 +389,7 @@
             @import url('https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css');
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
             @import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
-            @import url('${window.baseurl}assets/css/auto.css');
+            @import url('${window.baseurl}assets/css/auto.min.css');
             @import url('https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.5.0/nouislider.min.css');
             @import url('https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css');
           
@@ -336,7 +400,7 @@
                 right: 0;
                 width: 350px;
                 z-index: 99999;
-                font-family: Arial, sans-serif;
+                font-family: "Montserrat", sans-serif;
             }                
             .chatbx_main {
                 display: none;
@@ -347,14 +411,11 @@
                 overflow-y: auto;
                 max-height: 400px;
             }
-            .idle-message {
-                opacity: 0.8;
+            .idle-message small{
                 font-style: italic;
             }
             .idle-message small {
-                background-color: #f0f8ff !important;
-                border-left: 3px solid #4a90e2 !important;
-                color: #4a90e2 !important;
+
             }
             .chatboxAi .chatbx_head{
                 height: 50px;
@@ -368,9 +429,9 @@
                 <div class="chatboxO chatbox_ri">
                     <div class="banner_chatbox_o">
                         <a class="chatboxO_a_main">
-                            <span class="banner_chatbox_text" id="chatbot-name">Ask a question with </span>
+                            <span class="banner_chatbox_text" id="chatbot-name"></span>
                             <span class="banner_chatbox_icon">
-                                <img src="https://example.com/assets/images/chatbxSearch.png" id="chatbot-logo" alt="chat" class="img-fluid">
+                                <img src="" id="chatbot-logo" alt="chat" class="img-fluid" style="display: none;">
                             </span>
                         </a>
                     </div>
@@ -383,10 +444,11 @@
 
                     <div class="chatbx_primary">
                         <div class="chatbx_head">
-                            <img src="https://chat.autopulse.ai/assets/images/auto/auto_ai.png" alt="img" id="chatbot-auto-logo">
+                            <img src="" alt="img" id="chatbot-auto-logo">
                             <a class="full_screen ms-auto head_icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-maximize"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-                            </a>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-minimize"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path></svg>
+                                </a>
                             <a class="mini_a ms-1 head_icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-minus"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             </a>
@@ -404,7 +466,7 @@
                 </div>
             </div>
             <audio id="chatOpenSound" preload="auto">
-                <source src="https://chat.autopulse.ai/assets/mp3/bell.mp3" type="audio/mpeg">
+                <source src="${window.baseurl}assets/mp3/bell.ogg" type="audio/ogg">
             </audio>
         `;
 
@@ -478,7 +540,61 @@
             });
         }
 
+        // Phase 1: Load actual icon, name, and primary color from settings API only; no CSS/JS yet
+        function applyBubbleSettings(data) {
+            var wrap = shadowRoot.getElementById('ap-bubble-wrap');
+            var iconEl = shadowRoot.getElementById('ap-bubble-icon-img');
+            var fallbackEl = shadowRoot.getElementById('ap-bubble-icon-fallback');
+            var textEl = shadowRoot.getElementById('ap-bubble-text');
+            if (data && data.primary_color && wrap) {
+                wrap.style.setProperty('--ap-primary', data.primary_color);
+            }
+            var iconUrl = (data && (data.icon_logo || data.logo)) || (window.baseurl + 'assets/images/bot.webp');
+            var name = (data && data.chatbot_name) || 'Chat';
+            if (textEl) textEl.textContent = name;
+            if (iconEl) {
+                iconEl.src = iconUrl;
+                iconEl.alt = name;
+                iconEl.onload = function() {
+                    iconEl.style.display = 'block';
+                    if (fallbackEl) fallbackEl.style.display = 'none';
+                };
+                iconEl.onerror = function() {
+                    if (fallbackEl) fallbackEl.style.display = 'block';
+                };
+            }
+        }
+        if (userId) {
+            fetch(window.baseurl + 'api/chatbot-settings/' + userId)
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.success && res.data) applyBubbleSettings(res.data);
+                })
+                .catch(function() {
+                    applyBubbleSettings(null);
+                });
+        } else {
+            applyBubbleSettings(null);
+        }
+
         function showChatWindow() {
+            const isRegistered = checkCustomerRegistration();
+            if(!isRegistered) {
+                booking=0;
+                booking_id=null;
+                context='';
+                conversation_id='';
+                conversationCount=0;
+                customerId=null;
+                isFirstRequestMade=false;
+                lastActivityTime=Date.now();
+                idleMessageSent=false;
+                idleMessage='Do you have any further query?';
+                idleTimeoutDuration=60000;
+                idleTimer=null;
+                chatStateLoaded=false;
+                chatStorageKey=null;
+            }
             const showchatwindow = shadowRoot.getElementById('chatbx_body');
             showchatwindow.innerHTML = `
                 <div class="explore_main" id="explore_main"></div>
@@ -522,7 +638,7 @@
                 <div class="reg_form">
                     <div class="reg_top">
                         <div class="reg_bot">
-                            <img src="https://chat.autopulse.ai/assets/images/bot.png" alt="bot" class="img-fluid">
+                            <img src="${window.baseurl}assets/images/bot.webp" alt="bot" class="img-fluid">
                         </div>
                         <h5>Welcome!</h5>
                         <p><small>Register now to join the chat.</small></p>
@@ -539,16 +655,16 @@
                             </div>
                             <div class="col col-12">
                                 <input type="email" id="regEmail" class="form-control" placeholder="Email">
-                                <div id="emailError" class="error-message"></div>
+                                <div id="emailError" class="error-message text-danger text_xs"></div>
                             </div>
                             <div class="col col-12">
                                 <input type="tel" id="regPhone" class="form-control" placeholder="Phone Number">
-                                <div id="phoneError" class="error-message"></div>
+                                <div id="phoneError" class="error-message text-danger text_xs"></div>
                             </div>
                             <div class="col col-12">
-                                <small class="text-muted">Please provide either an email address or phone number.</small>
+                                <small class="text_xs" id="validation_msg">Please provide either an email address or phone number.</small>
                                 <button type="submit" class="btn_chatbx_fill w-100 mt-2 btn-submit">Submit</button>
-                                <button type="button" class="btn_chatbx_outline btn_chatbx_fill w-100 mt-2 btn-submit skip-btn">Skip</button>
+                                <button type="button" class="btn_chatbx_outline btn_chatbx_fill w-100 mt-1 btn-submit skip-btn">Skip</button>
                             </div>
                         </div>
                     </form>
@@ -559,53 +675,7 @@
             const style = document.createElement('style');
             style.textContent = `
                 .chatbxbody_reg {
-                    overflow-y: auto !important;
-                    max-height: calc(400px - 50px) !important;
-                    padding: 10px !important;
-                }
-                .reg_form {
-                    display: flex;
-                    flex-direction: column;
-                    height: 100%;
-                    max-height: 340px;
-                }
-                .reg_form .reg_top {
-                    flex-shrink: 0;
-                    margin-bottom: 15px;
-                }
-                .reg_form form {
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                }
-                .reg_form .row {
-                    flex: 1;
-                }
-                .reg_form .col:last-child {
-                    margin-top: auto;
-                    padding-top: 10px;
-                }
-                .error-message {
-                    color: #dc3545;
-                    font-size: 0.875rem;
-                    margin-top: 0.25rem;
-                    margin-bottom: 0.25rem;
-                    display: none;
-                    min-height: 0;
-                    transition: all 0.2s ease;
-                }
-                .error-message.show {
-                    display: block;
-                    min-height: 1em;
-                }
-                .form-control.error {
-                    border-color: #dc3545;
-                }
-                .reg_form .col {
-                    margin-bottom: 0.25rem;
-                }
-                .reg_form .btn_chatbx_fill {
-                    margin-top: 0.5rem !important;
+                    min-height: 500px;
                 }
             `;
             shadowRoot.appendChild(style);
@@ -640,8 +710,10 @@
                 
                 // Validate email and phone - require at least one
                 if (!email && !phone) {
-                    showError('emailError', 'Please provide either an email address or phone number');
-                    showError('phoneError', 'Please provide either an email address or phone number');
+                    showError('emailError', '');
+                    showError('phoneError', '');
+                    const validationMsg = shadowRoot.getElementById('validation_msg');
+                    validationMsg.classList.add('error');
                     isValid = false;
                 } else {
                     // If email is provided, validate it
@@ -686,7 +758,7 @@
                     
                     if (data.success && data.data) {
                         // Registration successful
-                        customerId = data.data.user_id;
+                        customerId = data.data.id;
                         
                         // Save customer data
                         const customerData = {
@@ -709,15 +781,7 @@
                         
                         shadowRoot.querySelector('.chatbx_body').classList.remove('chatbxbody_reg');
                         shadowRoot.querySelector('.chatbx_body').classList.add('chatbxbody_chat');
-                        showChatWindow();
-
-                        // Show success message
-                        // chatResponse.innerHTML = `
-                        //     <div class="chatbx_msg_l">
-                        //         <small>Thank you for registering! How can I help you today?</small>
-                        //     </div>
-                        // `;
-                        
+                        showChatWindow();                        
                         // enableChatInput();
                         initializeChatbot();
                         // startInactivityTimer();
@@ -742,7 +806,6 @@
                     isGuest: true
                 };
                 
-                //localStorage.setItem('chatbotRegisteredCustomer', JSON.stringify(customerData));
                 isCustomerRegistered = true;
                 
                 shadowRoot.querySelector('.chatbx_body').classList.remove('chatbxbody_reg');
@@ -787,6 +850,8 @@
                     element.classList.remove('show');
                     const inputField = element.previousElementSibling;
                     if (inputField) inputField.classList.remove('error');
+                    const validationMsg = shadowRoot.getElementById('validation_msg');
+                    validationMsg.classList.remove('error');
                 }
             }
             
@@ -812,6 +877,46 @@
             const phoneDigits = phone.replace(/\D/g, '');
             // Check if it's exactly 10 digits
             return phoneDigits.length === 10;
+        }
+
+        // Get customer ID from localStorage (not from variables)
+        function getCustomerIdFromStorage() {
+            const registeredCustomer = localStorage.getItem('chatbotRegisteredCustomer');
+            if (registeredCustomer) {
+                const customerData = JSON.parse(registeredCustomer);
+                return customerData.customerId || null;
+            }
+            return null;
+        }
+
+        // Get booking ID from localStorage (not from variables)
+        function getBookingIdFromStorage() {
+            if (!chatStorageKey) return null;
+            try {
+                const savedState = localStorage.getItem(chatStorageKey);
+                if (savedState) {
+                    const chatState = JSON.parse(savedState);
+                    return chatState.booking_id || null;
+                }
+            } catch (e) {
+                console.error('Failed to get booking_id from storage:', e);
+            }
+            return null;
+        }
+
+        // Get conversation ID from localStorage (not from variables)
+        function getConversationIdFromStorage() {
+            if (!chatStorageKey) return null;
+            try {
+                const savedState = localStorage.getItem(chatStorageKey);
+                if (savedState) {
+                    const chatState = JSON.parse(savedState);
+                    return chatState.conversation_id || null;
+                }
+            } catch (e) {
+                console.error('Failed to get conversation_id from storage:', e);
+            }
+            return null;
         }
 
         // Check if customer is already registered in localStorage
@@ -988,7 +1093,6 @@
 
         // Initialize chatbot functionality
         function initializeChatbot() {
-            //const userId = shadowRoot.querySelector('#chatbot-widget_user')?.getAttribute('data-user-id');
             const scripts = document.querySelectorAll('script[src*="shaddow.js"]');
             
             if (scripts.length > 0) {
@@ -1002,8 +1106,6 @@
                 console.error('User ID not found in the script URL.');
                 return;
             }
-            
-            console.log(userId);
             
             // Initialize chat storage
             initializeChatStorage(userId);
@@ -1021,7 +1123,6 @@
                 dealerId: userId,
                 hasStoredState: !!savedChatState
             };
-            console.log('Chat widget initialized on page:', pageInfo);
             
             // Fetch and apply chatbot settings
             if (userId) {
@@ -1030,10 +1131,11 @@
                     .then(data => {
                         if (data.success) {
                             const primarycolor = data.data.primary_color || '#000000';
-                            shadowRoot.querySelector('#chatbot-name').innerText = data.data.chatbot_name || 'Ask a question';
-                            shadowRoot.querySelector('#chatbot-logo').src = data.data.icon_logo || '/assets/images/chatbxSearch.png';
-                            shadowRoot.querySelector('#chatbot-auto-logo').src = data.data.logo || '/assets/images/chatbxSearch.png';
-                            const chatbotIconLogo = data.data.icon_logo || '/assets/images/chatbxSearch.png';
+                            shadowRoot.querySelector('#chatbot-name').innerText = data.data.chatbot_name || '';                        
+                            shadowRoot.querySelector('#chatbot-logo').src = data.data.icon_logo || `${window.baseurl}assets/images/bot.webp`;
+                            shadowRoot.querySelector('#chatbot-logo').style.display='block';
+                            shadowRoot.querySelector('#chatbot-auto-logo').src = data.data.logo || `${window.baseurl}assets/images/bot.webp`;
+                            const chatbotIconLogo = data.data.icon_logo || '';
                             const elements = shadowRoot.querySelectorAll('.welcome_message');
 
                             // Update welcome messages
@@ -1051,6 +1153,30 @@
                             }
 
                             // Inject dynamic styles for chatbot logo and primary color
+                            // Watch for new messages and add chatbot name automatically
+                            const chatbotName = data.data.dealership_name || 'AI';
+                            const chatContainer = shadowRoot.querySelector('.chatboxAi .chatbx_response');
+
+                            if (chatContainer) {
+                            // ✅ 1. Update existing messages immediately
+                            chatContainer.querySelectorAll('.chatbx_msg_l').forEach(el => {
+                                el.setAttribute('data-chatbot-name', chatbotName);
+                            });
+
+                            // ✅ 2. Watch for new messages and add chatbot name automatically
+                            const observer = new MutationObserver(mutations => {
+                                mutations.forEach(mutation => {
+                                    mutation.addedNodes.forEach(node => {
+                                        if (node.nodeType === 1 && node.classList.contains('chatbx_msg_l')) {
+                                            node.setAttribute('data-chatbot-name', chatbotName);
+                                        }
+                                    });
+                                });
+                            });
+
+                            observer.observe(chatContainer, { childList: true, subtree: true });
+                    }
+
                             const dynamicStyle = document.createElement('style');
                             dynamicStyle.innerHTML = `
                                 .chatboxAi .chatbx_response .chatbx_msg_l:before, 
@@ -1069,6 +1195,28 @@
                                     top: 0;
                                     border-radius: 4px 0 4px 4px;
                                 }
+                                .chatboxAi .chatbx_response .chatbx_msg_l::after {
+                                    content: attr(data-chatbot-name);
+                                    position: absolute;
+                                    left: 0;
+                                    top: -3px;
+                                    font-size: 11px;
+                                    color: var(--secondary);
+                                    display: block;
+                                }
+                                /* 👇 Show gray box until chatbot name is loaded */
+                                .chatboxAi .chatbx_response .chatbx_msg_l:not([data-chatbot-name])::after,
+                                .chatboxAi .chatbx_response .chatbx_msg_l[data-chatbot-name=""]::after {
+                                    content: '';
+                                    position: absolute;
+                                    left: 0;
+                                    top: 1px;
+                                    display: inline-block;
+                                    width: 50px;
+                                    height: 11px;
+                                    background-color: var(--gray);
+                                    border-radius: 3px;
+                                }
                             `;
                             shadowRoot.appendChild(dynamicStyle);
 
@@ -1076,7 +1224,7 @@
                             shadowRoot.host.style.setProperty('--chbxprimary', primarycolor);
                             let hexColor = primarycolor;
                             let rgbColor = hexToRgb(hexColor);
-                            let alpha = 0.1;
+                            let alpha = 0.09;
                             let rgbaColor = `rgba(${rgbColor}, ${alpha})`;
                             shadowRoot.host.style.setProperty('--chbxprimary-light', rgbaColor); 
                             shadowRoot.host.style.setProperty('--dark', '#222732');
@@ -1090,9 +1238,15 @@
                                 if (savedChatState) {
                                     restoreChatState(savedChatState);
                                 }
+                                // Clean up any duplicate welcome messages
+                                cleanupDuplicateWelcomeMessages();
                             }, 500); // Wait for DOM to be fully ready
                         } else {
                             console.error('Failed to load chatbot settings:', data.message);
+                            // Clean up any duplicate welcome messages even if settings failed
+                            setTimeout(() => {
+                                cleanupDuplicateWelcomeMessages();
+                            }, 500);
                         }
                     })
                     .catch(error => {
@@ -1200,7 +1354,7 @@
                         const data = {
                             'userId': userId, // Assuming userId is defined in your script
                             'conversion_id': conversation_id,
-                            'customerId':customerId,
+                            'customerId': getCustomerIdFromStorage(),
                         
                         };
                         closechaturl(data);
@@ -1233,26 +1387,36 @@
                 }
             });
             
-            shadowRoot.querySelector('.full_screen').addEventListener('click', function(e) {
+            // full_screen and mini_a
+            const fullScreenBtn = shadowRoot.querySelector('.full_screen');
+            const miniBtn = shadowRoot.querySelector('.mini_a');
+
+            // ✅ Remove previous listeners safely before re-binding
+            const newFullScreenBtn = fullScreenBtn.cloneNode(true);
+            fullScreenBtn.parentNode.replaceChild(newFullScreenBtn, fullScreenBtn);
+
+            const newMiniBtn = miniBtn.cloneNode(true);
+            miniBtn.parentNode.replaceChild(newMiniBtn, miniBtn);
+
+            // Re-select new elements
+            const freshFullScreenBtn = shadowRoot.querySelector('.full_screen');
+            const freshMiniBtn = shadowRoot.querySelector('.mini_a');
+
+            // ✅ Bind once
+            freshFullScreenBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 const chatbxMain = shadowRoot.querySelector('.chatbx_main');
-            
                 chatbxMain.classList.toggle('fullScreen');
                 chatbxListingCars();
                 chatbxListingFilter();
                 widgetChatbotHeight(shadowRoot);
                 initializeCarousel();
             });
-            
-            shadowRoot.querySelector('.mini_a').addEventListener('click', function(e) {
+
+            freshMiniBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 const chatbxMain = shadowRoot.querySelector('.chatbx_main');
-            
-                if (chatbxMain.classList.contains('chat_open')) {
-                    chatbxMain.classList.remove('chat_open');
-                } else {
-                    chatbxMain.classList.add('chat_open');
-                }
+                chatbxMain.classList.toggle('chat_open');
             });
             
             const sendBtn = shadowRoot.querySelector('#sendBtn');
@@ -1355,7 +1519,6 @@
                 // Mark that first request has been made and start idle timer
                 if (!isFirstRequestMade) {
                     isFirstRequestMade = true;
-                    console.log('First user request made, starting idle timer');
                 }
                 
                 // Track user activity and reset idle timer
@@ -1391,10 +1554,10 @@
                 const formData = {
                     request: userInput,
                     context: context || '',
-                    conversation_id: conversation_id || '',
+                    conversation_id: getConversationIdFromStorage() || conversation_id || '',
                     dealerId: userId,
-                    customerId: customerId,
-                    booking_id: booking_id,
+                    customerId: getCustomerIdFromStorage(),
+                    booking_id: getBookingIdFromStorage(),
                     // Customer information from forms
                     customer_name: customerInfo.firstName && customerInfo.lastName ? 
                         `${customerInfo.firstName} ${customerInfo.lastName}` : 
@@ -1445,10 +1608,9 @@
                         }
                        
                         if (html) {
-                            console.log('inside html');
                             let carhtml = `
                                 <div class="chatbx_car_card_main">
-                                    <div class="owl-carousel owl-theme chatbx_cars_slides circular_nav">${html}</div><br/>${message}
+                                    <div class="owl-carousel owl-theme chatbx_cars_slides circular_nav">${html}</div><div>${message}</div>
                                     <span class="ch_time">${getCurrentTime()}</span>
                                 </div>`;
                             shadowRoot.querySelector('.chatbx_response').innerHTML += carhtml;
@@ -1501,10 +1663,6 @@
             }
 
             function appendBookingPrompt(booking_enable=false) {
-                console.log('appendBookingPrompt called with booking_enable:', booking_enable);
-                console.log('shadowRoot available:', !!shadowRoot);
-                console.log('chatbx_response element:', !!shadowRoot.querySelector('.chatbx_response'));
-                
                 const uniquePromptId = `prompt_${Date.now()}`;
                 const bookingPrompt = `
                     <div class="chatbx_msg_l" id="${uniquePromptId}">
@@ -1527,7 +1685,6 @@
                 if (yesButton) {
 
                     yesButton.addEventListener('click', () => {
-                        console.log('Yes button clicked');
                         shadowRoot.querySelector('.chatbx_response').innerHTML += `<div class="chatbx_msg_r"><small>Yes</small><span class="ch_time">${getCurrentTime()}</span></div>`;
                         displayBookingForm(uniquePromptId);
 
@@ -1542,7 +1699,6 @@
                 // Handle "No" button click
                 if (noButton) {
                     noButton.addEventListener('click', () => {
-                        console.log('No button clicked');
                         shadowRoot.querySelector('.chatbx_response').innerHTML += `<div class="chatbx_msg_r"><small>No</small><span class="ch_time">${getCurrentTime()}</span></div>`;
 
                         // Disable buttons after click
@@ -1555,8 +1711,6 @@
 
                 // Auto-trigger "Yes" button if booking_enable is true
                 if (booking_enable === true) {
-                    console.log('Auto-triggering Yes button for booking');
-                    
                     // Add visual feedback that auto-booking is happening
                     const autoBookingMessage = `<div class="chatbx_msg_r"><small>Auto-scheduling appointment...</small><span class="ch_time">${getCurrentTime()}</span></div>`;
                     shadowRoot.querySelector('.chatbx_response').innerHTML += autoBookingMessage;
@@ -1572,7 +1726,6 @@
                         
                         // Directly call displayBookingForm instead of simulating button click
                         setTimeout(() => {
-                            console.log('Auto-triggering displayBookingForm');
                             try {
                                 displayBookingForm(uniquePromptId);
                             } catch (error) {
@@ -1618,24 +1771,19 @@
 
             // Test function for auto-booking
             window.testAutoBooking = function() {
-                console.log('Testing auto-booking functionality...');
                 appendBookingPrompt(true);
             };
 
             // Function to display the booking form
             function displayBookingForm(promptId) {
-                console.log('displayBookingForm called with promptId:', promptId);
                 const todayDate = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
                 const uniqueFormId = `bookingForm_${promptId}`; // Unique form ID based on prompt ID
                 const { customerId = '', email = '', phone = '', firstName = '', lastName = '' } = JSON.parse(localStorage.getItem('chatbotRegisteredCustomer') || '{}');
-
-                           
-
                 const bookingFormHtml = `
                     <div class="chatbx_msg_l" id="${uniqueFormId}" style="display:block;">
                         <div class="time_slot_bx">
                             <form id="form_${promptId}" class="bookingForm" data-prompt-id="${promptId}">
-                                <p><small>Please select slot</small></p>
+                                <p><small>Please <b>select slot</b></small></p>
                                 <div class="input-group align-items-center flex-nowrap mb-2">
                                     <input type="date" id="bookingDate_${promptId}" class="form-control" placeholder="Select date" min="${todayDate}">
                                     <input type="time" id="bookingTime_${promptId}" class="form-control" placeholder="Select time">
@@ -1652,9 +1800,6 @@
                         </div>
                     </div>`;
                 shadowRoot.querySelector('.chatbx_response').innerHTML += bookingFormHtml;
-                console.log('Booking form HTML added to DOM');
-                console.log('Form element found:', shadowRoot.querySelector(`#${uniqueFormId}`));
-                
                 shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
             
                 // Attach form submission handler via delegation
@@ -1748,96 +1893,93 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(bookingData),
                 })
-                    .then((response) => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then((data) => {
-                        if (data.success) {
-                            // Format the booking data for display
-                            const successMessageHtml = `
-                                <div class="chatbx_msg_r" style="display:block;">
-                                    <p class="mb-1"><small>Your appointment has been booked. Here are the details -</small></p>
-                                    <small class="text-start">
-                                        <b>Date: </b>${bookingData.booking_date}<br>
-                                        <b>Time: </b>${bookingData.booking_time}<br>
-                                        <b>Name: </b>${bookingData.name}<br>
-                                        <b>Email: </b>${bookingData.email}<br>
-                                        <b>Phone: </b>${bookingData.phone_number}<br>
-                                    </small>
-                                </div>`;
-                            booking =1;
-                            const existingCustomer = localStorage.getItem('chatbotRegisteredCustomer');
-        
-                        // Only store if we don't have customer data yet
-                            if (!existingCustomer && data.data) {
-                                // Get form values
-                                const name =bookingData.name
-                               
-                                const email = bookingData.email ;
-                                const phone = bookingData.phone_number ;
-                                customerId = data.data.user_id ;
-                                const customerData = {
-                                    customerId: data.data.user_id ,
-                                    name,
-                                    email,
-                                    phone,
-                                    booking_date: bookingData.booking_date,
-                                    booking_time: bookingData.booking_time,
-                                    registrationDate: new Date().toISOString(),
-                                    vehicleInfo: {
-                                        vin: data.data.vin || '',
-                                        make: data.data.make || '',
-                                        model: data.data.model || '',
-                                        year: data.data.year || ''
-                                    }
-                                };
-                                
-                                localStorage.setItem('chatbotRegisteredCustomer', JSON.stringify(customerData));
-                            }
-                            booking_id = data.data.id;
-                            // Disable the form
-                            disableForm(promptId);
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    if (data.success) {
+                        // Format the booking data for display
+                        const successMessageHtml = `
+                            <div class="chatbx_msg_r" style="display:block;">
+                                <p class="mb-1"><small>Your appointment has been booked. Here are the details -</small></p>
+                                <small class="text-start">
+                                    <b>Date: </b>${bookingData.booking_date}<br>
+                                    <b>Time: </b>${bookingData.booking_time}<br>
+                                    <b>Name: </b>${bookingData.name}<br>
+                                    <b>Email: </b>${bookingData.email}<br>
+                                    <b>Phone: </b>${bookingData.phone_number}<br>
+                                </small>
+                            </div>`;
+                        booking =1;
+                        const existingCustomer = localStorage.getItem('chatbotRegisteredCustomer');
+    
+                    // Only store if we don't have customer data yet
+                        if (!existingCustomer && data.data) {
+                            // Get form values
+                            const name =bookingData.name
                             
-            
-                            // Append the success message to the chat
-                            shadowRoot.querySelector('.chatbx_response').innerHTML += successMessageHtml;
-                            shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
-            
-                            console.log('Booking saved successfully:', data);
-                        } else {
-                            // Display failure message in chat
-                            const failureMessageHtml = `
-                                <div class="chatbx_msg_r">
-                                    <small>Failed to save booking. Please try again.</small>
-                                    <span class="ch_time">${getCurrentTime()}</span>
-                                </div>`;
-                            shadowRoot.querySelector('.chatbx_response').innerHTML += failureMessageHtml;
-                            shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
-            
-                            console.warn('API responded with failure:', data);
+                            const email = bookingData.email ;
+                            const phone = bookingData.phone_number ;
+                            customerId = data.data.user_id ;
+                            const customerData = {
+                                customerId: data.data.user_id ,
+                                name,
+                                email,
+                                phone,
+                                booking_date: bookingData.booking_date,
+                                booking_time: bookingData.booking_time,
+                                registrationDate: new Date().toISOString(),
+                                vehicleInfo: {
+                                    vin: data.data.vin || '',
+                                    make: data.data.make || '',
+                                    model: data.data.model || '',
+                                    year: data.data.year || ''
+                                }
+                            };
+                            
+                            localStorage.setItem('chatbotRegisteredCustomer', JSON.stringify(customerData));
                         }
-                    })
-                    .catch((error) => {
-                        console.error('Error saving booking:', error);
-            
-                        // Display error message in chat
-                        const errorMessageHtml = `
+                        booking_id = data.data.id;
+                        // Disable the form
+                        disableForm(promptId);
+                        
+        
+                        // Append the success message to the chat
+                        shadowRoot.querySelector('.chatbx_response').innerHTML += successMessageHtml;
+                        shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
+                    } else {
+                        // Display failure message in chat
+                        const failureMessageHtml = `
                             <div class="chatbx_msg_r">
-                                <small>An error occurred. Please try again later.</small>
+                                <small>Failed to save booking. Please try again.</small>
                                 <span class="ch_time">${getCurrentTime()}</span>
                             </div>`;
-                        shadowRoot.querySelector('.chatbx_response').innerHTML += errorMessageHtml;
+                        shadowRoot.querySelector('.chatbx_response').innerHTML += failureMessageHtml;
                         shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
-                    }) 
-                    .finally(() => {
-                        initializeCarousel();
-                        bindButtonListeners();
-                        loaderOverlay.style.display = "none";
-                    });;
-                   
+        
+                        console.warn('API responded with failure:', data);
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error saving booking:', error);
+        
+                    // Display error message in chat
+                    const errorMessageHtml = `
+                        <div class="chatbx_msg_r">
+                            <small>An error occurred. Please try again later.</small>
+                            <span class="ch_time">${getCurrentTime()}</span>
+                        </div>`;
+                    shadowRoot.querySelector('.chatbx_response').innerHTML += errorMessageHtml;
+                    shadowRoot.querySelector('.chatbx_window').scrollTop = shadowRoot.querySelector('.chatbx_window').scrollHeight;
+                }) 
+                .finally(() => {
+                    initializeCarousel();
+                    bindButtonListeners();
+                    loaderOverlay.style.display = "none";
+                });                   
             }
 
             function disableForm(promptId) {
@@ -1861,10 +2003,8 @@
             
             function handleapicall(button){
                 apiurl  = ($ap(button).attr('data_href'));
-               
                 shadowRoot.apiresult(apiurl);
                 clickdata ={'conversion_id':conversation_id,action:'Explore_more','otherdetail':apiurl,'source':userId };
-
                 triggerClickButton(clickdata);
             }
             
@@ -1877,11 +2017,9 @@
                         console.error('Failed to parse response as JSON:', e);
                         return '<p>' + response.rawoutput + '</p>';
                     }
-            
                     if (!data || typeof data !== 'object') {
                         return '<p>' + response.rawoutput + '</p>';
-                    }
-            
+                    }            
                     let formattedResponse = '';
                     if (data.heading) formattedResponse += `<h5>${data.heading}</h5>`;
                     if (data.subheading) formattedResponse += `<h6>${data.subheading}</h6>`;
@@ -1951,9 +2089,11 @@
                     const windowWidth = window.innerWidth;
                     let options = {
                         items: 1,
-                        loop: true,
+                        loop: false,
                         margin: 10,
                         dots: false,
+                        mouseDrag: false,
+                        touchDrag: false,
                         nav: true,
                         navText: [
                             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-left"><polyline points="15 18 9 12 15 6"></polyline></svg>',
@@ -1998,26 +2138,20 @@
                     .then(response => response.json())
                     .then(data => {
                         let vehicle = data.listings[0];
-                        console.log(vehicle);
                     // Container for vehicle details
                             const container = shadowRoot.getElementById('chatbx_car_details');
                             if (vehicle && vehicle.extra && vehicle.extra.high_value_features) {
-                                // Iterate over the keys of high_value_features (e.g., "AT", "STANDARD")
-                               
-                                    // Iterate over each feature in the array associated with the key
-                                    vehicle.extra.high_value_features.forEach(item => {
-                                        let category = item;
-                                        let description = item;
-                            
-                                        // Initialize the category array if it doesn't exist
-                                        if (!organizedFeatures[category]) {
-                                            organizedFeatures[category] = [];
-                                        }
-                            
-                                        // Append the description to the category array
-                                        organizedFeatures[category].push(description);
-                                    });
-                              
+                                // Iterate over each feature in the array associated with the key
+                                vehicle.extra.high_value_features.forEach(item => {
+                                    let category = item;
+                                    let description = item;
+                                    // Initialize the category array if it doesn't exist
+                                    if (!organizedFeatures[category]) {
+                                        organizedFeatures[category] = [];
+                                    }
+                                    // Append the description to the category array
+                                    organizedFeatures[category].push(description);
+                                });
                             }
                         
                             // Extract data from the vehicle object
@@ -2026,17 +2160,13 @@
                             const location = `${vehicle?.['dealer']?.['city'] ?? ''}, ${vehicle?.['dealer']?.['state'] ?? ''}`;
                             const price = vehicle?.['price'] ? `$${Math.floor(vehicle['price']).toLocaleString('en-US')}` : 'N/A';
                             let certifiedBadge ='';
-                            if (vehicle.is_certified) {
-                            
+                            if (vehicle.is_certified) {                            
                                 certifiedBadge = ` <div class="certified_badge">
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffd43b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-award"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
-                                                        </div>`;
-                                
+                                                        </div>`;                                
                             }
 
-                           const { customerId = '', email = '', phone = '', firstName = '', lastName = '' } = JSON.parse(localStorage.getItem('chatbotRegisteredCustomer') || '{}');
-
-                           
+                            const { customerId = '', email = '', phone = '', firstName = '', lastName = '' } = JSON.parse(localStorage.getItem('chatbotRegisteredCustomer') || '{}');
                             const vehicleDetailsHtml = `
                             <div class="position-relative chatbx_req_info_inn">
                                 <div class="chatbx_subhead position-relative py-0 px-0">
@@ -2050,21 +2180,10 @@
                                         <div class="chatbx_detail_full">
                                             <div class="position-relative car_details_slider">
                                                 <div class="main_slider">${certifiedBadge}
-                                                    
-                                                    <!-- Favorite and share -->
-                                                    <!-- <div class="like_share_icon details_like_share">
-                                                        <div class="form-check fevCheck">
-                                                            <input type="checkbox" class="form-check-input" id="btn-check_${vehicle['vin']}" onclick="makeFavourite(this,'${vehicle['id']}','${vehicle['vin']}','makeFavouiteRoute')">
-                                                            <label class="form-check-label" for="btn-check_${vehicle['vin']}"><i class="far fa-heart" id="heart-icon_${vehicle['vin']}"></i></label>
-                                                        </div>
-                                                        <div class="share_icon">
-                                                            <i class="fa-regular fa-share-from-square" onclick="showSharePopup('${vehicle['id']}', '${vehicle['vdp_url']}', '${title}')"></i>
-                                                        </div>
-                                                    </div> -->
                                                     <!-- All photos -->
-                                                    <div class="view_all_photos">
+                                                     <!-- <div class="view_all_photos">
                                                         <a class="all_photos">All Photos</a>
-                                                    </div>
+                                                    </div> -->
                                                     <div id="big" class="owl-carousel owl-theme">
                                                         ${vehicle['media']['photo_links'].map(photo => `
                                                         <div class="item">
@@ -2404,11 +2523,11 @@
                                                         ${Object.entries(organizedFeatures ?? {}).map(([key, value], i) => `
                                                         <div class="accordion-item">
                                                             <h2 class="accordion-header" id="${key}-heading">
-                                                                <button class="accordion-button ${i !== 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${key.replace(/&|\s/g, '_')}" aria-expanded="${i === 0}" aria-controls="${key.replace(/&|\s/g, '_')}">
+                                                                <button class="accordion-button ${i !== 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${key.replace(/[^a-zA-Z0-9_]/g, '_')}" aria-expanded="${i === 0}" aria-controls="${key.replace(/[^a-zA-Z0-9_]/g, '_')}">
                                                                     ${key}
                                                                 </button>
                                                             </h2>
-                                                            <div id="${key.replace(/&|\s/g, '_')}" class="accordion-collapse collapse ${i === 0 ? 'show' : ''}" aria-labelledby="${key}-heading" data-bs-parent="#detailedFeatures">
+                                                            <div id="${key.replace(/[^a-zA-Z0-9_]/g, '_')}" class="accordion-collapse collapse ${i === 0 ? 'show' : ''}" aria-labelledby="${key}-heading" data-bs-parent="#detailedFeatures">
                                                                 <div class="accordion-body">
                                                                     <div class="features_list">
                                                                         <ul class="row">
@@ -2543,7 +2662,7 @@
                 .then(response => response.json()) // Parse the JSON response
                 .then(data => {
                     // Handle the response from the API
-                    console.log('Success:', data);
+                    // console.log('Success:', data);
                 })
                 .catch((error) => {
                     // Handle errors in the request
@@ -2765,28 +2884,20 @@
                     event.preventDefault();
                     event.returnValue = '';
                 }
-            
-                // Using navigator.sendBeacon for reliable API call on unload
-               
             });
-            function closechaturl(data){
-                
+            function closechaturl(data){                
                 // Define the API endpoint
-                const url = baseurl + 'api/close_conversion';
-            
+                const url = baseurl + 'api/close_conversion';            
                 const params = new URLSearchParams(data).toString();
-                navigator.sendBeacon(`${url}?${params}`);
-                
+                navigator.sendBeacon(`${url}?${params}`);                
             }
            
             window.savereadfrequest = function(shadowRoot) {
                 const formElement = shadowRoot.getElementById('validaterequest'); // Target only the request form
-            
                 // First, validate the specific form fields in "validaterequest"
                 if (!validateForm(formElement, shadowRoot)) {
                     return; // If validation fails, stop the form submission
-                }
-            
+                }            
                 // Get zip code from the specific form and fetch lat/long, city, country using Google API
                 const zipCode = formElement.querySelector('#request_zip_code').value;
                 if (zipCode) {
@@ -2810,7 +2921,6 @@
             function validateForm(formElement, shadowRoot) {
                 let isValid = true;
                 const requiredFields = formElement.querySelectorAll('.required'); // Target only the fields in the specific form
-            
                 requiredFields.forEach(field => {
                     if (field.value.trim() === '') {
                         isValid = false;
@@ -2819,7 +2929,6 @@
                         field.classList.remove('is-invalid'); // Remove class if valid
                     }
                 });
-            
                 return isValid;
             }
             
@@ -2827,8 +2936,7 @@
                 const loaderOverlay = shadowRoot.getElementById('widget_loader-overlay');
                 loaderOverlay.style.display = "flex";
                 const formData = new FormData(formElement); // Only submit the specific form's data
-                const url = window.baseurl + 'api/vehicel/adfMail'; // Ensure baseurl is defined
-            
+                const url = window.baseurl + 'api/vehicel/adfMail'; // Ensure baseurl is defined            
                 fetch(url, {
                     method: 'POST',
                     body: formData
@@ -2837,9 +2945,7 @@
                 .then(data => {
                     loaderOverlay.style.display = "none";
                     formElement.style.display = 'none';
-
-                    const existingCustomer = localStorage.getItem('chatbotRegisteredCustomer');
-        
+                    const existingCustomer = localStorage.getItem('chatbotRegisteredCustomer');        
                         // Only store if we don't have customer data yet
                     if (!existingCustomer && data.data) {
                         // Get form values
@@ -2861,11 +2967,9 @@
                                 model: data.data.model || '',
                                 year: data.data.year || ''
                             }
-                        };
-                        
+                        };                        
                         localStorage.setItem('chatbotRegisteredCustomer', JSON.stringify(customerData));
-                    }
-            
+                    }            
                     // Show success message below the form
                     showSuccessMessage("Your request has been submitted successfully.", formElement, shadowRoot);
                 })
@@ -2873,21 +2977,17 @@
                     console.error('Error submitting form:', error);
                     loaderOverlay.style.display = "none";
                 });
-                vin = shadowRoot.getElementById('request_vin');
-               
+                vin = shadowRoot.getElementById('request_vin');               
                 let data ={'conversion_id':conversation_id,action:'Vin_Reqeust_form','source':userId,'vin':vin};
-                triggerClickButton(data);
-               
+                triggerClickButton(data);               
             }
             
             function showSuccessMessage(message, formElement, shadowRoot) {
                 const messageContainer = document.createElement('div');
                 messageContainer.classList.add('alert', 'alert-success'); // Bootstrap classes for success message
-                messageContainer.textContent = message;
-                
+                messageContainer.textContent = message;                
                 // Insert the message after the formElement
-                formElement.parentNode.insertBefore(messageContainer, formElement.nextSibling);
-            
+                formElement.parentNode.insertBefore(messageContainer, formElement.nextSibling);            
                 // Optionally remove the message after some time
                 setTimeout(() => {
                     messageContainer.remove();
@@ -2898,7 +2998,6 @@
             function getLatLong(zipCode, callback) {
                 const apiKey = 'AIzaSyBaVOhSLQc7xrVpxgbuh-jJbxRLbJFqDiA';
                 const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${zipCode}&key=${apiKey}`;
-    
                 fetch(geocodeUrl)
                     .then(response => response.json())
                     .then(data => {
@@ -2920,28 +3019,24 @@
             shadowRoot.addEventListener('click', function(event) {
                 if (event.target.classList.contains('copyButton')) {
                     // Get the text to copy from the previous sibling span
-                    const textToCopy = event.target.previousElementSibling.textContent;
-            
+                    const textToCopy = event.target.previousElementSibling.textContent;            
                     // Create a temporary input to hold the text for copying
                     const tempInput = document.createElement("input");
                     shadowRoot.appendChild(tempInput);
                     tempInput.value = textToCopy;
                     tempInput.select();
                     document.execCommand("copy");
-                    shadowRoot.removeChild(tempInput);
-            
+                    shadowRoot.removeChild(tempInput);            
                     // Show feedback message
                     const message = document.createElement('small');
                     message.id = 'message';
                     message.classList.add('text-success', 'm-0', 'd-block');
-                    message.textContent = "Copied to clipboard";
-            
+                    message.textContent = "Copied to clipboard";            
                     // Remove any existing message element in the same container to avoid duplicates
                     const existingMessage = event.target.parentNode.querySelector('#message');
                     if (existingMessage) {
                         existingMessage.remove();
-                    }
-            
+                    }            
                     // Insert the <small> element after the copy button
                     event.target.parentNode.appendChild(message);
                     let data = {
@@ -2964,22 +3059,19 @@
                 messageContainer.textContent = message;
                 formElement.parentNode.insertBefore(messageContainer, formElement.nextSibling);
                 setTimeout(() => messageContainer.remove(), 5000);
-            }
+            }        
 
-            
             function chatbxListingFilter() {
                 // Handle filtering for listing cars
-                console.log('Listing filter applied');
+                // console.log('Listing filter applied');
             }
 
             function handleCloseButtonClick(shadowRoot) {
                 const chatboxMain = shadowRoot.querySelector('.chatbx_main');
-                const chatboxFullDetail = shadowRoot.querySelector('.chatbx_fulldetail_info');
-            
+                const chatboxFullDetail = shadowRoot.querySelector('.chatbx_fulldetail_info');            
                 if (chatboxMain) {
                     chatboxMain.classList.remove('collapsed');
-                }
-            
+                }            
                 if (chatboxFullDetail) {
                     chatboxFullDetail.classList.remove('chatbxdetails_show');
                 }
@@ -2987,22 +3079,18 @@
 
             function resetchatbx(shadowRoot) {
                 // Reset overflow of the parent document's body (since shadowRoot doesn't control the parent body)
-                document.body.style.overflow = 'unset';
-            
+                document.body.style.overflow = 'unset';            
                 // Access elements inside the shadow DOM and modify classes
                 const chatboxMain = shadowRoot.querySelector('.chatbx_main');
                 const chatboxReqInfo = shadowRoot.querySelector('.chatbx_req_info');
-                const chatboxFullDetail = shadowRoot.querySelector('.chatbx_fulldetail_info');
-            
+                const chatboxFullDetail = shadowRoot.querySelector('.chatbx_fulldetail_info');            
                 if (chatboxMain) {
                     chatboxMain.classList.remove('collapsed');
                     chatboxMain.classList.remove('fullScreen');
-                }
-            
+                }            
                 if (chatboxReqInfo) {
                     chatboxReqInfo.classList.remove('chatbxreq_show');
-                }
-            
+                }            
                 if (chatboxFullDetail) {
                     chatboxFullDetail.classList.remove('chatbxdetails_show');
                 }
@@ -3024,7 +3112,6 @@
                 if (event.target.id === 'sorting') {
                     let previousSortingValue = shadowRoot.querySelector('#sorting').value;
                     const currentSortingValue = event.target.value;
-
                     if (currentSortingValue !== previousSortingValue) {
                         previousSortingValue = currentSortingValue;
                         validateAndSubmitForm();
@@ -3040,8 +3127,7 @@
                 }
                 if (event.target.matches('.listing_filter_collapse')) {
                     var chatbxWindow = shadowRoot.querySelector('.explore_main');
-                    if (chatbxWindow) {
-                        
+                    if (chatbxWindow) {                        
                         chatbxWindow.classList.toggle('listingFilterOpen');
                     }
                     chatbxListingFilter();
@@ -3094,11 +3180,9 @@
             const collapsibleElements = shadowRoot.querySelectorAll('[data-bs-toggle="collapse"]');
             collapsibleElements.forEach(element => {
                 element.addEventListener('click', function(event) {
-                    event.preventDefault(); // Prevent default link behavior
-        
+                    event.preventDefault(); // Prevent default link behavior        
                     const targetId = element.getAttribute('href') || element.getAttribute('data-bs-target');
-                    const collapseElement = shadowRoot.querySelector(targetId);
-        
+                    const collapseElement = shadowRoot.querySelector(targetId);        
                     if (collapseElement) {
                         // Toggle the collapse state
                         if (collapseElement.classList.contains('show')) {
@@ -3116,8 +3200,7 @@
         function chatbxFulldetails(shadowRoot) {
             const chatbxFulldetailInfo = shadowRoot.querySelector('.chatbx_fulldetail_info');
             const chatbxSubhead = shadowRoot.querySelector('.chatbx_fulldetail_info .chatbx_subhead');
-            const chatbxDetailFull = shadowRoot.querySelector('.chatbx_detail_full');
-        
+            const chatbxDetailFull = shadowRoot.querySelector('.chatbx_detail_full');        
             if (chatbxFulldetailInfo && chatbxSubhead && chatbxDetailFull) {
                 const chatbxFulldetailsHeight = chatbxFulldetailInfo.clientHeight - chatbxSubhead.clientHeight;
                 chatbxDetailFull.style.minHeight = `${chatbxFulldetailsHeight}px`;
@@ -3130,30 +3213,24 @@
             shadowRoot.makemileagerange = function() {
                 let minPrice = shadowRoot.querySelector('#minMileage').value.replace(/\$/g, '').replace(/,/g, '');
                 let maxPrice = shadowRoot.querySelector('#maxMileage').value.replace(/\$/g, '').replace(/,/g, '');
-                let priceRange = `${minPrice} - ${maxPrice}`;
-        
-                shadowRoot.querySelector('#miles_range').value = priceRange;
-        
+                let priceRange = `${minPrice} - ${maxPrice}`;        
+                shadowRoot.querySelector('#miles_range').value = priceRange;        
                 shadowRoot.submitForm(); // Proceed to submit the form
             };
         
             shadowRoot.makeyearrange = function() {
                 let minPrice = shadowRoot.querySelector('#minYear').value.replace(/\$/g, '').replace(/,/g, '');
                 let maxPrice = shadowRoot.querySelector('#maxYear').value.replace(/\$/g, '').replace(/,/g, '');
-                let priceRange = `${minPrice} - ${maxPrice}`;
-        
-                shadowRoot.querySelector('#year_range').value = priceRange;
-        
+                let priceRange = `${minPrice} - ${maxPrice}`;        
+                shadowRoot.querySelector('#year_range').value = priceRange;        
                 shadowRoot.submitForm(); // Proceed to submit the form
             };
         
             shadowRoot.makepricerange = function() {
                 let minPrice = shadowRoot.querySelector('#minPrice').value.replace(/\$/g, '').replace(/,/g, '');
                 let maxPrice = shadowRoot.querySelector('#maxPrice').value.replace(/\$/g, '').replace(/,/g, '');
-                let priceRange = `${minPrice} - ${maxPrice}`;
-        
-                shadowRoot.querySelector('#price_range').value = priceRange;
-        
+                let priceRange = `${minPrice} - ${maxPrice}`;        
+                shadowRoot.querySelector('#price_range').value = priceRange;        
                 shadowRoot.submitForm(); // Proceed to submit the form
             };
         
@@ -3179,13 +3256,10 @@
         shadowRoot.submitForm = function() {
             // Your form submission logic here
             var form = shadowRoot.getElementById("searchinput");
-
             if (form) {
                 var formData = new FormData(form);
-                var params = new URLSearchParams(formData).toString();
-            
-                var myurl =baseurl+'api/vehicle?' + params;
-        
+                var params = new URLSearchParams(formData).toString();            
+                var myurl =baseurl+'api/vehicle?' + params;        
                 // Make the API call
                 shadowRoot.apiresult(myurl);
             } else {
@@ -3199,5 +3273,5 @@
             shadowRoot.appendChild(script);
         }       
         // Scripts load only in Phase 2 (on first bubble click) via runPhase2()
-    });
+    // });
 })();

@@ -1,14 +1,13 @@
 (function() {
-    var $ap; // Scoped jQuery for widget only (set after load with noConflict)
     document.addEventListener("DOMContentLoaded", function() {
         // Create a container for the chatbot widget
         const widgetContainer = document.createElement('div');
         widgetContainer.id = 'chatbot-widget';
        
-        //window.baseurl  = 'http://127.0.0.1:8000/';
-        //window.apiurl  = 'http://127.0.0.1:8000/api/vehicle';
-        //https://chat.autopulse.ai/
-        window.baseurl  = 'https://chat.autopulse.ai/';
+        //  window.baseurl  = 'http://127.0.0.1:8000/';
+        //  window.apiurl  = 'http://127.0.0.1:8000/api/vehicle';
+       // https://chat.autopulse.ai/
+         window.baseurl  = 'https://chat.autopulse.ai/';
        
        
         window.apiurl  = 'https://chat.autopulse.ai/api/vehicle';
@@ -109,8 +108,8 @@
                     conversation_id: conversation_id,
                     conversationCount: conversationCount,
                     context: context,
-                    customerId: customerId,
-                    booking_id: booking_id,
+                    customerId: getCustomerIdFromStorage(),
+                    booking_id: getBookingIdFromStorage(),
                     booking: booking,
                     
                     // Chat history (get from DOM)
@@ -120,14 +119,6 @@
                     isFirstRequestMade: isFirstRequestMade,
                     lastActivityTime: lastActivityTime,
                     idleMessageSent: idleMessageSent,
-                    
-                    // UI state
-                    isChatOpen: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').style.display !== 'none' : false,
-                    isMinimized: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').classList.contains('collapsed') : false,
-                    isFullScreen: shadowRoot.querySelector('.chatbx_main') ? 
-                        shadowRoot.querySelector('.chatbx_main').classList.contains('chat_open') : false,
                     
                     // Timestamp
                     savedAt: Date.now(),
@@ -173,13 +164,18 @@
             if (!savedState) return;
             
             try {
-                // Restore chat variables
-                conversation_id = savedState.conversation_id || '';
-                conversationCount = savedState.conversationCount || 0;
-                context = savedState.context || '';
-                customerId = savedState.customerId || null;
-                booking_id = savedState.booking_id || null;
-                booking = savedState.booking || 0;
+                // Reset variables first
+                resetChatVariables();
+                
+                // Only restore if we have valid conversation data
+                if (savedState.conversation_id) {
+                    conversation_id = savedState.conversation_id;
+                    conversationCount = savedState.conversationCount || 0;
+                    context = savedState.context || '';
+                    customerId = savedState.customerId || null;
+                    booking_id = savedState.booking_id || null;
+                    booking = savedState.booking || 0;
+                }
                 
                 // Restore idle timer state
                 isFirstRequestMade = savedState.isFirstRequestMade || false;
@@ -234,14 +230,11 @@
             const messageElements = chatResponse.querySelectorAll('.chatbx_msg_l, .chatbx_msg_r');
             
             messageElements.forEach(element => {
-                // Skip static welcome message so it isn't saved/restored multiple times
-                if (element.querySelector && element.querySelector('.welcome_message')) {
-                    return;
-                }
                 const small = element.querySelector('small');
                 const timeSpan = element.querySelector('.ch_time');
                 
-                if (small) {
+                // Skip welcome messages to prevent duplication
+                if (small && !small.classList.contains('welcome_message')) {
                     messages.push({
                         content: small.innerHTML,
                         type: element.classList.contains('chatbx_msg_r') ? 'user' : 'bot',
@@ -259,14 +252,18 @@
             const chatResponse = shadowRoot.querySelector('.chatbx_response');
             if (!chatResponse || !messages.length) return;
             
-            // Clear and re-insert a single welcome message if present
-            const existingWelcome = chatResponse.querySelector('.welcome_message');
-            const welcomeHtml = existingWelcome ? existingWelcome.closest('.chatbx_msg_l').outerHTML : '';
-            chatResponse.innerHTML = welcomeHtml || '';
+            // Clear current history except welcome message
+            const welcomeMessage = chatResponse.querySelector('.welcome_message');
+            if (welcomeMessage) {
+                const welcomeHtml = welcomeMessage.closest('.chatbx_msg_l').outerHTML;
+                chatResponse.innerHTML = welcomeHtml;
+            } else {
+                chatResponse.innerHTML = '';
+            }
             
-            // Restore messages
+            // Restore messages, filtering out any welcome messages that might have been saved
             messages.forEach(message => {
-                if (message.fullHtml) {
+                if (message.fullHtml && !message.content.includes('welcome_message')) {
                     chatResponse.innerHTML += message.fullHtml;
                 }
             });
@@ -278,48 +275,48 @@
         function clearChatState() {
             if (chatStorageKey) {
                 localStorage.removeItem(chatStorageKey);
-                console.log('Chat state cleared');
+            }
+            
+            // Also clear customer registration data
+            localStorage.removeItem('chatbotRegisteredCustomer');
+            
+            // Reset all chat variables to initial state
+            resetChatVariables();
+            
+            console.log('Chat state and customer data cleared');
+        }
+
+        function resetChatVariables() {
+            conversation_id = '';
+            conversationCount = 0;
+            context = '';
+            customerId = null;
+            booking_id = null;
+            booking = 0;
+            isFirstRequestMade = false;
+            lastActivityTime = Date.now();
+            idleMessageSent = false;
+        }
+
+        function cleanupDuplicateWelcomeMessages() {
+            const chatResponse = shadowRoot.querySelector('.chatbx_response');
+            if (!chatResponse) return;
+            
+            const welcomeMessages = chatResponse.querySelectorAll('.welcome_message');
+            if (welcomeMessages.length > 1) {
+                // Keep only the first welcome message, remove duplicates
+                for (let i = 1; i < welcomeMessages.length; i++) {
+                    const welcomeElement = welcomeMessages[i];
+                    const messageContainer = welcomeElement.closest('.chatbx_msg_l');
+                    if (messageContainer) {
+                        messageContainer.remove();
+                    }
+                }
+                console.log('Cleaned up duplicate welcome messages');
             }
         }
 
-        // Phase 1: Minimal bubble-only styles (no external requests on page load)
-        const bubbleOnlyStyles = `
-            .ap-bubble-wrap {
-                position: fixed;
-                bottom: 0;
-                right: 0;
-                z-index: 99999;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            }
-            .ap-bubble-wrap .ap-bubble {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 16px;
-                background: #222732;
-                color: #fff;
-                border: none;
-                border-radius: 8px 8px 0 0;
-                cursor: pointer;
-                box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
-                font-size: 14px;
-            }
-            .ap-bubble-wrap .ap-bubble:hover { background: #2F3B48; }
-            .ap-bubble-wrap .ap-bubble-icon { width: 24px; height: 24px; flex-shrink: 0; }
-        `;
-
-        const bubbleOnlyHtml = `
-            <div class="ap-bubble-wrap">
-                <a class="ap-bubble" id="ap-bubble-btn" href="javascript:void(0)">
-                    <span class="ap-bubble-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    </span>
-                    <span class="ap-bubble-text">Chat</span>
-                </a>
-            </div>
-        `;
-
-        // Phase 2: Full widget styles (loaded on first bubble click)
+        // The base styles and HTML will be injected into the shadow DOM
         const widgetStyles = `
             /* Add your widget-specific styles here */
             @import url('https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css');
@@ -336,7 +333,7 @@
                 right: 0;
                 width: 350px;
                 z-index: 99999;
-                font-family: Arial, sans-serif;
+                font-family: "Montserrat", sans-serif;
             }                
             .chatbx_main {
                 display: none;
@@ -347,14 +344,11 @@
                 overflow-y: auto;
                 max-height: 400px;
             }
-            .idle-message {
-                opacity: 0.8;
+            .idle-message small{
                 font-style: italic;
             }
             .idle-message small {
-                background-color: #f0f8ff !important;
-                border-left: 3px solid #4a90e2 !important;
-                color: #4a90e2 !important;
+
             }
             .chatboxAi .chatbx_head{
                 height: 50px;
@@ -383,10 +377,11 @@
 
                     <div class="chatbx_primary">
                         <div class="chatbx_head">
-                            <img src="https://chat.autopulse.ai/assets/images/auto/auto_ai.png" alt="img" id="chatbot-auto-logo">
+                            <img src="${window.baseurl}assets/images/auto/auto_ai.png" alt="img" id="chatbot-auto-logo">
                             <a class="full_screen ms-auto head_icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-maximize"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-                            </a>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-minimize"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path></svg>
+                                </a>
                             <a class="mini_a ms-1 head_icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#051622" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-minus"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             </a>
@@ -404,25 +399,17 @@
                 </div>
             </div>
             <audio id="chatOpenSound" preload="auto">
-                <source src="https://chat.autopulse.ai/assets/mp3/bell.mp3" type="audio/mpeg">
+                <source src="${window.baseurl}assets/mp3/bell.ogg" type="audio/ogg">
             </audio>
         `;
 
-        // Parse userId from script URL (needed for Phase 2; no network yet)
-        const scripts = document.querySelectorAll('script[src*="shaddow.js"]');
-        if (scripts.length > 0) {
-            const scriptSrc = scripts[scripts.length - 1].getAttribute('src');
-            const urlParams = new URLSearchParams((scriptSrc || '').split('?')[1] || '');
-            userId = urlParams.get('userid_id');
-        }
-
-        // Phase 1: Inject only bubble (minimal CSS + HTML, no external requests)
+        // Inject CSS and HTML into shadow root
         shadowRoot.innerHTML = `
-            <style>${bubbleOnlyStyles}</style>
-            ${bubbleOnlyHtml}
+            <style>${widgetStyles}</style>
+            ${widgetHtml}
         `;
 
-        // Load external scripts inside shadow DOM (used in Phase 2)
+        // Load external scripts inside shadow DOM
         function loadScript(url, callback) {
             const script = document.createElement('script');
             script.src = url;
@@ -430,55 +417,25 @@
             shadowRoot.appendChild(script);
         }
 
-        let phase2Started = false;
-        function runPhase2() {
-            if (phase2Started) return;
-            phase2Started = true;
-            // Phase 2: Inject full widget and load heavy assets
-            shadowRoot.innerHTML = `
-                <style>${widgetStyles}</style>
-                ${widgetHtml}
-            `;
-            // Set chat body content (chat or reg) now that full widget DOM exists
-            if (!checkCustomerRegistration()) {
-                const chatbxBody = shadowRoot.querySelector('.chatbx_body');
-                if (chatbxBody) {
-                    chatbxBody.classList.add('chatbxbody_reg');
-                    showRegWindow();
-                }
-            } else {
-                const chatbxBody = shadowRoot.querySelector('.chatbx_body');
-                if (chatbxBody) {
-                    chatbxBody.classList.add('chatbxbody_chat');
-                    showChatWindow();
-                }
-            }
-            loadScript('https://code.jquery.com/jquery-3.7.1.min.js', function() {
-                $ap = window.jQuery.noConflict(true);
-                loadScript('https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js', function() {
-                    loadScript('https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js', function() {
-                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js', function() {
-                            initializeChatbot();
-                            const chatbxMain = shadowRoot.querySelector('.chatbx_main');
-                            if (chatbxMain) {
-                                chatbxMain.style.display = 'block';
-                                chatbxMain.classList.add('chat_open');
-                            }
-                        });
-                    });
-                });
-            });
-        }
-
-        const bubbleBtn = shadowRoot.getElementById('ap-bubble-btn');
-        if (bubbleBtn) {
-            bubbleBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                runPhase2();
-            });
-        }
-
         function showChatWindow() {
+            const isRegistered = checkCustomerRegistration();
+            console.log(isRegistered);
+            if(!isRegistered) {
+                booking=0;
+                booking_id=null;
+                context='';
+                conversation_id='';
+                conversationCount=0;
+                customerId=null;
+                isFirstRequestMade=false;
+                lastActivityTime=Date.now();
+                idleMessageSent=false;
+                idleMessage='Do you have any further query?';
+                idleTimeoutDuration=60000;
+                idleTimer=null;
+                chatStateLoaded=false;
+                chatStorageKey=null;
+            }
             const showchatwindow = shadowRoot.getElementById('chatbx_body');
             showchatwindow.innerHTML = `
                 <div class="explore_main" id="explore_main"></div>
@@ -522,7 +479,7 @@
                 <div class="reg_form">
                     <div class="reg_top">
                         <div class="reg_bot">
-                            <img src="https://chat.autopulse.ai/assets/images/bot.png" alt="bot" class="img-fluid">
+                            <img src="${window.baseurl}assets/images/bot.png" alt="bot" class="img-fluid">
                         </div>
                         <h5>Welcome!</h5>
                         <p><small>Register now to join the chat.</small></p>
@@ -539,16 +496,16 @@
                             </div>
                             <div class="col col-12">
                                 <input type="email" id="regEmail" class="form-control" placeholder="Email">
-                                <div id="emailError" class="error-message"></div>
+                                <div id="emailError" class="error-message text-danger text_xs"></div>
                             </div>
                             <div class="col col-12">
                                 <input type="tel" id="regPhone" class="form-control" placeholder="Phone Number">
-                                <div id="phoneError" class="error-message"></div>
+                                <div id="phoneError" class="error-message text-danger text_xs"></div>
                             </div>
                             <div class="col col-12">
-                                <small class="text-muted">Please provide either an email address or phone number.</small>
+                                <small class="text_xs" id="validation_msg">Please provide either an email address or phone number.</small>
                                 <button type="submit" class="btn_chatbx_fill w-100 mt-2 btn-submit">Submit</button>
-                                <button type="button" class="btn_chatbx_outline btn_chatbx_fill w-100 mt-2 btn-submit skip-btn">Skip</button>
+                                <button type="button" class="btn_chatbx_outline btn_chatbx_fill w-100 mt-1 btn-submit skip-btn">Skip</button>
                             </div>
                         </div>
                     </form>
@@ -559,53 +516,7 @@
             const style = document.createElement('style');
             style.textContent = `
                 .chatbxbody_reg {
-                    overflow-y: auto !important;
-                    max-height: calc(400px - 50px) !important;
-                    padding: 10px !important;
-                }
-                .reg_form {
-                    display: flex;
-                    flex-direction: column;
-                    height: 100%;
-                    max-height: 340px;
-                }
-                .reg_form .reg_top {
-                    flex-shrink: 0;
-                    margin-bottom: 15px;
-                }
-                .reg_form form {
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                }
-                .reg_form .row {
-                    flex: 1;
-                }
-                .reg_form .col:last-child {
-                    margin-top: auto;
-                    padding-top: 10px;
-                }
-                .error-message {
-                    color: #dc3545;
-                    font-size: 0.875rem;
-                    margin-top: 0.25rem;
-                    margin-bottom: 0.25rem;
-                    display: none;
-                    min-height: 0;
-                    transition: all 0.2s ease;
-                }
-                .error-message.show {
-                    display: block;
-                    min-height: 1em;
-                }
-                .form-control.error {
-                    border-color: #dc3545;
-                }
-                .reg_form .col {
-                    margin-bottom: 0.25rem;
-                }
-                .reg_form .btn_chatbx_fill {
-                    margin-top: 0.5rem !important;
+                    min-height: 500px;
                 }
             `;
             shadowRoot.appendChild(style);
@@ -640,8 +551,12 @@
                 
                 // Validate email and phone - require at least one
                 if (!email && !phone) {
-                    showError('emailError', 'Please provide either an email address or phone number');
-                    showError('phoneError', 'Please provide either an email address or phone number');
+                    showError('emailError', '');
+                    showError('phoneError', '');
+                    const validationMsg = shadowRoot.getElementById('validation_msg');
+                    validationMsg.classList.add('error');
+                    // showError('emailError', 'Please provide either an email address or phone number');
+                    // showError('phoneError', 'Please provide either an email address or phone number');
                     isValid = false;
                 } else {
                     // If email is provided, validate it
@@ -686,7 +601,7 @@
                     
                     if (data.success && data.data) {
                         // Registration successful
-                        customerId = data.data.user_id;
+                        customerId = data.data.id;
                         
                         // Save customer data
                         const customerData = {
@@ -787,6 +702,8 @@
                     element.classList.remove('show');
                     const inputField = element.previousElementSibling;
                     if (inputField) inputField.classList.remove('error');
+                    const validationMsg = shadowRoot.getElementById('validation_msg');
+                    validationMsg.classList.remove('error');
                 }
             }
             
@@ -814,6 +731,46 @@
             return phoneDigits.length === 10;
         }
 
+        // Get customer ID from localStorage (not from variables)
+        function getCustomerIdFromStorage() {
+            const registeredCustomer = localStorage.getItem('chatbotRegisteredCustomer');
+            if (registeredCustomer) {
+                const customerData = JSON.parse(registeredCustomer);
+                return customerData.customerId || null;
+            }
+            return null;
+        }
+
+        // Get booking ID from localStorage (not from variables)
+        function getBookingIdFromStorage() {
+            if (!chatStorageKey) return null;
+            try {
+                const savedState = localStorage.getItem(chatStorageKey);
+                if (savedState) {
+                    const chatState = JSON.parse(savedState);
+                    return chatState.booking_id || null;
+                }
+            } catch (e) {
+                console.error('Failed to get booking_id from storage:', e);
+            }
+            return null;
+        }
+
+        // Get conversation ID from localStorage (not from variables)
+        function getConversationIdFromStorage() {
+            if (!chatStorageKey) return null;
+            try {
+                const savedState = localStorage.getItem(chatStorageKey);
+                if (savedState) {
+                    const chatState = JSON.parse(savedState);
+                    return chatState.conversation_id || null;
+                }
+            } catch (e) {
+                console.error('Failed to get conversation_id from storage:', e);
+            }
+            return null;
+        }
+
         // Check if customer is already registered in localStorage
         function checkCustomerRegistration() {
             const registeredCustomer = localStorage.getItem('chatbotRegisteredCustomer');
@@ -826,7 +783,18 @@
             return false;
         }
 
-        // Initial chat/reg body setup runs in runPhase2 after full widget is injected (not on Phase 1 load)
+        const isRegistered = checkCustomerRegistration();
+
+        if(!isRegistered) {
+            const chatbxBody = shadowRoot.querySelector('.chatbx_body');
+            chatbxBody.classList.add('chatbxbody_reg');
+            showRegWindow();
+        } else {
+            const chatbxBody = shadowRoot.querySelector('.chatbx_body');
+            chatbxBody.classList.add('chatbxbody_chat');
+            showChatWindow();
+        }
+        console.log(isRegistered);
 
         function createLightboxContainer() {
             const lightboxContainer = document.createElement('div');
@@ -1051,6 +1019,30 @@
                             }
 
                             // Inject dynamic styles for chatbot logo and primary color
+                            // Watch for new messages and add chatbot name automatically
+                            const chatbotName = data.data.dealership_name || 'AI';
+                            const chatContainer = shadowRoot.querySelector('.chatboxAi .chatbx_response');
+
+                            if (chatContainer) {
+                            // ✅ 1. Update existing messages immediately
+                            chatContainer.querySelectorAll('.chatbx_msg_l').forEach(el => {
+                                el.setAttribute('data-chatbot-name', chatbotName);
+                            });
+
+                            // ✅ 2. Watch for new messages and add chatbot name automatically
+                            const observer = new MutationObserver(mutations => {
+                                mutations.forEach(mutation => {
+                                    mutation.addedNodes.forEach(node => {
+                                        if (node.nodeType === 1 && node.classList.contains('chatbx_msg_l')) {
+                                            node.setAttribute('data-chatbot-name', chatbotName);
+                                        }
+                                    });
+                                });
+                            });
+
+                            observer.observe(chatContainer, { childList: true, subtree: true });
+}
+
                             const dynamicStyle = document.createElement('style');
                             dynamicStyle.innerHTML = `
                                 .chatboxAi .chatbx_response .chatbx_msg_l:before, 
@@ -1069,6 +1061,28 @@
                                     top: 0;
                                     border-radius: 4px 0 4px 4px;
                                 }
+                                .chatboxAi .chatbx_response .chatbx_msg_l::after {
+                                    content: attr(data-chatbot-name);
+                                    position: absolute;
+                                    left: 0;
+                                    top: -3px;
+                                    font-size: 11px;
+                                    color: var(--secondary);
+                                    display: block;
+                                }
+                                /* 👇 Show gray box until chatbot name is loaded */
+                                .chatboxAi .chatbx_response .chatbx_msg_l:not([data-chatbot-name])::after,
+                                .chatboxAi .chatbx_response .chatbx_msg_l[data-chatbot-name=""]::after {
+                                    content: '';
+                                    position: absolute;
+                                    left: 0;
+                                    top: 1px;
+                                    display: inline-block;
+                                    width: 50px;
+                                    height: 11px;
+                                    background-color: var(--gray);
+                                    border-radius: 3px;
+                                }
                             `;
                             shadowRoot.appendChild(dynamicStyle);
 
@@ -1076,7 +1090,7 @@
                             shadowRoot.host.style.setProperty('--chbxprimary', primarycolor);
                             let hexColor = primarycolor;
                             let rgbColor = hexToRgb(hexColor);
-                            let alpha = 0.1;
+                            let alpha = 0.09;
                             let rgbaColor = `rgba(${rgbColor}, ${alpha})`;
                             shadowRoot.host.style.setProperty('--chbxprimary-light', rgbaColor); 
                             shadowRoot.host.style.setProperty('--dark', '#222732');
@@ -1090,9 +1104,15 @@
                                 if (savedChatState) {
                                     restoreChatState(savedChatState);
                                 }
+                                // Clean up any duplicate welcome messages
+                                cleanupDuplicateWelcomeMessages();
                             }, 500); // Wait for DOM to be fully ready
                         } else {
                             console.error('Failed to load chatbot settings:', data.message);
+                            // Clean up any duplicate welcome messages even if settings failed
+                            setTimeout(() => {
+                                cleanupDuplicateWelcomeMessages();
+                            }, 500);
                         }
                     })
                     .catch(error => {
@@ -1200,7 +1220,7 @@
                         const data = {
                             'userId': userId, // Assuming userId is defined in your script
                             'conversion_id': conversation_id,
-                            'customerId':customerId,
+                            'customerId': getCustomerIdFromStorage(),
                         
                         };
                         closechaturl(data);
@@ -1233,27 +1253,59 @@
                 }
             });
             
-            shadowRoot.querySelector('.full_screen').addEventListener('click', function(e) {
+            // full_screen and mini_a
+            const fullScreenBtn = shadowRoot.querySelector('.full_screen');
+            const miniBtn = shadowRoot.querySelector('.mini_a');
+
+            // ✅ Remove previous listeners safely before re-binding
+            const newFullScreenBtn = fullScreenBtn.cloneNode(true);
+            fullScreenBtn.parentNode.replaceChild(newFullScreenBtn, fullScreenBtn);
+
+            const newMiniBtn = miniBtn.cloneNode(true);
+            miniBtn.parentNode.replaceChild(newMiniBtn, miniBtn);
+
+            // Re-select new elements
+            const freshFullScreenBtn = shadowRoot.querySelector('.full_screen');
+            const freshMiniBtn = shadowRoot.querySelector('.mini_a');
+
+            // ✅ Bind once
+            freshFullScreenBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 const chatbxMain = shadowRoot.querySelector('.chatbx_main');
-            
                 chatbxMain.classList.toggle('fullScreen');
                 chatbxListingCars();
                 chatbxListingFilter();
                 widgetChatbotHeight(shadowRoot);
                 initializeCarousel();
             });
-            
-            shadowRoot.querySelector('.mini_a').addEventListener('click', function(e) {
+
+            freshMiniBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 const chatbxMain = shadowRoot.querySelector('.chatbx_main');
-            
-                if (chatbxMain.classList.contains('chat_open')) {
-                    chatbxMain.classList.remove('chat_open');
-                } else {
-                    chatbxMain.classList.add('chat_open');
-                }
+                chatbxMain.classList.toggle('chat_open');
             });
+
+            // shadowRoot.querySelector('.full_screen').addEventListener('click', function(e) {
+            //     e.preventDefault();
+            //     const chatbxMain = shadowRoot.querySelector('.chatbx_main');
+            
+            //     chatbxMain.classList.toggle('fullScreen');
+            //     chatbxListingCars();
+            //     chatbxListingFilter();
+            //     widgetChatbotHeight(shadowRoot);
+            //     initializeCarousel();
+            // });
+            
+            // shadowRoot.querySelector('.mini_a').addEventListener('click', function(e) {
+            //     e.preventDefault();
+            //     const chatbxMain = shadowRoot.querySelector('.chatbx_main');
+            
+            //     if (chatbxMain.classList.contains('chat_open')) {
+            //         chatbxMain.classList.remove('chat_open');
+            //     } else {
+            //         chatbxMain.classList.add('chat_open');
+            //     }
+            // });
             
             const sendBtn = shadowRoot.querySelector('#sendBtn');
             if (sendBtn) {
@@ -1391,10 +1443,10 @@
                 const formData = {
                     request: userInput,
                     context: context || '',
-                    conversation_id: conversation_id || '',
+                    conversation_id: getConversationIdFromStorage() || conversation_id || '',
                     dealerId: userId,
-                    customerId: customerId,
-                    booking_id: booking_id,
+                    customerId: getCustomerIdFromStorage(),
+                    booking_id: getBookingIdFromStorage(),
                     // Customer information from forms
                     customer_name: customerInfo.firstName && customerInfo.lastName ? 
                         `${customerInfo.firstName} ${customerInfo.lastName}` : 
@@ -1448,7 +1500,7 @@
                             console.log('inside html');
                             let carhtml = `
                                 <div class="chatbx_car_card_main">
-                                    <div class="owl-carousel owl-theme chatbx_cars_slides circular_nav">${html}</div><br/>${message}
+                                    <div class="owl-carousel owl-theme chatbx_cars_slides circular_nav">${html}</div><div>${message}</div>
                                     <span class="ch_time">${getCurrentTime()}</span>
                                 </div>`;
                             shadowRoot.querySelector('.chatbx_response').innerHTML += carhtml;
@@ -1635,7 +1687,7 @@
                     <div class="chatbx_msg_l" id="${uniqueFormId}" style="display:block;">
                         <div class="time_slot_bx">
                             <form id="form_${promptId}" class="bookingForm" data-prompt-id="${promptId}">
-                                <p><small>Please select slot</small></p>
+                                <p><small>Please <b>select slot</b></small></p>
                                 <div class="input-group align-items-center flex-nowrap mb-2">
                                     <input type="date" id="bookingDate_${promptId}" class="form-control" placeholder="Select date" min="${todayDate}">
                                     <input type="time" id="bookingTime_${promptId}" class="form-control" placeholder="Select time">
@@ -1860,7 +1912,7 @@
             }
             
             function handleapicall(button){
-                apiurl  = ($ap(button).attr('data_href'));
+                apiurl  = ($(button).attr('data_href'));
                
                 shadowRoot.apiresult(apiurl);
                 clickdata ={'conversion_id':conversation_id,action:'Explore_more','otherdetail':apiurl,'source':userId };
@@ -1943,17 +1995,19 @@
                     }
             
                     // Destroy the existing carousel only if it's initialized
-                    if ($ap(carousel).hasClass('owl-loaded')) {
-                        $ap(carousel).trigger('destroy.owl.carousel');
+                    if ($(carousel).hasClass('owl-loaded')) {
+                        $(carousel).trigger('destroy.owl.carousel');
                     }
             
                     // Define the carousel options
                     const windowWidth = window.innerWidth;
                     let options = {
                         items: 1,
-                        loop: true,
+                        loop: false,
                         margin: 10,
                         dots: false,
+                        mouseDrag: false,
+                        touchDrag: false,
                         nav: true,
                         navText: [
                             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-left"><polyline points="15 18 9 12 15 6"></polyline></svg>',
@@ -1974,7 +2028,7 @@
                     }
             
                     // Reinitialize the Owl Carousel without duplicates
-                    $ap(carousel).owlCarousel(options);
+                    $(carousel).owlCarousel(options);
                 });
             }
             
@@ -2062,9 +2116,9 @@
                                                         </div>
                                                     </div> -->
                                                     <!-- All photos -->
-                                                    <div class="view_all_photos">
+                                                     <!-- <div class="view_all_photos">
                                                         <a class="all_photos">All Photos</a>
-                                                    </div>
+                                                    </div> -->
                                                     <div id="big" class="owl-carousel owl-theme">
                                                         ${vehicle['media']['photo_links'].map(photo => `
                                                         <div class="item">
@@ -2404,11 +2458,11 @@
                                                         ${Object.entries(organizedFeatures ?? {}).map(([key, value], i) => `
                                                         <div class="accordion-item">
                                                             <h2 class="accordion-header" id="${key}-heading">
-                                                                <button class="accordion-button ${i !== 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${key.replace(/&|\s/g, '_')}" aria-expanded="${i === 0}" aria-controls="${key.replace(/&|\s/g, '_')}">
+                                                                <button class="accordion-button ${i !== 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${key.replace(/[^a-zA-Z0-9_]/g, '_')}" aria-expanded="${i === 0}" aria-controls="${key.replace(/[^a-zA-Z0-9_]/g, '_')}">
                                                                     ${key}
                                                                 </button>
                                                             </h2>
-                                                            <div id="${key.replace(/&|\s/g, '_')}" class="accordion-collapse collapse ${i === 0 ? 'show' : ''}" aria-labelledby="${key}-heading" data-bs-parent="#detailedFeatures">
+                                                            <div id="${key.replace(/[^a-zA-Z0-9_]/g, '_')}" class="accordion-collapse collapse ${i === 0 ? 'show' : ''}" aria-labelledby="${key}-heading" data-bs-parent="#detailedFeatures">
                                                                 <div class="accordion-body">
                                                                     <div class="features_list">
                                                                         <ul class="row">
@@ -2634,7 +2688,7 @@
                 const bigImage = shadowRoot.querySelector("#big");
                 const thumbs = shadowRoot.querySelector("#thumbs");
             
-                $ap(bigImage).owlCarousel({
+                $(bigImage).owlCarousel({
                     items: 1,
                     slideSpeed: 2000,
                     nav: false,
@@ -2644,7 +2698,7 @@
                     responsiveRefreshRate: 200
                 }).on("changed.owl.carousel", debounce(syncPosition, 200));
             
-                $ap(thumbs).owlCarousel({
+                $(thumbs).owlCarousel({
                     items: 5,
                     dots: false,
                     nav: true,
@@ -2676,10 +2730,10 @@
                     }
                 }).on("changed.owl.carousel", debounce(syncPosition2, 200));
             
-                $ap(thumbs).on("click", ".owl-item", function(e) {
+                $(thumbs).on("click", ".owl-item", function(e) {
                     e.preventDefault();
-                    const number = $ap(this).index();
-                    $ap(bigImage).data("owl.carousel").to(number, 300, true);
+                    const number = $(this).index();
+                    $(bigImage).data("owl.carousel").to(number, 300, true);
                 });
             }
             var syncedSecondary = true;
@@ -2687,7 +2741,7 @@
                 if (syncedSecondary) {
                     const number = el.item.index;
                     const bigImage = shadowRoot.querySelector("#big");
-                    $ap(bigImage).data("owl.carousel").to(number, 100, true);
+                    $(bigImage).data("owl.carousel").to(number, 100, true);
                 }
             }
             function syncPosition(el) {
@@ -2702,17 +2756,17 @@
                 }
             
                 const thumbs = shadowRoot.querySelector("#thumbs");
-                $ap(thumbs).find(".owl-item").removeClass("current").eq(current).addClass("current");
+                $(thumbs).find(".owl-item").removeClass("current").eq(current).addClass("current");
             
-                const onscreen = $ap(thumbs).find(".owl-item.active").length - 1;
-                const start = $ap(thumbs).find(".owl-item.active").first().index();
-                const end = $ap(thumbs).find(".owl-item.active").last().index();
+                const onscreen = $(thumbs).find(".owl-item.active").length - 1;
+                const start = $(thumbs).find(".owl-item.active").first().index();
+                const end = $(thumbs).find(".owl-item.active").last().index();
             
                 if (current > end) {
-                    $ap(thumbs).data("owl.carousel").to(current, 100, true);
+                    $(thumbs).data("owl.carousel").to(current, 100, true);
                 }
                 if (current < start) {
-                    $ap(thumbs).data("owl.carousel").to(current - onscreen, 100, true);
+                    $(thumbs).data("owl.carousel").to(current - onscreen, 100, true);
                 }
             }
             function debounce(func, wait) {
@@ -3198,6 +3252,13 @@
             script.onload = callback;
             shadowRoot.appendChild(script);
         }       
-        // Scripts load only in Phase 2 (on first bubble click) via runPhase2()
+        // Load jQuery, Bootstrap, Owl Carousel, and initialize the chatbot
+        loadScript('https://code.jquery.com/jquery-3.7.1.min.js', function() {
+            loadScript('https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js', function() {
+                loadScript('https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js', function() {
+                    loadScript('https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js', initializeChatbot);
+                });
+            });
+        });
     });
 })();

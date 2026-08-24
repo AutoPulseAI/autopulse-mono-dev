@@ -193,7 +193,7 @@ class MessengerWebhookController extends Controller
             }
         }
         if (empty($user->profile_pic) && !empty($profile['profile_pic'])) {
-            $user->profile_pic = $profile['profile_pic'];
+            //$user->profile_pic = $profile['profile_pic'];
         }
 
         // Store email if available and not already set

@@ -13,7 +13,7 @@ module.exports = {
       },
       out_file: '/var/www/html/aidmvcs-be/logs/aidmvcs-be-out.log',
       error_file: '/var/www/html/aidmvcs-be/logs/aidmvcs-be-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm Z'
+      log_date_format: 'YYYY-MM-DD HH:mm Z',
     },
     {
       name: 'aidmvcs-worker',    // background worker

@@ -71,31 +71,37 @@
                                 </div>
                                 @else
                                 <!-- Step 2: Webhook Configuration -->
-                                    <div class="rbt-profile-row rbt-default-form row row--15">
+                                    <div class="rbt-profile-row rbt-default-form row row--15 mb-4">
                                         <div class="col-12">
-                                            <div class="alert alert-success">
-                                                <h5>✅ Connected Page: {{ $facebookPage->page_name }}</h5>
-                                                <p>All messages to this page are now automatically processed by AutoPulse AI.</p>
-                                                <span class="badge bg-success">Active</span>
+                                            <div class="position-relative border-gradient p-lg-4 p-3">
+                                                <div class="d-flex align-items-start mb-3">
+                                                    <h4 class="rbt-title-style-3 mb-0">
+                                                        <label class="mb-2">Connected Page:</label> 
+                                                        <span>{{ $facebookPage->page_name }}</span>
+                                                    </h4>
+                                                    <small class="badge bg-success ms-auto">Active</small>
+                                                </div>
+
+                                                <p class="mb-4">All messages to this page are now automatically processed by AutoPulse AI.</p>                                                
                                                 
-                                                <div class="mt-3">
+                                                <div class="position-relative">
                                                     <button type="button" class="btn btn-info btn_fb me-2" onclick="checkWebhookStatus()">
                                                         <i class="fas fa-info-circle"></i> Check Webhook Status
                                                     </button>
-                                                    <button type="button" class="btn btn-warning btn_fb me-2" onclick="subscribeToWebhook()">
+                                                    <button type="button" class="btn btn-warning btn_fb me-2 mt-md-0 mt-2" onclick="subscribeToWebhook()">
                                                         <i class="fas fa-sync"></i> Subscribe to Webhook
                                                     </button>
-                                                    <button type="button" class="btn btn-primary btn_fb me-2" onclick="testWebhook()">
-                                                        <i class="fas fa-test-tube"></i> Test Connection
+                                                    <button type="button" class="btn btn-primary btn_fb me-2 mt-md-0 mt-2" onclick="testWebhook()">
+                                                        <i class="fas fa-link"></i> Test Connection
                                                     </button>
+                                                    <form action="{{ route('facebook.disconnect') }}" method="POST" class="btn_fb mt-lg-0 mt-md-3 mt-2">
+                                                        @csrf
+                                                        <button type="submit" class="btn btn_fb btn-danger">
+                                                            <i class="fas fa-unlink"></i> Disconnect Page
+                                                        </button>
+                                                    </form>
                                                 </div>
                                                 
-                                                <form action="{{ route('facebook.disconnect') }}" method="POST" class="mt-3">
-                                                    @csrf
-                                                    <button type="submit" class="btn btn_fb btn-danger">
-                                                        <i class="fas fa-unlink"></i> Disconnect Page
-                                                    </button>
-                                                </form>
                                             </div>
                                         </div>
                                     </div>

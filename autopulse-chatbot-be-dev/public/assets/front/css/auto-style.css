@@ -198,9 +198,10 @@
 }
 
 .btn_fb {
-  font-size: var(--font-size-b2);
-  line-height: var(--line-height-b2);
+  font-size: var(--font-size-b3);
+  line-height: var(--line-height-b3);
   font-weight: var(--p-regular);
+  display: inline-block;
 }
 
 article,

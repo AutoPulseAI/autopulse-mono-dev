@@ -167,7 +167,7 @@ export default function Dashboard() {
       }
 
       // Appointments: by booking.booking_date + status Appointment Booked (MTD default / selected range)
-      let appointmentQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=true`;
+      let appointmentQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=false`;
       if (typeof startDate === 'undefined' && typeof endDate === 'undefined') {
         appointmentQueryParams += `&start_date=${mtdRange.startDate.toISOString()}&end_date=${mtdRange.endDate.toISOString()}`;
       } else if (startDate && endDate) {
@@ -176,7 +176,7 @@ export default function Dashboard() {
       // else cleared → all Appointment Booked (no date params)
 
       // Today's appointments: scheduled for today with status Appointment Booked
-      const todayAppointmentsQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=true&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+      const todayAppointmentsQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=false&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
       
       const [statsRes, commRes, messageStatsRes, managerialReviewRes, newThisWeekRes, todayLeadsRes, messageReadStatsRes, mtdLeadsRes, bookingStatusAppointmentRes, appointmentBookedRes, contactedRes, todayAppointmentsRes] = await Promise.all([
         fetchData(`/api/leads/stats?${queryParams}`,{headers: {
@@ -806,13 +806,13 @@ export default function Dashboard() {
         ? new URL(baseUrl)
         : new URL(baseUrl, window.location.origin);
 
-      url.searchParams.set('bookingStartDate', dateRange.startDate.toISOString());
-      url.searchParams.set('bookingEndDate', dateRange.endDate.toISOString());
+      url.searchParams.set('startDate', dateRange.startDate.toISOString());
+      url.searchParams.set('endDate', dateRange.endDate.toISOString());
 
       return url.pathname + url.search;
     } catch (e) {
       const separator = baseUrl.includes('?') ? '&' : '?';
-      return `${baseUrl}${separator}bookingStartDate=${encodeURIComponent(dateRange.startDate.toISOString())}&bookingEndDate=${encodeURIComponent(dateRange.endDate.toISOString())}`;
+      return `${baseUrl}${separator}startDate=${encodeURIComponent(dateRange.startDate.toISOString())}&endDate=${encodeURIComponent(dateRange.endDate.toISOString())}`;
     }
   };
 
@@ -827,7 +827,7 @@ export default function Dashboard() {
   const getTodayAppointmentsLink = () => {
     const todayRange = getTodayDateRange();
     const formatDate = (date) => encodeURIComponent(date.toISOString());
-    return `/dealer/leads?status=Appointment Booked&bookingStartDate=${formatDate(todayRange.startDate)}&bookingEndDate=${formatDate(todayRange.endDate)}`;
+    return `/dealer/leads?status=Appointment Booked&startDate=${formatDate(todayRange.startDate)}&endDate=${formatDate(todayRange.endDate)}`;
   };
 
   return (
@@ -923,13 +923,14 @@ export default function Dashboard() {
               link="/dealer/leads?message_filter=unread"
               description="Current unread count"
             />
-
+           
+            {/*
             <CountCard
               iconClass="fa-regular fa-envelope"
               count={readMessageCount}
               label="Read Messages"
               description="Current read count"
-            />
+            /> */}
             
             <CountCard
               iconClass="fa-solid fa-calendar-check"

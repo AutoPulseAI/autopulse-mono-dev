@@ -387,7 +387,7 @@
                                                 <label class="mb-1">Subscription End Date</label>
                                                 <input type="date" id="subscription_end_date" name="subscription_end_date" placeholder="Subscription End Date" class="form-control">
                                             </div>
-                                            <div class="col col-xl-12 col-md-12 col-12 align-items-center ">
+                                            <!-- <div class="col col-xl-12 col-md-12 col-12 align-items-center ">
                                                 <div class="position-relative d-flex align-items-center mb-3">
                                                     <span>Free Trial&nbsp;<a tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-html="true" data-bs-placement="top" data-bs-content="Lorem ipsum dolor sit, amet consectetur adipisicing elit."><i class="fa-solid fa-circle-info"></i></a></span>
                                                     <div class="form-check mx-2">
@@ -399,7 +399,7 @@
                                                         <label class="form-check-label" for="free_trial_1">Yes</label>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </div> -->
                                         </div>
 
                                         <div class="row gx-2 free_trial_detail" style="display:none">
@@ -760,7 +760,7 @@
                                 <label class="mb-1">Subscription End Date</label>
                                 <input type="date" id="edit_subscription_end_date" name="subscription_end_date" placeholder="Subscription End Date" class="form-control required">
                             </div>
-                            <div class="col col-xl-12 col-md-12 col-12 align-items-center">
+                            <!-- <div class="col col-xl-12 col-md-12 col-12 align-items-center">
                                 <div class="position-relative d-flex align-items-center mb-3">
                                     <span>Free Trial</span>
                                     <div class="form-check mx-2">
@@ -772,7 +772,7 @@
                                         <label class="form-check-label" for="edit_free_trial_yes">Yes</label>
                                     </div>
                                 </div>
-                            </div>
+                            </div> -->
                         </div>
 
                         <!-- Subscription Details -->
