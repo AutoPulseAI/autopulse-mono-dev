@@ -1,0 +1,70 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: autopulse-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - autopulse-mongo-data:/data/db
+
+  redis:
+    image: redis:7
+    container_name: autopulse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - autopulse-redis-data:/data
+
+  mysql:
+    image: mysql:8.0
+    container_name: autopulse-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: localroot
+      MYSQL_DATABASE: pulse
+      MYSQL_USER: pulse
+      MYSQL_PASSWORD: localpulse
+    ports:
+      - "3306:3306"
+    volumes:
+      - autopulse-mysql-data:/var/lib/mysql
+
+  postgres:
+    image: postgres:16
+    container_name: autopulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pulse_chat
+      POSTGRES_PASSWORD: localpulse
+      POSTGRES_DB: pulse_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - autopulse-postgres-data:/var/lib/postgresql/data
+
+  n8n:
+    image: n8nio/n8n:1.122.4
+    container_name: autopulse-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      N8N_EDITOR_BASE_URL: http://localhost:5678
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_TELEMETRY_ENABLED: "false"
+    volumes:
+      - autopulse-n8n-data:/home/node/.n8n
+
+volumes:
+  autopulse-mongo-data:
+    external: true
+  autopulse-redis-data:
+  autopulse-mysql-data:
+  autopulse-postgres-data:
+  autopulse-n8n-data:
