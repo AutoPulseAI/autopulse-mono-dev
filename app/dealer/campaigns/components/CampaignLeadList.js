@@ -13,9 +13,27 @@ function MultiSelectFilter({
   menuKey,
   openMenu,
   setOpenMenu,
-  menuRef
+  menuRef,
+  searchable = false,
+  searchPlaceholder = "Search..."
 }) {
   const isOpen = openMenu === menuKey;
+  const [search, setSearch] = useState("");
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearch("");
+      // Focus search after open
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    }
+  }, [isOpen]);
+
+  const filteredOptions = searchable && search.trim()
+    ? options.filter((option) =>
+        String(option).toLowerCase().includes(search.trim().toLowerCase())
+      )
+    : options;
 
   return (
     <>
@@ -35,34 +53,55 @@ function MultiSelectFilter({
         </Button>
         {isOpen && (
           <div
-            className="position-absolute top-100 start-0 w-100 bg-white border rounded shadow-sm mt-1 p-2"
-            style={{ zIndex: 1055, maxHeight: 220, overflowY: "auto" }}
+            className="position-absolute top-100 start-0 w-100 bg-white border rounded shadow-sm mt-1"
+            style={{ zIndex: 1055 }}
           >
-            {options.length === 0 ? (
-              <div className="small text-muted px-1 py-2">No options found</div>
-            ) : (
-              options.map((option) => (
-                <Form.Check
-                  key={option}
-                  type="checkbox"
-                  id={`${menuKey}-option-${option}`}
-                  className="mb-1"
-                  label={option}
-                  checked={selected.includes(option)}
-                  onChange={() => onToggle(option)}
+            {searchable && (
+              <div className="p-2 border-bottom sticky-top bg-white">
+                <Form.Control
+                  ref={searchInputRef}
+                  type="text"
+                  size="sm"
+                  placeholder={searchPlaceholder}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  autoComplete="off"
                 />
-              ))
+              </div>
             )}
+            <div className="p-2" style={{ maxHeight: 180, overflowY: "auto" }}>
+              {filteredOptions.length === 0 ? (
+                <div className="small text-muted px-1 py-2">
+                  {options.length === 0 ? "No options found" : "No matches"}
+                </div>
+              ) : (
+                filteredOptions.map((option) => (
+                  <Form.Check
+                    key={option}
+                    type="checkbox"
+                    id={`${menuKey}-option-${option}`}
+                    className="mb-1"
+                    label={option}
+                    checked={selected.includes(option)}
+                    onChange={() => onToggle(option)}
+                  />
+                ))
+              )}
+            </div>
             {selected.length > 0 && (
-              <Button
-                variant="link"
-                size="sm"
-                className="p-0 mt-1 text-decoration-none"
-                type="button"
-                onClick={onClear}
-              >
-                Clear
-              </Button>
+              <div className="px-2 pb-2">
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="p-0 text-decoration-none"
+                  type="button"
+                  onClick={onClear}
+                >
+                  Clear
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -114,7 +153,7 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
     stocks: [],
     makes: [],
     models: [],
-    year: "",
+    years: [],
     condition: ""
   });
   const emptyLeadFilters = {
@@ -131,7 +170,7 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
     stocks: [],
     makes: [],
     models: [],
-    year: "",
+    years: [],
     condition: ""
   };
   const [leadSourceOptions, setLeadSourceOptions] = useState([]);
@@ -147,6 +186,7 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
   const stockMenuRef = useRef(null);
   const makeMenuRef = useRef(null);
   const modelMenuRef = useRef(null);
+  const yearMenuRef = useRef(null);
   const [selectAllMode, setSelectAllMode] = useState(false); // Track if "Select All" is active
   const [leadsPagination, setLeadsPagination] = useState({
     currentPage: 1,
@@ -202,7 +242,11 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
         queryParams += `&model=${encodeURIComponent(model)}`;
       });
     }
-    if (leadFilters.year) queryParams += `&year=${encodeURIComponent(leadFilters.year)}`;
+    if (leadFilters.years && leadFilters.years.length > 0) {
+      leadFilters.years.forEach((year) => {
+        queryParams += `&year=${encodeURIComponent(year)}`;
+      });
+    }
     if (leadFilters.condition) queryParams += `&condition=${encodeURIComponent(leadFilters.condition)}`;
     return queryParams;
   };
@@ -363,7 +407,7 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
   useEffect(() => {
     if (!openMultiMenu) return;
     const handleClickOutside = (event) => {
-      const refs = [leadSourceMenuRef, stockMenuRef, makeMenuRef, modelMenuRef];
+      const refs = [leadSourceMenuRef, stockMenuRef, makeMenuRef, modelMenuRef, yearMenuRef];
       const clickedInside = refs.some((ref) => ref.current && ref.current.contains(event.target));
       if (!clickedInside) {
         setOpenMultiMenu(null);
@@ -955,7 +999,7 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
                 </div>
               </div>
               <Row className="g-2">
-                <Col md={4} lg={3}>
+                <Col md={6} lg={3}>
                   <MultiSelectFilter
                     label="Stock # (STK)"
                     placeholder="All Stock Numbers"
@@ -967,9 +1011,11 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
                     openMenu={openMultiMenu}
                     setOpenMenu={setOpenMultiMenu}
                     menuRef={stockMenuRef}
+                    searchable
+                    searchPlaceholder="Search stock #"
                   />
                 </Col>
-                <Col md={4} lg={3}>
+                <Col md={6} lg={3}>
                   <MultiSelectFilter
                     label="Make"
                     placeholder="All Makes"
@@ -981,9 +1027,11 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
                     openMenu={openMultiMenu}
                     setOpenMenu={setOpenMultiMenu}
                     menuRef={makeMenuRef}
+                    searchable
+                    searchPlaceholder="Search make"
                   />
                 </Col>
-                <Col md={4} lg={3}>
+                <Col md={6} lg={2}>
                   <MultiSelectFilter
                     label="Model"
                     placeholder="All Models"
@@ -995,26 +1043,27 @@ export default function CampaignLeadList({ leads, setLeads, dealerId }) {
                     openMenu={openMultiMenu}
                     setOpenMenu={setOpenMultiMenu}
                     menuRef={modelMenuRef}
+                    searchable
+                    searchPlaceholder="Search model"
                   />
                 </Col>
-                <Col md={4} lg={1}>
-                  <Form.Label className="small text-muted mb-1">Year</Form.Label>
-                  <Form.Control
-                    type="text"
-                    list="campaign-lead-year-options"
-                    placeholder="Year"
-                    value={leadFilters.year}
-                    onChange={(e) => setLeadFilters(prev => ({ ...prev, year: e.target.value }))}
-                    size="sm"
-                    autoComplete="off"
+                <Col md={6} lg={2}>
+                  <MultiSelectFilter
+                    label="Year"
+                    placeholder="All Years"
+                    options={yearOptions}
+                    selected={leadFilters.years}
+                    onToggle={(value) => toggleMultiFilter("years", value)}
+                    onClear={() => setLeadFilters((prev) => ({ ...prev, years: [] }))}
+                    menuKey="years"
+                    openMenu={openMultiMenu}
+                    setOpenMenu={setOpenMultiMenu}
+                    menuRef={yearMenuRef}
+                    searchable
+                    searchPlaceholder="Search year"
                   />
-                  <datalist id="campaign-lead-year-options">
-                    {yearOptions.map((year) => (
-                      <option key={year} value={year} />
-                    ))}
-                  </datalist>
                 </Col>
-                <Col md={4} lg={2}>
+                <Col md={6} lg={2}>
                   <Form.Label className="small text-muted mb-1">Condition</Form.Label>
                   <Form.Select
                     value={leadFilters.condition}
