@@ -1,9 +1,32 @@
 import Customer from "../models/Customer.js";
 
+// The AI extraction pipeline (Ollama/n8n) emits these literal strings when a
+// field couldn't be found in the source email/SMS text, instead of omitting
+// the field. Left unfiltered, "NA" would normalize to a truthy fake email
+// and silently merge every lead with a failed extraction into one Customer.
+const EMAIL_SENTINEL_VALUES = new Set([
+  "na",
+  "n/a",
+  "null",
+  "undefined",
+  "none",
+  "unknown",
+]);
+
 export function normalizeEmail(value) {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
-  return normalized || null;
+  if (!normalized || EMAIL_SENTINEL_VALUES.has(normalized)) return null;
+  return normalized;
+}
+
+// For sanitizing a raw LLM-extracted value *before* it's stored on a Lead
+// (as opposed to normalizeEmail, which also lowercases/trims for the
+// Customer-identity lookup key). Lets callers null out a sentinel without
+// otherwise touching the value's original casing/formatting.
+export function isEmailSentinel(value) {
+  if (typeof value !== "string") return false;
+  return EMAIL_SENTINEL_VALUES.has(value.trim().toLowerCase());
 }
 
 export function normalizePhone(value) {
@@ -40,33 +63,30 @@ function unresolvedResult() {
   };
 }
 
-async function appendEmailIfMissing(customerId, normalizedEmail, source) {
-  if (!normalizedEmail) return false;
-
+async function pushIfMissing(customerId, arrayField, matchValue, entry) {
   const result = await Customer.updateOne(
     {
       _id: customerId,
-      "emails.value": { $ne: normalizedEmail },
+      [`${arrayField}.value`]: { $ne: matchValue },
     },
-    {
-      $push: {
-        emails: {
-          value: normalizedEmail,
-          is_primary: false,
-          source,
-          added_at: new Date(),
-        },
-      },
-    }
+    { $push: { [arrayField]: entry } }
   );
 
-  if (result.matchedCount === 1 && result.modifiedCount === 1) return true;
-  if (result.matchedCount === 0) {
-    // The value may already have been added concurrently, or the Customer may
-    // have been removed. A zero-match conditional update is an expected no-op.
-    return false;
-  }
-  return false;
+  // A zero-match conditional update is an expected no-op: the value may
+  // already have been added concurrently, or the Customer may have been
+  // removed.
+  return result.matchedCount === 1 && result.modifiedCount === 1;
+}
+
+async function appendEmailIfMissing(customerId, normalizedEmail, source) {
+  if (!normalizedEmail) return false;
+
+  return pushIfMissing(customerId, "emails", normalizedEmail, {
+    value: normalizedEmail,
+    is_primary: false,
+    source,
+    added_at: new Date(),
+  });
 }
 
 async function appendPhoneIfMissing(customerId, normalizedPhone, source, smsOptIn) {
@@ -82,21 +102,24 @@ async function appendPhoneIfMissing(customerId, normalizedPhone, source, smsOptI
     phone.sms_opt_in = smsOptIn;
   }
 
-  const result = await Customer.updateOne(
-    {
-      _id: customerId,
-      "phones.value": { $ne: normalizedPhone },
-    },
-    { $push: { phones: phone } }
-  );
+  const introduced = await pushIfMissing(customerId, "phones", normalizedPhone, phone);
 
-  if (result.matchedCount === 1 && result.modifiedCount === 1) return true;
-  if (result.matchedCount === 0) {
-    // The value may already have been added concurrently, or the Customer may
-    // have been removed. A zero-match conditional update is an expected no-op.
-    return false;
+  if (!introduced && smsOptIn === true) {
+    // The phone already existed on this Customer, so the $push above never
+    // ran — but this contact just confirmed opt-in via this channel (e.g. an
+    // inbound SMS), so still record it on the existing entry. Only ever sets
+    // it to true, and only writes when it isn't already true, to avoid
+    // clobbering an explicit false with a weaker signal.
+    await Customer.updateOne(
+      {
+        _id: customerId,
+        phones: { $elemMatch: { value: normalizedPhone, sms_opt_in: { $ne: true } } },
+      },
+      { $set: { "phones.$.sms_opt_in": true } }
+    );
   }
-  return false;
+
+  return introduced;
 }
 
 async function enrichCustomer(customer, { email, phone, source, smsOptIn }) {
@@ -241,7 +264,7 @@ export async function resolveCustomerForLead({
  * is saved and the save then fails, an identifier can get permanently marked
  * as "already introduced" on the Customer with no lead left to point at it.
  */
-export async function linkCustomerToLead(savedLead, { source } = {}) {
+export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
   let customerResolution;
   try {
     customerResolution = await resolveCustomerForLead({
@@ -251,6 +274,7 @@ export async function linkCustomerToLead(savedLead, { source } = {}) {
       phone: savedLead.phone,
       source: source || savedLead.source,
       leadId: savedLead._id,
+      smsOptIn,
     });
   } catch (customerError) {
     console.error(`Customer resolution failed for lead ${savedLead._id}:`, customerError);

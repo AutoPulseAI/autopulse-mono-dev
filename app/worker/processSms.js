@@ -13,7 +13,7 @@ import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead,createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
-import { linkCustomerToLead } from '../lib/customerResolver.js';
+import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js';
 
 // import OpenAI from 'openai'; // Unused - kept for reference
 //import EmailConversations from 'app/agency/conversations/page.js';
@@ -100,6 +100,11 @@ export async function processSMS(job) {
     }
     if(lead_mail=='johndoe@email.com'){
         lead_mail ='';
+    }
+    // The AI extraction pipeline also emits literal placeholder strings
+    // (e.g. "NA") when it can't find an email in the source text.
+    if (isEmailSentinel(lead_mail)) {
+      lead_mail = undefined;
     }
 
     let baseParentId = parent_message_id ??parent_id ?? currentSMS.message_id;
@@ -305,7 +310,11 @@ export async function processSMS(job) {
       const savedLead = await newLead.save();
       leadId = savedLead._id;
 
-      await linkCustomerToLead(savedLead, { source: 'sms' });
+      // This lead's phone number is the sender of the inbound SMS itself —
+      // a self-initiated text is a real (if narrow) signal that the number
+      // is live and reachable, unlike the email/web-form paths where there's
+      // no phone-channel evidence at all.
+      await linkCustomerToLead(savedLead, { source: 'sms', smsOptIn: true });
 
       statusJustChanged = true;
       recipientphone = lead_phone || sender;
