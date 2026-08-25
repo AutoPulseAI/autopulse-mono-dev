@@ -37,6 +37,11 @@ function getLeadSource(lead) {
   return lead.source || lead.lead_source || "Unknown";
 }
 
+function getVehicleInterest(lead) {
+  const parts = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 export default function CustomerList() {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
@@ -225,7 +230,29 @@ export default function CustomerList() {
                     {!state.loading && !state.error && state.loaded && state.leads.length === 0 && <div className="text-muted py-2">No linked leads found.</div>}
 
                     {state.leads.length > 0 && <ListGroup variant="flush">
-                      {state.leads.map((lead) => <ListGroup.Item key={lead._id} className="px-2"><Row className="align-items-center small"><Col md={3}>{lead.name || "Unnamed lead"}</Col><Col md={2}>{getLeadSource(lead)}</Col><Col md={2}>{lead.fe_lead_status || "N/A"}</Col><Col md={3}>{lead.email || lead.phone || "No contact"}</Col><Col md={2} className="text-md-end text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col></Row></ListGroup.Item>)}
+                      {state.leads.map((lead) => {
+                        const vehicleInterest = getVehicleInterest(lead);
+                        return (
+                          <ListGroup.Item key={lead._id} className="px-2">
+                            <Row className="align-items-center small">
+                              <Col md={3}>{lead.name || "Unnamed lead"}</Col>
+                              <Col md={2}>{getLeadSource(lead)}</Col>
+                              <Col md={2}>{lead.fe_lead_status || "N/A"}</Col>
+                              <Col md={3}>{lead.email || lead.phone || "No contact"}</Col>
+                              <Col md={2} className="text-md-end text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
+                            </Row>
+                            {(vehicleInterest || lead.vin) && (
+                              <Row className="small text-muted mt-1">
+                                <Col>
+                                  <i className="fa-solid fa-car me-1" />
+                                  {vehicleInterest || "Vehicle interest unknown"}
+                                  {lead.vin && <span> &middot; VIN: {lead.vin}</span>}
+                                </Col>
+                              </Row>
+                            )}
+                          </ListGroup.Item>
+                        );
+                      })}
                     </ListGroup>}
 
                     {state.pagination.totalPages > 1 && <Pagination size="sm" className="justify-content-center mt-3 mb-0"><Pagination.Prev disabled={!state.pagination.hasPreviousPage || state.loading} onClick={() => fetchCustomerLeads(customer._id, state.pagination.currentPage - 1)} /><Pagination.Item active>{state.pagination.currentPage}</Pagination.Item><Pagination.Next disabled={!state.pagination.hasNextPage || state.loading} onClick={() => fetchCustomerLeads(customer._id, state.pagination.currentPage + 1)} /></Pagination>}

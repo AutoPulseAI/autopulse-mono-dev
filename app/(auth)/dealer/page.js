@@ -161,6 +161,7 @@ export default function DealerLogin() {
     } else {
       // Session-only cookies
       document.cookie = `dealertoken=${token}; path=/; secure; samesite=lax`;
+      document.cookie = `dealerotptoken=${token}; path=/; secure; samesite=lax`;
     }
   };
 

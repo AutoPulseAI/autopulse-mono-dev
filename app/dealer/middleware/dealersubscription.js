@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import User from '@models/User';
 import Subscription from '@models/Subscription';
 import dbConnect from '@lib/mongodb';
+import { isPackageExpiryValid } from '@lib/isPackageExpiryValid';
 
 export async function dealersubscriptionMiddleware(req, user) {
   await dbConnect();
@@ -50,15 +51,23 @@ export async function dealersubscriptionMiddleware(req, user) {
     const fullUser = await User
       .findById(parent_id)
       .populate('current_subscription');
-    if(!fullUser.vendor_id){
-      const hasActiveSubscription =
-        fullUser.current_subscription &&
-        new Date(fullUser.current_subscription.end_date) > new Date();
+    if (!fullUser) {
+      return NextResponse.redirect(new URL('/dealer', origin));
+    }
 
-      if (!hasActiveSubscription) {
-        // no valid plan → send to /subscribe
-        return NextResponse.redirect(new URL('/dealer/subscribe', origin));
-      }
+    const subscriptionOwner = fullUser.vendor_id
+      ? await User.findById(fullUser.vendor_id).select('package_expiry')
+      : fullUser;
+    const hasActiveSubscription =
+      isPackageExpiryValid(subscriptionOwner?.package_expiry) ||
+      Boolean(
+        fullUser.current_subscription?.end_date &&
+        new Date(fullUser.current_subscription.end_date) > new Date()
+      );
+
+    if (!hasActiveSubscription) {
+      // No valid plan: send the user to the subscription page.
+      return NextResponse.redirect(new URL('/dealer/subscribe', origin));
     }
 
     // all good
