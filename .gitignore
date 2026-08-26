@@ -25,6 +25,9 @@ vendor/
 *.log
 logs/
 
+# Local helper script outputs
+helpers/outputs/
+
 # Database dumps / backups
 *.bson
 *.archive
