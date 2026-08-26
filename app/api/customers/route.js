@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
 import Customer from "@models/Customer";
+import Lead from "@models/Lead";
 import User from "@models/User";
 import { normalizeEmail, normalizePhone } from "@lib/customerResolver";
 import { escapeRegex, isAuthorizedForDealer, parseBoundedInteger } from "@lib/customerListing";
@@ -76,9 +77,21 @@ export async function GET(req) {
       Customer.countDocuments(query),
     ]);
 
+    const leadCounts = customers.length > 0
+      ? await Lead.aggregate([
+          { $match: { customer_id: { $in: customers.map((c) => c._id) } } },
+          { $group: { _id: "$customer_id", count: { $sum: 1 } } },
+        ])
+      : [];
+    const leadCountByCustomerId = new Map(leadCounts.map((row) => [String(row._id), row.count]));
+    const customersWithLeadCount = customers.map((customer) => ({
+      ...customer,
+      lead_count: leadCountByCustomerId.get(String(customer._id)) || 0,
+    }));
+
     const totalPages = Math.ceil(totalItems / limit);
     return NextResponse.json({
-      data: customers,
+      data: customersWithLeadCount,
       pagination: {
         currentPage: page,
         totalPages,

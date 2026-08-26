@@ -53,6 +53,7 @@ export default function CustomerList() {
   const [error, setError] = useState(null);
   const [expandedCustomerId, setExpandedCustomerId] = useState(null);
   const [leadStates, setLeadStates] = useState({});
+  const [pageInputValue, setPageInputValue] = useState("1");
 
   const fetchCustomers = useCallback(async (page = 1) => {
     if (loadingParent || !activeEntity?.id) return;
@@ -77,6 +78,7 @@ export default function CustomerList() {
 
       setCustomers(data.data || []);
       setPagination(data.pagination || { ...defaultPagination, currentPage: page });
+      setPageInputValue(String(data.pagination?.currentPage || page));
     } catch (fetchError) {
       setError(fetchError.message || "Failed to load customers");
     } finally {
@@ -158,6 +160,57 @@ export default function CustomerList() {
     if (page >= 1 && page <= pagination.totalPages) fetchCustomers(page);
   };
 
+  const createCustomerPaginationItems = () => {
+    const items = [];
+    const { totalPages, currentPage } = pagination;
+
+    const addPageItem = (page) => {
+      items.push(
+        <Pagination.Item key={page} active={page === currentPage} onClick={() => handleCustomerPageChange(page)}>
+          {page}
+        </Pagination.Item>
+      );
+    };
+
+    const addEllipsis = (key) => {
+      items.push(
+        <Pagination.Item key={key} disabled className="disabled">
+          &hellip;
+        </Pagination.Item>
+      );
+    };
+
+    // Always show first 2 pages
+    addPageItem(1);
+    if (totalPages >= 2) addPageItem(2);
+
+    // Show ellipsis if currentPage is beyond page 4
+    if (currentPage > 3) {
+      addEllipsis("start-ellipsis");
+    }
+
+    // Show currentPage neighbors if not near start or end
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 2, currentPage + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i > 2 && i < totalPages - 1) {
+        addPageItem(i);
+      }
+    }
+
+    // Show ellipsis if currentPage is before totalPages - 3
+    if (currentPage < totalPages - 3) {
+      addEllipsis("end-ellipsis");
+    }
+
+    // Always show last 2 pages
+    if (totalPages > 3) addPageItem(totalPages - 1);
+    if (totalPages > 2) addPageItem(totalPages);
+
+    return items;
+  };
+
   if (loadingParent || (loading && customers.length === 0)) {
     return <div className="w_card text-center py-4">Loading customers...</div>;
   }
@@ -215,7 +268,7 @@ export default function CustomerList() {
                     <Col md={3}>{email || "No email"}</Col>
                     <Col md={3}>{phone || "No phone"}</Col>
                     <Col md={2}>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</Col>
-                    <Col md={1} className="text-end">{state.loaded ? state.pagination.totalItems : "View"}</Col>
+                    <Col md={1} className="text-end">{customer.lead_count ?? 0}</Col>
                   </Row>
                 </button>
 
@@ -264,7 +317,52 @@ export default function CustomerList() {
         </ListGroup>
       </div>
 
-      {pagination.totalPages > 1 && <Pagination className="justify-content-center mt-3 mb-0"><Pagination.Prev disabled={!pagination.hasPreviousPage || loading} onClick={() => handleCustomerPageChange(pagination.currentPage - 1)} /><Pagination.Item active>{pagination.currentPage}</Pagination.Item><Pagination.Next disabled={!pagination.hasNextPage || loading} onClick={() => handleCustomerPageChange(pagination.currentPage + 1)} /></Pagination>}
+      {pagination.totalPages > 1 && (
+        <div className="d-md-flex justify-content-center mt-3">
+          <Pagination className="mb-md-0 justify-content-center flex-wrap">
+            <Pagination.Prev
+              onClick={() => handleCustomerPageChange(pagination.currentPage - 1)}
+              disabled={pagination.currentPage === 1 || loading}
+            />
+            {createCustomerPaginationItems()}
+            <Pagination.Next
+              onClick={() => handleCustomerPageChange(pagination.currentPage + 1)}
+              disabled={pagination.currentPage === pagination.totalPages || loading}
+            />
+          </Pagination>
+
+          <div className="d-flex align-items-center justify-content-center gap-1 ms-md-3 mt-1">
+            <span className="text-muted small">Go to page:</span>
+            <input
+              type="number"
+              min="1"
+              value={pageInputValue}
+              onChange={(event) => setPageInputValue(event.target.value)}
+              onKeyPress={(event) => {
+                if (event.key === "Enter") {
+                  const page = parseInt(event.target.value, 10);
+                  if (page >= 1) handleCustomerPageChange(page);
+                }
+              }}
+              className="form-control form-control-sm text-center"
+              style={{ width: "50px" }}
+              placeholder="Page"
+            />
+            <span className="text-muted small">of {pagination.totalPages}</span>
+            <Button
+              size="sm"
+              variant="outline-custom"
+              onClick={() => {
+                const page = parseInt(pageInputValue, 10);
+                if (page >= 1) handleCustomerPageChange(page);
+              }}
+              disabled={!pageInputValue || parseInt(pageInputValue, 10) < 1}
+            >
+              Go
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
