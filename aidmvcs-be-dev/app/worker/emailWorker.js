@@ -12,6 +12,7 @@ import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead, createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
+import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js';
 
 // Connect to the database
 await dbConnect();
@@ -45,13 +46,21 @@ export async function processEmail(job) {
     let recipientEmail;
     let emailSubject=`${subject}`;
     // Extract the response data
-    const { create_lead,lead_name,lead_mail,lead_source, response , update_lead,
+    const { create_lead,lead_name,lead_source, response , update_lead,
       lead_status,
       booking_status,
       booking_date,
       booking_time,request,fe_lead_status,vin,make,model,year} = result;
 
-    let { lead_phone,response_mode, appointment_cancellation_requested = false, user_language = 'english', campaign_id, campaign_name, use_replies_for_ai } = result;
+    let { lead_phone,lead_mail,response_mode, appointment_cancellation_requested = false, user_language = 'english', campaign_id, campaign_name, use_replies_for_ai } = result;
+
+    // The AI extraction pipeline emits literal placeholder strings (e.g. "NA")
+    // when it can't find an email in the source text, instead of omitting the
+    // field. Null it out here so it's never stored on the Lead or used as a
+    // real recipient address downstream.
+    if (isEmailSentinel(lead_mail)) {
+      lead_mail = undefined;
+    }
     
     if(result.preferred_communication_mode_selected){
         if(result.preferred_communication_mode){
@@ -272,8 +281,11 @@ export async function processEmail(job) {
         user_language: user_language.toLowerCase()
       });
       baseParentId=null;
+
       const savedLead = await newLead.save();
       leadId = savedLead._id;
+
+      await linkCustomerToLead(savedLead, { source: 'email' });
       console.log('Lead created successfully:', newLead);
       recipientEmail = (lead_mail && lead_mail !== 'NA') ? lead_mail : sender;
       emailId = null; // No parent for a new email
@@ -722,4 +734,3 @@ function formatPhoneForTwilio(phone) {
     throw new Error('Invalid phone number format');
   }
 }
-
