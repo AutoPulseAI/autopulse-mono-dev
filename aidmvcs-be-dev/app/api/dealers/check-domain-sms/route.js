@@ -3,7 +3,7 @@ import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 const sanitizeDomain = (inputDomain, baseDomain = "jugaadtravel.com") => {
     try {
-        let sanitizedDomain = inputDomain.replace(/^https?:\/\//i, "");
+        let sanitizedDomain = inputDomain.trim().toLowerCase().replace(/^https?:\/\//i, "");
         sanitizedDomain = sanitizedDomain.split("/")[0];
         sanitizedDomain = sanitizedDomain.replace(/\./g, "-");
         const finalSubdomain = `${sanitizedDomain}.${baseDomain}`;
@@ -31,11 +31,12 @@ export async function POST(req) {
 
         // Check domain uniqueness
         if (domain_name) {
-            const sanitizedDomain = sanitizeDomain(domain_name);
-            
+            const normalizedDomainName = domain_name.trim().toLowerCase();
+            const sanitizedDomain = sanitizeDomain(normalizedDomainName);
+
             const existingUserWithDomain = await User.findOne({
                 _id: { $ne: dealerId },
-                "dealer_account_information.domain_name": domain_name,
+                "dealer_account_information.domain_name": normalizedDomainName,
             });
 
             const existingUserWithSanitizedDomain = await User.findOne({

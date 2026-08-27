@@ -13,7 +13,7 @@ const format24hToAMPM = (time24) => {
   };
 const sanitizeDomain = (inputDomain, baseDomain = process.env.BASEDOMAIN) => {
     try {
-        let sanitizedDomain = inputDomain.replace(/^https?:\/\//i, "");
+        let sanitizedDomain = inputDomain.trim().toLowerCase().replace(/^https?:\/\//i, "");
         sanitizedDomain = sanitizedDomain.split("/")[0];
         sanitizedDomain = sanitizedDomain.replace(/\./g, "-");
         const finalSubdomain = `${sanitizedDomain}.${baseDomain}`;
@@ -72,7 +72,13 @@ export async function PUT(req) {
         }
 
         // Check if domain or SMS phone already exists for another user
-        const domain = dealer_account_information.domain_name;
+        const domain = dealer_account_information.domain_name
+            ? dealer_account_information.domain_name.trim().toLowerCase()
+            : dealer_account_information.domain_name;
+        if (domain) {
+            // Persist the normalized value so stored domains stay consistently lowercase
+            dealer_account_information.domain_name = domain;
+        }
         const smsPhone = dealer_account_information.sms_conversion_phone;
         const sanitizedDomain = domain ? sanitizeDomain(domain) : null;
 
@@ -120,7 +126,7 @@ export async function PUT(req) {
         }
 
         // Check if both domain and SMS phone are being changed from existing values
-        const existingDomain = dealer.dealer_account_information?.domain_name;
+        const existingDomain = dealer.dealer_account_information?.domain_name?.toLowerCase();
         const existingSMS = dealer.dealer_account_information?.sms_conversion_phone;
         
        /* if ((existingDomain || existingSMS) && 
@@ -327,10 +333,11 @@ export async function POST(req) {
         
         // Check if domain exists for another user
         if (domain_name) {
-            const sanitizedDomain = sanitizeDomain(domain_name);
+            const normalizedDomainName = domain_name.trim().toLowerCase();
+            const sanitizedDomain = sanitizeDomain(normalizedDomainName);
             const existingUserWithDomain = await User.findOne({
                 _id: { $ne: dealerId },
-                "dealer_account_information.domain_name": domain_name,
+                "dealer_account_information.domain_name": normalizedDomainName,
             });
 
             const existingUserWithSanitizedDomain = await User.findOne({
