@@ -18,7 +18,22 @@ import {
   messageUserLanguageDisplay,
 } from "../../utils/conversationTranslation";
 
-export default function ViewConversations({ lead, onBack, onLeadSelected, activeLeadId, isOpen, toggleSidebar, isMobile  }) {
+export default function ViewConversations({
+  lead,
+  onBack,
+  onLeadSelected = () => {},
+  activeLeadId,
+  isOpen = false,
+  toggleSidebar = () => {},
+  isMobile,
+  // When true, renders just the lead info + conversation thread without the
+  // all-dealer lead-list sidebar (used to back Prev/Next navigation on the leads
+  // page) or the Prev/Next/Back-to-List controls that only make sense with that
+  // sidebar. Used to drop this component into a customer-scoped context (e.g. a
+  // lead accordion on the customer detail page) where there's no "whole dealer
+  // lead list" to navigate.
+  embedded = false,
+}) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
   const { fetchData } = useFetch();
@@ -579,26 +594,28 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
           </div>
         </Col> */}
 
-      {/* Fixed Sidebar */}
-      <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
-        <div className="dealer_info position-sticky">
-            {isMobile && (
-          <div className="d-flex justify-content-between align-items-center mb-2">
-            <h5 className="offcanvas-title mb-0">Leads</h5>
-              <Button variant="outline-secondary" size="sm" onClick={toggleSidebar}><i className="fa-regular fa-xmark"></i></Button>
+      {/* Fixed Sidebar - not applicable when embedded (no all-dealer lead list to browse) */}
+      {!embedded && (
+        <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
+          <div className="dealer_info position-sticky">
+              {isMobile && (
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h5 className="offcanvas-title mb-0">Leads</h5>
+                <Button variant="outline-secondary" size="sm" onClick={toggleSidebar}><i className="fa-regular fa-xmark"></i></Button>
+            </div>
+              )}
+
+            <LeadList
+              ref={leadListRef}
+              onLeadSelected={handleLeadSelect}
+              activeLeadId={lead?._id}
+              compact={true}
+            />
           </div>
-            )}
+        </Col>
+      )}
 
-          <LeadList
-            ref={leadListRef}
-            onLeadSelected={handleLeadSelect}
-            activeLeadId={lead?._id}
-            compact={true}
-          />
-        </div>
-      </Col>
-
-        <Col xxl={9} lg={8} md={12} sm={12}>
+        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
           <Row className="gx-3">
             <Col xxl={4} lg={12} md={5}>
               <div className="dealer_info position-sticky mb-3">
@@ -704,6 +721,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                     </Button>
                     </Col>
 
+                    {!embedded && (
                     <Col xxl={12} lg={3} md={12} xs={6}>
                     <Button
                       variant="outline-secondary"
@@ -714,9 +732,11 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                       Back to List
                     </Button>
                     </Col>
+                    )}
                     </Row>
                   </div>
                 </div>
+                {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
                     variant="outline-custom"
@@ -734,8 +754,8 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                       </>
                     )}
                   </Button>
-                  <Button 
-                    variant="outline-custom" 
+                  <Button
+                    variant="outline-custom"
                     onClick={handleNextLead}
                     disabled={isNavigating}
                   >
@@ -751,6 +771,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                     )}
                   </Button>
                 </div>
+                )}
               </div>
             </Col>
 
