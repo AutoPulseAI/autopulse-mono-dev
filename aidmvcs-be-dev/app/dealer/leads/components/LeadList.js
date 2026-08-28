@@ -488,7 +488,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     }
   };
 
-  const handleSearch = () => {
+  const applyFilters = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
     const textKeys = ['name', 'email', 'phone', 'status', 'lead_source', 'source', 'message_filter'];
     textKeys.forEach(key => {
@@ -500,11 +500,11 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     if (filters.dateRange.endDate) params.set('endDate', filters.dateRange.endDate.toISOString());
     else params.delete('endDate');
     params.set('page', '1');
-    
+
     replaceUrl(`/dealer/leads?${params.toString()}`);
 
-    setFilters({
-      ...filters,
+    setFilters(prev => ({
+      ...prev,
       name: inputValues.name,
       email: inputValues.email,
       phone: inputValues.phone,
@@ -513,8 +513,40 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       source: inputValues.source,
       message_filter: inputValues.message_filter,
       page: 1
-    });
+    }));
+  }, [inputValues, filters.dateRange]);
+
+  const handleSearch = () => {
+    clearTimeout(searchDebounceRef.current);
+    applyFilters();
   };
+
+  // Auto-filter as the user types/selects, instead of requiring the Search button
+  // click. Skips the initial mount so it doesn't re-apply the filters already
+  // seeded from the URL on load. Watches the individual text/select fields (not
+  // applyFilters itself) so a dateRange-only change - handled separately by
+  // handleDateRangeChange - doesn't also trigger a redundant debounced re-fetch.
+  const isFirstInputRender = useRef(true);
+  const searchDebounceRef = useRef(null);
+  useEffect(() => {
+    if (isFirstInputRender.current) {
+      isFirstInputRender.current = false;
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      applyFilters();
+    }, 400);
+    return () => clearTimeout(searchDebounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    inputValues.name,
+    inputValues.email,
+    inputValues.phone,
+    inputValues.status,
+    inputValues.lead_source,
+    inputValues.source,
+    inputValues.message_filter,
+  ]);
 
   const handleDateRangeChange = ({ startDate, endDate }) => {
     const params = new URLSearchParams(window.location.search);
@@ -534,6 +566,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   };
 
   const clearFilters = () => {
+    clearTimeout(searchDebounceRef.current);
     setInputValues({
       name: "",
       email: "",
