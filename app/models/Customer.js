@@ -61,6 +61,13 @@ const customerSchema = new mongoose.Schema(
     preferred_communication_mode: { type: String },
     preferred_communication_mode_selected: { type: Boolean, default: false },
     user_language: { type: String },
+
+    // Set by scripts/backfill-customers-for-orphaned-leads.js only when this
+    // Customer was newly created (not matched to an existing one) by that
+    // run, so it can be traced back to the run that created it (e.g.
+    // `migration_20260829_213045`).
+    migration_batch: { type: String, default: null },
+
     merged_into: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",

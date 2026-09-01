@@ -60,6 +60,7 @@ function unresolvedResult() {
     introducedEmails: [],
     introducedPhones: [],
     resolutionSucceeded: false,
+    created: false,
   };
 }
 
@@ -138,6 +139,7 @@ async function enrichCustomer(customer, { email, phone, source, smsOptIn }) {
     introducedEmails,
     introducedPhones,
     resolutionSucceeded: true,
+    created: false,
   };
 }
 
@@ -165,6 +167,7 @@ export async function resolveCustomerForLead({
       introducedEmails: [],
       introducedPhones: [],
       resolutionSucceeded: true,
+      created: false,
     };
   }
 
@@ -252,6 +255,7 @@ export async function resolveCustomerForLead({
     introducedEmails: normalizedEmail ? [normalizedEmail] : [],
     introducedPhones: normalizedPhone ? [normalizedPhone] : [],
     resolutionSucceeded: true,
+    created: true,
   };
 }
 
@@ -263,6 +267,14 @@ export async function resolveCustomerForLead({
  * that actually made it to the database — if this is called before the lead
  * is saved and the save then fails, an identifier can get permanently marked
  * as "already introduced" on the Customer with no lead left to point at it.
+ *
+ * Returns the underlying customer-resolution result (see
+ * resolveCustomerForLead) - notably `customerId` and `created` (true only
+ * when a brand-new Customer was made, false when an existing one was
+ * matched/enriched) - or `undefined` if resolution itself threw. Most
+ * callers ignore the return value; it exists for callers (e.g. the
+ * orphaned-leads backfill script) that need to know whether a new Customer
+ * was created.
  */
 export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
   let customerResolution;
@@ -281,7 +293,7 @@ export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
     return;
   }
 
-  if (!customerResolution.customerId) return;
+  if (!customerResolution.customerId) return customerResolution;
 
   try {
     savedLead.customer_id = customerResolution.customerId;
@@ -300,6 +312,8 @@ export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
       console.error(`Customer identity finalization failed for lead ${savedLead._id}:`, finalizationError);
     }
   }
+
+  return customerResolution;
 }
 
 export async function finalizeCustomerIdentity({
