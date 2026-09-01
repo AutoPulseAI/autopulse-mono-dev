@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Form, ListGroup, Pagination, Row, Col, Spinner } from "react-bootstrap";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Alert, Button, Form, ListGroup, Pagination, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
-import { formatTimestamp } from "../../../utils/dateUtils";
 
 const defaultPagination = {
   currentPage: 1,
@@ -14,45 +14,20 @@ const defaultPagination = {
   hasPreviousPage: false,
 };
 
-const defaultLeadState = {
-  leads: [],
-  pagination: {
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 5,
-    hasNextPage: false,
-    hasPreviousPage: false,
-  },
-  loading: false,
-  loaded: false,
-  error: null,
-};
-
 function primaryValue(items) {
   return items?.find((item) => item.is_primary)?.value || items?.[0]?.value || "";
-}
-
-function getLeadSource(lead) {
-  return lead.source || lead.lead_source || "Unknown";
-}
-
-function getVehicleInterest(lead) {
-  const parts = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 export default function CustomerList() {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
+  const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [pagination, setPagination] = useState(defaultPagination);
   const [filters, setFilters] = useState({ name: "", email: "", phone: "" });
   const [inputValues, setInputValues] = useState({ name: "", email: "", phone: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedCustomerId, setExpandedCustomerId] = useState(null);
-  const [leadStates, setLeadStates] = useState({});
   const [pageInputValue, setPageInputValue] = useState("1");
 
   const fetchCustomers = useCallback(async (page = 1) => {
@@ -86,71 +61,37 @@ export default function CustomerList() {
     }
   }, [activeEntity?.id, filters, loadingParent, pagination.itemsPerPage]);
 
-  const fetchCustomerLeads = useCallback(async (customerId, page = 1) => {
-    if (loadingParent || !activeEntity?.id) return;
-
-    setLeadStates((previous) => ({
-      ...previous,
-      [customerId]: {
-        ...(previous[customerId] || defaultLeadState),
-        loading: true,
-        error: null,
-      },
-    }));
-
-    try {
-      const params = new URLSearchParams({
-        dealer_id: activeEntity.id,
-        customer_id: customerId,
-        page: String(page),
-        limit: "5",
-      });
-      const response = await fetch(`/api/leads?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to load customer leads");
-
-      setLeadStates((previous) => ({
-        ...previous,
-        [customerId]: {
-          leads: data.data || [],
-          pagination: data.pagination || defaultLeadState.pagination,
-          loading: false,
-          loaded: true,
-          error: null,
-        },
-      }));
-    } catch (fetchError) {
-      setLeadStates((previous) => ({
-        ...previous,
-        [customerId]: {
-          ...(previous[customerId] || defaultLeadState),
-          loading: false,
-          error: fetchError.message || "Failed to load customer leads",
-        },
-      }));
-    }
-  }, [activeEntity?.id, loadingParent]);
-
   useEffect(() => {
     fetchCustomers(1);
   }, [fetchCustomers]);
 
-  const toggleCustomer = (customerId) => {
-    if (expandedCustomerId === customerId) {
-      setExpandedCustomerId(null);
+  // Auto-filter as the user types, instead of requiring the Search button click.
+  // Skips the initial mount so it doesn't re-fetch with the same (empty) filters
+  // fetchCustomers(1) above already just requested.
+  const isFirstInputRender = useRef(true);
+  const searchDebounceRef = useRef(null);
+  useEffect(() => {
+    if (isFirstInputRender.current) {
+      isFirstInputRender.current = false;
       return;
     }
+    searchDebounceRef.current = setTimeout(() => {
+      setFilters({ ...inputValues });
+    }, 400);
+    return () => clearTimeout(searchDebounceRef.current);
+  }, [inputValues]);
 
-    setExpandedCustomerId(customerId);
-    const state = leadStates[customerId];
-    if (!state?.loaded && !state?.loading) fetchCustomerLeads(customerId, 1);
+  const openCustomer = (customerId) => {
+    router.push(`/dealer/customers/${customerId}`);
   };
 
-  const handleSearch = () => setFilters({ ...inputValues });
+  const handleSearch = () => {
+    clearTimeout(searchDebounceRef.current);
+    setFilters({ ...inputValues });
+  };
 
   const clearFilters = () => {
+    clearTimeout(searchDebounceRef.current);
     const emptyFilters = { name: "", email: "", phone: "" };
     setInputValues(emptyFilters);
     setFilters(emptyFilters);
@@ -255,62 +196,20 @@ export default function CustomerList() {
           </ListGroup.Item>
 
           {customers.length === 0 ? <div className="text-center py-4">No customers found.</div> : customers.map((customer) => {
-            const isExpanded = expandedCustomerId === customer._id;
-            const state = leadStates[customer._id] || defaultLeadState;
             const email = primaryValue(customer.emails);
             const phone = primaryValue(customer.phones);
 
             return (
               <ListGroup.Item key={customer._id} className="w_card_list_box p-0">
-                <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => toggleCustomer(customer._id)} aria-expanded={isExpanded}>
+                <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => openCustomer(customer._id)}>
                   <Row className="align-items-center">
-                    <Col md={3} className="p_bold"><i className={`fa-solid ${isExpanded ? "fa-chevron-down" : "fa-chevron-right"} me-2`} />{customer.name || "Unnamed customer"}</Col>
+                    <Col md={3} className="p_bold"><i className="fa-solid fa-chevron-right me-2" />{customer.name || "Unnamed customer"}</Col>
                     <Col md={3}>{email || "No email"}</Col>
                     <Col md={3}>{phone || "No phone"}</Col>
                     <Col md={2}>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</Col>
                     <Col md={1} className="text-end">{customer.lead_count ?? 0}</Col>
                   </Row>
                 </button>
-
-                {isExpanded && (
-                  <div className="border-top px-3 py-3 bg-light">
-                    <div className="d-flex align-items-center justify-content-between mb-2">
-                      <h5 className="mb-0">Leads</h5>
-                      {state.loading && <Spinner animation="border" size="sm" />}
-                    </div>
-
-                    {state.error && <Alert variant="danger" className="mb-2">{state.error}<Button size="sm" variant="outline-danger" className="ms-2" onClick={() => fetchCustomerLeads(customer._id, state.pagination.currentPage)}>Retry</Button></Alert>}
-                    {!state.loading && !state.error && state.loaded && state.leads.length === 0 && <div className="text-muted py-2">No linked leads found.</div>}
-
-                    {state.leads.length > 0 && <ListGroup variant="flush">
-                      {state.leads.map((lead) => {
-                        const vehicleInterest = getVehicleInterest(lead);
-                        return (
-                          <ListGroup.Item key={lead._id} className="px-2">
-                            <Row className="align-items-center small">
-                              <Col md={3}>{lead.name || "Unnamed lead"}</Col>
-                              <Col md={2}>{getLeadSource(lead)}</Col>
-                              <Col md={2}>{lead.fe_lead_status || "N/A"}</Col>
-                              <Col md={3}>{lead.email || lead.phone || "No contact"}</Col>
-                              <Col md={2} className="text-md-end text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
-                            </Row>
-                            {(vehicleInterest || lead.vin) && (
-                              <Row className="small text-muted mt-1">
-                                <Col>
-                                  <i className="fa-solid fa-car me-1" />
-                                  {vehicleInterest || "Vehicle interest unknown"}
-                                  {lead.vin && <span> &middot; VIN: {lead.vin}</span>}
-                                </Col>
-                              </Row>
-                            )}
-                          </ListGroup.Item>
-                        );
-                      })}
-                    </ListGroup>}
-
-                    {state.pagination.totalPages > 1 && <Pagination size="sm" className="justify-content-center mt-3 mb-0"><Pagination.Prev disabled={!state.pagination.hasPreviousPage || state.loading} onClick={() => fetchCustomerLeads(customer._id, state.pagination.currentPage - 1)} /><Pagination.Item active>{state.pagination.currentPage}</Pagination.Item><Pagination.Next disabled={!state.pagination.hasNextPage || state.loading} onClick={() => fetchCustomerLeads(customer._id, state.pagination.currentPage + 1)} /></Pagination>}
-                  </div>
-                )}
               </ListGroup.Item>
             );
           })}

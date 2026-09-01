@@ -15,7 +15,12 @@
         default: null,
       },
       statusChangedAt:{type:Date},
-      
+
+      // Set by scripts/backfill-customers-for-orphaned-leads.js on every
+      // orphaned Lead it touches, so a given run's leads can be found again
+      // later (e.g. `migration_20260829_213045`).
+      migration_batch: { type: String, default: null },
+
       // Staff assignment field
       assigned_to: { 
         type: mongoose.Schema.Types.ObjectId, 

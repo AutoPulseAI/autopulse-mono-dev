@@ -13,9 +13,124 @@ import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead, createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
 import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js';
+import { parseAdfLeadEmail, extractRawAdfText } from '../lib/adfLeadParser.js';
+import RawAdfPayload from '../models/RawAdfPayload.js';
 
 // Connect to the database
 await dbConnect();
+
+// sendEmail() -> createBrandedEmailTemplate() interpolates the message text
+// straight into HTML with no escaping, so any value sourced from the (untrusted,
+// external) ADF XML must be escaped here before it's woven into the message.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+// Saved unconditionally whenever <adf> is detected, regardless of whether parsing
+// then succeeds, fails, or falls through to n8n - a durable backstop so a future
+// backfill workflow can revisit leads that ended up with missing information.
+async function saveRawAdfPayload({ dealer_id, message_id, source, attachment_filename, raw_xml }) {
+  // message_id isn't schema-required on Email (app/models/Email.js) and route.js
+  // never generates a fallback if the inbound webhook didn't supply one, so it can
+  // be missing here. Guard explicitly rather than relying on schema validation:
+  // updateOne()/upsert only runs Mongoose validators with runValidators:true (not
+  // set here), so a missing message_id wouldn't cleanly throw - it would upsert
+  // against a filter with message_id absent, and under the unique index below two
+  // *different* ADF emails from the same dealer that both lack a message_id would
+  // collide on that same tuple, silently dropping the second capture instead of
+  // saving it.
+  if (!dealer_id || !message_id) {
+    // Greppable prefix on purpose: this is the one signal that tells us, once this
+    // runs against real traffic, whether missing message_id is a rare fluke or
+    // frequent enough that some inbound source needs a fix upstream.
+    console.warn('[RawAdfPayload] Skipping capture - missing dealer_id or message_id', { dealer_id, message_id, source });
+    return;
+  }
+  try {
+    await RawAdfPayload.updateOne(
+      { dealer_id, message_id, source, attachment_filename: attachment_filename || null },
+      { $setOnInsert: { raw_xml } },
+      { upsert: true }
+    );
+  } catch (err) {
+    if (err?.code === 11000) {
+      // Lost the race to a concurrent worker upserting the same row - the unique
+      // index already guarantees it's saved, so this isn't a real failure.
+      return;
+    }
+    console.error('[RawAdfPayload] Failed to save raw ADF payload:', err);
+  }
+}
+
+// ADF payloads are tiny (a few KB of text) - anything bigger isn't worth fetching
+// as an ADF candidate and just wastes time/bandwidth on the wrong attachment.
+const ADF_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024;
+
+function looksLikeAdfAttachment(attachment) {
+  if (!attachment || attachment.status !== 'processed' || !attachment.url) return false;
+  const contentType = (attachment.contentType || '').toLowerCase();
+  const filename = (attachment.filename || '').toLowerCase();
+  return contentType.includes('xml') || filename.endsWith('.xml') || filename.endsWith('.adf');
+}
+
+// Some ADF leads arrive as an attachment rather than inline in the body (the body
+// is then just a generic "this is an HTML-only message" placeholder), so the
+// mail_content-only check above misses them entirely. Fetch and check any
+// XML/ADF-looking attachment (from our own S3 bucket, so this is a trusted URL)
+// before giving up and falling through to n8n.
+async function parseAdfLeadFromAttachments(attachments, { dealer_id, message_id }) {
+  for (const attachment of Array.isArray(attachments) ? attachments : []) {
+    if (!looksLikeAdfAttachment(attachment)) continue;
+    if (attachment.size && attachment.size > ADF_ATTACHMENT_MAX_BYTES) {
+      console.warn('Skipping oversized ADF attachment candidate:', attachment.filename, attachment.size);
+      continue;
+    }
+    try {
+      const response = await axios.get(attachment.url, {
+        responseType: 'text',
+        timeout: 10000,
+        maxContentLength: ADF_ATTACHMENT_MAX_BYTES,
+      });
+      const content = typeof response.data === 'string' ? response.data : String(response.data);
+
+      const rawAdf = extractRawAdfText(content);
+      if (rawAdf) {
+        await saveRawAdfPayload({
+          dealer_id,
+          message_id,
+          source: 'attachment',
+          attachment_filename: attachment.filename,
+          raw_xml: rawAdf,
+        });
+      }
+
+      const adfLead = parseAdfLeadEmail(content);
+      if (adfLead) return adfLead;
+    } catch (attachmentError) {
+      console.error('Failed to parse ADF attachment; skipping:', attachment.filename, attachmentError.message);
+    }
+  }
+  return null;
+}
+
+// Static (non-AI) acknowledgement sent to ADF leads, since ADF fields are extracted
+// locally rather than via the n8n AI pipeline that generates context-aware replies.
+function buildAdfAcknowledgementMessage(adfLead) {
+  const { make, model, year } = adfLead.vehicle || {};
+  const vehicleDescription = [year, make, model]
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join(' ');
+  return vehicleDescription
+    ? `Thank you for your interest in the ${vehicleDescription}. A member of our team will follow up with you shortly.`
+    : `Thank you for your interest. A member of our team will follow up with you shortly.`;
+}
 
 // Function to process an email
 export async function processEmail(job) {
@@ -39,6 +154,139 @@ export async function processEmail(job) {
         }
     }
     let sms =false;
+    const bodyContent = currentEmail.mail_content || currentEmail.emailBody || '';
+
+    const rawAdfFromBody = extractRawAdfText(bodyContent);
+    if (rawAdfFromBody) {
+      await saveRawAdfPayload({
+        dealer_id,
+        message_id: currentEmail.message_id,
+        source: 'body',
+        raw_xml: rawAdfFromBody,
+      });
+    }
+
+    let adfLead = null;
+    try {
+      adfLead = parseAdfLeadEmail(bodyContent);
+    } catch (adfParseError) {
+      // Detected <adf> but couldn't extract a usable lead even after sanitization -
+      // fall back to the n8n pipeline below rather than dropping the lead.
+      console.error('Failed to parse ADF lead locally; falling back to n8n:', adfParseError);
+      adfLead = null;
+    }
+
+    if (!adfLead && currentEmail.has_attachments) {
+      adfLead = await parseAdfLeadFromAttachments(currentEmail.attachments, {
+        dealer_id,
+        message_id: currentEmail.message_id,
+      });
+    }
+
+    if (adfLead) {
+      const existingInboundEmail = await Email.findOne({
+        message_id: currentEmail.message_id,
+        dealer_id,
+      });
+      if (existingInboundEmail?.lead_id) {
+        console.log('ADF email already has a linked Lead; skipping duplicate processing', {
+          message_id: currentEmail.message_id,
+          lead_id: String(existingInboundEmail.lead_id),
+        });
+        return;
+      }
+
+      const adfLeadDocument = new Lead({
+        name: adfLead.name,
+        email: adfLead.email,
+        phone: adfLead.phone,
+        source: adfLead.source,
+        lead_source: adfLead.source,
+        dealer_id,
+        sourcemail: currentEmail.message_id,
+        lead_status: 'ADF Lead',
+        fe_lead_status: 'Lead',
+        status: 'ADF Lead',
+        followup_preference: adfLead.email ? 'email' : 'sms',
+        response_mode: adfLead.email ? 'email' : 'sms',
+        vehicle_make: adfLead.vehicle.make,
+        vehicle_model: adfLead.vehicle.model,
+        vehicle_year: adfLead.vehicle.year,
+        vin: adfLead.vehicle.vin,
+        user_language: 'english',
+        data: {
+          format: 'adf/xml',
+          external_lead_id: adfLead.externalLeadId,
+          request_date: adfLead.requestDate,
+          comments: adfLead.comments,
+          vehicle: adfLead.vehicle,
+        },
+      });
+
+      const savedAdfLead = await adfLeadDocument.save();
+      await linkCustomerToLead(savedAdfLead, { source: 'email' });
+
+      await Email.updateOne(
+        { message_id: currentEmail.message_id, dealer_id },
+        { $set: { lead_id: savedAdfLead._id } }
+      );
+
+      try {
+        await onLeadStatusChange(savedAdfLead._id);
+      } catch (followupError) {
+        console.error('Error scheduling followups for ADF Lead:', followupError);
+      }
+
+      if (autreply) {
+        try {
+          const acknowledgement = buildAdfAcknowledgementMessage(adfLead);
+          const replySubject = 'Thank you for your inquiry';
+          let sentMessageId = null;
+          let replyChannel = null;
+          let replyRecipient = null;
+
+          if (adfLead.email) {
+            sentMessageId = await sendEmail(adfLead.email, replySubject, acknowledgement, recipient, null, dealer);
+            replyChannel = 'email';
+            replyRecipient = adfLead.email;
+          } else if (adfLead.phone) {
+            sentMessageId = await sendSMS(adfLead.phone, acknowledgement, dealer);
+            replyChannel = 'sms';
+            replyRecipient = adfLead.phone;
+          }
+
+          if (sentMessageId) {
+            const replyEmail = new Email({
+              message_id: sentMessageId,
+              parent_message_id: null,
+              parent_conversation: null,
+              sender: recipient,
+              recipient: replyRecipient,
+              subject: replySubject,
+              mail_content: acknowledgement,
+              communication_type: replyChannel,
+              status: 'sent',
+              dealer_id,
+              lead_id: savedAdfLead._id,
+              sourcemail: currentEmail.message_id,
+              date: new Date(),
+              user_language: 'english',
+            });
+            await replyEmail.save();
+          }
+        } catch (replyError) {
+          console.error('Error sending ADF lead acknowledgement:', replyError);
+        }
+      }
+
+      console.log('ADF Lead created without n8n processing', {
+        lead_id: String(savedAdfLead._id),
+        dealer_id: String(dealer_id),
+        source: adfLead.source,
+      });
+      return;
+    }
+
     const result = await callOllama(conversationThread,currentEmail);
 
     console.log('Third-party API response:', result);
@@ -46,13 +294,13 @@ export async function processEmail(job) {
     let recipientEmail;
     let emailSubject=`${subject}`;
     // Extract the response data
-    const { create_lead,lead_name,lead_source, response , update_lead,
+    const { lead_name,lead_source, response , update_lead,
       lead_status,
       booking_status,
       booking_date,
       booking_time,request,fe_lead_status,vin,make,model,year} = result;
 
-    let { lead_phone,lead_mail,response_mode, appointment_cancellation_requested = false, user_language = 'english', campaign_id, campaign_name, use_replies_for_ai } = result;
+    let { create_lead, lead_phone,lead_mail,response_mode, appointment_cancellation_requested = false, user_language = 'english', campaign_id, campaign_name, use_replies_for_ai } = result;
 
     // The AI extraction pipeline emits literal placeholder strings (e.g. "NA")
     // when it can't find an email in the source text, instead of omitting the
@@ -250,6 +498,31 @@ export async function processEmail(job) {
             console.error('Error updating lead:', error);
         }
     }
+
+    // n8n's create_lead/lead_mail computation is derived entirely from AI-extracted
+    // text in the message body - it never falls back to the SMTP "From" header. A
+    // brand-new email whose body doesn't literally contain the sender's own address
+    // (e.g. "Hi, I'm interested in a Mazda CX-7" with no email typed in the body)
+    // gets email="" / phone="" from the extractor, which flips create_lead to false
+    // and the lead is silently dropped even though this is obviously a new lead.
+    // Backstop it here: if nothing matched an existing lead and the sender header
+    // parses as a real address, use that instead of dropping the lead.
+    if (!create_lead && !leadId) {
+      const rawSender = typeof sender === 'string' ? sender.trim() : '';
+      // "sender" is usually already a bare address, but can arrive as a full
+      // "Display Name <email>" header value (see the same extraction in
+      // app/lib/email.js when composing outbound mail) - unwrap it either way.
+      const senderEmail = rawSender.includes('<')
+        ? (rawSender.match(/<([^>]+)>/)?.[1]?.trim() || rawSender)
+        : rawSender;
+      const isPlausibleEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail);
+      if (isPlausibleEmail && !isEmailSentinel(senderEmail)) {
+        console.log('n8n returned create_lead=false with no email/phone extracted from the body; falling back to sender header for a new lead:', senderEmail);
+        create_lead = true;
+        if (!lead_mail) lead_mail = senderEmail;
+      }
+    }
+
     if (create_lead) {
 
       if (response_mode?.toLowerCase()=='email' && lead_mail) {
