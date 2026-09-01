@@ -25,6 +25,10 @@ function getVehicleInterest(lead) {
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
+function isAdfLead(lead) {
+  return lead?.data?.format === "adf/xml";
+}
+
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
@@ -39,6 +43,10 @@ export default function CustomerDetail({ customerId }) {
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
+
+  const [adfText, setAdfText] = useState(null);
+  const [adfLoading, setAdfLoading] = useState(false);
+  const [adfError, setAdfError] = useState(null);
 
   const fetchCustomer = useCallback(async () => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -92,6 +100,40 @@ export default function CustomerDetail({ customerId }) {
     fetchLeads(1);
   }, [fetchLeads]);
 
+  useEffect(() => {
+    const activeLead = leads.find((lead) => lead._id === activeLeadId);
+    if (!activeLeadId || !isAdfLead(activeLead)) {
+      setAdfText(null);
+      setAdfError(null);
+      setAdfLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAdfLoading(true);
+    setAdfError(null);
+    setAdfText(null);
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/leads/${activeLeadId}/adf`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || "Failed to load ADF");
+        if (!cancelled) setAdfText(data.data.raw_xml);
+      } catch (fetchError) {
+        if (!cancelled) setAdfError(fetchError.message || "Failed to load ADF");
+      } finally {
+        if (!cancelled) setAdfLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLeadId, leads]);
+
   const handleLeadsPageChange = (page) => {
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);
   };
@@ -104,7 +146,7 @@ export default function CustomerDetail({ customerId }) {
     return (
       <div className="w_card">
         <Alert variant="danger">{customerError}</Alert>
-        <Button variant="outline-secondary" size="sm" onClick={() => router.push("/dealer/customers")}>
+        <Button variant="custom" size="sm" onClick={() => router.push("/dealer/customers")}>
           <i className="fa-solid fa-arrow-left me-2" />Back to Customers
         </Button>
       </div>
@@ -118,7 +160,7 @@ export default function CustomerDetail({ customerId }) {
       <div className="w_card mb-3">
         <div className="d-flex align-items-center justify-content-between mb-3">
           <h3 className="w_card_title mb-0">{customer.name || "Unnamed customer"}</h3>
-          <Button variant="outline-secondary" size="sm" onClick={() => router.push("/dealer/customers")}>
+          <Button variant="custom" size="sm" onClick={() => router.push("/dealer/customers")}>
             <i className="fa-solid fa-arrow-left me-2" />Back to Customers
           </Button>
         </div>
@@ -199,6 +241,26 @@ export default function CustomerDetail({ customerId }) {
                         <i className="fa-solid fa-car me-1" />
                         {vehicleInterest || "Vehicle interest unknown"}
                         {lead.vin && <span> &middot; VIN: {lead.vin}</span>}
+                      </div>
+                    )}
+                    {activeLeadId === lead._id && isAdfLead(lead) && (
+                      <div className="mb-3">
+                        <div className="small text-muted mb-1">ADF payload</div>
+                        {adfLoading ? (
+                          <div className="text-muted small">
+                            <Spinner animation="border" size="sm" className="me-2" />
+                            Loading ADF...
+                          </div>
+                        ) : adfError ? (
+                          <div className="text-danger small">{adfError}</div>
+                        ) : adfText ? (
+                          <pre
+                            className="small bg-light border rounded p-2 mb-0"
+                            style={{ maxHeight: 240, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                          >
+                            {adfText}
+                          </pre>
+                        ) : null}
                       </div>
                     )}
                     {/* Only mount the (self-fetching, self-polling) conversation panel while
