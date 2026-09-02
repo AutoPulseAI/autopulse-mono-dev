@@ -243,29 +243,31 @@ export default function CustomerDetail({ customerId }) {
                         {lead.vin && <span> &middot; VIN: {lead.vin}</span>}
                       </div>
                     )}
-                    {activeLeadId === lead._id && isAdfLead(lead) && (
-                      <div className="mb-3">
-                        <div className="small text-muted mb-1">ADF payload</div>
-                        {adfLoading ? (
-                          <div className="text-muted small">
-                            <Spinner animation="border" size="sm" className="me-2" />
-                            Loading ADF...
-                          </div>
-                        ) : adfError ? (
-                          <div className="text-danger small">{adfError}</div>
-                        ) : adfText ? (
-                          <pre
-                            className="small bg-light border rounded p-2 mb-0"
-                            style={{ maxHeight: 240, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-                          >
-                            {adfText}
-                          </pre>
-                        ) : null}
-                      </div>
-                    )}
                     {/* Only mount the (self-fetching, self-polling) conversation panel while
                         this accordion item is actually open. */}
                     {activeLeadId === lead._id && <ViewConversations lead={lead} embedded />}
+                    {activeLeadId === lead._id && isAdfLead(lead) && (
+                      <div className="d-flex justify-content-end mt-3">
+                        <div style={{ maxWidth: 420, width: "100%" }}>
+                          <div className="small text-muted mb-1 text-end">ADF payload</div>
+                          {adfLoading ? (
+                            <div className="text-muted small text-end">
+                              <Spinner animation="border" size="sm" className="me-2" />
+                              Loading ADF...
+                            </div>
+                          ) : adfError ? (
+                            <div className="text-danger small text-end">{adfError}</div>
+                          ) : adfText ? (
+                            <pre
+                              className="small bg-light border rounded p-2 mb-0"
+                              style={{ maxHeight: 240, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                            >
+                              {adfText}
+                            </pre>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
                   </Accordion.Body>
                 </Accordion.Item>
               );
