@@ -4,6 +4,9 @@ import { processEmail } from './emailWorker.js';
 import { processSMS } from './processSms.js';
 import { processLead } from './leadworker.js';
 import { setupCampaignWorker } from './campaignWorker.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',

@@ -216,7 +216,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                             {selectedConversation && (lead?.email || lead?.phone) && (
                                 <Button className="w-100" variant="custom" onClick={() => setEmailReplyModalOpen(true)}>
                                     <i className="fa-regular fa-reply me-2"></i>
-                                    {lead.followup_preference === 'sms' ? 'Text Reply' : 'Email Reply'}
+                                    {lead.followup_preference === 'sms' ? 'SMS Reply' : 'Email Reply'}
                                 </Button>
                             )}
                         </div>
@@ -268,7 +268,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                     dealer_id={lead.dealer_id}
                     onClose={() => setEmailReplyModalOpen(false)}
                     selectedConversation={selectedEmail}
-                    communicationType={selectedEmail.communication_type || 'email'}
+                    communicationType={lead.followup_preference === 'sms' ? 'sms' : (selectedEmail.communication_type || 'email')}
                     onReplySuccess={handleReplySuccess}
                 />
             )}
