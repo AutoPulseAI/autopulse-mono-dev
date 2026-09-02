@@ -17,8 +17,8 @@ export default function TermsAndConditionsPage() {
         </div>
 
         <p>
-          These Terms and Conditions ("Terms") govern your access to and use of the services
-          provided by Autopulse AI ("Autopulse AI", "we", "us", or "our"), including our website,
+          These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of the services
+          provided by Autopulse AI (&quot;Autopulse AI&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), including our website,
           application, and communications platform. By using our services, you agree to these
           Terms. If you do not agree, please do not use our services.
         </p>
@@ -61,14 +61,14 @@ export default function TermsAndConditionsPage() {
           </li>
           <li>
             <strong>Opt-out.</strong> You may cancel the SMS program at any time by texting
-            <strong> STOP</strong>. After you send the message "STOP", we will send you a message
+            <strong> STOP</strong>. After you send the message &quot;STOP&quot;, we will send you a message
             to confirm that you have been unsubscribed. After this, you will no longer receive
             SMS messages from us. If you want to join again, sign up as you did the first time,
             or text <strong>START</strong> and we will start sending SMS messages to you again.
           </li>
           <li>
             <strong>Help.</strong> If at any time you have questions about the messages, reply
-            <strong> HELP</strong>, or contact us using the information in the "Contact Us"
+            <strong> HELP</strong>, or contact us using the information in the &quot;Contact Us&quot;
             section below.
           </li>
           <li>
@@ -104,7 +104,7 @@ export default function TermsAndConditionsPage() {
 
         <h2>7. Disclaimers</h2>
         <p>
-          Our services are provided "as is" and "as available" without warranties of any kind,
+          Our services are provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind,
           whether express or implied, including warranties of merchantability, fitness for a
           particular purpose, or non-infringement.
         </p>
@@ -132,7 +132,7 @@ export default function TermsAndConditionsPage() {
         <h2>11. Changes to These Terms</h2>
         <p>
           We may update these Terms from time to time. Changes will be posted on this page with
-          an updated "Last updated" date. Continued use of our services after changes become
+          an updated &quot;Last updated&quot; date. Continued use of our services after changes become
           effective constitutes acceptance of the revised Terms.
         </p>
 

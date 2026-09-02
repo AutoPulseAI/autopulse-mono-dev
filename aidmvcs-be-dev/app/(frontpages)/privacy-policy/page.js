@@ -17,7 +17,7 @@ export default function PrivacyPolicyPage() {
         </div>
 
         <p>
-          Autopulse AI ("Autopulse AI", "we", "us", or "our") respects your privacy and is
+          Autopulse AI (&quot;Autopulse AI&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) respects your privacy and is
           committed to protecting it through this Privacy Policy. This policy explains what
           information we collect, how we use it, and the choices you have, including in
           connection with our SMS/text messaging communications.
@@ -86,7 +86,7 @@ export default function PrivacyPolicyPage() {
           </li>
           <li>
             <strong>Help.</strong> For help, reply <strong>HELP</strong> to any message, or contact
-            us using the information in the "Contact Us" section below.
+            us using the information in the &quot;Contact Us&quot; section below.
           </li>
           <li>
             <strong>Carrier liability.</strong> Carriers are not liable for delayed or
@@ -139,7 +139,7 @@ export default function PrivacyPolicyPage() {
           deletion, subject to applicable law.
         </p>
 
-        <h2>8. Children's Privacy</h2>
+        <h2>8. Children&apos;s Privacy</h2>
         <p>
           Our services are not directed to individuals under the age of 18, and we do not
           knowingly collect personal information from children.
@@ -148,7 +148,7 @@ export default function PrivacyPolicyPage() {
         <h2>9. Changes to This Policy</h2>
         <p>
           We may update this Privacy Policy from time to time. Changes will be posted on this
-          page with an updated "Last updated" date.
+          page with an updated &quot;Last updated&quot; date.
         </p>
 
         <h2>10. Contact Us</h2>
