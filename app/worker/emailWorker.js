@@ -239,7 +239,24 @@ export async function processEmail(job) {
 
       if (autreply) {
         try {
-          const acknowledgement = buildAdfAcknowledgementMessage(adfLead);
+          // Ask n8n's AI email pipeline for a context-aware reply instead of the
+          // static template. The Lead/Customer are already saved above, so we
+          // deliberately read ONLY `response` off this result and ignore every
+          // other field (create_lead, lead_mail, lead_phone, update_lead, ...) -
+          // wiring those up would create a duplicate lead via the same paths
+          // `callOllama`'s regular (non-ADF-local) caller uses further down.
+          let acknowledgement = null;
+          try {
+            const n8nResult = await callOllama(conversationThread, currentEmail);
+            if (typeof n8nResult?.response === 'string' && n8nResult.response.trim()) {
+              acknowledgement = n8nResult.response;
+            }
+          } catch (n8nError) {
+            console.error('Error fetching n8n AI response for ADF lead; falling back to static acknowledgement:', n8nError);
+          }
+          if (!acknowledgement) {
+            acknowledgement = buildAdfAcknowledgementMessage(adfLead);
+          }
           const replySubject = 'Thank you for your inquiry';
           let sentMessageId = null;
           let replyChannel = null;
@@ -279,7 +296,7 @@ export async function processEmail(job) {
         }
       }
 
-      console.log('ADF Lead created without n8n processing', {
+      console.log('ADF Lead created without n8n lead-creation processing', {
         lead_id: String(savedAdfLead._id),
         dealer_id: String(dealer_id),
         source: adfLead.source,
