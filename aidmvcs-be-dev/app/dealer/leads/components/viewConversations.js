@@ -694,7 +694,7 @@ export default function ViewConversations({
                           onClick={() => setShowReplyModal(true)}
                         >
                           <i className="fa-regular fa-reply me-2"></i>
-                          {lead.followup_preference === 'sms' ? 'Text Reply' : 'Email Reply'}
+                          {lead.followup_preference === 'sms' ? 'SMS Reply' : 'Email Reply'}
                         </Button>
                       )}
                     </Col>
@@ -1109,7 +1109,7 @@ export default function ViewConversations({
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
           selectedConversation={selectedConversation}
-          communicationType={selectedConversation.communication_type || 'email'}
+          communicationType={lead.followup_preference === 'sms' ? 'sms' : (selectedConversation.communication_type || 'email')}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}

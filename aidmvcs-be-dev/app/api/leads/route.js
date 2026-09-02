@@ -583,8 +583,9 @@ export async function POST(req) {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // Prioritize phone (SMS) if phone number exists and is valid
-      if(!data.email && (data.phone && data.phone.length >= 10)){
+      // Prioritize phone (SMS) if phone number exists and is valid, even when
+      // an email is also present.
+      if (data.phone && data.phone.length >= 10) {
         data.followup_preference = 'sms';
       } else if (!data.followup_preference) {
         // Default to email if no preference set and no valid phone

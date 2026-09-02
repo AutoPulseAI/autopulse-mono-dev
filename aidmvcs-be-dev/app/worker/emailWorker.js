@@ -207,8 +207,9 @@ export async function processEmail(job) {
         lead_status: 'ADF Lead',
         fe_lead_status: 'Lead',
         status: 'ADF Lead',
-        followup_preference: adfLead.email ? 'email' : 'sms',
-        response_mode: adfLead.email ? 'email' : 'sms',
+        // Prioritize SMS when a phone number is available, even if an email is too.
+        followup_preference: adfLead.phone ? 'sms' : 'email',
+        response_mode: adfLead.phone ? 'sms' : 'email',
         vehicle_make: adfLead.vehicle.make,
         vehicle_model: adfLead.vehicle.model,
         vehicle_year: adfLead.vehicle.year,
@@ -262,14 +263,16 @@ export async function processEmail(job) {
           let replyChannel = null;
           let replyRecipient = null;
 
-          if (adfLead.email) {
-            sentMessageId = await sendEmail(adfLead.email, replySubject, acknowledgement, recipient, null, dealer);
-            replyChannel = 'email';
-            replyRecipient = adfLead.email;
-          } else if (adfLead.phone) {
+          // Prioritize SMS when a phone number is available, matching the
+          // followup_preference/response_mode set on the lead above.
+          if (adfLead.phone) {
             sentMessageId = await sendSMS(adfLead.phone, acknowledgement, dealer);
             replyChannel = 'sms';
             replyRecipient = adfLead.phone;
+          } else if (adfLead.email) {
+            sentMessageId = await sendEmail(adfLead.email, replySubject, acknowledgement, recipient, null, dealer);
+            replyChannel = 'email';
+            replyRecipient = adfLead.email;
           }
 
           if (sentMessageId) {
