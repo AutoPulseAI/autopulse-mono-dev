@@ -18,6 +18,20 @@ import {
   messageUserLanguageDisplay,
 } from "../../utils/conversationTranslation";
 
+// SMS is the default reply channel; email is only used when explicitly
+// preferred, and either option is only offered when the lead actually has
+// that contact method on file.
+function getReplyChannel(lead) {
+  const hasPhone = !!lead?.phone;
+  const hasEmail = !!lead?.email;
+  if (hasPhone && hasEmail) {
+    return lead.followup_preference === 'email' ? 'email' : 'sms';
+  }
+  if (hasPhone) return 'sms';
+  if (hasEmail) return 'email';
+  return null;
+}
+
 export default function ViewConversations({
   lead,
   onBack,
@@ -687,14 +701,14 @@ export default function ViewConversations({
                   <div className="position-relative mt-3">
                     <Row className="align-items-center g-1">
                     <Col xxl={12} lg={3} md={12} xs={6}>
-                      {selectedConversation && (
+                      {selectedConversation && getReplyChannel(lead) && (
                         <Button
                           variant="custom"
                           className="w-100"
                           onClick={() => setShowReplyModal(true)}
                         >
                           <i className="fa-regular fa-reply me-2"></i>
-                          {lead.followup_preference === 'sms' ? 'SMS Reply' : 'Email Reply'}
+                          {getReplyChannel(lead) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                         </Button>
                       )}
                     </Col>
@@ -1109,7 +1123,7 @@ export default function ViewConversations({
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
           selectedConversation={selectedConversation}
-          communicationType={lead.followup_preference === 'sms' ? 'sms' : (selectedConversation.communication_type || 'email')}
+          communicationType={getReplyChannel(lead) || selectedConversation.communication_type || 'email'}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}

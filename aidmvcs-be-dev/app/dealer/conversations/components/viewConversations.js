@@ -9,6 +9,20 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import { decode } from "quoted-printable";
 import StatusModal from "./StatusModal"; // Import StatusModal
 
+// SMS is the default reply channel; email is only used when explicitly
+// preferred, and either option is only offered when the lead actually has
+// that contact method on file.
+function getReplyChannel(lead) {
+  const hasPhone = !!lead?.phone;
+  const hasEmail = !!lead?.email;
+  if (hasPhone && hasEmail) {
+    return lead.followup_preference === 'email' ? 'email' : 'sms';
+  }
+  if (hasPhone) return 'sms';
+  if (hasEmail) return 'email';
+  return null;
+}
+
 export default function ViewConversations({ selectedEmail, dealer_id, refresh }) {
     const [childEmails, setChildEmails] = useState([]);
     const { fetchData } = useFetch();
@@ -213,10 +227,10 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                             <i className="fa-solid fa-pen me-2"></i>
                             Update Status
                             </Button>
-                            {selectedConversation && (lead?.email || lead?.phone) && (
+                            {selectedConversation && getReplyChannel(lead) && (
                                 <Button className="w-100" variant="custom" onClick={() => setEmailReplyModalOpen(true)}>
                                     <i className="fa-regular fa-reply me-2"></i>
-                                    {lead.followup_preference === 'sms' ? 'SMS Reply' : 'Email Reply'}
+                                    {getReplyChannel(lead) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                                 </Button>
                             )}
                         </div>
@@ -268,7 +282,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                     dealer_id={lead.dealer_id}
                     onClose={() => setEmailReplyModalOpen(false)}
                     selectedConversation={selectedEmail}
-                    communicationType={lead.followup_preference === 'sms' ? 'sms' : (selectedEmail.communication_type || 'email')}
+                    communicationType={getReplyChannel(lead) || selectedEmail.communication_type || 'email'}
                     onReplySuccess={handleReplySuccess}
                 />
             )}
