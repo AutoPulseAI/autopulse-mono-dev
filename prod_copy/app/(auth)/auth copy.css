@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+
+:root {
+    --primary: #0272b4;
+    --dark: #262A2A;
+    --secondary: #565E5E;
+    --secondary-light: #6F6F6F;
+    --gray: #F9F9FC;
+    --white: #ffffff;
+
+    --sidebar-w: 276px;
+    --header-height: 56px;
+    --f15: 15px;
+    --f16: 16px;
+    --f18: 18px;
+
+}
+
+body {
+    font-family: "Noto Sans", serif;
+    font-size: var(--f15);
+}
+
+.text-custom {
+  color: var(--primary) !important;
+}
+.text-secondary {
+  color: var(--secondary-light);
+}
+
+/* Form */
+.oauth_main .form-control:focus {
+    color: initial !important;
+    background-color: var(--white);
+    border-color: var(--bs-border-color) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+.oauth_main .form-control {
+    font-size: var(--f15);
+    padding: 10px;
+  }
+  .oauth_main .form-label {
+    margin-bottom: .4rem;
+    color: var(--secondary-light);
+  }
+
+  .form-check-input:checked {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+  
+  /* Button */
+  .oauth_main .btn {
+    font-size: var(--f16);
+    width: 100%;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .oauth_main .btn-custom {
+    color: var(--white);
+    background-color: var(--primary);
+    border-color: var(--primary);
+  }
+  .oauth_main .btn-custom:hover {
+    color: var(--primary);
+    background-color: var(--white);
+    border-color: var(--primary);
+  }
+  
+/* Login */
+.oauth_main {
+    position: relative;
+    height: 100%;
+    width: 100%;
+}
+.oauth_main .oauth_img, .oauth_main .oauth_img img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.oauth_main .oauth_content {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 17%;
+}
+.oauth_main .oauth_logo {
+    max-width: 220px;
+    margin: 0 auto 40px;
+}
+.oauth_main .oauth_logo img {
+    width: 100%;
+}
+.oauth_main .oauth_content h1 {
+    font-size: 24px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 40px;
+    color: var(--dark);
+}
+.oauth_main .oauth_form {
+
+}
+
+@media (max-width: 1500px){
+  .oauth_main .oauth_content {
+    padding: 10%;
+}
+}
+
+@media (max-width: 992px) and (min-width: 768px){
+  .oauth_main .oauth_content {
+    padding: 20%;
+}
+}

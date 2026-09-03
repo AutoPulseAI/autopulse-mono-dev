@@ -1,0 +1,185 @@
+.rich-text-editor .ql-container {
+    min-height: 300px;
+    font-size: 14px;
+}
+.rich-text-editor .ql-editor {
+    min-height: 300px;
+}
+.rich-text-editor .ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #6c757d;
+}
+.rich-text-editor .ql-toolbar {
+    border-top: 1px solid #ccc;
+    border-left: 1px solid #ccc;
+    border-right: 1px solid #ccc;
+    border-bottom: none;
+    background: #fafafa;
+}
+.rich-text-editor .ql-toolbar .ql-custom-code-snippet,
+.rich-text-editor .ql-toolbar .ql-custom-css-class,
+.rich-text-editor .ql-toolbar .ql-custom-inline-style {
+    width: auto;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+.rich-text-editor .ql-toolbar button.ql-custom-code-snippet::before {
+    content: "Code Snippet";
+}
+.rich-text-editor .ql-toolbar button.ql-custom-css-class::before {
+    content: "Css Class";
+}
+.rich-text-editor .ql-toolbar button.ql-custom-inline-style::before {
+    content: "Inline style";
+}
+.rich-text-editor .ql-toolbar .ql-paragraph {
+    width: auto;
+}
+.rich-text-editor .ql-container {
+    border-bottom: 1px solid #ccc;
+    border-left: 1px solid #ccc;
+    border-right: 1px solid #ccc;
+    border-top: none;
+}
+.rich-text-editor iframe {
+    max-width: 100%;
+    height: 400px;
+}
+.rich-text-editor pre {
+    background: #f4f4f4;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+.rich-text-editor code {
+    background: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+.rich-text-editor table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+}
+.rich-text-editor table td,
+.rich-text-editor table th {
+    border: 1px solid #ddd;
+    padding: 8px;
+    min-width: 100px;
+    vertical-align: top;
+}
+.rich-text-editor table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+    text-align: left;
+}
+.rich-text-editor table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+.rich-text-editor table tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* Prevent Quill from wrapping tables in <p> tags */
+.rich-text-editor .ql-editor p > table {
+    display: block;
+    margin: 10px 0;
+}
+
+.rich-text-editor .ql-editor .ql-table-container {
+    display: block;
+    margin: 10px 0;
+}
+
+.rich-text-editor .ql-editor .ql-table-container table {
+    display: table !important;
+    margin: 0;
+}
+
+/* Ensure tables are not inside paragraphs */
+.rich-text-editor .ql-editor p:has(table) {
+    display: contents;
+}
+
+.rich-text-editor .ql-editor p:has(.ql-table-container) {
+    display: contents;
+}
+
+/* TinyMCE specific styles */
+.rich-text-editor .tox-tinymce {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.rich-text-editor .tox .tox-edit-area__iframe {
+    background-color: #fff;
+}
+
+/* Ensure tables are properly displayed in TinyMCE */
+.rich-text-editor .mce-content-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+}
+
+.rich-text-editor .mce-content-body table td,
+.rich-text-editor .mce-content-body table th {
+    border: 1px solid #ddd;
+    padding: 8px;
+    min-width: 100px;
+    vertical-align: top;
+}
+
+.rich-text-editor .mce-content-body table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+    text-align: left;
+}
+
+/* Table wrapper to prevent Quill from converting tables */
+.rich-text-editor .ql-table-wrapper {
+    display: block;
+    margin: 10px 0;
+    padding: 0;
+}
+
+.rich-text-editor .ql-table-wrapper[contenteditable="false"] {
+    user-select: none;
+}
+
+.rich-text-editor .ql-table-wrapper table {
+    display: table !important;
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0;
+    border: 1px solid #ddd;
+}
+
+.rich-text-editor .ql-table-wrapper td,
+.rich-text-editor .ql-table-wrapper th {
+    border: 1px solid #ddd;
+    padding: 8px;
+    min-width: 100px;
+    vertical-align: top;
+}
+
+/* Prevent Quill from modifying table structure */
+.rich-text-editor .ql-editor .ql-table-wrapper table,
+.rich-text-editor .ql-editor .ql-table-wrapper tbody,
+.rich-text-editor .ql-editor .ql-table-wrapper tr,
+.rich-text-editor .ql-editor .ql-table-wrapper td,
+.rich-text-editor .ql-editor .ql-table-wrapper th {
+    all: revert !important;
+}
+
+/* Ensure tables are visible and not wrapped */
+.rich-text-editor .ql-editor p:has(table) {
+    display: contents;
+}
+
+.rich-text-editor .ql-editor p:has(.ql-table-wrapper) {
+    display: contents;
+}
