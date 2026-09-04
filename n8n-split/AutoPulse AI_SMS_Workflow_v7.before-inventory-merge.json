@@ -1868,22 +1868,6 @@
     },
     {
       "parameters": {
-        "mode": "chooseBranch",
-        "chooseBranchMode": "waitForAll",
-        "output": "specifiedInput",
-        "useDataOfInput": 1
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        4864,
-        -5248
-      ],
-      "id": "44874923-b3aa-4990-b8cc-95a74ce99232",
-      "name": "Merge Inventory Search"
-    },
-    {
-      "parameters": {
         "jsCode": "// Attempt to access the vehicle inventory from \"Format Inventory Summary\" (VIN match),\n// falling back to \"Format Similar Vehicles Summary\" (make/model match) when the VIN path found nothing.\nlet vehicleInfo = \"Vehicle information not available.\";\ntry {\n  const inventory = $node[\"Format Inventory Summary\"];\n  if (inventory && inventory.json && inventory.json.vehicle_info && inventory.json.make) {\n    vehicleInfo = inventory.json.vehicle_info;\n  }\n} catch (e) {\n  // Leave as default\n}\n\nif (vehicleInfo === \"Vehicle information not available.\") {\n  try {\n    const similar = $node[\"Format Similar Vehicles Summary\"];\n    if (similar && similar.json && similar.json.vehicle_info) {\n      vehicleInfo = similar.json.vehicle_info;\n    }\n  } catch (e) {\n    // Leave as default\n  }\n}\n\nreturn [{\n  json: {\n    safe_vehicle_info: vehicleInfo\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
@@ -3618,7 +3602,7 @@
       "main": [
         [
           {
-            "node": "Merge Inventory Search",
+            "node": "Safe Inventory Extractor",
             "type": "main",
             "index": 0
           }
@@ -4164,13 +4148,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Merge Inventory Search",
-            "type": "main",
-            "index": 1
-          }
-        ]
+        []
       ]
     },
     "Build Vehicle Match Query": {
@@ -4189,28 +4167,6 @@
         [
           {
             "node": "Format Similar Vehicles Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Format Similar Vehicles Summary": {
-      "main": [
-        [
-          {
-            "node": "Merge Inventory Search",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge Inventory Search": {
-      "main": [
-        [
-          {
-            "node": "Safe Inventory Extractor",
             "type": "main",
             "index": 0
           }
