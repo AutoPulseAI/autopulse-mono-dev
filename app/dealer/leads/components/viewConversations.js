@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
-import { Col, Row, Button, Spinner } from "react-bootstrap";
+import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
@@ -71,6 +71,8 @@ export default function ViewConversations({
   const translationCacheRef = useRef({});
   const sidebarRef = useRef(null);
   const previousLeadIdRef = useRef(null);
+  const [activeChannelTab, setActiveChannelTab] = useState("sms");
+  const tabDefaultSetForLeadRef = useRef(null);
 
   const {  dealerParent } = useUser();
 
@@ -96,6 +98,15 @@ export default function ViewConversations({
     () => [...emails].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     [emails]
   );
+  const smsConversations = useMemo(
+    () => sortedEmails.filter((e) => e.communication_type === "sms"),
+    [sortedEmails]
+  );
+  const emailConversations = useMemo(
+    () => sortedEmails.filter((e) => e.communication_type !== "sms"),
+    [sortedEmails]
+  );
+  const activeChannelEmails = activeChannelTab === "sms" ? smsConversations : emailConversations;
 
     // 🔹 hold a ref to the LeadList so we can trigger pagination from here
   const leadListRef = useRef(null);
@@ -204,9 +215,18 @@ export default function ViewConversations({
 
       const res = await fetchData(url);
       const json = await res.json();
-      setEmails(json.emails || []);
-      if (json.emails?.length > 0) {
-        setSelectedConversation(json.emails[0]);
+      const fetchedEmails = json.emails || [];
+      setEmails(fetchedEmails);
+      if (fetchedEmails.length > 0) {
+        setSelectedConversation(fetchedEmails[0]);
+      }
+      // Pick the default tab (SMS if the lead has any SMS messages, else Email)
+      // once per lead, on its first successful fetch — later polling refreshes
+      // shouldn't override a tab the user has since switched to.
+      if (tabDefaultSetForLeadRef.current !== leadId) {
+        tabDefaultSetForLeadRef.current = leadId;
+        const hasSms = fetchedEmails.some((e) => e.communication_type === "sms");
+        setActiveChannelTab(hasSms ? "sms" : "email");
       }
     } catch (err) {
       console.error("Error fetching conversations:", err);
@@ -813,15 +833,6 @@ export default function ViewConversations({
                 <Row className="align-items-center gx-1">
                   <Col xxl={7} xl={7} md={5} xs={12}>
                     <div className="d-flex align-items-center">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleClose}
-                        className="me-2"
-                        title="Close"
-                      >
-                        <i className="fa-regular fa-xmark"></i>
-                      </Button>
                       <h3 className="w_card_title mb-0">Conversations</h3>
                     </div>
                   </Col>
@@ -846,9 +857,33 @@ export default function ViewConversations({
                     </div>
                   </Col>
                 </Row>
+
+                <Nav
+                  variant="pills"
+                  activeKey={activeChannelTab}
+                  onSelect={(key) => setActiveChannelTab(key)}
+                  className="mt-2"
+                >
+                  <Nav.Item>
+                    <Nav.Link eventKey="sms">
+                      <i className="fa-regular fa-comment-sms me-2"></i>SMS Conversation
+                      {smsConversations.length > 0 && (
+                        <Badge bg="secondary" className="ms-2">{smsConversations.length}</Badge>
+                      )}
+                    </Nav.Link>
+                  </Nav.Item>
+                  <Nav.Item>
+                    <Nav.Link eventKey="email">
+                      <i className="fa-regular fa-envelope me-2"></i>Email Conversation
+                      {emailConversations.length > 0 && (
+                        <Badge bg="secondary" className="ms-2">{emailConversations.length}</Badge>
+                      )}
+                    </Nav.Link>
+                  </Nav.Item>
+                </Nav>
               </div>
 
-              {sortedEmails.length > 0 ? (
+              {activeChannelEmails.length > 0 ? (
                 <div className="conversation-list">
                   {showTranslation && (
                   <div className="w_card mb-2">
@@ -907,7 +942,7 @@ export default function ViewConversations({
                       {translationError}
                     </div>
                   )}
-                  {sortedEmails.map((email) => {
+                  {activeChannelEmails.map((email) => {
                       const cleaned = cleanEmailContent(email.mail_content || "");
                       const originalText = getMessageTextForTranslation(email);
                       const translationKey = getTranslationKey(email, agentViewLanguage, originalText);
@@ -1110,7 +1145,9 @@ export default function ViewConversations({
               ) : (
                 <div className="w_card p-4 text-center">
                   <i className="fa-light fa-inbox-empty fa-2x mb-2 text-muted"></i>
-                  <p className="mb-0">No conversations found</p>
+                  <p className="mb-0">
+                    No {activeChannelTab === "sms" ? "SMS" : "email"} conversations found
+                  </p>
                 </div>
               )}
             </Col>
