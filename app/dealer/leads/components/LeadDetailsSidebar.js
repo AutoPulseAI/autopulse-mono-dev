@@ -2,10 +2,7 @@
 import { useState, useEffect } from "react";
 import { Offcanvas, Form, Button, Alert, Spinner, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
-
-function isAdfLead(lead) {
-  return lead?.data?.format === "adf/xml";
-}
+import ViewAdfModal, { isAdfLead } from "./ViewAdfModal";
 
 export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }) {
   const { dealerParent } = useUser();
@@ -13,10 +10,7 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  const [adfText, setAdfText] = useState(null);
-  const [adfLoading, setAdfLoading] = useState(false);
-  const [adfError, setAdfError] = useState(null);
+  const [showAdfModal, setShowAdfModal] = useState(false);
 
   // Helper function to check if field is editable (blank or name field)
   const isFieldEditable = (fieldName, fieldValue) => {
@@ -42,37 +36,8 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
   }, [lead]);
 
   useEffect(() => {
-    if (!show || !isAdfLead(lead)) {
-      setAdfText(null);
-      setAdfError(null);
-      setAdfLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAdfLoading(true);
-    setAdfError(null);
-    setAdfText(null);
-
-    (async () => {
-      try {
-        const response = await fetch(`/api/leads/${lead._id}/adf`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || "Failed to load ADF");
-        if (!cancelled) setAdfText(data.data.raw_xml);
-      } catch (fetchError) {
-        if (!cancelled) setAdfError(fetchError.message || "Failed to load ADF");
-      } finally {
-        if (!cancelled) setAdfLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [show, lead]);
+    if (!show) setShowAdfModal(false);
+  }, [show]);
 
   const validateField = (name, value) => {
     const stringValue = value ? value.toString().trim() : "";
@@ -361,26 +326,15 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
 
           {isAdfLead(lead) && (
             <div className="mt-2">
-              <div className="small text-muted mb-1">ADF payload</div>
-              {adfLoading ? (
-                <div className="text-muted small">
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Loading ADF...
-                </div>
-              ) : adfError ? (
-                <div className="text-danger small">{adfError}</div>
-              ) : adfText ? (
-                <pre
-                  className="small bg-light border rounded p-2 mb-0"
-                  style={{ maxHeight: 320, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-                >
-                  {adfText}
-                </pre>
-              ) : null}
+              <Button variant="outline-custom" size="sm" onClick={() => setShowAdfModal(true)}>
+                <i className="fa-solid fa-file-code me-1" />View ADF
+              </Button>
             </div>
           )}
         </div>
       </Offcanvas.Body>
+
+      <ViewAdfModal show={showAdfModal} onHide={() => setShowAdfModal(false)} leadId={lead._id} />
     </Offcanvas>
   );
 }

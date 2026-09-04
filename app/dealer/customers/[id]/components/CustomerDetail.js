@@ -6,6 +6,7 @@ import { Accordion, Alert, Badge, Button, Col, Pagination, Row, Spinner } from "
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
+import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 
 const defaultLeadsPagination = {
   currentPage: 1,
@@ -25,10 +26,6 @@ function getVehicleInterest(lead) {
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-function isAdfLead(lead) {
-  return lead?.data?.format === "adf/xml";
-}
-
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
@@ -43,10 +40,7 @@ export default function CustomerDetail({ customerId }) {
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
-
-  const [adfText, setAdfText] = useState(null);
-  const [adfLoading, setAdfLoading] = useState(false);
-  const [adfError, setAdfError] = useState(null);
+  const [adfModalLeadId, setAdfModalLeadId] = useState(null);
 
   const fetchCustomer = useCallback(async () => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -99,40 +93,6 @@ export default function CustomerDetail({ customerId }) {
   useEffect(() => {
     fetchLeads(1);
   }, [fetchLeads]);
-
-  useEffect(() => {
-    const activeLead = leads.find((lead) => lead._id === activeLeadId);
-    if (!activeLeadId || !isAdfLead(activeLead)) {
-      setAdfText(null);
-      setAdfError(null);
-      setAdfLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAdfLoading(true);
-    setAdfError(null);
-    setAdfText(null);
-
-    (async () => {
-      try {
-        const response = await fetch(`/api/leads/${activeLeadId}/adf`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || "Failed to load ADF");
-        if (!cancelled) setAdfText(data.data.raw_xml);
-      } catch (fetchError) {
-        if (!cancelled) setAdfError(fetchError.message || "Failed to load ADF");
-      } finally {
-        if (!cancelled) setAdfLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeLeadId, leads]);
 
   const handleLeadsPageChange = (page) => {
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);
@@ -246,26 +206,15 @@ export default function CustomerDetail({ customerId }) {
                     {/* Only mount the (self-fetching, self-polling) conversation panel while
                         this accordion item is actually open. */}
                     {activeLeadId === lead._id && <ViewConversations lead={lead} embedded />}
-                    {activeLeadId === lead._id && isAdfLead(lead) && (
+                    {isAdfLead(lead) && (
                       <div className="d-flex justify-content-end mt-3">
-                        <div style={{ maxWidth: 420, width: "100%" }}>
-                          <div className="small text-muted mb-1 text-end">ADF payload</div>
-                          {adfLoading ? (
-                            <div className="text-muted small text-end">
-                              <Spinner animation="border" size="sm" className="me-2" />
-                              Loading ADF...
-                            </div>
-                          ) : adfError ? (
-                            <div className="text-danger small text-end">{adfError}</div>
-                          ) : adfText ? (
-                            <pre
-                              className="small bg-light border rounded p-2 mb-0"
-                              style={{ maxHeight: 240, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-                            >
-                              {adfText}
-                            </pre>
-                          ) : null}
-                        </div>
+                        <Button
+                          variant="outline-custom"
+                          size="sm"
+                          onClick={() => setAdfModalLeadId(lead._id)}
+                        >
+                          <i className="fa-solid fa-file-code me-1" />View ADF
+                        </Button>
                       </div>
                     )}
                   </Accordion.Body>
@@ -289,6 +238,12 @@ export default function CustomerDetail({ customerId }) {
           </Pagination>
         )}
       </div>
+
+      <ViewAdfModal
+        show={!!adfModalLeadId}
+        onHide={() => setAdfModalLeadId(null)}
+        leadId={adfModalLeadId}
+      />
     </>
   );
 }
