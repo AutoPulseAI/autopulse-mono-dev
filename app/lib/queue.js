@@ -1,6 +1,7 @@
 // lib/queue.js
 // Dynamic imports to avoid Next.js module resolution issues
 import Redis from 'ioredis';
+import { PARTS_QUEUE, defaultJobOptions } from '../worker/dealervault/queues.js';
 
 // Redis configuration
 const redisConfig = {
@@ -18,7 +19,10 @@ if (process.env.REDIS_URL) {
 async function createQueue(queueName) {
   try {
     const { Queue } = await import('bullmq');
-    return new Queue(queueName, { connection: redisConfig });
+    return new Queue(queueName, {
+      connection: redisConfig,
+      ...(queueName === PARTS_QUEUE ? { defaultJobOptions: defaultJobOptions() } : {}),
+    });
   } catch (error) {
     console.error(`Error creating queue ${queueName}:`, error);
     throw new Error(`Failed to create queue ${queueName}: ${error.message}`);
@@ -30,6 +34,7 @@ let emailQueue = null;
 let communicationQueue = null;
 let leadProcessingQueue = null;
 let campaignProcessingQueue = null;
+let dealerVaultPartsQueue = null;
 let redis = null;
 
 // Initialize Redis connection
@@ -54,6 +59,9 @@ export async function getQueue(queueName) {
   
   try {
     switch (queueName) {
+      case PARTS_QUEUE:
+        if (!dealerVaultPartsQueue) dealerVaultPartsQueue = await createQueue(PARTS_QUEUE);
+        return dealerVaultPartsQueue;
       case 'emailQueue':
         if (!emailQueue) {
           emailQueue = await createQueue('emailQueue');
