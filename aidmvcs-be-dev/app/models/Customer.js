@@ -73,6 +73,11 @@ const customerSchema = new mongoose.Schema(
       ref: "Customer",
     },
     merge_history: { type: [mergeHistorySchema], default: [] },
+
+    // Catch-all for fields from external sources (e.g. DealerTrack DMS
+    // imports) that aren't modeled here yet, so unmapped data is preserved
+    // instead of silently dropped by strict-mode schema validation.
+    extra: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

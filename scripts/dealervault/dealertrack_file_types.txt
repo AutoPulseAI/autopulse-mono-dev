@@ -1,0 +1,741 @@
+DealerTrack export file-type reference
+
+Common file format
+- Encoding: tab-separated text (TSV); the separator between columns is a literal tab (\\t).
+- One header row is followed by data rows. Text fields are not quoted in these exports.
+- Empty values are represented by adjacent tabs.
+- Dates use M/D/YYYY; numeric money/quantity fields may contain commas.
+- File name pattern: DVD46315_YYYYMMDD_HHMM_<TYPE>.txt. Dealer identifiers are DV Dealer ID and Vendor Dealer ID; both are DVD46315.
+- SV repeating values: pipe (|) separates operation/line groups; caret (^) separates multiple values within a group. Preserve empty positions when splitting.
+
+PTINV — Parts Inventory
+Inventory master/snapshot: part number, description, costs/prices, stock quantities and levels, stocking status, bin/source, manufacturer and sales history.
+Primary key: Part Number.
+Columns (in file order; tab-separated):
+1. File Type
+2. DV Dealer ID
+3. Vendor Dealer ID
+4. DMS Type
+5. Part Number
+6. Part Description
+7. Part Cost
+8. Part Price
+9. Quantity On Hand
+10. Quantity On Order
+11. Best Stock Level
+12. Stocking Status
+13. Minimum Stock Level
+14. Maximum Stock Level
+15. BIN#
+16. Source
+17. Compensation
+18. Retention Code
+19. Manufacturer Status
+20. Make
+21. Entry Date
+22. Last Sale Date
+23. Last Received Date
+24. Year-To-Date Total
+25. Previous Year-To-Date Total
+26. Old Part Number
+27. New Part Number
+28. Part Number Change
+29. Part Group
+
+SL — Sales
+Vehicle deal records: customer/co-buyer, vehicle/VIN, pricing and cost, trade-ins, financing/lease terms, fees, commissions, warranties/aftermarket products, profit, status and dates.
+Primary key: Deal Number.
+Columns (in file order; tab-separated):
+1. File Type
+2. DV Dealer ID
+3. Vendor Dealer ID
+4. DMS Type
+5. Deal Number
+6. Customer Number
+7. Full Name
+8. Salutation
+9. First Name
+10. Middle Name
+11. Last Name
+12. Suffix
+13. Address Line 1
+14. Address Line 2
+15. City
+16. State
+17. Zip
+18. County
+19. Home Phone
+20. Cell Phone
+21. Work Phone
+22. Work Extension
+23. Email 1
+24. Email 2
+25. Email 3
+26. Birth Date
+27. Individual/Business Flag
+28. Opt Out
+29. Block Email
+30. Block Phone
+31. Block Mail
+32. Language
+33. Customer Create Date
+34. Customer Last Activity Date
+35. Co-Buyer Customer Number
+36. Co-Buyer Full Name
+37. Co-Buyer Salutation
+38. Co-Buyer First Name
+39. Co-Buyer Middle Name
+40. Co-Buyer Last Name
+41. Co-Buyer Suffix
+42. Co-Buyer Address Line 1
+43. Co-Buyer Address Line 2
+44. Co-Buyer City
+45. Co-Buyer State
+46. Co-Buyer Zip
+47. Co-Buyer County
+48. Co-Buyer Home Phone
+49. Co-Buyer Cell Phone
+50. Co-Buyer Work Phone
+51. Co-Buyer Work Extension
+52. Co-Buyer Email 1
+53. Co-Buyer Email 2
+54. Co-Buyer Email 3
+55. Co-Buyer Birth Date
+56. Co-Buyer Individual/Business Flag
+57. Co-Buyer Opt Out
+58. Co Buyer Block Email
+59. Co Buyer Block Phone
+60. Co Buyer Block Mail
+61. VIN
+62. Year
+63. Make
+64. Model
+65. Model Number
+66. Mileage
+67. Description
+68. Exterior Color
+69. New/Used
+70. Stock Number
+71. Transmission
+72. Engine Configuration
+73. Trim
+74. Engine Number
+75. Chassis Number
+76. License Plate Number
+77. Delivery Date
+78. Delivery Mileage
+79. Inventory Date
+80. In Service Date
+81. VIN Explosion Year
+82. VIN Explosion Make
+83. VIN Explosion Model
+84. VIN Explosion Trim
+85. VIN Explosion Transmission Type
+86. VIN Explosion Fuel Type
+87. VIN Explosion Engine Size
+88. VIN Explosion GVW Range
+89. Trade 1 VIN
+90. Trade 1 Year
+91. Trade 1 Make
+92. Trade 1 Model
+93. Trade 1 Odometer
+94. Trade 1 Actual Cash Value
+95. Trade 1 Gross
+96. Trade 1 Payoff
+97. Trade 2 VIN
+98. Trade 2 Year
+99. Trade 2 Make
+100. Trade 2 Model
+101. Trade 2 Odometer
+102. Trade 2 Actual Cash Value
+103. Trade 2 Gross
+104. Trade 2 Payoff
+105. Salesman 1 Number
+106. Salesman 1 Name
+107. Salesman 2 Number
+108. Salesman 2 Name
+109. Salesman 3 Number
+110. Salesman 3 Name
+111. Closing Manager Number
+112. Closing Manager Name
+113. Finance Manager Number
+114. Finance Manager Name
+115. Salesman Manager Number
+116. Salesman Manager Name
+117. MSRP
+118. List Price
+119. Sales Price
+120. Journal Price
+121. Cost
+122. Journal Cost
+123. Adjustments
+124. Adjusted Cost
+125. Incentives
+126. Pack Amount
+127. Sale Net
+128. Total Trade Actual Cash Value
+129. Total Trade Gross
+130. We Owe Front
+131. Total Front Fees/Aftermarket Profit
+132. Total Front Commission
+133. Total Front Sales
+134. Total Front Cost
+135. Front Gross
+136. Finance Profit
+137. Total Warranty Profit
+138. We Owe Back
+139. Insurance Profit
+140. Total Back Fees/Aftermarket Profit
+141. Finance Reserve
+142. Total Back Commission
+143. Total Back Sales
+144. Total Back Cost
+145. Back Gross
+146. Total Profit
+147. Gross Profit
+148. Gross Payable
+149. Deal Status
+150. Entry Date
+151. Booked Date
+152. Finalized Date
+153. Contract Date
+154. Accounting Date
+155. Status Change Date
+156. First Pay Date
+157. Deal Type
+158. Sale Type
+159. Bank ID
+160. Bank Name
+161. Bank Address
+162. Term
+163. Amount Financed
+164. APR
+165. Monthly Payment
+166. Payment Total
+167. Rebates
+168. Deposit
+169. Down Payment
+170. Total Net Trades
+171. Total Down
+172. Balloon Amount
+173. Adjusted Balloon Amount
+174. Holdback Amount
+175. Total Drive Off Amount
+176. License Fee
+177. Registration Fee
+178. Documentation Fee
+179. Finance Charge
+180. Total Pickup Payments
+181. Sell Rate
+182. Buy Rate
+183. Residual Rate
+184. Residual Amount
+185. Allowed Miles
+186. Estimated Miles
+187. Mileage Rate
+188. Acquisition Fee
+189. Base Payment
+190. Security Deposit
+191. Total Capital Reduction
+192. Net Capital Cost
+193. Lease Depreciation Value
+194. Dealer Fees
+195. Government Fees
+196. Total Tax
+197. Registration State
+198. Report of Sale Number
+199. Salesman 1 Total Commission
+200. Salesman 1 Front Commission
+201. Salesman 1 Back Commission
+202. Salesman 2 Total Commission
+203. Salesman 2 Front Commission
+204. Salesman 2 Back Commission
+205. Salesman 3 Total Commission
+206. Salesman 3 Front Commission
+207. Salesman 3 Back Commission
+208. Warranty 1 Name
+209. Warranty 1 Sale
+210. Warranty 1 Cost
+211. Warranty 1 Miles
+212. Warranty 1 Term
+213. Warranty 2 Name
+214. Warranty 2 Sale
+215. Warranty 2 Cost
+216. Warranty 2 Miles
+217. Warranty 2 Term
+218. Warranty 3 Name
+219. Warranty 3 Sale
+220. Warranty 3 Cost
+221. Warranty 3 Miles
+222. Warranty 3 Term
+223. Warranty 4 Name
+224. Warranty 4 Sale
+225. Warranty 4 Cost
+226. Warranty 4 Miles
+227. Warranty 4 Term
+228. Warranty 5 Name
+229. Warranty 5 Sale
+230. Warranty 5 Cost
+231. Warranty 5 Miles
+232. Warranty 5 Term
+233. Total Fee/Aftermarket Sale
+234. Total Fee/Aftermarket Cost
+235. Fee/Aftermarket 1 Name
+236. Fee/Aftermarket 1 Sale
+237. Fee/Aftermarket 1 Cost
+238. Fee/Aftermarket 1 Profit Indicator
+239. Fee/Aftermarket 2 Name
+240. Fee/Aftermarket 2 Sale
+241. Fee/Aftermarket 2 Cost
+242. Fee/Aftermarket 2 Profit Indicator
+243. Fee/Aftermarket 3 Name
+244. Fee/Aftermarket 3 Sale
+245. Fee/Aftermarket 3 Cost
+246. Fee/Aftermarket 3 Profit Indicator
+247. Fee/Aftermarket 4 Name
+248. Fee/Aftermarket 4 Sale
+249. Fee/Aftermarket 4 Cost
+250. Fee/Aftermarket 4 Profit Indicator
+251. Fee/Aftermarket 5 Name
+252. Fee/Aftermarket 5 Sale
+253. Fee/Aftermarket 5 Cost
+254. Fee/Aftermarket 5 Profit Indicator
+255. Fee/Aftermarket 6 Name
+256. Fee/Aftermarket 6 Sale
+257. Fee/Aftermarket 6 Cost
+258. Fee/Aftermarket 6 Profit Indicator
+259. Fee/Aftermarket 7 Name
+260. Fee/Aftermarket 7 Sale
+261. Fee/Aftermarket 7 Cost
+262. Fee/Aftermarket 7 Profit Indicator
+263. Fee/Aftermarket 8 Name
+264. Fee/Aftermarket 8 Sale
+265. Fee/Aftermarket 8 Cost
+266. Fee/Aftermarket 8 Profit Indicator
+267. Fee/Aftermarket 9 Name
+268. Fee/Aftermarket 9 Sale
+269. Fee/Aftermarket 9 Cost
+270. Fee/Aftermarket 9 Profit Indicator
+271. Fee/Aftermarket 10 Name
+272. Fee/Aftermarket 10 Sale
+273. Fee/Aftermarket 10 Cost
+274. Fee/Aftermarket 10 Profit Indicator
+275. Fee/Aftermarket 11 Name
+276. Fee/Aftermarket 11 Sale
+277. Fee/Aftermarket 11 Cost
+278. Fee/Aftermarket 11 Profit Indicator
+279. Fee/Aftermarket 12 Name
+280. Fee/Aftermarket 12 Sale
+281. Fee/Aftermarket 12 Cost
+282. Fee/Aftermarket 12 Profit Indicator
+283. Fee/Aftermarket 13 Name
+284. Fee/Aftermarket 13 Sale
+285. Fee/Aftermarket 13 Cost
+286. Fee/Aftermarket 13 Profit Indicator
+287. Fee/Aftermarket 14 Name
+288. Fee/Aftermarket 14 Sale
+289. Fee/Aftermarket 14 Cost
+290. Fee/Aftermarket 14 Profit Indicator
+291. Fee/Aftermarket 15 Name
+292. Fee/Aftermarket 15 Sale
+293. Fee/Aftermarket 15 Cost
+294. Fee/Aftermarket 15 Profit Indicator
+295. Fee/Aftermarket 16 Name
+296. Fee/Aftermarket 16 Sale
+297. Fee/Aftermarket 16 Cost
+298. Fee/Aftermarket 16 Profit Indicator
+299. Fee/Aftermarket 17 Name
+300. Fee/Aftermarket 17 Sale
+301. Fee/Aftermarket 17 Cost
+302. Fee/Aftermarket 17 Profit Indicator
+303. Fee/Aftermarket 18 Name
+304. Fee/Aftermarket 18 Sale
+305. Fee/Aftermarket 18 Cost
+306. Fee/Aftermarket 18 Profit Indicator
+307. Fee/Aftermarket 19 Name
+308. Fee/Aftermarket 19 Sale
+309. Fee/Aftermarket 19 Cost
+310. Fee/Aftermarket 19 Profit Indicator
+311. Fee/Aftermarket 20 Name
+312. Fee/Aftermarket 20 Sale
+313. Fee/Aftermarket 20 Cost
+314. Fee/Aftermarket 20 Profit Indicator
+315. Insurance 1 Type
+316. Insurance 1 Name
+317. Insurance 1 Sale
+318. Insurance 1 Cost
+319. Insurance 1 Term
+320. Insurance 2 Type
+321. Insurance 2 Name
+322. Insurance 2 Sale
+323. Insurance 2 Cost
+324. Insurance 2 Term
+325. Insurance 3 Type
+326. Insurance 3 Name
+327. Insurance 3 Sale
+328. Insurance 3 Cost
+329. Insurance 3 Term
+330. Accidental Health Type
+331. Accidental Health Name
+332. Accidental Health Sale
+333. Accidental Health Cost
+334. Accidental Health Term
+335. Credit Life Type
+336. Credit Life Name
+337. Credit Life Sale
+338. Credit Life Cost
+339. Credit Life Term
+340. Levelized Life Type
+341. Levelized Life Name
+342. Levelized Life Sale
+343. Levelized Life Cost
+344. Levelized Life Term
+345. Loss of Employment Type
+346. Loss of Employment Name
+347. Loss of Employment Sale
+348. Loss of Employment Cost
+349. Loss of Employment Term
+350. Guaranteed Auto Protection Type
+351. Guaranteed Auto Protection Name
+352. Guaranteed Auto Protection Sale
+353. Guaranteed Auto Protection Cost
+354. Guaranteed Auto Protection Term
+355. Sale Comments
+356. CASS_STD_LINE1
+357. CASS_STD_LINE2
+358. CASS_STD_CITY
+359. CASS_STD_STATE
+360. CASS_STD_ZIP
+361. CASS_STD_ZIP4
+362. CASS_STD_DPBC
+363. CASS_STD_CHKDGT
+364. CASS_STD_CART
+365. CASS_STD_LOT
+366. CASS_STD_LOTORD
+367. CASS_STD_URB
+368. CASS_STD_FIPS
+369. CASS_STD_EWS
+370. CASS_STD_LACS
+371. CASS_STD_ZIPMOV
+372. CASS_STD_Z4LOM
+373. CASS_STD_NDIAPT
+374. CASS_STD_NDIRR
+375. CASS_STD_LACSRT
+376. CASS_STD_ERROR_CD
+
+SV — Service
+Repair-order/service-line export: RO dates/status, advisor and appointment linkage, totals by customer/warranty/internal, labor/parts/sublet detail, operations/technicians, vehicle and customer data.
+Primary key: RO Number. Repeating line groups are encoded inside fields.
+Columns (in file order; tab-separated):
+1. File Type
+2. DV Dealer ID
+3. Vendor Dealer ID
+4. DMS Type
+5. RO Number
+6. Open Date
+7. Close Date
+8. Service Advisor Number
+9. Service Advisor Name
+10. RO Department
+11. RO Store
+12. Appointment Date
+13. Appointment Flag
+14. Appointment Number
+15. Appointment Department
+16. Accounting Make
+17. Pickup Date
+18. Pickup Time
+19. Post Time
+20. Promise Date
+21. Promise Time
+22. Payment Method
+23. RO Status
+24. Print Time
+25. Salesman Name
+26. Salesman Number
+27. Service Contract Name
+28. Service Contract Number
+29. Tag Number
+30. Warranty Expiration Date
+31. Warranty Expiration Miles
+32. Total Cost
+33. Total Sale
+34. Customer Total Cost
+35. Customer Total Sale
+36. Customer Labor Cost
+37. Customer Labor Sale
+38. Customer Parts Cost
+39. Customer Parts Sale
+40. Customer Misc Cost
+41. Customer Misc Sale
+42. Customer Gas/Oil/Grease Cost
+43. Customer Gas/Oil/Grease Sale
+44. Customer Sublet Cost
+45. Customer Sublet Sale
+46. Warranty Total Cost
+47. Warranty Total Sale
+48. Warranty Labor Cost
+49. Warranty Labor Sale
+50. Warranty Parts Cost
+51. Warranty Parts Sale
+52. Warranty Misc Cost
+53. Warranty Misc Sale
+54. Warranty Gas/Oil/Grease Cost
+55. Warranty Gas/Oil/Grease Sale
+56. Warranty Sublet Cost
+57. Warranty Sublet Sale
+58. Internal Total Cost
+59. Internal Total Sale
+60. Internal Labor Cost
+61. Internal Labor Sale
+62. Internal Parts Cost
+63. Internal Parts Sale
+64. Internal Misc Cost
+65. Internal Misc Sale
+66. Internal Gas/Oil/Grease Cost
+67. Internal Gas/Oil/Grease Sale
+68. Internal Sublet Cost
+69. Internal Sublet Sale
+70. Total Labor Cost
+71. Total Labor Sale
+72. Total Parts Cost
+73. Total Parts Sale
+74. Total Misc Cost
+75. Total Misc Sale
+76. Total Gas/Oil/Grease Cost
+77. Total Gas/Oil/Grease Sale
+78. Total Sublet Cost
+79. Total Sublet Sale
+80. Total Misc Code Sale
+81. Total Tax
+82. Customer Total Tax
+83. Warranty Total Tax
+84. Internal Total Tax
+85. Operation Codes
+86. Operation Code Descriptions
+87. Tech Labor Line
+88. Tech Number
+89. Tech Name
+90. Upsell
+91. Labor Cause
+92. Labor Complaint
+93. Labor Correction
+94. Labor Comments
+95. Recommended Operation Codes
+96. Recommendations
+97. Operation Line Number
+98. Operation Sale Types
+99. Operation Line Cost
+100. Operation Line Sale
+101. Labor Cost
+102. Labor Sale
+103. Parts Cost
+104. Parts Sale
+105. Misc Cost
+106. Misc Sale
+107. Gas/Oil/Grease Cost
+108. Gas/Oil/Grease Sale
+109. Sublet Cost
+110. Sublet Sale
+111. Labor Tech Hours
+112. Labor Bill Hours
+113. Labor Tech Rate
+114. Labor Bill Rate
+115. Parts Labor Line Number
+116. Parts Line Number
+117. Parts Sale Type
+118. Part Number
+119. Part Description
+120. Part Quantity
+121. Parts Unit Cost
+122. Parts Unit Sale
+123. VIN
+124. Year
+125. Make
+126. Model
+127. Model Number
+128. RO Mileage
+129. Mileage Out
+130. Description
+131. Exterior Color
+132. New/Used
+133. Stock Number
+134. Transmission
+135. Engine Configuration
+136. Trim
+137. Engine Number
+138. Chassis Number
+139. License Plate Number
+140. Delivery Date
+141. Delivery Mileage
+142. In Service Date
+143. VIN Explosion Year
+144. VIN Explosion Make
+145. VIN Explosion Model
+146. VIN Explosion Trim
+147. VIN Explosion Transmission Type
+148. VIN Explosion Fuel Type
+149. VIN Explosion Engine Size
+150. VIN Explosion GVW Range
+151. Customer Number
+152. Full Name
+153. Salutation
+154. First Name
+155. Middle Name
+156. Last Name
+157. Suffix
+158. Address Line 1
+159. Address Line 2
+160. City
+161. State
+162. Zip
+163. County
+164. Home Phone
+165. Cell Phone
+166. Work Phone
+167. Work Extension
+168. Email 1
+169. Email 2
+170. Email 3
+171. Birth Date
+172. Individual/Business Flag
+173. Opt Out
+174. Block Email
+175. Block Phone
+176. Block Mail
+177. Language
+178. Customer Create Date
+179. Customer Last Activity Date
+180. CASS_STD_LINE1
+181. CASS_STD_LINE2
+182. CASS_STD_CITY
+183. CASS_STD_STATE
+184. CASS_STD_ZIP
+185. CASS_STD_ZIP4
+186. CASS_STD_DPBC
+187. CASS_STD_CHKDGT
+188. CASS_STD_CART
+189. CASS_STD_LOT
+190. CASS_STD_LOTORD
+191. CASS_STD_URB
+192. CASS_STD_FIPS
+193. CASS_STD_EWS
+194. CASS_STD_LACS
+195. CASS_STD_ZIPMOV
+196. CASS_STD_Z4LOM
+197. CASS_STD_NDIAPT
+198. CASS_STD_NDIRR
+199. CASS_STD_LACSRT
+200. CASS_STD_ERROR_CD
+
+SV_APPT — Appointments
+Service appointment schedule: appointment/RO dates, concern and operation codes, advisor, waiting/loaner/transport flags, estimates, vehicle and customer data.
+Primary key: Appointment Number.
+Columns (in file order; tab-separated):
+1. File Type
+2. DV Dealer ID
+3. Vendor Dealer ID
+4. DMS Type
+5. Appointment Number
+6. Appointment Date
+7. Appointment Time
+8. Appointment Create Date
+9. RO Number
+10. Last RO Miles
+11. Last RO Date
+12. Promise Date
+13. Promise Time
+14. Cause
+15. Complaint
+16. Comment
+17. Operation Code
+18. Operation Code Description
+19. Recommended Operation Code
+20. Recommended Operation Code Description
+21. Service Advisor Number
+22. Service Advisor Name
+23. Sale Type
+24. Waiting Flag
+25. Loaner Flag
+26. Alternate Transportation
+27. Estimate Time
+28. Estimate Amount
+29. Tag Number
+30. VIN
+31. Year
+32. Make
+33. Model
+34. Model Number
+35. Appointment Mileage
+36. Description
+37. Exterior Color
+38. Stock Number
+39. Transmission
+40. Engine Configuration
+41. Trim
+42. Engine Number
+43. Chassis Number
+44. License Plate Number
+45. Delivery Date
+46. Delivery Mileage
+47. In Service Date
+48. VIN Explosion Year
+49. VIN Explosion Make
+50. VIN Explosion Model
+51. VIN Explosion Trim
+52. VIN Explosion Transmission Type
+53. VIN Explosion Fuel Type
+54. VIN Explosion Engine Size
+55. VIN Explosion GVW Range
+56. Customer Number
+57. Full Name
+58. Salutation
+59. First Name
+60. Middle Name
+61. Last Name
+62. Suffix
+63. Address Line 1
+64. Address Line 2
+65. City
+66. State
+67. Zip
+68. County
+69. Home Phone
+70. Cell Phone
+71. Work Phone
+72. Work Extension
+73. Email 1
+74. Email 2
+75. Email 3
+76. Birth Date
+77. Individual/Business Flag
+78. Opt Out
+79. Block Email
+80. Block Phone
+81. Block Mail
+82. Language
+83. Customer Create Date
+84. Customer Last Activity Date
+85. CASS_STD_LINE1
+86. CASS_STD_LINE2
+87. CASS_STD_CITY
+88. CASS_STD_STATE
+89. CASS_STD_ZIP
+90. CASS_STD_ZIP4
+91. CASS_STD_DPBC
+92. CASS_STD_CHKDGT
+93. CASS_STD_CART
+94. CASS_STD_LOT
+95. CASS_STD_LOTORD
+96. CASS_STD_URB
+97. CASS_STD_FIPS
+98. CASS_STD_EWS
+99. CASS_STD_LACS
+100. CASS_STD_ZIPMOV
+101. CASS_STD_Z4LOM
+102. CASS_STD_NDIAPT
+103. CASS_STD_NDIRR
+104. CASS_STD_LACSRT
+105. CASS_STD_ERROR_CD
+
+

@@ -16,6 +16,7 @@ const UserSchema = new mongoose.Schema(
       enum: ["admin", "dealer", "vendor"],
       required: true,
     },
+    dv_dealer_id: { type: String, trim: true },
     phone: {
       type: String,
       validate: {
@@ -134,6 +135,11 @@ const UserSchema = new mongoose.Schema(
     }
   },
   { timestamps: true }
+);
+
+UserSchema.index(
+  { dv_dealer_id: 1 },
+  { unique: true, partialFilterExpression: { type: "dealer", dv_dealer_id: { $type: "string" } } }
 );
 
 // One canonical email per account (unique index applies to lowercase storage).

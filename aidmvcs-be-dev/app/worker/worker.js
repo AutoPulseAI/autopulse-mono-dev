@@ -4,6 +4,7 @@ import { processEmail } from './emailWorker.js';
 import { processSMS } from './processSms.js';
 import { processLead } from './leadworker.js';
 import { setupCampaignWorker } from './campaignWorker.js';
+import { setupDealerVaultWorkers } from './dealervault/index.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -45,6 +46,7 @@ const emailWorker = new Worker('emailQueue', processEmail, { connection: redis }
 const smsWorker = new Worker('communicationQueue', processSMS, { connection: redis });
 const leadWorker = new Worker('leadProcessingQueue', processLead, { connection: redis });
 const campaignWorker = setupCampaignWorker(redis);
+setupDealerVaultWorkers(redis);
 
 // Shared event listeners (optional)
 const setupWorkerEvents = (worker, queueName) => {
