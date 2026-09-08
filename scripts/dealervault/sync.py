@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import posixpath
+import pwd
 import stat
 import tempfile
 from contextlib import ExitStack, contextmanager
@@ -95,7 +96,7 @@ def connect_sftp(secret):
         # Explicit filenames make unreadable or malformed trust stores fail closed.
         for path in (
             Path("/etc/ssh/ssh_known_hosts"),
-            Path.home() / ".ssh/known_hosts",
+            Path(pwd.getpwuid(os.geteuid()).pw_dir) / ".ssh/known_hosts",
         ):
             if path.exists():
                 client.load_system_host_keys(str(path))
