@@ -64,8 +64,8 @@ def acquire_lock():
 
 
 def get_secret():
-    with boto3.client("secretsmanager", region_name=AWS_REGION) as client:
-        response = client.get_secret_value(SecretId=SECRET_ID)
+    client = boto3.client("secretsmanager", region_name=AWS_REGION)
+    response = client.get_secret_value(SecretId=SECRET_ID)
     try:
         secret = json.loads(response["SecretString"])
         if not isinstance(secret, dict):
@@ -302,10 +302,8 @@ def main():
     try:
         with acquire_lock():
             secret = get_secret()
-            with (
-                ExitStack() as connections,
-                boto3.client("s3", region_name=AWS_REGION) as s3,
-            ):
+            with ExitStack() as connections:
+                s3 = boto3.client("s3", region_name=AWS_REGION)
                 stage = "connecting SFTP"
                 sftp = connections.enter_context(connect_sftp(secret))
                 stage = "listing remote directory"
