@@ -173,6 +173,30 @@ const Sidebar = ({ isOpen, onClose }) => {
         </li>
 
         <li>
+          <Link href="/dealer/sales" className={getLinkClass("/dealer/sales")}>
+            <i className="fa-regular fa-file-invoice-dollar"></i>Sales
+          </Link>
+        </li>
+
+        <li>
+          <Link href="/dealer/service" className={getLinkClass("/dealer/service")}>
+            <i className="fa-regular fa-screwdriver-wrench"></i>Service
+          </Link>
+        </li>
+
+        <li>
+          <Link href="/dealer/service-appointments" className={getLinkClass("/dealer/service-appointments")}>
+            <i className="fa-regular fa-calendar-clock"></i>Service Appointments
+          </Link>
+        </li>
+
+        <li>
+          <Link href="/dealer/parts-inventory" className={getLinkClass("/dealer/parts-inventory")}>
+            <i className="fa-regular fa-boxes-stacked"></i>Parts Inventory
+          </Link>
+        </li>
+
+        <li>
           <Link href="https://chat.autopulse.ai/login" target="_blank" className="nav-link">
             <i className="fa-regular fa-message-bot"></i>Autopulse Chat
           </Link>

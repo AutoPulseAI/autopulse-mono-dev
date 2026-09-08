@@ -285,12 +285,16 @@ export function setupDealerVaultSqsConsumer(redis) {
           })
           .promise();
       } catch (error) {
-        log('error', 'dealervault_sqs_receive_failed', {
-          code: sanitizedErrorCode(error),
-        });
-        await delay(RECEIVE_ERROR_DELAY_MS);
-        continue;
-      }
+  log('error', 'dealervault_sqs_receive_failed', {
+    code: sanitizedErrorCode(error),
+    awsCode: typeof error?.code === 'string' ? error.code : undefined,
+    statusCode: Number.isInteger(error?.statusCode)
+      ? error.statusCode
+      : undefined,
+  });
+  await delay(RECEIVE_ERROR_DELAY_MS);
+  continue;
+}
 
       for (const message of response.Messages || []) {
         try {
