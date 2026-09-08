@@ -103,6 +103,7 @@ test('missing optional fields and relationships are omitted instead of populated
     assert.equal(Object.hasOwn(doc, field), false);
   }
   assert.equal(h.BatchModel.rows[0].failed_count, 0);
+  assert.deepEqual(h.BatchModel.rows[0].row_outcomes[0].warnings, []);
 });
 
 test('optional dates validate calendar values without casting dates or rewriting strings', async () => {
@@ -283,6 +284,7 @@ test('partial rows preserve absent identifiers and links; explicit unresolved RO
   for (const field of ['ro_number', 'customer_number', 'vin', 'appointment_date', 'customer_id', 'vehicle_id', 'repair_order_id']) {
     assert.deepEqual(h.Model.rows[0][field], original[field]);
   }
+  assert.deepEqual(h.BatchModel.rows[1].row_outcomes[0].warnings, []);
   await h.process(job([{ 'Appointment Number': '001', 'RO Number': 'missing' }], '20260910_1200'));
   assert.equal(h.Model.rows[0].ro_number, 'missing');
   assert.equal(h.Model.rows[0].repair_order_id, null);

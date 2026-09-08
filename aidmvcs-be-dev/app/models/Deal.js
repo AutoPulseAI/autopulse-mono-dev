@@ -24,7 +24,11 @@ const dealSchema = new mongoose.Schema(
 );
 
 // One deal per dealer.
-dealSchema.index({ dealer_id: 1, deal_number: 1 }, { unique: true });
+export const DEAL_NATURAL_KEY_INDEX = {
+  key: { dealer_id: 1, deal_number: 1 },
+  options: { unique: true },
+};
+dealSchema.index(DEAL_NATURAL_KEY_INDEX.key, { ...DEAL_NATURAL_KEY_INDEX.options });
 
 // Cross-file lookups: join to RepairOrder/ServiceAppointment/PartInventory
 // context by vehicle or customer.

@@ -25,7 +25,14 @@ const serviceAppointmentSchema = new mongoose.Schema(
 );
 
 // One appointment per dealer.
-serviceAppointmentSchema.index({ dealer_id: 1, appointment_number: 1 }, { unique: true });
+export const SERVICE_APPOINTMENT_NATURAL_KEY_INDEX = {
+  key: { dealer_id: 1, appointment_number: 1 },
+  options: { unique: true },
+};
+serviceAppointmentSchema.index(
+  SERVICE_APPOINTMENT_NATURAL_KEY_INDEX.key,
+  { ...SERVICE_APPOINTMENT_NATURAL_KEY_INDEX.options },
+);
 
 // Cross-file lookups: forward-link to RepairOrder once converted, and join
 // to Deal/RepairOrder/PartInventory context by vehicle.

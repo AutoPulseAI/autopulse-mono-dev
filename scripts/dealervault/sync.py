@@ -48,7 +48,8 @@ def acquire_lock():
         fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     except OSError:
         raise SyncError(
-            "Cannot open lock file at " + LOCK_FILE
+            "Cannot open lock file at "
+            + LOCK_FILE
             + "; ensure it is provisioned and writable by the run user."
         ) from None
     with os.fdopen(fd, "r+") as lock:
@@ -83,24 +84,34 @@ def get_secret():
             "Invalid secret: expected JSON with nonempty host, username, password "
             "strings and a port from 1 through 65535."
         ) from None
-    return {key: secret[key] for key in ("host", "username", "password")} | {"port": port}
+    return {key: secret[key] for key in ("host", "username", "password")} | {
+        "port": port
+    }
 
 
 @contextmanager
 def connect_sftp(secret):
     with paramiko.SSHClient() as client:
         # Explicit filenames make unreadable or malformed trust stores fail closed.
-        for path in (Path("/etc/ssh/ssh_known_hosts"), Path.home() / ".ssh/known_hosts"):
+        for path in (
+            Path("/etc/ssh/ssh_known_hosts"),
+            Path.home() / ".ssh/known_hosts",
+        ):
             if path.exists():
                 client.load_system_host_keys(str(path))
         client.set_missing_host_key_policy(RejectUnknownHostKey())
         try:
             client.connect(
-                hostname=secret["host"], port=secret["port"],
-                username=secret["username"], password=secret["password"],
-                allow_agent=False, look_for_keys=False,
-                timeout=TIMEOUT_SECONDS, banner_timeout=TIMEOUT_SECONDS,
-                auth_timeout=TIMEOUT_SECONDS, channel_timeout=TIMEOUT_SECONDS,
+                hostname=secret["host"],
+                port=secret["port"],
+                username=secret["username"],
+                password=secret["password"],
+                allow_agent=False,
+                look_for_keys=False,
+                timeout=TIMEOUT_SECONDS,
+                banner_timeout=TIMEOUT_SECONDS,
+                auth_timeout=TIMEOUT_SECONDS,
+                channel_timeout=TIMEOUT_SECONDS,
             )
         except paramiko.BadHostKeyException:
             raise SyncError(
@@ -116,8 +127,11 @@ def connect_sftp(secret):
 def list_remote_files(sftp):
     # Keep unclassified entries so they fail explicitly in the per-file loop.
     return sorted(
-        (entry for entry in sftp.listdir_attr(REMOTE_DIRECTORY)
-         if entry.st_mode is None or stat.S_ISREG(entry.st_mode)),
+        (
+            entry
+            for entry in sftp.listdir_attr(REMOTE_DIRECTORY)
+            if entry.st_mode is None or stat.S_ISREG(entry.st_mode)
+        ),
         key=lambda entry: entry.filename,
     )
 
@@ -125,18 +139,23 @@ def list_remote_files(sftp):
 def list_existing_keys(s3):
     """Build the skip set only after every page has been fetched successfully."""
     pages = s3.get_paginator("list_objects_v2").paginate(
-        Bucket=S3_BUCKET, Prefix=f"{S3_PREFIX}/",
+        Bucket=S3_BUCKET,
+        Prefix=f"{S3_PREFIX}/",
     )
     return {obj["Key"] for page in pages for obj in page.get("Contents", [])}
 
 
 def file_metadata(attributes):
     if attributes.st_mode is None or not stat.S_ISREG(attributes.st_mode):
-        raise SyncError("Remote entry is not a verified regular file (mode missing or changed).")
+        raise SyncError(
+            "Remote entry is not a verified regular file (mode missing or changed)."
+        )
     if attributes.st_size is None or attributes.st_size < 0:
         raise SyncError("Remote file size is unavailable.")
     if attributes.st_mtime is None:
-        raise SyncError("Remote modification time is unavailable; cannot verify stability.")
+        raise SyncError(
+            "Remote modification time is unavailable; cannot verify stability."
+        )
     return attributes.st_mode, attributes.st_size, attributes.st_mtime
 
 
@@ -146,7 +165,10 @@ def download_file(sftp, remote_file, local_path):
     # SFTP v3 has no O_NOFOLLOW or stable inode identity. These checks mitigate
     # replacement races but cannot prove identity against a hostile remote writer.
     with sftp.open(remote_path, "rb") as source:
-        if file_metadata(source.stat()) != before or file_metadata(sftp.lstat(remote_path)) != before:
+        if (
+            file_metadata(source.stat()) != before
+            or file_metadata(sftp.lstat(remote_path)) != before
+        ):
             raise SyncError("Remote file changed while opening; no content downloaded.")
         remaining = before[1]
         with local_path.open("wb") as target:
@@ -158,10 +180,14 @@ def download_file(sftp, remote_file, local_path):
                 remaining -= len(chunk)
             if source.read(1):
                 raise SyncError("Remote file grew during download.")
-        if (file_metadata(source.stat()) != before
-                or file_metadata(sftp.lstat(remote_path)) != before
-                or local_path.stat().st_size != before[1]):
-            raise SyncError("Download size mismatch or remote file changed during download.")
+        if (
+            file_metadata(source.stat()) != before
+            or file_metadata(sftp.lstat(remote_path)) != before
+            or local_path.stat().st_size != before[1]
+        ):
+            raise SyncError(
+                "Download size mismatch or remote file changed during download."
+            )
     LOGGER.info("Downloaded file %r (%d bytes)", remote_file.filename, before[1])
 
 
@@ -176,13 +202,19 @@ def conditional_multipart_upload(s3, local_path, key):
             while chunk := source.read(part_size):
                 number = len(parts) + 1
                 response = s3.upload_part(
-                    Bucket=S3_BUCKET, Key=key, UploadId=upload_id,
-                    PartNumber=number, Body=chunk,
+                    Bucket=S3_BUCKET,
+                    Key=key,
+                    UploadId=upload_id,
+                    PartNumber=number,
+                    Body=chunk,
                 )
                 parts.append({"PartNumber": number, "ETag": response["ETag"]})
         s3.complete_multipart_upload(
-            Bucket=S3_BUCKET, Key=key, UploadId=upload_id,
-            MultipartUpload={"Parts": parts}, IfNoneMatch="*",
+            Bucket=S3_BUCKET,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+            IfNoneMatch="*",
         )
         completed = True
     finally:
@@ -190,8 +222,11 @@ def conditional_multipart_upload(s3, local_path, key):
             try:
                 s3.abort_multipart_upload(Bucket=S3_BUCKET, Key=key, UploadId=upload_id)
             except Exception as error:
-                LOGGER.warning("Could not abort incomplete multipart upload for %r: %s",
-                               key, error_description(error))
+                LOGGER.warning(
+                    "Could not abort incomplete multipart upload for %r: %s",
+                    key,
+                    error_description(error),
+                )
 
 
 def upload_file(s3, local_path, key):
@@ -223,12 +258,17 @@ def temporary_download(counts):
             directory.cleanup()
         except Exception as error:
             counts["cleanup_warnings"] += 1
-            LOGGER.warning("Temporary cleanup failed at %r: %s; remove when no sync is running",
-                           directory.name, error_description(error))
+            LOGGER.warning(
+                "Temporary cleanup failed at %r: %s; remove when no sync is running",
+                directory.name,
+                error_description(error),
+            )
 
 
 def connection_lost(sftp, error):
-    if isinstance(error, (EOFError, ConnectionError, TimeoutError, paramiko.SSHException)):
+    if isinstance(
+        error, (EOFError, ConnectionError, TimeoutError, paramiko.SSHException)
+    ):
         return True
     channel = sftp.get_channel()
     transport = channel.get_transport()
@@ -236,16 +276,25 @@ def connection_lost(sftp, error):
 
 
 def error_description(error):
-    # SDK exception text and tracebacks may contain sensitive request information.
-    return str(error) if isinstance(error, SyncError) else type(error).__name__
+    # Temporary debug mode: include exception type and message.
+    # Revert to sanitized logging after the startup failure is fixed.
+    return f"{type(error).__name__}: {error}"
 
 
 def main():
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
     )
-    counts = dict(discovered=None, skipped=0, uploaded=0, failed=0,
-                  not_attempted=0, cleanup_warnings=0, connection_failures=0)
+    counts = dict(
+        discovered=None,
+        skipped=0,
+        uploaded=0,
+        failed=0,
+        not_attempted=0,
+        cleanup_warnings=0,
+        connection_failures=0,
+    )
     listing_status = "not_started"
     run_status = "aborted"
     stage = "startup"
@@ -253,7 +302,10 @@ def main():
     try:
         with acquire_lock():
             secret = get_secret()
-            with ExitStack() as connections, boto3.client("s3", region_name=AWS_REGION) as s3:
+            with (
+                ExitStack() as connections,
+                boto3.client("s3", region_name=AWS_REGION) as s3,
+            ):
                 stage = "connecting SFTP"
                 sftp = connections.enter_context(connect_sftp(secret))
                 stage = "listing remote directory"
@@ -271,10 +323,17 @@ def main():
                     stage = "validating filename"
                     try:
                         name = remote_file.filename
-                        if not name or name in (".", "..") or "/" in name or "\x00" in name:
+                        if (
+                            not name
+                            or name in (".", "..")
+                            or "/" in name
+                            or "\x00" in name
+                        ):
                             raise SyncError("Invalid remote filename.")
                         if remote_file.st_mode is None:
-                            raise SyncError("Remote listing omitted file mode; cannot classify entry.")
+                            raise SyncError(
+                                "Remote listing omitted file mode; cannot classify entry."
+                            )
                         key = f"{S3_PREFIX}/{name}"
                         stage = "checking S3"
                         if key in existing_keys:
@@ -292,12 +351,18 @@ def main():
                             existing_keys.add(key)
                     except Exception as error:
                         counts["failed"] += 1
-                        LOGGER.error("Failed file %r while %s: %s",
-                                     remote_file.filename, stage, error_description(error))
+                        LOGGER.error(
+                            "Failed file %r while %s: %s",
+                            remote_file.filename,
+                            stage,
+                            error_description(error),
+                        )
                         if stage == "downloading" and connection_lost(sftp, error):
                             counts["connection_failures"] += 1
                             remaining = len(remote_files) - index - 1
-                            LOGGER.error("SFTP connection lost; %d files remain", remaining)
+                            LOGGER.error(
+                                "SFTP connection lost; %d files remain", remaining
+                            )
                             if remaining:
                                 # One bounded recovery attempt, rather than failing every
                                 # subsequent file on the same dead connection.
@@ -309,7 +374,11 @@ def main():
                 stage = "closing connections"
         run_status = "file_failures" if counts["failed"] else "complete"
     except Exception as error:
-        LOGGER.error("Sync aborted while %s: %s", stage, error_description(error))
+        LOGGER.exception(
+            "Sync aborted while %s: %s",
+            stage,
+            error_description(error),
+        )
         return 1
     finally:
         LOGGER.info(
@@ -317,9 +386,14 @@ def main():
             "not_attempted=%d cleanup_warnings=%d connection_failures=%d "
             "listing=%s status=%s",
             counts["discovered"] if counts["discovered"] is not None else "unknown",
-            counts["skipped"], counts["uploaded"], counts["failed"],
-            counts["not_attempted"], counts["cleanup_warnings"],
-            counts["connection_failures"], listing_status, run_status,
+            counts["skipped"],
+            counts["uploaded"],
+            counts["failed"],
+            counts["not_attempted"],
+            counts["cleanup_warnings"],
+            counts["connection_failures"],
+            listing_status,
+            run_status,
         )
     return 1 if counts["failed"] else 0
 

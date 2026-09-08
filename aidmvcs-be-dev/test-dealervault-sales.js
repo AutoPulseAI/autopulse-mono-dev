@@ -269,9 +269,15 @@ test('missing/incompatible mapping indexes prevent Customer writes and are retry
     assert.equal(error instanceof UnrecoverableError, false);
     assert.equal(h.Model.rows.length, 0);
   }
-  assert.equal(Customer.schema.options.autoIndex, false);
+  assert.notEqual(Customer.schema.options.autoIndex, false);
   assert.equal(Customer.schema.options.strict, true);
-  assert.ok(Customer.schema.indexes().some(([key, options]) => key[path] === 1 && options.unique));
+  const mappingIndex = Customer.schema.indexes().find(([key]) => key[path] === 1);
+  assert.equal(mappingIndex[1].unique, true);
+  assert.equal(mappingIndex[1]._autoIndex, false);
+  for (const contactPath of ['emails.value', 'phones.value']) {
+    const contactIndex = Customer.schema.indexes().find(([key]) => key[contactPath] === 1);
+    assert.equal(contactIndex[1]._autoIndex, undefined);
+  }
 });
 
 test('logs, staging errors and BullMQ failedReason contain no raw financial or personal values', async t => {
@@ -290,9 +296,47 @@ test('logs, staging errors and BullMQ failedReason contain no raw financial or p
 test('connection failures are sanitized before the shared database helper can log raw diagnostics', async t => {
   const messages = [];
   t.mock.method(console, 'error', (...args) => messages.push(args));
-  t.mock.method(mongoose, 'connect', async () => { throw new Error('private connection diagnostics'); });
+  t.mock.method(mongoose, 'connect', async () => {
+    throw Object.assign(new Error('private connection diagnostics'), {
+      name: 'MongoNetworkTimeoutError', code: 'ETIMEDOUT',
+    });
+  });
   await assert.rejects(dbConnect({ reportErrors: false }), { message: 'DATABASE_FAILURE' });
-  assert.deepEqual(messages, []);
+  assert.equal(messages.length, 1);
+  const diagnostic = JSON.parse(messages[0][0]);
+  assert.equal(diagnostic.event, 'mongodb_connection_failed');
+  assert.equal(diagnostic.code, 'DATABASE_FAILURE');
+  assert.equal(diagnostic.error_name, 'MongoNetworkTimeoutError');
+  assert.equal(diagnostic.error_code, 'ETIMEDOUT');
+  assert.equal(messages.flat().join('').includes('private connection diagnostics'), false);
+});
+
+test('successful runtime index checks coalesce, expire, and failed checks retry after deployment', async () => {
+  const spec = { key: { dealer_id: 1, test_key: 1 }, options: { unique: true } };
+  let reads = 0;
+  const Model = { collection: { listIndexes: () => ({ toArray: async () => {
+    reads += 1;
+    return [{ key: spec.key, unique: true }];
+  } }) } };
+  await Promise.all([
+    requireUniqueIndex(Model, spec, { now: 1000, ttlMs: 100 }),
+    requireUniqueIndex(Model, spec, { now: 1000, ttlMs: 100 }),
+  ]);
+  await requireUniqueIndex(Model, spec, { now: 1099, ttlMs: 100 });
+  assert.equal(reads, 1);
+  await requireUniqueIndex(Model, spec, { now: 1100, ttlMs: 100 });
+  assert.equal(reads, 2);
+
+  let deployed = false;
+  let retryReads = 0;
+  const RetryModel = { collection: { listIndexes: () => ({ toArray: async () => {
+    retryReads += 1;
+    return deployed ? [{ key: spec.key, unique: true }] : [];
+  } }) } };
+  await assert.rejects(requireUniqueIndex(RetryModel, spec, { now: 1000 }), { message: 'INDEX_REQUIRED' });
+  deployed = true;
+  await requireUniqueIndex(RetryModel, spec, { now: 1001 });
+  assert.equal(retryReads, 2);
 });
 
 test('staging failure prevents Customer/Vehicle reconciliation and every normalized write', async () => {

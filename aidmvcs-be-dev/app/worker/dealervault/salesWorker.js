@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import Deal from '../../models/Deal.js';
+import Deal, { DEAL_NATURAL_KEY_INDEX } from '../../models/Deal.js';
 import { createBatchProcessor } from './common/batchProcessor.js';
 import { getConcurrency, isRecord } from './common/validation.js';
 import { permanentError, logEvent } from './common/logger.js';
@@ -44,7 +44,7 @@ export function createSalesProcessor({ CustomerModel, VehicleModel, Model = Deal
   return createBatchProcessor({
     fileType: 'SL', Model, normalize: normalizeSale,
     reconcile: async (entries, context) => {
-      await requireUniqueIndex(Model, { key: { dealer_id: 1, deal_number: 1 }, options: { unique: true } });
+      await requireUniqueIndex(Model, DEAL_NATURAL_KEY_INDEX);
       await resolveCustomers(entries, context, CustomerModel);
       await resolveVehicles(entries, context, VehicleModel);
     },

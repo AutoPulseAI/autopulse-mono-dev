@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import ServiceAppointment from '../../models/ServiceAppointment.js';
+import ServiceAppointment, { SERVICE_APPOINTMENT_NATURAL_KEY_INDEX } from '../../models/ServiceAppointment.js';
 import { createBatchProcessor } from './common/batchProcessor.js';
 import { getConcurrency, isRecord } from './common/validation.js';
 import { permanentError, logEvent } from './common/logger.js';
@@ -8,6 +8,7 @@ import { resolveCustomers } from './common/customerResolver.js';
 import { normalizeVin, resolveVehicles } from './common/vehicleResolver.js';
 import { resolveRepairOrders } from './common/repairOrderResolver.js';
 import { requireUniqueIndex } from './common/indexProtection.js';
+import { preserveAbsentCustomerVehicleRelationships } from './common/partialRelationships.js';
 import { SERVICE_APPOINTMENTS_QUEUE } from './queues.js';
 
 const dateFields = ['Appointment Date', 'Appointment Create Date', 'Last RO Date', 'Promise Date',
@@ -66,19 +67,11 @@ export function createServiceAppointmentProcessor({ CustomerModel, VehicleModel,
   return createBatchProcessor({
     fileType: 'SV_APPT', Model, normalize: normalizeServiceAppointment,
     reconcile: async (entries, context) => {
-      await requireUniqueIndex(Model, { key: { dealer_id: 1, appointment_number: 1 }, options: { unique: true } });
+      await requireUniqueIndex(Model, SERVICE_APPOINTMENT_NATURAL_KEY_INDEX);
       await resolveCustomers(entries, context, CustomerModel);
       await resolveVehicles(entries, context, VehicleModel);
       await resolveRepairOrders(entries, context, RepairOrderModel);
-      for (const { document } of entries) {
-        // As with SV, partial rows must not clear links when their source inputs
-        // are wholly absent. Explicit unresolved identities still clear old links.
-        if (document.customer_id === null && !['Customer Number', 'Email 1', 'Email 2', 'Email 3',
-          'Home Phone', 'Cell Phone', 'Work Phone'].some(field => Object.hasOwn(document, field))) {
-          delete document.customer_id;
-        }
-        if (document.vehicle_id === null && !Object.hasOwn(document, 'VIN')) delete document.vehicle_id;
-      }
+      preserveAbsentCustomerVehicleRelationships(entries);
     },
     ...dependencies,
   });

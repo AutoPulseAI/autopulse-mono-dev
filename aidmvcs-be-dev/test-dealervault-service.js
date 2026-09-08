@@ -223,6 +223,7 @@ test('missing or unresolvable relationships and optional business fields do not 
   assert.equal(Object.hasOwn(h.Model.rows[0], 'vin'), false);
   assert.equal(Object.hasOwn(h.Model.rows[0], 'customer_id'), false);
   assert.equal(Object.hasOwn(h.Model.rows[0], 'vehicle_id'), false);
+  assert.deepEqual(h.BatchModel.rows[0].row_outcomes[0].warnings, []);
   assert.equal(h.Model.rows[1].vin, 'MISSING');
   assert.equal(h.Model.rows[1].customer_id, null);
   assert.equal(h.Model.rows[1].vehicle_id, null);
@@ -253,6 +254,7 @@ test('newer partial SV does not clear absent source fields, optional identifiers
     assert.deepEqual(current[field], original[field]);
   }
   assert.equal(current['Close Date'], '9/9/2026');
+  assert.deepEqual(h.BatchModel.rows[1].row_outcomes[0].warnings, []);
 });
 
 test('changed staging digest cannot replace original SV source; completed error batches reuse counts', async () => {

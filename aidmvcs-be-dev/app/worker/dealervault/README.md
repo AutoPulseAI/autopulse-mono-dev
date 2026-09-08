@@ -213,13 +213,15 @@ The approved unique partial index is
 `{ dealer_id: 1, 'extra.dealervault.customer_numbers': 1 }`, restricted to documents
 with string mapping values. Mappings written here are arrays of trimmed strings.
 It prevents different Customers claiming the same number within one dealer.
-Customer remains strict; the existing `extra` field holds the mapping. Customer
-auto-indexing is disabled so importing the model cannot deploy the new index.
-Existing contact indexes are unchanged; new databases must explicitly provision
-those existing indexes as well. The explicit index utility must run before SL.
+Customer remains strict; the existing `extra` field holds the mapping. Only this
+new mapping index disables automatic creation, so importing Customer continues to
+provision its existing contact lookup indexes normally. The explicit index utility
+must run before SL to deploy the mapping index after checking data.
 It stops on conflicting data/indexes without merging or removing records. SL also
 checks the Customer mapping and Deal natural-key index before reconciliation;
 missing or incompatible protection produces retryable `INDEX_REQUIRED`.
+Successful runtime checks are cached for 60 seconds per model/index and then
+revalidated. Concurrent checks share one request; failures are never cached.
 
 Vehicle resolution prefetches only the sold VIN using `{ dealerId, vin }`.
 VIN normalization trims and uppercases alphanumeric values, allows historical
