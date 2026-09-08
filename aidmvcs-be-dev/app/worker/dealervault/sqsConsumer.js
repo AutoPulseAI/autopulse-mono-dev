@@ -291,6 +291,9 @@ export function setupDealerVaultSqsConsumer(redis) {
     statusCode: Number.isInteger(error?.statusCode)
       ? error.statusCode
       : undefined,
+    awsMessage: typeof error?.message === 'string'
+      ? error.message
+      : undefined,
   });
   await delay(RECEIVE_ERROR_DELAY_MS);
   continue;
