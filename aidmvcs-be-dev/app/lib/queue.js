@@ -1,7 +1,7 @@
 // lib/queue.js
 // Dynamic imports to avoid Next.js module resolution issues
 import Redis from 'ioredis';
-import { PARTS_QUEUE, defaultJobOptions } from '../worker/dealervault/queues.js';
+import { PARTS_QUEUE, SALES_QUEUE, SERVICE_QUEUE, SERVICE_APPOINTMENTS_QUEUE, defaultJobOptions } from '../worker/dealervault/queues.js';
 
 // Redis configuration
 const redisConfig = {
@@ -21,7 +21,7 @@ async function createQueue(queueName) {
     const { Queue } = await import('bullmq');
     return new Queue(queueName, {
       connection: redisConfig,
-      ...(queueName === PARTS_QUEUE ? { defaultJobOptions: defaultJobOptions() } : {}),
+      ...([PARTS_QUEUE, SALES_QUEUE, SERVICE_QUEUE, SERVICE_APPOINTMENTS_QUEUE].includes(queueName) ? { defaultJobOptions: defaultJobOptions() } : {}),
     });
   } catch (error) {
     console.error(`Error creating queue ${queueName}:`, error);
@@ -35,6 +35,9 @@ let communicationQueue = null;
 let leadProcessingQueue = null;
 let campaignProcessingQueue = null;
 let dealerVaultPartsQueue = null;
+let dealerVaultSalesQueue = null;
+let dealerVaultServiceQueue = null;
+let dealerVaultServiceAppointmentsQueue = null;
 let redis = null;
 
 // Initialize Redis connection
@@ -59,6 +62,15 @@ export async function getQueue(queueName) {
   
   try {
     switch (queueName) {
+      case SERVICE_APPOINTMENTS_QUEUE:
+        if (!dealerVaultServiceAppointmentsQueue) dealerVaultServiceAppointmentsQueue = await createQueue(SERVICE_APPOINTMENTS_QUEUE);
+        return dealerVaultServiceAppointmentsQueue;
+      case SERVICE_QUEUE:
+        if (!dealerVaultServiceQueue) dealerVaultServiceQueue = await createQueue(SERVICE_QUEUE);
+        return dealerVaultServiceQueue;
+      case SALES_QUEUE:
+        if (!dealerVaultSalesQueue) dealerVaultSalesQueue = await createQueue(SALES_QUEUE);
+        return dealerVaultSalesQueue;
       case PARTS_QUEUE:
         if (!dealerVaultPartsQueue) dealerVaultPartsQueue = await createQueue(PARTS_QUEUE);
         return dealerVaultPartsQueue;

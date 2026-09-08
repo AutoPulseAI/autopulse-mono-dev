@@ -43,10 +43,10 @@ export function validateJob(data, expectedType) {
   };
 }
 
-export function getConcurrency(value = process.env.DEALERVAULT_PTINV_CONCURRENCY) {
+export function getConcurrency(value = process.env.DEALERVAULT_PTINV_CONCURRENCY, name = 'DEALERVAULT_PTINV_CONCURRENCY') {
   if (value === undefined) return 5;
   if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) {
-    throw new Error('Invalid DEALERVAULT_PTINV_CONCURRENCY; expected a positive integer');
+    throw new Error(`Invalid ${name}; expected a positive integer`);
   }
   return Number(value);
 }

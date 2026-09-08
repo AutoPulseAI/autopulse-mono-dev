@@ -1,13 +1,19 @@
-# DealerVault ingestion: shared infrastructure and PTINV
+# DealerVault ingestion: PTINV, SL, SV and SV_APPT
 
-This milestone implements only `dealervault-parts-inventory`. The existing
-`app/worker/worker.js` entrypoint starts one PTINV BullMQ Worker using its Redis
+The supported queues are `dealervault-parts-inventory`, `dealervault-sales`, and
+`dealervault-service`, and `dealervault-service-appointments`. The existing
+`app/worker/worker.js` entrypoint starts one BullMQ Worker for each using its Redis
 connection. `app/lib/queue.js` exposes the queue through `getQueue()`. Existing
 generic queue administration functions keep their previous queue list.
 
+SV's exact repeating-field mapping, parsed representation, partial-row behavior,
+and milestone validation report are in [README-service.md](README-service.md).
+SV_APPT fields, relationship behavior, date handling and checkpoint results are in
+[README-appointments.md](README-appointments.md).
+
 ## Producer contract
 
-Lambda parses TSV and sends a job such as:
+A producer parses TSV and sends a job such as (the producer is outside this milestone):
 
 ```js
 {
@@ -116,9 +122,9 @@ not populate mappings or add a dealer-management UI.
 
 **Verify required indexes before running the worker.** The staging schema disables
 automatic indexing. Source ordering depends on PartInventory's existing unique
-index. The index utility explicitly checks only the dealer mapping index, staging
-identity index, and PartInventory natural-key index; it never drops indexes,
-changes data, or accesses Customer. It does not load application env files:
+index. The index utility checks the dealer mapping, staging identity,
+PartInventory, Deal, RepairOrder and ServiceAppointment natural keys, and the approved Customer DMS mapping index.
+It never drops indexes or changes data. It does not load application env files:
 
 ```bash
 # From aidmvcs-be-dev; provide an authorized target URI through the environment.
@@ -141,7 +147,10 @@ Run the focused tests and lint from `aidmvcs-be-dev`:
 ```bash
 node test-dealervault-common.js
 node test-dealervault-parts.js
-./node_modules/.bin/eslint app/worker/dealervault app/models/DealerVaultImportBatch.js scripts/ensure-dealervault-indexes.js test-dealervault-common.js test-dealervault-parts.js
+node test-dealervault-sales.js
+node test-dealervault-service.js
+node test-dealervault-appointments.js
+./node_modules/.bin/eslint app/worker/dealervault app/models/Customer.js app/models/DealerVaultImportBatch.js scripts/ensure-dealervault-indexes.js test-dealervault-common.js test-dealervault-parts.js test-dealervault-sales.js
 ```
 
 These tests use Node's test API. They stub database operations by default and never
@@ -150,7 +159,7 @@ connect to application databases. For the opt-in integration test, set
 parts test again. It creates a uniquely named `dealervault_test_ptinv_*` database,
 tests real indexes/concurrent writes, and drops only that generated test database.
 
-## Customer review and milestone boundary
+## Customer review
 
 The existing Customer resolver requires a persisted Lead ID, normalizes contacts,
 and searches by dealer-scoped email/phone. Conflicting email/phone matches leave
@@ -160,7 +169,83 @@ contact indexes, so concurrent creation can duplicate Customers. The code alread
 documents this race. Merge metadata exists, but no implemented merge workflow or
 merged-customer traversal was found in the application/scripts reviewed.
 
-Customer fields, indexes and reconciliation remain unchanged pending separate
-approval. PTINV does not import Customer or Vehicle. SL/SV/SV_APPT, Customer/DMS
-mapping, Vehicle reconciliation, Lambda implementation, scheduling and DLQ/replay
-tooling are not part of this milestone.
+The existing Lead resolver remains unchanged. SL reuses its contact normalizers,
+with separate dealer-scoped reconciliation that does not require or create Leads.
+PTINV does not reconcile Customers or Vehicles.
+
+## SL sales
+
+Use queue `dealervault-sales`, `fileType: 'SL'`, an `_SL.txt` filename, and the same
+envelope/limits as PTINV. Require nonblank string `Deal Number`; trim it while
+preserving leading zeros. All 376 official SL columns are allowlisted and retain
+their exact source names/string or null values. Unknown fields survive only in raw
+staging. Core fields are `dealer_id`, `deal_number`, trimmed `customer_number`,
+normalized `vin`, source timestamp/batch/row metadata, and trusted `customer_id`
+and `vehicle_id` ObjectId links (null if unresolved). Deal's existing `strict:false`
+schema accommodates these links; neither Deal nor Vehicle schema is changed.
+
+SL uses the shared guarded unordered upserts with key `{ dealer_id, deal_number }`.
+An older export cannot overwrite a newer Deal. Equal timestamps follow PTINV's
+last-write behavior. An accepted newer row with an unresolved relationship sets
+that link to null, avoiding a stale link from a different buyer or VIN. An older
+row may still establish a Customer mapping before its Deal write is rejected;
+existing contact values are never overwritten by SL.
+
+Customer resolution:
+
+- Dealer-scoped `extra.dealervault.customer_numbers` mapping wins over contacts.
+- Otherwise normalize Email 1/2/3 and Home/Cell/Work Phone using existing rules;
+  prefetch candidates within the dealer. Exactly one candidate receives the DMS
+  mapping with `$addToSet`. Existing contacts, primary flags, consent and other
+  Customer data are untouched.
+- If none match and a Customer Number exists, create a Customer with that mapping,
+  primary buyer name and normalized contacts. Initial primary flags follow the
+  existing creation convention; no consent or Lead history is inferred.
+- Without Customer Number, link only an unambiguous existing contact match.
+- Multiple contact candidates, conflicting contacts, and merged Customers remain
+  unresolved with warnings. SL does not traverse or alter merge history.
+- Same-number rows in one batch share a resolution, using their combined primary
+  contacts. Competing jobs recover a mapping-index duplicate by reading its winner.
+  Different DMS numbers racing with the same contact may still create separate
+  Customers: contact indexes remain nonunique, and no automatic merge is attempted.
+
+The approved unique partial index is
+`{ dealer_id: 1, 'extra.dealervault.customer_numbers': 1 }`, restricted to documents
+with string mapping values. Mappings written here are arrays of trimmed strings.
+It prevents different Customers claiming the same number within one dealer.
+Customer remains strict; the existing `extra` field holds the mapping. Customer
+auto-indexing is disabled so importing the model cannot deploy the new index.
+Existing contact indexes are unchanged; new databases must explicitly provision
+those existing indexes as well. The explicit index utility must run before SL.
+It stops on conflicting data/indexes without merging or removing records. SL also
+checks the Customer mapping and Deal natural-key index before reconciliation;
+missing or incompatible protection produces retryable `INDEX_REQUIRED`.
+
+Vehicle resolution prefetches only the sold VIN using `{ dealerId, vin }`.
+VIN normalization trims and uppercases alphanumeric values, allows historical
+lengths, and rejects common placeholders; no VIN checksum validation is imposed.
+Missing, invalid, unmatched or ambiguous VINs leave the relationship null with
+a warning. No Vehicle is created or updated. The entire co-buyer block remains
+source data on Deal; no co-buyer Customer is created. `trade_ins[0]` and `[1]`
+preserve Trade 1/2 VIN, year, make, model, odometer, actual_cash_value, gross and
+payoff as source-faithful values. Empty trade blocks are empty objects.
+
+Per-row warning codes live in staging `row_outcomes[].warnings` and sanitized
+logs with zero-based row indexes. Warnings do not increment failed-row counts or
+reject valid Deals. Bad business rows produce `completed_with_errors`; database
+failures leave the staged batch retryable. Completed delivery reuse never repeats
+Customer reconciliation or adds counts/raw data.
+
+`DEALERVAULT_SL_CONCURRENCY` defaults to 5 batch jobs per process. Within a batch,
+Customer reconciliation runs at most 5 tasks at once; contact/mapping/VIN lookups
+are prefetched and Deal persistence uses one unordered bulk. In-flight tasks drain
+before a failed attempt returns. There is no lease or heartbeat.
+
+For real database tests, set `DEALERVAULT_TEST_MONGO_URI` to a disposable localhost
+Mongo server and run `node test-dealervault-sales.js`. Only a newly generated
+`dealervault_test_sales_*` database is used and dropped. Set
+`DEALERVAULT_TEST_REDIS_PORT` for the separate localhost Redis delivery/retry test;
+it uses a unique test queue and a memory database, and removes only that queue.
+
+Production index deployment, scheduling, producer/Lambda processing,
+and DLQ/replay tooling are outside this milestone.

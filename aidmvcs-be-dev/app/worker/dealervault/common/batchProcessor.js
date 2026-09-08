@@ -8,8 +8,8 @@ import { writeTimestampedUpserts } from './upserts.js';
 import { logEvent, safeError, safeCode } from './logger.js';
 
 export function createBatchProcessor({
-  fileType, Model, normalize, connect = dbConnect, dealerResolver = resolveDealer,
-  BatchModel = Batch, write = writeTimestampedUpserts, log = logEvent,
+  fileType, Model, normalize, connect = () => dbConnect({ reportErrors: false }), dealerResolver = resolveDealer,
+  BatchModel = Batch, write = writeTimestampedUpserts, log = logEvent, reconcile,
 }) {
   return async function processBatch(job) {
     let context;
@@ -41,11 +41,21 @@ export function createBatchProcessor({
         } catch (error) {
           if (!(error instanceof UnrecoverableError)) throw error;
           outcomes.push({ row_index: rowIndex, status: 'failed', code: safeCode(error) });
-          log('row_failed', context, { code: safeCode(error) });
+          log('row_failed', context, { code: safeCode(error), row_index: rowIndex });
         }
       }
       phase = 'STAGING_FAILURE';
       await saveValidationFailures(context, outcomes, BatchModel);
+      if (reconcile && entries.length) {
+        phase = 'DATABASE_FAILURE';
+        await reconcile(entries, context);
+        for (const entry of entries) {
+          outcomes[entry.rowIndex].warnings = entry.warnings || [];
+          for (const code of entry.warnings || []) {
+            log('row_warning', context, { code, row_index: entry.rowIndex });
+          }
+        }
+      }
       phase = 'UPSERT_FAILURE';
       const writes = await write(Model, entries);
       const result = {

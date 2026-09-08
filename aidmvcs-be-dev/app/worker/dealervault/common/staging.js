@@ -15,6 +15,7 @@ export async function stageBatch(context, Model = Batch) {
   try {
     batch = await Model.findOneAndUpdate(identity, { $setOnInsert: {
       ...identity, dvDealerId: context.dvDealerId, digest: context.digest,
+      source_file_timestamp: context.source_file_timestamp,
       raw_records_json: JSON.stringify(context.records), total_records: context.records.length,
       status: 'pending',
     } }, { upsert: true, new: true, setDefaultsOnInsert: true }).lean();
