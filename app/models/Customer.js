@@ -79,11 +79,22 @@ const customerSchema = new mongoose.Schema(
     // instead of silently dropped by strict-mode schema validation.
     extra: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
-  { timestamps: true }
+  // DealerVault mapping uniqueness is deployed explicitly after checking data.
+  { timestamps: true, autoIndex: false }
 );
 
 customerSchema.index({ dealer_id: 1, "emails.value": 1 });
 customerSchema.index({ dealer_id: 1, "phones.value": 1 });
+
+export const CUSTOMER_MAPPING_INDEX = {
+  key: { dealer_id: 1, "extra.dealervault.customer_numbers": 1 },
+  options: {
+    name: "dealervault_customer_number_unique",
+    unique: true,
+    partialFilterExpression: { "extra.dealervault.customer_numbers": { $type: "string" } },
+  },
+};
+customerSchema.index(CUSTOMER_MAPPING_INDEX.key, CUSTOMER_MAPPING_INDEX.options);
 
 const Customer =
   mongoose.models.Customer || mongoose.model("Customer", customerSchema);

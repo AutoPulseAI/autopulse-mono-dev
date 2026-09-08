@@ -4,6 +4,7 @@ const outcomeSchema = new mongoose.Schema({
   row_index: { type: Number, required: true },
   status: { type: String, enum: ['processed', 'failed'], required: true },
   code: { type: String, required: true },
+  warnings: { type: [String], default: undefined },
 }, { _id: false });
 
 const schema = new mongoose.Schema({
@@ -13,6 +14,7 @@ const schema = new mongoose.Schema({
   dvDealerId: { type: String, required: true },
   batchId: { type: Number, required: true },
   digest: { type: String, required: true },
+  source_file_timestamp: { type: String },
   // JSON text preserves arbitrary untrusted keys, nulls and empty objects exactly
   // without Mongoose casting or Mongo field-name restrictions on raw records.
   raw_records_json: { type: String, required: true },

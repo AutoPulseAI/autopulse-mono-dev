@@ -18,7 +18,7 @@ function getMongoUri() {
   return uri;
 }
 
-async function dbConnect() {
+async function dbConnect({ reportErrors = true } = {}) {
   try {
     if (mongoose.connection.readyState === 1) {
       return;
@@ -51,6 +51,9 @@ async function dbConnect() {
       }
     });
   } catch (error) {
+    // Ingestion emits only its own safe operational codes, including failures
+    // before a query starts. Preserve existing callers' diagnostics by default.
+    if (!reportErrors) throw new Error("DATABASE_FAILURE");
     console.error("MongoDB connection error:", error);
     throw new Error(`Failed to connect to MongoDB: ${error.message}`);
   }
