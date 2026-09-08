@@ -255,8 +255,22 @@ export function setupDealerVaultSqsConsumer(redis) {
   }
 
   const region = process.env.AWS_REGION || DEFAULT_AWS_REGION;
-  const sqs = new AWS.SQS({ region });
-  const s3 = new AWS.S3({ region });
+  const credentials = new AWS.EC2MetadataCredentials({
+  httpOptions: {
+    timeout: 5000,
+  },
+  maxRetries: 3,
+});
+
+const sqs = new AWS.SQS({
+  region,
+  credentials,
+});
+
+const s3 = new AWS.S3({
+  region,
+  credentials,
+});
   const queueByFileType = Object.fromEntries(
     Object.entries(QUEUE_NAMES_BY_FILE_TYPE).map(([fileType, queueName]) => {
       const queue = new Queue(queueName, {
