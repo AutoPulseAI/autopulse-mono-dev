@@ -6,16 +6,16 @@ import User from '../app/models/User.js';
 import Batch from '../app/models/DealerVaultImportBatch.js';
 import Part from '../app/models/PartInventory.js';
 import Customer, { CUSTOMER_MAPPING_INDEX } from '../app/models/Customer.js';
-import Deal from '../app/models/Deal.js';
-import RepairOrder from '../app/models/RepairOrder.js';
-import ServiceAppointment from '../app/models/ServiceAppointment.js';
+import Deal, { DEAL_NATURAL_KEY_INDEX } from '../app/models/Deal.js';
+import RepairOrder, { REPAIR_ORDER_NATURAL_KEY_INDEX } from '../app/models/RepairOrder.js';
+import ServiceAppointment, { SERVICE_APPOINTMENT_NATURAL_KEY_INDEX } from '../app/models/ServiceAppointment.js';
 import { matchesUniqueIndex } from '../app/worker/dealervault/common/indexProtection.js';
 
 export const requiredIndexes = [
-  { collection: ServiceAppointment.collection.name, key: { dealer_id: 1, appointment_number: 1 }, options: { unique: true } },
-  { collection: RepairOrder.collection.name, key: { dealer_id: 1, ro_number: 1 }, options: { unique: true } },
+  { collection: ServiceAppointment.collection.name, ...SERVICE_APPOINTMENT_NATURAL_KEY_INDEX },
+  { collection: RepairOrder.collection.name, ...REPAIR_ORDER_NATURAL_KEY_INDEX },
   { collection: Customer.collection.name, ...CUSTOMER_MAPPING_INDEX },
-  { collection: Deal.collection.name, key: { dealer_id: 1, deal_number: 1 }, options: { unique: true } },
+  { collection: Deal.collection.name, ...DEAL_NATURAL_KEY_INDEX },
   { collection: User.collection.name, key: { dv_dealer_id: 1 }, options: {
     unique: true, partialFilterExpression: { type: 'dealer', dv_dealer_id: { $type: 'string' } },
   } },

@@ -22,7 +22,13 @@ const repairOrderSchema = new mongoose.Schema(
 );
 
 // One RO per dealer.
-repairOrderSchema.index({ dealer_id: 1, ro_number: 1 }, { unique: true });
+export const REPAIR_ORDER_NATURAL_KEY_INDEX = {
+  key: { dealer_id: 1, ro_number: 1 },
+  options: { unique: true },
+};
+repairOrderSchema.index(REPAIR_ORDER_NATURAL_KEY_INDEX.key, {
+  ...REPAIR_ORDER_NATURAL_KEY_INDEX.options,
+});
 
 // Cross-file lookups: join to Deal/ServiceAppointment/PartInventory context
 // by vehicle or customer.
