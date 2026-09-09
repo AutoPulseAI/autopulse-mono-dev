@@ -370,10 +370,14 @@ class DealerChatSettingController extends Controller
         $dealer_id = $chatbotSetting->dealer_id;
        
         $dealer = Dealer::where('id',$dealer_id)->first();
-        $dealersource = DealerSource::where('dealer_id',$dealer_id)->first();
+        // Resolve the exact store this chatbot widget belongs to (chatbot_settings.store_id),
+        // rather than an arbitrary store of the dealer's — a dealer can have multiple stores.
+        $dealersource = $chatbotSetting->store_id
+            ? DealerSource::find($chatbotSetting->store_id)
+            : DealerSource::where('dealer_id',$dealer_id)->first();
         #$dealersource->cancelled_at ='2010-10-10';
        // dd( $dealersource );
-        if($dealersource->is_subscribed && (!($dealersource->cancelled_at) || (\Carbon\Carbon::now()->lessThanOrEqualTo(\Carbon\Carbon::parse($dealersource->cancelled_at)) ))){
+        if($dealersource && $dealersource->is_subscribed && (!($dealersource->cancelled_at) || (\Carbon\Carbon::now()->lessThanOrEqualTo(\Carbon\Carbon::parse($dealersource->cancelled_at)) ))){
             
         
             if ($chatbotSetting) {

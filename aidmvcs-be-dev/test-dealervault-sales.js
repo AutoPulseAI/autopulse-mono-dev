@@ -71,7 +71,7 @@ test('source whitelist protects trusted fields and preserves identifiers, co-buy
   assert.deepEqual(Object.keys(document.trade_ins[0]), ['vin', 'year', 'make', 'model', 'odometer', 'actual_cash_value', 'gross', 'payoff']);
 });
 
-test('mapped DMS customer wins over other contacts without changing established Customer data', async () => {
+test('mapped DMS customer wins over other contacts and records DealerVault origin', async () => {
   const Model = customers([{ _id: 'mapped', dealer_id: 'dealer-a', extra: { dealervault: { customer_numbers: ['0007'] } },
     emails: [{ value: 'trusted@example.invalid', is_primary: true }], merge_history: [] },
   { _id: 'contact', dealer_id: 'dealer-a', emails: [{ value: 'other@example.invalid' }] }]);
@@ -79,7 +79,7 @@ test('mapped DMS customer wins over other contacts without changing established 
   const item = entry({ 'Customer Number': ' 0007 ', 'Email 1': 'other@example.invalid' });
   await resolveCustomers([item], context(), Model);
   assert.equal(item.document.customer_id, 'mapped');
-  assert.deepEqual(Model.rows, before);
+  assert.deepEqual(Model.rows, [{ ...before[0], dealervault_upload: true }, before[1]]);
 });
 
 test('unique normalized contact attaches mapping and preserves contact flags, consent and other extra data', async () => {
@@ -91,7 +91,8 @@ test('unique normalized contact attaches mapping and preserves contact flags, co
   const item = entry({ 'Customer Number': '0007', 'Email 1': ' BUYER@EXAMPLE.INVALID ', 'Home Phone': '+1 (415) 555-1212' });
   await resolveCustomers([item], context(), Model);
   assert.equal(item.document.customer_id, 'existing');
-  assert.deepEqual(Model.rows[0], { ...original, extra: { other: 'keep', dealervault: { customer_numbers: ['0007'] } } });
+  assert.deepEqual(Model.rows[0], { ...original, dealervault_upload: true, inbound_lead: true,
+    extra: { other: 'keep', dealervault: { customer_numbers: ['0007'] } } });
   for (const [, filter] of Model.calls) assert.equal(filter.dealer_id, 'dealer-a');
 });
 
@@ -120,25 +121,44 @@ test('no contact match creates primary Customer with mapping, normalized contact
   assert.equal(created.phones[0].value, '4155551212');
   assert.equal(created.phones[0].sms_opt_in, undefined);
   assert.equal(created.emails[0].first_seen_lead_id, undefined);
+  assert.equal(created.dealervault_upload, true);
+  assert.equal(created.inbound_lead, false);
   assert.deepEqual(created.extra.dealervault.customer_numbers, ['0007']);
 });
 
-test('missing customer number only links unambiguous existing contacts, never creates', async () => {
+test('one matching inbound contact creates a separate DealerVault Customer', async () => {
+  const original = { _id: 'inbound', dealer_id: 'dealer-a', inbound_lead: true,
+    emails: [{ value: 'buyer@example.invalid' }], phones: [{ value: '9999999999' }] };
+  const Model = customers([original]);
+  const item = entry({ 'Customer Number': '0007', 'Email 1': 'buyer@example.invalid', 'Cell Phone': '4155551212' });
+  await resolveCustomers([item], context(), Model);
+  assert.equal(Model.rows.length, 2);
+  assert.notEqual(item.document.customer_id, 'inbound');
+  assert.deepEqual(Model.rows[0], original);
+  assert.equal(Model.rows[1].dealervault_upload, true);
+  assert.equal(Model.rows[1].inbound_lead, false);
+});
+
+test('missing customer number requires both contacts for a cross-source link and never creates', async () => {
   const Model = customers([{ _id: 'existing', dealer_id: 'dealer-a', emails: [{ value: 'buyer@example.invalid' }] }]);
   const items = [entry({ 'Email 1': 'buyer@example.invalid' }), entry({ 'Email 1': 'missing@example.invalid' }), entry()];
   items.forEach((item, index) => { item.rowIndex = index; });
   await resolveCustomers(items, context(), Model);
-  assert.equal(items[0].document.customer_id, 'existing');
+  assert.equal(items[0].document.customer_id, null);
   assert.equal(items[1].document.customer_id, null);
   assert.equal(items[2].document.customer_id, null);
   assert.equal(Model.rows.length, 1);
 });
 
-test('merged mapped/contact Customers are warnings; merge records are untouched', async () => {
-  for (const extra of [{ dealervault: { customer_numbers: ['007'] } }, {}]) {
-    const Model = customers([{ _id: 'merged', dealer_id: 'dealer-a', merged_into: 'canonical', extra,
-      emails: [{ value: 'buyer@example.invalid' }] }]);
-    const item = entry({ 'Customer Number': '007', 'Email 1': 'buyer@example.invalid' });
+test('merged mapped and confirmed contact Customers are warnings and remain untouched', async () => {
+  for (const { customer, row } of [
+    { customer: { extra: { dealervault: { customer_numbers: ['007'] } } }, row: { 'Email 1': 'buyer@example.invalid' } },
+    { customer: { extra: {}, phones: [{ value: '4155551212' }] },
+      row: { 'Email 1': 'buyer@example.invalid', 'Cell Phone': '4155551212' } },
+  ]) {
+    const Model = customers([{ _id: 'merged', dealer_id: 'dealer-a', merged_into: 'canonical',
+      emails: [{ value: 'buyer@example.invalid' }], ...customer }]);
+    const item = entry({ 'Customer Number': '007', ...row });
     await resolveCustomers([item], context(), Model);
     assert.equal(item.document.customer_id, null);
     assert.deepEqual(item.warnings, ['CUSTOMER_MERGED']);

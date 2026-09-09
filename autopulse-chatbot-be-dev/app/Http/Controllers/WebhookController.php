@@ -88,22 +88,24 @@ class WebhookController extends Controller
    {
        // Retrieve the Stripe customer ID from the invoice
        $stripeCustomerId = $invoice->customer;
+       $stripeSubscriptionId = $invoice->subscription ?? null;
 
        // Find the user based on their Stripe customer ID
        $user = Dealer::where('stripe_id', $stripeCustomerId)->first();
 
-       $userSubscription = $user->subscription('default'); // Assuming 'default' is your subscription name
+       if ($user && $stripeSubscriptionId) {
+           // Match the exact Stripe subscription this invoice belongs to, not just
+           // the most recently created 'default' row — a dealer can have several
+           // subscription rows (multi-store, or a cancel+resubscribe history).
+           $userSubscription = $user->subscriptions()->where('stripe_id', $stripeSubscriptionId)->first();
 
-        if ($userSubscription) {
-            // Mark the subscription as canceled
-            $userSubscription->update([
-                'stripe_status' => 'past_due',
-            ]);
-
-            
-        }
-
-    
+           if ($userSubscription) {
+               // Mark the subscription as past due
+               $userSubscription->update([
+                   'stripe_status' => 'past_due',
+               ]);
+           }
+       }
    }
 
    protected function handleSubscriptionCancelled($subscription)
@@ -115,8 +117,11 @@ class WebhookController extends Controller
         $user = Dealer::where('stripe_id', $stripeCustomerId)->first();
 
         if ($user) {
-            // Mark the user's subscription as canceled in your database
-            $userSubscription = $user->subscription('default'); // Assuming 'default' is your subscription name
+            // Match the exact Stripe subscription that was cancelled, not just
+            // the most recently created 'default' row — otherwise a cancellation
+            // for one subscription can end up marking a different (e.g. newer,
+            // or a different store's) local subscription as cancelled.
+            $userSubscription = $user->subscriptions()->where('stripe_id', $subscription->id)->first();
 
             if ($userSubscription) {
                 // Mark the subscription as canceled
@@ -125,12 +130,19 @@ class WebhookController extends Controller
                     'ends_at' => now(), // Set the cancellation date
                 ]);
 
-                // Also update the DealerSource table to reflect the cancellation
-                $store = DealerSource::where('dealer_id', $user->id)->first();
+                // Update the specific store this subscription belongs to (linked via
+                // subscription_id), not an arbitrary store of the dealer's.
+                $store = DealerSource::where('subscription_id', $userSubscription->id)->first();
                 if ($store) {
                     $store->update([
                         'cancelled_at' => now(),
                         'is_subscribed' => 0,
+                    ]);
+                } else {
+                    Log::warning('handleSubscriptionCancelled: no dealer_source row linked to cancelled subscription', [
+                        'dealer_id' => $user->id,
+                        'subscription_id' => $userSubscription->id,
+                        'stripe_id' => $subscription->id,
                     ]);
                 }
             }

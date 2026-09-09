@@ -4,12 +4,23 @@ import { requireUniqueIndex } from './indexProtection.js';
 import { mapBounded } from './bounded.js';
 
 const mappingPath = 'extra.dealervault.customer_numbers';
-const projection = '_id dealer_id emails.value phones.value extra.dealervault.customer_numbers merged_into';
+const projection = '_id dealer_id emails.value phones.value extra.dealervault.customer_numbers merged_into dealervault_upload inbound_lead';
 const unique = values => [...new Set(values.filter(Boolean))];
 const numbers = customer => {
   const value = customer.extra?.dealervault?.customer_numbers;
   return Array.isArray(value) ? value : typeof value === 'string' ? [value] : [];
 };
+const hasDealerVaultOrigin = customer => customer.dealervault_upload === true || numbers(customer).length > 0;
+
+function matchesContacts(customer, group) {
+  const emailMatch = customer.emails?.some(email => group.emails.includes(email.value)) || false;
+  const phoneMatch = customer.phones?.some(phone => group.phones.includes(phone.value)) || false;
+  // A new cross-source relationship requires both normalized contacts.
+  // Customers already known to DealerVault retain same-source OR matching.
+  return hasDealerVaultOrigin(customer)
+    ? emailMatch || phoneMatch
+    : group.emails.length > 0 && group.phones.length > 0 && emailMatch && phoneMatch;
+}
 
 function contactFilter(emails, phones) {
   return [
@@ -57,36 +68,59 @@ export async function resolveCustomers(entries, context, Model = Customer) {
   ]);
 
   const readMapping = number => Model.findOne({ dealer_id, [mappingPath]: number }).select(projection).lean();
+  const markDealerVaultOrigin = async (customer, { number, markInbound = false } = {}) => {
+    if (customer.merged_into) return relationship(customer);
+    const update = {
+      $set: {
+        dealervault_upload: true,
+        ...(markInbound ? { inbound_lead: true } : {}),
+      },
+      ...(number ? { $addToSet: { [mappingPath]: number } } : {}),
+    };
+    const updated = await Model.updateOne(
+      { dealer_id, _id: customer._id, merged_into: null },
+      update,
+    );
+    return updated.matchedCount
+      ? { id: customer._id }
+      : { id: null, warning: 'CUSTOMER_UNRESOLVED' };
+  };
   await mapBounded(work, 5, async group => {
     let result;
     const mappedMatches = group.number ? mapped.filter(customer => numbers(customer).includes(group.number)) : [];
     if (mappedMatches.length > 1) result = { id: null, warning: 'CUSTOMER_AMBIGUOUS' };
-    else if (mappedMatches.length === 1) result = relationship(mappedMatches[0]);
+    else if (mappedMatches.length === 1) result = await markDealerVaultOrigin(mappedMatches[0]);
     else {
-      const matches = candidates.filter(customer =>
+      const contactCandidates = candidates.filter(customer =>
         customer.emails?.some(email => group.emails.includes(email.value))
         || customer.phones?.some(phone => group.phones.includes(phone.value)));
-      if (matches.length > 1) result = { id: null, warning: 'CUSTOMER_AMBIGUOUS' };
+      const matches = contactCandidates.filter(customer => matchesContacts(customer, group));
+      if (matches.length > 1 || (!matches.length && contactCandidates.length > 1)) {
+        result = { id: null, warning: 'CUSTOMER_AMBIGUOUS' };
+      }
       else if (matches[0]?.merged_into) result = { id: null, warning: 'CUSTOMER_MERGED' };
-      else if (!group.number) result = matches.length ? relationship(matches[0]) : { id: null, warning: 'CUSTOMER_UNRESOLVED' };
+      else if (!group.number) result = matches.length
+        ? await markDealerVaultOrigin(matches[0], { markInbound: !hasDealerVaultOrigin(matches[0]) })
+        : { id: null, warning: 'CUSTOMER_UNRESOLVED' };
       else {
         // A mapping committed after prefetch always takes precedence.
         let customer = await readMapping(group.number);
-        if (!customer) {
+        if (customer) result = await markDealerVaultOrigin(customer);
+        else {
           try {
             if (matches.length) {
-              const updated = await Model.updateOne({ dealer_id, _id: matches[0]._id, merged_into: null }, {
-                $addToSet: { [mappingPath]: group.number },
+              result = await markDealerVaultOrigin(matches[0], {
+                number: group.number,
+                markInbound: !hasDealerVaultOrigin(matches[0]),
               });
-              // A removed/merged contact is unresolved, never a reason to create.
-              if (!updated.matchedCount) result = { id: null, warning: 'CUSTOMER_UNRESOLVED' };
-              else customer = matches[0];
             } else {
               const source = group.entries[0].document;
               customer = await Model.create({
                 dealer_id,
                 name: source['Full Name']?.trim() || [source['First Name'], source['Middle Name'], source['Last Name']]
                   .filter(Boolean).join(' ').trim() || undefined,
+                dealervault_upload: true,
+                inbound_lead: false,
                 emails: group.emails.map((value, index) => ({ value, is_primary: index === 0, source: 'dealervault' })),
                 phones: group.phones.map((value, index) => ({ value, is_primary: !group.emails.length && index === 0, source: 'dealervault' })),
                 extra: { dealervault: { customer_numbers: [group.number] } },
@@ -96,6 +130,7 @@ export async function resolveCustomers(entries, context, Model = Customer) {
             if (!mappingDuplicate(error)) throw error;
             customer = await readMapping(group.number);
             if (!customer) throw error;
+            result = await markDealerVaultOrigin(customer);
           }
         }
         result ||= relationship(customer);

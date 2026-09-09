@@ -392,8 +392,17 @@ class MessengerWebhookController extends Controller
                 return 'Chatbot settings are not configured yet.';
             }
 
-            $dealerSource = DealerSource::where('dealer_id', $dealerId)->first();
-            if (!$dealerSource || !$dealerSource->is_subscribed || ($dealerSource->cancelled_at && now()->gt($dealerSource->cancelled_at))) {
+            // Facebook pages aren't tied to a specific store, so gate on whether ANY of the
+            // dealer's stores has an active subscription — picking one arbitrary store here
+            // would wrongly block the bot for dealers with multiple stores.
+            $hasActiveSubscription = DealerSource::where('dealer_id', $dealerId)
+                ->where('is_subscribed', 1)
+                ->where(function ($q) {
+                    $q->whereNull('cancelled_at')->orWhere('cancelled_at', '>=', now());
+                })
+                ->exists();
+
+            if (!$hasActiveSubscription) {
                 return 'Your subscription appears inactive. Please renew to continue.';
             }
 

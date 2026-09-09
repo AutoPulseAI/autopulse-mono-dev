@@ -147,6 +147,18 @@ class SubscriptionController extends Controller
                 $discountAmount = $invoice->total_discount_amounts[0]->amount ?? 0; // Total discount amount
 
                 if (!$existingSubscription) {
+                    // End any other still-active 'default' rows for this dealer first, so a
+                    // cancel-then-resubscribe cycle doesn't leave multiple rows looking active
+                    // at once (which breaks anything that assumes there's a single current one).
+                    $user->subscriptions()
+                        ->where('type', 'default')
+                        ->where('stripe_id', '!=', $subscription->id)
+                        ->where('stripe_status', '!=', 'canceled')
+                        ->update([
+                            'stripe_status' => 'canceled',
+                            'ends_at' => now(),
+                        ]);
+
                     // Sync the subscription with Laravel Cashier (no 'name' column needed)
                     $newSubscription = $user->subscriptions()->create([
                         'type' => 'default',

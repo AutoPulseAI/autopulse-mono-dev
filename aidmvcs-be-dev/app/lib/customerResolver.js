@@ -54,6 +54,51 @@ function hasValue(value) {
   return value !== null && value !== undefined && value !== "";
 }
 
+function hasDealerVaultOrigin(customer) {
+  const customerNumbers = customer?.extra?.dealervault?.customer_numbers;
+  return customer?.dealervault_upload === true
+    || (Array.isArray(customerNumbers) ? customerNumbers.length > 0 : typeof customerNumbers === "string");
+}
+
+function isDealerVaultOnly(customer) {
+  return hasDealerVaultOrigin(customer) && customer.inbound_lead !== true;
+}
+
+function sameCustomer(first, second) {
+  return first && second && String(first._id) === String(second._id);
+}
+
+async function findContactMatches(dealerId, email, phone) {
+  const [emailCustomer, phoneCustomer] = await Promise.all([
+    email
+      ? Customer.findOne({ dealer_id: String(dealerId), "emails.value": email })
+      : null,
+    phone
+      ? Customer.findOne({ dealer_id: String(dealerId), "phones.value": phone })
+      : null,
+  ]);
+  return { emailCustomer, phoneCustomer };
+}
+
+function selectInboundCustomer(emailCustomer, phoneCustomer, email, phone) {
+  if (emailCustomer && phoneCustomer && !sameCustomer(emailCustomer, phoneCustomer)) {
+    return { customer: null, conflict: true };
+  }
+
+  const customer = emailCustomer || phoneCustomer;
+  if (!customer) return { customer: null, conflict: false };
+
+  // Joining DealerVault and inbound identities requires both normalized
+  // contacts to identify the same Customer. Inbound-to-inbound matching
+  // retains the established email-or-phone behavior.
+  if (isDealerVaultOnly(customer)
+      && (!email || !phone || !sameCustomer(emailCustomer, phoneCustomer))) {
+    return { customer: null, conflict: false };
+  }
+
+  return { customer, conflict: false };
+}
+
 function unresolvedResult() {
   return {
     customerId: null,
@@ -127,6 +172,11 @@ async function enrichCustomer(customer, { email, phone, source, smsOptIn }) {
   const introducedEmails = [];
   const introducedPhones = [];
 
+  await Customer.updateOne(
+    { _id: customer._id },
+    { $set: { inbound_lead: true } }
+  );
+
   if (await appendEmailIfMissing(customer._id, email, source)) {
     introducedEmails.push(email);
   }
@@ -171,16 +221,19 @@ export async function resolveCustomerForLead({
     };
   }
 
-  const [emailCustomer, phoneCustomer] = await Promise.all([
-    normalizedEmail
-      ? Customer.findOne({ dealer_id: String(dealerId), "emails.value": normalizedEmail })
-      : null,
+  const { emailCustomer, phoneCustomer } = await findContactMatches(
+    dealerId,
+    normalizedEmail,
     normalizedPhone
-      ? Customer.findOne({ dealer_id: String(dealerId), "phones.value": normalizedPhone })
-      : null,
-  ]);
+  );
+  const initialMatch = selectInboundCustomer(
+    emailCustomer,
+    phoneCustomer,
+    normalizedEmail,
+    normalizedPhone
+  );
 
-  if (emailCustomer && phoneCustomer && !emailCustomer._id.equals(phoneCustomer._id)) {
+  if (initialMatch.conflict) {
     console.warn("Customer identity conflict; leaving Lead unlinked", {
       dealer_id: String(dealerId),
       lead_id: String(leadId),
@@ -190,7 +243,7 @@ export async function resolveCustomerForLead({
     return unresolvedResult();
   }
 
-  const existingCustomer = emailCustomer || phoneCustomer;
+  const existingCustomer = initialMatch.customer;
   if (existingCustomer) {
     return enrichCustomer(existingCustomer, {
       email: normalizedEmail,
@@ -211,13 +264,15 @@ export async function resolveCustomerForLead({
   // try { await customer.save() } catch (err) { if (err.code === 11000) { re-findOne
   // and enrichCustomer() the winner instead } } around the create below, so Mongo's
   // uniqueness constraint — not an app-level read — is what closes the race.
-  const recheckedCustomer = await Customer.findOne({
-    dealer_id: String(dealerId),
-    $or: [
-      ...(normalizedEmail ? [{ "emails.value": normalizedEmail }] : []),
-      ...(normalizedPhone ? [{ "phones.value": normalizedPhone }] : []),
-    ],
-  });
+  const recheckedMatches = await findContactMatches(dealerId, normalizedEmail, normalizedPhone);
+  const rechecked = selectInboundCustomer(
+    recheckedMatches.emailCustomer,
+    recheckedMatches.phoneCustomer,
+    normalizedEmail,
+    normalizedPhone
+  );
+  if (rechecked.conflict) return unresolvedResult();
+  const recheckedCustomer = rechecked.customer;
   if (recheckedCustomer) {
     return enrichCustomer(recheckedCustomer, {
       email: normalizedEmail,
@@ -230,6 +285,8 @@ export async function resolveCustomerForLead({
   const customer = new Customer({
     dealer_id: String(dealerId),
     name,
+    dealervault_upload: false,
+    inbound_lead: true,
     emails: normalizedEmail
       ? [{
           value: normalizedEmail,

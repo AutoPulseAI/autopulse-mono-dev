@@ -514,8 +514,8 @@ class AdminDealerController extends Controller
         }
 
         try {
-            $dealer = Dealer::with('storelist')->find($request->dealer_id);
-            
+            $dealer = Dealer::find($request->dealer_id);
+
             if (!$dealer) {
                 return response()->json([
                     'success' => false,
@@ -523,70 +523,92 @@ class AdminDealerController extends Controller
                 ], 200);
             }
 
-            $store = $dealer->storelist;
-            
-            if (!$store) {
+            // A dealer can have several stores/subscriptions (multi-store checkout flow).
+            // Cancel every automated, currently-active one — not just an arbitrary single row.
+            $stores = DealerSource::where('dealer_id', $dealer->id)->get();
+
+            if ($stores->isEmpty()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Store not found for this dealer.'
                 ], 200);
             }
 
-            // Check if subscription is automated (not managed by admin)
-            if ($store->is_manage_by_admin != 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This is a manual subscription and cannot be cancelled this way.'
-                ], 200);
-            }
+            $cancelledCount = 0;
+            $skippedManual = 0;
+            $errors = [];
 
-            // Check if there's an active subscription
-            if ($store->is_subscribed != 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active subscription found.'
-                ], 200);
-            }
+            foreach ($stores as $store) {
+                // Skip subscriptions that are manually managed by admin
+                if ($store->is_manage_by_admin != 0) {
+                    $skippedManual++;
+                    continue;
+                }
 
-            // Cancel the Stripe subscription if exists
-            if ($store->subscription_id) {
-                $subscription = Subscription::find($store->subscription_id);
-                
-                if ($subscription && $subscription->stripe_id) {
-                    Stripe::setApiKey(env('STRIPE_SECRET'));
-                    
-                    try {
-                        $stripeSubscription = \Stripe\Subscription::retrieve($subscription->stripe_id);
-                        $stripeSubscription->cancel();
-                        
-                        // Update subscription status
-                        $subscription->update([
-                            'stripe_status' => 'canceled',
-                            'ends_at' => now(),
-                        ]);
-                    } catch (\Exception $e) {
-                        \Log::error('Stripe subscription cancellation failed', [
-                            'dealer_id' => $dealer->id,
-                            'error' => $e->getMessage()
-                        ]);
-                        
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Failed to cancel subscription in Stripe: ' . $e->getMessage()
-                        ], 500);
+                // Skip stores that don't have an active subscription
+                if ($store->is_subscribed != 1) {
+                    continue;
+                }
+
+                // Cancel the Stripe subscription if exists
+                if ($store->subscription_id) {
+                    $subscription = Subscription::find($store->subscription_id);
+
+                    if ($subscription && $subscription->stripe_id) {
+                        Stripe::setApiKey(env('STRIPE_SECRET'));
+
+                        try {
+                            $stripeSubscription = \Stripe\Subscription::retrieve($subscription->stripe_id);
+                            $stripeSubscription->cancel();
+
+                            // Update subscription status
+                            $subscription->update([
+                                'stripe_status' => 'canceled',
+                                'ends_at' => now(),
+                            ]);
+                        } catch (\Exception $e) {
+                            \Log::error('Stripe subscription cancellation failed', [
+                                'dealer_id' => $dealer->id,
+                                'store_id' => $store->id,
+                                'error' => $e->getMessage()
+                            ]);
+
+                            $errors[] = "Store {$store->id}: " . $e->getMessage();
+                            continue;
+                        }
                     }
                 }
+
+                // Update store subscription status
+                $store->update([
+                    'is_subscribed' => 0,
+                    'cancelled_at' => now(),
+                ]);
+                $cancelledCount++;
             }
 
-            // Update store subscription status
-            $store->update([
-                'is_subscribed' => 0,
-                'cancelled_at' => now(),
-            ]);
+            if ($cancelledCount === 0 && empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $skippedManual > 0
+                        ? 'This is a manual subscription and cannot be cancelled this way.'
+                        : 'No active subscription found.'
+                ], 200);
+            }
+
+            if (!empty($errors)) {
+                return response()->json([
+                    'success' => $cancelledCount > 0,
+                    'message' => $cancelledCount > 0
+                        ? "Cancelled {$cancelledCount} subscription(s), but some failed."
+                        : 'Failed to cancel subscription in Stripe.',
+                    'errors' => $errors,
+                ], $cancelledCount > 0 ? 200 : 500);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Subscription cancelled successfully!'
+                'message' => "Subscription cancelled successfully! ({$cancelledCount} store" . ($cancelledCount === 1 ? '' : 's') . ")"
             ], 200);
 
         } catch (\Exception $e) {

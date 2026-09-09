@@ -170,7 +170,7 @@ test('mapped Customer is dealer-scoped and CASS/block flags never overwrite cano
     'CASS_STD_LINE1': 'source address', 'Address Line 1': 'source address', 'Opt Out': 'N', 'Block Email': 'N', 'Block Phone': 'N', 'Block Mail': 'N' }]));
   assert.equal(h.Model.rows[0].customer_id, 'mapped');
   assert.equal(h.Model.rows[0].CASS_STD_LINE1, 'source address');
-  assert.deepEqual(CustomerModel.rows, before);
+  assert.deepEqual(CustomerModel.rows, [before[0], { ...before[1], dealervault_upload: true }]);
   for (const [, filter] of CustomerModel.calls) assert.equal(filter.dealer_id, 'dealer-a');
 });
 
@@ -194,6 +194,8 @@ test('approved Customer creation reuses stable mapping on concurrent delivery wi
   assert.equal(customer.emails[0].value, 'new@example.invalid');
   assert.equal(customer.emails[0].first_seen_lead_id, undefined);
   assert.equal(customer.phones[0].sms_opt_in, undefined);
+  assert.equal(customer.dealervault_upload, true);
+  assert.equal(customer.inbound_lead, false);
   assert.equal(customer.CASS_STD_LINE1, undefined);
   assert.deepEqual(customer.extra.dealervault.customer_numbers, ['007']);
   assert.equal(h.Model.rows.length, 1);
