@@ -61,6 +61,8 @@ const customerSchema = new mongoose.Schema(
     preferred_communication_mode: { type: String },
     preferred_communication_mode_selected: { type: Boolean, default: false },
     user_language: { type: String },
+    dealervault_upload: { type: Boolean, default: false },
+    inbound_lead: { type: Boolean, default: false },
 
     // Set by scripts/backfill-customers-for-orphaned-leads.js only when this
     // Customer was newly created (not matched to an existing one) by that

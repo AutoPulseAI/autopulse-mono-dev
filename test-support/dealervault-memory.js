@@ -36,12 +36,17 @@ export function customers(initial = []) {
       calls.push(['updateOne', filter, update]);
       const row = rows.find(row => matches(row, filter));
       if (!row) return { matchedCount: 0 };
-      const number = update.$addToSet[path];
-      if (rows.some(other => other._id !== row._id && other.dealer_id === row.dealer_id && matches(other, { [path]: number }))) throw duplicate(CUSTOMER_MAPPING_INDEX);
-      row.extra ||= {};
-      row.extra.dealervault ||= {};
-      row.extra.dealervault.customer_numbers ||= [];
-      if (!row.extra.dealervault.customer_numbers.includes(number)) row.extra.dealervault.customer_numbers.push(number);
+      const number = update.$addToSet?.[path];
+      if (number !== undefined) {
+        if (rows.some(other => other._id !== row._id && other.dealer_id === row.dealer_id && matches(other, { [path]: number }))) throw duplicate(CUSTOMER_MAPPING_INDEX);
+      }
+      if (update.$set) Object.assign(row, structuredClone(update.$set));
+      if (number !== undefined) {
+        row.extra ||= {};
+        row.extra.dealervault ||= {};
+        row.extra.dealervault.customer_numbers ||= [];
+        if (!row.extra.dealervault.customer_numbers.includes(number)) row.extra.dealervault.customer_numbers.push(number);
+      }
       return { matchedCount: 1 };
     },
     async create(data) {

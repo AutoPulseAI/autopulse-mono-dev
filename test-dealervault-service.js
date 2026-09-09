@@ -183,7 +183,7 @@ test('mapped Customer and sold VIN resolve within dealer scope without touching 
   await h.process(job([{ 'RO Number': '001', 'Customer Number': ' 007 ', VIN: ' abc123 ', 'Block Phone': 'N' }]));
   assert.equal(h.Model.rows[0].customer_id, 'right');
   assert.equal(h.Model.rows[0].vehicle_id, 'right-car');
-  assert.deepEqual(CustomerModel.rows, before);
+  assert.deepEqual(CustomerModel.rows, [before[0], { ...before[1], dealervault_upload: true }]);
   for (const [, filter] of CustomerModel.calls) assert.equal(filter.dealer_id, 'dealer-a');
   // The Vehicle fake exposes find only: any inventory mutation would fail.
   assert.deepEqual(Object.keys(VehicleModel), ['find']);
@@ -209,6 +209,8 @@ test('unmatched stable Customer Number uses approved SL creation and remains ide
   assert.equal(h.CustomerModel.rows[0].emails[0].value, 'buyer@example.invalid');
   assert.equal(h.CustomerModel.rows[0].phones[0].sms_opt_in, undefined);
   assert.equal(h.CustomerModel.rows[0].emails[0].first_seen_lead_id, undefined);
+  assert.equal(h.CustomerModel.rows[0].dealervault_upload, true);
+  assert.equal(h.CustomerModel.rows[0].inbound_lead, false);
   assert.deepEqual(h.CustomerModel.rows[0].extra.dealervault.customer_numbers, ['007']);
   assert.equal(h.BatchModel.rows.length, 1);
   assert.equal(h.BatchModel.rows[0].processed_count, 1);

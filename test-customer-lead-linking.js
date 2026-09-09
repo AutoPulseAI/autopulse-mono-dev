@@ -16,6 +16,8 @@ test("Customer and Lead schemas expose the required fields and indexes", () => {
   assert.equal(Customer.schema.path("dealer_id").options.required, true);
   assert.equal(Customer.schema.path("dealer_id").instance, "String");
   assert.equal(Customer.schema.path("identity_confidence"), undefined);
+  assert.equal(Customer.schema.path("dealervault_upload").defaultValue, false);
+  assert.equal(Customer.schema.path("inbound_lead").defaultValue, false);
   assert.equal(Customer.schema.path("phones").schema.path("sms_opt_in").defaultValue, undefined);
   assert.deepEqual(Customer.schema.path("emails").schema.path("first_seen_lead_id").options.ref, "Lead");
   assert.deepEqual(Customer.schema.path("phones").schema.path("first_seen_lead_id").options.ref, "Lead");
@@ -84,6 +86,8 @@ test("new Customer identifiers defer first_seen_lead_id until finalization", asy
     assert.equal(savedCustomer.phones[0].value, "4155551212");
     assert.equal(savedCustomer.phones[0].first_seen_lead_id, undefined);
     assert.equal(savedCustomer.phones[0].sms_opt_in, undefined);
+    assert.equal(savedCustomer.inbound_lead, true);
+    assert.equal(savedCustomer.dealervault_upload, false);
   } finally {
     Customer.findOne = originalFindOne;
     Customer.prototype.save = originalSave;
@@ -144,7 +148,8 @@ test("smsOptIn updates an already-existing phone on the matched Customer", async
 
     assert.deepEqual(result.customerId, customer._id);
     assert.deepEqual(result.introducedPhones, []); // not a newly introduced identifier
-    assert.equal(updateCalls.length, 2);
+    assert.equal(updateCalls.length, 3);
+    assert.ok(updateCalls.some(({ update }) => update.$set?.inbound_lead === true));
     assert.ok(updateCalls.some(({ update }) => update.$set?.["phones.$.sms_opt_in"] === true));
   } finally {
     Customer.findOne = originalFindOne;
@@ -208,10 +213,60 @@ test("conditional enrichment treats matchedCount zero as a no-op", async () => {
 
     assert.deepEqual(result.customerId, customer._id);
     assert.deepEqual(result.introducedEmails, []);
-    assert.equal(updateCount, 1);
+    assert.equal(updateCount, 2);
   } finally {
     Customer.findOne = originalFindOne;
     Customer.updateOne = originalUpdateOne;
+  }
+});
+
+test("DealerVault-only Customer requires both contacts before an inbound Lead joins it", async () => {
+  const originalFindOne = Customer.findOne;
+  const originalUpdateOne = Customer.updateOne;
+  const originalSave = Customer.prototype.save;
+  const existing = {
+    _id: new mongoose.Types.ObjectId(),
+    dealervault_upload: true,
+    inbound_lead: false,
+  };
+  const updates = [];
+  let savedCustomer;
+
+  try {
+    Customer.findOne = async ({ "emails.value": email, "phones.value": phone }) =>
+      email === "both@example.com" || phone === "4155551212" ? existing : null;
+    Customer.updateOne = async (filter, update) => {
+      updates.push({ filter, update });
+      return { matchedCount: 1, modifiedCount: 1 };
+    };
+    Customer.prototype.save = async function save() {
+      savedCustomer = this;
+      return this;
+    };
+
+    const joined = await resolveCustomerForLead({
+      dealerId: "dealer-1",
+      email: "both@example.com",
+      phone: "4155551212",
+      source: "test",
+      leadId: new mongoose.Types.ObjectId(),
+    });
+    assert.deepEqual(joined.customerId, existing._id);
+    assert.ok(updates.some(({ update }) => update.$set?.inbound_lead === true));
+
+    const separate = await resolveCustomerForLead({
+      dealerId: "dealer-1",
+      email: "both@example.com",
+      source: "test",
+      leadId: new mongoose.Types.ObjectId(),
+    });
+    assert.notDeepEqual(separate.customerId, existing._id);
+    assert.equal(savedCustomer.inbound_lead, true);
+    assert.equal(savedCustomer.dealervault_upload, false);
+  } finally {
+    Customer.findOne = originalFindOne;
+    Customer.updateOne = originalUpdateOne;
+    Customer.prototype.save = originalSave;
   }
 });
 
