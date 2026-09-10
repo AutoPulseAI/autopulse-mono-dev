@@ -153,3 +153,35 @@ test("getOriginBadge covers all four dealervault_upload/inbound_lead combination
   assert.equal(getOriginBadge({ dealervault_upload: false, inbound_lead: false }), "Unknown");
   assert.equal(getOriginBadge({}), "Unknown");
 });
+
+test("getOriginBadge still recognizes a legacy DealerVault customer with no dealervault_upload flag", () => {
+  // dealervault_upload was added in commit a26bbfa; customers matched/created
+  // by DealerVault before that only ever got extra.dealervault.customer_numbers set.
+  assert.equal(
+    getOriginBadge({ extra: { dealervault: { customer_numbers: ["12345"] } } }),
+    "DealerVault"
+  );
+  // Legacy shape observed as a single string rather than an array.
+  assert.equal(
+    getOriginBadge({ extra: { dealervault: { customer_numbers: "12345" } } }),
+    "DealerVault"
+  );
+  // An empty customer_numbers array is not evidence of DealerVault origin.
+  assert.equal(
+    getOriginBadge({ extra: { dealervault: { customer_numbers: [] } } }),
+    "Unknown"
+  );
+});
+
+test("getOriginBadge still recognizes a legacy inbound-lead customer with no inbound_lead flag", () => {
+  // inbound_lead was added in the same commit as dealervault_upload, so a
+  // customer created via the inbound resolver before that deploy has neither
+  // set. Lead.customer_id (passed in as hasLinkedLeads) is the reliable
+  // flag-independent signal instead.
+  assert.equal(getOriginBadge({}, { hasLinkedLeads: true }), "Inbound Lead");
+  assert.equal(getOriginBadge({}, { hasLinkedLeads: false }), "Unknown");
+  assert.equal(
+    getOriginBadge({ extra: { dealervault: { customer_numbers: ["1"] } } }, { hasLinkedLeads: true }),
+    "Inbound & DealerVault"
+  );
+});

@@ -143,7 +143,7 @@ export async function GET(req, { params }) {
 
     return NextResponse.json({
       data: {
-        customer: { ...customer, origin_badge: getOriginBadge(customer) },
+        customer: { ...customer, origin_badge: getOriginBadge(customer, { hasLinkedLeads: leads.length > 0 }) },
         value_snapshot: valueSnapshot,
         overview: overviewFeed,
         leads,
