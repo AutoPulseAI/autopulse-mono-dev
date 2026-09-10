@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import ServiceAppointmentList from "./components/ServiceAppointmentList";
 
 export default function ServiceAppointmentsPage() {
@@ -13,7 +14,9 @@ export default function ServiceAppointmentsPage() {
         </div>
       </div>
       <div className="page_body">
-        <ServiceAppointmentList />
+        <Suspense fallback={<div className="w_card text-center py-4">Loading service appointments...</div>}>
+          <ServiceAppointmentList />
+        </Suspense>
       </div>
     </div>
   );

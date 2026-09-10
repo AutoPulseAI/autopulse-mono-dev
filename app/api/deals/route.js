@@ -46,7 +46,8 @@ export async function GET(req) {
       return jsonError("page must be at least 1 and limit must be between 1 and 100", 400);
     }
 
-    const query = { dealer_id: dealerId };
+    const vin = url.searchParams.get("vin")?.trim();
+    const query = { dealer_id: dealerId, ...(vin ? { vin } : {}) };
     const skip = (page - 1) * limit;
     const [deals, totalItems] = await Promise.all([
       Deal.find(query)

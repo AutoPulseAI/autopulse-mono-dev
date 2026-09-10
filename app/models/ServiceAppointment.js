@@ -39,6 +39,12 @@ serviceAppointmentSchema.index(
 serviceAppointmentSchema.index({ dealer_id: 1, ro_number: 1 });
 serviceAppointmentSchema.index({ dealer_id: 1, vin: 1 });
 
+// Resolved-customer lookups for the Dealer 360 customer view (see
+// docs/dealer-360-customer-view-spec.md, §3.1). customer_id is set by
+// resolveCustomers() during ingestion; strict:false persists it though it
+// isn't declared above.
+serviceAppointmentSchema.index({ dealer_id: 1, customer_id: 1 });
+
 const ServiceAppointment =
   mongoose.models.ServiceAppointment ||
   mongoose.model('ServiceAppointment', serviceAppointmentSchema);
