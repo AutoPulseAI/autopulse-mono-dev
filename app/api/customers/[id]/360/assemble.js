@@ -180,11 +180,38 @@ export function buildValueSnapshot({ leads = [], deals = [], repairOrders = [], 
   };
 }
 
+// dealervault_upload was only added in commit a26bbfa ("adding new customer
+// through dealervault"). Any Customer that DealerVault matched/created
+// before that commit deployed has extra.dealervault.customer_numbers set
+// (the older mapping mechanism - see CUSTOMER_MAPPING_INDEX in Customer.js)
+// but never got dealervault_upload backfilled, so it would otherwise read as
+// false. Mirrors hasDealerVaultOrigin() in app/lib/customerResolver.js and
+// app/worker/dealervault/common/customerResolver.js - keep this in sync with
+// those if the check changes there.
+function hasDealerVaultOrigin(customer) {
+  const customerNumbers = customer?.extra?.dealervault?.customer_numbers;
+  return customer?.dealervault_upload === true
+    || (Array.isArray(customerNumbers) ? customerNumbers.length > 0 : typeof customerNumbers === 'string');
+}
+
+// inbound_lead has the same rollout gap as dealervault_upload (added in the
+// same commit): a customer created via the inbound path before that commit
+// deployed never got it set. Unlike DealerVault there's no pre-existing field
+// on Customer itself to fall back on - but Lead.customer_id is written in
+// exactly one place in the whole codebase (app/lib/customerResolver.js:356)
+// and never by the DealerVault workers, so "this customer has at least one
+// linked Lead" is an equally reliable, flag-independent inbound-origin signal.
+function hasInboundOrigin(customer, { hasLinkedLeads = false } = {}) {
+  return customer?.inbound_lead === true || hasLinkedLeads;
+}
+
 // Customer-level origin badge (spec §3.3), driven by the two booleans on
-// Customer - independent of any per-record provenance.
-export function getOriginBadge(customer) {
-  const dealervault = customer?.dealervault_upload === true;
-  const inbound = customer?.inbound_lead === true;
+// Customer - independent of any per-record provenance. Pass hasLinkedLeads
+// (e.g. leads.length > 0 from the leads already fetched for this customer)
+// so legacy customers predating either flag still classify correctly.
+export function getOriginBadge(customer, { hasLinkedLeads = false } = {}) {
+  const dealervault = hasDealerVaultOrigin(customer);
+  const inbound = hasInboundOrigin(customer, { hasLinkedLeads });
   if (dealervault && inbound) return 'Inbound & DealerVault';
   if (dealervault) return 'DealerVault';
   if (inbound) return 'Inbound Lead';
