@@ -35,6 +35,12 @@ dealSchema.index(DEAL_NATURAL_KEY_INDEX.key, { ...DEAL_NATURAL_KEY_INDEX.options
 dealSchema.index({ dealer_id: 1, vin: 1 });
 dealSchema.index({ dealer_id: 1, customer_number: 1 });
 
+// Resolved-customer lookups for the Dealer 360 customer view (see
+// docs/dealer-360-customer-view-spec.md, §3.1). customer_id is set by
+// resolveCustomers() during ingestion; strict:false persists it though it
+// isn't declared above.
+dealSchema.index({ dealer_id: 1, customer_id: 1 });
+
 const Deal = mongoose.models.Deal || mongoose.model('Deal', dealSchema);
 
 export default Deal;

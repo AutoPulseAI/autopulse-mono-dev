@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import DealList from "./components/DealList";
 
 export default function SalesPage() {
@@ -13,7 +14,9 @@ export default function SalesPage() {
         </div>
       </div>
       <div className="page_body">
-        <DealList />
+        <Suspense fallback={<div className="w_card text-center py-4">Loading deals...</div>}>
+          <DealList />
+        </Suspense>
       </div>
     </div>
   );

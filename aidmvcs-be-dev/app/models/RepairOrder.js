@@ -35,6 +35,12 @@ repairOrderSchema.index(REPAIR_ORDER_NATURAL_KEY_INDEX.key, {
 repairOrderSchema.index({ dealer_id: 1, vin: 1 });
 repairOrderSchema.index({ dealer_id: 1, customer_number: 1 });
 
+// Resolved-customer lookups for the Dealer 360 customer view (see
+// docs/dealer-360-customer-view-spec.md, §3.1). customer_id is set by
+// resolveCustomers() during ingestion; strict:false persists it though it
+// isn't declared above.
+repairOrderSchema.index({ dealer_id: 1, customer_id: 1 });
+
 const RepairOrder =
   mongoose.models.RepairOrder || mongoose.model('RepairOrder', repairOrderSchema);
 

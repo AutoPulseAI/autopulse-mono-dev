@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import RepairOrderList from "./components/RepairOrderList";
 
 export default function ServicePage() {
@@ -13,7 +14,9 @@ export default function ServicePage() {
         </div>
       </div>
       <div className="page_body">
-        <RepairOrderList />
+        <Suspense fallback={<div className="w_card text-center py-4">Loading repair orders...</div>}>
+          <RepairOrderList />
+        </Suspense>
       </div>
     </div>
   );

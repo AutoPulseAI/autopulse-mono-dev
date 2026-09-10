@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Alert, ListGroup, Pagination, Row, Col } from "react-bootstrap";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Alert, Button, ListGroup, Pagination, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 
 const defaultPagination = {
@@ -18,6 +18,8 @@ export default function DealList() {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const vinFilter = searchParams.get("vin");
   const [deals, setDeals] = useState([]);
   const [pagination, setPagination] = useState(defaultPagination);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,7 @@ export default function DealList() {
         dealer_id: activeEntity.id,
         page: String(page),
         limit: String(pagination.itemsPerPage),
+        ...(vinFilter ? { vin: vinFilter } : {}),
       });
 
       const response = await fetch(`/api/deals?${params.toString()}`, {
@@ -48,7 +51,7 @@ export default function DealList() {
     } finally {
       setLoading(false);
     }
-  }, [activeEntity?.id, loadingParent, pagination.itemsPerPage]);
+  }, [activeEntity?.id, loadingParent, pagination.itemsPerPage, vinFilter]);
 
   useEffect(() => {
     fetchDeals(1);
@@ -74,6 +77,13 @@ export default function DealList() {
         <h3 className="w_card_title mb-0">Deal List</h3>
         <small className="text-muted ms-2">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? "deal" : "deals"})</small>
       </div>
+
+      {vinFilter && (
+        <Alert variant="info" className="d-flex align-items-center justify-content-between py-2">
+          <span>Filtered by VIN: <strong>{vinFilter}</strong></span>
+          <Button variant="outline-custom" size="sm" onClick={() => router.push("/dealer/sales")}>Clear filter</Button>
+        </Alert>
+      )}
 
       <div className="w_card_list">
         <ListGroup variant="flush">
