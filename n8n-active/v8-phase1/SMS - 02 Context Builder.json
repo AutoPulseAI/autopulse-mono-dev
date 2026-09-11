@@ -10,7 +10,7 @@
       "position": [-1760, 0]
     },
     {
-      "parameters": {"collection": "users", "options": {"limit": 1}, "query": "={{ JSON.stringify({ _id: { '$oid': $json.identity.dealer_id || '000000000000000000000000' }, 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"},
+      "parameters": {"collection": "users", "options": {"limit": 1, "sort": "{\"_id\":1}"}, "query": "={{ JSON.stringify({ _id: { '$oid': $json.identity.dealer_id || '000000000000000000000000' }, 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"},
       "id": "649f82e8-0bc2-46fb-be58-9f35e3977628",
       "name": "Load Dealer Configuration",
       "type": "n8n-nodes-base.mongoDb",
@@ -31,7 +31,7 @@
       "position": [-1320, 0]
     },
     {
-      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', $or: [ { sender: $json.event.sender, recipient: $json.event.recipient }, { sender: $json.event.recipient, recipient: $json.event.sender } ] }) }}"},
+      "parameters": {"collection": "emails", "options": {"limit": 100, "sort": "{\"timestamp\":-1,\"date\":-1,\"created_at\":-1,\"createdAt\":-1,\"_id\":1}"}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', $or: [ { sender: $json.event.sender, recipient: $json.event.recipient }, { sender: $json.event.recipient, recipient: $json.event.sender } ] }) }}"},
       "id": "32bf6a14-058c-40df-bf2a-d4d8c2bf7456",
       "name": "Load SMS History",
       "type": "n8n-nodes-base.mongoDb",
@@ -43,7 +43,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure Dealer Context'].json));\nconst truthy = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nrows.sort((a,b)=>new Date(a.timestamp ?? a.created_at ?? 0)-new Date(b.timestamp ?? b.created_at ?? 0));\nconst allowed = rows.filter(r => !truthy(r.internal_use) && (r.use_replies_for_ai === undefined || r.use_replies_for_ai === null || truthy(r.use_replies_for_ai)));\nconst isNote = r => truthy(r.is_note ?? r.isNote);\nenvelope.context.sms_history = allowed.filter(r => !isNote(r) && String(r.communication_type ?? 'sms').toLowerCase() !== 'email').map(r => ({ direction: ['received','incoming'].includes(String(r.status).toLowerCase()) ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.content ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.created_at ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nenvelope.context.lead_notes = allowed.filter(isNote).map(r => ({ text: r.note ?? r.note_content ?? r.noteText ?? r.mail_content ?? r.message ?? null, timestamp: r.timestamp ?? r.created_at ?? null })).filter(r=>r.text);\nreturn [{json:envelope}];"
+        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure Dealer Context'].json));\nconst truthy = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.timestamp??r.date??r.created_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst warnings=envelope.context.resolution.warnings??(envelope.context.resolution.warnings=[]);\nif(!hasCutoff&&!warnings.includes('MISSING_OR_INVALID_EVENT_RECEIVED_AT_NO_HISTORY_CUTOFF'))warnings.push('MISSING_OR_INVALID_EVENT_RECEIVED_AT_NO_HISTORY_CUTOFF');\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nconst currentId=id(envelope.event.message_id);\nconst historical=rows.filter(r=>id(r.message_id)!==currentId&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nif(hasCutoff&&rows.some(r=>id(r.message_id)!==currentId&&timeOf(r)===null)&&!warnings.includes('HISTORY_RECORD_WITHOUT_VALID_TIMESTAMP_EXCLUDED'))warnings.push('HISTORY_RECORD_WITHOUT_VALID_TIMESTAMP_EXCLUDED');\nhistorical.sort((a,b)=>{const byTime=(timeOf(a)??0)-(timeOf(b)??0);if(byTime)return byTime;return String(id(a._id)??id(a.message_id)??'').localeCompare(String(id(b._id)??id(b.message_id)??''));});\nconst allowed = historical.filter(r => !truthy(r.internal_use) && (r.use_replies_for_ai === undefined || r.use_replies_for_ai === null || truthy(r.use_replies_for_ai)));\nconst isNote = r => truthy(r.is_note ?? r.isNote)||String(r.communication_type??'').toLowerCase()==='note';\nenvelope.context.sms_history = allowed.filter(r => !isNote(r) && String(r.communication_type ?? 'sms').toLowerCase() !== 'email').map(r => ({ direction: ['received','incoming'].includes(String(r.status).toLowerCase()) ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.content ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.date ?? r.created_at ?? r.createdAt ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nenvelope.context.lead_notes = allowed.filter(isNote).map(r => ({ text: r.note ?? r.note_content ?? r.noteText ?? r.mail_content ?? r.message ?? null, timestamp: r.timestamp ?? r.date ?? r.created_at ?? r.createdAt ?? null })).filter(r=>r.text);\nreturn [{json:envelope}];"
       },
       "id": "f3d32ad2-132a-47b3-b67d-e99a2704262d",
       "name": "Structure SMS History and Notes",
@@ -52,7 +52,7 @@
       "position": [-880, 0]
     },
     {
-      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"},
+      "parameters": {"collection": "emails", "options": {"limit": 100, "sort": "{\"timestamp\":-1,\"date\":-1,\"created_at\":-1,\"createdAt\":-1,\"_id\":1}"}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"},
       "id": "399f3904-0e1a-465e-881c-9e67267bb3fc",
       "name": "Load Email History",
       "type": "n8n-nodes-base.mongoDb",
@@ -64,7 +64,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure SMS History and Notes'].json));\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nrows.sort((a,b)=>new Date(a.timestamp ?? a.created_at ?? 0)-new Date(b.timestamp ?? b.created_at ?? 0));\nenvelope.context.email_history = rows.map(r => ({ direction: String(r.status).toLowerCase() === 'incoming' ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.created_at ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nreturn [{json:envelope}];"
+        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure SMS History and Notes'].json));\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.timestamp??r.date??r.created_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nconst currentId=id(envelope.event.message_id);\nconst historical=rows.filter(r=>id(r.message_id)!==currentId&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nhistorical.sort((a,b)=>{const byTime=(timeOf(a)??0)-(timeOf(b)??0);if(byTime)return byTime;return String(id(a._id)??id(a.message_id)??'').localeCompare(String(id(b._id)??id(b.message_id)??''));});\nenvelope.context.email_history = historical.map(r => ({ direction: ['received','incoming'].includes(String(r.status).toLowerCase()) ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.content ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.date ?? r.created_at ?? r.createdAt ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nreturn [{json:envelope}];"
       },
       "id": "30d7b84c-2881-4b59-aee8-b391851e511c",
       "name": "Structure Email History",
@@ -73,7 +73,7 @@
       "position": [-440, 0]
     },
     {
-      "parameters": {"collection": "campaignleads", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', phone: $json.event.sender, status: 'delivered' }) }}"},
+      "parameters": {"collection": "campaignleads", "options": {"limit": 100, "sort": "{\"delivered_at\":-1,\"sent_at\":-1,\"createdAt\":-1,\"_id\":1}"}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', phone: $json.event.sender, status: 'delivered' }) }}"},
       "id": "2ad81915-7bef-4ec8-8b92-605a9a30920e",
       "name": "Load Campaign Membership",
       "type": "n8n-nodes-base.mongoDb",
@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const envelope=$node['Structure Email History'].json;const ids=[...new Set($input.all().map(i=>i.json?.campaign_id).filter(Boolean).map(String))];\nreturn [{json:{dealer_id:envelope.identity.dealer_id||'__UNRESOLVED__',campaign_ids:ids,campaign_object_ids:ids.map(id=>({$oid:id}))}}];"
+        "jsCode": "const envelope=$node['Structure Email History'].json;\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.delivered_at??r.sent_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst memberships=$input.all().map(i=>i.json).filter(r=>r&&r.campaign_id&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nmemberships.sort((a,b)=>{const byTime=(timeOf(b)??0)-(timeOf(a)??0);if(byTime)return byTime;return String(id(a._id)??id(a.campaign_id)??'').localeCompare(String(id(b._id)??id(b.campaign_id)??''));});\nconst ids=[...new Set(memberships.map(r=>id(r.campaign_id)).filter(Boolean))];\nreturn [{json:{dealer_id:envelope.identity.dealer_id||'__UNRESOLVED__',campaign_ids:ids,campaign_object_ids:ids.map(value=>({$oid:value}))}}];"
       },
       "id": "824435be-72ad-4c23-801a-08897fdb9fc9",
       "name": "Build Campaign Query",
@@ -94,7 +94,7 @@
       "position": [0, 0]
     },
     {
-      "parameters": {"collection": "campaigns", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.dealer_id || '__UNRESOLVED__', _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"},
+      "parameters": {"collection": "campaigns", "options": {"limit": 100, "sort": "{\"createdAt\":-1,\"_id\":1}"}, "query": "={{ JSON.stringify({ dealer_id: $json.dealer_id || '__UNRESOLVED__', _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"},
       "id": "44331f10-ff16-464a-997d-436bb7f7b2e2",
       "name": "Load Campaigns",
       "type": "n8n-nodes-base.mongoDb",
@@ -106,7 +106,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure Email History'].json));\nconst campaigns = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && r._id);\nconst ts = c => new Date(c.message_content?.sent_at ?? c.sent_at ?? c.created_at ?? 0).getTime() || 0;\ncampaigns.sort((a,b)=>ts(b)-ts(a));\nconst c = campaigns[0] ?? null;\nenvelope.context.campaign = c ? { id:String(c._id), name:c.name ?? null, subject:c.message_content?.subject ?? null, body:c.message_content?.body ?? null, sent_at:c.message_content?.sent_at ?? c.sent_at ?? c.created_at ?? null } : null;\nenvelope.context.campaign_meta = { has_campaign_context: !!c, matched_campaign_count: campaigns.length };\nreturn [{json:envelope}];"
+        "jsCode": "const envelope = JSON.parse(JSON.stringify($node['Structure Email History'].json));\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.delivered_at??r.sent_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst memberships=$items('Load Campaign Membership').map(i=>i.json).filter(r=>r&&r.campaign_id&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nmemberships.sort((a,b)=>{const byTime=(timeOf(b)??0)-(timeOf(a)??0);if(byTime)return byTime;return String(id(a._id)??id(a.campaign_id)??'').localeCompare(String(id(b._id)??id(b.campaign_id)??''));});\nconst campaignById=new Map($input.all().map(i=>i.json).filter(r=>r&&r._id).map(c=>[id(c._id),c]));\nconst membership=memberships.find(r=>campaignById.has(id(r.campaign_id)))??null;const c=membership?campaignById.get(id(membership.campaign_id)):null;\nenvelope.context.campaign = c ? { id:id(c._id), name:c.name ?? null, subject:c.message_content?.subject ?? null, body:c.message_content?.body ?? null, sent_at:membership.delivered_at??membership.sent_at??membership.createdAt??null } : null;\nenvelope.context.campaign_meta = { has_campaign_context: !!c, matched_campaign_count: campaignById.size };\nreturn [{json:envelope}];"
       },
       "id": "46577949-e1a6-413d-b1cc-3883d092f129",
       "name": "Structure Campaign Context",
