@@ -10,7 +10,7 @@
       "position": [-1760, 0]
     },
     {
-      "parameters": {"collection": "users", "options": {"limit": 2}, "query": "={{ JSON.stringify({ 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"},
+      "parameters": {"collection": "users", "options": {"limit": 1}, "query": "={{ JSON.stringify({ _id: { '$oid': $json.identity.dealer_id || '000000000000000000000000' }, 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"},
       "id": "649f82e8-0bc2-46fb-be58-9f35e3977628",
       "name": "Load Dealer Configuration",
       "type": "n8n-nodes-base.mongoDb",
@@ -52,7 +52,7 @@
       "position": [-880, 0]
     },
     {
-      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"},
+      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"},
       "id": "399f3904-0e1a-465e-881c-9e67267bb3fc",
       "name": "Load Email History",
       "type": "n8n-nodes-base.mongoDb",
@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ids = [...new Set($input.all().map(i=>i.json?.campaign_id).filter(Boolean).map(String))];\nreturn [{json:{campaign_ids:ids,campaign_object_ids:ids.map(id=>({$oid:id}))}}];"
+        "jsCode": "const envelope=$node['Structure Email History'].json;const ids=[...new Set($input.all().map(i=>i.json?.campaign_id).filter(Boolean).map(String))];\nreturn [{json:{dealer_id:envelope.identity.dealer_id||'__UNRESOLVED__',campaign_ids:ids,campaign_object_ids:ids.map(id=>({$oid:id}))}}];"
       },
       "id": "824435be-72ad-4c23-801a-08897fdb9fc9",
       "name": "Build Campaign Query",
@@ -94,7 +94,7 @@
       "position": [0, 0]
     },
     {
-      "parameters": {"collection": "campaigns", "options": {"limit": 100}, "query": "={{ JSON.stringify({ _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"},
+      "parameters": {"collection": "campaigns", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.dealer_id || '__UNRESOLVED__', _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"},
       "id": "44331f10-ff16-464a-997d-436bb7f7b2e2",
       "name": "Load Campaigns",
       "type": "n8n-nodes-base.mongoDb",

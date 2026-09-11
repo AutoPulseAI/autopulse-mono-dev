@@ -221,6 +221,30 @@ Use unique externally reachable fixture URLs. Run two requests concurrently in t
 - Set inventory to UNKNOWN/EXACT_UNAVAILABLE and inject `It is available now.`
 - Expect: claim replaced by a verification-safe response and warning `UNSUPPORTED_AVAILABILITY_CLAIM_REPLACED`.
 
+### 32. Cross-dealer parent ID collision
+
+- Fixture: two dealers have email records with the same `parent_message_id`; only one matches the resolved `dealer_id`.
+- Expect: `Load Email History` returns only the resolved dealer's records. Repeat the isolation assertion for lead, customer, SMS history, campaign membership/campaign, and Vehicle lookups (`dealerId` for Vehicle).
+
+### 33. Model null vehicle/customer extraction
+
+- Fixture: linked lead/customer contains Alex and a 2022 Honda Civic.
+- Input: `What about financing?`; intelligence output has null name/email/phone and null VIN/year/make/model.
+- Expect: deterministic/context fields survive; `decision.allowed_facts.vehicle` still exposes 2022 Honda Civic; inventory lookup need not run merely to recover these known facts.
+
+### 34. Exact URL allow-list
+
+- Approved URL: `https://dealer.example/vdp/123`.
+- Exact case: the generated URL exactly matches and is followed by harmless sentence punctuation; expect it preserved.
+- Path mutation: `https://dealer.example/vdp/123-tracker`; expect the whole URL removed.
+- Query mutation: `https://dealer.example/vdp/123?source=sms`; expect the whole URL removed.
+- Run the assertions against both validation stages so the defense-in-depth checks enforce identical exact matching.
+
+### 35. No prose-sniffed managerial state
+
+- Fixture: old SMS history contains manager/follow-up wording, while the current route and intelligence have no escalation signal.
+- Expect: old prose does not set `fe_lead_status=Managerial Review`. Only current structured routing/intelligence may produce the current managerial output; durable historical state remains Phase 2 work.
+
 ## Terminal contract assertions
 
 Assert exact key sets by branch (key order is irrelevant):

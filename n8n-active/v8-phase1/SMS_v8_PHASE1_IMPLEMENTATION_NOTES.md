@@ -39,6 +39,24 @@ The internal boundary contract is:
 
 Mongo ObjectIds are serialized to strings before leaving the normalization/resolution workflow. Mongo queries convert them back only at the node that needs ObjectId comparison.
 
+## Mongo tenant-isolation audit
+
+| Node | Collection | Tenant field | Dealer scoped? | Reason if intentionally unscoped |
+|---|---|---|---|---|
+| Resolve Dealer | `users` | `_id` / dealer account | NO | Authority-resolution query: it discovers the dealer from the inbound conversion phone before a trusted dealer ID exists. Zero/multiple matches are blocked; an inbound dealer claim only disambiguates candidates. |
+| Load Phone-pair Conversation | `emails` | `dealer_id` | YES | — |
+| Resolve Lead | `leads` | `dealer_id` | YES | — |
+| Resolve Customer | `customers` | `dealer_id` | YES | Without a linked customer, an impossible `_id` sentinel cannot return a record. |
+| Load Dealer Configuration | `users` | `_id` | YES | Uses the resolved dealer ObjectId plus conversion phone. |
+| Load SMS History | `emails` | `dealer_id` | YES | — |
+| Load Email History | `emails` | `dealer_id` | YES | Parent message IDs are externally influenced and not globally trusted. |
+| Load Campaign Membership | `campaignleads` | `dealer_id` | YES | — |
+| Load Campaigns | `campaigns` | `dealer_id` | YES | Campaign IDs also come from dealer-scoped memberships. |
+| Find Exact VIN | `vehicles` | `dealerId` | YES | `dealerId` is the correct Vehicle schema field. |
+| Find Make Model | `vehicles` | `dealerId` | YES | `dealerId` is the correct Vehicle schema field. |
+
+Every customer-, lead-, conversation-, campaign-, and inventory-owned Mongo read is constrained to the resolved dealership. The sole intentionally unscoped query resolves that dealership and does not load tenant-owned conversation or sales data.
+
 ## Workflow details
 
 ### AutoPulse AI_SMS_Workflow_v8 (logical `SMS - 00 Inbound Router`)
@@ -80,6 +98,7 @@ Mongo ObjectIds are serialized to strings before leaving the normalization/resol
 - Nodes moved/refactored from v7: `Customer & Vehicle & Language Details Extractor`, `Communication Preference Detection`, `Inquiry Classifier`, `Intent & Sentiment Analysis`, `DND Detection`, `DND Extract`, and the appointment-status interpretation needed for terminal status.
 - The LLM does not select a route. Explicit STOP/opt-out, already-purchased, not-interested, callback, supplied email, and supplied VIN patterns have deterministic safety overrides/fallbacks.
 - Malformed model JSON is caught and replaced with a conservative structured fallback; it does not crash JSON parsing.
+- Null or undefined customer/vehicle fields returned by the model are coalesced field by field with deterministic/context values. A model null means “not extracted from this message,” not “erase a known fact.” Response Strategy repeats this recovery at its allowed-facts boundary.
 - Original source/bucket attribution is not overwritten. Phase 1 does not add new attribution state that v7 did not carry.
 - Email reuse: yes. The classifier is channel-neutral apart from its current SMS history vocabulary.
 
@@ -101,6 +120,7 @@ Mongo ObjectIds are serialized to strings before leaving the normalization/resol
 - Nodes moved/refactored from v7: DND/email/manager/visit/booking IF nodes, Intent Response Bank, CTA Templates Bank decision intent, VDP link rules, and trade/finance/booking link rules.
 - Route priority preserves v7: invalid resolution safety block, DND, email preference, escalation, booking, visit, inventory, general.
 - Link allow-list rules preserve v7: VDP only for photos/video/details/specs/features/trim/accessories/listing/history-detail requests; trade/finance only for their complex intents; booking link only for where/how-to-book requests; store address only for location requests.
+- Every URL validation stage requires exact normalized allow-list equality; path suffixes and query-string mutations are rejected. Harmless trailing sentence punctuation is separated before comparison.
 - Email reuse: yes. The selected route can be consumed by an email-specific generator later.
 
 ### SMS - 20 Response Generator
@@ -143,6 +163,7 @@ Mongo ObjectIds are serialized to strings before leaving the normalization/resol
 - Booking is inferred from the same current-message/conversation signals; no booking API call or new state machine is introduced.
 - Lead-status labels and branch-specific terminal field names remain unchanged.
 - The v7 FE-status comparison of boolean `create_lead` to string `"true"` is retained in the general/visit formatter, which means the effective fallback remains `Contacted`. Changing that would alter lead-status semantics and requires approval.
+- Managerial state is derived only from the current turn's structured route/intelligence. Historical SMS prose is not searched for business-state phrases.
 - v7's stated 160-character generation target and effective 300-character limiter are both represented: 160 is the generation target, 300 is the hard parity limit.
 - No persistence node was added. Downstream AutoPulse behavior remains responsible for storing the inbound/outbound result as in v7.
 
@@ -157,6 +178,8 @@ Mongo ObjectIds are serialized to strings before leaving the normalization/resol
 - **Appointment slot truth:** v7 only supplies configured store hours, not authoritative slot availability. v8 must not describe generated suggestions as confirmed bookings.
 - **Service inquiries:** retained as an inquiry category and answered with current general behavior; no new Service workflow is invented.
 - **Layer 1 TCPA/after-hours gate:** explicitly deferred by the Phase 1 request, even though Layer 1 requires it for future outbound outreach.
+- **Durable historical escalation state:** Phase 1 has no persistence state for prior escalation. Add an explicit durable field in Phase 2 rather than reconstructing state from conversation prose.
+- **Legacy FE lead-status comparison:** `create === 'true'` is known technical debt intentionally retained for v7 parity. Any correction requires an approved behavioral migration after Phase 1.
 
 ## Known compatibility risks
 
