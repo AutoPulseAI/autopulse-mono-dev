@@ -9,11 +9,11 @@ function primaryContact(entries) {
   return entries.find((entry) => entry.is_primary) || entries[0];
 }
 
-const BADGE_VARIANT = {
-  "DealerVault": "custom",
-  "Inbound Lead": "info",
-  "Inbound & DealerVault": "success",
-  "Unknown": "secondary",
+const BADGE_COLOR = {
+  "DealerVault": "#cb5c63",
+  "Inbound Lead": "#476c02",
+  "Inbound & DealerVault": "#a16f3c",
+  "Unknown": "#fc9009",
 };
 
 export default function CustomerHeader({ customer, valueSnapshot }) {
@@ -25,7 +25,9 @@ export default function CustomerHeader({ customer, valueSnapshot }) {
       <div className="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
         <div>
           <h3 className="w_card_title mb-1">{customer.name || "Unnamed customer"}</h3>
-          <Badge bg={BADGE_VARIANT[customer.origin_badge] || "secondary"}>{customer.origin_badge}</Badge>
+          <Badge style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
+            {customer.origin_badge}
+          </Badge>
         </div>
       </div>
       <Row className="gy-3">
