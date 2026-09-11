@@ -187,7 +187,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "parameters": {"jsCode": "const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'text',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
+      "parameters": {"jsCode": "const raw=$json.output?.[0]?.content?.[0]?.text??$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'&&!Array.isArray(raw)?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'text',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
       "id": "511b0ad9-f167-40a8-97ae-c79282c07c2a",
       "name": "Normalize Text Insight",
       "type": "n8n-nodes-base.code",
@@ -209,7 +209,8 @@
       "name": "Save PDF Unique",
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1,
-      "position": [1320, 0]
+      "position": [1320, 0],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {"executeOnce": false, "command": "=pdftotext '/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.pdf' '/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.txt'"},
@@ -248,7 +249,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "parameters": {"jsCode": "const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'pdf',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
+      "parameters": {"jsCode": "const raw=$json.output?.[0]?.content?.[0]?.text??$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'&&!Array.isArray(raw)?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'pdf',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
       "id": "96757eea-1a1e-4056-b7d0-73452f9019b0",
       "name": "Normalize PDF Insight",
       "type": "n8n-nodes-base.code",
@@ -270,7 +271,8 @@
       "name": "Save Video Unique",
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1,
-      "position": [1320, 180]
+      "position": [1320, 180],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {"executeOnce": false, "command": "=mkdir -p '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}' && ffmpeg -y -i '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}.mp4' -vf fps=1 '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}/frame_%03d.jpg'"},
@@ -301,7 +303,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "parameters": {"jsCode": "const frames=$input.all().map(i=>i.json);const parsed=frames.map(f=>{const raw=f.output??f.text??f.content?.[0]?.text??'';try{return typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){return {parse_error:true};}});return [{json:{modality:'video',filename:null,insights:{frames_analyzed:parsed.length,damage_detected:parsed.some(f=>f.visible_damage?.present===true),average_confidence:parsed.reduce((n,f)=>n+(Number(f.confidence)||0),0)/(parsed.length||1),frames:parsed.slice(0,10)},analysis_status:parsed.some(f=>f.parse_error)?'partial':'complete'}}];"},
+      "parameters": {"jsCode": "const frames=$input.all().map(i=>i.json);const parsed=frames.map(f=>{const raw=f.output?.[0]?.content?.[0]?.text??f.output??f.text??f.content?.[0]?.text??'';try{return typeof raw==='object'&&!Array.isArray(raw)?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){return {parse_error:true};}});return [{json:{modality:'video',filename:null,insights:{frames_analyzed:parsed.length,damage_detected:parsed.some(f=>f.visible_damage?.present===true),average_confidence:parsed.reduce((n,f)=>n+(Number(f.confidence)||0),0)/(parsed.length||1),frames:parsed.slice(0,10)},analysis_status:parsed.some(f=>f.parse_error)?'partial':'complete'}}];"},
       "id": "b208b77d-20a7-4fe2-9d93-43ccad8d338b",
       "name": "Normalize Video Insight",
       "type": "n8n-nodes-base.code",

@@ -21,19 +21,30 @@
     },
     {
       "parameters":{
+        "jsCode":"const e=structuredClone($json);const approved=new Set((e.decision?.allowed_links??[]).filter(Boolean).map(String));const warnings=e.response?.validation?.warnings??[];const exact=text=>String(text??'').replace(/https?:\\/\\/[^\\s<>\"']+/gi,m=>{const core=m.replace(/[),.;!?]+$/,'');const suffix=m.slice(core.length);if(approved.has(core))return m;warnings.push(`NONEXACT_URL_REMOVED:${core}`);return suffix;}).replace(/\\s{2,}/g,' ').trim();if(e.response?.validated){e.response.validated.sms_response=e.response.validated.sms_response?exact(e.response.validated.sms_response):null;e.response.validated.email_body=e.response.validated.email_body?exact(e.response.validated.email_body):null;}e.response.validation.warnings=[...new Set(warnings)];e.response.validation.valid=e.response.validation.warnings.length===0;return [{json:e}];"
+      },
+      "id":"17e3be25-3d35-48f4-ad91-a813333e9769",
+      "name":"Enforce Exact URL Allowlist",
+      "type":"n8n-nodes-base.code",
+      "typeVersion":2,
+      "position":[-40,0]
+    },
+    {
+      "parameters":{
         "jsCode":"const e = $json;\nconst route = e.decision?.route ?? 'GENERAL';\nconst i = e.intelligence ?? {};\nconst r = e.response?.validated ?? {};\nconst resolution = e.context?.resolution ?? {};\nconst create = !!resolution.create_lead;\nconst update = !!resolution.update_lead;\nconst name = i.customer?.name ?? e.context?.customer?.name ?? e.context?.lead?.name ?? '';\nconst mail = i.customer?.email ?? e.context?.customer?.email ?? e.context?.lead?.email ?? '';\nconst phone = e.event?.sender ?? i.customer?.phone ?? '';\nconst parent = e.identity?.parent_message_id ?? e.event?.message_id ?? '';\nconst language = e.decision?.language ?? 'English';\nconst signal = i.appointment?.signal ?? 'NONE';\nconst historyText = (e.context?.sms_history ?? []).map(x => x.content ?? '').join(' ');\nlet fe;\nif (signal === 'CANCEL') fe = 'Appointment Cancellation Requested';\nelse if (signal === 'BOOKED') fe = 'Appointment Booked';\nelse if (/member of our dealership team will connect|manager.*follow up/i.test(historyText)) fe = 'Managerial Review';\nelse fe = create === 'true' ? 'Lead' : 'Contacted';\nconst common = { lead_name: name, lead_mail: mail, lead_phone: phone, source: 'SMS', message_id: e.event?.message_id ?? '', create_lead: create, update_lead: update, sender_number: e.event?.sender ?? '', recipient_number: e.event?.recipient ?? '', user_language: language, appointment_cancellation_requested: signal === 'CANCEL' };\nif (route === 'DND') {\n  return [{ json: { lead_status: 'DND', ...common, response: null, request_query: String(e.event?.content ?? ''), parent_id: parent, fe_lead_status: 'DND', send_user_response: false, send_manager_sms: true, manager_sms: e.decision?.manager_sms ?? null, appointment_cancellation_requested: false } }];\n}\nif (route === 'ESCALATION') {\n  const blocked = !!e.decision?.block_delivery;\n  return [{ json: { lead_status: 'Managerial Review', ...common, response: null, request_query: String(e.event?.content ?? ''), parent_id: parent, fe_lead_status: 'Managerial Review', send_user_response: !blocked, user_response: blocked ? null : r.sms_response, send_manager_sms: !blocked, manager_sms: blocked ? null : (e.decision?.manager_sms ?? null), appointment_cancellation_requested: false } }];\n}\nif (route === 'EMAIL_HANDOFF') {\n  return [{ json: { lead_status: 'First Response Sent', ...common, response: r.email_body, parent_id: parent, request: String(e.event?.content ?? '').trim(), fe_lead_status: 'Lead', response_mode: 'email', preferred_communication_mode_selected: true, preferred_communication_mode: 'email', preferred_communication_mode_old_messageID: parent, appointment_cancellation_requested: false } }];\n}\nif (route === 'BOOKING') {\n  return [{ json: { lead_status: i.journey?.intent ?? 'Visit Booked', ...common, response: r.sms_response, request_query: String(e.event?.content ?? '').trim(), parent_message_id: parent, booking_status: true, booking_date: r.booking_date ?? '', booking_time: r.booking_time ?? '', fe_lead_status: 'Appointment Booked', appointment_cancellation_requested: false } }];\n}\nif (route === 'VISIT') {\n  return [{ json: { lead_status: i.journey?.intent ?? 'Visit Requested', ...common, response: r.sms_response, request_query: String(e.event?.content ?? '').trim(), parent_message_id: parent, fe_lead_status: fe } }];\n}\nreturn [{ json: { lead_status: 'First Response Sent', ...common, response: r.sms_response, request_query: String(e.event?.content ?? '').trim(), parent_message_id: parent, fe_lead_status: fe } }];"
       },
       "id":"9a21ac37-122f-478c-97d7-0f60818a87d5",
       "name":"Format Legacy v7 Output",
       "type":"n8n-nodes-base.code",
       "typeVersion":2,
-      "position":[0,0]
+      "position":[180,0]
     }
   ],
   "pinData":{},
   "connections":{
     "Sub-workflow Input":{"main":[[{"node":"Validate Response","type":"main","index":0}]]},
-    "Validate Response":{"main":[[{"node":"Format Legacy v7 Output","type":"main","index":0}]]}
+    "Validate Response":{"main":[[{"node":"Enforce Exact URL Allowlist","type":"main","index":0}]]},
+    "Enforce Exact URL Allowlist":{"main":[[{"node":"Format Legacy v7 Output","type":"main","index":0}]]}
   },
   "active":false,
   "settings":{"executionOrder":"v1"},

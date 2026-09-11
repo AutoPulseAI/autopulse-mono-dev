@@ -134,6 +134,7 @@ Mongo ObjectIds are serialized to strings before leaving the normalization/resol
 7. Attachment field normalization, concurrency-safe paths, connected video aggregation, unsupported pass-through, and cleanup correct the listed implementation defects.
 8. URLs are allow-listed and 300-character truncation is URL-safe. v7 could split links.
 9. The two DND/manager output branches now populate `recipient_number` from the normalized recipient rather than the nonexistent `receiver_number`.
+10. Manager notifications read the VDP from the structured inventory object. v7 attempted to index a serialized inventory string and could emit `Not Available` despite a known VDP; this is treated as a formatter defect, not a routing-rule change.
 
 ## Behavior deliberately preserved
 

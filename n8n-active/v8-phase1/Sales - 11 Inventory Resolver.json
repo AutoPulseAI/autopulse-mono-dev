@@ -66,6 +66,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [-220,120]
+    },
+    {
+      "parameters": {"jsCode":"const e=structuredClone($json);if(e.inventory?.status==='ALTERNATIVES'){const all=e.inventory.alternatives??[];const usable=all.filter(v=>v.availability!==false);if(!usable.length&&all.length){e.inventory.status='EXACT_UNAVAILABLE';e.inventory.unavailable_matches=all;e.inventory.alternatives=[];e.inventory.warnings.push('ALL_MATCHED_DOCUMENTS_EXPLICITLY_UNAVAILABLE');}else{e.inventory.alternatives=usable;}}return [{json:e}];"},
+      "id": "12d09aef-117d-40d4-aae4-ebd17b189c97",
+      "name": "Validate Inventory Truth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460,0]
     }
   ],
   "pinData": {},
@@ -74,7 +82,9 @@
     "Build Safe Inventory Queries":{"main":[[{"node":"Inventory Required","type":"main","index":0}]]},
     "Inventory Required":{"main":[[{"node":"Find Exact VIN","type":"main","index":0}],[{"node":"Skip Inventory Lookup","type":"main","index":0}]]},
     "Find Exact VIN":{"main":[[{"node":"Find Make Model","type":"main","index":0}]]},
-    "Find Make Model":{"main":[[{"node":"Resolve Inventory Result","type":"main","index":0}]]}
+    "Find Make Model":{"main":[[{"node":"Resolve Inventory Result","type":"main","index":0}]]},
+    "Resolve Inventory Result":{"main":[[{"node":"Validate Inventory Truth","type":"main","index":0}]]},
+    "Skip Inventory Lookup":{"main":[[{"node":"Validate Inventory Truth","type":"main","index":0}]]}
   },
   "active": false,
   "settings":{"executionOrder":"v1"},
