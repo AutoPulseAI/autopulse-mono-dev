@@ -58,7 +58,7 @@ const strategyResult = executeCode(nodeCode(strategy, 'Deterministic Response St
 assert.deepEqual(strategyResult.decision.allowed_facts.vehicle, { vin: null, year: '2022', make: 'Honda', model: 'Civic' });
 
 const validate = candidate => executeCode(nodeCode(validator, 'Validate Response'), {
-  ...structuredClone(strategyResult),
+  ...JSON.parse(JSON.stringify(strategyResult)),
   decision: { ...strategyResult.decision, route: 'GENERAL', allowed_links: ['https://dealer.example/vdp/123'], max_characters: 300 },
   response: { candidate: { sms_response: candidate } }
 })[0].json.response.validated.sms_response;
@@ -67,7 +67,7 @@ assert.equal(validate('See https://dealer.example/vdp/123-tracker.'), 'See .');
 assert.equal(validate('See https://dealer.example/vdp/123?source=sms.'), 'See .');
 
 const enforceExact = candidate => executeCode(nodeCode(validator, 'Enforce Exact URL Allowlist'), {
-  ...structuredClone(strategyResult),
+  ...JSON.parse(JSON.stringify(strategyResult)),
   decision: { ...strategyResult.decision, allowed_links: ['https://dealer.example/vdp/123'] },
   response: { validated: { sms_response: candidate }, validation: { warnings: [] } }
 })[0].json.response.validated.sms_response;
@@ -79,7 +79,7 @@ const formatterCode = nodeCode(validator, 'Format Legacy v7 Output');
 assert.doesNotMatch(formatterCode, /member of our dealership team will connect|manager\.\*follow up/);
 assert.match(formatterCode, /create === 'true'/);
 const formatted = executeCode(formatterCode, {
-  ...structuredClone(strategyResult),
+  ...JSON.parse(JSON.stringify(strategyResult)),
   context: { ...strategyResult.context, sms_history: [{ content: 'A manager will follow up.' }] },
   decision: { ...strategyResult.decision, route: 'GENERAL' }, response: { validated: { sms_response: 'Thanks.' } }
 })[0].json;
