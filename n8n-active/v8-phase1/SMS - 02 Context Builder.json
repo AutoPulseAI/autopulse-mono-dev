@@ -1,0 +1,404 @@
+{
+  "name": "SMS - 02 Context Builder",
+  "nodes": [
+    {
+      "parameters": {"inputSource": "passthrough"},
+      "id": "4e06185f-9537-4003-82de-e6583979ea01",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-1760, 0]
+    },
+    {
+      "parameters": {"collection": "users", "options": {"limit": 2}, "query": "={{ JSON.stringify({ 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"},
+      "id": "649f82e8-0bc2-46fb-be58-9f35e3977628",
+      "name": "Load Dealer Configuration",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-1540, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Sub-workflow Input'].json);\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length);\nconst dealer = rows.find(r => String(r._id ?? r.dealer_id) === String(envelope.identity.dealer_id)) ?? rows[0] ?? {};\nconst d = dealer.dealer_account_information ?? {};\nconst address = [d.store_address, d.store_city, d.store_state, d.store_postal, d.store_country].filter(Boolean).join(', ');\nconst weekly = d.weekly_availability ?? {};\nconst dayNames = {monday:'Monday',tuesday:'Tuesday',wednesday:'Wednesday',thursday:'Thursday',friday:'Friday',saturday:'Saturday',sunday:'Sunday'};\nconst hours = Object.entries(weekly).filter(([,v]) => v?.active && v.start && v.end).map(([k,v]) => ({ day: dayNames[k] ?? k, start: v.start, end: v.end }));\nenvelope.context.dealer = { ...(envelope.context.dealer ?? {}), id: envelope.identity.dealer_id, bot_name: d.ai_bot_name ?? envelope.context.dealer?.bot_name ?? null, store_name: d.store_name ?? envelope.context.dealer?.store_name ?? null, store_phone: d.alternative_contact_number ?? envelope.context.dealer?.store_phone ?? envelope.event.recipient, sms_conversion_phone: d.sms_conversion_phone ?? envelope.event.recipient, store_address: address || envelope.context.dealer?.store_address || null, timezone: d.time_zone ?? null, store_website: d.store_website ?? envelope.context.dealer?.store_website ?? null, manager_name: d.general_manager ?? envelope.context.dealer?.manager_name ?? null, trade_url: d.trade_in_appraisal_url ?? envelope.context.dealer?.trade_url ?? null, finance_url: d.credit_finance_application_url ?? envelope.context.dealer?.finance_url ?? null, booking_url: envelope.identity.dealer_id && envelope.identity.lead_id ? `https://www.autopulse.ai/booking/${envelope.identity.dealer_id}/${envelope.identity.lead_id}` : null, store_hours: hours, store_hours_text: hours.length ? hours.map(h => `${h.day}: ${h.start}–${h.end}`).join(', ') : 'No available store hours at the moment.' };\nenvelope.context.current_time = { iso: new Date().toISOString(), timezone: envelope.context.dealer.timezone };\nreturn [{json:envelope}];"
+      },
+      "id": "1d3c9168-2f19-48c3-a264-1543d8fb2e1b",
+      "name": "Structure Dealer Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1320, 0]
+    },
+    {
+      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', $or: [ { sender: $json.event.sender, recipient: $json.event.recipient }, { sender: $json.event.recipient, recipient: $json.event.sender } ] }) }}"},
+      "id": "32bf6a14-058c-40df-bf2a-d4d8c2bf7456",
+      "name": "Load SMS History",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-1100, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Structure Dealer Context'].json);\nconst truthy = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nrows.sort((a,b)=>new Date(a.timestamp ?? a.created_at ?? 0)-new Date(b.timestamp ?? b.created_at ?? 0));\nconst allowed = rows.filter(r => !truthy(r.internal_use) && (r.use_replies_for_ai === undefined || r.use_replies_for_ai === null || truthy(r.use_replies_for_ai)));\nconst isNote = r => truthy(r.is_note ?? r.isNote);\nenvelope.context.sms_history = allowed.filter(r => !isNote(r) && String(r.communication_type ?? 'sms').toLowerCase() !== 'email').map(r => ({ direction: ['received','incoming'].includes(String(r.status).toLowerCase()) ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.content ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.created_at ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nenvelope.context.lead_notes = allowed.filter(isNote).map(r => ({ text: r.note ?? r.note_content ?? r.noteText ?? r.mail_content ?? r.message ?? null, timestamp: r.timestamp ?? r.created_at ?? null })).filter(r=>r.text);\nreturn [{json:envelope}];"
+      },
+      "id": "f3d32ad2-132a-47b3-b67d-e99a2704262d",
+      "name": "Structure SMS History and Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-880, 0]
+    },
+    {
+      "parameters": {"collection": "emails", "options": {"limit": 100}, "query": "={{ JSON.stringify({ communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"},
+      "id": "399f3904-0e1a-465e-881c-9e67267bb3fc",
+      "name": "Load Email History",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-660, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Structure SMS History and Notes'].json);\nconst rows = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && (r._id || r.message_id));\nrows.sort((a,b)=>new Date(a.timestamp ?? a.created_at ?? 0)-new Date(b.timestamp ?? b.created_at ?? 0));\nenvelope.context.email_history = rows.map(r => ({ direction: String(r.status).toLowerCase() === 'incoming' ? 'inbound' : 'outbound', content: r.mail_content ?? r.message ?? r.api_response?.Response ?? null, status: r.status ?? null, timestamp: r.timestamp ?? r.created_at ?? null, message_id: r.message_id ? String(r.message_id) : null })).filter(r=>r.content);\nreturn [{json:envelope}];"
+      },
+      "id": "30d7b84c-2881-4b59-aee8-b391851e511c",
+      "name": "Structure Email History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-440, 0]
+    },
+    {
+      "parameters": {"collection": "campaignleads", "options": {"limit": 100}, "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', phone: $json.event.sender, status: 'delivered' }) }}"},
+      "id": "2ad81915-7bef-4ec8-8b92-605a9a30920e",
+      "name": "Load Campaign Membership",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-220, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids = [...new Set($input.all().map(i=>i.json?.campaign_id).filter(Boolean).map(String))];\nreturn [{json:{campaign_ids:ids,campaign_object_ids:ids.map(id=>({$oid:id}))}}];"
+      },
+      "id": "824435be-72ad-4c23-801a-08897fdb9fc9",
+      "name": "Build Campaign Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {"collection": "campaigns", "options": {"limit": 100}, "query": "={{ JSON.stringify({ _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"},
+      "id": "44331f10-ff16-464a-997d-436bb7f7b2e2",
+      "name": "Load Campaigns",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [220, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Structure Email History'].json);\nconst campaigns = $input.all().map(i=>i.json).filter(r=>r && Object.keys(r).length && r._id);\nconst ts = c => new Date(c.message_content?.sent_at ?? c.sent_at ?? c.created_at ?? 0).getTime() || 0;\ncampaigns.sort((a,b)=>ts(b)-ts(a));\nconst c = campaigns[0] ?? null;\nenvelope.context.campaign = c ? { id:String(c._id), name:c.name ?? null, subject:c.message_content?.subject ?? null, body:c.message_content?.body ?? null, sent_at:c.message_content?.sent_at ?? c.sent_at ?? c.created_at ?? null } : null;\nenvelope.context.campaign_meta = { has_campaign_context: !!c, matched_campaign_count: campaigns.length };\nreturn [{json:envelope}];"
+      },
+      "id": "46577949-e1a6-413d-b1cc-3883d092f129",
+      "name": "Structure Campaign Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const attachments = $json.event.attachments ?? [];\nif (!attachments.length) return [{json:{route:'UNSUPPORTED',modality:'none',filename:null,content_type:null,url:null,source_index:-1,analysis_status:'no_attachment'}}];\nreturn attachments.map((a,index)=>{\n  const name=String(a.filename??'').toLowerCase();\n  const type=String(a.content_type??a.contentType??'').toLowerCase();\n  let route='UNSUPPORTED';\n  if(type.startsWith('image/')||/\\.(jpg|jpeg|png|webp|gif)$/.test(name)) route='IMAGE';\n  else if(type.startsWith('video/')||/\\.(mp4|mov|avi|mkv)$/.test(name)) route='VIDEO';\n  else if(type==='application/pdf'||/\\.pdf$/.test(name)) route='PDF';\n  else if(type.startsWith('text/')||/\\.(txt|csv)$/.test(name)) route='TEXT';\n  return {json:{...a,content_type:type,source_index:a.source_index??index,route}};\n});"
+      },
+      "id": "2f563bf3-bbf8-4705-a2d8-8317667de746",
+      "name": "Classify and Flatten Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {"mode": "expression", "output": "={{ ({ IMAGE:0, TEXT:1, PDF:2, VIDEO:3, UNSUPPORTED:4 })[$json.route] ?? 4 }}", "looseTypeValidation": ""},
+      "id": "3857cdb1-bc1d-4fb8-8ad5-b085763c06c7",
+      "name": "Route Attachment Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {"url": "={{ $json.url }}", "options": {"response": {"response": {"responseFormat": "file", "outputPropertyName": "data"}}}},
+      "id": "59eed152-bcfb-4f92-8d34-dd07137654b0",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, -360],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"resource": "image", "operation": "analyze", "modelId": {"__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "GPT-4O-MINI"}, "text": "Return valid JSON only. Report only what is visible: {\"vehicle_present\":boolean,\"vehicle_type\":\"sedan|suv|hatchback|truck|unknown\",\"brand_visible\":\"string|unknown\",\"exterior_color\":\"string|unknown\",\"visible_damage\":{\"present\":boolean,\"description\":\"string|null\"},\"confidence\":number}. Never guess.", "inputType": "base64", "options": {}},
+      "id": "a18e5457-450e-4aaf-a2d1-190c8cfbf9b7",
+      "name": "Analyze Image",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [1320, -360],
+      "credentials": {"openAiApi": {"id": "8HDcbDkuFRoCFjGB", "name": "OpenAI Account"}},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'image',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
+      "id": "a8218e08-77c0-4a39-b12c-c67cfd3a7ca5",
+      "name": "Normalize Image Insight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, -360]
+    },
+    {
+      "parameters": {"url": "={{ $json.url }}", "options": {"response": {"response": {"responseFormat": "file", "outputPropertyName": "data"}}}},
+      "id": "ab2ea554-629e-45ab-a3c4-b98936bbea04",
+      "name": "Download Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, -180],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const encoded=$binary?.data?.data;const text=encoded?Buffer.from(encoded,'base64').toString('utf8'):'';return [{json:{...$json,extracted_text:text.slice(0,20000)}}];"},
+      "id": "32c82c29-9489-4e5e-868f-d814481dd911",
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -180]
+    },
+    {
+      "parameters": {"modelId": {"__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "GPT-4O-MINI"}, "responses": {"values": [{"role": "system", "content": "Extract dealership-relevant information. Never guess. Return valid JSON only."}, {"content": "=Return {\"vehicle_model\":\"string|unknown\",\"vehicle_year\":\"string|unknown\",\"vin\":\"string|unknown\",\"customer_name\":\"string|unknown\",\"confidence\":number} from:\n{{ $json.extracted_text }}"}]}, "builtInTools": {}, "options": {}},
+      "id": "687d79ab-e1da-46bc-b44a-2d46085fa950",
+      "name": "Analyze Text",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [1540, -180],
+      "credentials": {"openAiApi": {"id": "8HDcbDkuFRoCFjGB", "name": "OpenAI Account"}},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'text',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
+      "id": "511b0ad9-f167-40a8-97ae-c79282c07c2a",
+      "name": "Normalize Text Insight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -180]
+    },
+    {
+      "parameters": {"url": "={{ $json.url }}", "options": {"response": {"response": {"responseFormat": "file", "outputPropertyName": "data"}}}},
+      "id": "ab7f1ee2-aa3e-4795-af51-a9b1f10f9682",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"operation": "write", "fileName": "=/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.pdf", "options": {}},
+      "id": "2aad2d1c-67c8-4b86-95bf-834939339ede",
+      "name": "Save PDF Unique",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {"executeOnce": false, "command": "=pdftotext '/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.pdf' '/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.txt'"},
+      "id": "c5cf2b68-0a14-46d5-841e-d11b8f94adb4",
+      "name": "Extract PDF Text Unique",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1540, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"fileSelector": "=/tmp/autopulse-v8-pdf-{{$execution.id}}-{{$itemIndex}}.txt", "options": {}},
+      "id": "b2d5acf2-3f3d-437a-9952-94e3c1be73c0",
+      "name": "Read PDF Text Unique",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1760, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const encoded=$binary?.data?.data;const text=encoded?Buffer.from(encoded,'base64').toString('utf8'):'';return [{json:{...$json,extracted_text:text.slice(0,20000),document_type:'pdf'}}];"},
+      "id": "0279b92c-b208-4bf0-8998-152f1af5457f",
+      "name": "Decode PDF Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {"modelId": {"__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "GPT-4O-MINI"}, "responses": {"values": [{"role": "system", "content": "Extract dealership-relevant information. Never guess. Return valid JSON only."}, {"content": "=Return {\"vehicle_model\":\"string|unknown\",\"vehicle_year\":\"string|unknown\",\"vin\":\"string|unknown\",\"customer_name\":\"string|unknown\",\"confidence\":number} from:\n{{ $json.extracted_text }}"}]}, "builtInTools": {}, "options": {}},
+      "id": "13ba4090-5fb4-4cba-8a3f-10e0bf00eb2f",
+      "name": "Analyze PDF Text",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [2200, 0],
+      "credentials": {"openAiApi": {"id": "8HDcbDkuFRoCFjGB", "name": "OpenAI Account"}},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let insights=null;try{insights=typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){insights={parse_error:true,raw:String(raw).slice(0,500)};}return [{json:{modality:'document',document_type:'pdf',filename:$json.filename??null,insights,analysis_status:insights.parse_error?'malformed_ai_output':'complete'}}];"},
+      "id": "96757eea-1a1e-4056-b7d0-73452f9019b0",
+      "name": "Normalize PDF Insight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 0]
+    },
+    {
+      "parameters": {"url": "={{ $json.url }}", "options": {"response": {"response": {"responseFormat": "file", "outputPropertyName": "video"}}}},
+      "id": "67517111-88ca-4788-be97-e4c46b54fe03",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1100, 180],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"operation": "write", "fileName": "=/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}.mp4", "dataPropertyName": "video", "options": {}},
+      "id": "2f0c1d38-2c68-4c5a-9033-f05492494f8d",
+      "name": "Save Video Unique",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1320, 180]
+    },
+    {
+      "parameters": {"executeOnce": false, "command": "=mkdir -p '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}' && ffmpeg -y -i '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}.mp4' -vf fps=1 '/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}/frame_%03d.jpg'"},
+      "id": "80b03922-b3b2-455d-91d1-e22184f81ac6",
+      "name": "Extract Video Frames Unique",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1540, 180],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"fileSelector": "=/tmp/autopulse-v8-video-{{$execution.id}}-{{$itemIndex}}/frame_*.jpg", "options": {}},
+      "id": "162c9de4-5527-4337-a247-b56eb4a5d555",
+      "name": "Load Video Frames Unique",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1760, 180],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"resource": "image", "operation": "analyze", "modelId": {"__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "GPT-4O-MINI"}, "text": "Return valid JSON only. Report only visible vehicle type, brand, color, damage and confidence. Never guess.", "inputType": "base64", "options": {}},
+      "id": "07d68507-8fe2-4b53-8ef8-94bce6fd63e7",
+      "name": "Analyze Video Frames",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [1980, 180],
+      "credentials": {"openAiApi": {"id": "8HDcbDkuFRoCFjGB", "name": "OpenAI Account"}},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const frames=$input.all().map(i=>i.json);const parsed=frames.map(f=>{const raw=f.output??f.text??f.content?.[0]?.text??'';try{return typeof raw==='object'?raw:JSON.parse(String(raw).replace(/^```json\\s*/i,'').replace(/```$/,'').trim());}catch(e){return {parse_error:true};}});return [{json:{modality:'video',filename:null,insights:{frames_analyzed:parsed.length,damage_detected:parsed.some(f=>f.visible_damage?.present===true),average_confidence:parsed.reduce((n,f)=>n+(Number(f.confidence)||0),0)/(parsed.length||1),frames:parsed.slice(0,10)},analysis_status:parsed.some(f=>f.parse_error)?'partial':'complete'}}];"},
+      "id": "b208b77d-20a7-4fe2-9d93-43ccad8d338b",
+      "name": "Normalize Video Insight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 180]
+    },
+    {
+      "parameters": {"jsCode": "return [{json:{modality:$json.modality??'unsupported',filename:$json.filename??null,content_type:$json.content_type??null,insights:null,analysis_status:$json.analysis_status??'unsupported'}}];"},
+      "id": "4cf52edc-11de-482f-8b13-4166375568bf",
+      "name": "Keep Unsupported Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 360]
+    },
+    {
+      "parameters": {"numberInputs": 5},
+      "id": "18e76ad7-da85-4e23-a69c-77c653903e4c",
+      "name": "Merge Attachment Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [2660, 0]
+    },
+    {
+      "parameters": {"jsCode": "const records=$input.all().map(i=>i.json).filter(r=>r && r.modality);return [{json:{attachments:records,has_attachments:records.some(r=>r.modality!=='none'),warnings:records.filter(r=>['unsupported','malformed_ai_output','partial'].includes(r.analysis_status)).map(r=>`ATTACHMENT_${String(r.analysis_status).toUpperCase()}:${r.filename??r.modality}`)}}];"},
+      "id": "6a5ca1e2-6a21-41a5-9ad9-51696fc18fa4",
+      "name": "Aggregate Attachment Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 0]
+    },
+    {
+      "parameters": {"executeOnce": true, "command": "=rm -f /tmp/autopulse-v8-pdf-{{$execution.id}}-* /tmp/autopulse-v8-video-{{$execution.id}}-*.mp4 && rm -rf /tmp/autopulse-v8-video-{{$execution.id}}-*"},
+      "id": "ef90a8ae-4b23-4d50-8f7d-6f177b6fce94",
+      "name": "Cleanup Execution Temp Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3100, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"jsCode": "const envelope=structuredClone($node['Structure Campaign Context'].json);const a=$node['Aggregate Attachment Insights'].json;envelope.context.attachments=a.attachments??[];envelope.context.attachment_meta={has_attachments:a.has_attachments??false,warnings:a.warnings??[]};envelope.context.precedence={lead_notes:'highest',sms_history:'second',email_history:'third',campaign:'conditional',attachments:'supplemental'};return [{json:envelope}];"},
+      "id": "01cb7905-5812-4b2d-9f02-2be525d55723",
+      "name": "Structured Context Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Sub-workflow Input": {"main": [[{"node":"Load Dealer Configuration","type":"main","index":0}]]},
+    "Load Dealer Configuration": {"main": [[{"node":"Structure Dealer Context","type":"main","index":0}]]},
+    "Structure Dealer Context": {"main": [[{"node":"Load SMS History","type":"main","index":0}]]},
+    "Load SMS History": {"main": [[{"node":"Structure SMS History and Notes","type":"main","index":0}]]},
+    "Structure SMS History and Notes": {"main": [[{"node":"Load Email History","type":"main","index":0}]]},
+    "Load Email History": {"main": [[{"node":"Structure Email History","type":"main","index":0}]]},
+    "Structure Email History": {"main": [[{"node":"Load Campaign Membership","type":"main","index":0}]]},
+    "Load Campaign Membership": {"main": [[{"node":"Build Campaign Query","type":"main","index":0}]]},
+    "Build Campaign Query": {"main": [[{"node":"Load Campaigns","type":"main","index":0}]]},
+    "Load Campaigns": {"main": [[{"node":"Structure Campaign Context","type":"main","index":0}]]},
+    "Structure Campaign Context": {"main": [[{"node":"Classify and Flatten Attachments","type":"main","index":0}]]},
+    "Classify and Flatten Attachments": {"main": [[{"node":"Route Attachment Type","type":"main","index":0}]]},
+    "Route Attachment Type": {"main": [
+      [{"node":"Download Image","type":"main","index":0}],
+      [{"node":"Download Text","type":"main","index":0}],
+      [{"node":"Download PDF","type":"main","index":0}],
+      [{"node":"Download Video","type":"main","index":0}],
+      [{"node":"Keep Unsupported Attachment","type":"main","index":0}]
+    ]},
+    "Download Image": {"main": [[{"node":"Analyze Image","type":"main","index":0}]]},
+    "Analyze Image": {"main": [[{"node":"Normalize Image Insight","type":"main","index":0}]]},
+    "Normalize Image Insight": {"main": [[{"node":"Merge Attachment Results","type":"main","index":0}]]},
+    "Download Text": {"main": [[{"node":"Extract Text","type":"main","index":0}]]},
+    "Extract Text": {"main": [[{"node":"Analyze Text","type":"main","index":0}]]},
+    "Analyze Text": {"main": [[{"node":"Normalize Text Insight","type":"main","index":0}]]},
+    "Normalize Text Insight": {"main": [[{"node":"Merge Attachment Results","type":"main","index":1}]]},
+    "Download PDF": {"main": [[{"node":"Save PDF Unique","type":"main","index":0}]]},
+    "Save PDF Unique": {"main": [[{"node":"Extract PDF Text Unique","type":"main","index":0}]]},
+    "Extract PDF Text Unique": {"main": [[{"node":"Read PDF Text Unique","type":"main","index":0}]]},
+    "Read PDF Text Unique": {"main": [[{"node":"Decode PDF Text","type":"main","index":0}]]},
+    "Decode PDF Text": {"main": [[{"node":"Analyze PDF Text","type":"main","index":0}]]},
+    "Analyze PDF Text": {"main": [[{"node":"Normalize PDF Insight","type":"main","index":0}]]},
+    "Normalize PDF Insight": {"main": [[{"node":"Merge Attachment Results","type":"main","index":2}]]},
+    "Download Video": {"main": [[{"node":"Save Video Unique","type":"main","index":0}]]},
+    "Save Video Unique": {"main": [[{"node":"Extract Video Frames Unique","type":"main","index":0}]]},
+    "Extract Video Frames Unique": {"main": [[{"node":"Load Video Frames Unique","type":"main","index":0}]]},
+    "Load Video Frames Unique": {"main": [[{"node":"Analyze Video Frames","type":"main","index":0}]]},
+    "Analyze Video Frames": {"main": [[{"node":"Normalize Video Insight","type":"main","index":0}]]},
+    "Normalize Video Insight": {"main": [[{"node":"Merge Attachment Results","type":"main","index":3}]]},
+    "Keep Unsupported Attachment": {"main": [[{"node":"Merge Attachment Results","type":"main","index":4}]]},
+    "Merge Attachment Results": {"main": [[{"node":"Aggregate Attachment Insights","type":"main","index":0}]]},
+    "Aggregate Attachment Insights": {"main": [[{"node":"Cleanup Execution Temp Files","type":"main","index":0}]]},
+    "Cleanup Execution Temp Files": {"main": [[{"node":"Structured Context Envelope","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"},
+  "versionId": "d8065ce4-f39f-4fe9-bea7-ad2404e4d580",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}

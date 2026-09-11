@@ -1,0 +1,84 @@
+{
+  "name": "Sales - 11 Inventory Resolver",
+  "nodes": [
+    {
+      "parameters": {"inputSource":"passthrough"},
+      "id": "c18f81b5-f92c-423f-af56-25eafbc16801",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-900,0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope=structuredClone($json);const v=envelope.intelligence?.vehicle??{};const esc=s=>String(s??'').replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&');const vin=String(v.vin??envelope.context?.lead?.vin??'').trim().toUpperCase();const make=String(v.make??envelope.context?.lead?.make??'').trim();const model=String(v.model??envelope.context?.lead?.model??'').trim();const year=String(v.year??envelope.context?.lead?.year??'').trim();const category=envelope.intelligence?.inquiry?.category??'';const required=!!(vin||model||/Availability|Price|Test Drive/i.test(category));envelope.inventory={status:'UNKNOWN',required,request:{vin:vin||null,make:make||null,model:model||null,year:year||null},exact_vehicle:null,alternatives:[],authoritative_availability:false,warnings:[]};return [{json:{envelope,required,vin_query:JSON.stringify({dealerId:envelope.identity.dealer_id||'__UNRESOLVED__',vin:vin||'__NO_VIN__'}),model_query:JSON.stringify({dealerId:envelope.identity.dealer_id||'__UNRESOLVED__',model:model?{$regex:`^${esc(model)}$`,$options:'i'}:'__NO_MODEL__',...(make?{make:{$regex:`^${esc(make)}$`,$options:'i'}}:{}),...(year?{year}: {})})}}];"
+      },
+      "id": "c866cfd6-36c1-4f78-a159-af10cfba775d",
+      "name": "Build Safe Inventory Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-680,0]
+    },
+    {
+      "parameters": {"mode":"expression","output":"={{ $json.required ? 0 : 1 }}","looseTypeValidation":""},
+      "id": "7790d0a9-06f5-49b7-808c-fbb4e4ea48ae",
+      "name": "Inventory Required",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [-460,0]
+    },
+    {
+      "parameters": {"collection":"vehicles","options":{"limit":5},"query":"={{ $json.vin_query }}"},
+      "id": "0900d026-c45e-4cbf-84dd-f13dd5639a26",
+      "name": "Find Exact VIN",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-220,-100],
+      "credentials": {"mongoDb":{"id":"9CSrB6IzzXy9lnfw","name":"MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {"collection":"vehicles","options":{"limit":5},"query":"={{ $node['Build Safe Inventory Queries'].json.model_query }}"},
+      "id": "82284368-c5c0-44ad-9dd5-29c1eed8d8f5",
+      "name": "Find Make Model",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [0,-100],
+      "credentials": {"mongoDb":{"id":"9CSrB6IzzXy9lnfw","name":"MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base=structuredClone($node['Build Safe Inventory Queries'].json.envelope);const request=base.inventory.request;const exactRows=$items('Find Exact VIN').map(i=>i.json).filter(v=>v&&Object.keys(v).length&&(v.vin||v._id));const modelRows=$input.all().map(i=>i.json).filter(v=>v&&Object.keys(v).length&&(v.make||v.model||v.vin));const summary=v=>({vin:v.vin??null,year:v.year??null,make:v.make??null,model:v.model??null,trim:v.trim??null,body:v.body??null,vehicle_type:v.vehicletype??null,vehicle_class:v.vehicleclass??null,new_used:v.newused??null,title:v.title??null,engine:v.engine??null,transmission:v.transmission??null,drive:v.drive??null,mileage:v.mileage??null,fuel:v.fuel??null,exterior_color:v.exteriorcolor??null,interior_color:v.interiorcolor??null,seats:v.seats??null,price:v.internetprice??null,vdp_url:v.shortUrl??null});const availability=v=>{if(v.sold===true)return false;for(const key of ['available','is_available','active','isActive']){if(typeof v[key]==='boolean')return v[key];}const s=String(v.availability??v.inventory_status??v.status??'').trim().toLowerCase();if(['sold','unavailable','inactive','removed','deleted','out of stock'].includes(s))return false;if(['available','active','in stock','instock'].includes(s))return true;return null;};const exact=exactRows[0]??null;if(exact){const known=availability(exact);base.inventory.exact_vehicle=summary(exact);base.inventory.authoritative_availability=known!==null;if(known===false)base.inventory.status='EXACT_UNAVAILABLE';else{base.inventory.status='EXACT_AVAILABLE';if(known===null)base.inventory.warnings.push('AVAILABILITY_INFERRED_FROM_DOCUMENT_EXISTENCE_FOR_V7_PARITY');}}else if(modelRows.length){base.inventory.status='ALTERNATIVES';base.inventory.alternatives=modelRows.slice(0,3).map(v=>({...summary(v),availability:availability(v)}));if(modelRows.some(v=>availability(v)===null))base.inventory.warnings.push('ALTERNATIVE_AVAILABILITY_FIELD_UNRESOLVED');}else{base.inventory.status='UNKNOWN';base.inventory.warnings.push(request.vin||request.model?'NO_INVENTORY_MATCH':'NO_INVENTORY_KEY');}return [{json:base}];"
+      },
+      "id": "a99d7c32-2610-43f3-acdd-45ef85760cd8",
+      "name": "Resolve Inventory Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220,-100]
+    },
+    {
+      "parameters": {"jsCode":"const envelope=structuredClone($json.envelope);envelope.inventory.status='UNKNOWN';envelope.inventory.required=false;envelope.inventory.warnings.push('INVENTORY_NOT_REQUIRED');return [{json:envelope}];"},
+      "id": "34ab7d5f-f148-4387-ad7e-59fbbf3a4834",
+      "name": "Skip Inventory Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-220,120]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Sub-workflow Input":{"main":[[{"node":"Build Safe Inventory Queries","type":"main","index":0}]]},
+    "Build Safe Inventory Queries":{"main":[[{"node":"Inventory Required","type":"main","index":0}]]},
+    "Inventory Required":{"main":[[{"node":"Find Exact VIN","type":"main","index":0}],[{"node":"Skip Inventory Lookup","type":"main","index":0}]]},
+    "Find Exact VIN":{"main":[[{"node":"Find Make Model","type":"main","index":0}]]},
+    "Find Make Model":{"main":[[{"node":"Resolve Inventory Result","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings":{"executionOrder":"v1"},
+  "versionId":"7652a179-c058-4053-8caf-cce67119b868",
+  "meta":{"templateCredsSetupCompleted":true},
+  "tags":[]
+}

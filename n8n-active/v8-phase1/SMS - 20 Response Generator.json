@@ -1,0 +1,72 @@
+{
+  "name":"SMS - 20 Response Generator",
+  "nodes":[
+    {
+      "parameters":{"inputSource":"passthrough"},
+      "id":"c4e14ba7-5477-4b49-b5aa-b75435837201",
+      "name":"Sub-workflow Input",
+      "type":"n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion":1.1,
+      "position":[-600,0]
+    },
+    {
+      "parameters":{"mode":"expression","output":"={{ ($json.decision.route === 'DND' || $json.decision.block_delivery) ? 0 : 1 }}","looseTypeValidation":""},
+      "id":"be084c7f-5195-47c0-9b41-0d663dcfa7e5",
+      "name":"Wording Required",
+      "type":"n8n-nodes-base.switch",
+      "typeVersion":3.3,
+      "position":[-380,0]
+    },
+    {
+      "parameters":{"jsCode":"const e=structuredClone($json);e.response={candidate:{sms_response:null,email_subject:null,email_body:null,booking_date:null,booking_time:null},generation:{status:e.decision.block_delivery?'blocked_invalid_resolution':'skipped_dnd',warning:null}};return [{json:e}];"},
+      "id":"e170886a-58d1-407a-b31e-312cf97d3b68",
+      "name":"Skip Customer Wording",
+      "type":"n8n-nodes-base.code",
+      "typeVersion":2,
+      "position":[-140,-120]
+    },
+    {
+      "parameters":{
+        "promptType":"define",
+        "text":"=You generate wording only for AutoPulse. The deterministic strategy has already selected the route, facts, links, CTA, language, and objective. Return exactly one valid JSON object and nothing else:\n{\"sms_response\":string|null,\"email_subject\":string|null,\"email_body\":string|null,\"booking_date\":string|null,\"booking_time\":string|null}\n\nDo not change the route. Do not infer inventory, dates, times, dealership facts, customer facts, vehicle history, escalation need, or URLs. Use only decision.allowed_facts and decision.allowed_links. Never output a URL not in allowed_links. Respond in decision.language (English if confidence was low). Do not mention classification or internal context.\n\nFor SMS, make one natural line, ideally no more than 160 characters. The downstream parity validator has a hard safety limit of 300 characters. Use contractions. Answer only what the customer asked. Do not introduce the bot when prior SMS/email history exists. For a new conversation, the existing v7 introduction may use bot_name and store_name. Do not repeat vehicle/date facts already acknowledged. Do not push a visit after explicit refusal. A closure gets one short acknowledgement.\n\nInventory truth is exact:\n- EXACT_AVAILABLE: availability may be confirmed; offer a visit only if the strategy permits it.\n- EXACT_UNAVAILABLE: say it is unavailable; do not claim availability.\n- ALTERNATIVES: say the exact match was not established and offer at most two supplied alternatives.\n- UNKNOWN: do not claim availability either way; ask what vehicle/details are needed.\nOnly include a VDP link when allowed_links contains it (photos/videos/specifications/features/trim/accessories/listing/Carfax/detail requests). Price, availability, location, or customer-contact-only messages do not get VDP links. Trade and finance links may appear only when allowed_links contains them. A booking link may appear only when allowed_links contains it. Include store address only when present in allowed_facts.dealer.store_address.\n\nVisit/booking behavior must remain v7-compatible: respect store hours as ground truth; never propose outside them; confirm an exact supplied date and time; do not invent confirmed availability. If a simple booking request has no date context, ask which day works. For a conflict, offer at most two concise alternatives in the next 3–7 days using only open store hours, or ask for another day. If the previous assistant asked to confirm and the latest message is affirmative, request a time window and offer at most two open-hour options. Do not continue after explicit refusal. Return supplied date/time in booking_date and booking_time; otherwise null.\n\nFor ESCALATION, tell the customer a dealership team member will connect shortly, using the selected language. Do not promise an exact callback time. For EMAIL_HANDOFF, set sms_response null, create a concise subject and safe HTML email body from the same approved facts; do not add tracking or new links. All other routes set email_subject and email_body null.\n\nStrategy and approved facts:\n{{ JSON.stringify($json.decision) }}"
+      },
+      "id":"9a4a9c5b-7c07-44ca-a6ec-3bdd01726d76",
+      "name":"Generate Approved Wording",
+      "type":"@n8n/n8n-nodes-langchain.agent",
+      "typeVersion":1.8,
+      "position":[-140,100],
+      "onError":"continueRegularOutput"
+    },
+    {
+      "parameters":{"model":{"__rl":true,"value":"gpt-4o-mini","mode":"list","cachedResultName":"gpt-4o-mini"},"options":{"temperature":0.3}},
+      "id":"b5b41c21-63b4-4df6-9351-b52fc9ea9844",
+      "name":"OpenAI Chat Model",
+      "type":"@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion":1.2,
+      "position":[-140,320],
+      "credentials":{"openAiApi":{"id":"8HDcbDkuFRoCFjGB","name":"OpenAI Account"}}
+    },
+    {
+      "parameters":{
+        "jsCode":"const e=structuredClone($node['Sub-workflow Input'].json);const raw=$json.output??$json.text??$json.content?.[0]?.text??'';let parsed=null;let warning=null;try{const c=String(raw).replace(/^```(?:json)?\\s*/i,'').replace(/```$/,'').trim();const a=c.indexOf('{'),b=c.lastIndexOf('}');parsed=JSON.parse(a>=0&&b>=a?c.slice(a,b+1):c);}catch(err){warning='MALFORMED_RESPONSE_JSON';}const f=e.decision?.allowed_facts??{};const inv=f.inventory??{};const vehicle=[f.vehicle?.year,f.vehicle?.make,f.vehicle?.model].filter(Boolean).join(' ');let fallback='Thanks for your message. How can we help?';if(e.decision.route==='ESCALATION')fallback='Thanks for your message. A member of our dealership team will connect with you shortly to assist.';else if(e.decision.route==='INVENTORY'&&inv.status==='EXACT_AVAILABLE')fallback=`The ${vehicle||'vehicle'} is available. Would you like to visit?`;else if(e.decision.route==='INVENTORY'&&inv.status==='EXACT_UNAVAILABLE')fallback=`The ${vehicle||'vehicle'} isn't currently available. Would you like similar options?`;else if(e.decision.route==='INVENTORY')fallback='Which vehicle are you interested in? Please share the make and model.';else if(e.decision.route==='VISIT')fallback='What day and time work best for your visit?';else if(e.decision.route==='BOOKING')fallback='Please confirm the date and time you prefer.';const candidate=parsed&&typeof parsed==='object'?parsed:{sms_response:e.decision.route==='EMAIL_HANDOFF'?null:fallback,email_subject:e.decision.route==='EMAIL_HANDOFF'?'Your AutoPulse dealership inquiry':null,email_body:e.decision.route==='EMAIL_HANDOFF'?`<p>Thanks for your message. Our dealership team will follow up about your inquiry.</p>`:null,booking_date:f.appointment?.date??null,booking_time:f.appointment?.time??null};e.response={candidate:{sms_response:candidate.sms_response??null,email_subject:candidate.email_subject??null,email_body:candidate.email_body??null,booking_date:candidate.booking_date??f.appointment?.date??null,booking_time:candidate.booking_time??f.appointment?.time??null},generation:{status:warning?'fallback':'generated',warning,model:'gpt-4o-mini'}};return [{json:e}];"
+      },
+      "id":"5a97da96-9526-417b-b1d1-115591916b91",
+      "name":"Safe Generator Output",
+      "type":"n8n-nodes-base.code",
+      "typeVersion":2,
+      "position":[120,100]
+    }
+  ],
+  "pinData":{},
+  "connections":{
+    "Sub-workflow Input":{"main":[[{"node":"Wording Required","type":"main","index":0}]]},
+    "Wording Required":{"main":[[{"node":"Skip Customer Wording","type":"main","index":0}],[{"node":"Generate Approved Wording","type":"main","index":0}]]},
+    "OpenAI Chat Model":{"ai_languageModel":[[{"node":"Generate Approved Wording","type":"ai_languageModel","index":0}]]},
+    "Generate Approved Wording":{"main":[[{"node":"Safe Generator Output","type":"main","index":0}]]}
+  },
+  "active":false,
+  "settings":{"executionOrder":"v1"},
+  "versionId":"114a558c-0f6b-4be1-804a-266eab2dcff8",
+  "meta":{"templateCredsSetupCompleted":true},
+  "tags":[]
+}

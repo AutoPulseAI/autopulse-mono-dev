@@ -1,0 +1,140 @@
+{
+  "name": "SMS - 01 Normalize + Resolve",
+  "nodes": [
+    {
+      "parameters": {"inputSource": "passthrough"},
+      "id": "2c704647-7bd8-4935-b638-c51220b39101",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-900, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $json.body?.currentMessage ?? $json.event ?? $json.currentMessage ?? $json;\nconst clean = v => v === undefined || v === null ? null : String(v).trim();\nconst attachments = Array.isArray(src.attachments) ? src.attachments.map((a, index) => ({ filename: clean(a.filename ?? a.name), content_type: clean(a.content_type ?? a.contentType ?? a.mimeType), size: Number.isFinite(Number(a.size)) ? Number(a.size) : null, url: clean(a.url), s3_key: clean(a.s3_key ?? a.s3Key), uploaded_at: clean(a.uploaded_at ?? a.uploadedAt), source_index: index })) : [];\nconst sender = clean(src.sender ?? src.from ?? src.sender_number);\nconst recipient = clean(src.recipient ?? src.to ?? src.recipient_number);\nconst content = clean(src.content ?? src.input_message ?? src.message) ?? '';\nconst messageId = clean(src.message_id ?? src.messageId);\nconst claimedDealerId = clean(src.dealer_id ?? src.dealerId);\nconst errors = [];\nif (!sender) errors.push('MISSING_SENDER');\nif (!recipient) errors.push('MISSING_RECIPIENT');\nif (!messageId) errors.push('MISSING_MESSAGE_ID');\nif (!content && attachments.length === 0) errors.push('EMPTY_MESSAGE');\nreturn [{ json: { schema_version: '8.0', channel: 'sms', event: { type: 'inbound_message', message_id: messageId, parent_message_id: clean(src.parent_message_id ?? src.parentMessageId), content, sender, recipient, received_at: clean(src.date ?? src.timestamp ?? src.received_at) ?? new Date().toISOString(), attachments, raw_dealer_id: claimedDealerId }, identity: { dealer_id: null, customer_id: null, lead_id: null, conversation_id: null, parent_message_id: null }, context: { resolution: { valid_input: errors.length === 0, errors, warnings: [], claimed_dealer_id: claimedDealerId } }, intelligence: {}, inventory: null, decision: {}, response: {} } }];"
+      },
+      "id": "b8bb0bc6-c081-403f-aa6f-acde10946f81",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-680, 0]
+    },
+    {
+      "parameters": {
+        "collection": "users",
+        "options": {"limit": 3},
+        "query": "={{ JSON.stringify({ 'dealer_account_information.sms_conversion_phone': $json.event.recipient }) }}"
+      },
+      "id": "af1d7487-ea30-4862-a990-e92f2d901d55",
+      "name": "Resolve Dealer",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-460, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Normalize Input'].json);\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length && r._id);\nconst claimed = envelope.context.resolution.claimed_dealer_id;\nconst exact = claimed ? rows.filter(r => String(r._id) === claimed || String(r.dealer_id ?? '') === claimed) : rows;\nconst candidates = exact.length ? exact : rows;\nif (candidates.length === 1) {\n  const dealer = candidates[0];\n  envelope.identity.dealer_id = String(dealer._id ?? dealer.dealer_id);\n  envelope.context.dealer = {\n    id: envelope.identity.dealer_id,\n    bot_name: dealer.dealer_account_information?.ai_bot_name ?? dealer.ai_bot_name ?? null,\n    store_name: dealer.dealer_account_information?.dealership_name ?? dealer.name ?? null,\n    store_phone: dealer.dealer_account_information?.sms_conversion_phone ?? envelope.event.recipient,\n    store_address: dealer.dealer_account_information?.address ?? dealer.address ?? null,\n    store_website: dealer.dealer_account_information?.website ?? dealer.website ?? null,\n    manager_name: dealer.dealer_account_information?.manager_name ?? dealer.manager_name ?? null,\n    store_hours: dealer.dealer_account_information?.store_hours ?? dealer.store_hours ?? null,\n    trade_url: dealer.dealer_account_information?.trade_in_appraisal_url ?? dealer.trade_in_appraisal_url ?? null,\n    finance_url: dealer.dealer_account_information?.credit_finance_application_url ?? dealer.credit_finance_application_url ?? null\n  };\n} else {\n  envelope.context.resolution.errors.push(candidates.length ? 'AMBIGUOUS_DEALER_PHONE' : 'DEALER_NOT_FOUND');\n}\nenvelope.context.resolution.dealer_match_count = candidates.length;\nenvelope.context.resolution.valid = envelope.context.resolution.valid_input && candidates.length === 1;\nreturn [{ json: envelope }];"
+      },
+      "id": "a660fe19-e827-462a-91d5-201b260cd31c",
+      "name": "Validate Dealer Resolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {
+        "collection": "emails",
+        "options": {"limit": 100},
+        "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', $or: [ { sender: $json.event.sender, recipient: $json.event.recipient }, { sender: $json.event.recipient, recipient: $json.event.sender } ] }) }}"
+      },
+      "id": "50ee1b7e-f67d-48dc-aa65-375aed605f5c",
+      "name": "Load Phone-pair Conversation",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [-20, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Validate Dealer Resolution'].json);\nconst truthy = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length && (r._id || r.message_id));\nrows.sort((a,b) => new Date(b.timestamp ?? b.created_at ?? 0) - new Date(a.timestamp ?? a.created_at ?? 0));\nconst usable = rows.filter(r => !truthy(r.internal_use) && (r.use_replies_for_ai === undefined || r.use_replies_for_ai === null || truthy(r.use_replies_for_ai)));\nconst latest = usable[0] ?? rows[0] ?? null;\nconst linked = usable.find(r => r.lead_id) ?? rows.find(r => r.lead_id) ?? null;\nenvelope.identity.conversation_id = latest ? String(latest.parent_message_id ?? latest.message_id ?? latest._id) : envelope.event.message_id;\nenvelope.identity.parent_message_id = latest ? String(latest.parent_message_id ?? latest.message_id ?? latest._id) : envelope.event.message_id;\nenvelope.identity.lead_id = linked?.lead_id ? String(linked.lead_id) : null;\nenvelope.context.resolution.conversation_record_count = rows.length;\nenvelope.context.resolution.usable_conversation_record_count = usable.length;\nenvelope.context.resolution.create_lead = !envelope.identity.lead_id;\nenvelope.context.resolution.update_lead = !!envelope.identity.lead_id;\nreturn [{ json: envelope }];"
+      },
+      "id": "1811a158-c017-47c0-8d03-51cc718a919d",
+      "name": "Resolve Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "collection": "leads",
+        "options": {"limit": 3},
+        "query": "={{ $json.identity.lead_id ? JSON.stringify({ _id: { '$oid': $json.identity.lead_id }, dealer_id: $json.identity.dealer_id }) : JSON.stringify({ parent_message_id: $json.identity.parent_message_id || '__NONE__', dealer_id: $json.identity.dealer_id || '__UNRESOLVED__' }) }}"
+      },
+      "id": "f6642a9a-ce90-4709-857a-75817be93363",
+      "name": "Resolve Lead",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [420, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Resolve Conversation'].json);\nconst leads = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length && r._id);\nconst lead = leads[0] ?? null;\nif (lead) {\n  envelope.identity.lead_id = String(lead._id);\n  envelope.identity.customer_id = lead.customer_id ? String(lead.customer_id) : null;\n  envelope.context.lead = { id: String(lead._id), customer_id: envelope.identity.customer_id, name: lead.name ?? lead.customer_name ?? null, email: lead.email ?? null, phone: lead.phone ?? lead.phone_number ?? envelope.event.sender, vin: lead.vin ?? lead.vehicle_vin ?? null, make: lead.make ?? lead.vehicle_make ?? null, model: lead.model ?? lead.vehicle_model ?? null, year: lead.year ?? lead.vehicle_year ?? null, status: lead.status ?? null };\n  envelope.context.resolution.create_lead = false;\n  envelope.context.resolution.update_lead = true;\n}\nenvelope.context.resolution.lead_match_count = leads.length;\nif (leads.length > 1) envelope.context.resolution.warnings.push('MULTIPLE_LEAD_MATCHES_LATEST_NOT_GUARANTEED');\nreturn [{ json: envelope }];"
+      },
+      "id": "49358f39-93b0-4481-937d-950b61624778",
+      "name": "Assemble Lead Resolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 0]
+    },
+    {
+      "parameters": {
+        "collection": "customers",
+        "options": {"limit": 2},
+        "query": "={{ $json.identity.customer_id ? JSON.stringify({ _id: { '$oid': $json.identity.customer_id }, dealer_id: $json.identity.dealer_id }) : JSON.stringify({ _id: '__NO_CUSTOMER__' }) }}"
+      },
+      "id": "32d79542-32f5-4bbc-a730-89d4ba509fb6",
+      "name": "Resolve Customer",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.1,
+      "position": [860, 0],
+      "credentials": {"mongoDb": {"id": "9CSrB6IzzXy9lnfw", "name": "MongoDB account"}},
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = structuredClone($node['Assemble Lead Resolution'].json);\nconst customers = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length && r._id);\nif (customers[0]) {\n  const c = customers[0];\n  const primaryEmail = Array.isArray(c.emails) ? (c.emails.find(x => x?.is_primary)?.value ?? c.emails[0]?.value ?? null) : null;\n  const primaryPhone = Array.isArray(c.phones) ? (c.phones.find(x => x?.is_primary)?.value ?? c.phones[0]?.value ?? null) : null;\n  envelope.identity.customer_id = String(c._id);\n  envelope.context.customer = { id: String(c._id), name: c.name ?? ([c.first_name, c.last_name].filter(Boolean).join(' ') || null), email: c.email ?? primaryEmail, phone: c.phone ?? c.phone_number ?? primaryPhone };\n}\nenvelope.context.resolution.customer_match_count = customers.length;\nenvelope.context.resolution.completed_at = new Date().toISOString();\nreturn [{ json: envelope }];"
+      },
+      "id": "10b9f873-751f-463d-8b67-70fc0b0f7dc8",
+      "name": "Normalized Resolved Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Sub-workflow Input": {"main": [[{"node": "Normalize Input", "type": "main", "index": 0}]]},
+    "Normalize Input": {"main": [[{"node": "Resolve Dealer", "type": "main", "index": 0}]]},
+    "Resolve Dealer": {"main": [[{"node": "Validate Dealer Resolution", "type": "main", "index": 0}]]},
+    "Validate Dealer Resolution": {"main": [[{"node": "Load Phone-pair Conversation", "type": "main", "index": 0}]]},
+    "Load Phone-pair Conversation": {"main": [[{"node": "Resolve Conversation", "type": "main", "index": 0}]]},
+    "Resolve Conversation": {"main": [[{"node": "Resolve Lead", "type": "main", "index": 0}]]},
+    "Resolve Lead": {"main": [[{"node": "Assemble Lead Resolution", "type": "main", "index": 0}]]},
+    "Assemble Lead Resolution": {"main": [[{"node": "Resolve Customer", "type": "main", "index": 0}]]},
+    "Resolve Customer": {"main": [[{"node": "Normalized Resolved Envelope", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "08449776-f557-459e-9f18-c67e1132b1e6",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}

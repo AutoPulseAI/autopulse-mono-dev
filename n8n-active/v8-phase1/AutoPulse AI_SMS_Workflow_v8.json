@@ -1,0 +1,93 @@
+{
+  "name":"AutoPulse AI_SMS_Workflow_v8",
+  "nodes":[
+    {
+      "parameters":{"content":"## SMS - 00 Inbound Router\nPhase 1 orchestrator for the AutoPulse AI SMS v8 test webhook. Relink each Execute Workflow node after importing the seven child workflows.","height":220,"width":420},
+      "id":"03593e51-2cd9-416b-aab5-6624aed70001",
+      "name":"Import Instructions",
+      "type":"n8n-nodes-base.stickyNote",
+      "typeVersion":1,
+      "position":[-820,-300]
+    },
+    {
+      "parameters":{"httpMethod":"POST","path":"/incoming-sms-messages-v8","responseMode":"lastNode","options":{}},
+      "id":"fa78c467-ccf0-4c78-ab8a-0499a15b849b",
+      "name":"SMS v8 Test Webhook",
+      "type":"n8n-nodes-base.webhook",
+      "typeVersion":2,
+      "position":[-800,0],
+      "webhookId":"51ab3cdf-bb86-4bc3-a3c3-80d4e159b12d"
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000101","mode":"list","cachedResultName":"SMS - 01 Normalize + Resolve"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"ed37236c-4a12-4873-b211-bb260b30de18",
+      "name":"SMS - 01 Normalize + Resolve",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[-560,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000102","mode":"list","cachedResultName":"SMS - 02 Context Builder"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"c60af38d-b1f0-4471-956f-704349ed3e76",
+      "name":"SMS - 02 Context Builder",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[-320,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000110","mode":"list","cachedResultName":"Sales - 10 Conversation Intelligence"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"0dba4683-d98b-4bf2-93e1-d2f3d07d4ac1",
+      "name":"Sales - 10 Conversation Intelligence",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[-80,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000111","mode":"list","cachedResultName":"Sales - 11 Inventory Resolver"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"5b79d77e-9199-4f58-9374-151017d5ce1b",
+      "name":"Sales - 11 Inventory Resolver",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[160,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000116","mode":"list","cachedResultName":"Sales - 16 Response Strategy"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"27d2b278-17e7-44e8-a42d-73f4c9e93ba1",
+      "name":"Sales - 16 Response Strategy",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[400,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000120","mode":"list","cachedResultName":"SMS - 20 Response Generator"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"1f67cc97-6d94-4b18-a521-d58983604728",
+      "name":"SMS - 20 Response Generator",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[640,0]
+    },
+    {
+      "parameters":{"source":"database","workflowId":{"__rl":true,"value":"00000000-0000-4000-8000-000000000121","mode":"list","cachedResultName":"SMS - 21 Validator + Output Formatter"},"workflowInputs":{"mappingMode":"defineBelow","value":{},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":true},"options":{"waitForSubWorkflow":true}},
+      "id":"8781de31-4283-409a-9031-124816fedfd6",
+      "name":"SMS - 21 Validator + Output Formatter",
+      "type":"n8n-nodes-base.executeWorkflow",
+      "typeVersion":1.3,
+      "position":[880,0]
+    }
+  ],
+  "pinData":{},
+  "connections":{
+    "SMS v8 Test Webhook":{"main":[[{"node":"SMS - 01 Normalize + Resolve","type":"main","index":0}]]},
+    "SMS - 01 Normalize + Resolve":{"main":[[{"node":"SMS - 02 Context Builder","type":"main","index":0}]]},
+    "SMS - 02 Context Builder":{"main":[[{"node":"Sales - 10 Conversation Intelligence","type":"main","index":0}]]},
+    "Sales - 10 Conversation Intelligence":{"main":[[{"node":"Sales - 11 Inventory Resolver","type":"main","index":0}]]},
+    "Sales - 11 Inventory Resolver":{"main":[[{"node":"Sales - 16 Response Strategy","type":"main","index":0}]]},
+    "Sales - 16 Response Strategy":{"main":[[{"node":"SMS - 20 Response Generator","type":"main","index":0}]]},
+    "SMS - 20 Response Generator":{"main":[[{"node":"SMS - 21 Validator + Output Formatter","type":"main","index":0}]]}
+  },
+  "active":false,
+  "settings":{"executionOrder":"v1"},
+  "versionId":"a3b47617-e17e-42ae-bbd4-51ea697a8c2b",
+  "meta":{"templateCredsSetupCompleted":true},
+  "tags":[]
+}

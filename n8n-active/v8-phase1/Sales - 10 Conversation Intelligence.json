@@ -1,0 +1,69 @@
+{
+  "name": "Sales - 10 Conversation Intelligence",
+  "nodes": [
+    {
+      "parameters": {"inputSource": "passthrough"},
+      "id": "9849fc1b-c993-4823-afc5-e84d049b7c01",
+      "name": "Sub-workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-500, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the classification and extraction stage for AutoPulse inbound dealership SMS. Return one valid JSON object only, with no markdown. Do not route, generate a customer reply, change attribution/source, or invent facts. Lead notes take precedence over SMS history; SMS over email; campaign context is relevant only when the current reply aligns or there is no prior SMS context. Attachment analysis is supplemental and may be uncertain.\n\nRequired JSON shape:\n{\n  \"customer\":{\"name\":string|null,\"email\":string|null,\"phone\":string|null},\n  \"vehicle\":{\"vin\":string|null,\"year\":string|null,\"make\":string|null,\"model\":string|null},\n  \"language\":{\"code\":string,\"name\":string,\"confidence\":number},\n  \"inquiry\":{\"category\":string,\"confidence\":\"High|Medium|Low\"},\n  \"journey\":{\"intent\":\"Visit Requested|Visit Suggested|Visit Booked|Managerial Review\",\"sentiment\":\"Positive|Neutral|Negative\"},\n  \"communication\":{\"preferred_mode\":\"sms|email|unknown\",\"email_present\":boolean},\n  \"dnd\":{\"requested\":boolean,\"reason\":\"opt_out|already_purchased|not_interested|null\"},\n  \"escalation\":{\"required\":boolean,\"reason\":string|null,\"callback_requested\":boolean},\n  \"appointment\":{\"signal\":\"NONE|REQUESTED|SUGGESTED|BOOKED|CANCEL|RESCHEDULE\",\"date\":string|null,\"time\":string|null},\n  \"response_signals\":{\"asks_location\":boolean,\"asks_booking_link\":boolean,\"asks_vdp_content\":boolean,\"complex_trade\":boolean,\"complex_finance\":boolean,\"explicit_visit_refusal\":boolean,\"closure\":boolean}\n}\n\nInquiry category must be one of: Price Inquiry, Availability Inquiry, Test Drive Request, Financing/Loan Inquiry, Trade-In Inquiry, Service Inquiry, Warranty Inquiry, Managerial Review, Hidden Price Concern, Sarcasm / Frustration, Already Purchased, Closing, Negotiation, Delivery / Pickup, General Inquiry.\n\nJourney rules are the existing v7 rules: Visit Booked for a confirmed/provided visit date or time; Visit Requested for explicit visit/test-drive request; Visit Suggested for positive visit interest; Managerial Review for an explicit human/manager/callback request, profanity or serious complaint, compliance/PII/legal/system failure, no-longer-in-market, or unresolved vehicle dispute/history issue when no visit intent overrides it. Tier-1 risk overrides visit. Trade/finance alone is not managerial review.\nDND must remain true for exact opt-out requests and also for already purchased/no longer shopping/not interested, matching v7 behavior.\nCommunication preference is email only when the customer explicitly asks for email; extract an email if present.\nLanguage must reflect the current customer message; default to English only when confidence is below 0.50.\nNever infer inventory availability. Never invent appointment dates/times.\n\nCanonical envelope:\n{{ JSON.stringify($json) }}"
+      },
+      "id": "bc7b1ffb-c0bd-4aa1-93af-c8b3d3e24f29",
+      "name": "Consolidated Intelligence",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [-260, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {"__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "gpt-4o-mini"},
+        "options": {"temperature": 0}
+      },
+      "id": "df0f8667-1280-44a8-b02a-c6be291ed9cd",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-260, 220],
+      "credentials": {"openAiApi": {"id": "8HDcbDkuFRoCFjGB", "name": "OpenAI Account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope=structuredClone($node['Sub-workflow Input'].json);\nconst raw=$json.output??$json.text??$json.content?.[0]?.text??'';\nconst clean=s=>String(s??'').replace(/^```(?:json)?\\s*/i,'').replace(/```$/,'').trim();\nlet parsed=null;let warning=null;\ntry{const c=clean(raw);const start=c.indexOf('{');const end=c.lastIndexOf('}');parsed=JSON.parse(start>=0&&end>=start?c.slice(start,end+1):c);}catch(e){warning='MALFORMED_INTELLIGENCE_JSON';}\nconst msg=String(envelope.event.content??'');const lower=msg.toLowerCase();\nconst email=(msg.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)||[])[0]??null;\nconst vin=(msg.toUpperCase().match(/\\b[A-HJ-NPR-Z0-9]{17}\\b/)||[])[0]??null;\nconst optOut=/^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(msg.trim())||/\\b(do not|don't|dont|please stop)\\s+(text|contact|message|call)/i.test(msg);\nconst purchased=/\\b(already (bought|purchased)|bought elsewhere|no longer (shopping|in the market))\\b/i.test(msg);\nconst notInterested=/\\b(not interested|changed my mind)\\b/i.test(msg);\nconst callback=/\\b(call me|callback|call back|phone me)\\b/i.test(msg);\nconst manager=/\\b(manager|human|representative|salesperson|sales person)\\b/i.test(msg);\nconst fallback={customer:{name:envelope.context.customer?.name??envelope.context.lead?.name??null,email:email??envelope.context.customer?.email??envelope.context.lead?.email??null,phone:envelope.context.customer?.phone??envelope.context.lead?.phone??envelope.event.sender},vehicle:{vin:vin??envelope.context.lead?.vin??null,year:envelope.context.lead?.year??null,make:envelope.context.lead?.make??null,model:envelope.context.lead?.model??null},language:{code:'en',name:'English',confidence:0},inquiry:{category:purchased?'Already Purchased':/\\b(available|in stock|still have)\\b/i.test(msg)?'Availability Inquiry':/\\b(price|how much|cost)\\b/i.test(msg)?'Price Inquiry':/\\b(test drive|come in|visit)\\b/i.test(msg)?'Test Drive Request':'General Inquiry',confidence:'Low'},journey:{intent:(manager||callback||optOut||purchased||notInterested)?'Managerial Review':/\\b(today|tomorrow|\\d{1,2}(:\\d{2})?\\s*(am|pm))\\b/i.test(msg)?'Visit Booked':/\\b(test drive|come in|visit|appointment)\\b/i.test(msg)?'Visit Requested':'Visit Suggested',sentiment:(optOut||notInterested)?'Negative':'Neutral'},communication:{preferred_mode:/\\bemail\\b/i.test(msg)?'email':'unknown',email_present:!!email},dnd:{requested:optOut||purchased||notInterested,reason:optOut?'opt_out':purchased?'already_purchased':notInterested?'not_interested':null},escalation:{required:manager||callback,reason:manager?'human_or_manager_request':callback?'callback_request':null,callback_requested:callback},appointment:{signal:/\\b(cancel)\\b/i.test(msg)?'CANCEL':/\\b(reschedul|another (day|time))\\b/i.test(msg)?'RESCHEDULE':/\\b(today|tomorrow|\\d{1,2}(:\\d{2})?\\s*(am|pm))\\b/i.test(msg)?'BOOKED':/\\b(test drive|come in|visit|appointment)\\b/i.test(msg)?'REQUESTED':'NONE',date:null,time:null},response_signals:{asks_location:/\\b(where|address|location|directions)\\b/i.test(msg),asks_booking_link:/\\b(where|how|link)\\b.*\\b(book|appointment|schedule)\\b/i.test(msg),asks_vdp_content:/\\b(photo|picture|video|interior|exterior|feature|trim|accessor|carfax|autocheck|listing|spec|more info|more detail)\\b/i.test(msg),complex_trade:/\\b(kbb|trade.?in|loan payoff|appraisal)\\b/i.test(msg),complex_finance:/\\b(apr|zero down|cosigner|finance application|credit application)\\b/i.test(msg),explicit_visit_refusal:/\\b(no thanks|not interested|cannot visit|can't visit|do not want to visit)\\b/i.test(msg),closure:/^(thanks|thank you|ok|okay|bye|got it)[!. ]*$/i.test(msg.trim())}};\nconst intel=parsed&&typeof parsed==='object'?parsed:fallback;\nintel.customer={...fallback.customer,...(intel.customer??{})};intel.vehicle={...fallback.vehicle,...(intel.vehicle??{})};intel.language={...fallback.language,...(intel.language??{})};intel.inquiry={...fallback.inquiry,...(intel.inquiry??{})};intel.journey={...fallback.journey,...(intel.journey??{})};intel.communication={...fallback.communication,...(intel.communication??{})};intel.dnd={...fallback.dnd,...(intel.dnd??{})};intel.escalation={...fallback.escalation,...(intel.escalation??{})};intel.appointment={...fallback.appointment,...(intel.appointment??{})};intel.response_signals={...fallback.response_signals,...(intel.response_signals??{})};\nif(optOut||purchased||notInterested){intel.dnd.requested=true;intel.dnd.reason=optOut?'opt_out':purchased?'already_purchased':'not_interested';}\nif(callback){intel.escalation.required=true;intel.escalation.callback_requested=true;intel.escalation.reason=intel.escalation.reason??'callback_request';}\nif(email){intel.customer.email=intel.customer.email??email;intel.communication.email_present=true;}\nif(vin)intel.vehicle.vin=vin;\nintel.meta={parse_status:warning?'fallback':'parsed',warning,model:'gpt-4o-mini',classified_at:new Date().toISOString()};\nenvelope.intelligence=intel;return [{json:envelope}];"
+      },
+      "id": "0dc03d41-a755-4f72-aa38-98ddd91abf0c",
+      "name": "Safe Structured Intelligence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e=structuredClone($json);const validJourney=['Visit Requested','Visit Suggested','Visit Booked','Managerial Review'];if(!validJourney.includes(e.intelligence?.journey?.intent))e.intelligence.journey.intent=null;if(e.intelligence?.meta?.parse_status==='fallback'&&e.intelligence?.inquiry?.category==='General Inquiry'&&!e.intelligence?.dnd?.requested&&!e.intelligence?.escalation?.required&&e.intelligence?.appointment?.signal==='NONE')e.intelligence.journey.intent=null;return [{json:e}];"
+      },
+      "id": "373968b9-a005-44fd-bfea-b9083aa05db4",
+      "name": "Validate Intelligence Labels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Sub-workflow Input": {"main": [[{"node":"Consolidated Intelligence","type":"main","index":0}]]},
+    "OpenAI Chat Model": {"ai_languageModel": [[{"node":"Consolidated Intelligence","type":"ai_languageModel","index":0}]]},
+    "Consolidated Intelligence": {"main": [[{"node":"Safe Structured Intelligence","type":"main","index":0}]]},
+    "Safe Structured Intelligence": {"main": [[{"node":"Validate Intelligence Labels","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"},
+  "versionId": "e5c86fb8-1df4-4c56-b8c2-36e56093955e",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}
