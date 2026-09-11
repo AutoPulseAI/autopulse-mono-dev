@@ -125,7 +125,7 @@
       "position": [660, 0]
     },
     {
-      "parameters": {"mode": "expression", "output": "={{ ({ IMAGE:0, TEXT:1, PDF:2, VIDEO:3, UNSUPPORTED:4 })[$json.route] ?? 4 }}", "looseTypeValidation": ""},
+      "parameters": {"mode": "expression", "numberOutputs": 5, "output": "={{ ({ IMAGE:0, TEXT:1, PDF:2, VIDEO:3, UNSUPPORTED:4 })[$json.route] ?? 4 }}", "looseTypeValidation": ""},
       "id": "3857cdb1-bc1d-4fb8-8ad5-b085763c06c7",
       "name": "Route Attachment Type",
       "type": "n8n-nodes-base.switch",
