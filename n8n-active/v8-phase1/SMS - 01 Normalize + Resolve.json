@@ -62,11 +62,24 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst resolution=e.context.resolution;\nconst claimed=resolution.claimed_dealer_id;\nconst phone=resolution.normalized_recipient_phone||'';\nconst ors=[];\nif(claimed&&/^[a-f0-9]{24}$/i.test(claimed)){\n  ors.push({$expr:{$eq:[{$toString:'$_id'},claimed.toLowerCase()]}});\n}\nif(phone){\n  const digits=phone.split('').join('[^0-9]*');\n  const prefix=phone.length===10?'(?:1[^0-9]*)?':'';\n  ors.push({'dealer_account_information.sms_conversion_phone':{$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'}});\n}\nconst query=ors.length?{$or:ors}:{_id:'__NO_DEALER_CANDIDATE__'};\nreturn [{json:{...e,dealer_query:JSON.stringify(query)}}];"
+      },
+      "id": "c28c19cc-97a8-43ae-a738-d06eb01a16ca",
+      "name": "Build Dealer Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        -100
+      ]
+    },
+    {
+      "parameters": {
         "collection": "users",
         "options": {
           "sort": "{\"_id\":1}"
         },
-        "query": "={{ (()=>{const resolution=$json.context.resolution;const claimed=resolution.claimed_dealer_id;const phone=resolution.normalized_recipient_phone||'';const ors=[];if(claimed&&/^[a-f0-9]{24}$/i.test(claimed)){ors.push({$expr:{$eq:[{$toString:'$_id'},claimed.toLowerCase()]}});}if(phone){const digits=phone.split('').join('[^0-9]*');const prefix=phone.length===10?'(?:1[^0-9]*)?':'';ors.push({'dealer_account_information.sms_conversion_phone':{$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'}});}return JSON.stringify(ors.length?{$or:ors}:{_id:'__NO_DEALER_CANDIDATE__'});})() }}"
+        "query": "={{ $json.dealer_query }}"
       },
       "id": "af1d7487-ea30-4862-a990-e92f2d901d55",
       "name": "Resolve Dealer",
@@ -133,12 +146,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst dealer=e.identity.dealer_id||'__UNRESOLVED__';\nconst explicit=e.event.parent_message_id;\nconst base={dealer_id:dealer,communication_type:{$ne:'email'}};\nlet query;\nif(explicit){\n  const refs=[{parent_conversation:explicit},{parent_message_id:explicit},{message_id:explicit}];\n  if(/^[a-f0-9]{24}$/i.test(explicit))refs.push({_id:{$oid:explicit}});\n  query={...base,$or:refs};\n}else{\n  const pattern=phone=>{\n    if(!phone)return '__NO_PHONE__';\n    const digits=phone.split('').join('[^0-9]*');\n    const prefix=phone.length===10?'(?:1[^0-9]*)?':'';\n    return '^[^0-9]*'+prefix+digits+'[^0-9]*$';\n  };\n  const sender={$regex:pattern(e.context.resolution.normalized_sender_phone),$options:'i'};\n  const recipient={$regex:pattern(e.context.resolution.normalized_recipient_phone),$options:'i'};\n  query={...base,$or:[{sender,recipient},{sender:recipient,recipient:sender}]};\n}\nreturn [{json:{...e,conversation_query:JSON.stringify(query)}}];"
+      },
+      "id": "9fd11e5b-bd5b-4dc1-b7f1-8c29c4428520",
+      "name": "Build Conversation Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        -100
+      ]
+    },
+    {
+      "parameters": {
         "collection": "emails",
         "options": {
           "limit": 500,
           "sort": "{\"timestamp\":-1,\"date\":-1,\"created_at\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ (()=>{const e=$json;const dealer=e.identity.dealer_id||'__UNRESOLVED__';const explicit=e.event.parent_message_id;const base={dealer_id:dealer,communication_type:{$ne:'email'}};if(explicit){const refs=[{parent_conversation:explicit},{parent_message_id:explicit},{message_id:explicit}];if(/^[a-f0-9]{24}$/i.test(explicit))refs.push({_id:{$oid:explicit}});return JSON.stringify({...base,$or:refs});}const pattern=phone=>{if(!phone)return '__NO_PHONE__';const digits=phone.split('').join('[^0-9]*');const prefix=phone.length===10?'(?:1[^0-9]*)?':'';return '^[^0-9]*'+prefix+digits+'[^0-9]*$';};const sender={$regex:pattern(e.context.resolution.normalized_sender_phone),$options:'i'};const recipient={$regex:pattern(e.context.resolution.normalized_recipient_phone),$options:'i'};return JSON.stringify({...base,$or:[{sender,recipient},{sender:recipient,recipient:sender}]});})() }}"
+        "query": "={{ $json.conversation_query }}"
       },
       "id": "50ee1b7e-f67d-48dc-aa65-375aed605f5c",
       "name": "Load Phone-pair Conversation",
@@ -172,12 +198,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst dealer=e.identity.dealer_id||'__UNRESOLVED__';\nconst linked=e.identity.lead_id;\nconst customer=e.identity.customer_id;\nconst parent=e.identity.parent_message_id;\nlet query;\nif(linked&&/^[a-f0-9]{24}$/i.test(linked)){\n  query={dealer_id:dealer,_id:{$oid:linked}};\n}else if(customer&&/^[a-f0-9]{24}$/i.test(customer)){\n  query={dealer_id:dealer,customer_id:{$oid:customer}};\n}else if(e.context.resolution.thread_resolved&&parent){\n  query={dealer_id:dealer,$or:[{parent_message_id:parent},{parent_conversation:parent}]};\n}else{\n  const phone=e.context.resolution.normalized_sender_phone||'';\n  if(phone){\n    const digits=phone.split('').join('[^0-9]*');\n    const prefix=phone.length===10?'(?:1[^0-9]*)?':'';\n    const match={$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'};\n    query={dealer_id:dealer,$or:[{phone:match},{phone_number:match}]};\n  }else{\n    query={dealer_id:dealer,parent_message_id:'__NONE__'};\n  }\n}\nreturn [{json:{...e,lead_query:JSON.stringify(query)}}];"
+      },
+      "id": "b84d250d-7d98-4891-834f-f68d065fc705",
+      "name": "Build Lead Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "leads",
         "options": {
           "limit": 100,
           "sort": "{\"updatedAt\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ (()=>{const dealer=$json.identity.dealer_id||'__UNRESOLVED__';const linked=$json.identity.lead_id;if(linked&&/^[a-f0-9]{24}$/i.test(linked))return JSON.stringify({dealer_id:dealer,_id:{$oid:linked}});const customer=$json.identity.customer_id;if(customer&&/^[a-f0-9]{24}$/i.test(customer))return JSON.stringify({dealer_id:dealer,customer_id:{$oid:customer}});const parent=$json.identity.parent_message_id;if($json.context.resolution.thread_resolved&&parent)return JSON.stringify({dealer_id:dealer,$or:[{parent_message_id:parent},{parent_conversation:parent}]});const phone=$json.context.resolution.normalized_sender_phone||'';if(phone){const digits=phone.split('').join('[^0-9]*');const prefix=phone.length===10?'(?:1[^0-9]*)?':'';const match={$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'};return JSON.stringify({dealer_id:dealer,$or:[{phone:match},{phone_number:match}]});}return JSON.stringify({dealer_id:dealer,parent_message_id:'__NONE__'});})() }}"
+        "query": "={{ $json.lead_query }}"
       },
       "id": "f6642a9a-ce90-4709-857a-75817be93363",
       "name": "Resolve Lead",
@@ -211,12 +250,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst dealer=e.identity.dealer_id||'__UNRESOLVED__';\nconst customer=e.identity.customer_id;\nlet query;\nif(customer&&/^[a-f0-9]{24}$/i.test(customer)){\n  query={dealer_id:dealer,_id:{$oid:customer}};\n}else{\n  const phone=e.context.resolution.normalized_sender_phone||'';\n  if(!phone){\n    query={dealer_id:dealer,'phones.value':'__NO_PHONE__'};\n  }else{\n    const digits=phone.split('').join('[^0-9]*');\n    const prefix=phone.length===10?'(?:1[^0-9]*)?':'';\n    query={dealer_id:dealer,'phones.value':{$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'}};\n  }\n}\nreturn [{json:{...e,customer_query:JSON.stringify(query)}}];"
+      },
+      "id": "09a798a7-1667-4f4c-af6d-06ace734bdfd",
+      "name": "Build Customer Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        310,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "customers",
         "options": {
           "limit": 3,
           "sort": "{\"updatedAt\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ (()=>{const dealer=$json.identity.dealer_id||'__UNRESOLVED__';const customer=$json.identity.customer_id;if(customer&&/^[a-f0-9]{24}$/i.test(customer))return JSON.stringify({dealer_id:dealer,_id:{$oid:customer}});const phone=$json.context.resolution.normalized_sender_phone||'';if(!phone)return JSON.stringify({dealer_id:dealer,'phones.value':'__NO_PHONE__'});const digits=phone.split('').join('[^0-9]*');const prefix=phone.length===10?'(?:1[^0-9]*)?':'';return JSON.stringify({dealer_id:dealer,'phones.value':{$regex:'^[^0-9]*'+prefix+digits+'[^0-9]*$',$options:'i'}});})() }}"
+        "query": "={{ $json.customer_query }}"
       },
       "id": "32d79542-32f5-4bbc-a730-89d4ba509fb6",
       "name": "Resolve Customer",
@@ -297,6 +349,17 @@
         ]
       ]
     },
+    "Build Dealer Query": {
+      "main": [
+        [
+          {
+            "node": "Resolve Dealer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Validate Dealer Resolution": {
       "main": [
         [
@@ -319,7 +382,29 @@
         ]
       ]
     },
+    "Build Conversation Query": {
+      "main": [
+        [
+          {
+            "node": "Load Phone-pair Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Resolve Conversation": {
+      "main": [
+        [
+          {
+            "node": "Build Customer Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Customer Query": {
       "main": [
         [
           {
@@ -342,6 +427,17 @@
       ]
     },
     "Assemble Customer Resolution": {
+      "main": [
+        [
+          {
+            "node": "Build Lead Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Lead Query": {
       "main": [
         [
           {
@@ -378,7 +474,7 @@
       "main": [
         [
           {
-            "node": "Resolve Dealer",
+            "node": "Build Dealer Query",
             "type": "main",
             "index": 0
           }
@@ -396,7 +492,7 @@
       "main": [
         [
           {
-            "node": "Load Phone-pair Conversation",
+            "node": "Build Conversation Query",
             "type": "main",
             "index": 0
           }

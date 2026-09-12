@@ -5,9 +5,16 @@ const base = new URL('./', import.meta.url);
 const workflow = JSON.parse(await readFile(new URL('./SMS - 01 Normalize + Resolve.json', base), 'utf8'));
 const node = name => workflow.nodes.find(candidate => candidate.name === name);
 const code = name => node(name).parameters.jsCode;
+const builderByMongo = {
+  'Resolve Dealer': 'Build Dealer Query',
+  'Load Phone-pair Conversation': 'Build Conversation Query',
+  'Resolve Customer': 'Build Customer Query',
+  'Resolve Lead': 'Build Lead Query'
+};
 const query = (name, json) => {
+  const prepared = builderByMongo[name] ? run(builderByMongo[name], { json }) : json;
   const expression = node(name).parameters.query.replace(/^=\{\{\s*/, '').replace(/\s*\}\}$/, '');
-  return JSON.parse(new Function('$json', 'return (' + expression + ');')(json));
+  return JSON.parse(new Function('$json', 'return (' + expression + ');')(prepared));
 };
 const run = (name, { json = {}, nodes = {}, input = [], items = {} } = {}) =>
   new Function('$json', '$node', '$input', '$items', code(name))(
@@ -110,10 +117,29 @@ assert.equal(international.context.resolution.valid_input, false);
 assert.ok(international.context.resolution.warnings.includes('UNSUPPORTED_PHONE_FORMAT_SENDER'));
 
 assert.equal(workflow.connections['Normalize Input'].main[0][0].node, 'Input Is Valid');
-assert.equal(workflow.connections['Input Is Valid'].main[0][0].node, 'Resolve Dealer');
+assert.equal(workflow.connections['Input Is Valid'].main[0][0].node, 'Build Dealer Query');
 assert.equal(workflow.connections['Input Is Valid'].main[1][0].node, 'Normalized Resolved Envelope');
+assert.equal(workflow.connections['Build Dealer Query'].main[0][0].node, 'Resolve Dealer');
+assert.equal(workflow.connections['Dealer Is Resolved'].main[0][0].node, 'Build Conversation Query');
+assert.equal(workflow.connections['Build Conversation Query'].main[0][0].node, 'Load Phone-pair Conversation');
+assert.equal(workflow.connections['Resolve Conversation'].main[0][0].node, 'Build Customer Query');
+assert.equal(workflow.connections['Build Customer Query'].main[0][0].node, 'Resolve Customer');
+assert.equal(workflow.connections['Assemble Customer Resolution'].main[0][0].node, 'Build Lead Query');
+assert.equal(workflow.connections['Build Lead Query'].main[0][0].node, 'Resolve Lead');
 const mongoNames = new Set(workflow.nodes.filter(candidate => candidate.type === 'n8n-nodes-base.mongoDb').map(candidate => candidate.name));
 assert.equal(mongoNames.has(workflow.connections['Input Is Valid'].main[1][0].node), false);
+
+const expectedMongoExpressions = {
+  'Resolve Dealer': '={{ $json.dealer_query }}',
+  'Load Phone-pair Conversation': '={{ $json.conversation_query }}',
+  'Resolve Customer': '={{ $json.customer_query }}',
+  'Resolve Lead': '={{ $json.lead_query }}'
+};
+for (const [mongoName, expectedExpression] of Object.entries(expectedMongoExpressions)) {
+  assert.equal(node(mongoName).parameters.query, expectedExpression);
+  assert.doesNotMatch(node(mongoName).parameters.query, /\(\(\)=>|JSON\.stringify|\bconst\b|\breturn\b/);
+  assert.doesNotMatch(code(builderByMongo[mongoName]), /structuredClone/);
+}
 
 const dealerQuery = query('Resolve Dealer', normalized);
 const claimedClause = dealerQuery.$or.find(clause => clause.$expr);
@@ -151,6 +177,10 @@ const phoneOnly = validateDealer(normalize({ dealer_id: null }), [dealer]);
 assert.equal(phoneOnly.identity.dealer_id, ids.claimedDealer);
 assert.equal(phoneOnly.context.resolution.dealer_resolution_source, 'RECIPIENT_PHONE');
 assert.equal(phoneOnly.context.resolution.valid, true);
+const noDealer = validateDealer(normalize({ dealer_id: null }), []);
+assert.equal(noDealer.identity.dealer_id, null);
+assert.equal(noDealer.context.resolution.valid, false);
+assert.ok(noDealer.context.resolution.errors.includes('DEALER_NOT_FOUND'));
 
 const nameFallbackDealer = { ...dealer, dealer_account_information: { ...dealer.dealer_account_information, store_name: null } };
 const nameFallback = validateDealer(normalized, [nameFallbackDealer]);
@@ -259,6 +289,9 @@ assert.ok(phoneCustomerFilter['phones.value'].$regex);
 const ambiguousCustomer = resolveCustomer(noPrior, [exactCustomer, digitsCustomer]);
 assert.equal(ambiguousCustomer.identity.customer_id, null);
 assert.equal(ambiguousCustomer.context.resolution.customer_ambiguous, true);
+const noCustomer = resolveCustomer(noPrior, []);
+assert.equal(noCustomer.identity.customer_id, null);
+assert.equal(noCustomer.context.resolution.customer_resolution_candidate_count, 0);
 
 const withLead = finish(resolveLead(exactMatch, [lead], [exactCustomer]));
 assert.equal(withLead.identity.lead_id, ids.lead);
@@ -273,9 +306,15 @@ const twoPhoneLeads = resolveLead(resolveCustomer(noPrior, []), [
 ]);
 assert.equal(twoPhoneLeads.identity.lead_id, null);
 assert.equal(twoPhoneLeads.context.resolution.lead_ambiguous, true);
+const phoneLead = resolveLead(noCustomer, [lead]);
+assert.equal(phoneLead.identity.lead_id, ids.lead);
+assert.equal(phoneLead.context.resolution.lead_resolution_candidate_count, 1);
 const brandNew = finish(resolveLead(resolveCustomer(noPrior, []), []));
 assert.equal(brandNew.context.resolution.create_lead, true);
 assert.equal(brandNew.context.resolution.update_lead, false);
+for (const temporary of ['dealer_query', 'conversation_query', 'customer_query', 'lead_query']) {
+  assert.equal(Object.hasOwn(brandNew, temporary), false);
+}
 
 const validHistorical = normalize({ date: '2020-01-02T03:04:05.000Z' });
 assert.equal(validHistorical.event.received_at, '2020-01-02T03:04:05.000Z');
@@ -302,7 +341,7 @@ assert.deepEqual(JSON.parse(node('Load Phone-pair Conversation').parameters.opti
   timestamp: -1, date: -1, created_at: -1, createdAt: -1, _id: 1
 });
 for (const name of ['Load Phone-pair Conversation', 'Resolve Customer', 'Resolve Lead']) {
-  assert.match(node(name).parameters.query, /dealer_id/);
+  assert.match(code(builderByMongo[name]), /dealer_id/);
   assert.ok(node(name).parameters.options.limit > 0);
 }
 assert.equal(workflow.active, false);

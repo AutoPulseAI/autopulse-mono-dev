@@ -14,9 +14,9 @@ const strategy = await loadWorkflow('Sales - 16 Response Strategy.json');
 const validator = await loadWorkflow('SMS - 21 Validator + Output Formatter.json');
 
 const scopedQueries = [
-  [normalize, 'Load Phone-pair Conversation', /dealer_id:/],
-  [normalize, 'Resolve Lead', /dealer_id:/],
-  [normalize, 'Resolve Customer', /dealer_id:/],
+  [normalize, 'Build Conversation Query', /dealer_id:/],
+  [normalize, 'Build Lead Query', /dealer_id:/],
+  [normalize, 'Build Customer Query', /dealer_id:/],
   [context, 'Load Dealer Configuration', /\b_id:/],
   [context, 'Load SMS History', /dealer_id:/],
   [context, 'Load Email History', /dealer_id:/],
@@ -24,8 +24,9 @@ const scopedQueries = [
   [context, 'Load Campaigns', /dealer_id:/]
 ];
 for (const [workflow, name, tenantPattern] of scopedQueries) {
-  const query = workflow.nodes.find(node => node.name === name)?.parameters?.query ?? '';
-  assert.match(query, tenantPattern, `${name} must be dealer scoped`);
+  const parameters = workflow.nodes.find(node => node.name === name)?.parameters ?? {};
+  const querySource = parameters.jsCode ?? parameters.query ?? '';
+  assert.match(querySource, tenantPattern, `${name} must be dealer scoped`);
 }
 assert.match(nodeCode(inventory, 'Build Safe Inventory Queries'), /dealerId:/);
 
