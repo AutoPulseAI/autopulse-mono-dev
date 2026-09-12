@@ -184,6 +184,21 @@ export async function processEmail(job) {
     }
 
     if (adfLead) {
+      // ADF XML phones arrive unnormalized (e.g. "555-1234"). Normalize once here so the
+      // same corrected value flows into Lead.phone, followup_preference/response_mode,
+      // the sendSMS() call, and the saved acknowledgement's `recipient` below - matching
+      // the E.164 format Twilio uses and that the active SMS workflow's phone-pair
+      // conversation matching expects. A bad phone falls back to the email path instead
+      // of aborting lead creation.
+      if (adfLead.phone) {
+        try {
+          adfLead.phone = formatPhoneForTwilio(adfLead.phone);
+        } catch (phoneFormatError) {
+          console.error('ADF lead phone could not be normalized; treating as no phone and falling back to email if available:', phoneFormatError);
+          adfLead.phone = null;
+        }
+      }
+
       const existingInboundEmail = await Email.findOne({
         message_id: currentEmail.message_id,
         dealer_id,
@@ -278,9 +293,16 @@ export async function processEmail(job) {
           if (sentMessageId) {
             const replyEmail = new Email({
               message_id: sentMessageId,
-              parent_message_id: null,
-              parent_conversation: null,
-              sender: recipient,
+              // Chain onto the inbound ADF email's own message_id, same as every other
+              // SMS/email reply path in this file, so the conversation-thread query in
+              // /api/conversations/lead (which finds the lead's earliest Email doc as the
+              // anchor, then matches on parent_message_id) actually includes this message.
+              parent_message_id: currentEmail.message_id,
+              parent_conversation: currentEmail.message_id,
+              // For SMS, sender must be the dealer's own SMS number (not the dealer's
+              // email intake address) so it exact-matches the sender/recipient phone-pair
+              // the active SMS workflow uses to thread the customer's reply back here.
+              sender: replyChannel === 'sms' ? dealer?.dealer_account_information?.sms_conversion_phone : recipient,
               recipient: replyRecipient,
               subject: replySubject,
               mail_content: acknowledgement,
