@@ -54,7 +54,26 @@ const resolveLead = (envelope, leads, customers = []) => run('Assemble Lead Reso
 const finish = envelope => run('Normalized Resolved Envelope', { json: envelope });
 const clone = value => JSON.parse(JSON.stringify(value));
 
-const dealer = { _id: ids.claimedDealer, dealer_account_information: { sms_conversion_phone: '+13476585466' } };
+const weeklyAvailability = {
+  monday: { active: true, start: '09:00', end: '17:00' },
+  tuesday: { active: false, start: '', end: '' }
+};
+const dealer = {
+  _id: ids.claimedDealer,
+  name: 'Dealer Name Fallback',
+  dealer_account_information: {
+    ai_bot_name: 'Ava',
+    store_name: 'AutoPulse BMW',
+    sms_conversion_phone: '+13476585466',
+    store_address: '100 Main Street',
+    store_website: 'https://dealer.example',
+    general_manager: 'Jordan Manager',
+    weekly_availability: weeklyAvailability,
+    time_zone: 'America/New_York',
+    trade_in_appraisal_url: 'https://dealer.example/trade',
+    credit_finance_application_url: 'https://dealer.example/finance'
+  }
+};
 const otherDealer = { _id: ids.otherDealer, dealer_account_information: { sms_conversion_phone: '+13476585466' } };
 const exactCustomer = { _id: ids.customer, dealer_id: dealer._id, name: 'Existing Customer', phones: [{ value: '+15853093700', is_primary: true }], emails: [] };
 const digitsCustomer = { ...exactCustomer, _id: ids.otherCustomer, phones: [{ value: '15853093700', is_primary: true }] };
@@ -97,8 +116,12 @@ const mongoNames = new Set(workflow.nodes.filter(candidate => candidate.type ===
 assert.equal(mongoNames.has(workflow.connections['Input Is Valid'].main[1][0].node), false);
 
 const dealerQuery = query('Resolve Dealer', normalized);
+const claimedClause = dealerQuery.$or.find(clause => clause.$expr);
 const phoneClause = dealerQuery.$or.find(clause => clause['dealer_account_information.sms_conversion_phone']);
+assert.deepEqual(claimedClause, { $expr: { $eq: [{ $toString: '$_id' }, ids.claimedDealer] } });
 assert.ok(phoneClause);
+assert.equal(dealerQuery.$or.length, 2);
+assert.equal(JSON.stringify(dealerQuery).includes('$oid'), false);
 assert.equal(new RegExp(
   phoneClause['dealer_account_information.sms_conversion_phone'].$regex,
   phoneClause['dealer_account_information.sms_conversion_phone'].$options
@@ -108,16 +131,43 @@ assert.equal(Object.hasOwn(node('Resolve Dealer').parameters.options, 'limit'), 
 const validClaim = validateDealer(normalized, [dealer]);
 assert.equal(validClaim.identity.dealer_id, ids.claimedDealer);
 assert.equal(validClaim.context.resolution.dealer_resolution_source, 'CLAIMED_DEALER_ID');
+assert.equal(validClaim.context.resolution.phone_dealer_match_count, 1);
 assert.equal(validClaim.context.resolution.valid, true);
+assert.deepEqual(validClaim.context.dealer, {
+  id: ids.claimedDealer,
+  bot_name: 'Ava',
+  store_name: 'AutoPulse BMW',
+  store_phone: '+13476585466',
+  store_address: '100 Main Street',
+  store_website: 'https://dealer.example',
+  manager_name: 'Jordan Manager',
+  store_hours: weeklyAvailability,
+  timezone: 'America/New_York',
+  trade_url: 'https://dealer.example/trade',
+  finance_url: 'https://dealer.example/finance'
+});
+
+const phoneOnly = validateDealer(normalize({ dealer_id: null }), [dealer]);
+assert.equal(phoneOnly.identity.dealer_id, ids.claimedDealer);
+assert.equal(phoneOnly.context.resolution.dealer_resolution_source, 'RECIPIENT_PHONE');
+assert.equal(phoneOnly.context.resolution.valid, true);
+
+const nameFallbackDealer = { ...dealer, dealer_account_information: { ...dealer.dealer_account_information, store_name: null } };
+const nameFallback = validateDealer(normalized, [nameFallbackDealer]);
+assert.equal(nameFallback.context.dealer.store_name, 'Dealer Name Fallback');
 
 const mismatchEnvelope = normalize();
 const claimedDifferentPhone = { ...dealer, dealer_account_information: { sms_conversion_phone: '+12125550100' } };
 const mismatch = validateDealer(mismatchEnvelope, [claimedDifferentPhone, otherDealer]);
 assert.equal(mismatch.identity.dealer_id, ids.claimedDealer);
+assert.equal(mismatch.context.resolution.dealer_resolution_source, 'CLAIMED_DEALER_ID');
 assert.equal(mismatch.context.resolution.valid, false);
 assert.ok(mismatch.context.resolution.errors.includes('DEALER_ID_PHONE_MISMATCH'));
 
 const invalidClaimEnvelope = normalize({ dealer_id: 'not-an-object-id' });
+const invalidClaimQuery = query('Resolve Dealer', invalidClaimEnvelope);
+assert.equal(invalidClaimQuery.$or.some(clause => clause.$expr), false);
+assert.equal(invalidClaimQuery.$or.some(clause => clause['dealer_account_information.sms_conversion_phone']), true);
 const invalidClaimFallback = validateDealer(invalidClaimEnvelope, [dealer]);
 assert.equal(invalidClaimFallback.identity.dealer_id, ids.claimedDealer);
 assert.equal(invalidClaimFallback.context.resolution.valid, true);
@@ -257,4 +307,4 @@ for (const name of ['Load Phone-pair Conversation', 'Resolve Customer', 'Resolve
 }
 assert.equal(workflow.active, false);
 
-console.log('Normalize + Resolve regression checks passed (27 resolver invariants covered).');
+console.log('Normalize + Resolve regression checks passed.');
