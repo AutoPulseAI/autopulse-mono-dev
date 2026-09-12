@@ -94,4 +94,69 @@ const formatted = executeCode(formatterCode, {
 })[0].json;
 assert.equal(formatted.fe_lead_status, 'Contacted');
 
+// SMS-01 lead-query precedence: thread lead > explicit inbound parent > resolved customer > phone.
+const buildLeadQueryCode = nodeCode(normalize, 'Build Lead Query');
+const runBuildLeadQuery = json => JSON.parse(executeCode(buildLeadQueryCode, json)[0].json.lead_query);
+const customerId = '6a9078deea61622f3d7a0d71';
+const otherCustomerId = '6a9078deea61622f3d7a0d72';
+const dealerId = 'dealer-1';
+const baseResolution = { thread_resolved: true, normalized_sender_phone: '5550001001' };
+
+// 1. event.parent_message_id=null, identity.parent_message_id inferred, resolved customer exists -> CUSTOMER tier used.
+const inferredParentOnly = runBuildLeadQuery({
+  event: { parent_message_id: null, message_id: 'm1' },
+  identity: { dealer_id: dealerId, lead_id: null, customer_id: customerId, parent_message_id: 'SMinferredRoot' },
+  context: { resolution: baseResolution }
+});
+assert.equal(inferredParentOnly.$or, undefined, 'inferred conversation root must not trigger the parent_message_id/parent_conversation lookup');
+assert.deepEqual(inferredParentOnly.$expr, { $eq: [{ $toString: '$customer_id' }, customerId.toLowerCase()] });
+
+// 2. explicit event.parent_message_id supplied -> explicit-parent tier wins, using the raw event value (not identity.parent_message_id).
+const explicitParent = runBuildLeadQuery({
+  event: { parent_message_id: 'SMexplicitParent000', message_id: 'm2' },
+  identity: { dealer_id: dealerId, lead_id: null, customer_id: customerId, parent_message_id: 'SMdifferentInferredRoot' },
+  context: { resolution: baseResolution }
+});
+assert.deepEqual(explicitParent.$or, [{ parent_message_id: 'SMexplicitParent000' }, { parent_conversation: 'SMexplicitParent000' }]);
+
+// 3. thread-specific identity.lead_id exists -> thread lead wins over customer/explicit parent.
+const threadLeadId = customerId;
+const threadLead = runBuildLeadQuery({
+  event: { parent_message_id: 'SMexplicitParent000', message_id: 'm3' },
+  identity: { dealer_id: dealerId, lead_id: threadLeadId, customer_id: otherCustomerId, parent_message_id: 'SMdifferentInferredRoot' },
+  context: { resolution: baseResolution }
+});
+assert.deepEqual(threadLead.$expr, { $eq: [{ $toString: '$_id' }, threadLeadId.toLowerCase()] });
+
+// 4. inferred identity.parent_message_id alone, even with thread_resolved=false, must not suppress customer lookup.
+const inferredNoThread = runBuildLeadQuery({
+  event: { parent_message_id: null, message_id: 'm4' },
+  identity: { dealer_id: dealerId, lead_id: null, customer_id: customerId, parent_message_id: 'SMinferredRootNoThread' },
+  context: { resolution: { ...baseResolution, thread_resolved: false } }
+});
+assert.deepEqual(inferredNoThread.$expr, { $eq: [{ $toString: '$customer_id' }, customerId.toLowerCase()] });
+
+// 5. multiple customer leads -> latest createdAt selected (then _id desc), not treated as ambiguous.
+const assembleLeadResolutionCode = nodeCode(normalize, 'Assemble Lead Resolution');
+const runAssembleLeadResolution = (rows, json, customerRows = []) => new Function('$json', '$node', '$input', '$items', assembleLeadResolutionCode)(
+  json,
+  { 'Assemble Customer Resolution': { json } },
+  { all: () => rows.map(row => ({ json: row })) },
+  name => (name === 'Resolve Customer' ? customerRows.map(row => ({ json: row })) : [])
+)[0].json;
+const multipleCustomerLeads = runAssembleLeadResolution(
+  [
+    { _id: 'lead-old', dealer_id: dealerId, customer_id: customerId, createdAt: '2026-01-01T00:00:00.000Z' },
+    { _id: 'lead-new', dealer_id: dealerId, customer_id: customerId, createdAt: '2026-06-01T00:00:00.000Z' }
+  ],
+  {
+    identity: { dealer_id: dealerId, lead_id: null, customer_id: customerId, parent_message_id: 'SMsomeRoot' },
+    event: { sender: '+15550001001' },
+    context: { resolution: { normalized_sender_phone: '5550001001', lead_thread_ambiguous: false, warnings: [], errors: [] } }
+  }
+);
+assert.equal(multipleCustomerLeads.identity.lead_id, 'lead-new', 'must select the latest createdAt customer lead');
+assert.equal(multipleCustomerLeads.context.resolution.lead_ambiguous, false, 'multiple customer-tier leads are not ambiguous');
+assert.ok(!multipleCustomerLeads.context.resolution.warnings.includes('AMBIGUOUS_LEAD_MATCH'));
+
 console.log('Phase 1 regression checks passed.');
