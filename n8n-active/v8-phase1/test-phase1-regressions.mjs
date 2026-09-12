@@ -272,4 +272,144 @@ const result8 = runGenerator(
 const finalSms8 = result8.response.candidate.sms_response;
 assert.ok(finalSms8 === null || finalSms8.length <= 40, `expected null or <=40 chars, got ${JSON.stringify(finalSms8)}`);
 
+// SMS-21: sanitizeSmsText must strip HTML/entities from customer-facing SMS fields before length enforcement.
+const validateResponseCode = nodeCode(validator, 'Validate Response');
+const enforceExactCode = nodeCode(validator, 'Enforce Exact URL Allowlist');
+const formatLegacyCode = nodeCode(validator, 'Format Legacy v7 Output');
+const runSms21 = envelope => {
+  const afterValidate = executeCode(validateResponseCode, envelope)[0].json;
+  const afterEnforce = executeCode(enforceExactCode, afterValidate)[0].json;
+  return executeCode(formatLegacyCode, afterEnforce)[0].json;
+};
+const baseSms21Envelope = (route, candidate, decisionOverrides = {}) => ({
+  decision: { route, send_user_response: true, send_manager_sms: false, block_delivery: false, max_characters: 300, allowed_links: [], manager_sms: null, language: 'English', ...decisionOverrides },
+  response: { candidate },
+  inventory: {},
+  intelligence: {},
+  context: { resolution: { create_lead: true, update_lead: false }, customer: {}, lead: {} },
+  event: { sender: '+15550001001', recipient: '+15550002000', message_id: 'sms21-test-1', content: 'test message' },
+  identity: { parent_message_id: 'sms21-test-1' }
+});
+const blankCandidate = overrides => ({ sms_response: null, email_body: null, email_subject: null, booking_date: null, booking_time: null, ...overrides });
+
+// Test 1: full html/body/div wrapper -> all tags removed.
+const sms21Test1 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: '<html><body><div>Hi <strong>there</strong>, visit us!</div></body></html>' })));
+assert.equal(sms21Test1.response, 'Hi there, visit us!');
+assert.doesNotMatch(sms21Test1.response, /<[^>]+>/);
+
+// Test 2: <strong>, <b>, <em> -> inner text retained.
+const sms21Test2 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: '<strong>Bold</strong> <b>bold2</b> <em>emph</em> text' })));
+assert.equal(sms21Test2.response, 'Bold bold2 emph text');
+
+// Test 3: <br> and block boundaries -> words do not concatenate.
+const sms21Test3 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: 'Hello<br>World</div><div>Again' })));
+assert.doesNotMatch(sms21Test3.response, /HelloWorld|WorldAgain/);
+
+// Test 4: <a href="...">visible text</a> -> visible text retained, href NOT automatically inserted.
+const sms21Test4 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: 'See <a href="https://unapproved.example/x">our site</a> for info' })));
+assert.match(sms21Test4.response, /our site/);
+assert.doesNotMatch(sms21Test4.response, /unapproved\.example/);
+
+// Test 5: HTML entities correctly decoded.
+const sms21Test5 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: 'Tom &amp; Jerry said &quot;hi&quot;&nbsp;&#39;test&#39;&nbsp;&lt;3&gt;' })));
+assert.equal(sms21Test5.response, 'Tom & Jerry said "hi" \'test\' <3>');
+
+// Test 6: already-valid plain SMS -> unchanged except harmless whitespace normalization.
+const sms21Test6 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: 'Thanks for reaching out! We will follow up soon.' })));
+assert.equal(sms21Test6.response, 'Thanks for reaching out! We will follow up soon.');
+
+// Test 7: null response remains compatible with the existing DND contract.
+const sms21Test7 = runSms21(baseSms21Envelope('DND', blankCandidate(), { send_user_response: false, send_manager_sms: true, manager_sms: 'Lead opted for DND.' }));
+assert.equal(sms21Test7.response, null);
+
+// Test 8: user_response (ESCALATION) is sanitized.
+const sms21Test8 = runSms21(baseSms21Envelope('ESCALATION', blankCandidate({ sms_response: '<div>A team member will <strong>connect</strong> with you shortly.</div>' }), { send_manager_sms: true, manager_sms: 'New lead needs intervention.' }));
+assert.equal(sms21Test8.user_response, 'A team member will connect with you shortly.');
+assert.doesNotMatch(sms21Test8.user_response, /<[^>]+>/);
+
+// Test 9: manager_sms is sanitized when it can carry upstream-generated content.
+const sms21Test9 = runSms21(baseSms21Envelope('DND', blankCandidate(), { send_user_response: false, send_manager_sms: true, manager_sms: '<div>Lead opted for <strong>DND</strong>. VDP: Not Available.</div>' }));
+assert.equal(sms21Test9.manager_sms, 'Lead opted for DND. VDP: Not Available.');
+
+// Test 10: email_body is NOT sanitized by this SMS-specific logic.
+const sms21Test10 = runSms21(baseSms21Envelope('EMAIL_HANDOFF', blankCandidate({ email_body: '<div>Hi <strong>there</strong>, thanks for your interest.</div>', email_subject: 'Your inquiry' })));
+assert.match(sms21Test10.response, /<strong>there<\/strong>/);
+
+// Test 11: HTML markup does not count toward the final SMS character enforcement because sanitation occurs first.
+const sms21LongHtml = '<div>' + 'A'.repeat(50) + '</div><div>' + 'B'.repeat(50) + '</div>';
+const sms21Test11 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: sms21LongHtml }), { max_characters: 120 }));
+assert.doesNotMatch(sms21Test11.response, /<[^>]+>/);
+assert.ok(sms21Test11.response.length <= 120);
+assert.ok(sms21Test11.response.length > 100, 'expected the full 101-char sanitized text to survive un-truncated since raw HTML length must not count toward the limit');
+
+// Test 12: existing Phase 1 terminal output contract (key set) is unchanged for a plain-text GENERAL response.
+const sms21Test12 = runSms21(baseSms21Envelope('GENERAL', blankCandidate({ sms_response: 'Thanks! How can we help?' })));
+const sms21ExpectedKeys = ['lead_status', 'lead_name', 'lead_mail', 'lead_phone', 'source', 'message_id', 'create_lead', 'update_lead', 'sender_number', 'recipient_number', 'user_language', 'appointment_cancellation_requested', 'response', 'request_query', 'parent_message_id', 'fe_lead_status', 'send_user_response', 'send_manager_sms', 'manager_sms'];
+assert.deepEqual(Object.keys(sms21Test12).sort(), sms21ExpectedKeys.sort());
+assert.equal(sms21Test12.response, 'Thanks! How can we help?');
+
+// Config/graph guardrails: node ids, credentials-free code nodes, workflow id/active state untouched.
+assert.equal(validator.active, false, 'SMS-21 workflow must remain inactive');
+assert.equal(validator.versionId, '79d6d36b-a927-4d1d-9a4d-edf13658bba0', 'SMS-21 workflow id must be unchanged');
+assert.equal(validator.nodes.find(n => n.name === 'Validate Response').id, '8c3a9e3c-dabd-4e61-9d4e-2e7ecbc5422a');
+assert.equal(validator.nodes.find(n => n.name === 'Format Legacy v7 Output').id, '9a21ac37-122f-478c-97d7-0f60818a87d5');
+
+// Sales-10 / Sales-11: current-message vehicle must not be contaminated with a stale lead vehicle's VIN/year,
+// and inventory query construction must never use a fake ObjectId sentinel or stale VIN-lookup constraints.
+const safeStructuredIntelligenceCode = nodeCode(intelligence, 'Safe Structured Intelligence');
+const buildSafeInventoryQueriesCode = nodeCode(inventory, 'Build Safe Inventory Queries');
+const leadRav4 = { vin: '2T3P1RFVORW456789', year: '2024', make: 'Toyota', model: 'RAV4' };
+const vehicleDealerId = 'dealer-1';
+const baseIntelResponseSignals = { asks_location: false, asks_booking_link: false, asks_vdp_content: false, complex_trade: false, complex_finance: false, explicit_visit_refusal: false, closure: false };
+const runIntel = (content, modelVehicle, lead = leadRav4) => executeCode(safeStructuredIntelligenceCode, {
+  output: JSON.stringify({
+    customer: {}, vehicle: modelVehicle, language: { code: 'en', name: 'English', confidence: 0.9 },
+    inquiry: { category: 'Availability Inquiry', confidence: 'High' }, journey: { intent: null, sentiment: 'Neutral' }, business_flow: 'SALES',
+    communication: { preferred_mode: 'unknown', email_present: false }, dnd: { requested: false, reason: null },
+    escalation: { required: false, reason: null, callback_requested: false }, appointment: { signal: 'NONE', date: null, time: null },
+    response_signals: baseIntelResponseSignals
+  })
+}, {
+  'Sub-workflow Input': { json: { event: { content, sender: '+15550001001', recipient: '+15550002000' }, context: { lead, customer: {} }, identity: { dealer_id: vehicleDealerId } } }
+})[0].json;
+const runQueries = envelope => executeCode(buildSafeInventoryQueriesCode, envelope)[0].json;
+
+// 1. Existing lead = 2024 Toyota RAV4, message names a different make/model -> no inherited VIN/year.
+const vt1 = runIntel('Hi do you have a Mazda cx-70', { vin: null, year: null, make: 'Mazda', model: 'CX-70' });
+assert.deepEqual(vt1.intelligence.vehicle, { vin: null, year: null, make: 'Mazda', model: 'CX-70' });
+const qt1 = runQueries(vt1);
+assert.deepEqual(JSON.parse(qt1.vin_query), { dealerId: vehicleDealerId, make: { $regex: '^\\s*Mazda\\s*$', $options: 'i' }, model: { $regex: '^\\s*CX-70\\s*$', $options: 'i' } });
+assert.doesNotMatch(qt1.vin_query, /2T3P1RFVORW456789|"year"/);
+
+// 2. Conversational reference to the same lead vehicle legitimately resolves back to it (with VIN, VIN-only query).
+const vt2 = runIntel('Do you still have the RAV4?', { vin: null, year: null, make: 'Toyota', model: 'RAV4' });
+assert.deepEqual(vt2.intelligence.vehicle, leadRav4);
+const qt2 = runQueries(vt2);
+assert.deepEqual(JSON.parse(qt2.vin_query), { dealerId: vehicleDealerId, vin: { $regex: '^\\s*2T3P1RFVORW456789\\s*$', $options: 'i' } });
+
+// 3. Different make/model plus an explicitly supplied year -> year/make/model used, no Toyota VIN.
+const vt3 = runIntel('Do you have a 2025 Mazda CX-70?', { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' });
+assert.deepEqual(vt3.intelligence.vehicle, { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' });
+const qt3 = runQueries(vt3);
+assert.deepEqual(JSON.parse(qt3.vin_query), { dealerId: vehicleDealerId, year: { $in: [2025, '2025'] }, make: { $regex: '^\\s*Mazda\\s*$', $options: 'i' }, model: { $regex: '^\\s*CX-70\\s*$', $options: 'i' } });
+
+// 4. Explicit VIN in the current message -> VIN lookup executes using dealer+VIN only, never constrained by stale make/model/year.
+const vt4 = runIntel('Is JH4KA7561PC008269 still available', { vin: null, year: null, make: null, model: null });
+assert.equal(vt4.intelligence.vehicle.vin, 'JH4KA7561PC008269');
+const qt4 = runQueries(vt4);
+assert.deepEqual(JSON.parse(qt4.vin_query), { dealerId: vehicleDealerId, vin: { $regex: '^\\s*JH4KA7561PC008269\\s*$', $options: 'i' } });
+
+// 5. Make/model lookup without a VIN must not produce an invalid ObjectId query on the alternative-match branch.
+const qt5 = runQueries(vt1);
+assert.doesNotMatch(qt5.model_query, /"_id"/);
+assert.match(qt5.model_query, /"vin":"__NO_ALTERNATIVE_CRITERIA__"/);
+
+// 6. No usable inventory criteria at all -> safe non-ObjectId sentinel on both queries, not a crash-prone _id filter.
+const vt6 = runIntel('What is the price?', { vin: null, year: null, make: null, model: null }, {});
+const qt6 = runQueries(vt6);
+assert.doesNotMatch(qt6.vin_query, /"_id"/);
+assert.doesNotMatch(qt6.model_query, /"_id"/);
+assert.match(qt6.vin_query, /"vin":"__NO_EXACT_CRITERIA__"/);
+assert.match(qt6.model_query, /"vin":"__NO_ALTERNATIVE_CRITERIA__"/);
+
 console.log('Phase 1 regression checks passed.');
