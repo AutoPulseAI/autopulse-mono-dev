@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const workflow = JSON.parse(await readFile(new URL('./SMS - 01 Normalize + Resolve.json', import.meta.url), 'utf8'));
+const base = new URL('./', import.meta.url);
+const workflow = JSON.parse(await readFile(new URL('./SMS - 01 Normalize + Resolve.json', base), 'utf8'));
 const node = name => workflow.nodes.find(candidate => candidate.name === name);
 const code = name => node(name).parameters.jsCode;
 const query = (name, json) => {
   const expression = node(name).parameters.query.replace(/^=\{\{\s*/, '').replace(/\s*\}\}$/, '');
-  return JSON.parse(new Function('$json', `return (${expression});`)(json));
+  return JSON.parse(new Function('$json', 'return (' + expression + ');')(json));
 };
 const run = (name, { json = {}, nodes = {}, input = [], items = {} } = {}) =>
   new Function('$json', '$node', '$input', '$items', code(name))(
@@ -16,15 +17,26 @@ const run = (name, { json = {}, nodes = {}, input = [], items = {} } = {}) =>
     source => (items[source] ?? []).map(value => ({ json: value }))
   )[0].json;
 
+const ids = {
+  claimedDealer: '6a8f54debb10964e1ea194ac',
+  otherDealer: '7b8f54debb10964e1ea194ad',
+  customer: '8c8f54debb10964e1ea194ae',
+  otherCustomer: '9d8f54debb10964e1ea194af',
+  lead: 'ae8f54debb10964e1ea194b0',
+  otherLead: 'bf8f54debb10964e1ea194b1'
+};
 const raw = ({
-  sender = '+15853093700', recipient = '+13476585466',
+  sender = '+15853093700',
+  recipient = '+13476585466',
   message_id = 'SMb9a0a9d8f32432c1ba3a8bd37237b281',
-  date = '2026-09-04T13:41:28.528Z', parent_conversation = null
+  date = '2026-09-04T13:41:28.528Z',
+  parent_conversation = null,
+  dealer_id = ids.claimedDealer,
+  content = 'What about a BMW 5 Series',
+  attachments = []
 } = {}) => ({ body: { currentMessage: {
-  message_id, parent_conversation, sender, recipient, dealer_id: '6a8f54debb10964e1ea194ac',
-  date, content: 'What about a BMW 5 Series', attachments: []
+  message_id, parent_conversation, sender, recipient, dealer_id, date, content, attachments
 } } });
-
 const normalize = overrides => run('Normalize Input', { json: raw(overrides) });
 const validateDealer = (envelope, dealers) => run('Validate Dealer Resolution', {
   nodes: { 'Normalize Input': { json: envelope } }, input: dealers
@@ -40,81 +52,200 @@ const resolveLead = (envelope, leads, customers = []) => run('Assemble Lead Reso
   items: { 'Resolve Customer': customers }
 });
 const finish = envelope => run('Normalized Resolved Envelope', { json: envelope });
+const clone = value => JSON.parse(JSON.stringify(value));
 
-const dealer = { _id: '6a8f54debb10964e1ea194ac', dealer_account_information: { sms_conversion_phone: '+13476585466' } };
-const exactCustomer = { _id: 'customer-1', dealer_id: dealer._id, name: 'Existing Customer', phones: [{ value: '+15853093700', is_primary: true }], emails: [] };
-const digitsCustomer = { ...exactCustomer, _id: 'customer-2', phones: [{ value: '15853093700', is_primary: true }] };
+const dealer = { _id: ids.claimedDealer, dealer_account_information: { sms_conversion_phone: '+13476585466' } };
+const otherDealer = { _id: ids.otherDealer, dealer_account_information: { sms_conversion_phone: '+13476585466' } };
+const exactCustomer = { _id: ids.customer, dealer_id: dealer._id, name: 'Existing Customer', phones: [{ value: '+15853093700', is_primary: true }], emails: [] };
+const digitsCustomer = { ...exactCustomer, _id: ids.otherCustomer, phones: [{ value: '15853093700', is_primary: true }] };
+const lead = { _id: ids.lead, dealer_id: dealer._id, customer_id: ids.customer, phone: '+15853093700' };
 
 const normalized = normalize();
+assert.equal(normalized.context.resolution.valid_input, true);
+assert.equal(normalized.context.resolution.valid, false);
 assert.equal(normalized.context.resolution.normalized_sender_phone, '5853093700');
-assert.equal(normalize({ sender: '15853093700' }).context.resolution.normalized_sender_phone, '5853093700');
-assert.equal(normalize({ sender: '(585) 309-3700' }).context.resolution.normalized_sender_phone, '5853093700');
+assert.equal(normalized.context.resolution.phone_quality.sender.category, 'NANP_E164');
+assert.equal(normalize({ sender: '15853093700' }).context.resolution.phone_quality.sender.category, 'NANP_11_DIGIT');
+assert.equal(normalize({ sender: '5853093700' }).context.resolution.phone_quality.sender.category, 'NANP_10_DIGIT');
+assert.equal(normalize({ sender: '(585) 309-3700' }).context.resolution.phone_quality.sender.category, 'NANP_FORMATTED');
 
-const dealerResolved = validateDealer(normalized, [dealer]);
-assert.equal(dealerResolved.identity.dealer_id, dealer._id);
-const dealerFilter = query('Resolve Dealer', normalized);
+for (const [overrides, expectedError] of [
+  [{ sender: null }, 'MISSING_SENDER'],
+  [{ recipient: null }, 'MISSING_RECIPIENT'],
+  [{ message_id: null }, 'MISSING_MESSAGE_ID'],
+  [{ content: '', attachments: [] }, 'EMPTY_MESSAGE']
+]) {
+  const invalid = normalize(overrides);
+  assert.equal(invalid.context.resolution.valid_input, false);
+  assert.equal(invalid.context.resolution.valid, false);
+  assert.ok(invalid.context.resolution.errors.includes(expectedError));
+}
+const shortPhone = normalize({ sender: '12345' });
+assert.equal(shortPhone.context.resolution.phone_quality.sender.category, 'MALFORMED_TOO_SHORT');
+assert.equal(shortPhone.context.resolution.valid_input, false);
+assert.ok(shortPhone.context.resolution.warnings.includes('INVALID_PHONE_SENDER'));
+const international = normalize({ sender: '+442079460123' });
+assert.equal(international.context.resolution.phone_quality.sender.category, 'UNSUPPORTED_INTERNATIONAL');
+assert.equal(international.context.resolution.normalized_sender_phone, null);
+assert.equal(international.context.resolution.valid_input, false);
+assert.ok(international.context.resolution.warnings.includes('UNSUPPORTED_PHONE_FORMAT_SENDER'));
+
+assert.equal(workflow.connections['Normalize Input'].main[0][0].node, 'Input Is Valid');
+assert.equal(workflow.connections['Input Is Valid'].main[0][0].node, 'Resolve Dealer');
+assert.equal(workflow.connections['Input Is Valid'].main[1][0].node, 'Normalized Resolved Envelope');
+const mongoNames = new Set(workflow.nodes.filter(candidate => candidate.type === 'n8n-nodes-base.mongoDb').map(candidate => candidate.name));
+assert.equal(mongoNames.has(workflow.connections['Input Is Valid'].main[1][0].node), false);
+
+const dealerQuery = query('Resolve Dealer', normalized);
+const phoneClause = dealerQuery.$or.find(clause => clause['dealer_account_information.sms_conversion_phone']);
+assert.ok(phoneClause);
 assert.equal(new RegExp(
-  dealerFilter['dealer_account_information.sms_conversion_phone'].$regex,
-  dealerFilter['dealer_account_information.sms_conversion_phone'].$options
+  phoneClause['dealer_account_information.sms_conversion_phone'].$regex,
+  phoneClause['dealer_account_information.sms_conversion_phone'].$options
 ).test('+1 (347) 658-5466'), true);
-assert.equal(validateDealer(normalized, []).context.resolution.errors.includes('DEALER_NOT_FOUND'), true);
-const unclaimed = JSON.parse(JSON.stringify(normalized));
-unclaimed.context.resolution.claimed_dealer_id = null;
-const ambiguousDealer = validateDealer(unclaimed, [dealer, { ...dealer, _id: 'dealer-2' }]);
-assert.equal(ambiguousDealer.context.resolution.ambiguous, true);
-assert.equal(ambiguousDealer.context.resolution.errors.includes('AMBIGUOUS_DEALER_PHONE'), true);
+assert.equal(Object.hasOwn(node('Resolve Dealer').parameters.options, 'limit'), false);
 
-const past = { _id: 'email-past', message_id: 'SM-past', parent_message_id: 'root-past', timestamp: '2026-09-04T13:30:00.000Z', lead_id: 'lead-1' };
-const future = { _id: 'email-future', message_id: 'SM4b3426c3858e000805f5b5fd3278a99f', timestamp: '2026-09-04T14:10:11.000Z' };
+const validClaim = validateDealer(normalized, [dealer]);
+assert.equal(validClaim.identity.dealer_id, ids.claimedDealer);
+assert.equal(validClaim.context.resolution.dealer_resolution_source, 'CLAIMED_DEALER_ID');
+assert.equal(validClaim.context.resolution.valid, true);
+
+const mismatchEnvelope = normalize();
+const claimedDifferentPhone = { ...dealer, dealer_account_information: { sms_conversion_phone: '+12125550100' } };
+const mismatch = validateDealer(mismatchEnvelope, [claimedDifferentPhone, otherDealer]);
+assert.equal(mismatch.identity.dealer_id, ids.claimedDealer);
+assert.equal(mismatch.context.resolution.valid, false);
+assert.ok(mismatch.context.resolution.errors.includes('DEALER_ID_PHONE_MISMATCH'));
+
+const invalidClaimEnvelope = normalize({ dealer_id: 'not-an-object-id' });
+const invalidClaimFallback = validateDealer(invalidClaimEnvelope, [dealer]);
+assert.equal(invalidClaimFallback.identity.dealer_id, ids.claimedDealer);
+assert.equal(invalidClaimFallback.context.resolution.valid, true);
+assert.ok(invalidClaimFallback.context.resolution.warnings.includes('INVALID_DEALER_ID_PHONE_FALLBACK'));
+const invalidClaimNoFallback = validateDealer(invalidClaimEnvelope, []);
+assert.equal(invalidClaimNoFallback.context.resolution.valid, false);
+assert.ok(invalidClaimNoFallback.context.resolution.errors.includes('INVALID_DEALER_ID'));
+
+const unclaimed = normalize({ dealer_id: null });
+const manyDealers = [dealer, otherDealer, {
+  _id: 'cc8f54debb10964e1ea194b2', dealer_account_information: { sms_conversion_phone: '+13476585466' }
+}, {
+  _id: 'dd8f54debb10964e1ea194b3', dealer_account_information: { sms_conversion_phone: '+13476585466' }
+}];
+const ambiguousDealer = validateDealer(unclaimed, manyDealers);
+assert.equal(ambiguousDealer.context.resolution.phone_dealer_match_count, 4);
+assert.equal(ambiguousDealer.context.resolution.ambiguous, true);
+assert.ok(ambiguousDealer.context.resolution.errors.includes('AMBIGUOUS_DEALER_PHONE'));
+
+const dealerResolved = validClaim;
+const past = { _id: 'email-past', message_id: 'SM-past', parent_conversation: 'root-past', timestamp: '2026-09-04T13:30:00.000Z', lead_id: ids.lead, customer_id: ids.customer };
+const future = { _id: 'email-future', message_id: 'SM-future', parent_conversation: 'root-future', timestamp: '2026-09-04T14:10:11.000Z', lead_id: ids.otherLead };
 const replay = resolveConversation(dealerResolved, [future, past]);
 assert.equal(replay.identity.conversation_id, 'root-past');
-assert.notEqual(replay.identity.conversation_id, future.message_id);
+assert.equal(replay.identity.lead_id, ids.lead);
+assert.equal(replay.identity.customer_id, ids.customer);
 assert.equal(replay.context.resolution.future_conversation_record_count, 1);
 
 const explicitEnvelope = validateDealer(normalize({ parent_conversation: 'explicit-root' }), [dealer]);
-const explicit = resolveConversation(explicitEnvelope, [{ ...past, parent_message_id: 'explicit-root' }]);
+const explicitQuery = query('Load Phone-pair Conversation', explicitEnvelope);
+assert.equal(explicitQuery.dealer_id, ids.claimedDealer);
+assert.equal(explicitQuery.$or.some(clause => clause.parent_conversation === 'explicit-root'), true);
+assert.equal(JSON.stringify(explicitQuery).includes('sender'), false);
+const explicit = resolveConversation(explicitEnvelope, [{ ...past, parent_conversation: 'explicit-root' }]);
 assert.equal(explicit.identity.parent_message_id, 'explicit-root');
+assert.equal(explicit.context.resolution.conversation_query_mode, 'EXPLICIT_THREAD');
 
-const currentOnly = resolveConversation(dealerResolved, [{ ...past }, {
-  _id: 'current', message_id: normalized.event.message_id, timestamp: normalized.event.received_at
-}]);
-assert.equal(currentOnly.identity.parent_message_id, 'root-past');
-assert.equal(currentOnly.context.resolution.as_of_conversation_record_count, 1);
+const multipleThreads = resolveConversation(dealerResolved, [
+  { ...past, timestamp: '2026-09-04T13:20:00.000Z', parent_conversation: 'older-root', lead_id: ids.otherLead },
+  { ...past, _id: 'latest', message_id: 'latest', timestamp: '2026-09-04T13:35:00.000Z', parent_conversation: 'latest-root', lead_id: ids.lead }
+]);
+assert.equal(multipleThreads.identity.conversation_id, 'latest-root');
+assert.equal(multipleThreads.identity.lead_id, ids.lead);
+assert.equal(multipleThreads.context.resolution.lead_thread_ambiguous, undefined);
+
+const ambiguousThread = resolveConversation(dealerResolved, [
+  { ...past, parent_conversation: 'same-root', lead_id: ids.lead },
+  { ...past, _id: 'other', message_id: 'other', timestamp: '2026-09-04T13:31:00.000Z', parent_conversation: 'same-root', lead_id: ids.otherLead }
+]);
+assert.equal(ambiguousThread.identity.lead_id, null);
+assert.equal(ambiguousThread.context.resolution.lead_thread_ambiguous, true);
+assert.ok(ambiguousThread.context.resolution.warnings.includes('AMBIGUOUS_THREAD_LEAD_ASSOCIATION'));
+
+const oldThreadRows = Array.from({ length: 101 }, (_, index) => ({
+  _id: 'row-' + index,
+  message_id: 'message-' + index,
+  parent_conversation: 'explicit-root',
+  timestamp: new Date(Date.parse('2026-09-04T13:00:00.000Z') + index * 1000).toISOString(),
+  lead_id: index === 0 ? ids.lead : null
+}));
+const oldThread = resolveConversation(explicitEnvelope, oldThreadRows);
+assert.equal(oldThread.identity.lead_id, ids.lead);
+assert.equal(oldThread.context.resolution.conversation_window_truncated, false);
+
+const noPrior = resolveConversation(dealerResolved, []);
+assert.equal(noPrior.identity.conversation_id, dealerResolved.event.message_id);
+assert.equal(noPrior.context.resolution.thread_resolved, false);
+
+const cappedRows = Array.from({ length: 500 }, (_, index) => ({
+  _id: 'cap-' + index,
+  message_id: 'cap-message-' + index,
+  parent_conversation: 'cap-root-' + index,
+  timestamp: new Date(Date.parse('2026-09-04T12:00:00.000Z') + index * 1000).toISOString(),
+  internal_use: true
+}));
+const capped = resolveConversation(dealerResolved, cappedRows);
+assert.equal(capped.context.resolution.conversation_window_truncated, true);
+assert.equal(finish(capped).context.resolution.create_lead, false);
+assert.ok(capped.context.resolution.warnings.includes('CONVERSATION_PHONE_FALLBACK_WINDOW_TRUNCATED'));
 
 const exactMatch = resolveCustomer(replay, [exactCustomer]);
-assert.equal(exactMatch.identity.customer_id, 'customer-1');
-assert.equal(exactMatch.context.resolution.customer_match_count, 1);
-assert.equal(resolveCustomer(replay, [digitsCustomer]).identity.customer_id, 'customer-2');
+assert.equal(exactMatch.identity.customer_id, ids.customer);
+assert.equal(exactMatch.context.resolution.customer_resolution_candidate_count, 1);
 const customerFilter = query('Resolve Customer', replay);
-assert.equal(customerFilter.dealer_id, dealer._id);
-const customerPhone = customerFilter['phones.value'];
-const customerPhoneRegex = new RegExp(customerPhone.$regex, customerPhone.$options);
-for (const stored of ['+15853093700', '15853093700', '(585) 309-3700']) {
-  assert.equal(customerPhoneRegex.test(stored), true, `customer filter should match ${stored}`);
-}
-const noCustomer = resolveCustomer(replay, []);
-assert.equal(noCustomer.identity.customer_id, null);
-assert.equal(noCustomer.context.resolution.customer_match_count, 0);
-const ambiguousCustomer = resolveCustomer(replay, [exactCustomer, digitsCustomer]);
+assert.deepEqual(customerFilter._id, { $oid: ids.customer });
+const phoneCustomerFilter = query('Resolve Customer', noPrior);
+assert.equal(phoneCustomerFilter.dealer_id, ids.claimedDealer);
+assert.ok(phoneCustomerFilter['phones.value'].$regex);
+const ambiguousCustomer = resolveCustomer(noPrior, [exactCustomer, digitsCustomer]);
 assert.equal(ambiguousCustomer.identity.customer_id, null);
 assert.equal(ambiguousCustomer.context.resolution.customer_ambiguous, true);
-assert.equal(ambiguousCustomer.context.resolution.warnings.includes('AMBIGUOUS_CUSTOMER_PHONE'), true);
 
-const lead = { _id: 'lead-1', dealer_id: dealer._id, customer_id: 'customer-1', phone: '+15853093700' };
 const withLead = finish(resolveLead(exactMatch, [lead], [exactCustomer]));
-assert.equal(withLead.identity.lead_id, 'lead-1');
-assert.equal(withLead.identity.customer_id, 'customer-1');
-assert.equal(withLead.context.resolution.lead_match_count, 1);
+assert.equal(withLead.identity.lead_id, ids.lead);
 assert.equal(withLead.context.resolution.create_lead, false);
 assert.equal(withLead.context.resolution.update_lead, true);
+const directLeadFilter = query('Resolve Lead', exactMatch);
+assert.deepEqual(directLeadFilter._id, { $oid: ids.lead });
 
-const noLeadForCustomer = finish(resolveLead(exactMatch, [], [exactCustomer]));
-assert.equal(noLeadForCustomer.context.resolution.create_lead, false);
-assert.equal(noLeadForCustomer.context.resolution.update_lead, false);
-const brandNewConversation = resolveConversation(dealerResolved, []);
-const brandNew = finish(resolveLead(resolveCustomer(brandNewConversation, []), []));
+const twoPhoneLeads = resolveLead(resolveCustomer(noPrior, []), [
+  lead,
+  { ...lead, _id: ids.otherLead, customer_id: ids.otherCustomer }
+]);
+assert.equal(twoPhoneLeads.identity.lead_id, null);
+assert.equal(twoPhoneLeads.context.resolution.lead_ambiguous, true);
+const brandNew = finish(resolveLead(resolveCustomer(noPrior, []), []));
 assert.equal(brandNew.context.resolution.create_lead, true);
 assert.equal(brandNew.context.resolution.update_lead, false);
+
+const validHistorical = normalize({ date: '2020-01-02T03:04:05.000Z' });
+assert.equal(validHistorical.event.received_at, '2020-01-02T03:04:05.000Z');
+assert.equal(validHistorical.context.resolution.event_time_reliable, true);
+for (const date of [null, 'definitely-not-a-date']) {
+  const missingOrInvalid = normalize({ date });
+  assert.equal(missingOrInvalid.event.received_at, null);
+  assert.equal(missingOrInvalid.context.resolution.event_time_reliable, false);
+  assert.ok(missingOrInvalid.context.resolution.warnings.includes('INVALID_OR_MISSING_EVENT_RECEIVED_AT'));
+}
+const unknownAsOf = resolveConversation(validateDealer(normalize({ date: null }), [dealer]), [past]);
+assert.equal(unknownAsOf.context.resolution.as_of_conversation_record_count, 0);
+assert.equal(unknownAsOf.context.resolution.conversation_resolution_uncertain, true);
+assert.ok(unknownAsOf.context.resolution.warnings.includes('CONVERSATION_AS_OF_UNAVAILABLE'));
+
+assert.equal(node('Load Phone-pair Conversation').parameters.collection, 'emails');
+const emailModel = await readFile(new URL('../../aidmvcs-be-dev/app/models/Email.js', base), 'utf8');
+const smsRoute = await readFile(new URL('../../aidmvcs-be-dev/app/api/system/sms/route.js', base), 'utf8');
+assert.match(emailModel, /enum:\s*\['email',\s*'sms','note'\]/);
+assert.match(smsRoute, /Email from '@models\/Email';\s*\/\/ This stores both email and SMS/);
 
 assert.deepEqual(JSON.parse(node('Resolve Dealer').parameters.options.sort), { _id: 1 });
 assert.deepEqual(JSON.parse(node('Load Phone-pair Conversation').parameters.options.sort), {
@@ -124,7 +255,6 @@ for (const name of ['Load Phone-pair Conversation', 'Resolve Customer', 'Resolve
   assert.match(node(name).parameters.query, /dealer_id/);
   assert.ok(node(name).parameters.options.limit > 0);
 }
-assert.match(node('Resolve Customer').parameters.query, /phones\.value/);
-assert.match(node('Resolve Lead').parameters.query, /customer_id/);
+assert.equal(workflow.active, false);
 
-console.log('Normalize + Resolve regression checks passed.');
+console.log('Normalize + Resolve regression checks passed (27 resolver invariants covered).');

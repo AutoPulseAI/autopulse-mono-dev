@@ -1,0 +1,7 @@
+{
+  "sender": "",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Do you still have any red Camrys?",
+  "message_id": "test-msg-missing-sender-002",
+  "date": "2026-09-12T14:01:00Z"
+}

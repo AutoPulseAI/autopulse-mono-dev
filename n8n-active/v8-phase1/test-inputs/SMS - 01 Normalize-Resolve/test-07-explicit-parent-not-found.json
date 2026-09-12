@@ -1,0 +1,8 @@
+{
+  "sender": "+15558675314",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Replying about the truck we discussed.",
+  "message_id": "test-msg-fakeparent-007",
+  "parent_conversation": "000000000000000000000000",
+  "date": "2026-09-12T14:06:00Z"
+}

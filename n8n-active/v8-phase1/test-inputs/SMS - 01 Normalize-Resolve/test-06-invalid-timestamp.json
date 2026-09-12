@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675313",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Following up on my last text about the Accord.",
+  "message_id": "test-msg-badtime-006",
+  "date": "not-a-real-date"
+}
