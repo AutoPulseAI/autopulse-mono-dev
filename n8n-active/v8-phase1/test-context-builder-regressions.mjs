@@ -3,6 +3,13 @@ import { readFile } from 'node:fs/promises';
 
 const workflow = JSON.parse(await readFile(new URL('./SMS - 02 Context Builder.json', import.meta.url), 'utf8'));
 const node = name => workflow.nodes.find(candidate => candidate.name === name);
+const builderByMongo = {
+  'Load Dealer Configuration': ['Build Dealer Configuration Query', 'dealer_configuration_query'],
+  'Load SMS History': ['Build SMS History Query', 'sms_history_query'],
+  'Load Email History': ['Build Email History Query', 'email_history_query'],
+  'Load Campaign Membership': ['Build Campaign Membership Query', 'campaign_membership_query'],
+  'Load Campaigns': ['Build Campaign Query', 'campaign_query']
+};
 const run = (name, { json = {}, nodes = {}, input = [], items = {} } = {}) =>
   new Function('$json', '$node', '$input', '$items', node(name).parameters.jsCode)(
     json,
@@ -11,8 +18,10 @@ const run = (name, { json = {}, nodes = {}, input = [], items = {} } = {}) =>
     source => (items[source] ?? []).map(value => ({ json: value }))
   );
 const query = (name, json) => {
+  const [builder, field] = builderByMongo[name];
+  const prepared = Object.hasOwn(json, field) ? json : run(builder, { json })[0].json;
   const expression = node(name).parameters.query.replace(/^=\{\{\s*/, '').replace(/\s*\}\}$/, '');
-  return JSON.parse(new Function('$json', 'return (' + expression + ');')(json));
+  return JSON.parse(new Function('$json', 'return (' + expression + ');')(prepared));
 };
 
 const dealerId = '6a8f54debb10964e1ea194ac';
@@ -53,8 +62,11 @@ const structureDealer = (source, rows) => run('Structure Dealer Context', {
   input: rows
 })[0].json;
 
-const dealerLookup = query('Load Dealer Configuration', envelope());
-assert.deepEqual(dealerLookup, { _id: { $oid: dealerId } });
+const builtDealerQuery = run('Build Dealer Configuration Query', { json: envelope() })[0].json;
+assert.equal(builtDealerQuery.schema_version, '8.0');
+const dealerLookup = query('Load Dealer Configuration', builtDealerQuery);
+assert.deepEqual(dealerLookup, { $expr: { $eq: [{ $toString: '$_id' }, dealerId] } });
+assert.equal(JSON.stringify(dealerLookup).includes('$oid'), false);
 assert.equal(JSON.stringify(dealerLookup).includes('sms_conversion_phone'), false);
 assert.equal(node('Load Dealer Configuration').parameters.options.limit, 1);
 
@@ -187,7 +199,10 @@ assert.deepEqual(configuredClosed.context.dealer.store_hours, []);
 assert.equal(configuredClosed.context.dealer.store_hours_text, null);
 assert.equal(configuredClosed.context.dealer.store_hours_status, 'CONFIGURED_NO_ACTIVE_HOURS');
 
-const smsHistoryQuery = query('Load SMS History', dealerContext);
+const builtSmsHistoryQuery = run('Build SMS History Query', { json: dealerContext })[0].json;
+assert.equal(builtSmsHistoryQuery.schema_version, '8.0');
+const smsHistoryQuery = query('Load SMS History', builtSmsHistoryQuery);
+assert.equal(JSON.stringify(smsHistoryQuery).includes('$oid'), false);
 const inboundPhonePair = smsHistoryQuery.$or[0];
 const senderPattern = new RegExp(inboundPhonePair.sender.$regex, inboundPhonePair.sender.$options);
 const recipientPattern = new RegExp(inboundPhonePair.recipient.$regex, inboundPhonePair.recipient.$options);
@@ -247,12 +262,18 @@ const emailContext = run('Structure Email History', {
   ]
 })[0].json;
 assert.deepEqual(emailContext.context.email_history.map(row => row.content), ['Prior email first', 'Null ID email retained', 'Prior email second']);
-const emailHistoryQuery = query('Load Email History', smsContext);
+const builtEmailHistoryQuery = run('Build Email History Query', { json: smsContext })[0].json;
+assert.equal(builtEmailHistoryQuery.schema_version, '8.0');
+const emailHistoryQuery = query('Load Email History', builtEmailHistoryQuery);
+assert.equal(JSON.stringify(emailHistoryQuery).includes('$oid'), false);
 assert.equal(emailHistoryQuery.parent_message_id, 'root-1');
 assert.equal(Object.hasOwn(emailHistoryQuery, 'sender'), false);
 assert.equal(Object.hasOwn(emailHistoryQuery, 'recipient'), false);
 
-const campaignMembershipQuery = query('Load Campaign Membership', dealerContext);
+const builtCampaignMembershipQuery = run('Build Campaign Membership Query', { json: dealerContext })[0].json;
+assert.equal(builtCampaignMembershipQuery.schema_version, '8.0');
+const campaignMembershipQuery = query('Load Campaign Membership', builtCampaignMembershipQuery);
+assert.equal(JSON.stringify(campaignMembershipQuery).includes('$oid'), false);
 const campaignPhonePattern = new RegExp(campaignMembershipQuery.phone.$regex, campaignMembershipQuery.phone.$options);
 for (const value of ['+15853093700', '15853093700', '5853093700', '(585) 309-3700']) {
   assert.equal(campaignPhonePattern.test(value), true, 'campaign phone format did not match: ' + value);
@@ -278,6 +299,26 @@ const campaignQuery = run('Build Campaign Query', {
   input: memberships
 })[0].json;
 assert.deepEqual(campaignQuery.campaign_ids, ['campaign-prior', 'campaign-old']);
+assert.equal(campaignQuery.schema_version, '8.0');
+assert.deepEqual(query('Load Campaigns', campaignQuery), {
+  dealer_id: dealerId,
+  $expr: { $in: [{ $toString: '$_id' }, []] }
+});
+assert.equal(JSON.stringify(query('Load Campaigns', campaignQuery)).includes('$oid'), false);
+const validCampaignId = 'ABCDEFABCDEFABCDEFABCDEF';
+const validCampaignQuery = run('Build Campaign Query', {
+  nodes: { 'Structure Email History': { json: emailContext } },
+  input: [
+    { _id: 'valid-membership', campaign_id: validCampaignId, status: 'delivered', delivered_at: '2026-09-04T12:40:00.000Z' },
+    { _id: 'invalid-membership', campaign_id: 'not-an-object-id', status: 'sent', sent_at: '2026-09-04T12:30:00.000Z' }
+  ]
+})[0].json;
+assert.deepEqual(validCampaignQuery.normalized_campaign_ids, [validCampaignId.toLowerCase()]);
+assert.deepEqual(query('Load Campaigns', validCampaignQuery), {
+  dealer_id: dealerId,
+  $expr: { $in: [{ $toString: '$_id' }, [validCampaignId.toLowerCase()]] }
+});
+assert.equal(JSON.stringify(query('Load Campaigns', validCampaignQuery)).includes('$oid'), false);
 const campaignContext = run('Structure Campaign Context', {
   nodes: { 'Structure Email History': { json: emailContext } },
   items: { 'Load Campaign Membership': memberships },
@@ -319,14 +360,29 @@ assert.equal(serialized.includes('fingerprint'), false);
 for (const forbidden of ['ffmpeg', 'pdftotext', '/tmp/autopulse', 'download image', 'download video', 'download pdf', 'route attachment type', 'analyze image', 'analyze video']) {
   assert.equal(serialized.includes(forbidden), false, 'forbidden processing reference remains: ' + forbidden);
 }
-assert.equal(workflow.nodes.length, 12);
-assert.equal(Object.keys(workflow.connections).length, 11);
+assert.equal(workflow.nodes.length, 16);
+assert.equal(Object.keys(workflow.connections).length, 15);
 assert.equal(workflow.connections['Structure Campaign Context'].main[0][0].node, 'Structured Context Envelope');
 
+const expectedExpressions = {
+  'Load Dealer Configuration': '={{ $json.dealer_configuration_query }}',
+  'Load SMS History': '={{ $json.sms_history_query }}',
+  'Load Email History': '={{ $json.email_history_query }}',
+  'Load Campaign Membership': '={{ $json.campaign_membership_query }}',
+  'Load Campaigns': '={{ $json.campaign_query }}'
+};
+for (const [name, expression] of Object.entries(expectedExpressions)) {
+  assert.equal(node(name).parameters.query, expression);
+  assert.doesNotMatch(node(name).parameters.query, /\(\(\)=>|JSON\.stringify|\bconst\b|\breturn\b/);
+  assert.doesNotMatch(node(builderByMongo[name][0]).parameters.jsCode, /structuredClone/);
+}
 for (const name of ['Load SMS History', 'Load Email History', 'Load Campaign Membership', 'Load Campaigns']) {
-  assert.match(node(name).parameters.query, /dealer_id/, name + ' must remain dealer scoped');
+  assert.match(node(builderByMongo[name][0]).parameters.jsCode, /dealer_id/, name + ' must remain dealer scoped');
   assert.ok(node(name).parameters.options.limit > 0);
   assert.doesNotThrow(() => JSON.parse(node(name).parameters.options.sort));
+}
+for (const temporary of ['dealer_configuration_query', 'sms_history_query', 'email_history_query', 'campaign_membership_query', 'campaign_query']) {
+  assert.equal(Object.hasOwn(withAttachments, temporary), false);
 }
 for (const field of ['dealer', 'current_time', 'sms_history', 'lead_notes', 'email_history', 'campaign', 'campaign_meta', 'attachments', 'attachment_meta', 'precedence']) {
   assert.ok(Object.hasOwn(withAttachments.context, field), 'missing context.' + field);

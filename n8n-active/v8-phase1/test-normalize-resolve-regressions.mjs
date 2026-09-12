@@ -231,6 +231,9 @@ const explicitQuery = query('Load Phone-pair Conversation', explicitEnvelope);
 assert.equal(explicitQuery.dealer_id, ids.claimedDealer);
 assert.equal(explicitQuery.$or.some(clause => clause.parent_conversation === 'explicit-root'), true);
 assert.equal(JSON.stringify(explicitQuery).includes('sender'), false);
+assert.equal(JSON.stringify(explicitQuery).includes('$oid'), false);
+const objectIdParentQuery = query('Load Phone-pair Conversation', validateDealer(normalize({ parent_conversation: ids.lead }), [dealer]));
+assert.deepEqual(objectIdParentQuery.$or.at(-1), { $expr: { $eq: [{ $toString: '$_id' }, ids.lead] } });
 const explicit = resolveConversation(explicitEnvelope, [{ ...past, parent_conversation: 'explicit-root' }]);
 assert.equal(explicit.identity.parent_message_id, 'explicit-root');
 assert.equal(explicit.context.resolution.conversation_query_mode, 'EXPLICIT_THREAD');
@@ -282,7 +285,8 @@ const exactMatch = resolveCustomer(replay, [exactCustomer]);
 assert.equal(exactMatch.identity.customer_id, ids.customer);
 assert.equal(exactMatch.context.resolution.customer_resolution_candidate_count, 1);
 const customerFilter = query('Resolve Customer', replay);
-assert.deepEqual(customerFilter._id, { $oid: ids.customer });
+assert.deepEqual(customerFilter, { dealer_id: ids.claimedDealer, $expr: { $eq: [{ $toString: '$_id' }, ids.customer] } });
+assert.equal(JSON.stringify(customerFilter).includes('$oid'), false);
 const phoneCustomerFilter = query('Resolve Customer', noPrior);
 assert.equal(phoneCustomerFilter.dealer_id, ids.claimedDealer);
 assert.ok(phoneCustomerFilter['phones.value'].$regex);
@@ -298,7 +302,13 @@ assert.equal(withLead.identity.lead_id, ids.lead);
 assert.equal(withLead.context.resolution.create_lead, false);
 assert.equal(withLead.context.resolution.update_lead, true);
 const directLeadFilter = query('Resolve Lead', exactMatch);
-assert.deepEqual(directLeadFilter._id, { $oid: ids.lead });
+assert.deepEqual(directLeadFilter, { dealer_id: ids.claimedDealer, $expr: { $eq: [{ $toString: '$_id' }, ids.lead] } });
+assert.equal(JSON.stringify(directLeadFilter).includes('$oid'), false);
+const customerLeadEnvelope = clone(exactMatch);
+customerLeadEnvelope.identity.lead_id = null;
+const customerLeadFilter = query('Resolve Lead', customerLeadEnvelope);
+assert.deepEqual(customerLeadFilter, { dealer_id: ids.claimedDealer, $expr: { $eq: [{ $toString: '$customer_id' }, ids.customer] } });
+assert.equal(JSON.stringify(customerLeadFilter).includes('$oid'), false);
 
 const twoPhoneLeads = resolveLead(resolveCustomer(noPrior, []), [
   lead,

@@ -16,12 +16,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst dealerId=/^[a-f0-9]{24}$/i.test(e.identity.dealer_id||'')?e.identity.dealer_id.toLowerCase():'000000000000000000000000';\nconst query={$expr:{$eq:[{$toString:'$_id'},dealerId]}};\nreturn [{json:{...e,dealer_configuration_query:JSON.stringify(query)}}];"
+      },
+      "id": "5a11f314-5578-4adc-9505-00256c597b89",
+      "name": "Build Dealer Configuration Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -990,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "users",
         "options": {
           "limit": 1,
           "sort": "{\"_id\":1}"
         },
-        "query": "={{ JSON.stringify({ _id: { '$oid': /^[a-f0-9]{24}$/i.test($json.identity.dealer_id || '') ? $json.identity.dealer_id : '000000000000000000000000' } }) }}"
+        "query": "={{ $json.dealer_configuration_query }}"
       },
       "id": "649f82e8-0bc2-46fb-be58-9f35e3977628",
       "name": "Load Dealer Configuration",
@@ -55,12 +68,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst pattern=phone=>{\n  if(!phone)return '__NO_PHONE__';\n  const digits=phone.split('').join('[^0-9]*');\n  return '^[^0-9]*(?:1[^0-9]*)?'+digits+'[^0-9]*$';\n};\nconst sender={$regex:pattern(e.context.resolution.normalized_sender_phone),$options:'i'};\nconst recipient={$regex:pattern(e.context.resolution.normalized_recipient_phone),$options:'i'};\nconst query={dealer_id:e.identity.dealer_id||'__UNRESOLVED__',$or:[{sender,recipient},{sender:recipient,recipient:sender}]};\nreturn [{json:{...e,sms_history_query:JSON.stringify(query)}}];"
+      },
+      "id": "af81082d-e875-40d7-8da3-13b5d4713a9e",
+      "name": "Build SMS History Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -550,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "emails",
         "options": {
           "limit": 100,
           "sort": "{\"timestamp\":-1,\"date\":-1,\"created_at\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ (()=>{const e=$json;const pattern=phone=>{if(!phone)return '__NO_PHONE__';const digits=phone.split('').join('[^0-9]*');return '^[^0-9]*(?:1[^0-9]*)?'+digits+'[^0-9]*$';};const sender={$regex:pattern(e.context.resolution.normalized_sender_phone),$options:'i'};const recipient={$regex:pattern(e.context.resolution.normalized_recipient_phone),$options:'i'};return JSON.stringify({dealer_id:e.identity.dealer_id||'__UNRESOLVED__',$or:[{sender,recipient},{sender:recipient,recipient:sender}]});})() }}"
+        "query": "={{ $json.sms_history_query }}"
       },
       "id": "32bf6a14-058c-40df-bf2a-d4d8c2bf7456",
       "name": "Load SMS History",
@@ -94,12 +120,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst query={dealer_id:e.identity.dealer_id||'__UNRESOLVED__',communication_type:'email',parent_message_id:e.identity.parent_message_id||'__NONE__'};\nreturn [{json:{...e,email_history_query:JSON.stringify(query)}}];"
+      },
+      "id": "94374172-9569-493b-942a-3669fe14310a",
+      "name": "Build Email History Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -110,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "emails",
         "options": {
           "limit": 100,
           "sort": "{\"timestamp\":-1,\"date\":-1,\"created_at\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ JSON.stringify({ dealer_id: $json.identity.dealer_id || '__UNRESOLVED__', communication_type: 'email', parent_message_id: $json.identity.parent_message_id || '__NONE__' }) }}"
+        "query": "={{ $json.email_history_query }}"
       },
       "id": "399f3904-0e1a-465e-881c-9e67267bb3fc",
       "name": "Load Email History",
@@ -133,12 +172,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const e=$json;\nconst phone=e.context.resolution.normalized_sender_phone||'';\nconst digits=phone?phone.split('').join('[^0-9]*'):'';\nconst pattern=digits?'^[^0-9]*(?:1[^0-9]*)?'+digits+'[^0-9]*$':'__NO_PHONE__';\nconst query={dealer_id:e.identity.dealer_id||'__UNRESOLVED__',phone:{$regex:pattern,$options:'i'},status:{$regex:'^\\\\s*(sent|delivered)\\\\s*$',$options:'i'}};\nreturn [{json:{...e,campaign_membership_query:JSON.stringify(query)}}];"
+      },
+      "id": "e830da93-a126-4370-8503-a85550b8e96f",
+      "name": "Build Campaign Membership Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        330,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "collection": "campaignleads",
         "options": {
           "limit": 100,
           "sort": "{\"delivered_at\":-1,\"sent_at\":-1,\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ (()=>{const e=$json;const phone=e.context.resolution.normalized_sender_phone||'';const digits=phone?phone.split('').join('[^0-9]*'):'';const pattern=digits?'^[^0-9]*(?:1[^0-9]*)?'+digits+'[^0-9]*$':'__NO_PHONE__';return JSON.stringify({dealer_id:e.identity.dealer_id||'__UNRESOLVED__',phone:{$regex:pattern,$options:'i'},status:{$regex:'^\\\\s*(sent|delivered)\\\\s*$',$options:'i'}});})() }}"
+        "query": "={{ $json.campaign_membership_query }}"
       },
       "id": "2ad81915-7bef-4ec8-8b92-605a9a30920e",
       "name": "Load Campaign Membership",
@@ -159,7 +211,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const envelope=$node['Structure Email History'].json;\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.delivered_at??r.sent_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst acceptedStatuses=new Set(['sent','delivered']);\nconst memberships=$input.all().map(i=>i.json).filter(r=>r&&r.campaign_id&&acceptedStatuses.has(String(r.status??'').trim().toLowerCase())&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nmemberships.sort((a,b)=>{const byTime=(timeOf(b)??0)-(timeOf(a)??0);if(byTime)return byTime;return String(id(a._id)??id(a.campaign_id)??'').localeCompare(String(id(b._id)??id(b.campaign_id)??''));});\nconst ids=[...new Set(memberships.map(r=>id(r.campaign_id)).filter(Boolean))];\nreturn [{json:{dealer_id:envelope.identity.dealer_id||'__UNRESOLVED__',campaign_ids:ids,campaign_object_ids:ids.map(value=>({$oid:value}))}}];"
+        "jsCode": "const envelope=$node['Structure Email History'].json;\nconst id=v=>v?.$oid?String(v.$oid):v===undefined||v===null?null:String(v);\nconst timeOf=r=>{const value=r.delivered_at??r.sent_at??r.createdAt;const ms=Date.parse(value);return Number.isFinite(ms)?ms:null;};\nconst rawCutoff=envelope.event.received_at;const cutoff=Date.parse(rawCutoff);const hasCutoff=!!rawCutoff&&Number.isFinite(cutoff);\nconst acceptedStatuses=new Set(['sent','delivered']);\nconst memberships=$input.all().map(i=>i.json).filter(r=>r&&r.campaign_id&&acceptedStatuses.has(String(r.status??'').trim().toLowerCase())&&(!hasCutoff||(timeOf(r)!==null&&timeOf(r)<=cutoff)));\nmemberships.sort((a,b)=>{const byTime=(timeOf(b)??0)-(timeOf(a)??0);if(byTime)return byTime;return String(id(a._id)??id(a.campaign_id)??'').localeCompare(String(id(b._id)??id(b.campaign_id)??''));});\nconst ids=[...new Set(memberships.map(r=>id(r.campaign_id)).filter(Boolean))];\nconst normalizedCampaignIds=[...new Set(ids.map(value=>String(value).trim().toLowerCase()).filter(value=>/^[a-f0-9]{24}$/.test(value)))];\nconst dealerId=envelope.identity.dealer_id||'__UNRESOLVED__';\nconst query={dealer_id:dealerId,$expr:{$in:[{$toString:'$_id'},normalizedCampaignIds]}};\nreturn [{json:{...envelope,dealer_id:dealerId,campaign_ids:ids,normalized_campaign_ids:normalizedCampaignIds,campaign_query:JSON.stringify(query)}}];"
       },
       "id": "824435be-72ad-4c23-801a-08897fdb9fc9",
       "name": "Build Campaign Query",
@@ -177,7 +229,7 @@
           "limit": 100,
           "sort": "{\"createdAt\":-1,\"_id\":1}"
         },
-        "query": "={{ JSON.stringify({ dealer_id: $json.dealer_id || '__UNRESOLVED__', _id: { '$in': $json.campaign_object_ids.length ? $json.campaign_object_ids : [{ '$oid': '000000000000000000000000' }] } }) }}"
+        "query": "={{ $json.campaign_query }}"
       },
       "id": "44331f10-ff16-464a-997d-436bb7f7b2e2",
       "name": "Load Campaigns",
@@ -229,6 +281,17 @@
       "main": [
         [
           {
+            "node": "Build Dealer Configuration Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dealer Configuration Query": {
+      "main": [
+        [
+          {
             "node": "Load Dealer Configuration",
             "type": "main",
             "index": 0
@@ -248,6 +311,17 @@
       ]
     },
     "Structure Dealer Context": {
+      "main": [
+        [
+          {
+            "node": "Build SMS History Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SMS History Query": {
       "main": [
         [
           {
@@ -273,6 +347,17 @@
       "main": [
         [
           {
+            "node": "Build Email History Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email History Query": {
+      "main": [
+        [
+          {
             "node": "Load Email History",
             "type": "main",
             "index": 0
@@ -292,6 +377,17 @@
       ]
     },
     "Structure Email History": {
+      "main": [
+        [
+          {
+            "node": "Build Campaign Membership Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Campaign Membership Query": {
       "main": [
         [
           {

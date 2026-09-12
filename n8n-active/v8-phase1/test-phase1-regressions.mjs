@@ -11,17 +11,25 @@ const normalize = await loadWorkflow('SMS - 01 Normalize + Resolve.json');
 const intelligence = await loadWorkflow('Sales - 10 Conversation Intelligence.json');
 const inventory = await loadWorkflow('Sales - 11 Inventory Resolver.json');
 const strategy = await loadWorkflow('Sales - 16 Response Strategy.json');
+const generator = await loadWorkflow('SMS - 20 Response Generator.json');
 const validator = await loadWorkflow('SMS - 21 Validator + Output Formatter.json');
+const parentWorkflow = await loadWorkflow('AutoPulse AI_SMS_Workflow_v8.json');
+
+for (const workflow of [parentWorkflow, normalize, context, intelligence, inventory, strategy, generator, validator]) {
+  for (const candidate of workflow.nodes.filter(node => node.type === 'n8n-nodes-base.code')) {
+    assert.doesNotMatch(nodeCode(workflow, candidate.name), /\{\s*\$oid\s*:/, `${workflow.name}/${candidate.name} constructs an unsupported $oid query value`);
+  }
+}
 
 const scopedQueries = [
   [normalize, 'Build Conversation Query', /dealer_id:/],
   [normalize, 'Build Lead Query', /dealer_id:/],
   [normalize, 'Build Customer Query', /dealer_id:/],
-  [context, 'Load Dealer Configuration', /\b_id:/],
-  [context, 'Load SMS History', /dealer_id:/],
-  [context, 'Load Email History', /dealer_id:/],
-  [context, 'Load Campaign Membership', /dealer_id:/],
-  [context, 'Load Campaigns', /dealer_id:/]
+  [context, 'Build Dealer Configuration Query', /\$toString:'\$_id'/],
+  [context, 'Build SMS History Query', /dealer_id:/],
+  [context, 'Build Email History Query', /dealer_id:/],
+  [context, 'Build Campaign Membership Query', /dealer_id:/],
+  [context, 'Build Campaign Query', /dealer_id:/]
 ];
 for (const [workflow, name, tenantPattern] of scopedQueries) {
   const parameters = workflow.nodes.find(node => node.name === name)?.parameters ?? {};
