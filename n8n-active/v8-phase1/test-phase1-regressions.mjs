@@ -59,7 +59,7 @@ assert.deepEqual(strategyResult.decision.allowed_facts.vehicle, { vin: null, yea
 
 const validate = candidate => executeCode(nodeCode(validator, 'Validate Response'), {
   ...JSON.parse(JSON.stringify(strategyResult)),
-  decision: { ...strategyResult.decision, route: 'GENERAL', allowed_links: ['https://dealer.example/vdp/123'], max_characters: 300 },
+  decision: { ...strategyResult.decision, route: 'GENERAL', send_user_response: true, allowed_links: ['https://dealer.example/vdp/123'], max_characters: 300 },
   response: { candidate: { sms_response: candidate } }
 })[0].json.response.validated.sms_response;
 assert.equal(validate('See https://dealer.example/vdp/123.'), 'See https://dealer.example/vdp/123.');
@@ -77,7 +77,7 @@ assert.equal(enforceExact('See https://dealer.example/vdp/123?source=sms.'), 'Se
 
 const formatterCode = nodeCode(validator, 'Format Legacy v7 Output');
 assert.doesNotMatch(formatterCode, /member of our dealership team will connect|manager\.\*follow up/);
-assert.match(formatterCode, /create === 'true'/);
+assert.doesNotMatch(formatterCode, /create === ['\"]true['\"]/);
 const formatted = executeCode(formatterCode, {
   ...JSON.parse(JSON.stringify(strategyResult)),
   context: { ...strategyResult.context, sms_history: [{ content: 'A manager will follow up.' }] },

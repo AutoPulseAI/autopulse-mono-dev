@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675360",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Do you have a 2022 Ford F-150 in stock?",
+  "message_id": "test-msg-inv-fullmatch-038",
+  "date": "2026-09-12T17:00:00Z"
+}

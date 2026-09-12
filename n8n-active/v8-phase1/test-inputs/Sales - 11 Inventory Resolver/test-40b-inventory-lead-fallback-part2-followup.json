@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675362",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Is it still available?",
+  "message_id": "test-msg-inv-leadctx-040b",
+  "date": "2026-09-12T17:04:00Z"
+}
