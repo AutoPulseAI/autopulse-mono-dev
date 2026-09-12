@@ -175,7 +175,7 @@ const promptText = nodeParam(generator, 'Generate Approved Wording', 'text');
 assert.match(promptText, /availability_unverified: if decision\.allowed_facts\.inventory\.exact_matches has one or more vehicles, mention up to 3/);
 assert.match(promptText, /never invent price, availability, features, mileage, or condition/);
 assert.match(promptText, /never say the requested vehicle is unavailable/);
-assert.match(promptText, /never say "we have" or otherwise imply confirmed availability/);
+assert.match(promptText, /never say "we have", "it is available", "it's in stock", or otherwise imply confirmed availability/);
 assert.match(promptText, /exact_vehicle is supplied, acknowledge that one vehicle conservatively/);
 assert.match(promptText, /Do not ask which vehicle unless cta_type is clarify_vehicle/);
 // Untouched inventory_claim_mode bullets and unrelated prompt sections must survive verbatim.
@@ -411,5 +411,88 @@ assert.doesNotMatch(qt6.vin_query, /"_id"/);
 assert.doesNotMatch(qt6.model_query, /"_id"/);
 assert.match(qt6.vin_query, /"vin":"__NO_EXACT_CRITERIA__"/);
 assert.match(qt6.model_query, /"vin":"__NO_ALTERNATIVE_CRITERIA__"/);
+
+// Sales-16 / SMS-20: availability_unverified with exact matches should end with a booking-oriented CTA,
+// while no_match / insufficient_vehicle_context / confirmed_unavailable / DND / escalation / explicit refusal
+// and confirmed_available's prior behavior must all stay unchanged.
+const strategyCode = nodeCode(strategy, 'Deterministic Response Strategy');
+const bookingSafeGeneratorCode = nodeCode(generator, 'Safe Generator Output');
+const runStrategy = envelope => executeCode(strategyCode, envelope)[0].json;
+const runGeneratorFallback = (envelope, modelOutput) => executeCode(
+  bookingSafeGeneratorCode,
+  { output: typeof modelOutput === 'string' ? modelOutput : JSON.stringify(modelOutput) },
+  { 'Sub-workflow Input': { json: envelope } }
+)[0].json;
+const baseStrategyResponseSignals = { asks_location: false, asks_booking_link: false, asks_vdp_content: false, complex_trade: false, complex_finance: false, explicit_visit_refusal: false, closure: false };
+const baseStrategyEnvelope = (inventory, intelOverrides = {}) => ({
+  intelligence: {
+    customer: {}, vehicle: { vin: null, year: null, make: null, model: null }, language: { code: 'en', name: 'English', confidence: 0.9 },
+    inquiry: { category: 'Availability Inquiry', confidence: 'High' }, journey: { intent: null, sentiment: 'Neutral' }, dnd: { requested: false },
+    escalation: { required: false }, appointment: { signal: 'NONE' }, communication: { preferred_mode: 'unknown' },
+    response_signals: baseStrategyResponseSignals, ...intelOverrides
+  },
+  context: { resolution: { valid: true }, dealer: {}, customer: {}, lead: {} },
+  event: { content: 'test', sender: '+15550001001', recipient: '+15550002000' },
+  inventory, identity: {}
+});
+
+// 1. availability_unverified + one exact match -> caveat retained, asks to book an appointment.
+const bookingT1 = runGeneratorFallback(runStrategy(baseStrategyEnvelope(
+  { status: 'UNKNOWN', required: true, exact_match_count: 1, exact_matches: [{ year: '2025', make: 'Mazda', model: 'CX-70', trim: null }], exact_vehicle: { year: '2025', make: 'Mazda', model: 'CX-70' }, alternatives: [], warnings: ['EXACT_MATCH_AVAILABILITY_UNRESOLVED'] },
+  { vehicle: { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' } }
+)), 'malformed');
+assert.match(bookingT1.response.candidate.sms_response, /availability[^.]*confir/i);
+assert.match(bookingT1.response.candidate.sms_response, /would you like to book an appointment to see it\?/i);
+
+// 2. availability_unverified + multiple exact matches -> caveat retained, asks to book an appointment "to see one".
+const bookingT2 = runGeneratorFallback(runStrategy(baseStrategyEnvelope(
+  { status: 'UNKNOWN', required: true, exact_match_count: 3, exact_matches: [{ year: '2024', make: 'BMW', model: '5 Series', trim: '530i' }, { year: '2023', make: 'BMW', model: '5 Series', trim: '530e' }], exact_vehicle: { year: '2024', make: 'BMW', model: '5 Series', trim: '530i' }, alternatives: [], warnings: ['EXACT_MATCH_AVAILABILITY_UNRESOLVED'] },
+  { vehicle: { vin: null, year: null, make: 'BMW', model: '5 Series' } }
+)), 'malformed');
+assert.match(bookingT2.response.candidate.sms_response, /availability[^.]*confir/i);
+assert.match(bookingT2.response.candidate.sms_response, /would you like to book an appointment to see one\?/i);
+
+// 3. explicit visit refusal -> do NOT push an appointment.
+const bookingT3Strategy = runStrategy(baseStrategyEnvelope(
+  { status: 'UNKNOWN', required: true, exact_match_count: 2, exact_matches: [{ year: '2025', make: 'Mazda', model: 'CX-70' }], exact_vehicle: { year: '2025', make: 'Mazda', model: 'CX-70' }, alternatives: [], warnings: [] },
+  { vehicle: { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' }, response_signals: { ...baseStrategyResponseSignals, explicit_visit_refusal: true } }
+));
+assert.notEqual(bookingT3Strategy.decision.cta_type, 'offer_visit');
+const bookingT3 = runGeneratorFallback(bookingT3Strategy, 'malformed');
+assert.doesNotMatch(bookingT3.response.candidate.sms_response, /book an appointment/i);
+
+// 4. no_match -> existing non-booking behavior unchanged.
+const bookingT4 = runGeneratorFallback(runStrategy(baseStrategyEnvelope(
+  { status: 'UNKNOWN', required: true, exact_match_count: 0, exact_matches: [], exact_vehicle: null, alternatives: [], warnings: ['NO_INVENTORY_MATCH'] },
+  { vehicle: { vin: null, year: null, make: 'Mazda', model: 'CX-70' } }
+)), 'malformed');
+assert.equal(bookingT4.response.candidate.sms_response, "We couldn't confirm a matching vehicle. Would you like help with alternatives?");
+
+// 5. confirmed_available -> existing behavior unchanged (already booking-oriented via offer_visit, unaffected by this change).
+const bookingT5 = runGeneratorFallback(runStrategy(baseStrategyEnvelope(
+  { status: 'EXACT_AVAILABLE', authoritative_availability: true, required: true, exact_match_count: 1, exact_matches: [{ year: '2025', make: 'Mazda', model: 'CX-70' }], exact_vehicle: { year: '2025', make: 'Mazda', model: 'CX-70' }, alternatives: [], warnings: [] },
+  { vehicle: { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' } }
+)), 'malformed');
+assert.equal(bookingT5.response.candidate.sms_response, 'The 2025 Mazda CX-70 is available. Would you like more details?');
+
+// 6. confirmed_unavailable -> existing behavior unchanged.
+const bookingT6 = runGeneratorFallback(runStrategy(baseStrategyEnvelope(
+  { status: 'EXACT_UNAVAILABLE', authoritative_availability: true, required: true, exact_match_count: 1, exact_matches: [], exact_vehicle: { year: '2025', make: 'Mazda', model: 'CX-70' }, alternatives: [], warnings: [] },
+  { vehicle: { vin: null, year: '2025', make: 'Mazda', model: 'CX-70' } }
+)), 'malformed');
+assert.equal(bookingT6.response.candidate.sms_response, "The 2025 Mazda CX-70 isn't currently available. Would you like help with alternatives?");
+
+// 7. final SMS remains within the existing max_characters limit even with the booking CTA appended.
+const bookingT7Strategy = runStrategy(baseStrategyEnvelope(
+  { status: 'UNKNOWN', required: true, exact_match_count: 3, exact_matches: [{ year: '2024', make: 'BMW', model: '5 Series', trim: '530i' }], exact_vehicle: { year: '2024', make: 'BMW', model: '5 Series', trim: '530i' }, alternatives: [], warnings: ['EXACT_MATCH_AVAILABILITY_UNRESOLVED'] },
+  { vehicle: { vin: null, year: '2024', make: 'BMW', model: '5 Series' } }
+));
+bookingT7Strategy.decision.max_characters = 60;
+const bookingT7 = runGeneratorFallback(bookingT7Strategy, 'malformed');
+assert.ok(bookingT7.response.candidate.sms_response == null || bookingT7.response.candidate.sms_response.length <= 60);
+
+// DND/escalation CTA behavior must be untouched by this change.
+const dndStrategy = runStrategy({ ...baseStrategyEnvelope({}, { dnd: { requested: true, reason: 'opt_out' } }) });
+assert.equal(dndStrategy.decision.cta_type, 'none');
 
 console.log('Phase 1 regression checks passed.');
