@@ -306,16 +306,100 @@ assert.deepEqual(directLeadFilter, { dealer_id: ids.claimedDealer, $expr: { $eq:
 assert.equal(JSON.stringify(directLeadFilter).includes('$oid'), false);
 const customerLeadEnvelope = clone(exactMatch);
 customerLeadEnvelope.identity.lead_id = null;
+customerLeadEnvelope.context.resolution.thread_resolved = false;
 const customerLeadFilter = query('Resolve Lead', customerLeadEnvelope);
 assert.deepEqual(customerLeadFilter, { dealer_id: ids.claimedDealer, $expr: { $eq: [{ $toString: '$customer_id' }, ids.customer] } });
 assert.equal(JSON.stringify(customerLeadFilter).includes('$oid'), false);
 
-const twoPhoneLeads = resolveLead(resolveCustomer(noPrior, []), [
-  lead,
-  { ...lead, _id: ids.otherLead, customer_id: ids.otherCustomer }
+const olderLead = { ...lead, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' };
+const newerLead = { ...lead, _id: ids.otherLead, createdAt: '2026-09-10T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' };
+
+// A unique thread lead is authoritative, even when a newer unrelated lead is present.
+const threadLead = finish(resolveLead(exactMatch, [olderLead, { ...newerLead, customer_id: ids.otherCustomer }], [exactCustomer]));
+assert.equal(threadLead.identity.lead_id, ids.lead);
+assert.equal(threadLead.context.resolution.lead_ambiguous, false);
+assert.equal(threadLead.context.resolution.update_lead, true);
+assert.equal(threadLead.context.resolution.create_lead, false);
+
+// An explicit/current parent relationship precedes customer and phone recency.
+const parentEnvelope = clone(customerLeadEnvelope);
+parentEnvelope.context.resolution.thread_resolved = true;
+parentEnvelope.identity.parent_message_id = 'lead-parent';
+assert.deepEqual(query('Resolve Lead', parentEnvelope), {
+  dealer_id: ids.claimedDealer,
+  $or: [{ parent_message_id: 'lead-parent' }, { parent_conversation: 'lead-parent' }]
+});
+const parentLead = resolveLead(parentEnvelope, [
+  { ...olderLead, parent_conversation: 'lead-parent' },
+  { ...newerLead, parent_conversation: 'different-parent' }
 ]);
-assert.equal(twoPhoneLeads.identity.lead_id, null);
-assert.equal(twoPhoneLeads.context.resolution.lead_ambiguous, true);
+assert.equal(parentLead.identity.lead_id, ids.lead);
+
+// Historical customer multiplicity is resolved by createdAt, never updatedAt.
+const multipleCustomerLeads = finish(resolveLead(customerLeadEnvelope, [olderLead, newerLead], [exactCustomer]));
+assert.equal(multipleCustomerLeads.identity.lead_id, ids.otherLead);
+assert.equal(multipleCustomerLeads.context.resolution.lead_match_count, 2);
+assert.equal(multipleCustomerLeads.context.resolution.lead_resolution_candidate_count, 2);
+assert.equal(multipleCustomerLeads.context.resolution.lead_ambiguous, false);
+assert.equal(multipleCustomerLeads.context.resolution.ambiguous, false);
+assert.equal(multipleCustomerLeads.context.resolution.warnings.includes('AMBIGUOUS_LEAD_MATCH'), false);
+assert.equal(multipleCustomerLeads.context.resolution.update_lead, true);
+assert.equal(multipleCustomerLeads.context.resolution.create_lead, false);
+
+const nineHistoricalLeads = Array.from({ length: 9 }, (_, index) => ({
+  ...lead,
+  _id: (index + 1).toString(16).padStart(24, '0'),
+  createdAt: `2026-09-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`
+}));
+const stageMultiplicity = finish(resolveLead(customerLeadEnvelope, nineHistoricalLeads, [exactCustomer]));
+assert.equal(stageMultiplicity.context.resolution.lead_match_count, 9);
+assert.equal(stageMultiplicity.context.resolution.lead_resolution_candidate_count, 9);
+assert.equal(stageMultiplicity.identity.lead_id, nineHistoricalLeads.at(-1)._id);
+assert.equal(stageMultiplicity.context.resolution.lead_ambiguous, false);
+assert.equal(stageMultiplicity.context.resolution.ambiguous, false);
+assert.equal(stageMultiplicity.context.resolution.warnings.includes('AMBIGUOUS_LEAD_MATCH'), false);
+assert.equal(stageMultiplicity.context.resolution.update_lead, true);
+assert.equal(stageMultiplicity.context.resolution.create_lead, false);
+
+// Equal or absent createdAt values use descending _id as the deterministic tie-breaker.
+for (const createdAt of ['2026-09-10T00:00:00.000Z', undefined]) {
+  const tied = resolveLead(customerLeadEnvelope, [
+    { ...olderLead, createdAt },
+    { ...newerLead, createdAt }
+  ]);
+  assert.equal(tied.identity.lead_id, ids.otherLead);
+  assert.equal(tied.context.resolution.lead_ambiguous, false);
+}
+
+// Phone fallback also selects the latest-created dealer-scoped lead.
+const twoPhoneLeads = resolveLead(resolveCustomer(noPrior, []), [
+  olderLead,
+  { ...newerLead, customer_id: ids.otherCustomer }
+]);
+assert.equal(twoPhoneLeads.identity.lead_id, ids.otherLead);
+assert.equal(twoPhoneLeads.context.resolution.lead_ambiguous, false);
+
+// A customer-associated lead outranks a newer lead that only matches by phone.
+const customerBeatsPhone = resolveLead(customerLeadEnvelope, [
+  olderLead,
+  { ...newerLead, customer_id: ids.otherCustomer }
+]);
+assert.equal(customerBeatsPhone.identity.lead_id, ids.lead);
+
+// Conflicting lead IDs on the resolved thread remain ambiguous and are never resolved by recency.
+const conflictingThreadCustomer = resolveCustomer(ambiguousThread, [exactCustomer]);
+const conflictingThreadLead = finish(resolveLead(conflictingThreadCustomer, [olderLead, newerLead], [exactCustomer]));
+assert.equal(conflictingThreadLead.identity.lead_id, null);
+assert.equal(conflictingThreadLead.context.resolution.lead_ambiguous, true);
+assert.ok(conflictingThreadLead.context.resolution.warnings.includes('AMBIGUOUS_LEAD_MATCH'));
+assert.equal(conflictingThreadLead.context.resolution.update_lead, false);
+assert.equal(conflictingThreadLead.context.resolution.create_lead, false);
+
+// Rows from another dealer are excluded even if they otherwise match the selected tier.
+const crossDealerLead = resolveLead(customerLeadEnvelope, [{ ...newerLead, dealer_id: ids.otherDealer }]);
+assert.equal(crossDealerLead.identity.lead_id, null);
+assert.equal(crossDealerLead.context.resolution.lead_match_count, 0);
+
 const phoneLead = resolveLead(noCustomer, [lead]);
 assert.equal(phoneLead.identity.lead_id, ids.lead);
 assert.equal(phoneLead.context.resolution.lead_resolution_candidate_count, 1);
@@ -354,6 +438,7 @@ for (const name of ['Load Phone-pair Conversation', 'Resolve Customer', 'Resolve
   assert.match(code(builderByMongo[name]), /dealer_id/);
   assert.ok(node(name).parameters.options.limit > 0);
 }
+assert.deepEqual(JSON.parse(node('Resolve Lead').parameters.options.sort), { createdAt: -1, _id: -1 });
 assert.equal(workflow.active, false);
 
 console.log('Normalize + Resolve regression checks passed.');

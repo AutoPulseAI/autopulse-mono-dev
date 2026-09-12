@@ -89,6 +89,7 @@ assert.equal(Object.hasOwn(yearAlternativeQuery, 'year'), false);
 // Make/model-only requests can produce multiple exact matches; trim and color are output data, not hidden criteria.
 const multipleExact = resolve(makeModel, { exactRows: [bmwRows[0], bmwRows[2], bmwRows[1]] });
 assert.equal(multipleExact.inventory.status, 'UNKNOWN');
+assert.equal(multipleExact.inventory.exact_match_count, 3);
 assert.equal(multipleExact.inventory.exact_matches.length, 3);
 assert.equal(multipleExact.inventory.exact_vehicle.year, 2023);
 assert.equal(multipleExact.inventory.alternatives.length, 0);
@@ -119,7 +120,7 @@ assert.equal(yearMismatch.inventory.alternatives.length, 3);
 
 // The exact query is deliberately uncapped, so an exact year cannot be hidden behind five newer same-model rows.
 assert.equal(Object.hasOwn(node('Find Exact VIN').parameters.options, 'limit'), false);
-assert.equal(node('Find Make Model').parameters.options.limit, 20);
+assert.equal(Object.hasOwn(node('Find Make Model').parameters.options, 'limit'), false);
 const sevenYears = Array.from({ length: 7 }, (_, index) => ({
   _id: `year-${2025 - index}`, dealerId, vin: `VIN${2025 - index}`, year: 2025 - index, make: 'BMW', model: '5 Series'
 }));
@@ -128,7 +129,43 @@ const olderExact = resolve(
   { exactRows: [sevenYears[6]], alternativeRows: sevenYears.slice(0, 6) }
 );
 assert.equal(olderExact.inventory.exact_vehicle.year, 2019);
-assert.equal(olderExact.inventory.alternatives.length, 3);
+assert.equal(olderExact.inventory.alternative_count, 6);
+assert.equal(olderExact.inventory.alternatives.length, 5);
+
+// Full result sets are classified and counted before deterministic output caps are applied.
+const twentyExactRows = Array.from({ length: 20 }, (_, index) => ({
+  _id: `exact-${String(index).padStart(2, '0')}`,
+  dealerId,
+  vin: `EXACTVIN${index}`,
+  year: 2025 - index,
+  make: 'BMW',
+  model: '5 Series',
+  status: index === 7 ? 'available' : undefined
+}));
+const twentyExact = resolve(makeModel, { exactRows: twentyExactRows });
+assert.equal(twentyExact.inventory.exact_match_count, 20);
+assert.equal(twentyExact.inventory.exact_matches.length, 5);
+assert.equal(twentyExact.inventory.status, 'EXACT_AVAILABLE');
+assert.equal(twentyExact.inventory.authoritative_availability, true);
+assert.equal(twentyExact.inventory.exact_vehicle.vin, 'EXACTVIN7');
+assert.equal(twentyExact.inventory.exact_matches.some(row => row.vin === 'EXACTVIN7'), false);
+
+const eightAlternativeRows = Array.from({ length: 8 }, (_, index) => ({
+  _id: `alternative-${index}`,
+  dealerId,
+  vin: `ALTVIN${index}`,
+  year: 2022 - index,
+  make: 'BMW',
+  model: '5 Series'
+}));
+const eightAlternatives = resolve(
+  { year: '2030', make: 'BMW', model: '5 Series' },
+  { alternativeRows: eightAlternativeRows }
+);
+assert.equal(eightAlternatives.inventory.alternative_count, 8);
+assert.equal(eightAlternatives.inventory.alternatives.length, 5);
+assert.equal(eightAlternatives.inventory.status, 'ALTERNATIVES');
+assert.equal(eightAlternatives.inventory.authoritative_availability, false);
 
 // VIN remains the strongest exact identifier.
 const vinVehicle = { ...bmwRows[1], status: 'available' };
