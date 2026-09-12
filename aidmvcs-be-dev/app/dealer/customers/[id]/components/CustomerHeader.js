@@ -25,7 +25,7 @@ export default function CustomerHeader({ customer, valueSnapshot }) {
       <div className="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
         <div>
           <h3 className="w_card_title mb-1">{customer.name || "Unnamed customer"}</h3>
-          <Badge style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
+          <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
             {customer.origin_badge}
           </Badge>
         </div>
