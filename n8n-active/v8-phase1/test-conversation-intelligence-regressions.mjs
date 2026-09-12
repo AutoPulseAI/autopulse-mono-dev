@@ -74,9 +74,7 @@ const classify = (message, overrides = {}, sourceOverride = null) => {
 const vehicleInquiry = classify('What about a BMW 5 Series', {
   vehicle: { make: 'BMW', model: '5 Series' },
   inquiry: { category: 'Availability Inquiry' },
-  journey: { intent: 'Visit Requested' },
   business_flow: 'SALES',
-  appointment: { signal: 'INTEREST' }
 });
 assert.equal(vehicleInquiry.inquiry.category, 'Availability Inquiry');
 assert.equal(vehicleInquiry.vehicle.make, 'BMW');
@@ -112,6 +110,72 @@ const stop = classify('STOP');
 assert.equal(stop.dnd.requested, true);
 assert.equal(stop.dnd.reason, 'opt_out');
 
+for (const message of [
+  'Stop texting me',
+  'Unsubscribe me please',
+  'Please remove me from your list',
+  'Take me off your texting list'
+]) {
+  const naturalOptOut = classify(message);
+  assert.equal(naturalOptOut.dnd.requested, true, message);
+}
+
+const normalMessage = classify('What is the price?');
+assert.equal(normalMessage.dnd.requested, false);
+
+const semanticOptOut = classify('I no longer wish to receive these updates', {
+  dnd: { requested: true, reason: 'customer requested removal from future messages' }
+});
+assert.equal(semanticOptOut.dnd.requested, true);
+assert.equal(semanticOptOut.dnd.reason, 'customer requested removal from future messages');
+assert.equal(semanticOptOut.meta.parse_status, 'parsed');
+
+const negatedCallback = classify("Please don't call me, text is fine.", {
+  escalation: { required: false, reason: null, callback_requested: false }
+});
+assert.equal(negatedCallback.escalation.required, false);
+assert.equal(negatedCallback.escalation.callback_requested, false);
+
+const negatedService = classify("I don't need any service on this car, just financing for a new one.", {
+  inquiry: { category: 'Financing/Loan Inquiry' },
+  business_flow: 'SALES'
+});
+assert.equal(negatedService.inquiry.category, 'Financing/Loan Inquiry');
+assert.equal(negatedService.business_flow, 'SALES');
+
+const negatedTrade = classify("I don't want to trade in my old car, I'll pay cash — do you have financing?", {
+  inquiry: { category: 'Financing/Loan Inquiry' },
+  business_flow: 'SALES'
+});
+assert.equal(negatedTrade.inquiry.category, 'Financing/Loan Inquiry');
+assert.equal(negatedTrade.business_flow, 'SALES');
+
+const multilingualVisit = classify('Quiero venir mañana para ver el coche.', {
+  language: { code: 'es', name: 'Spanish', confidence: 0.99 },
+  journey: { intent: 'Visit Requested' },
+  appointment: { signal: 'INTEREST', date: 'tomorrow' },
+  business_flow: 'SALES'
+});
+assert.equal(multilingualVisit.language.code, 'es');
+assert.equal(multilingualVisit.journey.intent, 'Visit Requested');
+assert.equal(multilingualVisit.appointment.signal, 'INTEREST');
+assert.equal(multilingualVisit.appointment.date, 'tomorrow');
+
+const explicitAcceptance = classify('That time works for me', {
+  journey: { intent: 'Visit Requested' },
+  appointment: { signal: 'ACCEPT', date: '2026-09-13', time: '14:00' }
+});
+assert.equal(explicitAcceptance.journey.intent, 'Visit Requested');
+assert.equal(explicitAcceptance.appointment.signal, 'ACCEPT');
+
+const naturalAcceptance = classify('Saturday at 2pm works for me!', {
+  journey: { intent: 'Visit Requested' },
+  appointment: { signal: 'ACCEPT', date: 'Saturday', time: '2pm' }
+});
+assert.equal(naturalAcceptance.journey.intent, 'Visit Requested');
+assert.equal(naturalAcceptance.appointment.signal, 'ACCEPT');
+assert.equal(naturalAcceptance.appointment.time, '2pm');
+
 const purchased = classify('I already bought another car');
 assert.equal(purchased.inquiry.category, 'Already Purchased');
 assert.equal(purchased.dnd.requested, false);
@@ -146,5 +210,11 @@ assert.equal(schemaError.appointment.signal, 'NONE');
 const cancellation = classify('Cancel my appointment');
 assert.equal(cancellation.appointment.signal, 'CANCEL');
 assert.equal(cancellation.dnd.requested, false);
+
+const rescheduling = classify('Can we reschedule my appointment?', {
+  appointment: { signal: 'NONE' }
+});
+assert.equal(rescheduling.appointment.signal, 'RESCHEDULE');
+assert.equal(rescheduling.journey.intent, 'Visit Requested');
 
 console.log('Conversation Intelligence regression checks passed.');

@@ -1,0 +1,15 @@
+{
+  "sender": "+15558675333",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Here's a photo of the trade-in.",
+  "message_id": "test-msg-attachment-metadataonly-023",
+  "date": "2026-09-12T15:03:00Z",
+  "attachments": [
+    {
+      "filename": "trade-in-front.jpg",
+      "contentType": "image/jpeg",
+      "size": 245678,
+      "url": "https://example-media.autopulse.ai/mms/trade-in-front.jpg"
+    }
+  ]
+}

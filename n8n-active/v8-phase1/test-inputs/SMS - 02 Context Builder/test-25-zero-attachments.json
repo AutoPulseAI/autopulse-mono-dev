@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675335",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Just a plain text message, no attachments.",
+  "message_id": "test-msg-no-attachment-025",
+  "date": "2026-09-12T15:05:00Z"
+}

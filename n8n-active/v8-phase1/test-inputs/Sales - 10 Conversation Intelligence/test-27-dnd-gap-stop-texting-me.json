@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675340",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "Stop texting me",
+  "message_id": "test-msg-dnd-gap-027",
+  "date": "2026-09-12T16:00:00Z"
+}

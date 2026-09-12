@@ -1,0 +1,7 @@
+{
+  "sender": "+15558675345",
+  "recipient": "REPLACE_WITH_KNOWN_STAGING_DEALER_SMS_NUMBER",
+  "content": "I don't want to trade in my old car, I'll just pay cash. Do you have any financing specials though?",
+  "message_id": "test-msg-tradein-negation-032",
+  "date": "2026-09-12T16:05:00Z"
+}
