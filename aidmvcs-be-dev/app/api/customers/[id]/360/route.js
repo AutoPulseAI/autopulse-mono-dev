@@ -138,7 +138,13 @@ export async function GET(req, { params }) {
       is_current_owner: String(ownerByVin.get(vin)?.customer_id ?? "") === String(customer._id),
     }));
 
-    const overviewFeed = buildOverviewFeed({ leads, deals, repairOrders, appointments });
+    const overviewFeed = buildOverviewFeed({
+      leads,
+      deals,
+      repairOrders,
+      appointments,
+      assignments: customer.assignment_history,
+    });
     const valueSnapshot = buildValueSnapshot({ leads, deals, repairOrders, appointments });
 
     return NextResponse.json({
@@ -159,6 +165,13 @@ export async function GET(req, { params }) {
           computed_totals: getRepairOrderTotals(ro),
         })),
         appointments: appointments.map((appointment) => ({
+          ...appointment,
+          computed_date: getAppointmentDate(appointment),
+        })),
+        // Full appointment history for the Appointments tab - unlike
+        // `appointments` above, not de-duplicated against converted repair
+        // orders, since a converted appointment is still one the customer had.
+        all_appointments: appointmentsRaw.map((appointment) => ({
           ...appointment,
           computed_date: getAppointmentDate(appointment),
         })),

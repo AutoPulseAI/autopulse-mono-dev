@@ -186,6 +186,7 @@ async function enrichCustomer(customer, { email, phone, source, smsOptIn }) {
 
   return {
     customerId: customer._id,
+    assignedTo: customer.assigned_to || null,
     introducedEmails,
     introducedPhones,
     resolutionSucceeded: true,
@@ -309,6 +310,8 @@ export async function resolveCustomerForLead({
   const savedCustomer = await customer.save();
   return {
     customerId: savedCustomer._id,
+    // Always null here - a brand-new Customer has no assignment yet.
+    assignedTo: null,
     introducedEmails: normalizedEmail ? [normalizedEmail] : [],
     introducedPhones: normalizedPhone ? [normalizedPhone] : [],
     resolutionSucceeded: true,
@@ -354,6 +357,11 @@ export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
 
   try {
     savedLead.customer_id = customerResolution.customerId;
+    // Inherit the customer's current owner so a newly linked lead doesn't
+    // start unassigned (or differently assigned) under an already-assigned
+    // customer - see app/api/customers/[id]/route.js PUT, which cascades the
+    // other direction (assigning the customer reassigns its existing leads).
+    savedLead.assigned_to = customerResolution.assignedTo || null;
     await savedLead.save();
   } catch (linkError) {
     console.error(`Failed to set customer_id on lead ${savedLead._id}:`, linkError);

@@ -1,8 +1,9 @@
 "use client";
 
-import { Badge, Button, Col, Row } from "react-bootstrap";
+import { Badge, Button, Col, Form, Row } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
+import { useCan } from "../../../../hooks/PermissionsContext";
 
 export function primaryContact(entries) {
   if (!entries?.length) return null;
@@ -13,15 +14,19 @@ const BADGE_COLOR = {
   "DealerVault": "#cb5c63",
   "Inbound Lead": "#476c02",
   "Inbound & DealerVault": "#a16f3c",
+  "Manual": "#5a67d8",
   "Unknown": "#fc9009",
 };
 
-export default function CustomerHeader({ customer, valueSnapshot, onSendMessage }) {
+export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, onEdit, staffList, onAssignmentChange }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
   // SMS whenever a phone is on file, otherwise email, otherwise no button at all.
   const sendLabel = primaryPhone ? "Send SMS" : primaryEmail ? "Send Mail" : null;
+  // Reuses the leads permission - assigning a customer cascades to all of
+  // their leads, so it belongs to the same permission as assigning a lead.
+  const canAssignLeads = useCan("Assign Leads");
 
   return (
     <div className="w_card mb-3">
@@ -32,12 +37,32 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage 
             {customer.origin_badge}
           </Badge>
         </div>
-        {sendLabel && (
-          <Button variant="custom" size="sm" onClick={onSendMessage}>
-            <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
-            {sendLabel}
+        <div className="d-flex align-items-center gap-2">
+          {canAssignLeads && (
+            <Form.Select
+              size="sm"
+              style={{ width: "auto" }}
+              value={customer.assigned_to || ""}
+              onChange={(e) => onAssignmentChange(e.target.value)}
+              aria-label="Assigned to"
+            >
+              <option value="">Unassigned</option>
+              {staffList?.map((staff) => (
+                <option key={staff._id} value={staff._id}>{staff.name}</option>
+              ))}
+            </Form.Select>
+          )}
+          <Button variant="secondary" size="sm" onClick={onEdit}>
+            <i className="fa-solid fa-pen me-2" />
+            Edit
           </Button>
-        )}
+          {sendLabel && (
+            <Button variant="custom" size="sm" onClick={onSendMessage}>
+              <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
+              {sendLabel}
+            </Button>
+          )}
+        </div>
       </div>
       <Row className="gy-3">
         <Col md={3}><strong>Email:</strong> {primaryEmail?.value || "N/A"}</Col>

@@ -139,14 +139,15 @@ export function deriveVehicleOwners({ deals = [], repairOrders = [], appointment
   return latestByVin;
 }
 
-// Overview tab: one feed across leads/deals/ROs/appointments, most-recent-first.
-// Undated records sort last rather than being dropped.
-export function buildOverviewFeed({ leads = [], deals = [], repairOrders = [], appointments = [] }) {
+// Overview tab: one feed across leads/deals/ROs/appointments/assignments,
+// most-recent-first. Undated records sort last rather than being dropped.
+export function buildOverviewFeed({ leads = [], deals = [], repairOrders = [], appointments = [], assignments = [] }) {
   const entries = [
     ...leads.map((lead) => ({ type: 'lead', at: lead.createdAt ? new Date(lead.createdAt) : null, record: lead })),
     ...deals.map((deal) => ({ type: 'deal', at: getDealDate(deal), record: deal })),
     ...repairOrders.map((ro) => ({ type: 'repair_order', at: getRepairOrderDate(ro), record: ro })),
     ...appointments.map((appointment) => ({ type: 'appointment', at: getAppointmentDate(appointment), record: appointment })),
+    ...assignments.map((entry) => ({ type: 'assignment', at: entry.assigned_at ? new Date(entry.assigned_at) : null, record: entry })),
   ];
   return entries.sort((a, b) => {
     if (a.at && b.at) return b.at - a.at;
@@ -215,5 +216,6 @@ export function getOriginBadge(customer, { hasLinkedLeads = false } = {}) {
   if (dealervault && inbound) return 'Inbound & DealerVault';
   if (dealervault) return 'DealerVault';
   if (inbound) return 'Inbound Lead';
+  if (customer?.manual_entry === true) return 'Manual';
   return 'Unknown';
 }

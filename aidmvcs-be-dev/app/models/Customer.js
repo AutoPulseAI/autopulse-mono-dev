@@ -51,6 +51,20 @@ const mergeHistorySchema = new mongoose.Schema(
   { _id: false }
 );
 
+const assignmentHistorySchema = new mongoose.Schema(
+  {
+    assigned_to: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    // Denormalized name snapshots so the Recent Activity feed can render
+    // "Assigned to X by Y" without re-populating/re-resolving Users that may
+    // since have been renamed or removed.
+    assigned_to_name: { type: String, default: null },
+    assigned_by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assigned_by_name: { type: String, default: null },
+    assigned_at: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const customerSchema = new mongoose.Schema(
   {
     dealer_id: { type: String, required: true },
@@ -63,6 +77,9 @@ const customerSchema = new mongoose.Schema(
     user_language: { type: String },
     dealervault_upload: { type: Boolean, default: false },
     inbound_lead: { type: Boolean, default: false },
+    manual_entry: { type: Boolean, default: false },
+    assigned_to: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    assignment_history: { type: [assignmentHistorySchema], default: [] },
 
     // Set by scripts/backfill-customers-for-orphaned-leads.js only when this
     // Customer was newly created (not matched to an existing one) by that
