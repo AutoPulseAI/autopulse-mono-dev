@@ -9,8 +9,10 @@ import OverviewTab from "./OverviewTab";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
+import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import LeadForm from "../../../leads/components/LeadForm";
+import CustomerForm from "../../components/CustomerForm";
 
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
@@ -25,6 +27,28 @@ export default function CustomerDetail({ customerId }) {
   // pre-fills LeadForm, and LeadForm itself calls this setter with null when
   // it's done (submitted or cancelled) to close.
   const [messageLead, setMessageLead] = useState(null);
+  // Same convention: setEditCustomer({}) opens the create form (not used here,
+  // see CustomerList.js), setEditCustomer(customer) opens it pre-filled to edit.
+  const [editCustomer, setEditCustomer] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [assignmentError, setAssignmentError] = useState(null);
+
+  const fetchStaffList = useCallback(async () => {
+    if (!activeEntity?.id) return;
+    try {
+      const response = await fetch(`/api/staff/list?dealer_id=${activeEntity.id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+      });
+      const body = await response.json();
+      if (response.ok) setStaffList(body.staff || []);
+    } catch {
+      // Non-fatal: the assignment dropdown just renders with no options.
+    }
+  }, [activeEntity?.id]);
+
+  useEffect(() => {
+    fetchStaffList();
+  }, [fetchStaffList]);
 
   const fetchCustomer360 = useCallback(async () => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -66,7 +90,7 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, deals, repair_orders, appointments, vehicles, leads } = data;
+  const { customer, value_snapshot, overview, deals, repair_orders, appointments, all_appointments, vehicles, leads } = data;
 
   // A customer with an existing Lead already has a reachable conversation
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
@@ -90,6 +114,26 @@ export default function CustomerDetail({ customerId }) {
     if (!value) fetchCustomer360(); // picks up the newly created lead, if any
   };
 
+  const handleEditCustomerChange = (value) => {
+    setEditCustomer(value);
+    if (!value) fetchCustomer360(); // picks up the saved edits
+  };
+
+  const handleAssignmentChange = async (assignedToId) => {
+    setAssignmentError(null);
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        body: JSON.stringify({ dealer_id: activeEntity.id, assigned_to: assignedToId || null }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      fetchCustomer360(); // picks up the customer + cascaded lead assignments
+    } catch (assignError) {
+      setAssignmentError(assignError.message || "Failed to update assignment");
+    }
+  };
+
   return (
     <>
       <div className="d-flex align-items-center justify-content-end mb-3">
@@ -98,7 +142,20 @@ export default function CustomerDetail({ customerId }) {
         </Button>
       </div>
 
-      <CustomerHeader customer={customer} valueSnapshot={value_snapshot} onSendMessage={handleSendMessage} />
+      {assignmentError && (
+        <Alert variant="danger" dismissible onClose={() => setAssignmentError(null)}>
+          {assignmentError}
+        </Alert>
+      )}
+
+      <CustomerHeader
+        customer={customer}
+        valueSnapshot={value_snapshot}
+        onSendMessage={handleSendMessage}
+        onEdit={() => setEditCustomer(customer)}
+        staffList={staffList}
+        onAssignmentChange={handleAssignmentChange}
+      />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
         <Tab eventKey="overview" title="Overview">
@@ -113,6 +170,9 @@ export default function CustomerDetail({ customerId }) {
         <Tab eventKey="service" title="Service">
           <ServiceTab repairOrders={repair_orders} appointments={appointments} />
         </Tab>
+        <Tab eventKey="appointments" title="Appointments">
+          <AppointmentsTab appointments={all_appointments} />
+        </Tab>
         <Tab eventKey="vehicles" title="Vehicles">
           <VehiclesTab vehicles={vehicles} />
         </Tab>
@@ -124,6 +184,15 @@ export default function CustomerDetail({ customerId }) {
         </Modal.Header>
         <Modal.Body>
           {messageLead && <LeadForm editLead={messageLead} setEditLead={handleMessageLeadChange} />}
+        </Modal.Body>
+      </Modal>
+
+      <Modal show={!!editCustomer} onHide={() => handleEditCustomerChange(null)} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Edit Customer</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {editCustomer && <CustomerForm editCustomer={editCustomer} setEditCustomer={handleEditCustomerChange} />}
         </Modal.Body>
       </Modal>
     </>

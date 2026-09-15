@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Form, ListGroup, Pagination, Row, Col } from "react-bootstrap";
+import { Alert, Button, Form, ListGroup, Modal, Pagination, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import CustomerForm from "./CustomerForm";
+import DateRangePickerComponent from "../../components/DateRangePicker";
 
 const defaultPagination = {
   currentPage: 1,
@@ -24,11 +26,20 @@ export default function CustomerList() {
   const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [pagination, setPagination] = useState(defaultPagination);
-  const [filters, setFilters] = useState({ name: "", email: "", phone: "" });
+  const [filters, setFilters] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    source: "",
+    dateRange: { startDate: null, endDate: null },
+  });
   const [inputValues, setInputValues] = useState({ name: "", email: "", phone: "" });
+  const dealerTimezone = activeEntity?.dealer_account_information?.time_zone || "America/New_York";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pageInputValue, setPageInputValue] = useState("1");
+  // Same editLead convention as LeadList.js: {} opens the form in create mode.
+  const [editCustomer, setEditCustomer] = useState(null);
 
   const fetchCustomers = useCallback(async (page = 1) => {
     if (loadingParent || !activeEntity?.id) return;
@@ -42,8 +53,13 @@ export default function CustomerList() {
         limit: String(pagination.itemsPerPage),
       });
       Object.entries(filters).forEach(([key, value]) => {
+        if (key === "dateRange") return; // handled separately below
         if (value) params.set(key, value);
       });
+      if (filters.dateRange.startDate && filters.dateRange.endDate) {
+        params.set("startDate", filters.dateRange.startDate.toISOString());
+        params.set("endDate", filters.dateRange.endDate.toISOString());
+      }
 
       const response = await fetch(`/api/customers?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
@@ -76,7 +92,7 @@ export default function CustomerList() {
       return;
     }
     searchDebounceRef.current = setTimeout(() => {
-      setFilters({ ...inputValues });
+      setFilters((prev) => ({ ...prev, ...inputValues }));
     }, 400);
     return () => clearTimeout(searchDebounceRef.current);
   }, [inputValues]);
@@ -87,18 +103,32 @@ export default function CustomerList() {
 
   const handleSearch = () => {
     clearTimeout(searchDebounceRef.current);
-    setFilters({ ...inputValues });
+    setFilters((prev) => ({ ...prev, ...inputValues }));
+  };
+
+  // Source and date range apply immediately (no debounce) - each already
+  // only fires on a deliberate selection, not per-keystroke.
+  const handleSourceChange = (event) => {
+    setFilters((prev) => ({ ...prev, source: event.target.value }));
+  };
+
+  const handleDateRangeChange = ({ startDate, endDate }) => {
+    setFilters((prev) => ({ ...prev, dateRange: { startDate, endDate } }));
   };
 
   const clearFilters = () => {
     clearTimeout(searchDebounceRef.current);
-    const emptyFilters = { name: "", email: "", phone: "" };
-    setInputValues(emptyFilters);
-    setFilters(emptyFilters);
+    setInputValues({ name: "", email: "", phone: "" });
+    setFilters({ name: "", email: "", phone: "", source: "", dateRange: { startDate: null, endDate: null } });
   };
 
   const handleCustomerPageChange = (page) => {
     if (page >= 1 && page <= pagination.totalPages) fetchCustomers(page);
+  };
+
+  const handleEditCustomerChange = (value) => {
+    setEditCustomer(value);
+    if (!value) fetchCustomers(pagination.currentPage); // picks up the newly created customer
   };
 
   const createCustomerPaginationItems = () => {
@@ -157,6 +187,7 @@ export default function CustomerList() {
   }
 
   return (
+    <>
     <div className="w_card">
       {error && <Alert variant="danger" dismissible onClose={() => setError(null)}>{error}</Alert>}
 
@@ -176,11 +207,34 @@ export default function CustomerList() {
             <Button size="sm" variant="secondary" onClick={clearFilters} aria-label="Clear filters"><i className="fa-solid fa-xmark" /></Button>
           </div>
         </Col>
+        <Col lg={3} md={4} sm={12}>
+          <Form.Select size="sm" value={filters.source} onChange={handleSourceChange}>
+            <option value="">All Sources</option>
+            <option value="inbound">Inbound Lead</option>
+            <option value="dealervault">DealerVault</option>
+            <option value="both">Inbound & DealerVault</option>
+            <option value="manual">Manual</option>
+            <option value="unknown">Unknown</option>
+          </Form.Select>
+        </Col>
+        <Col lg={6} md={8} sm={12}>
+          <DateRangePickerComponent
+            onDateRangeChange={handleDateRangeChange}
+            dateRange={filters.dateRange}
+            timezone={dealerTimezone}
+            className="w-100"
+          />
+        </Col>
       </Row>
 
-      <div className="d-flex align-items-center mb-2">
-        <h3 className="w_card_title mb-0">Customer List</h3>
-        <small className="text-muted ms-2">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? "customer" : "customers"})</small>
+      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <div className="d-flex align-items-center">
+          <h3 className="w_card_title mb-0">Customer List</h3>
+          <small className="text-muted ms-2">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? "customer" : "customers"})</small>
+        </div>
+        <Button variant="custom" size="sm" onClick={() => setEditCustomer({})}>
+          <i className="fa-solid fa-plus me-1" />Add Customer
+        </Button>
       </div>
 
       <div className="w_card_list">
@@ -263,5 +317,15 @@ export default function CustomerList() {
         </div>
       )}
     </div>
+
+    <Modal show={!!editCustomer} onHide={() => handleEditCustomerChange(null)} centered size="lg">
+      <Modal.Header closeButton>
+        <Modal.Title>Add Customer</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        {editCustomer && <CustomerForm editCustomer={editCustomer} setEditCustomer={handleEditCustomerChange} />}
+      </Modal.Body>
+    </Modal>
+    </>
   );
 }

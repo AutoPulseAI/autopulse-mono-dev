@@ -14,6 +14,7 @@ const TYPE_META = {
   deal: { label: "Sale", variant: "success", icon: "fa-file-signature" },
   repair_order: { label: "Service visit", variant: "custom", icon: "fa-wrench" },
   appointment: { label: "Appointment", variant: "warning", icon: "fa-calendar-check" },
+  assignment: { label: "Assignment", variant: "secondary", icon: "fa-user-check" },
 };
 
 function describeEntry(entry) {
@@ -31,6 +32,12 @@ function describeEntry(entry) {
   }
   if (type === "appointment") {
     return `${vehicleLabel(record) || "Vehicle"}${record["Service Advisor Name"] ? ` with ${record["Service Advisor Name"]}` : ""}`;
+  }
+  if (type === "assignment") {
+    const by = record.assigned_by_name || "someone";
+    return record.assigned_to_name
+      ? `Assigned to ${record.assigned_to_name} by ${by}`
+      : `Unassigned by ${by}`;
   }
   return "Activity";
 }
