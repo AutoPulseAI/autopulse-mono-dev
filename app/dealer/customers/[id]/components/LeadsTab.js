@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
@@ -40,6 +40,7 @@ export default function LeadsTab({ customerId }) {
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
+  const hasAutoOpenedRef = useRef(false);
 
   const fetchLeads = useCallback(async (page = 1) => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -69,6 +70,17 @@ export default function LeadsTab({ customerId }) {
   useEffect(() => {
     fetchLeads(1);
   }, [fetchLeads]);
+
+  // Land directly on the most-recent lead's conversation instead of making the
+  // dealer expand the accordion themselves. Guarded by a ref (not activeLeadId
+  // itself) so this only ever fires once - collapsing the accordion afterward
+  // sets activeLeadId back to null and must NOT force it back open.
+  useEffect(() => {
+    if (!hasAutoOpenedRef.current && leads.length > 0) {
+      hasAutoOpenedRef.current = true;
+      setActiveLeadId(leads[0]._id);
+    }
+  }, [leads]);
 
   const handleLeadsPageChange = (page) => {
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);

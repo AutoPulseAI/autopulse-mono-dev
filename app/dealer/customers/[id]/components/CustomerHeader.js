@@ -1,10 +1,10 @@
 "use client";
 
-import { Badge, Col, Row } from "react-bootstrap";
+import { Badge, Button, Col, Row } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 
-function primaryContact(entries) {
+export function primaryContact(entries) {
   if (!entries?.length) return null;
   return entries.find((entry) => entry.is_primary) || entries[0];
 }
@@ -16,9 +16,12 @@ const BADGE_COLOR = {
   "Unknown": "#fc9009",
 };
 
-export default function CustomerHeader({ customer, valueSnapshot }) {
+export default function CustomerHeader({ customer, valueSnapshot, onSendMessage }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
+  // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
+  // SMS whenever a phone is on file, otherwise email, otherwise no button at all.
+  const sendLabel = primaryPhone ? "Send SMS" : primaryEmail ? "Send Mail" : null;
 
   return (
     <div className="w_card mb-3">
@@ -29,6 +32,12 @@ export default function CustomerHeader({ customer, valueSnapshot }) {
             {customer.origin_badge}
           </Badge>
         </div>
+        {sendLabel && (
+          <Button variant="custom" size="sm" onClick={onSendMessage}>
+            <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
+            {sendLabel}
+          </Button>
+        )}
       </div>
       <Row className="gy-3">
         <Col md={3}><strong>Email:</strong> {primaryEmail?.value || "N/A"}</Col>
