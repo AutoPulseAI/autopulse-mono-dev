@@ -102,7 +102,7 @@ export default function CustomerDetail({ customerId }) {
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
         <Tab eventKey="overview" title="Overview">
-          <OverviewTab customer={customer} overview={overview} />
+          <OverviewTab overview={overview} />
         </Tab>
         <Tab eventKey="leads" title="Leads & Communications">
           <LeadsTab customerId={customerId} />

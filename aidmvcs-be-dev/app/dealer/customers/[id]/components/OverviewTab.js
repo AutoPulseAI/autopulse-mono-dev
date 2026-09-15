@@ -35,76 +35,32 @@ function describeEntry(entry) {
   return "Activity";
 }
 
-export default function OverviewTab({ customer, overview }) {
+export default function OverviewTab({ overview }) {
   return (
-    <>
-      <div className="w_card mb-3">
-        <h3 className="w_card_title mb-3">Recent Activity</h3>
-        {overview.length === 0 ? (
-          <div className="text-center py-4 text-muted">No activity found for this customer yet.</div>
-        ) : (
-          <ListGroup variant="flush">
-            {overview.map((entry, index) => {
-              const meta = TYPE_META[entry.type] || { label: entry.type, variant: "secondary", icon: "fa-circle" };
-              return (
-                <ListGroup.Item key={`${entry.type}-${entry.record._id || index}`} className="px-0">
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <div>
-                      <Badge bg={meta.variant} className="me-2">
-                        <i className={`fa-solid ${meta.icon} me-1`} />{meta.label}
-                      </Badge>
-                      {describeEntry(entry)}
-                    </div>
-                    <small className="text-muted">{entry.at ? formatTimestamp(entry.at) : "Date unknown"}</small>
+    <div className="w_card">
+      <h3 className="w_card_title mb-3">Recent Activity</h3>
+      {overview.length === 0 ? (
+        <div className="text-center py-4 text-muted">No activity found for this customer yet.</div>
+      ) : (
+        <ListGroup variant="flush">
+          {overview.map((entry, index) => {
+            const meta = TYPE_META[entry.type] || { label: entry.type, variant: "secondary", icon: "fa-circle" };
+            return (
+              <ListGroup.Item key={`${entry.type}-${entry.record._id || index}`} className="px-0">
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                  <div>
+                    <Badge bg={meta.variant} className="me-2">
+                      <i className={`fa-solid ${meta.icon} me-1`} />{meta.label}
+                    </Badge>
+                    {describeEntry(entry)}
                   </div>
-                </ListGroup.Item>
-              );
-            })}
-          </ListGroup>
-        )}
-      </div>
-
-      <div className="w_card">
-        <h3 className="w_card_title mb-3">Profile</h3>
-        <div className="row gy-3">
-          <div className="col-md-6">
-            <strong>Emails:</strong>
-            {customer.emails?.length ? (
-              <ul className="list-unstyled mb-0 mt-1">
-                {customer.emails.map((entry) => (
-                  <li key={entry.value}>
-                    {entry.value}
-                    {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
-                    <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-muted">No emails on file</div>
-            )}
-          </div>
-          <div className="col-md-6">
-            <strong>Phones:</strong>
-            {customer.phones?.length ? (
-              <ul className="list-unstyled mb-0 mt-1">
-                {customer.phones.map((entry) => (
-                  <li key={entry.value}>
-                    {entry.value}
-                    {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
-                    {entry.sms_opt_in && <Badge bg="success" className="ms-2">SMS opt-in</Badge>}
-                    <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-muted">No phones on file</div>
-            )}
-          </div>
-          <div className="col-md-4"><strong>Follow-up preference:</strong> {customer.followup_preference || "N/A"}</div>
-          <div className="col-md-4"><strong>Language:</strong> {customer.user_language || "N/A"}</div>
-          <div className="col-md-4"><strong>Customer since:</strong> {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</div>
-        </div>
-      </div>
-    </>
+                  <small className="text-muted">{entry.at ? formatTimestamp(entry.at) : "Date unknown"}</small>
+                </div>
+              </ListGroup.Item>
+            );
+          })}
+        </ListGroup>
+      )}
+    </div>
   );
 }
