@@ -42,7 +42,14 @@ export async function GET(req) {
             ];
         }
 
-        // If lead_id is provided, find the entire conversation thread
+        // If lead_id is provided, return the entire conversation thread for
+        // that lead. Every message (inbound and outbound) is written with
+        // lead_id set directly, so filtering on it - rather than walking a
+        // parent_message_id/parent_conversation chain that doesn't always
+        // point back to a single root - can't drop messages. The caller
+        // doesn't paginate this view, so return the full thread instead of
+        // truncating at `limit` (a 50-message default was silently hiding
+        // everything past message #50 in longer conversations).
         if (lead_id) {
             // Validate lead_id is a valid ObjectId
             if (!ObjectId.isValid(lead_id)) {
@@ -52,34 +59,9 @@ export async function GET(req) {
                 );
             }
 
-            // First find the parent email for this lead
-            const parentEmail = await Email.findOne({ 
-                lead_id: new ObjectId(lead_id)
-            }).sort({ 
-                timestamp: 1,
-                _id: 1
-            });
-           // console.log(parentEmail)
-            if (!parentEmail) {
-               
-                return NextResponse.json({ 
-                    emails: [],
-                    page: 1,
-                    totalPages: 0,
-                    totalRecords: 0
-                }, { status: 200 });
-            }
-
-            // Build conversation thread query
-            const conversationFilter = {
-                $or: [
-                  { _id: parentEmail._id },
-                  ...(parentEmail.message_id != null ? [{ parent_message_id: parentEmail.message_id }] : [])
-                ]
-              };
+            const conversationFilter = { lead_id: new ObjectId(lead_id) };
 
             // Apply date filtering to conversation thread if provided
-            
             if (startDate || endDate) {
                 conversationFilter.date = {};
                 if (startDate) {
@@ -92,24 +74,19 @@ export async function GET(req) {
                 }
             }
 
-            // Find all emails in this conversation thread
             const conversationThread = await Email.find(conversationFilter)
                 .populate({
                     path: 'message_by',
                     select: 'name email',
                     strictPopulate: false
                 })
-                .sort({ timestamp: 1 })
-                .skip((page - 1) * limit)
-                .limit(limit);
-
-            const totalRecords = await Email.countDocuments(conversationFilter);
+                .sort({ timestamp: 1 });
 
             return NextResponse.json({
                 emails: conversationThread,
-                page,
-                totalPages: Math.ceil(totalRecords / limit),
-                totalRecords,
+                page: 1,
+                totalPages: 1,
+                totalRecords: conversationThread.length,
             }, { status: 200 });
         }
 
