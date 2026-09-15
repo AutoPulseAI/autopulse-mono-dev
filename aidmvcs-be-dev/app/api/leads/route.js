@@ -610,7 +610,7 @@ export async function POST(req) {
         vin: data.vin,
         comments: data.comments,
         dealer_id: data.dealer_id,
-        source: data.followup_preference || 'email',
+        source: data.source || data.followup_preference || 'email',
        
       };
       

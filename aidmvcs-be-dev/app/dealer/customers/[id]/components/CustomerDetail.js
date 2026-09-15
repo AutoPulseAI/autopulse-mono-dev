@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Tab, Tabs } from "react-bootstrap";
+import { Alert, Button, Modal, Tab, Tabs } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
-import CustomerHeader from "./CustomerHeader";
+import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
 import VehiclesTab from "./VehiclesTab";
+import LeadForm from "../../../leads/components/LeadForm";
 
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
@@ -19,6 +20,11 @@ export default function CustomerDetail({ customerId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  // Mirrors the `editLead` convention from app/dealer/leads/page.js: an object
+  // pre-fills LeadForm, and LeadForm itself calls this setter with null when
+  // it's done (submitted or cancelled) to close.
+  const [messageLead, setMessageLead] = useState(null);
 
   const fetchCustomer360 = useCallback(async () => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -60,7 +66,29 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, deals, repair_orders, appointments, vehicles } = data;
+  const { customer, value_snapshot, overview, deals, repair_orders, appointments, vehicles, leads } = data;
+
+  // A customer with an existing Lead already has a reachable conversation
+  // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
+  // button) - just land there. Only a customer with zero leads needs the
+  // create-lead-and-send-first-message flow (LeadForm, pre-filled).
+  const handleSendMessage = () => {
+    if ((leads?.length || 0) > 0) {
+      setActiveTab("leads");
+    } else {
+      setMessageLead({
+        name: customer.name || "",
+        email: primaryContact(customer.emails)?.value || "",
+        phone: primaryContact(customer.phones)?.value || "",
+        source: "dealervault",
+      });
+    }
+  };
+
+  const handleMessageLeadChange = (value) => {
+    setMessageLead(value);
+    if (!value) fetchCustomer360(); // picks up the newly created lead, if any
+  };
 
   return (
     <>
@@ -70,9 +98,9 @@ export default function CustomerDetail({ customerId }) {
         </Button>
       </div>
 
-      <CustomerHeader customer={customer} valueSnapshot={value_snapshot} />
+      <CustomerHeader customer={customer} valueSnapshot={value_snapshot} onSendMessage={handleSendMessage} />
 
-      <Tabs defaultActiveKey="overview" className="mb-3" mountOnEnter unmountOnExit>
+      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
         <Tab eventKey="overview" title="Overview">
           <OverviewTab customer={customer} overview={overview} />
         </Tab>
@@ -89,6 +117,15 @@ export default function CustomerDetail({ customerId }) {
           <VehiclesTab vehicles={vehicles} />
         </Tab>
       </Tabs>
+
+      <Modal show={!!messageLead} onHide={() => handleMessageLeadChange(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Send a message</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {messageLead && <LeadForm editLead={messageLead} setEditLead={handleMessageLeadChange} />}
+        </Modal.Body>
+      </Modal>
     </>
   );
 }
