@@ -52,6 +52,47 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage 
           <strong>Total service (customer-pay):</strong> {formatCurrency(valueSnapshot.total_repair_order_customer_sale)}
         </Col>
       </Row>
+
+      <hr />
+
+      <Row className="gy-3">
+        <Col md={6}>
+          <strong>Emails:</strong>
+          {customer.emails?.length ? (
+            <ul className="list-unstyled mb-0 mt-1">
+              {customer.emails.map((entry) => (
+                <li key={entry.value}>
+                  {entry.value}
+                  {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
+                  <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-muted">No emails on file</div>
+          )}
+        </Col>
+        <Col md={6}>
+          <strong>Phones:</strong>
+          {customer.phones?.length ? (
+            <ul className="list-unstyled mb-0 mt-1">
+              {customer.phones.map((entry) => (
+                <li key={entry.value}>
+                  {entry.value}
+                  {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
+                  {entry.sms_opt_in && <Badge bg="success" className="ms-2">SMS opt-in</Badge>}
+                  <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-muted">No phones on file</div>
+          )}
+        </Col>
+        <Col md={4}><strong>Follow-up preference:</strong> {customer.followup_preference || "N/A"}</Col>
+        <Col md={4}><strong>Language:</strong> {customer.user_language || "N/A"}</Col>
+        <Col md={4}><strong>Customer since:</strong> {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</Col>
+      </Row>
     </div>
   );
 }
