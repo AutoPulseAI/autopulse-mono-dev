@@ -51,6 +51,13 @@ const emailSchema = new mongoose.Schema({
 },
 { strict: false });
 
+export const EMAIL_CONVERSATION_INDEX = {
+  key: { lead_id: 1, timestamp: -1, _id: -1 },
+  options: { name: 'lead_conversation_cursor' }
+};
+
+emailSchema.index(EMAIL_CONVERSATION_INDEX.key, EMAIL_CONVERSATION_INDEX.options);
+
 const Email = mongoose.models.Email || mongoose.model('Email', emailSchema);
 
 export default Email;

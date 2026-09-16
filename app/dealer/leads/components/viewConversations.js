@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
 import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
@@ -30,6 +30,12 @@ function getReplyChannel(lead) {
   if (hasPhone) return 'sms';
   if (hasEmail) return 'email';
   return null;
+}
+
+function mergeConversationMessages(currentMessages, incomingMessages) {
+  const byId = new Map(currentMessages.map((message) => [message._id, message]));
+  incomingMessages.forEach((message) => byId.set(message._id, message));
+  return Array.from(byId.values());
 }
 
 export default function ViewConversations({
@@ -73,6 +79,13 @@ export default function ViewConversations({
   const previousLeadIdRef = useRef(null);
   const [activeChannelTab, setActiveChannelTab] = useState("sms");
   const tabDefaultSetForLeadRef = useRef(null);
+  const conversationGenerationRef = useRef(0);
+  const initialRequestControllerRef = useRef(null);
+  const pollingRef = useRef(false);
+  const olderRequestRef = useRef(false);
+  const cursorRef = useRef({ older: null, newer: null, hasOlder: false });
+  const [hasOlderConversations, setHasOlderConversations] = useState(false);
+  const [loadingOlderConversations, setLoadingOlderConversations] = useState(false);
 
   const {  dealerParent } = useUser();
 
@@ -157,81 +170,178 @@ export default function ViewConversations({
   };
   const [showStatusModal, setShowStatusModal] = useState(false); // State for status modal
 
-  useEffect(() => {
-    if (lead?._id) {
-      // If lead ID changed, we're navigating - show loader
-      if (previousLeadIdRef.current && previousLeadIdRef.current !== lead._id) {
-        setIsNavigating(true);
+  const buildConversationUrl = useCallback((leadId, cursorType, cursorValue, pageLimit = 50) => {
+    const params = new URLSearchParams({ lead_id: leadId, limit: String(pageLimit) });
+    if (dateRange.startDate) params.set("startDate", dateRange.startDate.toISOString());
+    if (dateRange.endDate) params.set("endDate", dateRange.endDate.toISOString());
+    if (cursorType && cursorValue) params.set(cursorType, cursorValue);
+    return `/api/conversations/lead?${params.toString()}`;
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  const readConversationResponse = useCallback(async (response) => {
+    const json = await response.json();
+    if (!response.ok) throw new Error(json?.error || "Failed to fetch conversations");
+    return {
+      emails: Array.isArray(json.emails) ? json.emails : [],
+      pageInfo: json.pageInfo || {},
+    };
+  }, []);
+
+  const reconcileLatestConversations = useCallback(async (leadId) => {
+    if (!leadId) return;
+    const generation = conversationGenerationRef.current;
+    try {
+      const response = await fetch(buildConversationUrl(leadId, null, null, 50));
+      const result = await readConversationResponse(response);
+      if (generation !== conversationGenerationRef.current) return;
+
+      setEmails((current) => mergeConversationMessages(current, result.emails));
+      setSelectedConversation((current) => {
+        if (!current) return result.emails[0] || null;
+        return result.emails.find((message) => message._id === current._id) || current;
+      });
+      if (result.pageInfo.newerCursor) cursorRef.current.newer = result.pageInfo.newerCursor;
+      if (!cursorRef.current.older && result.pageInfo.olderCursor) {
+        cursorRef.current.older = result.pageInfo.olderCursor;
+        cursorRef.current.hasOlder = Boolean(result.pageInfo.hasOlder);
+        setHasOlderConversations(cursorRef.current.hasOlder);
       }
-      fetchConversations(lead._id);
+    } catch (err) {
+      console.error("Error reconciling conversations:", err);
     }
-    // Update previous lead ID ref
-    previousLeadIdRef.current = lead?._id;
-  }, [lead, refreshKey, dateRange]);
-  
-  // Polling for real-time conversation updates (every 10 seconds; skip when tab is hidden)
+  }, [buildConversationUrl, readConversationResponse]);
+
+  const pollForNewConversations = useCallback(async (leadId) => {
+    if (!leadId || pollingRef.current) return;
+    if (!cursorRef.current.newer) {
+      await reconcileLatestConversations(leadId);
+      return;
+    }
+
+    pollingRef.current = true;
+    const generation = conversationGenerationRef.current;
+    let cursor = cursorRef.current.newer;
+    try {
+      let hasNewer = true;
+      while (hasNewer && generation === conversationGenerationRef.current) {
+        const response = await fetch(buildConversationUrl(leadId, "after", cursor, 100));
+        const result = await readConversationResponse(response);
+        if (generation !== conversationGenerationRef.current) return;
+
+        if (result.emails.length > 0) {
+          setEmails((current) => mergeConversationMessages(current, result.emails));
+          cursor = result.pageInfo.newerCursor;
+          cursorRef.current.newer = cursor;
+        }
+        hasNewer = Boolean(result.pageInfo.hasNewer && result.pageInfo.newerCursor);
+      }
+    } catch (err) {
+      console.error("Error polling conversations:", err);
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [buildConversationUrl, readConversationResponse, reconcileLatestConversations]);
+
+  const loadOlderConversations = useCallback(async () => {
+    const leadId = lead?._id;
+    const olderCursor = cursorRef.current.older;
+    if (!leadId || !olderCursor || olderRequestRef.current) return;
+
+    olderRequestRef.current = true;
+    setLoadingOlderConversations(true);
+    const generation = conversationGenerationRef.current;
+    try {
+      const response = await fetchData(buildConversationUrl(leadId, "before", olderCursor, 50));
+      const result = await readConversationResponse(response);
+      if (generation !== conversationGenerationRef.current) return;
+
+      setEmails((current) => mergeConversationMessages(current, result.emails));
+      if (result.pageInfo.olderCursor) cursorRef.current.older = result.pageInfo.olderCursor;
+      cursorRef.current.hasOlder = Boolean(result.pageInfo.hasOlder);
+      setHasOlderConversations(cursorRef.current.hasOlder);
+    } catch (err) {
+      console.error("Error loading older conversations:", err);
+    } finally {
+      olderRequestRef.current = false;
+      if (generation === conversationGenerationRef.current) {
+        setLoadingOlderConversations(false);
+      }
+    }
+  }, [lead?._id, fetchData, buildConversationUrl, readConversationResponse]);
+
+  useEffect(() => {
+    const leadId = lead?._id;
+    conversationGenerationRef.current += 1;
+    const generation = conversationGenerationRef.current;
+    initialRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    initialRequestControllerRef.current = controller;
+    cursorRef.current = { older: null, newer: null, hasOlder: false };
+    setHasOlderConversations(false);
+    setLoadingOlderConversations(false);
+    setEmails([]);
+    setSelectedConversation(null);
+
+    if (!leadId) return () => controller.abort();
+    if (previousLeadIdRef.current && previousLeadIdRef.current !== leadId) {
+      setIsNavigating(true);
+    }
+    previousLeadIdRef.current = leadId;
+
+    (async () => {
+      try {
+        const response = await fetchData(buildConversationUrl(leadId, null, null, 50), {
+          signal: controller.signal,
+        });
+        const result = await readConversationResponse(response);
+        if (generation !== conversationGenerationRef.current) return;
+
+        setEmails(result.emails);
+        setSelectedConversation(result.emails[0] || null);
+        cursorRef.current = {
+          older: result.pageInfo.olderCursor || null,
+          newer: result.pageInfo.newerCursor || null,
+          hasOlder: Boolean(result.pageInfo.hasOlder),
+        };
+        setHasOlderConversations(cursorRef.current.hasOlder);
+        if (tabDefaultSetForLeadRef.current !== leadId) {
+          tabDefaultSetForLeadRef.current = leadId;
+          setActiveChannelTab(result.emails.some((message) => message.communication_type === "sms") ? "sms" : "email");
+        }
+      } catch (err) {
+        if (err.name !== "AbortError") console.error("Error fetching conversations:", err);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [lead?._id, dateRange.startDate, dateRange.endDate, buildConversationUrl, fetchData, readConversationResponse]);
+
+  useEffect(() => {
+    if (refreshKey > 0 && lead?._id) reconcileLatestConversations(lead._id);
+  }, [refreshKey, lead?._id, reconcileLatestConversations]);
+
+  // Poll only for records newer than the newest cursor. Catch up immediately
+  // when a hidden tab becomes visible again.
   useEffect(() => {
     if (!lead?._id) return;
-
     const poll = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
-      }
-      fetchConversations(lead._id);
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      pollForNewConversations(lead._id);
     };
-
     const pollInterval = setInterval(poll, 10000);
-
     const onVisibility = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        poll();
-      }
+      if (document.visibilityState === "visible") poll();
     };
     document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
       clearInterval(pollInterval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [lead?._id, dateRange]);
+  }, [lead?._id, dateRange.startDate, dateRange.endDate, pollForNewConversations]);
 
-  // Clear navigation loading when emails are loaded
   useEffect(() => {
-    if (emails.length > 0 || (emails.length === 0 && lead?._id)) {
-      setIsNavigating(false);
-    }
-  }, [emails, lead]);
-
-  const fetchConversations = async (leadId) => {
-    try {
-      let url = `/api/conversations/lead?lead_id=${leadId}`;
-
-      if (dateRange.startDate) {
-        url += `&startDate=${dateRange.startDate.toISOString()}`;
-      }
-      if (dateRange.endDate) {
-        url += `&endDate=${dateRange.endDate.toISOString()}`;
-      }
-
-      const res = await fetchData(url);
-      const json = await res.json();
-      const fetchedEmails = json.emails || [];
-      setEmails(fetchedEmails);
-      if (fetchedEmails.length > 0) {
-        setSelectedConversation(fetchedEmails[0]);
-      }
-      // Pick the default tab (SMS if the lead has any SMS messages, else Email)
-      // once per lead, on its first successful fetch — later polling refreshes
-      // shouldn't override a tab the user has since switched to.
-      if (tabDefaultSetForLeadRef.current !== leadId) {
-        tabDefaultSetForLeadRef.current = leadId;
-        const hasSms = fetchedEmails.some((e) => e.communication_type === "sms");
-        setActiveChannelTab(hasSms ? "sms" : "email");
-      }
-    } catch (err) {
-      console.error("Error fetching conversations:", err);
-    }
-  };
+    if (emails.length > 0 || (emails.length === 0 && lead?._id)) setIsNavigating(false);
+  }, [emails, lead?._id]);
 
   const handleDateRangeChange = (startDate, endDate) => {
     setDateRange({ startDate, endDate });
@@ -1148,6 +1258,25 @@ export default function ViewConversations({
                   <p className="mb-0">
                     No {activeChannelTab === "sms" ? "SMS" : "email"} conversations found
                   </p>
+                </div>
+              )}
+              {hasOlderConversations && (
+                <div className="d-flex justify-content-center mt-3">
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={loadOlderConversations}
+                    disabled={loadingOlderConversations}
+                  >
+                    {loadingOlderConversations ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Loading older messages...
+                      </>
+                    ) : (
+                      "Load older messages"
+                    )}
+                  </Button>
                 </div>
               )}
             </Col>
