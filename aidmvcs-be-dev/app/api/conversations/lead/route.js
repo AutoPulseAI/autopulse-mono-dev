@@ -4,6 +4,40 @@ import Email from "@models/Email";
 import { Types } from "mongoose";
 const { ObjectId } = Types;
 
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
+
+function encodeCursor(message) {
+    if (!message) return null;
+    return Buffer.from(JSON.stringify({
+        timestamp: new Date(message.timestamp).toISOString(),
+        id: message._id.toString(),
+    })).toString("base64url");
+}
+
+function decodeCursor(value) {
+    try {
+        const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+        const timestamp = new Date(decoded.timestamp);
+        if (!decoded.id || Number.isNaN(timestamp.getTime()) || !ObjectId.isValid(decoded.id)) {
+            return null;
+        }
+        return { timestamp, id: new ObjectId(decoded.id) };
+    } catch {
+        return null;
+    }
+}
+
+function cursorFilter(cursor, direction) {
+    const comparison = direction === "after" ? "$gt" : "$lt";
+    return {
+        $or: [
+            { timestamp: { [comparison]: cursor.timestamp } },
+            { timestamp: cursor.timestamp, _id: { [comparison]: cursor.id } },
+        ],
+    };
+}
+
 export async function GET(req) {
     try {
         // Connect to MongoDB
@@ -14,10 +48,30 @@ export async function GET(req) {
         const sender = searchParams.get("sender");
         const recipient = searchParams.get("recipient");
         const text = searchParams.get("text");
+        const rawLimit = searchParams.get("limit");
+        const parsedLimit = rawLimit == null ? DEFAULT_LIMIT : Number(rawLimit);
+        if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+            return NextResponse.json({ error: "limit must be a positive integer" }, { status: 400 });
+        }
+        const limit = Math.min(parsedLimit, MAX_LIMIT);
         const page = parseInt(searchParams.get("page")) || 1;
-        const limit = parseInt(searchParams.get("limit")) || 50;
+        const beforeValue = searchParams.get("before");
+        const afterValue = searchParams.get("after");
         const startDate = searchParams.get("startDate");
         const endDate = searchParams.get("endDate");
+
+        if (beforeValue && afterValue) {
+            return NextResponse.json(
+                { error: "before and after cursors are mutually exclusive" },
+                { status: 400 }
+            );
+        }
+
+        const cursorValue = beforeValue || afterValue;
+        const cursor = cursorValue ? decodeCursor(cursorValue) : null;
+        if (cursorValue && !cursor) {
+            return NextResponse.json({ error: "Invalid conversation cursor" }, { status: 400 });
+        }
 
         // Validate dealer_id is provided
         /*if (!dealer_id) {
@@ -42,14 +96,8 @@ export async function GET(req) {
             ];
         }
 
-        // If lead_id is provided, return the entire conversation thread for
-        // that lead. Every message (inbound and outbound) is written with
-        // lead_id set directly, so filtering on it - rather than walking a
-        // parent_message_id/parent_conversation chain that doesn't always
-        // point back to a single root - can't drop messages. The caller
-        // doesn't paginate this view, so return the full thread instead of
-        // truncating at `limit` (a 50-message default was silently hiding
-        // everything past message #50 in longer conversations).
+        // If lead_id is provided, page through the lead's complete conversation
+        // with a stable timestamp/_id cursor.
         if (lead_id) {
             // Validate lead_id is a valid ObjectId
             if (!ObjectId.isValid(lead_id)) {
@@ -59,34 +107,50 @@ export async function GET(req) {
                 );
             }
 
-            const conversationFilter = { lead_id: new ObjectId(lead_id) };
+            const filters = [{ lead_id: new ObjectId(lead_id) }];
 
             // Apply date filtering to conversation thread if provided
             if (startDate || endDate) {
-                conversationFilter.date = {};
+                const dateFilter = {};
                 if (startDate) {
-                    conversationFilter.date.$gte = new Date(startDate);
+                    dateFilter.$gte = new Date(startDate);
                 }
                 if (endDate) {
                     const endDateObj = new Date(endDate);
                     endDateObj.setDate(endDateObj.getDate() + 1);
-                    conversationFilter.date.$lte = endDateObj;
+                    dateFilter.$lte = endDateObj;
                 }
+                filters.push({ date: dateFilter });
             }
 
-            const conversationThread = await Email.find(conversationFilter)
+            if (cursor) {
+                filters.push(cursorFilter(cursor, afterValue ? "after" : "before"));
+            }
+
+            const isAfterRequest = Boolean(afterValue);
+            const sortDirection = isAfterRequest ? 1 : -1;
+            const queryFilter = filters.length === 1 ? filters[0] : { $and: filters };
+            const records = await Email.find(queryFilter)
                 .populate({
                     path: 'message_by',
                     select: 'name email',
                     strictPopulate: false
                 })
-                .sort({ timestamp: 1 });
+                .sort({ timestamp: sortDirection, _id: sortDirection })
+                .limit(limit + 1);
+
+            const hasExtraRecord = records.length > limit;
+            const pageRecords = records.slice(0, limit);
+            const conversationThread = isAfterRequest ? pageRecords : pageRecords.reverse();
 
             return NextResponse.json({
                 emails: conversationThread,
-                page: 1,
-                totalPages: 1,
-                totalRecords: conversationThread.length,
+                pageInfo: {
+                    olderCursor: encodeCursor(conversationThread[0]),
+                    newerCursor: encodeCursor(conversationThread[conversationThread.length - 1]),
+                    hasOlder: !isAfterRequest && hasExtraRecord,
+                    hasNewer: isAfterRequest && hasExtraRecord,
+                },
             }, { status: 200 });
         }
 
@@ -111,7 +175,7 @@ export async function GET(req) {
         }, { status: 200 });
 
     } catch (error) {
-        //console.error("Error in GET /api/emails:", error);
+        console.error("Error in GET /api/conversations/lead:", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }
