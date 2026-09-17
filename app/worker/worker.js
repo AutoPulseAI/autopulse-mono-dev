@@ -6,6 +6,7 @@ import { processLead } from './leadworker.js';
 import { setupCampaignWorker } from './campaignWorker.js';
 import { setupDealerVaultWorkers } from './dealervault/index.js';
 import { setupDealerVaultSqsConsumer } from './dealervault/sqsConsumer.js';
+import { setupAdfTradeWorker } from './adfTradeWorker.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -49,6 +50,7 @@ const leadWorker = new Worker('leadProcessingQueue', processLead, { connection: 
 const campaignWorker = setupCampaignWorker(redis);
 setupDealerVaultWorkers(redis);
 setupDealerVaultSqsConsumer(redis);
+setupAdfTradeWorker(redis);
 
 // Shared event listeners (optional)
 const setupWorkerEvents = (worker, queueName) => {
