@@ -21,7 +21,10 @@
     "seed:cms:puck": "node scripts/seed-pages.js",
     "seed:repair-home": "node scripts/seed/repair-home.js",
     "indexes:email:check": "node scripts/ensure-email-indexes.js",
-    "indexes:email:apply": "node scripts/ensure-email-indexes.js --apply"
+    "indexes:email:apply": "node scripts/ensure-email-indexes.js --apply",
+    "indexes:trade:check": "node scripts/ensure-trade-in-indexes.js",
+    "indexes:trade:apply": "node scripts/ensure-trade-in-indexes.js --apply",
+    "test:adf-trade": "node test-adf-lead-parser.js && node test-adf-trade-enrichment.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.806.0",

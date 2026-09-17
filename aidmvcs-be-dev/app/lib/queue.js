@@ -1,6 +1,7 @@
 // lib/queue.js
 // Dynamic imports to avoid Next.js module resolution issues
 import Redis from 'ioredis';
+import { TRADE_QUEUE } from './adfTradeEnrichment.js';
 import { PARTS_QUEUE, SALES_QUEUE, SERVICE_QUEUE, SERVICE_APPOINTMENTS_QUEUE, defaultJobOptions } from '../worker/dealervault/queues.js';
 
 // Redis configuration
@@ -20,7 +21,9 @@ async function createQueue(queueName) {
   try {
     const { Queue } = await import('bullmq');
     return new Queue(queueName, {
-      connection: redisConfig,
+      connection: queueName === TRADE_QUEUE
+        ? { ...redisConfig, maxRetriesPerRequest: 1, enableOfflineQueue: false, commandTimeout: 1000 }
+        : redisConfig,
       ...([PARTS_QUEUE, SALES_QUEUE, SERVICE_QUEUE, SERVICE_APPOINTMENTS_QUEUE].includes(queueName) ? { defaultJobOptions: defaultJobOptions() } : {}),
     });
   } catch (error) {
@@ -31,6 +34,7 @@ async function createQueue(queueName) {
 
 // Lazy initialization of queues
 let emailQueue = null;
+let adfTradeQueue = null;
 let communicationQueue = null;
 let leadProcessingQueue = null;
 let campaignProcessingQueue = null;
@@ -62,6 +66,9 @@ export async function getQueue(queueName) {
   
   try {
     switch (queueName) {
+      case TRADE_QUEUE:
+        if (!adfTradeQueue) adfTradeQueue = await createQueue(TRADE_QUEUE);
+        return adfTradeQueue;
       case SERVICE_APPOINTMENTS_QUEUE:
         if (!dealerVaultServiceAppointmentsQueue) dealerVaultServiceAppointmentsQueue = await createQueue(SERVICE_APPOINTMENTS_QUEUE);
         return dealerVaultServiceAppointmentsQueue;

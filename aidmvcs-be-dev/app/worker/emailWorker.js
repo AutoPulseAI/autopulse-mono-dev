@@ -15,6 +15,7 @@ import moment from 'moment-timezone';
 import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js';
 import { parseAdfLeadEmail, extractRawAdfText } from '../lib/adfLeadParser.js';
 import RawAdfPayload from '../models/RawAdfPayload.js';
+import { enqueueAdfTrades } from '../lib/adfTradeEnrichment.js';
 
 // Connect to the database
 await dbConnect();
@@ -53,15 +54,22 @@ async function saveRawAdfPayload({ dealer_id, message_id, source, attachment_fil
     return;
   }
   try {
-    await RawAdfPayload.updateOne(
+    const rawPayload = await RawAdfPayload.findOneAndUpdate(
       { dealer_id, message_id, source, attachment_filename: attachment_filename || null },
       { $setOnInsert: { raw_xml } },
-      { upsert: true }
-    );
+      { upsert: true, new: true }
+    ).lean();
+    await enqueueAdfTrades(rawPayload);
   } catch (err) {
     if (err?.code === 11000) {
       // Lost the race to a concurrent worker upserting the same row - the unique
       // index already guarantees it's saved, so this isn't a real failure.
+      try {
+        const rawPayload = await RawAdfPayload.findOne({
+          dealer_id, message_id, source, attachment_filename: attachment_filename || null,
+        }).lean();
+        await enqueueAdfTrades(rawPayload);
+      } catch { /* Optional enrichment must never fail ingestion. */ }
       return;
     }
     console.error('[RawAdfPayload] Failed to save raw ADF payload:', err);

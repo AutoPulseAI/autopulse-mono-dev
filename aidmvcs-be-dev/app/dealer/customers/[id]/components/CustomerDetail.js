@@ -11,6 +11,7 @@ import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
 import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
+import TradeInTab from "./TradeInTab";
 import LeadForm from "../../../leads/components/LeadForm";
 import CustomerForm from "../../components/CustomerForm";
 
@@ -175,6 +176,9 @@ export default function CustomerDetail({ customerId }) {
         </Tab>
         <Tab eventKey="vehicles" title="Vehicles">
           <VehiclesTab vehicles={vehicles} />
+        </Tab>
+        <Tab eventKey="tradeins" title="Trade In">
+          <TradeInTab customerId={customerId} />
         </Tab>
       </Tabs>
 

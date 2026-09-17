@@ -157,17 +157,9 @@ function contactName(contact) {
  * and fall back to the n8n pipeline rather than dropping the lead.
  */
 export function parseAdfLeadEmail(content) {
-  const rawXml = extractAdfBlock(content);
-  if (!rawXml) return null;
-
-  const xml = sanitizeAdfXml(rawXml);
-
-  const validation = XMLValidator.validate(xml);
-  if (validation !== true) {
-    throw new AdfParseError(`Invalid ADF XML: ${validation.err?.msg || "validation failed"}`);
-  }
-
-  const parsed = parser.parse(xml);
+  const result = parseAdfTree(content);
+  if (!result) return null;
+  const { xml, parsed } = result;
   const adf = child(parsed, "adf");
   const prospect = asArray(child(adf, "prospect"))[0];
   if (!prospect) throw new AdfParseError("ADF XML does not contain a prospect");
@@ -211,4 +203,21 @@ export function parseAdfLeadEmail(content) {
       condition: attribute(vehicle, "status"),
     },
   };
+}
+
+// Shared syntax handling only. Enrichment traverses this independently and
+// never changes which prospect/vehicle parseAdfLeadEmail selects for the Lead.
+export function parseAdfTree(content) {
+  const rawXml = extractAdfBlock(content);
+  if (!rawXml) return null;
+
+  const xml = sanitizeAdfXml(rawXml);
+
+  const validation = XMLValidator.validate(xml);
+  if (validation !== true) {
+    throw new AdfParseError(`Invalid ADF XML: ${validation.err?.msg || "validation failed"}`);
+  }
+
+  const parsed = parser.parse(xml);
+  return { xml, parsed };
 }
