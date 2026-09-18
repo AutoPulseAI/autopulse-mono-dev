@@ -6,6 +6,7 @@ import { useUser } from "../../../context/UserContext";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import TradeInForm from "./TradeInForm";
+import ViewAdfModal from "../../../leads/components/ViewAdfModal";
 
 const defaultTradeInsPagination = {
   currentPage: 1,
@@ -34,6 +35,7 @@ export default function TradeInTab({ customerId }) {
   const [tradeInsError, setTradeInsError] = useState(null);
   const [activeTradeInId, setActiveTradeInId] = useState(null);
   const [editTradeIn, setEditTradeIn] = useState(null);
+  const [adfModalLeadId, setAdfModalLeadId] = useState(null);
   const hasAutoOpenedRef = useRef(false);
   const requestIdRef = useRef(0);
 
@@ -152,7 +154,12 @@ export default function TradeInTab({ customerId }) {
                   {tradeIn.condition && <Col md={3}><strong>Condition:</strong> {tradeIn.condition}</Col>}
                   {tradeIn.notes && <Col md={12}><strong>Trade Notes:</strong> {tradeIn.notes}</Col>}
                 </Row>
-                <div className="d-flex justify-content-end">
+                <div className="d-flex justify-content-end gap-2">
+                  {tradeIn.raw_adf_payload_id && (
+                    <Button variant="outline-custom" size="sm" onClick={() => setAdfModalLeadId(tradeIn.lead_id)}>
+                      <i className="fa-solid fa-file-code me-1" />View ADF
+                    </Button>
+                  )}
                   <Button variant="outline-custom" size="sm" onClick={() => setEditTradeIn(tradeIn)}>
                     <i className="fa-regular fa-pen-to-square me-1" />Edit
                   </Button>
@@ -189,6 +196,8 @@ export default function TradeInTab({ customerId }) {
           )}
         </Modal.Body>
       </Modal>
+
+      <ViewAdfModal show={!!adfModalLeadId} onHide={() => setAdfModalLeadId(null)} leadId={adfModalLeadId} />
     </div>
   );
 }
