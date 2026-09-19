@@ -6,7 +6,7 @@ import Email from '../models/Email.js';
 import { sendEmail } from '../lib/email.js'; // For sending emails
 import EmailAccount from '../models/EmailAccount.js'; 
 import FollowUpJob from '../models/FollowUpJob.js'; // Using same Email model for SMS too
-import { sendSMS } from '../lib/sms.js'; // Assume you have an SMS sending function
+import { sendSMS, normalizeSmsPhone } from '../lib/sms.js'; // Assume you have an SMS sending function
 import { processAndUploadMedia } from '../lib/aws-s3.js'; // For sending emails
 
 import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
@@ -66,7 +66,9 @@ export async function processSMS(job) {
     const result = await callOllama(currentSMS);
    console.log('olamm response', result);
 
-    let leadId = null;
+    // The webhook can deterministically associate a reply from prior SMS
+    // history. Preserve that association even when n8n fails or omits a parent.
+    let leadId = currentSMS.lead_id || null;
     let recipientphone;
     let smsText;
     let sms =true;
@@ -106,10 +108,19 @@ export async function processSMS(job) {
     if (isEmailSentinel(lead_mail)) {
       lead_mail = undefined;
     }
+    if (lead_phone) {
+      try {
+        lead_phone = normalizeSmsPhone(lead_phone);
+      } catch {
+        // Preserve existing invalid-number handling in sendSMS.
+      }
+    }
 
-    let baseParentId = parent_message_id ??parent_id ?? currentSMS.message_id;
+    const resolvedParentId = parent_message_id ?? parent_id
+      ?? currentSMS.parent_message_id ?? currentSMS.parent_conversation ?? null;
+    let baseParentId = resolvedParentId ?? currentSMS.message_id;
     let statusJustChanged = false;
-    parent_message_id = parent_message_id ?? parent_id ?? null;
+    parent_message_id = resolvedParentId;
     console.log(parent_message_id);
     if (parent_message_id) {
         try {
@@ -274,7 +285,7 @@ export async function processSMS(job) {
             console.error('Error updating lead:', error);
         }
     }
-    if (create_lead) {
+    if (create_lead && !leadId) {
       // Create new lead if required
       if (response_mode?.toLowerCase()=='email' && lead_mail) {
             recipient  =emailAccount.email_address;

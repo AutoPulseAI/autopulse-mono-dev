@@ -30,7 +30,7 @@ export async function sendSMS(to, body, dealer, mediaUrls = []) {
     }
 
     // Normalize destination to E.164 and validate
-    const toE164 = formatE164(to);
+    const toE164 = normalizeSmsPhone(to);
 
     // Ensure body is always a valid string for MMS compatibility
     // Convert null/undefined to empty string, but preserve actual string values
@@ -131,7 +131,7 @@ export function isValidPhoneNumber(phoneNumber) {
 }
 
 // Internal helper to normalize phone numbers to E.164
-function formatE164(phone) {
+export function normalizeSmsPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) {
     const err = new Error('Invalid phone number format');
@@ -148,5 +148,5 @@ function formatE164(phone) {
   throw err;
 }
 
-const smsExports = { sendSMS, formatSMS, isValidPhoneNumber };
+const smsExports = { sendSMS, formatSMS, isValidPhoneNumber, normalizeSmsPhone };
 export default smsExports;

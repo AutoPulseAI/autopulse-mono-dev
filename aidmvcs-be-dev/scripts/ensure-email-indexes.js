@@ -2,17 +2,22 @@
 // Explicit URI required. Never load application environment files or call syncIndexes().
 import mongoose from 'mongoose';
 import { pathToFileURL } from 'node:url';
-import Email, { EMAIL_CONVERSATION_INDEX } from '../app/models/Email.js';
+import Email, { EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX } from '../app/models/Email.js';
+
+const EMAIL_INDEXES = [EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX];
 
 function hasMatchingIndex(indexes, expected) {
   const expectedEntries = Object.entries(expected.key);
   return indexes.some((index) => {
     const actualEntries = Object.entries(index.key || {});
-    return actualEntries.length === expectedEntries.length
+    const keyMatches = actualEntries.length === expectedEntries.length
       && actualEntries.every(([field, direction], position) => {
         const [expectedField, expectedDirection] = expectedEntries[position] || [];
         return field === expectedField && direction === expectedDirection;
       });
+    return keyMatches
+      && JSON.stringify(index.partialFilterExpression || null)
+        === JSON.stringify(expected.options.partialFilterExpression || null);
   });
 }
 
@@ -26,21 +31,21 @@ export async function ensureEmailIndexes(connection, apply = false) {
     indexes = [];
   }
 
-  if (hasMatchingIndex(indexes, EMAIL_CONVERSATION_INDEX)) {
-    console.info(`${Email.collection.name}: conversation cursor index present`);
+  const missing = EMAIL_INDEXES.filter(expected => !hasMatchingIndex(indexes, expected));
+  if (!missing.length) {
+    console.info(`${Email.collection.name}: required indexes present`);
     return 0;
   }
 
   if (!apply) {
-    console.info(`${Email.collection.name}: conversation cursor index missing`);
+    console.info(`${Email.collection.name}: required indexes missing: ${missing.map(index => index.options.name).join(', ')}`);
     return 1;
   }
 
-  await collection.createIndex(
-    EMAIL_CONVERSATION_INDEX.key,
-    EMAIL_CONVERSATION_INDEX.options
-  );
-  console.info(`${Email.collection.name}: conversation cursor index created`);
+  for (const index of missing) {
+    await collection.createIndex(index.key, index.options);
+    console.info(`${Email.collection.name}: ${index.options.name} index created`);
+  }
   return 0;
 }
 

@@ -56,7 +56,18 @@ export const EMAIL_CONVERSATION_INDEX = {
   options: { name: 'lead_conversation_cursor' }
 };
 
+export const EMAIL_SMS_PAIR_INDEX = {
+  key: { dealer_id: 1, communication_type: 1, sender: 1, recipient: 1, timestamp: -1, _id: -1 },
+  options: {
+    name: 'dealer_sms_pair_latest',
+    partialFilterExpression: { communication_type: 'sms' },
+  },
+};
+
 emailSchema.index(EMAIL_CONVERSATION_INDEX.key, EMAIL_CONVERSATION_INDEX.options);
+// Deploy explicitly with scripts/ensure-email-indexes.js before releasing the
+// synchronous webhook query that depends on it.
+emailSchema.index(EMAIL_SMS_PAIR_INDEX.key, { ...EMAIL_SMS_PAIR_INDEX.options, _autoIndex: false });
 
 const Email = mongoose.models.Email || mongoose.model('Email', emailSchema);
 
