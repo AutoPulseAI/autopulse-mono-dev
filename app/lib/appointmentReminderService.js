@@ -813,8 +813,9 @@ export async function processReminder(reminder) {
     // Send SMS if last communication was SMS (or no communication and reminder_type allows SMS)
     if (shouldSendSMS && customerPhone && dealerSMSPhone) {
       try {
-        const { sendSMS } = await import('./sms.js');
-        const messageId = await sendSMS(customerPhone, smsMessageToSend, dealer);
+        const { sendSMS, normalizeSmsPhone } = await import('./sms.js');
+        const normalizedCustomerPhone = normalizeSmsPhone(customerPhone);
+        const messageId = await sendSMS(normalizedCustomerPhone, smsMessageToSend, dealer);
         console.log(`SMS sent for reminder ${reminder._id} (based on last communication: ${communicationType || 'none'})`);
         
         // Save SMS record to Email model
@@ -823,7 +824,7 @@ export async function processReminder(reminder) {
           parent_message_id: parent_message_id,
           parent_conversation: lastComm?.parent_conversation || parent_message_id,
           sender: dealerSMSPhone,
-          recipient: customerPhone,
+          recipient: normalizedCustomerPhone,
           subject: null,
           mail_content: smsMessageToSend,
           communication_type: 'sms',

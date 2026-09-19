@@ -134,25 +134,27 @@ export async function POST(req) {
       }
     }
 
-    // Check for parent message (threading)
-    // For SMS, we can thread by:
-    // 1. Looking for replies to this message (by MessageSid)
-    // 2. Looking for previous messages between these numbers
+    // Resolve an inbound reply from existing SMS history. Email records use
+    // sender/recipient (not from/to), and the direction is reversed for the
+    // usual outbound-then-inbound sequence. Only a previously linked message
+    // is deterministic enough to associate this inbound SMS with a Lead.
     const parentMessage = await Email.findOne({
+      dealer_id: String(dealer._id),
+      communication_type: 'sms',
+      lead_id: { $exists: true, $ne: null },
       $or: [
-        { message_id: data.MessageSid }, // If this is a reply reference
-        { 
-          $and: [
-            { to: data.To },
-            { from: data.From },
-            { communication_type: 'sms' }
-          ]
-        }
+        { sender: data.To, recipient: data.From },
+        { sender: data.From, recipient: data.To }
       ]
-    });
+    }).sort({ timestamp: -1, _id: -1 });
 
     if (parentMessage) {
-      communicationDoc.parent_conversation = parentMessage.message_id || parentMessage._id;
+      const conversationRoot = parentMessage.parent_message_id
+        || parentMessage.parent_conversation
+        || parentMessage.message_id;
+      communicationDoc.lead_id = parentMessage.lead_id;
+      communicationDoc.parent_message_id = conversationRoot;
+      communicationDoc.parent_conversation = conversationRoot;
     }
 
     // Create and save the communication document
@@ -180,7 +182,9 @@ export async function POST(req) {
      
       currentSMS: {
         message_id: communicationDoc.message_id,
-        parent_conversation: null,
+        lead_id: communicationDoc.lead_id,
+        parent_message_id: communicationDoc.parent_message_id,
+        parent_conversation: communicationDoc.parent_conversation,
         sender: communicationDoc.sender,
         recipient: communicationDoc.recipient,
         subject: communicationDoc.subject,
