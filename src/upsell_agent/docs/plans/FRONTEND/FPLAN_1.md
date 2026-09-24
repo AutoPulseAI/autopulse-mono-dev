@@ -1,8 +1,12 @@
 # Frontend Implementation Plan — Phase Plan 1
 
-Who this is for: whoever builds the frontend side of the AI layer. Written in
-plain English on purpose — this is a plan to follow, not a technical
-reference. For the "why" behind any of this, see
+Who this is for: Sabih, building the frontend side of the AI layer. Written
+in plain English on purpose — this is a plan to follow, not a technical
+reference. See [`../TEAM_SPLIT.md`](../TEAM_SPLIT.md) for how this plan's
+scope was drawn against the other two developers' work — short version:
+you only ever touch `aidmvcs-be-dev/app/dealer/`, nothing else, so there's
+nothing in this repo you and they can conflict on. For the "why" behind any
+of this, see
 [`../../architecture/architecture.md`](../../architecture/architecture.md),
 [`../../architecture/STACK.md`](../../architecture/STACK.md), and
 [`../../architecture/APIS.md`](../../architecture/APIS.md).
