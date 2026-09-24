@@ -1,236 +1,398 @@
-# agentic-upsell — Architecture
+# agentic-upsell — Technical Architecture
 
-> **Revision 6.** Rewritten around the four jobs this service actually has.
-> Earlier revisions designed a reply-only chatbot with inventory lookup,
-> booking and upselling. Those are out of scope for now (§11).
+> What the service does and why: [`PURPOSE.md`](PURPOSE.md).
+> Libraries and why each was picked: [`STACK.md`](STACK.md), [`FRAMEWORKS.md`](FRAMEWORKS.md).
+> This file covers how it's built: processes, pipeline, data, and contracts.
 
 ---
 
-## 1. What this service does
+## 1. Runtime overview
 
-AutoPulse is the AI and automation layer for dealers. It has four jobs:
+One Python codebase, deployed as two processes that share MongoDB and Redis
+with `aidmvcs-be-dev`.
 
-| # | Job | In one line |
+```
+                aidmvcs-be-dev (Next.js)                          Twilio / SendGrid
+   DMS ──▶ saves Lead/Customer, receives customer replies        (delivery webhooks)
+                      │ POST /v1/events/*  (shared secret)               │
+                      ▼                                                  ▼
+ ┌───────────────────────── api  (FastAPI + Uvicorn) ─────────────────────────────┐
+ │ validate → dedupe on event_id → enqueue job → 202            status webhooks   │
+ └──────────────────────────────────┬─────────────────────────────────────────────┘
+                                    │ arq job (Redis db 1)
+ ┌──────────────────────────────────▼─────────────── worker  (arq) ───────────────┐
+ │ handle_lead_created / handle_inbound      fire_due_followups (cron, every 60s) │
+ │   1. per-lead lock + per-dealer limit        claim due → re-check reply →      │
+ │   2. pre-checks (opt-out, paused)            send alt-channel variant          │
+ │   3. run turn graph (LangGraph) ───────┐                                       │
+ │   4. idempotent send  ─────────────────┼──▶ channels/ ──▶ Twilio SMS           │
+ │   5. schedule 24h fallback             │                  SendGrid email       │
+ └────────────────────────────────────────┼───────────────────────────────────────┘
+                                          ▼
+      Turn graph: load_context → extract → validate → decide → compose → guard
+                     (Pydantic AI for extract + compose; everything else plain code)
+
+  MongoDB: platform collections (read) + ai_* / qualification_* collections (owned)
+  Redis:   arq queue, locks, dealer semaphores, LangGraph shallow checkpoints
+  Langfuse: one trace per turn, mirrored to ai_turn_log
+```
+
+| Process | Entrypoint | Does |
 |---|---|---|
-| 1 | **Instant first reply** | A new lead arrives by SMS or email, and we reply straight away on the same channel. |
-| 2 | **Collect customer info** | We ask questions until the customer's profile slots are filled. Code decides what to ask, not the AI. |
-| 3 | **Reply to campaign responses** | The dealer creates and sends a campaign. When a customer replies, the AI answers. |
-| 4 | **Switch channel on silence** | No reply after 1 day, so we send the same message on the other channel. |
+| `api` | `uvicorn upsell_agent.main:app` | Accepts events and provider webhooks, enqueues jobs. No LLM calls, no sends. |
+| `worker` | `arq upsell_agent.worker.main.WorkerSettings` | Runs every job: turns, sends, the follow-up cron. Scales horizontally. |
 
-**Boundaries:**
-
-- **The DMS is inbound only.** It sends us leads (sales, service, trade-in) and they are already saved in the database. We never write back to the DMS.
-- **Outbound goes through Twilio (SMS) and SendGrid (email)** and nothing else.
-- **Campaigns belong to the dealer.** The dealer picks the leads, writes the campaign and sends it. The AI only handles the replies.
+**The rule behind the whole design:** the LLM only does two things, extract
+slot values and write text. Classification, next-question choice,
+completeness, timing and channel choice are all pure functions in code.
 
 ---
 
-## 2. The main rule: code decides, AI writes
+## 2. Components
 
-The AI is good at two things: understanding messy customer text and writing
-natural messages. Everything else is plain code, so it behaves the same way
-every time.
+| Component | Module | Tech | Responsibility |
+|---|---|---|---|
+| Event API | `api/routes_events.py` | FastAPI, Pydantic | Ingress contract (§7), shared-secret auth (`api/auth.py`), `event_id` dedupe |
+| Webhooks | `api/routes_webhooks.py` | FastAPI, `twilio` / SendGrid signature verify | Delivery status → `ai_messages.status` |
+| Job runner | `worker/main.py`, `worker/jobs.py` | **arq** (asyncio, Redis) | Job handlers, retries with backoff, cron |
+| Concurrency | `worker/locks.py` | Redis `SET NX PX`, counters | Per-lead lock, per-dealer in-flight cap |
+| Turn graph | `agent/graph.py`, `agent/nodes/*` | **LangGraph** + `AsyncShallowRedisSaver` | One conversation turn, bounded retry loop |
+| LLM calls | `agent/nodes/extract.py`, `compose.py` | **Pydantic AI** (OpenAI provider) | Typed outputs, `UsageLimits`, timeouts |
+| Slot engine | `slots/schema.py`, `profile.py`, `policy.py`, `validators.py` | Pydantic, pure Python | Slot definitions, current profile, `next_action()` |
+| Guardrails | `guardrails/never_invent.py` (built), `guardrails/channel_format.py` | Pure Python | Block invented numbers, enforce SMS/email format |
+| Channels | `channels/sender.py`, `twilio_sms.py`, `sendgrid_email.py`, `consent.py` | `twilio`, `sendgrid` SDKs | Idempotent send, consent check |
+| Scheduler | `scheduler/followups.py` | MongoDB + arq cron | Schedule, cancel, atomically claim 24h fallbacks |
+| Data access | `integrations/mongodb.py` (built) | Motor | `DealerScopedDatabase`, the only way to touch per-dealer data |
+| Platform reads | `integrations/autopulse_api_client.py` (built) | httpx | Customer 360 for pre-filling slots |
+| Tracing | `observability/tracing.py` | Langfuse | Per-turn trace, mirrored to `ai_turn_log` |
 
-| Decision | Who makes it |
-|---|---|
-| Which lead type this is | Code, from the lead source. AI only as a tie-break. |
-| Which slot to ask about next | **Code** |
-| Whether the profile is complete | **Code** |
-| What value the customer gave ("about 60k miles" → `mileage=60000`) | AI extracts it, **code validates it** |
-| The wording of the message | AI |
-| When to send, on which channel, whether to resend | **Code** |
-| Whether a message makes up a price, approval or trade value | **Code** (already built) |
+New dependencies: `arq`, `twilio`, `sendgrid`.
 
 ---
 
-## 3. The big picture
+## 3. Pipelines
+
+### 3.1 New lead → first reply (Job 1)
 
 ```
- DMS ── new lead ───────────┐
- Twilio / SendGrid ─ reply ─┤   (customer replies, incl. campaign replies)
-                            ▼
-                 ┌──────── Queue (Redis) ────────┐
-                 ▼                               │
-        ┌─────────────────┐   schedule/cancel   ┌┴──────────────┐
-        │ LEAD HANDLER    │◀──────────────────▶│  SCHEDULER    │
-        │ (code, one lead │                     │  1-day check, │
-        │  at a time)     │                     │  channel swap │
-        └───────┬─────────┘                     └───────────────┘
-                ▼
-        ┌─────────────────┐     ┌─────────────────┐
-        │ SLOT ENGINE     │────▶│ MESSAGE WRITER  │
-        │ (code)          │     │ (AI + checks)   │
-        └─────────────────┘     └────────┬────────┘
-                                         ▼
-                                ┌─────────────────┐
-                                │ SENDER          │── Twilio (SMS)
-                                │ (code)          │── SendGrid (email)
-                                └─────────────────┘
-
-   MongoDB holds everything. Every record and every query carries dealer_id.
+POST /v1/events/lead-created {event_id, dealer_id, lead_id, customer_id, channel}
+  api:    insert ai_events{_id: event_id} (unique) → dup? return 200 : enqueue handle_lead_created → 202
+  worker: acquire lock(dealer:lead) + dealer slot
+          pre-checks: consent for channel, ai_lead_state.status == active
+          graph(trigger=lead_created, deadline=8s)
+             extract runs over the lead's own comments ("trading my 2018 Civic")
+          on deadline/LLM error → template[lead_type] from slots/templates.py
+          send via channel of origin → schedule fallback (§3.4)
 ```
 
+**Latency target:** p95 under 8s from event to provider accept. There's no
+business-hours wait (see [`PURPOSE.md`](PURPOSE.md)). Hitting the deadline
+never blocks the send; the template is the floor.
+
+### 3.2 Customer reply → next message (Jobs 2 and 3)
+
+```
+POST /v1/events/inbound-message {event_id, dealer_id, customer_id, lead_id?, channel, message_id, text, received_at}
+  api:    dedupe → enqueue handle_inbound → 202
+  worker:
+    1. cancel_pending_followups(lead)             ← always first, before anything can fail
+    2. deterministic pre-checks, no LLM:
+         STOP/UNSUBSCRIBE keywords → consent off, status=opted_out, no reply
+         status in {handoff, opted_out} → save message only, no reply
+    3. acquire lock(dealer:lead); if held → re-enqueue with 2s defer
+    4. collect ALL unanswered inbound for this lead (handles 3 texts in a row as one turn)
+    5. graph(trigger=inbound)
+    6. send on the channel the customer just used → schedule fallback
+```
+
+**Campaign replies (Job 3)** go through the same pipeline. `load_context`
+attributes the reply to a campaign when the customer's latest outbound
+message within 14 days carries a `campaign_id` (from `CampaignLead`). The
+campaign's `body` and `goal` are then added to the compose prompt. The AI
+never selects recipients or sends campaign messages.
+
+### 3.3 Turn graph (LangGraph)
+
+```
+load_context ─▶ extract ─▶ validate ─▶ decide ─▶ compose ─▶ guard ─┬─▶ END (OutboundDraft)
+                                                    ▲              │
+                                                    └── retry ×1 ──┤
+                                                                   └─▶ fallback_template ─▶ END
+```
+
+| Node | Kind | Input → Output |
+|---|---|---|
+| `load_context` | code | Mongo: `ai_lead_state`, current profile (§4), last 20 messages, campaign context. Profile is pre-filled from Customer 360 on the first turn. |
+| `extract` | **LLM** (cheap model) | New customer text → `SlotExtraction` (below) |
+| `validate` | code | Keeps only valid updates, flags the rest for confirmation |
+| `decide` | code | `slots.policy.next_action(profile, lead_type, extraction, flags) → Action` |
+| `compose` | **LLM** (strong model) | `Action` + profile summary + recent messages + campaign → `ComposedMessage` |
+| `guard` | code | `never_invent` + `channel_format`. Fail → one rewrite, then fallback template + `flag_for_human` |
+
+The graph **returns a draft and doesn't send**. The worker owns side
+effects (persist, send, schedule), so graph retries can never double-send.
+Thread ID: `f"{dealer_id}:{lead_id}"` (`memory/short_term.thread_id_for`).
+The Redis checkpoint only holds in-turn scratch state, like the retry count,
+so a crashed worker can resume. MongoDB is the source of truth. An expired
+checkpoint costs nothing because `load_context` rebuilds from Mongo every
+turn.
+
+**LLM contracts (Pydantic AI `output_type`):**
+
+```python
+class SlotUpdate(BaseModel):
+    path: str             # must exist in slots.schema, e.g. "trade_in.mileage", "vehicles[new].make"
+    value: str | int | float | bool
+    quote: str            # exact span of customer text it came from
+    confidence: float     # 0..1
+
+class SlotExtraction(BaseModel):
+    updates: list[SlotUpdate]
+    customer_questions: list[str]
+    lead_type_hint: LeadType | None
+    wants_human: bool
+    negative_sentiment: bool
+
+class ComposedMessage(BaseModel):
+    sms_text: str                 # ≤ 320 chars (2 segments)
+    email_subject: str
+    email_body: str
+```
+
+`compose` always produces **both channel variants**. The 24h fallback sends
+the stored alternate variant, so it needs no LLM call at fire time and is
+fully deterministic.
+
+**Budgets** (Pydantic AI `UsageLimits` + `asyncio.timeout`, values in
+`config.py`):
+
+| | extract | compose (each attempt) | whole turn |
+|---|---|---|---|
+| Timeout | 3s | 5s | 8s first reply, 20s otherwise |
+| Requests | 1 | 1 | 4 |
+| Output tokens | 500 | 600 | — |
+
+### 3.4 Silence → channel fallback (Job 4)
+
+```
+after every send from this service (not from a fallback):
+  if other channel has contact + consent:
+    insert scheduled_followups{dealer_id, lead_id, source_message_id,
+      to_channel, due_at: now+24h, status: pending}
+
+cron fire_due_followups (every 60s, each worker; safe to overlap):
+  loop:
+    doc = find_one_and_update({status: pending, due_at <= now},
+                              {$set: {status: claimed, claimed_at: now}})   ← atomic claim
+    if none: break
+    if inbound exists for lead after source_message.sent_at → status=cancelled; continue
+    if consent/state changed → status=cancelled; continue
+    send source_message's alt variant on to_channel (is_fallback=true) → status=sent
+    stale claims (claimed > 5 min, not sent) are reset to pending by the same cron
+```
+
+- Any inbound message cancels with `update_many({lead_id, status: pending}, {$set: {status: cancelled}})`, which is step 1 of §3.2.
+- One switch per message: fallback sends never schedule another fallback.
+- A Twilio `failed`/`undelivered` status callback sets `due_at = now` on that message's follow-up, so the switch happens immediately.
+- Why Mongo and not arq delayed jobs: cancellation is one indexed update, the schedule survives a Redis flush, and the platform UI can query it directly.
+
 ---
 
-## 4. Job 1 — Instant first reply
+## 4. Slot engine
 
-1. A new-lead event arrives from the DMS.
-2. We load what the database already knows about this customer (§5.2).
-3. The Slot Engine picks the first missing slot to ask about.
-4. The AI writes one short message: acknowledge the lead, answer what they
-   asked if we can, and ask one question.
-5. We send it on the **same channel the lead came from**, and schedule the
-   1-day follow-up (§7).
+### 4.1 Schema (`slots/schema.py`)
 
-**Speed:** the message goes out immediately, with no waiting for business
-hours. The first reply uses **one AI call**. If the AI is slow (over 5s) or
-fails, a prepared template for that lead type goes out instead. A new lead
-never waits.
+Declarative. Adding a slot is a data change, not a code change.
 
----
+```python
+@dataclass(frozen=True)
+class SlotDef:
+    path: str                  # "trade_in.payoff_cents"
+    type: type                 # int / str / bool / date / Enum
+    validator: Callable        # range/enum/normalise; raises on invalid
+    priority: int              # ask order, lower first
+    staleness: timedelta | None
+    ask_hint: str              # what compose should ask for, not the wording
+```
 
-## 5. Job 2 — Collect customer info (slots)
-
-### 5.1 The slots
-
-The profile covers the customer's vehicles and their history with **any**
-dealer, not only this one. If they say "I bought it at Smith Toyota", that's
-saved as a value (`dealer_name = "Smith Toyota"`). It never gives us access
-to another dealer's data.
-
-| Group | Slots |
+| Group | Paths (repeating groups keyed by index) |
 |---|---|
-| **Vehicles owned** (one per vehicle) | year, make, model, trim, mileage, purchase date, bought from (dealer), new/used when bought |
-| **Service history** (per vehicle) | service type, date, done at (dealer) |
-| **Trade-in** | has trade (yes/no), which vehicle, mileage, condition, payoff owed |
-| **What they want now** | lead type, new/used, model, budget or monthly payment, timeline |
-| **Appointments** | date, purpose, dealer |
-| **Contact** | preferred channel, best time to reach |
+| `vehicles[i]` | year, make, model, trim, mileage, purchase_date, purchased_from_dealer, condition_when_bought (new/used) |
+| `service[i]` | vehicle_ref, service_type, date, done_at_dealer |
+| `trade_in` | has_trade, vehicle_ref, mileage, condition, payoff_cents |
+| `interest` | lead_type, new_or_used, model, budget_cents \| monthly_payment_cents, timeline |
+| `appointments[i]` | date, purpose, dealer |
+| `contact` | preferred_channel, best_time |
 
-Past leads and communications are already recorded by the platform. We
-**read** them for context and don't ask for them.
+`*_dealer` fields are free-text values the customer states. They never
+resolve to another tenant's `dealer_id`.
 
-### 5.2 Required slots per lead type
+```python
+REQUIRED_BY_LEAD_TYPE = {
+    SALES:    ["interest.new_or_used", "interest.model", "interest.budget_or_payment",
+               "interest.timeline", "trade_in.has_trade"],
+    TRADE_IN: ["trade_in.vehicle_ref", "trade_in.mileage", "trade_in.condition", "trade_in.payoff_cents"],
+    SERVICE:  ["vehicles[*].year|make|model", "vehicles[*].mileage", "interest.service_needed", "contact.best_time"],
+    GENERAL:  ["interest.lead_type"],
+}
+CONDITIONAL = {("trade_in.has_trade", True): REQUIRED_BY_LEAD_TYPE[TRADE_IN]}
+```
 
-| Lead type | Must be filled before handing to the dealer |
+`LeadType` becomes `sales | trade_in | service | general`, replacing the
+current enum in `agent/qualification.py`. The lead type is set in code from
+`Lead.source`/`Lead.type` via `LEAD_SOURCE_TO_TYPE`. `lead_type_hint` from
+the LLM is used only when that mapping gives `general`.
+
+### 4.2 Validation (`validate` node)
+
+An update is **accepted** only if all of these hold:
+
+1. `path` resolves in the schema.
+2. `SlotDef.validator(value)` passes (year 1980..next year, mileage 0..500k, enum membership, cents ≥ 0).
+3. `quote` is a normalised substring of the customer's text. This is the deterministic grounding check.
+4. `confidence ≥ 0.7`.
+
+If 1–3 pass but 4 fails, the value is saved as `pending_confirmation` and
+`decide` asks the customer to confirm it. If any of 1–3 fails, it's dropped
+and logged in `ai_turn_log`.
+
+Accepted values are written as `CapturedFact` (`source=BOT_EXTRACTED`,
+`source_message_id` set). The previous current value is closed with
+`supersede()`. Pre-filled platform values are `TOOL_VERIFIED`. The model's
+own output is never written (`BOT_INFERRED` is rejected by the writer).
+
+### 4.3 Policy (`slots/policy.py`), a pure function
+
+```python
+def next_action(profile, lead_type, extraction, flags) -> Action:
+    if flags.opted_out:                         return Stop()
+    if extraction.wants_human or flags.upset:   return Handoff()
+    if profile.pending_confirmation:            return Confirm(profile.pending_confirmation[:1])
+    missing = sorted(
+        (s for s in required(lead_type, profile) if not profile.is_current(s)),  # stale ⇒ missing
+        key=lambda s: SCHEMA[s].priority)
+    if missing:                                 return Ask(missing[:2], answer=extraction.customer_questions)
+    return Qualified(answer=extraction.customer_questions)   # notify dealer, stop asking
+```
+
+Same profile and same extraction always give the same `Action`. This
+function is where most unit tests live.
+
+---
+
+## 5. Data model (MongoDB)
+
+All owned collections carry `dealer_id` and are accessed only through
+`DealerScopedDatabase`. The one exception is the follow-up cron's claim
+query, which is cross-dealer by design and scopes by the claimed document's
+`dealer_id` immediately after.
+
+| Collection | Key fields | Indexes |
+|---|---|---|
+| `ai_lead_state` | lead_id, customer_id, lead_type, status (`active\|qualified\|handoff\|opted_out`), last_inbound_at, last_outbound_at | `(dealer_id, lead_id)` unique |
+| `qualification_facts` (built) | customer_id, path, value, source, source_message_id, valid_from, valid_to, replaced_by, pending_confirmation | `(dealer_id, customer_id, path, valid_to)` |
+| `ai_messages` | lead_id, customer_id, direction, channel, text, variants{sms,email}, campaign_id, is_fallback, idempotency_key, provider_id, status | `(dealer_id, lead_id, created_at)`, `idempotency_key` unique, `provider_id` |
+| `scheduled_followups` | lead_id, source_message_id, to_channel, due_at, status | `(status, due_at)` partial on `status ∈ {pending, claimed}`, `(dealer_id, lead_id, status)` |
+| `ai_events` | _id = event_id, received_at | TTL 7 days |
+| `ai_turn_log` | lead_id, trigger, extraction, rejected_updates, action, drafts, guard_results, tokens, cost, latency_ms, langfuse_trace_id | `(dealer_id, lead_id, created_at)`, TTL 90 days |
+
+The platform collections this service reads (`Lead`, `Customer`, `Vehicle`,
+`Deal`, `RepairOrder`, `ServiceAppointment`, `CampaignLead`) go through
+Customer 360 where possible and are never written to.
+
+---
+
+## 6. Sending (`channels/`)
+
+```python
+async def send(draft, channel, lead) -> SentMessage:
+    key = f"{draft.turn_id}:{channel}"
+    insert ai_messages{idempotency_key: key, status: "queued"}   # DuplicateKeyError ⇒ already sent, return
+    consent.require(lead.customer_id, channel)                   # raises ⇒ status=suppressed
+    provider_id = await CHANNELS[channel].send(...)              # Twilio / SendGrid
+    update status="sent", provider_id
+```
+
+- **Twilio:** Messaging Service SID per dealer, `status_callback` → `/v1/webhooks/twilio/status`. Advanced Opt-Out handles STOP on the carrier side, and we mirror it into consent.
+- **SendGrid:** dealer from-address, `Reply-To` routed to the platform's inbound address, and the event webhook goes to `/v1/webhooks/sendgrid/events`. Unsubscribe groups are mirrored into consent.
+- Provider retries: arq retries the job with exponential backoff (3 attempts). The idempotency key makes a retry after a successful provider call a no-op.
+
+---
+
+## 7. API contract
+
+All `/v1/events/*` require `Authorization: Bearer <UPSELL_SERVICE_SHARED_SECRET>`
+(existing `api/auth.py`). Webhooks verify the provider signature instead.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | `/v1/events/lead-created` | `event_id, dealer_id, lead_id, customer_id, channel` | 202 / 200 if duplicate |
+| POST | `/v1/events/inbound-message` | `event_id, dealer_id, customer_id, lead_id?, channel, message_id, text, received_at` | 202 / 200 |
+| POST | `/v1/events/lead-resumed` | `event_id, dealer_id, lead_id` (staff un-pauses a handoff) | 202 |
+| POST | `/v1/webhooks/twilio/status` | Twilio form | 204 |
+| POST | `/v1/webhooks/sendgrid/events` | SendGrid JSON | 204 |
+| GET | `/v1/leads/{lead_id}/profile?dealer_id=` | — | current profile, missing required slots, status |
+| GET | `/health` | — | Mongo + Redis ping |
+
+The existing `/upsell/recommend` and `/upsell/feedback` stay unwired. They're
+out of scope (see [`PURPOSE.md`](PURPOSE.md)).
+
+---
+
+## 8. Concurrency and scale
+
+| Concern | Mechanism |
 |---|---|
-| Sales | new/used, model, budget or payment, timeline, has trade |
-| Trade-in | trade vehicle (year/make/model), mileage, condition, payoff |
-| Service | vehicle (year/make/model), mileage, service needed, preferred time |
-| General | lead type becomes clear, then follow that row |
-
-"Has trade" is asked on **every** sales lead. If it's yes, the trade-in slots
-are required too.
-
-### 5.3 How one turn fills slots
-
-1. **Start from what we have.** Load the database record and existing slots. Never ask for something already known and current.
-2. **Extract.** The AI reads the customer's message and returns values in a fixed typed format.
-3. **Validate (code).** Check types, allowed values and ranges (year 1980–next year, mileage ≥ 0, and so on). Invalid or unsure values aren't saved. The next message asks the customer to confirm.
-4. **Save** with its source (§8). A newer value replaces an older one, and the old one is kept as history.
-5. **Pick the next step (code), in order:**
-   1. The customer asked something, so answer it (honestly, §8).
-   2. A required slot is missing, so ask for it (at most 2 questions per message).
-   3. All required slots are filled, so mark the lead **qualified** and notify the dealer.
-6. **Write.** The AI phrases the message for that step.
-
-The same input always leads to the same next question. That's what
-"deterministic" means here.
+| Two jobs for one lead racing | Redis lock `lock:{dealer}:{lead}` (`SET NX PX 30000`). A held lock means re-enqueue with a 2s defer. |
+| Customer sends a burst of texts | Turn consumes all unanswered inbound messages, so one reply goes out, not three |
+| Campaign reply burst from one dealer | Per-dealer in-flight cap (Redis `INCR`/`DECR` with TTL, default 10). Over cap means defer. |
+| Throughput | Add worker replicas. Every job is stateless apart from Mongo/Redis. |
+| LLM rate limits | Pydantic AI retry on 429 inside the turn deadline, then template fallback |
+| Cron overlap across workers | Atomic `find_one_and_update` claim |
+| Redis growth | Shallow checkpointer + 7-day idle TTL (built) |
 
 ---
 
-## 6. Job 3 — Replying to campaign responses
+## 9. Observability and testing
 
-- The dealer creates the campaign in the platform, picks the leads and sends it. The AI takes no part in that.
-- Each campaign message is stored with its campaign ID and goal.
-- When a customer replies, the Lead Handler sees the reply belongs to a campaign. The AI then gets the **campaign message and goal** as context, together with the customer's slots.
-- From there it's a normal conversation: answer, then keep filling slots (§5.3).
-- **Bursts:** a campaign to 1,000 leads can bring hundreds of replies in minutes. Replies wait in the queue, and each dealer has a cap on how many run at once. So one dealer's burst can't slow down the others. Replies can slow down for a few minutes, but they don't fail.
+- **Langfuse:** one trace per turn (`trace_id` stored in `ai_turn_log`), spans for each node and LLM call, tagged `dealer_id`, `lead_type`, `trigger`.
+- **Metrics from `ai_turn_log`:**
+  - first-reply latency p95
+  - template-fallback rate
+  - guard-fail rate
+  - rejected-extraction rate
+  - cost per dealer per day
+  - qualified-lead rate
+- **Tests:**
 
----
-
-## 7. Job 4 — Switching channel on silence
-
-- After every message we send, the Scheduler saves one record: `{lead, due = now + 1 day, message, from_channel}`.
-- When it's due and the customer **hasn't replied on any channel**, we send the same message on the other channel (SMS ↔ email). This only happens if we have that contact and the customer hasn't opted out.
-- **Any reply from the customer cancels all pending follow-ups for that lead.** One rule, in code.
-- A message is switched **once**. We don't bounce back and forth.
-- The Scheduler checks only records that are due, using an index on `due`. It never scans all leads.
-
----
-
-## 8. Safety rules (kept from earlier revisions)
-
-- **Never invent** prices, trade-in values, finance approvals or availability. Those numbers always come from the dealer's team. This check is already built (`guardrails/never_invent.py`). If a message fails it, the AI rewrites once. If it fails again, a safe template goes out and the lead is flagged for a human.
-- **Only the customer's words become slot values.** The AI's own messages and guesses are never saved as facts. Every slot records whether the customer said it, the AI extracted it (linked to the exact message), or it came from the database.
-- **Customer text is data, not instructions.** "Ignore your rules and…" doesn't change behavior.
-- **Hand to a human** when the customer asks for a person, is upset, or we hit a limit.
-- **Hard limits per message:** AI calls, time and cost are capped. Hitting a cap means the safe template plus a flag, never a silent failure.
-- **Dealer isolation:** every database read and write goes through one layer that requires `dealer_id`. A test tries to read another dealer's customer and must fail.
-- **Opt-out:** STOP (SMS) and unsubscribe (email) are respected before every send, including follow-ups.
+| Layer | Tool | Covers |
+|---|---|---|
+| `slots.policy`, validators | pytest (pure) | Every lead type × missing/stale/conditional slot combination |
+| Extraction | DeepEval + fixtures from `docs/data/conversations.md` | Precision/recall per slot path, quote grounding |
+| Compose + guard | DeepEval, Promptfoo | No invented numbers, asks the chosen slot, injection attempts |
+| Scheduler | pytest + real Mongo | Claim race (2 workers), cancel-on-reply race, stale claim reset |
+| Sender | pytest | Idempotency on retry, consent suppression |
+| Isolation | pytest | Cross-dealer read/write raises `CrossDealerAccessError` (built) |
+| End to end | pytest + fake Twilio/SendGrid | lead-created → send → 24h (frozen clock) → fallback → reply cancels |
 
 ---
 
-## 9. Where data lives
+## 10. Build status
 
-| Store | What |
+| Piece | State |
 |---|---|
-| MongoDB `customer_slots` | Slot values with source, time, and "replaced by" history |
-| MongoDB `messages` | Every inbound and outbound message, saved as it happens, with channel and campaign ID |
-| MongoDB `scheduled_followups` | Pending 1-day follow-ups (indexed on `dealer_id` + `due`) |
-| MongoDB `ai_turn_log` | What the AI saw, extracted and wrote, plus cost, for every turn |
-| Redis | The work queue, and LangGraph's latest state per conversation (expires after 7 days idle, rebuilt from MongoDB if needed) |
+| Dealer-scoped Mongo layer, indexes bootstrap | Built |
+| Shallow Redis checkpointer with idle TTL | Built |
+| `CapturedFact` with source and supersede | Built |
+| `never_invent` guard | Built |
+| Shared-secret auth | Built |
+| `LeadType` enum | Change to `sales/trade_in/service/general` |
+| `AgentState` | Replace upsell fields with turn fields (`profile`, `extraction`, `action`, `draft`, `retry_count`) |
+| `slots/`, `channels/`, `scheduler/`, `worker/`, event routes | To build |
 
 ---
 
-## 10. Tech choices
+## 11. Open technical questions
 
-| Choice | Why |
-|---|---|
-| **LangGraph** for one reply turn (extract → validate → decide → write → check) | Clear steps, saved state, easy to trace. |
-| **Plain code + MongoDB** for the lead lifecycle and scheduler | These live for days. They're timers and records, not graph steps. |
-| **Two models** | A cheap, fast model for extraction. A stronger one only for writing messages. This is the main cost lever. |
-| **Langfuse** | A trace of every turn, also copied to `ai_turn_log`. |
-| No vector DB, no MCP | Every lookup is "this customer at this dealer", and only this service uses the tools. |
-
----
-
-## 11. Not in scope now
-
-Upselling, inventory search, booking appointments through the bot, pricing and
-finance offers, sending or targeting campaigns, and writing to the DMS. The
-older multi-stage reply checks (support score, behavior check) are also out
-until real traffic shows they're needed.
-
----
-
-## 12. Status
-
-**Built:**
-
-- Fact model with source and replace-history (`agent/qualification.py`)
-- Never-invent check
-- Service-to-service auth
-- Latest-only Redis state with idle expiry
-- Dealer-scoped Mongo layer (in progress)
-
-**To build:**
-
-- Slot schema and Slot Engine (§5)
-- First-reply path with template fallback (§4)
-- Campaign reply context (§6)
-- Scheduler (§7)
-- Twilio and SendGrid sender and inbound webhooks
-- Per-dealer queue limits
-
-**Needs changing:** `LeadType` in `agent/qualification.py` still has the old
-types (`credit`, `price_payment`, `service_interval`). Change it to
-sales / trade-in / service / general.
-
----
-
-## 13. Open questions
-
-1. **Sending outside business hours.** "Immediately" includes nights. US TCPA rules limit texts before 8am and after 9pm in the customer's time zone. This needs a legal answer before launch.
-2. **After the channel switch.** If they still don't reply on the second channel, do we stop, or keep following up on some schedule?
-3. **Campaign messages and the 1-day switch.** Does a campaign message the customer never answered also get re-sent on the other channel?
+1. **Inbound ownership.** This design assumes `aidmvcs-be-dev` receives DMS leads and customer replies (Twilio inbound, SendGrid Inbound Parse) and calls `/v1/events/*`. If this service should own the provider inbound webhooks instead, `api/routes_webhooks.py` gains two routes and the rest is unchanged.
+2. **Message visibility in the dealer UI.** Does the platform read `ai_messages` directly, or should this service also write into the platform's existing conversation collection?
