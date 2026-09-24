@@ -16,10 +16,10 @@ CapturedFact.source exist — see guardrails/never_invent.py for how they're
 enforced, not just documented.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class LeadType(str, Enum):
@@ -65,8 +65,65 @@ class NeverInventCategory(str, Enum):
 
 
 class FactSource(str, Enum):
-    CUSTOMER_STATED = "customer_stated"  # the customer said this, this conversation — always trustworthy to reflect back
-    TOOL_VERIFIED = "tool_verified"  # confirmed by a real tool call (e.g. vehicle mileage on file)
+    """Trust tier a fact was captured under — docs/architecture/architecture.md
+    §5.3's four-tier model, in decreasing order of trust. Extended from two to
+    four tiers in docs/plans/AI/PLAN_1.md Phase 0.3.
+
+    1. CUSTOMER_STATED — the customer said this, this conversation. Always
+       trustworthy to reflect back, including in guardrails/never_invent.py's
+       strict categories.
+    2. TOOL_VERIFIED — confirmed by a real tool call this turn (e.g. vehicle
+       mileage on file, inventory availability).
+    3. BOT_EXTRACTED — the bot pulled this out of the customer's raw message
+       text (e.g. inferring a budget from "I don't want to go over thirty
+       something"). Saved, but MUST carry CapturedFact.source_message_id so a
+       human can check the extraction against the customer's actual words —
+       never treated as equivalent to CUSTOMER_STATED for a strict-category
+       claim.
+    4. BOT_INFERRED — the bot's own reasoning/guess, not traceable to
+       anything the customer said or a tool returned. NEVER persisted as a
+       fact — memory/long_term.py's trust-tiered writer (Phase 1.2) is the
+       enforcement point; a BOT_INFERRED fact is usable only within the turn
+       it was produced, then discarded. Kept in this enum (rather than
+       omitted) so code can construct one in-memory and have the writer
+       reject it, instead of every caller needing its own ad-hoc check.
+    """
+
+    CUSTOMER_STATED = "customer_stated"
+    TOOL_VERIFIED = "tool_verified"
+    BOT_EXTRACTED = "bot_extracted"
+    BOT_INFERRED = "bot_inferred"
+
+
+# Per-fact-type staleness rule (§5.4): how long a fact stays "current" before
+# a read should mark it "needs re-confirming" instead of treating it as still
+# true. `vehicle_availability` maps to timedelta(0) — "always stale" — since
+# §5.4 says availability-type facts are never trusted from memory at all;
+# Phase 3's inventory tool re-checks every time regardless of what's stored.
+# Small and hand-picked on purpose, not derived from anything: this is a
+# product judgment call, and changing a number here should be a one-line,
+# easy-to-find edit, not a hunt through the codebase. The actual "mark this
+# fact stale on read" logic is Phase 1.3's job, not this file's — this is
+# just the reference table that logic reads from.
+STALENESS_RULES: dict[str, timedelta] = {
+    "trade_mileage": timedelta(days=30),
+    "trade_payoff_cents": timedelta(days=14),
+    "target_payment_cents": timedelta(days=30),
+    "current_mileage": timedelta(days=30),
+    "preferred_channel": timedelta(days=180),
+    "vehicle_availability": timedelta(0),
+}
+DEFAULT_STALENESS = timedelta(days=30)
+
+
+def staleness_rule_for(field_name: str) -> timedelta:
+    """The age limit for a given fact field. Falls back to DEFAULT_STALENESS
+    for any field_name not yet listed in STALENESS_RULES, rather than
+    raising — new fact types get captured before this table is updated for
+    them, and "moderately conservative default" is a safer failure than
+    "crashes on an unrecognized field".
+    """
+    return STALENESS_RULES.get(field_name, DEFAULT_STALENESS)
 
 
 class CapturedFact(BaseModel):
@@ -76,6 +133,11 @@ class CapturedFact(BaseModel):
     answerable from this object alone — see guardrails/never_invent.py, which
     only trusts CUSTOMER_STATED facts for reflecting back numbers in the
     strict categories.
+
+    Temporal-validity fields (valid_from, valid_to, replaced_by) added in
+    Phase 0.3, per §5.4: a CapturedFact instance is a point-in-time record,
+    never edited in place once written — see supersede() below for how an
+    older fact gets closed out when a newer one for the same field arrives.
     """
 
     field_name: str  # e.g. 'trade_mileage', 'trade_payoff_cents', 'target_payment_cents', 'current_mileage'
@@ -85,6 +147,38 @@ class CapturedFact(BaseModel):
     raw_customer_text: str | None = Field(
         default=None, description="Verbatim customer wording this was extracted from, for audit"
     )
+    source_message_id: str | None = Field(
+        default=None,
+        description=(
+            "Required when source is BOT_EXTRACTED — links back to the exact customer "
+            "message this was pulled from, so it can be checked against their actual words (§5.3)"
+        ),
+    )
+    valid_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    valid_to: datetime | None = Field(
+        default=None, description="Set once a newer fact for the same field_name replaces this one; null = still current"
+    )
+    replaced_by: str | None = Field(
+        default=None, description="Identifier of the CapturedFact that superseded this one, once replaced"
+    )
+
+    @model_validator(mode="after")
+    def _bot_extracted_needs_source_message(self) -> "CapturedFact":
+        if self.source == FactSource.BOT_EXTRACTED and not self.source_message_id:
+            raise ValueError("a BOT_EXTRACTED fact must carry source_message_id (§5.3)")
+        return self
+
+
+def supersede(old_fact: CapturedFact, replaced_by_id: str, at: datetime | None = None) -> CapturedFact:
+    """Returns a COPY of old_fact marked as replaced (valid_to closed out,
+    replaced_by set) rather than mutating it in place — a CapturedFact
+    already written to Mongo is a point-in-time record; closing it out is a
+    new fact about that record, not an edit to history. Called by
+    memory/long_term.py's trust-tiered writer (Phase 1.2) whenever a new fact
+    shares a field_name with one that's still current, so the store never
+    ends up with two "current" facts for the same field_name at once.
+    """
+    return old_fact.model_copy(update={"valid_to": at or datetime.now(UTC), "replaced_by": replaced_by_id})
 
 
 class CustomerObjective(BaseModel):

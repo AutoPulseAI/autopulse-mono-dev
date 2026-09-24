@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from upsell_agent.api.routes import router as upsell_router
 from upsell_agent.config import get_settings
-from upsell_agent.integrations.mongodb import close_mongo, init_mongo
+from upsell_agent.integrations.mongodb import close_mongo, ensure_indexes, init_mongo
 from upsell_agent.integrations.redis_client import close_redis, init_redis
 from upsell_agent.memory.short_term import checkpointer_context
 from upsell_agent.observability.tracing import init_tracing
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     init_tracing(settings)
     await init_mongo(settings)
+    await ensure_indexes()
     await init_redis(settings)
 
     # The Redis-backed LangGraph checkpointer is a long-lived connection,
