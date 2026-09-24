@@ -15,6 +15,18 @@
 > answers, a hard spending/looping limit, prompt-injection defense, safer tool
 > rules, and human approval that actually pauses the bot. Orchestration stays on
 > **LangGraph** (see §14).
+>
+> **Revision 4** rebuilds memory (§5) from the memory research report in
+> `../extras/deep-research-report.md`: the bot's own words never become facts,
+> raw messages stay the source of truth, "now" and "then" questions are handled
+> differently, each kind of fact goes stale at its own speed, and memory is
+> tested separately from replies (§13). It also records which parts of that
+> report we chose **not** to adopt, and why (§5.8).
+>
+> **Revision 5** adds §17, Scale: 1,000+ customers per dealer across many
+> dealers. Memory lookups stay fast at that size (every lookup is one
+> customer), but Redis growth, model cost, reply bursts, the silence check,
+> dealer data isolation, and data retention all need explicit handling.
 
 ---
 
@@ -57,7 +69,7 @@ is ordinary code, not AI, so it behaves the same way every time.
 | **4. Tool safety** | Decide which lookups/actions the bot may take, and which need a human | §4 |
 | **5. Output checks** | After drafting: wrong facts? wrong behavior? well-supported enough? | §7 |
 | **6. Budget** | Hard limits on retries, model calls, tool calls, and cost | §8 |
-| **7. Memory** | Save everything immediately, with timestamps, findable by customer | §5 |
+| **7. Memory** | Save everything immediately; only trusted sources become facts; know current from replaced from stale | §5 |
 | **8. Visibility** | Every step of every turn is recorded and can be replayed | §13 |
 
 ---
@@ -114,52 +126,138 @@ for approval — not just yes/no — so it can be audited later.
 
 ---
 
-## 5. Memory: what gets saved, and when
+## 5. Memory
 
-### 5.1 Save immediately, every turn
+Revision 4 rebuilds this section using the memory research report
+(`../extras/deep-research-report.md`). We took the parts that fit a car
+dealership's conversations and deliberately left out the parts built for
+searching huge document collections — see §5.8 for what we skipped and why.
 
-Every message and every reply is saved the moment it happens — not only when a
-conversation "finishes." An abandoned, silent conversation is still fully saved.
+### 5.1 Four kinds of memory, kept separate
 
-### 5.2 What gets saved
+| Kind | What's in it | How long | Where | How the bot gets it |
+|---|---|---|---|---|
+| **Right now** | The last several messages, word for word, plus what's in progress (what they're after, the open question, an appointment being set up) | This conversation | Redis (LangGraph's saved state) | Always included |
+| **This conversation** | Every message of the current conversation, plus a short running summary once it gets long | Days | MongoDB | Always included (summary + recent messages) |
+| **Past conversations** | Every message of every earlier conversation with this customer, plus a summary of each | Permanent | MongoDB | Looked up by customer when relevant (§5.6) |
+| **Customer facts** | Budget, trade-in details, preferred channel, preferences — one clean record per fact, each with its source and dates | Permanent, with age rules | MongoDB | Always included, current facts only, stale ones marked (§5.4) |
 
-- Every message, in order.
-- Every fact the customer gave us (budget, location, trade-in mileage, etc.),
-  **with the exact time it was said.**
-- **Every car or option actually shown to the customer.**
-- Every appointment offered or booked.
-- Every tool call and its result.
+**Dealer data is not memory.** Inventory, prices, availability and bookings are
+**looked up fresh through tools** every time they're needed. The bot never
+answers "is the Camry still there?" from memory — that's how you tell a
+customer about a car that sold on Tuesday.
 
-### 5.3 Old facts vs. new facts (made stricter)
+### 5.2 The raw messages are the truth
 
-Revision 2 said "timestamps, so the bot knows old from new." That was a rule
-with no mechanism. Now it has three concrete behaviors:
+- Every message and every reply is saved **the moment it happens**, not only
+  when a conversation "finishes". An abandoned conversation is still fully
+  saved.
+- Summaries (the running conversation summary, the silence summary in §11) are
+  **helpers, never the only copy**. Every summary records which messages it
+  came from, and summaries are always rebuilt from the original messages —
+  never from an older summary — so small mistakes can't pile up over time.
 
-- **Newer replaces older.** If the customer said their budget was $30k last
-  month and says $25k today, the $25k is the current fact. The old one is kept
-  for history but marked as replaced — it can never be used as if it were
-  current.
-- **Every fact has an age limit** depending on what kind of fact it is. A
-  budget or a trade-in's mileage goes stale after a set number of days. A
-  customer's name doesn't. A stale fact is **shown to the bot as stale**, and
-  the bot must re-confirm it ("last time you mentioned around $30k — is that
-  still right?") rather than rely on it.
-- **Facts from a previous conversation are labelled as such**, so the bot never
-  mixes "said today" with "said three months ago in a different conversation."
+### 5.3 Who said it decides how much we trust it (new)
 
-### 5.4 Finding an old conversation from a new one
+This is the most important rule in this section. If the bot's own statements
+were saved as facts, one wrong sentence would become a permanent "fact" the bot
+keeps repeating back. So every saved fact carries its source, and only some
+sources are allowed to become facts at all:
 
-Memory is searchable **by customer**, not just by conversation. When a new
+| Source | Trust | Saved as a customer fact? |
+|---|---|---|
+| The customer said it clearly | High | Yes |
+| A tool returned it (inventory, booking system) | High, **but only as of when it was looked up** | Yes, with the lookup time |
+| The bot pulled it out of a customer's message | Medium | Yes, **linked to the exact message it came from**, so it can be checked |
+| The bot inferred or guessed it | Low | **No** — may be used in the moment, never saved |
+| The bot's own reply text | — | **Never** |
+
+What this means for "cars shown to the customer": we save **what the inventory
+tool actually returned** (the specific car, branch, and details at that
+moment) — not the bot's description of it.
+
+### 5.4 Time: now vs. then, and when facts go stale
+
+Each fact keeps four times: **when it was said**, **when the thing it describes
+happens** (e.g. an appointment date), **when it became true and when it stopped
+being true**, and **when we saved it**.
+
+- **Newer replaces older, without deleting it.** Budget $30k last month, $25k
+  today → $25k is current, and the $30k is marked "replaced on [date]" and kept
+  for history.
+- **Different facts go stale at different speeds:**
+
+| Fact | Goes stale? | What the bot does |
+|---|---|---|
+| Name, contact details | No | Uses it |
+| Preferred channel | Slowly; replaced when they say otherwise | Uses the current one |
+| Budget, monthly payment target | Yes, after a set number of days | Re-confirms: "last time you mentioned around $30k — still right?" |
+| Trade-in mileage, condition, payoff | Yes, after a set number of days | Re-confirms before relying on it |
+| Car availability or price from a lookup | Almost immediately | **Looks it up again** before mentioning it |
+| Appointment | A dated event — never "replaced", only cancelled or moved explicitly | Uses it |
+| Cars recommended earlier | Never stale **as history** | Can say "last time I showed you the 2023 Camry at the North branch" — but must re-check availability before offering it again |
+
+- **"Now" questions and "then" questions are different.** "What's my budget?"
+  gets the current fact. "What did you recommend last time?" gets the
+  historical record from that time — not today's state.
+
+### 5.5 Conversations are split into sessions
+
+One lead's conversation can go on for weeks. When a customer is quiet for longer
+than a set gap (a starting value like 3 days, tuned later), the next message
+starts a **new session** inside the same conversation. The previous session is
+summarized (linked back to its raw messages). The current session always gets
+priority; older sessions stay findable. This stops a similar-sounding exchange
+from a month ago from crowding out what the customer is asking right now.
+
+### 5.6 Finding an old conversation from a new one
+
+Memory is searchable **by customer**, not only by conversation. When a new
 conversation starts, the bot checks "have I talked to this person before?" and
-pulls that history in — correctly labelled as old (§5.3).
+pulls that history in — labelled as past, with facts marked current, replaced,
+or stale per §5.4.
 
-### 5.5 Where it lives
+### 5.7 Where it lives
 
 - **While a conversation is active:** LangGraph saves the full conversation
   state after every step, in Redis, so the next message picks up exactly where
   the last one left off — even if the service restarted in between.
 - **Permanently:** MongoDB (the same database the main platform uses). Every
   turn is written here too, so nothing depends on Redis keeping data forever.
+
+### 5.8 What we deliberately did NOT adopt from the research, and when to
+
+The research report recommends vector search, keyword+vector hybrid search,
+rerankers, chunking strategies, and knowledge graphs (Letta/Graphiti-style).
+Those solve **finding the right passage in a huge pile of unstructured text**.
+That isn't our problem today:
+
+- **The total data is large, but every lookup is small.** A dealer can have
+  thousands of customers and there are many dealers, so the platform will hold
+  millions of messages. But when the bot answers a message it only ever needs
+  **that one customer's** history at **that one dealer** — a few
+  conversations and a handful of facts. It never has to search across
+  customers to find what's relevant.
+- We always know exactly where to look: dealer, customer, fact type, date.
+  Vector search exists for the opposite situation — "I don't know where the
+  answer is, find anything similar." A direct, indexed lookup by those keys is
+  **more accurate** and stays fast no matter how many customers a dealer has.
+- After that lookup, everything relevant fits in the model's context.
+
+Scale is a real concern — just not for *finding* memory. See §17 for where it
+actually bites.
+
+So: no vector database, no reranker, no graph database. The time rules in §5.4
+are stored as plain fields in MongoDB, which gives us the part of a temporal
+graph we actually need without the machinery. (The report itself says graph
+memory should only be added after the basics are measured.)
+
+**Revisit when:**
+- we add **dealer knowledge** the bot should answer from — service policies,
+  warranty terms, financing FAQs. That *is* the report's problem, and its
+  hybrid-search pattern applies there.
+- some customers' histories grow too long to fit in context even after
+  filtering (e.g. an agency with years of repeat business).
 
 ---
 
@@ -184,14 +282,26 @@ data.
 
 One required step, before every reply:
 
-1. **Gather everything relevant** — the recent messages themselves (not just a
-   list of extracted facts), everything known about this customer, everything
-   already shown to them, and relevant history from past conversations.
-2. **Label old vs. new** using §5.3, so nothing stale is presented as current.
+1. **Turn the message into a full question.** Using the recent messages,
+   rewrite what the customer just said into a question that makes sense on its
+   own: "what u got" → "what SUVs under $30k do you have near Dallas?". "Did
+   you find one?" → "Did you find a used Tacoma under $35k?". The original
+   message is kept too. This full question is what every later step — the
+   "enough to answer?" check, the lookups — works from. It's the direct fix
+   for the "what u got" failure.
+2. **Gather what's relevant** — the recent messages themselves (not just a list
+   of extracted facts), current customer facts, what was already shown to them,
+   and past-conversation history if the question needs it (§5.6).
+3. **Settle conflicts before the model sees them.** Never hand the model two
+   competing versions of a fact. Hand it the settled answer: "current budget
+   $25k (said today); an earlier $30k was replaced." Stale facts are marked
+   "needs re-confirming" (§5.4).
+4. **Keep it small and ordered.** More context is not better — models are
+   known to overlook things buried in the middle of a long prompt. Include only
+   what this turn needs, put the most important things (the question, current
+   facts) at the start and end, and cap the total size.
 
-The model never writes a reply from a partial picture. This is what fixes the
-"what u got" failure: with the last few messages in front of it, "what u got"
-obviously means "what cars do you have."
+The model never writes a reply from a partial or contradictory picture.
 
 ### 6.3 "Do I have enough to answer?" check (new)
 
@@ -215,6 +325,14 @@ enough real information to answer?* It can say:
 This is the real fix for both the "what u got" wrong refusal and for made-up
 answers: the bot is never forced to choose between guessing and refusing — it
 has a third option, "ask."
+
+**"There's nothing to remember" is a correct answer too.** If the customer asks
+"what did you recommend last time?" and there is no record of a
+recommendation, the bot says so honestly ("I don't see a recommendation from
+our last chat — want me to look now?"). It never fills the gap with something
+plausible. Our tests include these no-record cases on purpose, because a
+system only tested on questions that *have* answers learns to always produce
+one.
 
 ---
 
@@ -302,10 +420,12 @@ customer message arrives
 [input safety]  ── clearly an attack ──▶ flag for human, no bot reply
         │
         ▼
-[assemble context]      recent messages + all facts, labelled old/new
+[assemble context]      rewrite into a full question; recent messages +
+                        current facts; conflicts settled; stale marked
         │
         ▼
 [update facts]          save anything new the customer just told us
+                        (customer's words / tool results only — never the bot's)
         │
         ▼
 [enough to answer?] ──▶ need lookup ──▶ [tool safety] ──▶ [run tool] ──┐
@@ -341,7 +461,7 @@ and **resume later from exactly the same point**.
 When something needs a human — a risky tool call (§4.2), a reply that failed its
 checks too many times, a hit budget, a suspected attack:
 
-1. The graph **pauses**. Its full state is saved (§5.5).
+1. The graph **pauses**. Its full state is saved (§5.7).
 2. A **pending-approval record** is written, saying exactly what's waiting and
    why.
 3. The dealer portal is **notified** so staff see it in the "Needs review" list
@@ -385,8 +505,26 @@ price" yet — that needs a product decision first.
   way the budget (§8) can read real costs, staff screens can show "why did the
   bot say this", and we don't depend on an outside service to answer an audit
   question.
+- The record includes the **memory side** of each turn too: the full question
+  the message was rewritten into (§6.2), which facts and past messages were
+  included, and which were left out as stale or replaced. Without this, a bad
+  answer can't be traced to "bad memory" vs. "bad writing".
 - Evaluation results (DeepEval) are saved **per code version**, so we can see
   whether a change made the bot better or worse over time — not just pass/fail.
+
+**Testing memory separately from replies.** When a reply is wrong, the first
+question is whether the bot had the right information at all. So memory gets
+its own tests, separate from reply-quality tests, covering the question types
+the research identifies as hard:
+
+| Test type | Example |
+|---|---|
+| Recall within this conversation | Customer gave their budget five messages ago — does the bot use it? |
+| Recall across conversations | "What did you recommend last time?" three weeks later |
+| A fact that changed | Budget $30k last month, $25k today — does the bot use $25k? |
+| Now vs. then | "What was my budget before?" gets $30k; "what's my budget?" gets $25k |
+| Nothing to recall | Asks about a past recommendation that never happened — does the bot say so instead of inventing one? |
+| Stale data | A car shown last week — does the bot re-check it before offering it again? |
 
 ---
 
@@ -433,11 +571,164 @@ Revisit when a **second, separate** system needs the same tools.
 
 ---
 
-## 17. Current status
+## 17. Scale
+
+Each dealer can have 1,000+ customers using the bot, across many dealers. This
+section writes down what that means, where it causes problems, and what the
+design does about each one.
+
+### 17.1 Working numbers (assumptions — replace with real ones)
+
+These are planning assumptions, not measurements. They exist so limits and
+costs have something concrete to be checked against; replace them with real
+figures from the platform's current message volume before building.
+
+| | Assumption | Result |
+|---|---|---|
+| Dealers on the bot | 50 | |
+| Customers per dealer | 1,000 | 50,000 customers |
+| Customers messaging on a given day | 10% | 5,000 conversations/day |
+| Customer messages per conversation per day | 6 | **30,000 customer messages/day** |
+| Model calls per customer message | ~5 (rewrite, "enough to answer?", draft, checks, score) | **~150,000 model calls/day** |
+| Saved records per day | message + reply + fact updates | ~60,000–100,000 documents/day |
+| Worst burst | one dealer's campaign, 30% reply within 10 minutes | **300 conversations in 10 minutes from one dealer** |
+
+### 17.2 Finding memory — does NOT get harder with scale
+
+Every memory lookup is "this customer, at this dealer" (§5.8). With the right
+database indexes that's equally fast for 100 customers or 100,000. Indexes
+needed from day one:
+
+| Collection | Index | Serves |
+|---|---|---|
+| Messages | dealer + customer + time | "this customer's recent/past messages" |
+| Messages | dealer + conversation + session + turn order | "this session, in order" |
+| Customer facts | dealer + customer + fact type + still-valid flag | "current facts only" |
+| Conversations | dealer + time of last customer message | the silence check (§17.5) |
+| Pending reviews | dealer + status | the "Needs review" list |
+
+### 17.3 Redis filling up — a real risk
+
+LangGraph saves a snapshot of the conversation after every step, and by
+default keeps **every** snapshot. At thousands of active conversations × several
+steps per message, that grows quickly and Redis is memory-bound.
+
+- **Keep only the latest snapshot per conversation.** The Redis saver we
+  already use has a mode that stores just the latest one (the "shallow" saver).
+  The full history lives in MongoDB anyway (§5.2), so nothing is lost.
+- **Expire idle conversations** from Redis after a set time (a starting value
+  like 7 days of no activity).
+- **When an expired conversation comes back**, rebuild its working state from
+  MongoDB (current facts + recent messages + last session summary). The customer
+  must not notice any difference. This path gets its own test.
+- Watch Redis memory use; alert well before it's full.
+
+### 17.4 Model cost — the biggest running cost
+
+~150,000 model calls a day is real money, and it grows with every dealer added.
+
+- **Use the right model for each step.** The checks, the rewrite and the
+  "enough to answer?" step are small classification-style jobs — a cheap, fast
+  model is enough. Only the actual reply draft needs the stronger model. This
+  is the single biggest cost lever.
+- **Skip steps that aren't needed.** A simple "yes, 10:30 works" doesn't need
+  the full support score — the budget and checks scale with how much the
+  reply claims.
+- **The per-turn and per-conversation budget (§8) is a cost control**, not
+  just a loop guard. At this volume, a cost ceiling per conversation per day is
+  what stops one strange conversation from costing more than a hundred normal
+  ones.
+- **Track cost per dealer** (from the per-turn record in §13), so the business
+  can see what each dealer actually costs to serve.
+
+### 17.5 Bursts — replies must not fail under load
+
+A campaign to 1,000 customers can bring hundreds of replies within minutes.
+
+- **A queue in front of the bot.** Inbound messages go into the platform's
+  existing Redis job queue; a fixed pool of workers processes them. A burst
+  makes replies slower for a few minutes — it never makes them fail.
+- **Fair sharing between dealers.** One dealer's campaign burst must not delay
+  every other dealer's customers. Each dealer gets a limit on how many of its
+  conversations run at the same time.
+- **One message at a time per conversation.** If a customer sends three texts
+  in a row, they're handled in order, never in parallel — otherwise two replies
+  can race each other and contradict.
+- **Model provider rate limits** are expected at peak. The model client retries
+  with backoff automatically; if it still can't get through within the reply
+  time limit (§8), the safe fallback message goes out and the conversation is
+  flagged — never a silent failure.
+- **Response time target:** most replies within a few seconds, and the hard
+  cap from §8 (a starting value of 20 seconds) at peak.
+
+### 17.6 The silence check — can't scan everything
+
+"Find every conversation that's gone quiet" must not read all conversations on
+every run. It uses the "last customer message time" index (§17.2) to fetch only
+conversations that crossed the quiet threshold since the last run, and processes
+them in small batches through the same queue as everything else.
+
+### 17.7 Dealers must never see each other's customers — the most important one
+
+With many dealers and thousands of customers each, one query that forgets to
+filter by dealer means Dealer A's bot can read Dealer B's customers. At this
+scale that's not a bug, it's a data breach.
+
+- **One place enforces it.** All reads and writes go through a single data
+  layer that *requires* a dealer ID and adds the filter itself. No other code
+  talks to the database directly, so no individual query can forget.
+- **Every saved record carries the dealer ID**, including Redis snapshot keys,
+  pending reviews, and trace records.
+- **A dedicated test tries to cross dealers** — request Dealer B's customer
+  while acting as Dealer A — and must fail. It runs on every change.
+- **Agency chatbots** (one agency, several dealers/branches) are the one
+  legitimate case of reading across dealers. That's handled by explicitly
+  listing which dealers the agency owns — never by dropping the filter.
+
+### 17.8 Keeping data over time
+
+At the assumed volume that's tens of millions of saved documents per year.
+Decisions needed — business/legal, not engineering:
+
+| Data | Proposed default | Needs sign-off on |
+|---|---|---|
+| Raw messages | Keep while the customer relationship is active | Exact retention period; customer deletion requests |
+| Customer facts | Keep, with replaced ones retained as history | Same |
+| Per-turn trace records (§13) | Keep 90 days in full, then keep only cost/outcome totals | Whether audits need longer |
+| Pending reviews | Keep after decision (they become test cases) | — |
+
+### 17.9 Prove it before rollout
+
+Before any dealer's live traffic goes through the bot (in addition to the
+per-dealer shadow mode in `N8N_CUTOVER_PLAN.md`):
+
+- **Load test** a simulated campaign burst (§17.1's worst case) and check
+  replies stay under the time cap and nothing fails.
+- **Cost test** a realistic day of traffic and compare real cost per
+  conversation against §17.1.
+- **Recovery test**: expire a conversation's Redis state mid-conversation and
+  confirm it rebuilds from MongoDB without the customer noticing.
+- **Isolation test** (§17.7) passing.
+
+---
+
+## 18. Current status
 
 Built and tested: the data model, the facts check (§7.1), and the
 service-to-service auth. Everything else in this document is the target
 design, not yet running: input safety (§6.1), context assembly (§6.2), the
 "enough to answer" check (§6.3), the behavior check and support score
 (§7.2–7.3), the budget (§8), tool safety rules (§4.2), pause-for-approval
-(§10), and the silence handoff (§11).
+(§10), the silence handoff (§11), and the revision 4 memory rules (§5.1–5.6:
+trust levels, validity dates, per-type staleness, sessions, and the memory
+tests in §13).
+
+None of §17 (Scale) is built yet either. Two existing pieces need changing for
+it: the Redis saver in `memory/short_term.py` currently keeps every snapshot,
+not just the latest (§17.3), and nothing yet forces every database read/write
+through a single dealer-filtered data layer (§17.7).
+
+One note on what's already built: the existing fact type (`CapturedFact`) has a
+source and the turn it came from, but not the validity dates, "replaced by"
+link, or the medium/low trust levels from §5.3. It will need extending when
+memory is implemented.

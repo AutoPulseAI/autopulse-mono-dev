@@ -80,7 +80,7 @@ checked before it's returned.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `dealer_id` | string | yes | |
-| `lead_id` | string | yes | identifies the conversation thread — see `architecture.md` §5.4 for how this links to customer-level history |
+| `lead_id` | string | yes | identifies the conversation thread — see `architecture.md` §5.6 for how this links to customer-level history |
 | `customer_id` | string | yes | |
 | `channel` | string | yes | `email` \| `sms` \| `chat` — affects reply formatting and which contact info is used |
 | `message_text` | string | yes | the customer's actual message |
@@ -95,7 +95,7 @@ checked before it's returned.
 | `review_id` | string or null | present when `outcome` is `needs_review` — the id to use with the approval endpoints below |
 | `lead_status` | string | this service's read on where the lead stands now — mirrors the shape `emailWorker.js`/`processSms.js` already expect from n8n today, see `../../../../docs/N8N_CUTOVER_PLAN.md` on matching that existing contract for a lower-risk cutover |
 | `booked_appointment` | object or null | present if the appointment-booking tool was actually used this turn |
-| `presented_options` | list | any vehicles/options shown this turn (architecture.md §5.2) |
+| `presented_options` | list | any vehicles/options shown this turn (architecture.md §5.3 — stored as what the inventory tool returned, not the bot's wording) |
 | `trace_id` | string or null | |
 
 ### `POST /qualify/silence-check` — **planned, not yet built**

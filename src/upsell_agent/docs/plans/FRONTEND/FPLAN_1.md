@@ -156,10 +156,18 @@ history, etc. — this fits right in with what that page already shows).
   for them" — these are different kinds of facts and staff should be able to
   tell which is which at a glance.
 - If a fact looks old (the backend will flag stale information, per
-  `architecture.md` §5.3), show that clearly too — e.g. a faded/greyed-out
+  `architecture.md` §5.4), show that clearly too — e.g. a faded/greyed-out
   style, or a small "this was said 3 months ago" note. This matters because
   staff shouldn't assume an old answer is still true any more than the AI
   should.
+- Show facts that were **replaced**, not just the current ones — e.g. "Budget:
+  $25k (said today) — replaced $30k (said 3 weeks ago)". Staff need to see
+  that the customer changed their mind, not just the latest value.
+- For every fact, show **where it came from**: "customer said this" (with a
+  link to the exact message), "looked up in inventory on [date]", or "the AI
+  worked this out from the customer's message". Per `architecture.md` §5.3,
+  the AI's own guesses are never saved as facts, so they should never appear
+  here — if one does, that's a bug worth reporting.
 
 **Depends on:** the planned conversation endpoint's memory data being real
 and queryable. Until then, this phase has nothing to display.
