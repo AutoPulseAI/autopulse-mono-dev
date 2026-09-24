@@ -8,11 +8,11 @@ never in the same file.
 
 | Developer | Plan | Owns (and only touches) |
 |---|---|---|
-| **Sabih** (frontend) | [`FRONTEND/FPLAN_1.md`](FRONTEND/FPLAN_1.md) | `aidmvcs-be-dev/app/dealer/**` — every dealer-portal page and component |
+| **Frontend engineer** | [`FRONTEND/FPLAN_1.md`](FRONTEND/FPLAN_1.md) | `aidmvcs-be-dev/app/dealer/**` — every dealer-portal page and component |
 | **Backend developer** | [`BACKEND/BPLAN_1.md`](BACKEND/BPLAN_1.md) | `aidmvcs-be-dev/app/api/**` (the routes that call the AI service) and small, targeted additions to existing platform logic (booking, follow-ups, the worker files) |
 | **AI developer** | [`AI/PLAN_1.md`](AI/PLAN_1.md) | `agentic-upsell/**` — the Python service itself, entirely |
 
-Three separate codebases, three separate people. Sabih never opens a Python
+Three separate codebases, three separate people. The frontend engineer never opens a Python
 file. The AI developer never opens a `.js` file. The backend developer never
 opens `app/dealer/`. That's the whole trick — there is no shared file where
 two people's changes can land on the same line.
@@ -40,7 +40,7 @@ Nobody needs to wait for anybody else's code to be finished. Everybody builds
 against [`architecture/APIS.md`](architecture/APIS.md), which already
 documents every request and response shape, marked **live** or **planned**.
 
-- **Sabih** can build `FPLAN_1.md` Phase 1 and Phase 5 today — no backend
+- **The frontend engineer** can build `FPLAN_1.md` Phase 1 and Phase 5 today — no backend
   dependency for Phase 1, and Phase 5's endpoints are already live (even
   though they return stub data right now, the shape is final). Phases 2–4 can
   be built as UI shells against `APIS.md`'s documented shapes with fake data,

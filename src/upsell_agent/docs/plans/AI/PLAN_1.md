@@ -98,6 +98,20 @@ layer on top of it.
 Dealer A, for every collection this service touches, and confirms it fails.
 This test runs in CI on every change from here on, not just once.
 
+**Also build: the indexes, before this collection sees real traffic.** There's
+no schema migration here — this is a brand-new set of collections, not a
+change to anything `aidmvcs-be-dev` already has, so there's no existing data
+to migrate. But an unindexed collection is a real outage waiting to happen
+once dealers have thousands of customers each, so create these as part of
+this phase, not as a fix once something's slow:
+
+| Collection | Index | Why |
+|---|---|---|
+| Customer facts (§5.3) | `(dealer_id, customer_id)` compound | Every fact read/write filters on both — this is also the index that makes the dealer-isolation rule above fast, not just correct |
+| Conversation messages (§5.2) | `(dealer_id, lead_id)` compound | Every turn's history read filters on both |
+| Conversation messages (§5.2) | `(dealer_id, last_message_at)` compound | What Phase 7's silence-check scans by — needed before that phase, not at Phase 7 itself |
+| Session summaries (§5.5) | `(dealer_id, customer_id, session_end)` compound | Cross-conversation lookup (Phase 1.5) reads this sorted by time |
+
 ### 0.2 Redis: one snapshot per conversation, not every one (§17.3)
 
 **What to build:** `memory/short_term.py` currently uses `AsyncRedisSaver`,
