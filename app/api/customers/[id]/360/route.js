@@ -7,6 +7,7 @@ import Deal from "@models/Deal";
 import RepairOrder from "@models/RepairOrder";
 import ServiceAppointment from "@models/ServiceAppointment";
 import Vehicle from "@models/Vehicle";
+import TradeIn from "@models/TradeIn";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import { resolveRequestAuthorization } from "@lib/apiAuth";
 import {
@@ -95,7 +96,7 @@ export async function GET(req, { params }) {
     const customer = await Customer.findOne({ _id: id, dealer_id: dealerId }).lean();
     if (!customer) return jsonError("Customer not found", 404);
 
-    const [leads, deals, repairOrdersRaw, appointmentsRaw] = await Promise.all([
+    const [leads, deals, repairOrdersRaw, appointmentsRaw, tradeIns] = await Promise.all([
       Lead.find({ customer_id: customer._id, dealer_id: dealerId })
         .sort({ createdAt: -1 })
         .limit(RECORD_LIMIT)
@@ -103,6 +104,13 @@ export async function GET(req, { params }) {
       Deal.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
       RepairOrder.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
       ServiceAppointment.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
+      // Trade-ins the customer has brought to this dealer (manual or from ADF
+      // leads). Added for the AI service's slot pre-fill (agentic-upsell
+      // MASTER_PLAN_1 Stage 6); newest first, like leads.
+      TradeIn.find({ dealer_id: dealerId, customer_id: customer._id })
+        .sort({ createdAt: -1 })
+        .limit(RECORD_LIMIT)
+        .lean(),
     ]);
 
     const { repairOrders, appointments } = dedupeServiceTimeline(repairOrdersRaw, appointmentsRaw);
@@ -164,6 +172,7 @@ export async function GET(req, { params }) {
           computed_date: getAppointmentDate(appointment),
         })),
         vehicles,
+        trade_ins: tradeIns,
       },
     });
   } catch (error) {

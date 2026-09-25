@@ -85,6 +85,10 @@ const UserSchema = new mongoose.Schema(
     package_dealers_used: { type: Number, default: 0 }, // for vendors
     package_expiry: { type: Date }, // for both vendors and dealers
     setting: { type: Object, default: {} },
+    // AI service mode for this dealer (app/lib/ai/aiMode.js): 'off' = today's
+    // n8n behaviour, 'shadow' = n8n replies and the AI drafts alongside,
+    // 'live' = the AI replies instead of n8n. Changed via /api/admin/ai-mode.
+    ai_mode: { type: String, enum: ["off", "shadow", "live"], default: "off" },
     otp: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },
     resetToken: { type: String, default: null },

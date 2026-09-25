@@ -4,6 +4,7 @@ import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
 import { onLeadStatusChange, clearPendingJobs } from '@lib/followupService.js';
+import { notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentUpdateTemplate } from '@lib/templates/appointmentUpdateTemplate.js';
@@ -740,6 +741,10 @@ export async function PUT(request) {
     }
 
     await onLeadStatusChange(id);
+
+    // Booked / visited / sold / DND / managerial review: staff own this lead
+    // now, so the AI stops replying to it (MASTER_PLAN_1 Stage 11). Never throws.
+    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status });
 
     return NextResponse.json({ lead: updated }, { status: 200 });
   } catch (err) {

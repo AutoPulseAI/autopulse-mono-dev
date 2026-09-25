@@ -1373,6 +1373,10 @@ export async function POST(req) {
         attachments: email.attachments,
       })),
       currentEmail: {
+        // The saved record and its lead, so workers don't have to look the
+        // email up again by message_id (used by the AI live path).
+        email_record_id: String(newEmail._id),
+        lead_id: newEmail.lead_id ? String(newEmail.lead_id) : null,
         message_id: newEmail.message_id,
         parent_conversation: newEmail.parent_conversation,
         sender: newEmail.sender,

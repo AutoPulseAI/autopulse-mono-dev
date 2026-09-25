@@ -46,7 +46,16 @@ const emailSchema = new mongoose.Schema({
   // Read/Unread tracking
   read: { type: Boolean, default: false },
   read_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  read_at: { type: Date }
+  read_at: { type: Date },
+
+  // Written by the AI service through POST /api/internal/ai/messages
+  // (app/lib/ai/aiMessageRecord.js). ai_fallback marks the 24h re-send on
+  // the other channel; ai_idempotency_key makes recording a send idempotent.
+  ai_generated: { type: Boolean, default: false },
+  ai_fallback: { type: Boolean, default: false },
+  ai_turn_id: { type: String },
+  ai_idempotency_key: { type: String },
+  ai_delivery_status: { type: String }
 
 },
 { strict: false });
@@ -64,7 +73,19 @@ export const EMAIL_SMS_PAIR_INDEX = {
   },
 };
 
+// One Email per AI send. Partial, so every non-AI record (no key) is unaffected.
+export const EMAIL_AI_IDEMPOTENCY_INDEX = {
+  key: { ai_idempotency_key: 1 },
+  options: {
+    name: 'ai_idempotency_key_unique',
+    unique: true,
+    partialFilterExpression: { ai_idempotency_key: { $type: 'string' } },
+  },
+};
+
 emailSchema.index(EMAIL_CONVERSATION_INDEX.key, EMAIL_CONVERSATION_INDEX.options);
+// Deploy explicitly with scripts/ensure-email-indexes.js, like EMAIL_SMS_PAIR_INDEX.
+emailSchema.index(EMAIL_AI_IDEMPOTENCY_INDEX.key, { ...EMAIL_AI_IDEMPOTENCY_INDEX.options, _autoIndex: false });
 // Deploy explicitly with scripts/ensure-email-indexes.js before releasing the
 // synchronous webhook query that depends on it.
 emailSchema.index(EMAIL_SMS_PAIR_INDEX.key, { ...EMAIL_SMS_PAIR_INDEX.options, _autoIndex: false });

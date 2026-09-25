@@ -7,6 +7,7 @@ import { setupCampaignWorker } from './campaignWorker.js';
 import { setupDealerVaultWorkers } from './dealervault/index.js';
 import { setupDealerVaultSqsConsumer } from './dealervault/sqsConsumer.js';
 import { setupAdfTradeWorker } from './adfTradeWorker.js';
+import { AI_EVENT_RETRY_QUEUE, processAiEventRetryJob } from '../lib/ai/aiEvents.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -51,6 +52,8 @@ const campaignWorker = setupCampaignWorker(redis);
 setupDealerVaultWorkers(redis);
 setupDealerVaultSqsConsumer(redis);
 setupAdfTradeWorker(redis);
+// Re-delivers AI-service events that failed on the first try (app/lib/ai/aiEvents.js).
+const aiEventRetryWorker = new Worker(AI_EVENT_RETRY_QUEUE, processAiEventRetryJob, { connection: redis });
 
 // Shared event listeners (optional)
 const setupWorkerEvents = (worker, queueName) => {
@@ -67,4 +70,5 @@ const setupWorkerEvents = (worker, queueName) => {
 setupWorkerEvents(emailWorker, 'emailQueue');
 setupWorkerEvents(smsWorker, 'communicationQueue');
 setupWorkerEvents(leadWorker, 'leadProcessingQueue');
+setupWorkerEvents(aiEventRetryWorker, AI_EVENT_RETRY_QUEUE);
 console.log('Workers started for: emailQueue, communicationQueue, leadProcessingQueue & campaignProcessingQueue');
