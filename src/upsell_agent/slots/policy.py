@@ -1,13 +1,24 @@
-"""Decide: picks exactly one next step (architecture §8.3). A pure function:
-the same profile and the same extraction always give the same answer, which
-is what makes slot filling deterministic.
+"""Decide: picks exactly one next step (architecture §8.3, MASTER_PLAN_2
+Phase 5). A pure function: the same profile, conversation state and
+extraction always give the same answer.
 
 Rules, checked in order; the first that applies wins:
-  1. stop       the customer opted out
-  2. handoff    they asked for a person, or sound upset
-  3. confirm    a value is waiting for confirmation (one at a time)
-  4. ask        required slots are missing or stale (at most 2 per message)
-  5. qualified  nothing missing: tell the dealer, stop asking
+  1. stop              the customer opted out
+  2. handoff           they asked for a person, or are clearly upset
+  3. clarify           they asked what our last message meant: re-explain it
+  4. answer            they have questions: answer first, then at most one
+                       follow-up (a confirmation, or one ask)
+  5. confirm           a value is waiting for confirmation
+  6. ask               a required detail can be asked (one per message)
+  7. qualified         nothing missing
+  8. partly_qualified  every detail still missing has been asked twice: hand
+                       what we have to the team, and stop asking
+  9. acknowledge       nothing to ask right now: reply without a question
+
+Asking (architecture §15, decision 13): the least-asked detail first; never the detail our last message
+asked for; a detail asked twice is parked until 3 other replies have gone out;
+a customer frustrated with the conversation is asked nothing; a lead already
+handed on as partly qualified is asked nothing again.
 
 Every rule's result is returned too, so the Debug UI can show why.
 """
@@ -16,10 +27,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from upsell_agent.agent.pipeline import DECIDE_RULES
+from upsell_agent.slots.display import display_value
 from upsell_agent.slots.profile import Profile
+from upsell_agent.slots.requirements import Requirement
 from upsell_agent.slots.schema import SCHEMA
 
-MAX_ASKS_PER_MESSAGE = 2
+MAX_ASKS_PER_MESSAGE = 1
+MAX_ASKS_PER_SLOT = 2
+# A parked detail can be asked again once this many other replies have gone out.
+PARKED_FOR_REPLIES = 3
+# Upset is a handoff signal only when this sure (MASTER_PLAN_2 Phase 4): one
+# ambiguous message isn't enough. Frustration with the bot itself never is.
+UPSET_HANDOFF_CONFIDENCE = 0.8
 
 
 @dataclass
@@ -27,22 +46,86 @@ class Flags:
     opted_out: bool = False
     wants_human: bool = False
     upset: bool = False
-    customer_questions: list[str] = field(default_factory=list)
+    upset_confidence: float = 0.0
+    annoyed_at_bot: bool = False
+    # {text, label} per question still to answer (agent/conversation.py).
+    questions: list[dict[str, str]] = field(default_factory=list)
+    # From the conversation state: per slot (times asked, reply it was last
+    # asked in), what the last reply asked, and how many replies have gone out.
+    asks: dict[str, tuple[int, int]] = field(default_factory=dict)
+    last_asked: list[str] = field(default_factory=list)
+    replies: int = 0
+    # The lead's status: already qualified / handed on as partly qualified.
+    already_qualified: bool = False
+    stop_asking: bool = False
+
+    @property
+    def clearly_upset(self) -> bool:
+        return self.upset and self.upset_confidence >= UPSET_HANDOFF_CONFIDENCE
+
+
+def _unfilled(profile: Profile, requirement: Requirement) -> list[str]:
+    if requirement.mode == "any":
+        return list(requirement.slots)
+    return [p for p in requirement.slots if not profile.is_current(p)]
+
+
+def times_asked(profile: Profile, requirement: Requirement, flags: Flags) -> int:
+    return max(flags.asks.get(p, (0, 0))[0] for p in _unfilled(profile, requirement))
+
+
+def ask_block(profile: Profile, requirement: Requirement, flags: Flags) -> str | None:
+    """Why this requirement can't be asked now, or None if it can."""
+    slots = _unfilled(profile, requirement)
+    if any(p in flags.last_asked for p in slots):
+        return "asked in our last message"
+    history = [flags.asks.get(p, (0, 0)) for p in slots]
+    times = max(count for count, _ in history)
+    last = max(turn for _, turn in history)
+    if times >= MAX_ASKS_PER_SLOT and flags.replies - last < PARKED_FOR_REPLIES + 1:
+        return f"parked: asked {times} times, last in reply #{last}"
+    return None
+
+
+def _ask_item(profile: Profile, requirement: Requirement) -> dict[str, Any]:
+    return {"requirement": requirement.id, "label": requirement.label, "slots": _unfilled(profile, requirement),
+            "hint": requirement.ask_hint, "question": requirement.customer_question,
+            "explanation": requirement.explanation}
 
 
 def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     pending = profile.pending()
     missing = profile.missing()
-    asks = missing[:MAX_ASKS_PER_MESSAGE]
     filled, total = profile.progress()
+    clarify_questions = [q for q in flags.questions if q.get("label") == "clarify"]
+    other_questions = [q for q in flags.questions if q.get("label") != "clarify"]
+
+    blocked = {r.id: ask_block(profile, r, flags) for r in missing}
+    # "Asked out": every missing detail has had its two asks. Checked without the
+    # cooldown, so a customer who never answers isn't asked round and round forever.
+    all_parked = bool(missing) and all(times_asked(profile, r, flags) >= MAX_ASKS_PER_SLOT for r in missing)
+    may_ask = not flags.annoyed_at_bot and not flags.stop_asking and not all_parked
+    # Least-asked first, then by priority: every detail gets its first ask, then
+    # its second, before anything is asked a third time.
+    askable = sorted((r for r in missing if blocked[r.id] is None),
+                     key=lambda r: (times_asked(profile, r, flags), r.priority)) if may_ask else []
 
     conditions: dict[str, tuple[bool, str]] = {
         "stop": (flags.opted_out, "Customer opted out"),
-        "handoff": (flags.wants_human or flags.upset,
-                    "Customer asked for a person" if flags.wants_human else "Customer seems upset"),
+        "handoff": (flags.wants_human or flags.clearly_upset,
+                    "Customer asked for a person" if flags.wants_human
+                    else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})"),
+        "clarify": (bool(clarify_questions and flags.last_asked),
+                    f"Asked what we meant: {clarify_questions[0]['text']!r}" if clarify_questions else ""),
+        "answer": (bool(other_questions or clarify_questions),
+                   f"{len(other_questions or clarify_questions)} question(s) to answer"),
         "confirm": (bool(pending), f"Confirm {SCHEMA[pending[0].path].label}: {pending[0].value!r}" if pending else ""),
-        "ask": (bool(missing), "Missing: " + ", ".join(r.label for r in asks) if missing else ""),
-        "qualified": (True, f"All {total} required details collected"),
+        "ask": (bool(askable), "Missing: " + askable[0].label if askable else ""),
+        "qualified": (not missing and not flags.already_qualified, f"All {total} required details collected"),
+        "partly_qualified": (all_parked and not flags.stop_asking,
+                             "Everything still missing was asked twice: "
+                             + ", ".join(r.label for r in missing) if missing else ""),
+        "acknowledge": (True, "Nothing to ask right now"),
     }
 
     rules, fired = [], None
@@ -56,7 +139,8 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
 
     decision: dict[str, Any] = {
         "action": fired,
-        "answer_questions": list(flags.customer_questions),
+        "answer_questions": [],
+        "annoyed_at_bot": flags.annoyed_at_bot,
         "rules": rules,
         "required_total": total,
         "required_filled": filled,
@@ -64,18 +148,39 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
         "effective_lead_type": profile.effective_lead_type.value,
         "slots": [],
         "asks": [],
+        "not_asked": [{"label": r.label, "why": blocked[r.id]} for r in missing if blocked[r.id]],
     }
-    if fired == "confirm":
+
+    def add_confirm() -> None:
         slot = pending[0]
-        decision["slots"] = [slot.path]
+        decision["slots"].append(slot.path)
         decision["confirm"] = {"path": slot.path, "label": SCHEMA[slot.path].label, "value": slot.value,
+                               "display": display_value(SCHEMA[slot.path], slot.value), "kind": SCHEMA[slot.path].kind,
                                "fact_id": slot.fact_id}
+
+    def add_ask() -> None:
+        item = _ask_item(profile, askable[0])
+        decision["asks"] = [item][:MAX_ASKS_PER_MESSAGE]
+        decision["slots"] += [p for p in item["slots"] if p not in decision["slots"]]
+
+    if fired == "clarify":
+        # One entry per distinct question (year, make and model share one).
+        items: list[dict[str, str]] = []
+        for p in flags.last_asked:
+            if p in SCHEMA and all(i["question"] != SCHEMA[p].customer_question for i in items):
+                items.append({"path": p, "label": SCHEMA[p].label, "hint": SCHEMA[p].ask_hint,
+                              "question": SCHEMA[p].customer_question, "explanation": SCHEMA[p].explanation})
+        decision["clarify"] = {"items": items}
+        decision["answer_questions"] = clarify_questions + other_questions
+    elif fired == "answer":
+        decision["answer_questions"] = other_questions or clarify_questions
+        # At most one follow-up question after the answers, never when they're frustrated with us.
+        if pending and not flags.annoyed_at_bot:
+            add_confirm()
+        elif askable:
+            add_ask()
+    elif fired == "confirm":
+        add_confirm()
     elif fired == "ask":
-        for requirement in asks:
-            unfilled = [p for p in requirement.slots if not profile.is_current(p)]
-            if requirement.mode == "any":
-                unfilled = list(requirement.slots)
-            decision["asks"].append({"requirement": requirement.id, "label": requirement.label,
-                                     "slots": unfilled, "hint": requirement.ask_hint})
-            decision["slots"] += [p for p in unfilled if p not in decision["slots"]]
+        add_ask()
     return decision

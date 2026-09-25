@@ -18,12 +18,17 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from upsell_agent import clock
+from upsell_agent.agent.conversation import load_conversation
+from upsell_agent.agent.llm import OFFLINE
 from upsell_agent.agent.pipeline import pipeline_definition
+from upsell_agent.agent.summary import load_summary
 from upsell_agent.agent.turn import LEADS_COLLECTION
 from upsell_agent.api.leads import lead_profile
 from upsell_agent.api.webhooks import FIRE_JOB
 from upsell_agent.channels.delivery import apply_delivery_status
+from upsell_agent.config import get_settings
 from upsell_agent.devtools import scenarios, simulate
+from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
@@ -35,6 +40,9 @@ from upsell_agent.integrations.mongodb import (
 )
 from upsell_agent.integrations.redis_client import get_redis
 from upsell_agent.observability.trace import DEV_TRACE_CHANNEL
+from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_CHANNEL_SWITCH
+from upsell_agent.slots.policy import MAX_ASKS_PER_SLOT
+from upsell_agent.slots.schema import SCHEMA
 
 router = APIRouter(prefix="/dev", tags=["dev"])
 
@@ -65,7 +73,12 @@ def _time_key(value: datetime | None) -> datetime:
 
 @router.get("/ping")
 async def ping() -> dict:
-    return {"environment": "DEV", "now": clock.now().isoformat()}
+    """Also which models are running (MASTER_PLAN_2 Phase 9): the Debug UI shows
+    them, and shows the offline model's test tags only when it's the one running."""
+    settings = get_settings()
+    models = {"extract": settings.model_extract, "compose": settings.model_compose}
+    return {"environment": "DEV", "now": clock.now().isoformat(), "models": models,
+            "offline": OFFLINE in models.values()}
 
 
 @router.get("/pipeline")
@@ -102,8 +115,15 @@ async def stream(request: Request, dealer_id: str | None = None, lead_id: str | 
 
 @router.get("/dealers")
 async def dealers() -> list[dict]:
+    """The dev dealers, with the timezone and opening hours their rules run
+    in (the Debug UI shows the dealer's local time next to Pakistan time)."""
     await simulate.ensure_dev_dealers()
-    return _json(await get_db()[simulate.DEV_DEALERS_COLLECTION].find({}).to_list(None))
+    out = []
+    for doc in await get_db()[simulate.DEV_DEALERS_COLLECTION].find({}).to_list(None):
+        profile = await dealer_profile(str(doc["_id"]))
+        out.append({**doc, "time_zone": profile.timezone, "hours": profile.hours_view(),
+                    "hours_from_record": profile.hours_from_record})
+    return _json(out)
 
 
 @router.get("/leads")
@@ -208,8 +228,11 @@ async def conversation(lead_id: str, dealer_id: str) -> list[dict]:
             "message_id": str(msg["_id"]),
         })
     for turn in await db.collection(AI_TURN_LOG_COLLECTION).find({"lead_id": lead_id}).to_list(None):
-        reply = (turn.get("summary") or {}).get("reply")
-        if reply and turn["turn_id"] not in turns_with_messages:
+        summary = turn.get("summary") or {}
+        reply = summary.get("reply")
+        # A turn that attempted a send already shows as that message (a channel
+        # switch or staff check sends under its own id, not the turn's).
+        if reply and not summary.get("send_status") and turn["turn_id"] not in turns_with_messages:
             items.append({"direction": "outbound", "kind": "draft", "channel": turn.get("channel"), "text": reply,
                           "at": turn.get("created_at"), "turn_id": turn["turn_id"], "outcome": turn.get("outcome"),
                           "status": "not sent", "sent": False})
@@ -223,8 +246,26 @@ async def slots(lead_id: str, dealer_id: str) -> dict:
     profile = await lead_profile(dealer_id, lead_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="lead not found")
+    state = await dealer_scoped_db(dealer_id).collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
     return _json({**profile, "implemented": True, "status": profile["lead"]["status"],
-                  "status_reason": profile["lead"]["status_reason"]})
+                  "status_reason": profile["lead"]["status_reason"],
+                  "conversation": conversation_view(state), "summary": load_summary(state).model_dump()})
+
+
+def conversation_view(state: dict) -> dict:
+    """The conversation state for the Debug UI's Conversation panel: each asked
+    detail with its label and whether it was just asked or is asked out."""
+    conversation = load_conversation(state)
+    asks = [{"path": path, "label": SCHEMA[path].label if path in SCHEMA else path, "count": a.count,
+             "last_reply": a.last_turn,
+             "status": ("just asked" if path in conversation.last_asked
+                        else "asked out" if a.count >= MAX_ASKS_PER_SLOT else "")}
+            for path, a in sorted(conversation.asks.items(), key=lambda kv: -kv[1].last_turn)]
+    topic = conversation.last_topic
+    for path in SCHEMA:
+        if topic and path in topic:
+            topic = topic.replace(path, SCHEMA[path].label.lower())
+    return {**conversation.model_dump(mode="json"), "asks": asks, "max_asks": MAX_ASKS_PER_SLOT, "last_topic": topic}
 
 
 # --- Turns (for the timeline and replay) -------------------------------------
@@ -279,6 +320,7 @@ async def reset_clock() -> dict:
 async def followups(dealer_id: str, lead_id: str | None = None) -> list[dict]:
     flt = {"lead_id": lead_id} if lead_id else {}
     docs = await dealer_scoped_db(dealer_id).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(flt).to_list(500)
+    docs = [{**d, "kind": d.get("kind") or KIND_CHANNEL_SWITCH} for d in docs]
     return _json(sorted(docs, key=lambda d: _time_key(d.get("due_at"))))
 
 
@@ -288,9 +330,9 @@ async def fail_sms(followup_id: str, request: Request, dealer_id: str = Query(..
     Goes through the same code as a real Twilio / SendGrid callback, so the
     follow-up becomes due now and fires (architecture §6, "Failed SMS")."""
     doc = await dealer_scoped_db(dealer_id).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
-        {"_id": as_object_id(followup_id), "status": "pending"})
+        {"_id": as_object_id(followup_id), "status": "pending", **CHANNEL_SWITCHES})
     if doc is None:
-        raise HTTPException(status_code=404, detail="no pending follow-up with that id")
+        raise HTTPException(status_code=404, detail="no pending channel switch with that id")
     failure = "undelivered" if doc["from_channel"] == "sms" else "bounced"
     result = await apply_delivery_status(
         request.app.state.platform, failure, provider_id=doc.get("source_provider_id"),

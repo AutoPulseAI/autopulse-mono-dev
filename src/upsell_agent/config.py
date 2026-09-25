@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     first_reply_deadline_s: float = Field(default=8.0, alias="FIRST_REPLY_DEADLINE_S")
     reply_deadline_s: float = Field(default=20.0, alias="REPLY_DEADLINE_S")
     max_ai_calls_per_turn: int = Field(default=4, alias="MAX_AI_CALLS_PER_TURN")
+    # Working memory in the context pack (MASTER_PLAN_2 Phase 1): the recent
+    # conversation, word for word, up to about this many tokens. The last 6
+    # messages are always kept.
+    context_working_tokens: int = Field(default=3000, alias="CONTEXT_WORKING_TOKENS")
 
     # One dealer's campaign burst must not slow the others (architecture §12):
     # a dealer gets at most DEALER_MAX_INFLIGHT turns at once, and each worker

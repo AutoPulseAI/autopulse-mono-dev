@@ -29,6 +29,14 @@ class Requirement:
     def ask_hint(self) -> str:
         return SCHEMA[self.slots[0]].ask_hint
 
+    @property
+    def customer_question(self) -> str:
+        return SCHEMA[self.slots[0]].customer_question
+
+    @property
+    def explanation(self) -> str:
+        return SCHEMA[self.slots[0]].explanation
+
 
 def _single(path: str) -> Requirement:
     return Requirement(path, SCHEMA[path].label, (path,))

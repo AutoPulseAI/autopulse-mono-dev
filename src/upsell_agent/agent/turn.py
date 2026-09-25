@@ -11,17 +11,21 @@ and 20s otherwise. Running out of time sends the template - never nothing.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
 from upsell_agent.agent.context import TurnContext
+from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
 from upsell_agent.agent.nodes.template_reply import template_draft
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
+from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
 from upsell_agent.config import Settings, get_settings
@@ -37,8 +41,11 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.integrations.platform_client import PlatformClient, StubPlatformClient
 from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTracer
 from upsell_agent.observability.tracing import turn_trace
-from upsell_agent.scheduler.followups import plan_followup
+from upsell_agent.scheduler.followups import plan_followup, plan_handoff_check
 from upsell_agent.slots.requirements import lead_type_for
+from upsell_agent.worker.queue import Enqueue
+
+logger = logging.getLogger(__name__)
 
 # Kept for existing imports (events/handlers.py, devtools).
 LEADS_COLLECTION = PLATFORM_LEADS_COLLECTION
@@ -55,6 +62,8 @@ class TurnDeps:
     sender: Sender = field(default_factory=_default_sender)
     platform: PlatformClient = field(default_factory=StubPlatformClient)
     settings: Settings | None = None
+    # Queues follow-up work after a turn (the rolling summary). None: not queued.
+    enqueue: Enqueue | None = None
 
     @property
     def config(self) -> Settings:
@@ -96,17 +105,23 @@ async def run_turn(
     event_received_at: datetime | None = None,
     source_message_id: str | None = None,
     turn_id: str | None = None,
+    batch: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """`turn_id`: the handlers derive it from what triggered the turn, so a
     re-run of the same job (a retry, or the queue re-delivering it) reuses the
-    send's idempotency key and can never message the customer twice."""
+    send's idempotency key and can never message the customer twice.
+
+    `batch`: the stored customer messages this turn answers ({id, channel,
+    text, at}), listed in the trace and in the context pack one by one."""
     settings = deps.config
     db = dealer_scoped_db(dealer_id)
     tracer = TurnTracer(
         sink=deps.sink, dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id,
         trigger=trigger, channel=channel, store_prompts=deps.store_prompts, turn_id=turn_id,
     )
-    await tracer.start({"text": inbound_text, "channel": channel, "shadow": shadow})
+    batch = batch or []
+    await tracer.start({"text": inbound_text, "channel": channel, "shadow": shadow,
+                        **({"batch": batch} if batch else {})})
 
     lead = await find_lead(db, lead_id)
     customer = await find_customer(db, customer_id)
@@ -118,6 +133,7 @@ async def run_turn(
     state = AgentState(
         dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, trigger=trigger,
         channel=channel, turn_id=tracer.turn_id, inbound_text=inbound_text, shadow=shadow,
+        new_message_ids=[str(m["id"]) for m in batch],
         first_reply_via_template=(trigger == "lead_created" and settings.first_reply_mode == "template"),
         customer_name=(customer or {}).get("name") or (lead or {}).get("name"),
     )
@@ -167,14 +183,29 @@ async def run_turn(
                 span.output = planned
                 if planned["created"]:
                     when = "now (the send failed)" if planned["due_now"] else "in 24h if there's no reply"
+                    if planned["held_to_contact_window"]:
+                        when = (f"at {_dealer_time(planned['due_at'], planned['timezone'])} "
+                                "(SMS waits for the 8:00-20:00 contact window)")
                     span.reasoning = [f"Same message goes to {planned['to_channel']} ({planned['to']}) {when}."]
                     if planned["superseded"]:
                         span.reasoning.append("Replaced this lead's older pending follow-up.")
-                    span.edge_label = f"→ {planned['to_channel']} {'now' if planned['due_now'] else 'in 24h'}"
+                    span.edge_label = f"→ {planned['to_channel']} {'now' if planned['due_now'] else 'later'}"
                 else:
                     span.reasoning = [f"No follow-up: {planned['reason']}."]
+                if _hands_off(result) and not shadow:
+                    check = await plan_handoff_check(
+                        db, lead_id=lead_id, customer_id=customer_id, channel=channel, handoff_id=tracer.turn_id,
+                        handoff_reason=_handoff_reason(result))
+                    span.output = {**planned, "handoff_check": check}
+                    span.reasoning.append(
+                        f"Staff check at {_dealer_time(check['due_at'], check['timezone'])}: "
+                        f"{check['business_minutes']} business minutes ({check['timezone']}"
+                        + ("" if check["hours_from_record"] else ", default hours") + "). If nobody has taken "
+                        "the lead over by then, the customer gets one more holding reply and staff get an alert.")
+                    span.edge_label = "staff check"
 
-        await _update_lead_state(db, lead_id, trigger, sent, result)
+        await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
+                                 shadow=shadow, turn_id=tracer.turn_id)
 
         if result.get("used_template") and not result.get("used_fallback"):
             outcome = "template_reply"
@@ -182,6 +213,7 @@ async def run_turn(
             outcome = "fallback"
         else:
             outcome = action or "unknown"
+        summary_queued = await _queue_summary(deps, result, dealer_id, lead_id, tracer.turn_id)
         calls = ctx.model_calls
         log = await tracer.finish(outcome, {
             "action": action, "reply": reply, "used_fallback": result.get("used_fallback", False),
@@ -196,9 +228,27 @@ async def run_turn(
             "tokens_out": sum(c.get("tokens_out") or 0 for c in calls),
             "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 6),
             "campaign_id": (result.get("campaign") or {}).get("campaign_id"),
+            "batched": len(batch),
+            "summary_queued": summary_queued,
         })
         await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
         return log
+
+
+async def _queue_summary(deps: TurnDeps, result: dict[str, Any], dealer_id: str, lead_id: str | None,
+                         turn_id: str) -> bool:
+    """After the send: when messages have left working memory and the summary
+    doesn't cover them yet, queue its update (agent/summary.py)."""
+    budget = (result.get("context_pack") or {}).get("budget") or {}
+    if not (lead_id and deps.enqueue and budget.get("summary_behind")):
+        return False
+    try:
+        await deps.enqueue(UPDATE_SUMMARY_JOB, key=f"{UPDATE_SUMMARY_JOB}:{lead_id}:{turn_id}",
+                           dealer_id=dealer_id, lead_id=lead_id)
+    except Exception:
+        logger.exception("could not queue the summary update for lead %s", lead_id)
+        return False
+    return True
 
 
 async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: float) -> dict[str, Any]:
@@ -214,15 +264,56 @@ async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: fl
     return {"draft": draft, "used_template": True, "used_fallback": True, "fallback_reason": reason}
 
 
+def _dealer_time(iso: str, timezone: str) -> str:
+    """A due time as the dealer reads it, e.g. "Tue 10:30 EDT"."""
+    return datetime.fromisoformat(iso).astimezone(ZoneInfo(timezone)).strftime("%a %H:%M %Z")
+
+
+def _hands_off(result: dict[str, Any]) -> bool:
+    return bool(result.get("flag_human")) or (result.get("decision") or {}).get("action") == "handoff"
+
+
+def _handoff_reason(result: dict[str, Any]) -> str:
+    if result.get("flag_human"):
+        return "AI couldn't write a safe reply"
+    decision = result.get("decision") or {}
+    return next((r["why"] for r in decision.get("rules", []) if r["result"] == "fired"), "Customer asked for a person")
+
+
+def _asked_slots(result: dict[str, Any], channel: str) -> list[str]:
+    """What the reply that went out asked for: a template's own question, or
+    the slots Decide chose to ask about or confirm."""
+    draft = result.get("draft") or {}
+    if result.get("used_template"):
+        return list((draft.get("asks") or {}).get(channel, []))
+    decision = result.get("decision") or {}
+    return list(decision.get("slots", [])) if decision.get("action") in ("ask", "confirm", "answer") else []
+
+
 async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
-                             sent: SendOutcome | None, result: dict[str, Any]) -> None:
+                             sent: SendOutcome | None, result: dict[str, Any], *, lead_state: dict | None,
+                             channel: str, shadow: bool, turn_id: str) -> None:
     """Lead status follows the turn (architecture §8.3): qualified when
     nothing is missing, handed off when the customer asked for a person or
-    the AI couldn't write a safe reply."""
+    the AI couldn't write a safe reply. The conversation state
+    (agent/conversation.py) is updated from what actually went out."""
     if not lead_id:
         return
     decision = result.get("decision") or {}
-    fields: dict[str, Any] = {"last_asked_slots": decision.get("slots", []), "last_turn_at": clock.now()}
+    draft = result.get("draft") or {}
+    conversation = after_turn(
+        load_conversation(lead_state),
+        now=clock.now(),
+        send_status=sent.status if sent else None,
+        shadow=shadow,
+        action=decision.get("action"),
+        asked_slots=_asked_slots(result, channel),
+        answered=list(draft.get("answered_questions") or []),
+        new_questions=list((result.get("extraction") or {}).get("questions") or []),
+        used_template=bool(result.get("used_template")),
+        promises=list(draft.get("promises") or []),
+    )
+    fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:
         fields["last_send_status"] = sent.status
         if sent.status == "sent":
@@ -231,13 +322,19 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
                 fields["first_reply_ms"] = sent.latency_ms
     if decision.get("required_total") is not None:
         fields["required"] = {"filled": decision.get("required_filled"), "total": decision.get("required_total")}
-    if result.get("flag_human"):
-        fields.update(status="handoff", status_reason="AI couldn't write a safe reply", status_at=clock.now())
-    elif decision.get("action") == "handoff":
-        why = next((r["why"] for r in decision.get("rules", []) if r["result"] == "fired"), "Customer asked for a person")
-        fields.update(status="handoff", status_reason=why, status_at=clock.now())
+    if _hands_off(result):
+        # handoff_id ties this handoff to its staff check (scheduler/followups.py).
+        fields.update(status="handoff", status_reason=_handoff_reason(result), status_at=clock.now(),
+                      handoff_id=turn_id, staff_alert=None)
+        if sent is not None and sent.status == "sent":
+            # The handoff reply counts as the first "passed to the team" notice.
+            fields["last_handoff_notice_at"] = clock.now()
     elif decision.get("action") == "qualified":
         fields.update(status="qualified", status_reason="All required details collected", status_at=clock.now())
+    elif decision.get("action") == "partly_qualified":
+        why = next((r["why"] for r in decision.get("rules", []) if r["result"] == "fired"), "")
+        fields.update(status="partly_qualified", status_reason=f"Passed to the team with what we have. {why}",
+                      status_at=clock.now())
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id},
         {"$set": fields, "$setOnInsert": {"lead_id": lead_id, "created_at": clock.now(),

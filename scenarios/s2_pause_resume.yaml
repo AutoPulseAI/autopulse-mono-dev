@@ -7,8 +7,11 @@ steps:
   - pause: {lead: p, reason: "Staff took over"}
   - wait_status: {lead: p, status: paused}
   - reply: {lead: p, text: "Are you there?"}
-  - expect_turn_count: {lead: p, count: 1, settle_s: 3}
+  - wait_turns: {lead: p, count: 2, timeout_s: 30}
+  - expect_turn: {lead: p, trigger: inbound_held, outcome: saved_only}
+  - expect_messages: {lead: p, direction: outbound, count: 1}
   - resume: {lead: p}
   - wait_status: {lead: p, status: active}
   - reply: {lead: p, text: "It's a 2020 Subaru with 54k miles"}
-  - wait_turns: {lead: p, count: 2, timeout_s: 30}
+  - wait_turns: {lead: p, count: 3, timeout_s: 30}
+  - expect_turn: {lead: p, trigger: inbound_message}

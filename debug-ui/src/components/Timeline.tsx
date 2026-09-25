@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 
+import { formatDateTime, formatTime } from "../time";
 import type { Replay, Speed } from "../trace/useReplay";
 import type { TurnSummary } from "../types";
 import { outcomeColor } from "./ui";
@@ -14,6 +15,15 @@ interface Props {
 }
 
 const SPEEDS: Speed[] = [0.5, 1, 2];
+
+export const TRIGGER_LABEL: Record<string, string> = {
+  lead_created: "new lead",
+  inbound_message: "reply",
+  followup: "follow-up",
+  inbound_held: "held",
+  handoff_check: "staff check",
+  summary: "summary",
+};
 
 export function Timeline({ turns, mode, replayTurnId, replay, onPickTurn, onLive }: Props) {
   return (
@@ -48,12 +58,13 @@ export function Timeline({ turns, mode, replayTurnId, replay, onPickTurn, onLive
               initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
               onClick={() => onPickTurn(t.turn_id)}
-              title={`${t.trigger} · ${t.ms ?? "?"} ms · click to replay`}
+              title={`${t.trigger} · ${formatDateTime(t.created_at, true)} · ${t.ms ?? "?"} ms · click to replay`}
               className="flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]"
               style={{ borderColor: selected ? "var(--accent)" : "var(--border)", background: selected ? "var(--accent-soft)" : "var(--panel)" }}
             >
               <span className="font-semibold text-muted">#{i + 1}</span>
-              <span>{t.trigger === "lead_created" ? "new lead" : t.trigger === "followup" ? "follow-up" : "reply"}</span>
+              <span>{TRIGGER_LABEL[t.trigger] ?? t.trigger}</span>
+              <span className="text-[10px] tabular-nums text-muted">{formatTime(t.created_at)}</span>
               <span className="font-semibold" style={{ color: outcomeColor(t.outcome) }}>
                 → {t.outcome ?? "…"}
               </span>

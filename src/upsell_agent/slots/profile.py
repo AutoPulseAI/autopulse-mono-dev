@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from upsell_agent import clock
 from upsell_agent.agent.qualification import LeadType
+from upsell_agent.slots.display import display_value
 from upsell_agent.slots.requirements import Requirement, effective_lead_type, required_for
 from upsell_agent.slots.schema import GROUP_LABELS, GROUP_ORDER, SCHEMA
 
@@ -89,12 +90,13 @@ class Profile:
             missing_paths += [p for p in requirement.slots if not self.is_current(p) and p not in missing_paths]
         rows = [
             {"path": s.path, "label": SCHEMA[s.path].label, "group": SCHEMA[s.path].group, "value": s.value,
-             "state": s.state, "source": "platform" if s.source == "tool_verified" else "customer",
+             "display": display_value(SCHEMA[s.path], s.value), "state": s.state, "source": "platform" if s.source == "tool_verified" else "customer",
              "source_message_id": s.source_message_id, "quote": s.quote, "confidence": s.confidence,
              "captured_at": s.captured_at.isoformat() if s.captured_at else None, "history": s.history}
             for s in self.slots.values()
         ] + [
-            {"path": p, "label": SCHEMA[p].label, "group": SCHEMA[p].group, "value": None, "state": "missing",
+            {"path": p, "label": SCHEMA[p].label, "group": SCHEMA[p].group, "value": None, "display": "",
+             "state": "missing",
              "source": None, "source_message_id": None, "quote": None, "confidence": None, "captured_at": None,
              "history": []}
             for p in missing_paths if p not in self.slots

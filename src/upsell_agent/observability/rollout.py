@@ -14,10 +14,15 @@ Double messages:
   answering the same customer message would show here too.
 
 Lost replies:
-- a customer message recorded but never answered, older than 5 minutes, on a
-  lead the AI should be answering (not paused / handed off / opted out);
+- a customer message recorded, older than 5 minutes, with neither a reply
+  turn nor a recorded reason (MASTER_PLAN_2 Phase 2: a message on a lead the
+  AI doesn't answer gets a logged "held" turn saying why, so there's no
+  exception by lead status any more);
 - an event accepted (`ai_events`) whose job never ran: an inbound message never
   recorded, or a new lead with no first reply, older than 5 minutes.
+
+Staff alerts (information, not a check): handed-off leads that staff hadn't
+taken over 30 business minutes later.
 
 The checks read platform data read-only, scoped to the dealer.
 """
@@ -97,8 +102,8 @@ async def _lost_replies(db, since, states: list[dict]) -> dict[str, list]:
         {"direction": "inbound", "answered_turn_id": None, "created_at": {"$gte": since, "$lt": cutoff}},
         projection={"lead_id": 1, "text": 1, "created_at": 1}).to_list(None)
     unanswered = [{"lead_id": r.get("lead_id"), "text": (r.get("text") or "")[:120],
-                   "at": _aware(r["created_at"]).isoformat()}
-                  for r in unanswered if status_by_lead.get(r.get("lead_id"), "active") not in SILENT_STATUSES]
+                   "at": _aware(r["created_at"]).isoformat(),
+                   "lead_status": status_by_lead.get(r.get("lead_id"), "active")} for r in unanswered]
 
     events = await db.collection(AI_EVENTS_COLLECTION).find(
         {"received_at": {"$gte": since, "$lt": cutoff}}, projection={"type": 1}).to_list(None)
@@ -122,7 +127,11 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
     since = clock.now() - timedelta(days=days)
     mode = await dealer_ai_mode(dealer_id)
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(
-        {"created_at": {"$gte": since}}, projection={"lead_id": 1, "status": 1, "created_at": 1}).to_list(None)
+        {"created_at": {"$gte": since}},
+        projection={"lead_id": 1, "status": 1, "created_at": 1, "staff_alert": 1}).to_list(None)
+    staff_alerts = [{"lead_id": s["lead_id"], "at": _aware(s["staff_alert"]["at"]).isoformat(),
+                     "reason": s["staff_alert"].get("reason"), "lead_status": s.get("status")}
+                    for s in states if s.get("staff_alert")]
     metrics = await dealer_metrics(dealer_id, days)
 
     platform_auto = await _platform_auto_messages(db, states)
@@ -143,7 +152,7 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
         # A live dealer's customers hear only from the AI; in shadow, n8n replying is expected.
         "no platform auto-messages on AI leads (n8n / FollowUpJob)": mode != "live" or not platform_auto,
         "no AI double sends": not doubles,
-        "no unanswered customer messages": not lost["unanswered_messages"],
+        "no customer message without a reply or a reason": not lost["unanswered_messages"],
         "no events left unhandled": not lost["events_never_handled"],
         f"first reply p95 under {LIMITS['first_reply_p95_ms'] / 1000:g}s": within(fr_p95, LIMITS["first_reply_p95_ms"]),
         f"template fallback under {LIMITS['template_fallback_rate']:.0%}": within(fallback,
@@ -158,6 +167,7 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
         "platform_auto_messages": platform_auto[:50], "ai_double_sends": doubles[:50],
         "unanswered_messages": lost["unanswered_messages"][:50],
         "events_never_handled": lost["events_never_handled"][:50],
+        "staff_alerts": staff_alerts[:50],
         "numbers": {"first_reply_p95_ms": fr_p95, "template_fallback_rate": fallback, "guard_failure_rate": guard,
                     "send_failure_rate": None if send_failure_rate is None else round(send_failure_rate, 4)},
         "limits": LIMITS,
@@ -169,7 +179,8 @@ def format_check(result: dict[str, Any]) -> str:
               f"{result['leads']} AI leads: {'READY / HEALTHY' if result['passed'] else 'NOT READY'}")]
     lines += [f"  {'PASS' if ok else 'FAIL'}  {name}" for name, ok in result["checks"].items()]
     for key, label in (("platform_auto_messages", "platform auto-message"), ("ai_double_sends", "AI double send"),
-                       ("unanswered_messages", "unanswered"), ("events_never_handled", "event never handled")):
+                       ("unanswered_messages", "unanswered"), ("events_never_handled", "event never handled"),
+                       ("staff_alerts", "staff alert")):
         for item in result[key][:5]:
             lines.append(f"        {label}: {item}")
     return "\n".join(lines)

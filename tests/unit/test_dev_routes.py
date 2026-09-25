@@ -131,3 +131,24 @@ def test_profile_endpoint_needs_the_shared_secret_and_returns_the_profile(client
     # Stage 10: the reply that was sent has its 24h switch to email waiting.
     assert body["pending_followup"]["channel"] == "email" and body["pending_followup"]["due_at"].endswith("+00:00")
     assert client.get(url, params={"dealer_id": OTHER}, headers=headers).status_code == 404
+
+
+# --- MASTER_PLAN_2 Phase 9: what the Debug UI needs to explain a reply ------------------------
+
+def test_ping_says_which_models_are_running(client):
+    body = client.get("/dev/ping").json()
+    assert body["models"] == {"extract": "offline", "compose": "offline"} and body["offline"] is True
+
+
+def test_slots_come_with_the_conversation_state(client):
+    lead_id = _new_lead(client, lead_type="sales", comments="Hi, I saw your ad")["lead_id"]
+    res = client.post("/dev/simulate/reply", json={"dealer_id": DEALER, "lead_id": lead_id, "text": "hmm, is it AWD?"})
+    assert res.status_code == 200, res.text
+    body = client.get(f"/dev/leads/{lead_id}/slots", params={"dealer_id": DEALER}).json()
+    conversation = body["conversation"]
+    assert conversation["turn"] == 2 and conversation["max_asks"] == 2
+    statuses = {a["path"]: a["status"] for a in conversation["asks"]}
+    assert statuses["interest.new_or_used"] == ""               # asked in the first reply only
+    assert "just asked" in statuses.values()                     # the second reply's ask
+    assert all(a["label"] and a["count"] == 1 for a in conversation["asks"])
+    assert body["summary"]["text"] == ""                         # nothing to summarize yet

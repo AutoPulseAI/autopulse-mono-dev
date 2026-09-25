@@ -1,0 +1,15 @@
+name: Dealer questions are answered from the dealer's own details
+stage: 106
+description: '"When are you open on Saturday?" is answered with the hours the dealer entered on the platform, and "Where are you located?" with its address. The guard accepts those numbers on the first draft.'
+steps:
+  - new_lead: {as: h, dealer: A, lead_type: sales, channel: sms, name: Hal Hours, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 20}
+  - reply: {lead: h, text: "When are you open on Saturday?"}
+  - wait_turns: {lead: h, count: 2, timeout_s: 20}
+  - expect_turn: {lead: h, outcome: answer, attempts: {compose: 1}}
+  - expect_last_sent: {lead: h, contains: "On Saturday we're open 9:00 AM to 5:00 PM"}
+  - reply: {lead: h, text: "Where are you located?"}
+  - wait_turns: {lead: h, count: 3, timeout_s: 20}
+  - expect_turn: {lead: h, outcome: answer, attempts: {compose: 1}}
+  - expect_last_sent: {lead: h, contains: "120 Main St, Springfield, NJ 07081"}
+  - expect_context: {lead: h, index: -1, open_questions: []}

@@ -23,6 +23,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart, User
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from upsell_agent.config import get_settings
+from upsell_agent.slots.dates import DATE_PHRASE
 
 SMS_MAX = 320
 
@@ -56,7 +57,35 @@ _NO_TRADE = re.compile(r"\b(no trade(?:-in)?|nothing to trade|don'?t have a trad
 _PAID_OFF = re.compile(r"\b(paid off|own it outright|no loan|don'?t owe|owe nothing|nothing owed)\b", re.IGNORECASE)
 _HUMAN = re.compile(r"\b(real person|human|someone call|call me|talk to (?:a|someone|somebody)|manager|salesperson)\b", re.IGNORECASE)
 _PREFERENCE = re.compile(r"\b(best|works?|work for me|prefer|good for me|available|free|reach me|call me)\b", re.IGNORECASE)
-_UPSET = re.compile(r"\b(angry|annoyed|ridiculous|stop texting|terrible|waste of time|leave me alone|frustrat\w*)\b", re.IGNORECASE)
+# Upset with the dealer or the situation: clear (a handoff signal) or mild (not enough on its own).
+_UPSET_CLEAR = re.compile(r"\b(angry|furious|ridiculous|unacceptable|terrible|worst|scam|rip-?off|waste of (?:my )?time|"
+                          r"leave me alone|stop (?:texting|messaging|contacting))\b", re.IGNORECASE)
+_UPSET_MILD = re.compile(r"\b(annoyed|frustrat\w*|disappointed|upset|not happy|irritat\w*)\b", re.IGNORECASE)
+# Frustrated with this conversation itself: change approach, don't hand off.
+_AT_BOT = re.compile(r"(you keep asking|keep asking (?:me )?the same|same question|already (?:told|said|answered)|"
+                     r"(?:that'?s )?not what i (?:asked|said)|stop asking|answer my question|just answer|"
+                     r"you'?re not listening|not listening|are you (?:a )?(?:bot|robot))", re.IGNORECASE)
+# "What do you mean?" - asking what our last message meant, with or without a question mark.
+_CLARIFY = re.compile(r"(what do you mean|what does that mean|what'?s that mean|what is that|what'?s that|"
+                      r"i don'?t understand|not sure what you mean|meaning\?)", re.IGNORECASE)
+_ABOUT_ME = re.compile(r"((?:know|have|got) (?:so far )?about me|on file (?:for|about) me|what do you know|my (?:details|info|information|profile))",
+                       re.IGNORECASE)
+_RESTRICTED = re.compile(r"\b(price|cost|how much|payments?|financ\w*|apr|interest rate|discount|deal|worth|value|"
+                         r"approv\w*|credit|in stock|available|availability|still (?:there|have)|do you have)\b",
+                         re.IGNORECASE)
+_OFF_TOPIC = re.compile(r"\b(weather|joke|politic\w*|sports?|recipe|movie|football|cricket|bitcoin|stock market|"
+                        r"homework)\b", re.IGNORECASE)
+_SHORT_YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|i do|correct)\b[\s.!]*$", re.IGNORECASE)
+_SHORT_NO = re.compile(r"^\s*(no|nope|nah|i don'?t)\b[\s.!]*$", re.IGNORECASE)
+_SHORT_NUMBER = re.compile(r"^\s*((?:about|around|maybe|roughly)\s+)?\$?\s*(\d[\d,]*(?:\.\d+)?)\s*(k\b|thousand\b)?"
+                           r"\s*(miles|mi)?[\s.!]*$", re.IGNORECASE)
+# Words in quotes are something the customer wants said, not their own date:
+# "reply 'the car is ready today'". Apostrophes inside words aren't quotes.
+_QUOTED = re.compile(r"\"[^\"]*\"|[“][^”]*[”]|(?:(?<=\s)|^)'[^']{3,}'(?=[\s.,!?]|$)")
+_BOOL_SLOTS = ("trade_in.has_trade",)
+_MILEAGE_SLOTS = ("trade_in.mileage", "vehicle.mileage")
+_MONEY_SLOTS = ("interest.budget", "interest.monthly_payment", "trade_in.payoff")
+_YEAR_SLOTS = ("trade_in.year", "vehicle.year")
 
 TIMELINES = [
     (r"\b(asap|right away|today|immediately|right now)\b", "now"),
@@ -139,10 +168,12 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         word = m.group(1)
         _add(values, allowed, "interest.new_or_used", "new" if "new" in word else "used", m.group(0), 0.88)
 
-    # Money: payoff, monthly payment, budget
+    # Money: payoff, monthly payment, budget. A bare number answering a number
+    # we just asked for is left to _short_reply (it may be mileage or a year).
+    bare_answer = bool(_SHORT_NUMBER.match(text)) and bool(asked & {*_MILEAGE_SLOTS, *_MONEY_SLOTS, *_YEAR_SLOTS})
     if m := _PAID_OFF.search(text):
         _add(values, allowed, "trade_in.payoff", 0, m.group(0))
-    for money in _MONEY.finditer(text):
+    for money in ([] if bare_answer else _MONEY.finditer(text)):
         raw, kilo = money.group(1), money.group(2)
         before = lower[max(0, money.start() - 25):money.start()]
         after = lower[money.end():money.end() + 15]
@@ -188,50 +219,218 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
                 _add(values, allowed, "interest.lead_type", value, text[m.start():m.end()], 0.85)
                 break
 
+    _short_reply(text, asked, allowed, values)
+    # "What are your hours on Saturday?" asks about the dealer, it isn't their date:
+    # the first date not in a sentence about opening hours.
+    about_hours = [s.span() for s in re.finditer(r"[^.?!\n]+[.?!]?", text) if _HOURS_Q.search(s.group(0))]
+    m = next((d for d in DATE_PHRASE.finditer(_QUOTED.sub(lambda q: " " * len(q.group(0)), text))
+              if not any(a <= d.start() < b for a, b in about_hours)), None)
+    if m:
+        # The words only; the date is worked out in code (slots/dates.py).
+        end = m.end()
+        if t := re.match(r"\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\s+at\s+noon\b", text[end:], re.IGNORECASE):
+            end += t.end()
+        _add(values, allowed, "interest.needed_by", text[m.start():end], text[m.start():end], 0.9)
+
     if "#reject" in lower:
         values.append({"path": "trade_in.payoff", "value": 12000, "quote": "I owe 12k", "confidence": 0.8})
 
     return {
         "values": values,
-        "customer_questions": [q.strip() for q in re.findall(r"[^.?!\n]*\?", text) if q.strip()],
+        "questions": _questions(text),
         "wants_human": bool(_HUMAN.search(text)),
-        "negative_sentiment": bool(_UPSET.search(text)),
+        **_sentiment(text),
     }
 
 
-def _join(hints: list[str]) -> str:
-    return hints[0] if len(hints) == 1 else ", and ".join([", ".join(hints[:-1]), hints[-1]])
+def _label(question: str) -> str:
+    if _CLARIFY.search(question):
+        return "clarify"
+    if _ABOUT_ME.search(question):
+        return "about_me"
+    if _RESTRICTED.search(question):
+        return "restricted"
+    if _OFF_TOPIC.search(question):
+        return "off_topic"
+    return "answerable"
+
+
+def _questions(text: str) -> list[dict[str, str]]:
+    found = [q.strip() for q in re.findall(r"[^.?!\n]*\?", text) if q.strip()]
+    if (m := _CLARIFY.search(text)) and not any(_CLARIFY.search(q) for q in found):
+        found.append(m.group(0).strip())  # "what do you mean" without a question mark
+    return [{"text": q, "label": _label(q)} for q in found]
+
+
+def _sentiment(text: str) -> dict[str, Any]:
+    at_bot = bool(_AT_BOT.search(text))
+    if _UPSET_CLEAR.search(text):
+        return {"upset": True, "upset_confidence": 0.9, "annoyed_at_bot": at_bot}
+    if _UPSET_MILD.search(text) and not at_bot:
+        return {"upset": True, "upset_confidence": 0.6, "annoyed_at_bot": False}
+    return {"upset": False, "upset_confidence": 0.0, "annoyed_at_bot": at_bot}
+
+
+def _short_reply(text: str, asked: set[str], allowed: set[str], values: list[dict]) -> None:
+    """A bare "yes", "no" or number answers the slot our last message asked for."""
+    open_asks = [p for p in asked if p in allowed and not any(v["path"] == p for v in values)]
+    if not open_asks:
+        return
+    if (m := _SHORT_YES.match(text)) or (n := _SHORT_NO.match(text)):
+        slot = next((p for p in open_asks if p in _BOOL_SLOTS), None)
+        if slot:
+            _add(values, allowed, slot, bool(m), (m or n).group(1))
+        return
+    if m := _SHORT_NUMBER.match(text):
+        amount = float(m.group(2).replace(",", "")) * (1000 if m.group(3) else 1)
+        confidence = 0.6 if m.group(1) else 0.88
+        quote = text.strip().rstrip(".!").strip()
+        kinds = [(_MILEAGE_SLOTS, 0 <= amount <= 500_000), (_MONEY_SLOTS, amount >= 50),
+                 (_YEAR_SLOTS, 1980 <= amount <= 2035 and not m.group(3))]
+        if m.group(4):  # "miles" said outright
+            kinds = kinds[:1]
+        for slots, fits in kinds:
+            slot = next((p for p in open_asks if p in slots), None)
+            if slot and fits:
+                _add(values, allowed, slot, int(amount), quote, confidence)
+                return
+
+
+def _question_for(ask: dict[str, Any]) -> str:
+    """The detail's plain customer question; an older payload with only a hint still works."""
+    return ask.get("question") or f"So we can help, could you tell me {ask.get('hint') or ask.get('label', '').lower()}?"
+
+
+def _about_me(payload: dict[str, Any]) -> str:
+    """Only what we know: confirmed values, and what's still to confirm said as such."""
+    about = (payload.get("context") or {}).get("about_customer") or {}
+    known = [f"{k['label'].lower()}: {k['value']}" for k in about.get("known", [])]
+    unsure = [f"{u['label'].lower()} is {u['value']}" for u in about.get("unconfirmed", [])]
+    if not known and not unsure:
+        return "I don't have any details from you yet."
+    text = f"Here's what I have so far - {'; '.join(known)}." if known else ""
+    if unsure:
+        text += f" I think your {' and your '.join(unsure)}, but I still need to confirm that."
+    return text.strip()
+
+
+_HOURS_Q = re.compile(r"\b(open|close[sd]?|closing|hours|opening)\b", re.IGNORECASE)
+_ADDRESS_Q = re.compile(r"\b(where are you|located|location|address|directions|find you)\b", re.IGNORECASE)
+_PHONE_Q = re.compile(r"\b(phone|number|call you)\b", re.IGNORECASE)
+_WEBSITE_Q = re.compile(r"\b(website|web site|site|online)\b", re.IGNORECASE)
+_DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def _dealer_answer(question: str, info: dict[str, Any]) -> str | None:
+    """An answer from the dealer's own details, or None when the question isn't
+    about them. A detail the dealer never entered gets "the team will confirm"."""
+    if _HOURS_Q.search(question):
+        hours = info.get("hours")
+        if not hours:
+            return ""
+        day = next((d for d in _DAY_NAMES if d in question.lower()), None)
+        if day:
+            text = hours[day.capitalize()]
+            return f"On {day.capitalize()} we're closed." if text == "closed" else f"On {day.capitalize()} we're open {text}."
+        return f"Our hours are {info['hours_summary']}."
+    for pattern, field, template in ((_ADDRESS_Q, "address", "We're at {}."), (_PHONE_Q, "phone", "You can reach us at {}."),
+                                     (_WEBSITE_Q, "website", "Our website is {}.")):
+        if pattern.search(question):
+            return template.format(info[field]) if info.get(field) else ""
+    return None
+
+
+def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """One short sentence per kind of question, and the promises they make."""
+    sentences: list[str] = []
+    promises: list[str] = []
+    info = ((payload.get("context") or {}).get("dealer") or {}).get("info") or {}
+    team = [q for q in questions if q["label"] == "restricted"]
+    for q in (q for q in questions if q["label"] == "answerable"):
+        answer = _dealer_answer(q["text"], info)
+        if answer:
+            sentences.append(answer)
+        else:  # not about the dealer's details, or a detail they never entered
+            team.append(q)
+    if team:
+        sentences.append("Good question - our team will confirm that for you.")
+        promises += [f"The team will confirm: {q['text']}" for q in team]
+    if any(q["label"] == "about_me" for q in questions):
+        sentences.append(_about_me(payload))
+    if any(q["label"] == "off_topic" for q in questions):
+        sentences.append("I can only help with your vehicle here, but I'm glad to do that.")
+    if any(q["label"] == "clarify" for q in questions):
+        sentences.append("Sorry for not being clear - I'm here to help you find the right vehicle.")
+    return " ".join(sentences), promises
+
+
+def _confirm_text(confirm: dict[str, Any]) -> str:
+    shown = confirm.get("display") or confirm.get("value")
+    if confirm.get("kind") == "date":
+        return f"Just to check, is that {shown}?"
+    return f"Just to confirm, your {confirm.get('label', 'detail').lower()} is {shown}, right?"
 
 
 def compose(payload: dict[str, Any]) -> dict[str, Any]:
     action = payload.get("action")
     name = payload.get("customer_first_name") or "there"
     campaign = payload.get("campaign")
-    questions = payload.get("answer_questions") or []
+    questions = [q if isinstance(q, dict) else {"text": q, "label": "answerable"}
+                 for q in payload.get("answer_questions") or []]
     text = (payload.get("customer_text") or "").lower()
     attempt = int(payload.get("attempt", 1))
+    asks = payload.get("asks") or []
+    confirm = payload.get("confirm")
 
     opener = f"Thanks for replying to our {campaign['name']}! " if campaign else "Thanks! "
-    if questions:
-        opener += "Good question - our team will confirm that for you. "
+    dates = [c["display"] for c in payload.get("just_captured") or [] if c.get("kind") == "date"]
+    if dates and action not in ("handoff", "confirm"):
+        opener += f"Got it - {dates[0]}. "
+    answered, promises = _answers(questions, payload)
+    follow_up = ""
+    if confirm:
+        follow_up = f" {_confirm_text(confirm)}"
+    elif asks:
+        follow_up = f" {_question_for(asks[0])}"
 
-    if action == "ask":
-        hints = [a["hint"] for a in payload.get("asks", [])]
-        body = f"{opener}So we can help, could you tell me {_join(hints)}?"
-        why = f"Asking for {len(hints)} missing detail(s), highest priority first."
+    if action == "answer":
+        body = f"{opener}{answered}{follow_up}"
+        why = f"Answering {len(questions)} question(s) first" + (", then one follow-up." if follow_up else ".")
+    elif action == "clarify":
+        items = (payload.get("clarify") or {}).get("items", [])
+        explained = " ".join(i["explanation"] for i in items if i.get("explanation"))
+        again = " ".join(i["question"] for i in items if i.get("question"))
+        body = f"Sorry, I should have been clearer. {explained} {again}".strip()
+        others = [q for q in questions if q["label"] != "clarify"]
+        if others:
+            extra, promises = _answers(others, payload)
+            body += f" {extra}"
+        why = "The customer asked what we meant, so the last question is explained and asked again, nothing new."
+    elif action == "ask":
+        body = f"{opener}{_question_for(asks[0])}"
+        why = "Asking for the most important missing detail."
     elif action == "confirm":
-        confirm = payload.get("confirm") or {}
-        body = f"{opener}Just to confirm, your {confirm.get('label', 'detail').lower()} is {confirm.get('value')}, right?"
+        body = f"{opener}{_confirm_text(confirm)}"
         why = "A value came in uncertain, so it is confirmed before it's relied on."
     elif action == "handoff":
         body = "No problem - I'm passing this to a member of our team, who will reach out to you shortly."
-        why = "The customer asked for a person or seems upset, so the AI steps back."
+        why = "The customer asked for a person or is clearly upset, so the AI steps back."
+        promises.append("A member of the team will reach out shortly.")
     elif action == "qualified":
         body = f"{opener}That's everything we need, {name}. A member of our team will reach out shortly with next steps."
         why = "All required details are collected, so the reply wraps up without asking more."
+        promises.append("A member of the team will reach out with next steps.")
+    elif action == "partly_qualified":
+        body = (f"Thanks, {name}. I've passed what we have to the team, and someone will reach out shortly "
+                "with next steps.")
+        why = "Everything still missing was asked twice, so the lead goes to the team with what we have."
+        promises.append("A member of the team will reach out with next steps.")
+    elif payload.get("annoyed_at_bot"):
+        body = f"Sorry about that, {name} - I won't keep asking. Just tell me whatever you need and I'll help."
+        why = "The customer is frustrated with the conversation: apologise, ask nothing."
     else:
-        body = f"{opener}A member of our team will follow up shortly."
-        why = "No specific next step."
+        body = f"Thanks, {name} - noted!"
+        why = "Nothing to ask right now, so the reply just acknowledges the message."
 
     if "#fallback" in text or ("#retry" in text and attempt == 1):
         body += " Plus $500 off, guaranteed!"
@@ -240,7 +439,32 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     sms = body if len(body) <= SMS_MAX else body[: SMS_MAX - 1].rsplit(" ", 1)[0] + "…"
     subject = f"Re: {campaign['name']}" if campaign else "Your inquiry"
     return {"sms_text": sms, "email_subject": subject,
-            "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why}
+            "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
+            "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify") else []}
+
+
+def summarize(payload: dict[str, Any]) -> dict[str, Any]:
+    """The previous summary plus one quoted line per new message: the customer's
+    own words kept verbatim (in quotes, so they read as what was said, never as
+    instructions). Over the limit, our lines go first, then the oldest."""
+    max_chars = int(payload.get("max_chars") or 1500)
+    previous = [line for line in (payload.get("previous_summary") or "").splitlines() if line.strip()]
+    new = []
+    for message in payload.get("messages", []):
+        text = " ".join(str(message.get("text") or "").split())[:200]
+        if text:
+            new.append(f'{"The customer" if message.get("from") == "customer" else "We"} said: "{text}"')
+    lines = previous + new
+
+    def size(rows: list[str]) -> int:
+        return len("\n".join(rows))
+
+    while size(lines) > max_chars and any(line.startswith("We said") for line in lines):
+        lines.remove(next(line for line in lines if line.startswith("We said")))
+    while size(lines) > max_chars and len(lines) > 1:
+        lines.pop(0)
+    summary = "\n".join(lines)[:max_chars]
+    return {"summary": summary, "why": f"Added {len(new)} message(s) to the summary."}
 
 
 async def _respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -250,7 +474,10 @@ async def _respond(messages: list[ModelMessage], info: AgentInfo) -> ModelRespon
         await asyncio.sleep(30)
     elif latency_ms := get_settings().offline_model_latency_ms:
         await asyncio.sleep(latency_ms / 1000)
-    args = compose(payload) if "action" in payload else extract(payload)
+    if "previous_summary" in payload:
+        args = summarize(payload)
+    else:
+        args = compose(payload) if "action" in payload else extract(payload)
     return ModelResponse(parts=[ToolCallPart(tool_name=tool.name, args=args)])
 
 

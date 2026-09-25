@@ -1,0 +1,11 @@
+name: A frustrated customer gets an apology, not another question
+stage: 105
+description: '"You keep asking the same thing!" is frustration with the conversation, not a request for a person: no handoff, no question, a short apology.'
+steps:
+  - new_lead: {as: f, dealer: A, lead_type: sales, channel: sms, name: Fay Frustrated, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: f, count: 1, timeout_s: 20}
+  - reply: {lead: f, text: "You keep asking the same thing!"}
+  - wait_turns: {lead: f, count: 2, timeout_s: 20}
+  - expect_turn: {lead: f, outcome: acknowledge}
+  - expect_lead: {lead: f, status: active}
+  - expect_last_sent: {lead: f, contains: "won't keep asking", question_marks: 0}

@@ -86,14 +86,20 @@ def test_offline_extraction_quotes_come_from_the_text_and_hedges_lower_confidenc
 
 def test_offline_extraction_flags_people_and_questions():
     _, result = _extract("This is ridiculous. Can a manager call me? Is it AWD?")
-    assert result["wants_human"] and result["negative_sentiment"]
-    assert result["customer_questions"] == ["Can a manager call me?", "Is it AWD?"]
+    assert result["wants_human"] and result["upset"] and result["upset_confidence"] >= 0.8
+    assert not result["annoyed_at_bot"]
+    assert result["questions"] == [{"text": "Can a manager call me?", "label": "answerable"},
+                                   {"text": "Is it AWD?", "label": "answerable"}]
 
 
 def test_offline_compose_asks_only_what_decide_chose_and_fits_sms():
-    draft = compose({"action": "ask", "asks": [{"label": "Budget", "hint": "roughly what budget you're working with"}],
+    draft = compose({"action": "ask", "asks": [{"label": "Budget", "question": "Roughly how much would you like to spend?",
+                                                "explanation": "A rough price helps us show you vehicles that fit."}],
                      "customer_first_name": "Maria", "customer_text": "hi"})
-    assert "budget" in draft["sms_text"] and len(draft["sms_text"]) <= 320
+    assert draft["sms_text"] == "Thanks! Roughly how much would you like to spend?" and len(draft["sms_text"]) <= 320
+    older = compose({"action": "ask", "asks": [{"label": "Budget", "hint": "roughly what budget you're working with"}],
+                     "customer_first_name": "Maria", "customer_text": "hi"})
+    assert "budget" in older["sms_text"]
     assert draft["email_body"].startswith("Hi Maria,")
     assert _guard(draft)["passed"]
 

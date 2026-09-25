@@ -21,7 +21,7 @@ from upsell_agent.integrations.redis_client import close_redis, get_redis, init_
 from upsell_agent.observability.trace import NullTraceSink, RedisTraceSink
 from upsell_agent.observability.tracing import init_tracing, shutdown_tracing
 from upsell_agent.worker.jobs import FUNCTIONS, fire_due_followups
-from upsell_agent.worker.queue import make_queue
+from upsell_agent.worker.queue import make_enqueue, make_queue
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,8 @@ async def startup(ctx: dict[str, Any]) -> None:
     init_tracing(settings)
     ctx["redis"] = get_redis()
     ctx["deps"] = build_turn_deps(settings)
+    # Turns queue follow-up work (the rolling summary) on this worker's own queue.
+    ctx["deps"].enqueue = make_enqueue(ctx["worker"].queue)
     logger.info(
         "worker started (environment=%s, dev=%s, channel_driver=%s, platform_client=%s, first_reply=%s, "
         "models=%s/%s)",

@@ -2,19 +2,29 @@
 
 Kept free of SAQ so tests call these directly. worker/jobs.py is a thin
 wrapper that adds the lead lock / dealer cap and passes the payload through.
+
+Never silent (MASTER_PLAN_2 Phase 2): every customer message ends up either
+answered by a turn or with a recorded reason. When the AI doesn't answer (the
+lead is with staff, paused, opted out, or the message was STOP / START), a
+short "held" turn is logged (trigger `inbound_held`) saying why. On a
+handed-off lead the customer gets a holding reply, at most one every
+HOLDING_REPLY_EVERY (architecture §15, decision 12).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
+from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
+    find_customer,
     find_lead,
     lead_type_from_lead,
     run_turn,
 )
 from upsell_agent.channels import consent
+from upsell_agent.channels.sender import SendRequest
 from upsell_agent.events.models import (
     InboundMessageEvent,
     LeadCreatedEvent,
@@ -24,22 +34,29 @@ from upsell_agent.events.models import (
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
+    AI_TURN_LOG_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
     as_object_id,
     dealer_scoped_db,
 )
+from upsell_agent.observability.trace import TurnTracer
+from upsell_agent.scheduler.followups import CHANNEL_SWITCHES
 
-# Statuses in which the AI saves the message but does not reply (architecture §5 step 3).
+# Statuses in which the AI doesn't write replies (architecture §5 step 3).
 SILENT_STATUSES = {"handoff", "paused", "opted_out"}
+HOLDING_REPLY_EVERY = timedelta(hours=2)
 
 
-async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str) -> int:
+async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, channel_switches_only: bool) -> int:
+    """A customer message cancels the channel switch (they replied) but not
+    the handoff check (staff still haven't). Staff pausing the lead cancels both."""
+    flt: dict[str, Any] = {"lead_id": lead_id, "status": "pending"}
+    if channel_switches_only:
+        flt.update(CHANNEL_SWITCHES)
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
-        {"lead_id": lead_id, "status": "pending"},
-        {"$set": {"status": "cancelled", "cancelled_at": clock.now()}},
-    )
+        flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
 
 
@@ -74,6 +91,13 @@ def _parse_received_at(value: str | datetime | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def batch_entry(row: dict) -> dict[str, Any]:
+    """One stored customer message as the turn's trace and context pack list it."""
+    at = row.get("created_at")
+    return {"id": str(row["_id"]), "channel": row.get("channel"), "text": row.get("text"),
+            "at": at.isoformat() if isinstance(at, datetime) else at}
 
 
 def first_reply_turn_id(lead_id: str) -> str:
@@ -138,6 +162,80 @@ async def _mark_answered(db: DealerScopedDatabase, rows: list[dict], turn_id: st
                                                                {"$set": {"answered_turn_id": turn_id}})
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
+
+def _hold_decision(state: dict) -> tuple[str, str]:
+    """(action, reason) for customer messages on a lead the AI doesn't answer."""
+    status, why = state["status"], state.get("status_reason")
+    if status == "handoff":
+        last = _aware(state.get("last_handoff_notice_at"))
+        if last and clock.now() - last < HOLDING_REPLY_EVERY:
+            return "saved_only", (f"The lead is with staff ({why or 'handed off'}); the customer was told at "
+                                  f"{last:%H:%M} UTC that the team will reach out (at most one holding reply "
+                                  f"every {HOLDING_REPLY_EVERY.total_seconds() / 3600:g} hours). Saved for staff.")
+        return "holding_reply", f"The lead is with staff ({why or 'handed off'}): a holding reply, no AI."
+    if status == "paused":
+        return "saved_only", f"Paused: a person is handling this lead ({why or 'paused by staff'}). Saved for them."
+    return "saved_only", f"The customer opted out ({why or 'opted out'}). Nothing is sent."
+
+
+async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
+                       rows: list[dict], action: str, reason: str, received_at: datetime | None) -> dict[str, Any]:
+    """Logs a turn for customer messages the AI doesn't answer, saying why,
+    and sends the holding reply when that's the action. Marks the messages
+    answered by this turn, so none is left without a reply or a reason."""
+    latest = rows[-1]
+    turn_id = f"held-{latest['_id']}"
+    if await db.collection(AI_TURN_LOG_COLLECTION).find_one({"turn_id": turn_id}, projection={"_id": 1}):
+        await _mark_answered(db, rows, turn_id)  # a re-run of a job that already got this far
+        return {"status": "already_answered", "turn_id": turn_id}
+    channel = latest["channel"]
+    tracer = TurnTracer(sink=deps.sink, dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id,
+                        trigger="inbound_held", channel=channel, store_prompts=deps.store_prompts, turn_id=turn_id)
+    await tracer.start({"text": "\n".join(r["text"] for r in rows), "channel": channel, "shadow": event.shadow,
+                        "batch": [batch_entry(r) for r in rows]})
+    async with tracer.node("hold", {"action": action, "messages": len(rows)}) as span:
+        span.output = {"action": action, "reason": reason}
+        span.reasoning = [reason]
+        span.edge_label = "holding reply" if action == "holding_reply" else action.replace("_", " ")
+
+    sent = None
+    if action == "holding_reply":
+        customer = await find_customer(db, event.customer_id)
+        lead = await find_lead(db, lead_id)
+        draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
+        request = SendRequest(
+            dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
+            channel=channel, text=draft["sms_text"] if channel == "sms" else draft["email_body"],
+            subject=None if channel == "sms" else draft["email_subject"], shadow=event.shadow,
+            event_received_at=received_at)
+        async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
+                                        "text": request.text, "subject": request.subject}) as span:
+            sent = await deps.sender.send(request)
+            span.output = sent.as_dict()
+            span.reasoning = sent.reasoning
+            span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
+            span.edge_label = sent.status
+        await tracer.skipped("schedule", "A holding reply never schedules a channel switch.")
+        if sent.status == "sent":
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"last_handoff_notice_at": clock.now(), "last_outbound_at": clock.now(),
+                                                "last_send_status": sent.status}})
+    else:
+        await tracer.skipped("send", reason)
+        await tracer.skipped("schedule", "Nothing was sent.")
+
+    outcome = action if action in ("holding_reply", "opted_out", "opted_in") else "saved_only"
+    log = await tracer.finish(outcome, {
+        "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
+        "batched": len(rows)})
+    await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
+    await _mark_answered(db, rows, turn_id)
+    return {"status": outcome, "reason": reason, "turn_id": turn_id, "send_status": sent and sent.status}
+
+
 async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                  received_at: str | datetime | None = None) -> dict[str, Any]:
     db = dealer_scoped_db(event.dealer_id)
@@ -154,7 +252,7 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         return {"status": "already_answered", "reason": "an earlier turn answered this message"}
 
     # Step 1, before anything can fail: the customer replied, so no channel switch.
-    cancelled = await _cancel_pending_followups(db, lead_id)
+    cancelled = await _cancel_pending_followups(db, lead_id, channel_switches_only=True)
 
     lead = await find_lead(db, lead_id)
     state = await _ensure_lead_state(db, lead_id, event.customer_id, lead)
@@ -170,19 +268,28 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         if keyword == "stop":
             await consent.set_channel_consent(db, event.customer_id, channel, False, source="customer_stop")
             await _set_status(db, lead_id, "opted_out", f"Customer replied STOP on {channel}")
-            await _mark_answered(db, unanswered, "keyword:stop")
+            await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_out",
+                               reason=f"The customer replied STOP on {channel}: opted out. The carrier sends its "
+                                      "own confirmation, so nothing is sent.",
+                               received_at=_parse_received_at(received_at))
             return {"status": "opted_out", "channel": channel, "followups_cancelled": cancelled}
         if keyword == "start" and await consent.is_opted_out(db, event.customer_id, channel):
             await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start")
             if state["status"] == "opted_out":
                 await _set_status(db, lead_id, "active", None)
-            await _mark_answered(db, unanswered, "keyword:start")
+            await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_in",
+                               reason=f"The customer replied START on {channel}: opted back in. The carrier sends "
+                                      "its own confirmation, so nothing is sent.",
+                               received_at=_parse_received_at(received_at))
             return {"status": "opted_in", "channel": channel, "followups_cancelled": cancelled}
 
     if state["status"] in SILENT_STATUSES:
-        # Staff own this conversation now; don't answer these later on resume.
-        await _mark_answered(db, unanswered, f"silent:{state['status']}")
-        return {"status": "saved_only", "reason": f"lead is {state['status']}", "followups_cancelled": cancelled}
+        # Staff own this conversation (or the customer opted out): the AI
+        # doesn't reply, and these aren't answered later on resume either.
+        action, reason = _hold_decision(state)
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
+                                  received_at=_parse_received_at(received_at))
+        return {**held, "followups_cancelled": cancelled}
 
     latest = unanswered[-1]
     turn_id = reply_turn_id(latest["_id"])
@@ -197,6 +304,7 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         inbound_text="\n".join(m["text"] for m in unanswered),
         shadow=event.shadow, deps=deps, event_received_at=_parse_received_at(received_at),
         source_message_id=str(latest["_id"]), turn_id=turn_id,
+        batch=[batch_entry(m) for m in unanswered],
     )
     await _mark_answered(db, unanswered, log["turn_id"])
     return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"],
@@ -212,7 +320,7 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
          "$setOnInsert": {"lead_id": event.lead_id, "created_at": clock.now()}},
         upsert=True,
     )
-    cancelled = await _cancel_pending_followups(db, event.lead_id)
+    cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
     return {"status": "paused", "followups_cancelled": cancelled}
 
 

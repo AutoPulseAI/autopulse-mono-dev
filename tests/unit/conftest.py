@@ -11,12 +11,14 @@ os.environ["MODEL_COMPOSE"] = "offline"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 
+from datetime import UTC, datetime
+
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 from upsell_agent import clock
 from upsell_agent.config import Settings
-from upsell_agent.integrations import mongodb
+from upsell_agent.integrations import dealer_profile, mongodb
 
 
 @pytest.fixture
@@ -31,8 +33,15 @@ def mongo():
 @pytest.fixture(autouse=True)
 def reset_clock():
     clock.set_offset(0)
+    dealer_profile.clear_cache()
     yield
     clock.set_offset(0)
+    dealer_profile.clear_cache()
+
+
+def set_clock(at: datetime) -> None:
+    """Make clock.now() read `at` (then move on in real time)."""
+    clock.set_offset((at - datetime.now(UTC)).total_seconds())
 
 
 def make_settings(environment: str) -> Settings:

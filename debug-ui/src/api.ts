@@ -1,19 +1,4 @@
-import type {
-  ConversationItem,
-  Dealer,
-  Followup,
-  Lead,
-  Metrics,
-  Pipeline,
-  RolloutCheck,
-  Scenario,
-  ScenarioRun,
-  ShadowView,
-  SlotsView,
-  TurnDoc,
-  TurnSummary,
-  Verdict,
-} from "./types";
+import type { ConversationItem, Dealer, Followup, Lead, Metrics, Ping, Pipeline, RolloutCheck, Scenario, ScenarioRun, ShadowView, SlotsView, TurnDoc, TurnSummary, Verdict } from "./types";
 
 // Everything goes through Vite's /api proxy to the AI service's /dev/* routes.
 const BASE = "/api/dev";
@@ -39,7 +24,7 @@ const post = <T>(path: string, body: unknown) => request<T>(path, { method: "POS
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 export const api = {
-  ping: () => request<{ environment: string; now: string }>("/ping"),
+  ping: () => request<Ping>("/ping"),
   pipeline: () => request<Pipeline>("/pipeline"),
   dealers: () => request<Dealer[]>("/dealers"),
   leads: (dealerId: string) => request<Lead[]>(`/leads?${q({ dealer_id: dealerId })}`),

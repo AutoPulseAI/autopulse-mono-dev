@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
+import { formatDateTime, formatTime } from "../time";
 import type { ShadowPair, ShadowView, Verdict } from "../types";
 
 interface Props {
@@ -32,7 +33,7 @@ function Pair({ pair, onReview }: { pair: ShadowPair; onReview: (v: Verdict) => 
   return (
     <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-line bg-panel p-3">
       <div className="mb-2 flex items-center gap-2 text-[11px] text-muted">
-        <span>{new Date(pair.at).toLocaleString()}</span>
+        <span>{formatDateTime(pair.at)}</span>
         <span className="rounded bg-panel-2 px-1.5">{pair.trigger === "lead_created" ? "new lead" : "reply"}</span>
         <span className="rounded bg-panel-2 px-1.5">{pair.channel}</span>
         <span className="truncate">lead …{pair.lead_id.slice(-6)}</span>
@@ -53,7 +54,7 @@ function Pair({ pair, onReview }: { pair: ShadowPair; onReview: (v: Verdict) => 
             who={pair.actual.by === "staff" ? "Staff sent" : "n8n sent"}
             text={pair.actual.text}
             tone="var(--panel-2)"
-            meta={new Date(pair.actual.at).toLocaleTimeString()}
+            meta={formatTime(pair.actual.at)}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-line p-2 text-[12px] text-muted">

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { NodeRun, TurnView } from "../trace/reducer";
 import type { Pipeline } from "../types";
 import { JsonView } from "./JsonView";
-import { ComposePreview, DecideRules, GuardChecks, ValidateBins } from "./StepViews";
+import { ComposePreview, ContextPackView, DecideDetails, DecideRules, GuardChecks, ValidateBins } from "./StepViews";
 
 type Tab = "reasoning" | "input" | "output" | "metrics";
 const TABS: { id: Tab; label: string }[] = [
@@ -132,8 +132,10 @@ function ReasoningTab({ nodeId, run, pipeline, runKey }: { nodeId: string; run: 
   const lines = Array.isArray(run.reasoning) ? run.reasoning : run.reasoning ? [run.reasoning] : [];
   return (
     <div className="space-y-3">
+      {nodeId === "load_context" && <ContextPackView output={run.output} />}
       {nodeId === "validate" && <ValidateBins output={run.output} pipeline={pipeline} runKey={runKey} />}
       {nodeId === "decide" && <DecideRules output={run.output} pipeline={pipeline} runKey={runKey} />}
+      {nodeId === "decide" && <DecideDetails output={run.output} />}
       {nodeId === "guard" && <GuardChecks output={run.output} />}
       {(nodeId === "compose" || nodeId === "fallback") && <ComposePreview output={run.output} />}
       {run.error && <div className="rounded-lg bg-bad-soft p-2 font-mono text-[11px] text-bad">{run.error}</div>}

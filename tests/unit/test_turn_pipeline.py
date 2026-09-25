@@ -62,13 +62,13 @@ async def test_first_reply_runs_the_ai_pipeline_on_the_lead_comments(mongo):
     log = await _turn(created, "Hi, I want a new Toyota RAV4", trigger="lead_created")
     assert _done(log) == AI_PATH
     assert log["outcome"] == "ask"
-    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
+    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment"]  # one ask per message
     facts = await _facts(mongo, created)
     assert facts["interest.new_or_used"]["value"] == "new"
     assert facts["interest.model"]["value"] == "Toyota RAV4"
     assert facts["interest.model"]["source"] == "bot_extracted" and facts["interest.model"]["source_message_id"]
     outbox = await mongo[DEV_OUTBOX_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert "budget" in outbox["text"]
+    assert "how much would you like to spend" in outbox["text"]
 
 
 async def test_template_mode_skips_the_ai(mongo):
@@ -140,7 +140,7 @@ async def test_prefill_from_customer_360_on_the_first_turn(mongo):
     facts = await _facts(mongo, created)
     assert facts["vehicle.make"]["source"] == "tool_verified"
     # Vehicle known from the platform, service from the customer: only mileage and time remain.
-    assert log["summary"]["asked"] == ["vehicle.mileage", "contact.best_time"]
+    assert log["summary"]["asked"] == ["vehicle.mileage"]  # one ask per message
     again = await _turn(created, "About 54k miles")
     assert _node(again, "load_context")["output"]["prefilled"] == []  # only once per lead
 

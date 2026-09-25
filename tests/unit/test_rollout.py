@@ -83,17 +83,31 @@ async def test_n8n_or_followupjob_writing_to_a_live_lead_is_a_double_message(mon
     assert (await rollout_check(DEALER, days=1))["checks"]["no platform auto-messages on AI leads (n8n / FollowUpJob)"]
 
 
-async def test_an_unanswered_customer_message_is_a_lost_reply_unless_staff_own_the_lead(mongo, dealer):
+CHECK = "no customer message without a reply or a reason"
+
+
+async def test_a_message_with_no_reply_and_no_reason_is_a_lost_reply(mongo, dealer):
     created = await _lead_with_first_reply()
     await handlers.record_inbound(InboundMessageEvent(
         event_id="m-lost", dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
         channel="sms", message_id="m-lost", text="hello?", received_at=clock.now()))  # its job never ran
     result = await _check()
-    assert not result["checks"]["no unanswered customer messages"]
+    assert not result["checks"][CHECK]
     assert result["unanswered_messages"][0]["text"] == "hello?"
 
+    # Staff owning the lead is no excuse any more: the message must still carry a reason.
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {"status": "paused"}})
-    assert (await rollout_check(DEALER, days=1))["checks"]["no unanswered customer messages"]
+    result = await rollout_check(DEALER, days=1)
+    assert not result["checks"][CHECK] and result["unanswered_messages"][0]["lead_status"] == "paused"
+
+
+async def test_a_message_on_a_paused_lead_is_accounted_for(mongo, dealer):
+    created = await _lead_with_first_reply()
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {"status": "paused"}})
+    await handlers.handle_inbound_message(InboundMessageEvent(
+        event_id="m-held", dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
+        channel="sms", message_id="m-held", text="anyone?", received_at=clock.now()), TurnDeps())
+    assert (await _check())["checks"][CHECK]
 
 
 async def test_an_accepted_event_whose_job_never_ran_is_caught(mongo, dealer):

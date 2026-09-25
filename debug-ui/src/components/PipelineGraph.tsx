@@ -20,6 +20,12 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   fallback: { x: 360, y: 360 },
   // Not part of a turn: the 24h channel switch firing, which goes straight to Send.
   followup: { x: 20, y: 360 },
+  // Also outside a turn: a message on a lead the AI doesn't answer, and the
+  // staff check after a handoff. Both can only end in Send.
+  hold: { x: 0, y: 520 },
+  handoff_check: { x: 240, y: 520 },
+  // After a turn's send, on its own: the rolling summary (no edges; it feeds the next turn's Load context).
+  summary: { x: 480, y: 520 },
 };
 
 // Which side of each node an edge leaves from / arrives at.
@@ -37,6 +43,8 @@ const HANDLES: Record<string, [string, string]> = {
   "fallback-send": ["s-l", "t-b"],
   "send-schedule": ["s-l", "t-r"],
   "followup-send": ["s-r", "t-b"],
+  "hold-send": ["s-t", "t-b"],
+  "handoff_check-send": ["s-t", "t-b"],
 };
 
 const nodeTypes = { pipeline: PipelineNode };

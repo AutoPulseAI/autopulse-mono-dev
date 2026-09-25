@@ -9,13 +9,15 @@ import { ScenariosTab } from "./components/ScenariosTab";
 import { SchedulerTab } from "./components/SchedulerTab";
 import { ShadowTab } from "./components/ShadowTab";
 import { Simulator } from "./components/Simulator";
+import { ConversationPanel } from "./components/ConversationPanel";
+import { ModelsBanner } from "./components/ModelsBanner";
 import { SlotsPanel } from "./components/SlotsPanel";
-import { Timeline } from "./components/Timeline";
+import { Timeline, TRIGGER_LABEL } from "./components/Timeline";
 import { outcomeColor } from "./components/ui";
 import { emptyView, reduce, reduceAll, type TurnView } from "./trace/reducer";
 import { useReplay } from "./trace/useReplay";
 import { useTraceStream } from "./trace/useTraceStream";
-import type { ConversationItem, Dealer, Lead, Pipeline, SlotsView, TraceEvent, TurnSummary } from "./types";
+import type { ConversationItem, Dealer, Lead, Ping, Pipeline, SlotsView, TraceEvent, TurnSummary } from "./types";
 
 type Tab = "pipeline" | "scheduler" | "metrics" | "shadow" | "scenarios";
 
@@ -51,6 +53,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("pipeline");
   const [toast, setToast] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
+  const [models, setModels] = useState<Ping | null>(null);
 
   const replay = useReplay(pipeline, replayEvents);
   const view = mode === "live" ? liveView : replay.view;
@@ -80,7 +83,8 @@ export default function App() {
   useEffect(() => {
     api
       .ping()
-      .then(async () => {
+      .then(async (ping) => {
+        setModels(ping);
         setEnv("ok");
         const [p, d] = await Promise.all([api.pipeline(), api.dealers()]);
         setPipeline(p);
@@ -239,6 +243,7 @@ export default function App() {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          {models && <ModelsBanner ping={models} />}
           <select
             value={dealerId}
             onChange={(e) => {
@@ -281,6 +286,7 @@ export default function App() {
                 selectedLeadId={leadId}
                 onSelectLead={setLeadId}
                 conversation={conversation}
+                offline={models?.offline ?? false}
                 onChanged={() => {
                   void loadLeads();
                   void loadLeadDetail();
@@ -294,8 +300,9 @@ export default function App() {
               <div className="min-h-0 flex-[3]">
                 <PipelineGraph pipeline={pipeline} view={view} selectedNode={selectedNode} onSelectNode={setSelectedNode} />
               </div>
-              <div className="min-h-0 flex-[1.2] border-t border-line bg-panel">
+              <div className="grid min-h-0 flex-[1.2] grid-cols-[1fr_300px] border-t border-line bg-panel">
                 <SlotsPanel slots={slots} />
+                <ConversationPanel slots={slots} />
               </div>
             </section>
 
@@ -304,7 +311,14 @@ export default function App() {
             </aside>
           </div>
         )}
-        {tab === "scheduler" && <SchedulerTab dealerId={dealerId} leads={leads} onError={showError} />}
+        {tab === "scheduler" && (
+          <SchedulerTab
+            dealerId={dealerId}
+            dealer={dealers.find((d) => d.id === dealerId)}
+            leads={leads}
+            onError={showError}
+          />
+        )}
         {tab === "metrics" && <MetricsTab dealerId={dealerId} onError={showError} />}
         {tab === "shadow" && <ShadowTab dealerId={dealerId} onError={showError} />}
         {tab === "scenarios" && <ScenariosTab onError={showError} />}
@@ -347,7 +361,7 @@ function TurnHeader({ view, mode }: { view: TurnView; mode: "live" | "replay" })
       {view.turnId ? (
         <>
           <span className="font-mono text-[11px] text-muted">{view.turnId.slice(0, 8)}</span>
-          <span>{view.trigger === "lead_created" ? "new lead" : "customer reply"}</span>
+          <span>{view.trigger === "inbound_message" ? "customer reply" : (TRIGGER_LABEL[view.trigger ?? ""] ?? view.trigger)}</span>
           <span className="rounded bg-panel-2 px-1.5 text-[11px] uppercase">{view.channel}</span>
           <AnimatePresence mode="wait">
             <motion.span

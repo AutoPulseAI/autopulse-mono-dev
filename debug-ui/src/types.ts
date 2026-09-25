@@ -49,9 +49,13 @@ export interface TraceEvent {
 export interface Dealer {
   id: string;
   name: string;
+  // The timezone and opening hours the dealer's rules run in.
+  time_zone?: string;
+  hours?: Record<string, string>;
+  hours_from_record?: boolean;
 }
 
-export type LeadStatus = "new" | "active" | "qualified" | "handoff" | "paused" | "opted_out";
+export type LeadStatus = "new" | "active" | "qualified" | "partly_qualified" | "handoff" | "paused" | "opted_out";
 
 export interface Lead {
   id: string;
@@ -109,6 +113,8 @@ export interface Slot {
   label: string;
   group: string;
   value: unknown;
+  // The value as a customer reads it ("Wednesday, September 23", "$35,000").
+  display?: string;
   state: SlotState;
   source: "platform" | "customer" | null;
   source_message_id: string | null;
@@ -118,7 +124,46 @@ export interface Slot {
   history: SlotHistory[];
 }
 
+export interface Models {
+  extract: string;
+  compose: string;
+}
+
+export interface Ping {
+  environment: string;
+  now: string;
+  models: Models;
+  offline: boolean;
+}
+
+export interface ConversationAsk {
+  path: string;
+  label: string;
+  count: number;
+  last_reply: number;
+  status: "just asked" | "asked out" | "";
+}
+
+export interface ConversationStateView {
+  turn: number;
+  asks: ConversationAsk[];
+  last_asked: string[];
+  open_questions: { text: string; label: string; asked_at: string | null; turn: number }[];
+  promises: { text: string; made_at: string | null; turn: number }[];
+  last_topic: string | null;
+  max_asks: number;
+}
+
+export interface SummaryView {
+  text: string;
+  messages: number;
+  updated_at: string | null;
+  model: string | null;
+}
+
 export interface SlotsView {
+  conversation?: ConversationStateView;
+  summary?: SummaryView;
   implemented: boolean;
   status: string;
   status_reason: string | null;
@@ -142,6 +187,8 @@ export type FollowupStatus =
 
 export interface Followup {
   id: string;
+  // channel_switch: the 24h switch; handoff_check: the staff check after a handoff.
+  kind: "channel_switch" | "handoff_check";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";

@@ -1,0 +1,11 @@
+name: A long conversation keeps its beginning
+stage: 103
+description: About 40 messages. What the customer said early on (the car is for their daughter) leaves working memory, is folded into the rolling summary after the send, and still reaches the AI at the end.
+steps:
+  - new_lead: {as: l, dealer: A, lead_type: sales, channel: sms, name: Lena Longthread, comments: "Looking for a used SUV"}
+  - wait_turns: {lead: l, count: 1, timeout_s: 20}
+  - chat: {lead: l, messages: ["It's for my daughter, she just passed her driving test"], filler: 18, filler_chars: 700}
+  - expect_lead: {lead: l, summary_contains: "daughter", timeout_s: 30}
+  - reply: {lead: l, text: "What else do you need from me?"}
+  - wait_turns: {lead: l, count: 21, timeout_s: 30}
+  - expect_context: {lead: l, summary_contains: "daughter", memory_excludes: "daughter", min_working_memory: 6}

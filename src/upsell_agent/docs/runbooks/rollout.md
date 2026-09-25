@@ -73,10 +73,12 @@ measures both.
    |---|---|
    | no platform auto-messages on AI leads | Something besides the AI messaged a live lead (n8n, a FollowUpJob). Roll back, then find the path. |
    | no AI double sends | Roll back and investigate: this should be impossible. |
-   | no unanswered customer messages | A reply was lost: check the worker, the queue and the lead's status. |
+   | no customer message without a reply or a reason | A message was never handled: check the worker and the queue. (Messages on handed-off, paused or opted-out leads always get a logged reason, so they never show here.) |
    | no events left unhandled | A job never ran: check that the workers are up. |
 
-3. Staff can take any lead over by replying from the conversation screen. The AI pauses that lead. An admin can hand it back:
+3. Staff can take any lead over by replying from the conversation screen. The AI pauses that lead.
+   A lead the AI handed to staff that nobody picks up within 30 business minutes shows up as a **staff alert** (`staff_alerts` in the rollout check): follow those up with the dealer.
+   An admin can hand a lead back:
 
    ```
    POST /api/admin/ai/leads/<lead id>/resume

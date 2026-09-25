@@ -19,7 +19,18 @@ const STAGE_NAMES: Record<number, string> = {
   11: "No double messaging and staff takeover",
   12: "Real providers and hardening",
   13: "Shadow and rollout",
+  // MASTER_PLAN_2 phases are stored as 100 + phase.
+  101: "Context builder and conversation state",
+  102: "Never silent",
+  103: "Rolling summary",
+  104: "Understanding the customer",
+  105: "Conversational Decide",
+  106: "Answer sources",
+  107: "Plain, explainable replies",
+  108: "Dates and time",
 };
+
+const stageLabel = (stage: number) => (stage > 100 ? `Plan 2 · Phase ${stage - 100}` : `Stage ${stage}`);
 
 export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -87,7 +98,7 @@ export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
         return (
           <section key={stage} className="mb-4">
             <div className="mb-1.5 flex items-center gap-2">
-              <span className="rounded bg-panel-2 px-1.5 text-[11px] font-bold text-muted">Stage {stage}</span>
+              <span className="rounded bg-panel-2 px-1.5 text-[11px] font-bold text-muted">{stageLabel(stage)}</span>
               <span className="text-[13px] font-semibold">{STAGE_NAMES[stage] ?? ""}</span>
               <span className="ml-auto text-[11px] text-muted">
                 {ok}/{inStage.length} passing

@@ -19,6 +19,15 @@ def call_api(prompt, options, context):
     variables = (context or {}).get("vars", {})
     case = {"text": prompt, "lead_type": variables.get("lead_type", "sales"),
             "channel": variables.get("channel", "sms")}
+    # Planted context (MASTER_PLAN_2 Phase 10): an earlier message (in working
+    # memory), a rolling summary, or text in the dealer's own record.
+    if variables.get("earlier"):
+        earlier = variables["earlier"]
+        case["earlier"] = earlier if isinstance(earlier, list) else [earlier]
+    if variables.get("summary"):
+        case["summary"] = variables["summary"]
+    if variables.get("dealer_store_name"):
+        case["dealer_info"] = {"store_name": variables["dealer_store_name"]}
     try:
         result = asyncio.run(harness.run_case(case))
     except Exception as exc:  # noqa: BLE001 - reported as a failed test, not a crash

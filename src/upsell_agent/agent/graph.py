@@ -46,15 +46,23 @@ def _node_input(name: str, state: AgentState) -> dict[str, Any]:
         return {"lead_id": state.lead_id, "customer_id": state.customer_id, "trigger": state.trigger,
                 "channel": state.channel}
     if name == "extract":
-        return {"text": state.inbound_text, "lead_type": (state.profile or {}).get("effective_lead_type")}
+        pack = state.context_pack or {}
+        return {"text": state.customer_text or state.inbound_text,
+                "lead_type": (state.profile or {}).get("effective_lead_type"),
+                "recently_asked": (pack.get("conversation") or {}).get("last_asked", []),
+                "context": {"working_memory_messages": len(pack.get("working_memory", [])),
+                            "open_questions": len((pack.get("conversation") or {}).get("open_questions", [])),
+                            "now": pack.get("now")}}
     if name == "validate":
-        return {"extraction": state.extraction, "text": state.inbound_text}
+        return {"extraction": state.extraction, "text": state.customer_text or state.inbound_text}
     if name == "decide":
         return {"lead_type": (state.profile or {}).get("effective_lead_type"),
                 "required": (state.profile or {}).get("required"),
                 "missing": (state.profile or {}).get("missing"),
                 "wants_human": (state.extraction or {}).get("wants_human"),
-                "upset": (state.extraction or {}).get("negative_sentiment")}
+                "upset": (state.extraction or {}).get("upset"),
+                "upset_confidence": (state.extraction or {}).get("upset_confidence"),
+                "annoyed_at_bot": (state.extraction or {}).get("annoyed_at_bot")}
     if name == "compose":
         return {"decision": {k: (state.decision or {}).get(k) for k in ("action", "asks", "confirm", "answer_questions")},
                 "attempt": state.retry_count + 1, "channel": state.channel, "campaign": state.campaign,

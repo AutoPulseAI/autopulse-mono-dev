@@ -6,6 +6,9 @@ steps:
   - wait_turns: {lead: s, count: 1, timeout_s: 15}
   - reply: {lead: s, text: "STOP"}
   - wait_status: {lead: s, status: opted_out}
+  - wait_turns: {lead: s, count: 2, timeout_s: 15}
+  - expect_turn: {lead: s, trigger: inbound_held, outcome: opted_out}
   - reply: {lead: s, text: "are you there?"}
-  - expect_turn_count: {lead: s, count: 1, settle_s: 2}
+  - wait_turns: {lead: s, count: 3, timeout_s: 15}
+  - expect_turn: {lead: s, trigger: inbound_held, outcome: saved_only}
   - expect_messages: {lead: s, direction: outbound, count: 1}

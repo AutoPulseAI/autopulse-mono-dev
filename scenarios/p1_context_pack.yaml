@@ -1,0 +1,15 @@
+name: Every turn reads one context pack
+stage: 101
+description: The AI's first reply, the customer's answer and their question all carry into the next turns' context pack - working memory, what was asked, open questions and promises.
+steps:
+  - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Cora Context, comments: "Interested in a used Honda CR-V"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - reply: {lead: c, text: "Next month probably"}
+  - wait_turns: {lead: c, count: 2, timeout_s: 20}
+  - expect_context: {lead: c, new_messages: ["Next month probably"], min_working_memory: 1, last_from_ai: true, last_asked: true}
+  - reply: {lead: c, text: "Do you take trades?"}
+  - wait_turns: {lead: c, count: 3, timeout_s: 20}
+  - expect_context: {lead: c, new_messages: ["Do you take trades?"], min_working_memory: 3, open_questions: []}
+  - reply: {lead: c, text: "ok thanks"}
+  - wait_turns: {lead: c, count: 4, timeout_s: 20}
+  - expect_context: {lead: c, min_working_memory: 5, last_from_ai: true, promise_contains: "take trades"}

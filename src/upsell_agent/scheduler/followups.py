@@ -24,6 +24,20 @@ finds its row in `sending` and marks it `unknown` instead of sending again.
 
 Status flow: pending → claimed → sent | cancelled | suppressed | failed |
 unknown; or pending → superseded (a newer message replaced it).
+
+**Two kinds** share this collection and its claim / fire machinery (`kind`):
+
+- `channel_switch` (the default; older records have no `kind`): above.
+- `handoff_check` (MASTER_PLAN_2 Phase 2, architecture §15 decision 12): 30
+  business minutes after a lead is handed to a person. If staff still
+  haven't taken it over, the customer gets one "still on it" holding reply and
+  a staff alert is recorded on the lead. Once per handoff. A customer message
+  doesn't cancel it; staff pausing or resuming the lead does.
+
+**Contact window** (decision 11): both are messages the AI starts on its own,
+so an SMS is only sent 8:00-20:00 in the dealer's timezone. One that falls
+outside is planned for, or pushed back to, the next 8:00
+(scheduler/contact_window.py).
 """
 
 import asyncio
@@ -39,19 +53,28 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
+from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.channels.consent import check_channel, resolve_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
+from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
+    PLATFORM_CUSTOMERS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
+    as_object_id,
     dealer_scoped_db,
     get_db,
 )
 from upsell_agent.observability.trace import TurnTracer
+from upsell_agent.scheduler.contact_window import (
+    add_business_minutes,
+    is_proactive_sms_allowed,
+    proactive_send_time,
+)
 from upsell_agent.worker.locks import Busy
 
 logger = logging.getLogger(__name__)
@@ -67,6 +90,12 @@ FIRE_CONCURRENCY = 10
 
 # Lead statuses in which staff own the conversation (events/handlers.py).
 SILENT_STATUSES = {"handoff", "paused", "opted_out"}
+
+KIND_CHANNEL_SWITCH = "channel_switch"
+KIND_HANDOFF_CHECK = "handoff_check"
+# Matches channel switches, including records from before `kind` existed.
+CHANNEL_SWITCHES = {"kind": {"$ne": KIND_HANDOFF_CHECK}}
+HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 
 LeadLock = Callable[[str, str], AbstractAsyncContextManager[Any]]
 
@@ -124,23 +153,61 @@ async def plan_followup(
     now = clock.now()
     # A permanent send failure doesn't wait a day: try the other channel now
     # (architecture §6 "Failed SMS" - same rule at send time).
-    due_at = now if sent.status == "failed" else now + FOLLOWUP_DELAY
+    wanted = now if sent.status == "failed" else now + FOLLOWUP_DELAY
+    profile = await dealer_profile(db.dealer_id)
+    due_at = proactive_send_time(wanted, other, profile.tz)
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     superseded = await followups.update_many(
-        {"lead_id": lead_id, "status": "pending"},
+        {"lead_id": lead_id, "status": "pending", **CHANNEL_SWITCHES},
         {"$set": {"status": "superseded", "reason": "a newer message was sent", "closed_at": now}},
     )
+    held = due_at > wanted
+    reason = f"{channel} send failed: switching now" if sent.status == "failed" else None
+    if held:
+        reason = (reason + "; " if reason else "") + "SMS held to the 8:00-20:00 contact window"
     doc = {
-        "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "kind": KIND_CHANNEL_SWITCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "source_message_id": sent.message_id, "source_provider_id": sent.provider_id,
         "from_channel": channel, "to_channel": other, "to": to, "text": text, "subject": subject,
-        "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0,
-        "reason": f"{channel} send failed: switching now" if sent.status == "failed" else None,
+        "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0, "reason": reason,
     }
     inserted = await followups.insert_one(doc)
     return {"created": True, "followup_id": str(inserted.inserted_id), "to_channel": other, "to": to,
             "due_at": due_at.isoformat(), "superseded": superseded.modified_count,
-            "due_now": sent.status == "failed"}
+            "due_now": sent.status == "failed" and not held, "held_to_contact_window": held,
+            "timezone": profile.timezone}
+
+
+async def plan_handoff_check(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    channel: str,
+    handoff_id: str,
+    handoff_reason: str | None,
+) -> dict[str, Any]:
+    """Schedules the check 30 business minutes after a handoff (dealer time;
+    an SMS due outside 8:00-20:00 waits for 8:00). Replaces any older pending
+    check for the lead."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    after = add_business_minutes(now, HANDOFF_TIMEOUT_BUSINESS_MINUTES, profile.hours, profile.tz)
+    due_at = proactive_send_time(after, channel, profile.tz)
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_HANDOFF_CHECK},
+        {"$set": {"status": "superseded", "reason": "a newer handoff", "closed_at": now}})
+    doc = {
+        "kind": KIND_HANDOFF_CHECK, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": handoff_id,
+        "handoff_id": handoff_id, "handoff_reason": handoff_reason, "from_channel": channel, "to_channel": channel,
+        "text": None, "subject": None, "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0,
+        "reason": "SMS held to the 8:00-20:00 contact window" if due_at > after else None,
+    }
+    inserted = await followups.insert_one(doc)
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
+            "business_minutes": HANDOFF_TIMEOUT_BUSINESS_MINUTES, "timezone": profile.timezone,
+            "hours_from_record": profile.hours_from_record}
 
 
 # --- Fire ---------------------------------------------------------------------
@@ -238,9 +305,10 @@ async def _why_not_send(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, 
 async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
+    fire_locked = _fire_handoff_check_locked if doc.get("kind") == KIND_HANDOFF_CHECK else _fire_locked
     try:
         async with lock(dealer_id, lead_id):
-            return await _fire_locked(db, doc, deps)
+            return await fire_locked(db, doc, deps)
     except Busy:
         # A turn is running for this lead right now; it may well be answering
         # a reply that cancels this. Try again shortly.
@@ -277,6 +345,8 @@ async def _fire_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         await tracer.skipped("send", f"Follow-up cancelled: {reason}.")
         await _log(db, tracer, "followup_cancelled", {"followup_id": followup_id, "reason": reason})
         return "cancelled"
+    if deferred := await _defer_outside_contact_window(db, doc, tracer):
+        return deferred
 
     request = SendRequest(
         dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
@@ -310,6 +380,105 @@ async def _log(db: DealerScopedDatabase, tracer: TurnTracer, outcome: str, summa
     await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
 
 
+async def _defer_outside_contact_window(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer) -> str | None:
+    """A proactive SMS whose time came outside 8:00-20:00 dealer time (a busy
+    retry, a stuck claim, a clock move) goes back to pending until 8:00."""
+    if doc["to_channel"] != "sms":
+        return None
+    profile = await dealer_profile(db.dealer_id)
+    now = clock.now()
+    if is_proactive_sms_allowed(now, profile.tz):
+        return None
+    due_at = proactive_send_time(now, "sms", profile.tz)
+    reason = f"outside the 8:00-20:00 SMS contact window ({profile.timezone}); held until 8:00"
+    await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+        {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+        {"$set": {"status": "pending", "due_at": due_at, "reason": reason}})
+    await tracer.skipped("send", f"Not sent: {reason}.")
+    kind = doc.get("kind") or KIND_CHANNEL_SWITCH
+    await _log(db, tracer, "handoff_check_deferred" if kind == KIND_HANDOFF_CHECK else "followup_deferred",
+               {"followup_id": str(doc["_id"]), "reason": reason, "due_at": due_at.isoformat()})
+    return "deferred"
+
+
+async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """30 business minutes after a handoff: if staff still haven't taken the
+    lead over, tell the customer once more that the team has their messages,
+    and record a staff alert on the lead."""
+    check_id = str(doc["_id"])
+    # One trace per firing (a deferred check fires again later); the send's
+    # id below stays the same across firings, so it can never go out twice.
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="handoff_check", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"handoff-check-{check_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": check_id, "handoff_reason": doc.get("handoff_reason"),
+                        "channel": doc["to_channel"]})
+
+    async with tracer.node("handoff_check", {"followup_id": check_id, "due_at": doc["due_at"],
+                                             "handoff_id": doc.get("handoff_id"),
+                                             "handoff_reason": doc.get("handoff_reason")}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        same_handoff = status == "handoff" and state.get("handoff_id") == doc.get("handoff_id")
+        mode = await dealer_ai_mode(db.dealer_id)
+        checks = [
+            ("still_with_staff", same_handoff,
+             "staff haven't taken the lead over yet" if same_handoff
+             else f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "decision": "cancel" if failed else "send"}
+        span.reasoning = [f"{'✓' if ok else '✗'} {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else f"→ {doc['to_channel']}"
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await tracer.skipped("send", f"Handoff check cancelled: {reason}.")
+        await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason})
+        return "cancelled"
+    if deferred := await _defer_outside_contact_window(db, doc, tracer):
+        return deferred
+
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    draft = render_holding_reply("still_waiting", (customer or {}).get("name"))
+    channel = doc["to_channel"]
+    request = SendRequest(
+        dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        turn_id=f"handoff-check-{check_id}", channel=channel,
+        text=draft["sms_text"] if channel == "sms" else draft["email_body"],
+        subject=None if channel == "sms" else draft["email_subject"],
+    )
+    async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
+                                    "text": request.text, "subject": request.subject}) as span:
+        sent = await deps.sender.send(request)
+        span.output = sent.as_dict()
+        span.reasoning = sent.reasoning
+        span.metrics = {"attempts": sent.attempts}
+        span.edge_label = sent.status
+    await tracer.skipped("schedule", "A handoff check happens once per handoff.")
+
+    now = clock.now()
+    delivered = sent.status in ("sent", "duplicate")
+    alert = {"at": now, "reason": f"No staff response {HANDOFF_TIMEOUT_BUSINESS_MINUTES} business minutes after "
+                                  f"the handoff", "handoff_reason": doc.get("handoff_reason"),
+             "customer_notified": delivered}
+    fields: dict[str, Any] = {"staff_alert": alert, "last_send_status": sent.status}
+    if delivered:
+        fields.update(last_handoff_notice_at=now, last_outbound_at=now)
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": fields})
+    status = "sent" if delivered else sent.status
+    await _close(db, doc, status, reason=sent.reason, sent_message_id=sent.message_id, fired_at=now)
+    await _log(db, tracer, f"handoff_check_{status}",
+               {"followup_id": check_id, "send_status": sent.status, "reply": request.text, "channel": channel,
+                "staff_alert": alert["reason"]})
+    return status
+
+
 # --- Provider said the message failed -------------------------------------------
 
 async def make_due_now(db: DealerScopedDatabase, *, lead_id: str, source_turn_id: str, from_channel: str,
@@ -317,7 +486,8 @@ async def make_due_now(db: DealerScopedDatabase, *, lead_id: str, source_turn_id
     """The original message failed to deliver: its follow-up fires now
     instead of in 24 hours (architecture §6 "Failed SMS")."""
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
-        {"lead_id": lead_id, "source_turn_id": source_turn_id, "from_channel": from_channel, "status": "pending"},
+        {"lead_id": lead_id, "source_turn_id": source_turn_id, "from_channel": from_channel, "status": "pending",
+         **CHANNEL_SWITCHES},
         {"$set": {"due_at": clock.now(), "reason": reason}},
     )
     return result.modified_count == 1

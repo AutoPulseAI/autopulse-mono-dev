@@ -17,6 +17,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from upsell_agent.agent import summary
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
@@ -113,6 +114,19 @@ async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], **_
     return await handlers.handle_lead_resumed(LeadResumedEvent.model_validate(event))
 
 
+async def update_summary(ctx: dict[str, Any], *, dealer_id: str, lead_id: str, **_: Any) -> dict[str, Any]:
+    """The rolling summary (agent/summary.py), queued by a turn after its send.
+    Its own lock, not the lead's: a turn is never kept waiting for a summary,
+    and two summary runs for one lead never overlap (the second just skips;
+    the next turn queues another if still needed)."""
+    settings = get_settings()
+    try:
+        async with lead_lock(ctx["redis"], dealer_id, f"summary:{lead_id}", settings.lead_lock_ttl_s):
+            return await summary.update_summary(dealer_id, lead_id, ctx["deps"])
+    except Busy:
+        return {"status": "skipped", "reason": "a summary update for this lead is already running"}
+
+
 async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """The 24h channel switch (scheduler/followups.py). Runs every minute on
     every worker (worker/main.py cron) and on demand when a webhook reports a
@@ -125,4 +139,4 @@ async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
 
 
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
-             fire_due_followups]
+             fire_due_followups, update_summary]

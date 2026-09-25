@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 
+import { formatDate, formatDateTime } from "../time";
 import type { Slot, SlotState, SlotsView } from "../types";
 import { StatusBadge } from "./ui";
 
@@ -22,9 +23,9 @@ function tooltip(slot: Slot): string {
   if (slot.source === "platform") lines.push("From the platform (Customer 360)");
   if (slot.quote) lines.push(`Customer said: "${slot.quote}"`);
   if (slot.confidence != null) lines.push(`Confidence ${Math.round(slot.confidence * 100)}%`);
-  if (slot.captured_at) lines.push(`Captured ${new Date(slot.captured_at).toLocaleString()}`);
+  if (slot.captured_at) lines.push(`Captured ${formatDateTime(slot.captured_at)}`);
   for (const h of slot.history) {
-    lines.push(`Earlier: ${formatValue(h.value)}${h.rejected ? " (customer said wrong)" : ""} until ${new Date(h.valid_to).toLocaleDateString()}`);
+    lines.push(`Earlier: ${formatValue(h.value)}${h.rejected ? " (customer said wrong)" : ""} until ${formatDate(h.valid_to)}`);
   }
   return lines.join("\n");
 }
@@ -103,7 +104,7 @@ export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
                             {slot.history.length > 0 && <span className="shrink-0 text-warn">↻{slot.history.length}</span>}
                           </div>
                           <div className="text-[12px] font-semibold" style={{ color: slot.state === "missing" ? "var(--muted)" : "var(--text)" }}>
-                            {formatValue(slot.value)}
+                            {slot.display || formatValue(slot.value)}
                             <span className="ml-1.5 text-[10px] font-medium" style={{ color: s.fg }}>
                               {s.label}
                             </span>

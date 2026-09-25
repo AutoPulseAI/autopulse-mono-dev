@@ -36,7 +36,7 @@ NODES: list[PipelineNode] = [
     {"id": "validate", "label": "Validate", "kind": "code", "stage": 8,
      "description": "4 checks per value: slot exists, valid, quoted, confident"},
     {"id": "decide", "label": "Decide", "kind": "code", "stage": 7,
-     "description": "Pick exactly one next step from 5 rules"},
+     "description": "Pick exactly one next step from 9 rules"},
     {"id": "compose", "label": "Compose", "kind": "ai", "stage": 8,
      "description": "Write the SMS and email versions"},
     {"id": "guard", "label": "Guard", "kind": "code", "stage": 8,
@@ -49,6 +49,13 @@ NODES: list[PipelineNode] = [
      "description": "24h follow-up on the other channel"},
     {"id": "followup", "label": "Follow-up due", "kind": "code", "stage": 10,
      "description": "24h, no reply: re-check, then resend on the other channel"},
+    # MASTER_PLAN_2 Phase 2 (stage 100 + phase): not part of an AI turn either.
+    {"id": "hold", "label": "Hold (lead with staff)", "kind": "code", "stage": 102,
+     "description": "Customer wrote while the AI doesn't answer: holding reply or the reason why not"},
+    {"id": "handoff_check", "label": "Staff check", "kind": "code", "stage": 102,
+     "description": "30 business minutes after a handoff: still nobody? One more holding reply + staff alert"},
+    {"id": "summary", "label": "Summarize older turns", "kind": "ai", "stage": 103,
+     "description": "After the send: fold messages that left working memory into the lead's summary"},
 ]
 
 EDGES: list[PipelineEdge] = [
@@ -70,15 +77,21 @@ EDGES: list[PipelineEdge] = [
     {"id": "send-schedule", "source": "send", "target": "schedule", "kind": "main"},
     # The channel switch firing: no AI, the stored alternate version is sent.
     {"id": "followup-send", "source": "followup", "target": "send", "kind": "fallback"},
+    {"id": "hold-send", "source": "hold", "target": "send", "kind": "fallback"},
+    {"id": "handoff_check-send", "source": "handoff_check", "target": "send", "kind": "fallback"},
 ]
 
-# Decide's rules, in the order they're checked (architecture §8.3).
+# Decide's rules, in the order they're checked (architecture §8.3, MASTER_PLAN_2 Phase 5).
 DECIDE_RULES: list[dict[str, str]] = [
     {"id": "stop", "label": "Customer opted out → stop"},
-    {"id": "handoff", "label": "Wants a human or upset → hand off"},
+    {"id": "handoff", "label": "Asked for a person or clearly upset → hand off"},
+    {"id": "clarify", "label": "Asked what we meant → re-explain"},
+    {"id": "answer", "label": "Questions to answer → answer, then at most one follow-up"},
     {"id": "confirm", "label": "A value needs confirming → confirm"},
-    {"id": "ask", "label": "Required slots missing or stale → ask (max 2)"},
+    {"id": "ask", "label": "A required detail can be asked → ask one"},
     {"id": "qualified", "label": "Nothing missing → qualified"},
+    {"id": "partly_qualified", "label": "Everything missing asked twice → pass on what we have"},
+    {"id": "acknowledge", "label": "Nothing to ask right now → reply, no question"},
 ]
 
 # Validate's checks, in order (architecture §7).

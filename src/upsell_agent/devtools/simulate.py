@@ -44,12 +44,27 @@ DEV_DEALERS_COLLECTION = "dev_dealers"  # DEV only: display names for the Debug 
 # marked shadow, and an `off` dealer's events are not sent at all.
 DEV_DEALERS = [
     {"_id": "66f0000000000000000000a1", "name": "Sunrise Motors (dev)", "sms": "+15550000001",
-     "email": "sales@sunrise-motors.dev.test", "ai_mode": "live"},
+     "email": "sales@sunrise-motors.dev.test", "ai_mode": "live", "time_zone": "America/New_York",
+     "store": {"store_name": "Sunrise Motors", "store_address": "120 Main St", "store_city": "Springfield",
+               "store_state": "NJ", "store_postal": "07081", "store_website": "https://sunrise-motors.dev.test"}},
     {"_id": "66f0000000000000000000b2", "name": "Lakeside Auto (dev)", "sms": "+15550000002",
-     "email": "sales@lakeside-auto.dev.test", "ai_mode": "live"},
+     "email": "sales@lakeside-auto.dev.test", "ai_mode": "live", "time_zone": "America/Chicago",
+     "store": {"store_name": "Lakeside Auto", "store_address": "45 Shore Dr", "store_city": "Madison",
+               "store_state": "WI", "store_postal": "53703", "store_website": "https://lakeside-auto.dev.test"}},
     {"_id": "66f0000000000000000000c3", "name": "Hillside Cars (dev, shadow)", "sms": "+15550000003",
-     "email": "sales@hillside-cars.dev.test", "ai_mode": "shadow"},
+     "email": "sales@hillside-cars.dev.test", "ai_mode": "shadow", "time_zone": "America/Los_Angeles",
+     "store": {"store_name": "Hillside Cars", "store_address": "9 Ridge Rd", "store_city": "Pasadena",
+               "store_state": "CA", "store_postal": "91101", "store_website": "https://hillside-cars.dev.test"}},
 ]
+
+# Opening hours in the admin dealer form's own format (DealerForm.js
+# weekly_availability), in each dealer's timezone.
+DEV_WEEKLY_AVAILABILITY = {
+    **{day: {"active": True, "start": "9:00 AM", "end": "7:00 PM"}
+       for day in ("monday", "tuesday", "wednesday", "thursday", "friday")},
+    "saturday": {"active": True, "start": "9:00 AM", "end": "5:00 PM"},
+    "sunday": {"active": False, "start": "", "end": ""},
+}
 
 
 def _fake_phone(slug: str) -> str:
@@ -222,7 +237,9 @@ async def ensure_platform_dealers() -> None:
             "email": f"dealer-{dealer['_id'][-2:]}@autopulse.dev.test", "name": dealer["name"],
             # Not a real password hash: dev dealers are never logged into.
             "password": "!dev-seed-account-no-login", "type": "dealer",
-            "dealer_account_information": {"sms_conversion_phone": dealer["sms"], "time_zone": "America/New_York"},
+            "dealer_account_information": {
+                "sms_conversion_phone": dealer["sms"], "time_zone": dealer["time_zone"], **dealer["store"],
+                "weekly_availability": DEV_WEEKLY_AVAILABILITY},
             "setting": {"autoReplyEnabled": True},
             "package_expiry": clock.now() + timedelta(days=365),
             "ai_mode": dealer["ai_mode"], "dev_seed": True,

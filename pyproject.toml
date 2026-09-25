@@ -44,6 +44,10 @@ dependencies = [
 
     # Config / env
     "python-dotenv>=1.0",
+
+    # IANA timezones for dealer business hours and the SMS contact window;
+    # Windows and slim images have no system timezone database.
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
@@ -52,7 +56,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "deepeval>=2.0",         # evals / hallucination test gate
     "mongomock-motor>=0.0.36",  # in-memory MongoDB for unit tests
-    "fakeredis>=2.26",       # in-memory Redis for unit tests
+    "fakeredis[lua]>=2.26",  # in-memory Redis for unit tests; [lua] runs the dealer-slot script
     "ruff>=0.7",
     "mypy>=1.13",
 ]

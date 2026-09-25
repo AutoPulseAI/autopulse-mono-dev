@@ -11,6 +11,7 @@ lead type needs.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from upsell_agent.agent.qualification import LeadType
 
@@ -26,6 +27,14 @@ class Template:
     sms: str
     email_subject: str
     email_body: str
+    # The slots each version asks for, so the conversation state records what
+    # a template reply asked (agent/conversation.py).
+    sms_asks: tuple[str, ...] = ()
+    email_asks: tuple[str, ...] = ()
+
+
+# What every template tells the customer the team will do.
+TEMPLATE_PROMISE = "A member of the team will follow up shortly."
 
 
 _SIGN_OFF = "\n\nThanks,\nThe {team} Team"
@@ -42,6 +51,8 @@ FIRST_REPLY: dict[LeadType, Template] = {
             "will follow up shortly.\n\nSo we can pull together the right options: are you looking at new or "
             "used, and do you have a timeline in mind?" + _SIGN_OFF.format(team="Sales")
         ),
+        sms_asks=("interest.new_or_used",),
+        email_asks=("interest.new_or_used", "interest.timeline"),
     ),
     LeadType.TRADE_IN: Template(
         sms=(
@@ -54,6 +65,8 @@ FIRST_REPLY: dict[LeadType, Template] = {
             "shortly.\n\nTo get started: what year, make and model is your vehicle, and roughly how many "
             "miles are on it?" + _SIGN_OFF.format(team="Trade-in")
         ),
+        sms_asks=("trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"),
+        email_asks=("trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"),
     ),
     LeadType.SERVICE: Template(
         sms=(
@@ -66,6 +79,8 @@ FIRST_REPLY: dict[LeadType, Template] = {
             "scheduled.\n\nWhich vehicle is this for (year, make and model), and what day works best for "
             "you?" + _SIGN_OFF.format(team="Service")
         ),
+        sms_asks=("vehicle.year", "vehicle.make", "vehicle.model"),
+        email_asks=("vehicle.year", "vehicle.make", "vehicle.model"),
     ),
     LeadType.GENERAL: Template(
         sms=(
@@ -78,6 +93,8 @@ FIRST_REPLY: dict[LeadType, Template] = {
             "So we can point you to the right person: are you shopping for a vehicle, trading one in, or "
             "booking service?" + _SIGN_OFF.format(team="Customer Care")
         ),
+        sms_asks=("interest.lead_type",),
+        email_asks=("interest.lead_type",),
     ),
 }
 
@@ -106,4 +123,43 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
         "email_subject": template.email_subject,
         "email_body": template.email_body.format(name=name),
         "template": (lead_type or LeadType.GENERAL).value,
+        "asks": {"sms": list(template.sms_asks), "email": list(template.email_asks)},
+        "promises": [TEMPLATE_PROMISE],
+    }
+
+
+# While a person owns the lead (architecture §15, decision 12). "holding": the
+# customer wrote while the lead is handed off. "still_waiting": the handoff
+# timeout fired and staff haven't taken the lead over yet.
+HOLDING_REPLIES: dict[str, Template] = {
+    "holding": Template(
+        sms="Thanks, {name}! I've passed this to the team and someone will reach out shortly.",
+        email_subject="We've got your message",
+        email_body=(
+            "Hi {name},\n\nThanks for your message. I've passed it to the team, and someone will reach out "
+            "shortly." + _SIGN_OFF.format(team="Customer Care")
+        ),
+    ),
+    "still_waiting": Template(
+        sms="Sorry for the wait, {name}. The team has your messages and will get back to you as soon as they can.",
+        email_subject="Still on it",
+        email_body=(
+            "Hi {name},\n\nSorry for the wait. The team has your messages and will get back to you as soon as "
+            "they can." + _SIGN_OFF.format(team="Customer Care")
+        ),
+    ),
+}
+HOLDING_PROMISE = "A member of the team will reach out shortly."
+
+
+def render_holding_reply(kind: str, full_name: str | None) -> dict[str, Any]:
+    template = HOLDING_REPLIES[kind]
+    name = first_name(full_name)
+    return {
+        "sms_text": template.sms.format(name=name),
+        "email_subject": template.email_subject,
+        "email_body": template.email_body.format(name=name),
+        "template": kind,
+        "asks": {"sms": [], "email": []},
+        "promises": [HOLDING_PROMISE],
     }

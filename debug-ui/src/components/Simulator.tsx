@@ -7,6 +7,8 @@ import { StatusBadge } from "./ui";
 
 interface Props {
   dealerId: string;
+  // The offline (rule-based) model is running: its test tags work.
+  offline: boolean;
   leads: Lead[];
   selectedLeadId: string | null;
   onSelectLead: (id: string) => void;
@@ -15,9 +17,15 @@ interface Props {
   onError: (message: string) => void;
 }
 
-const HINTS = ["#retry", "#fallback", "#reject"];
+// Test tags the offline model acts on (agent/offline_model.py); a real model
+// would just read them as text, so they're shown only with the offline model.
+const HINTS: { tag: string; explains: string }[] = [
+  { tag: "#retry", explains: "The first draft breaks a rule, so the guard sends it back for one rewrite." },
+  { tag: "#fallback", explains: "Every draft breaks a rule, so the safe template reply is sent instead." },
+  { tag: "#reject", explains: "Extract returns a value that isn't in the message, so Validate rejects it." },
+];
 
-export function Simulator({ dealerId, leads, selectedLeadId, onSelectLead, conversation, onChanged, onError }: Props) {
+export function Simulator({ dealerId, offline, leads, selectedLeadId, onSelectLead, conversation, onChanged, onError }: Props) {
   const [showNew, setShowNew] = useState(false);
   const lead = leads.find((l) => l.id === selectedLeadId) ?? null;
 
@@ -81,7 +89,7 @@ export function Simulator({ dealerId, leads, selectedLeadId, onSelectLead, conve
       </div>
 
       {lead ? (
-        <Chat dealerId={dealerId} lead={lead} conversation={conversation} onChanged={onChanged} onError={onError} />
+        <Chat dealerId={dealerId} lead={lead} conversation={conversation} offline={offline} onChanged={onChanged} onError={onError} />
       ) : (
         <div className="p-3 text-[12px] text-muted">Pick a lead to chat as the customer.</div>
       )}
@@ -167,9 +175,10 @@ function outboundStyle(m: ConversationItem): React.CSSProperties {
   return { background: "color-mix(in srgb, var(--accent) 70%, transparent)", border: "1px dashed var(--accent)" };
 }
 
-function Chat({ dealerId, lead, conversation, onChanged, onError }: {
+function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
   dealerId: string;
   lead: Lead;
+  offline: boolean;
   conversation: ConversationItem[];
   onChanged: () => void;
   onError: (m: string) => void;
@@ -270,18 +279,19 @@ function Chat({ dealerId, lead, conversation, onChanged, onError }: {
               {c}
             </button>
           ))}
-          <span className="mx-1 h-3 w-px bg-line" />
-          {HINTS.map((h) => (
-            <button
-              key={h}
-              type="button"
-              title="Dev hint for the stub pipeline"
-              onClick={() => setText((t) => `${t} ${h}`.trim())}
-              className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-ink"
-            >
-              {h}
-            </button>
-          ))}
+          {offline && <span className="mx-1 h-3 w-px bg-line" />}
+          {offline &&
+            HINTS.map((h) => (
+              <button
+                key={h.tag}
+                type="button"
+                title={`Test tag (offline model only): ${h.explains}`}
+                onClick={() => setText((t) => `${t} ${h.tag}`.trim())}
+                className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-ink"
+              >
+                {h.tag}
+              </button>
+            ))}
           <button
             type="button"
             onClick={() => send("STOP")}

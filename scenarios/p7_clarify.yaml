@@ -1,0 +1,15 @@
+name: '"What do you mean?" gets the same question explained'
+stage: 107
+description: The AI asks about the trade-in's condition; the customer asks what that means. The reply explains it in plain words and asks the same question again, nothing new, and the customer's answer then fills it.
+steps:
+  - new_lead: {as: c, dealer: A, lead_type: trade_in, channel: sms, name: Cal Clarify, comments: "Trading my 2018 Honda Civic with 60,000 miles"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: c, contains: "excellent, good, fair or poor", question_marks: 1}
+  - reply: {lead: c, text: "what do you mean?"}
+  - wait_turns: {lead: c, count: 2, timeout_s: 20}
+  - expect_turn: {lead: c, outcome: clarify}
+  - expect_last_sent: {lead: c, contains: "Excellent means it looks and runs like new", question_marks: 1}
+  - expect_last_sent: {lead: c, contains: "How would you describe its condition"}
+  - reply: {lead: c, text: "good"}
+  - wait_turns: {lead: c, count: 3, timeout_s: 20}
+  - expect_slots: {lead: c, filled: [trade_in.condition], values: {trade_in.condition: good}}

@@ -10,7 +10,8 @@ dealer over the last N days:
 - cost per day: summed from each turn's model calls
 - qualified rate: leads the AI finished qualifying, of those it worked on;
   also hand-offs and opt-outs
-- sending: sent / failed / suppressed; follow-ups: sent / cancelled / pending
+- sending: sent / failed / suppressed; follow-ups (24h channel switches):
+  sent / cancelled / pending; staff checks after a handoff, likewise
 
 Computed from the service's own collections, scoped to the dealer. Used by
 GET /v1/metrics, the Debug UI Metrics tab and `make ai-report`.
@@ -27,6 +28,7 @@ from upsell_agent.integrations.mongodb import (
     SCHEDULED_FOLLOWUPS_COLLECTION,
     dealer_scoped_db,
 )
+from upsell_agent.scheduler.followups import KIND_HANDOFF_CHECK
 
 TURN_TRIGGERS = ["lead_created", "inbound_message"]
 
@@ -77,6 +79,15 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         tokens["in"] += int(summary.get("tokens_in") or 0)
         tokens["out"] += int(summary.get("tokens_out") or 0)
 
+    # Rolling-summary runs (MASTER_PLAN_2 Phase 3) are not turns but do cost.
+    async for run in turns.find({"created_at": {"$gte": since}, "trigger": "summary"},
+                                projection={"summary": 1, "created_at": 1}):
+        summary = run.get("summary") or {}
+        day = run["created_at"].strftime("%Y-%m-%d")
+        cost_by_day[day] = round(cost_by_day.get(day, 0.0) + float(summary.get("cost_usd") or 0), 6)
+        tokens["in"] += int(summary.get("tokens_in") or 0)
+        tokens["out"] += int(summary.get("tokens_out") or 0)
+
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"created_at": {"$gte": since}}, projection={"status": 1, "first_reply_ms": 1}).to_list(None)
     first_reply = [float(s["first_reply_ms"]) for s in states if s.get("first_reply_ms") is not None]
@@ -89,9 +100,11 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
             {"direction": "outbound", "created_at": {"$gte": since}}, projection={"status": 1}):
         sends[row.get("status", "?")] = sends.get(row.get("status", "?"), 0) + 1
     followups: dict[str, int] = {}
+    staff_checks: dict[str, int] = {}
     async for row in db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
-            {"created_at": {"$gte": since}}, projection={"status": 1}):
-        followups[row["status"]] = followups.get(row["status"], 0) + 1
+            {"created_at": {"$gte": since}}, projection={"status": 1, "kind": 1}):
+        counts = staff_checks if row.get("kind") == KIND_HANDOFF_CHECK else followups
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
 
     ai_turns = total - template_by_design
     return {
@@ -113,6 +126,7 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
                   "handoff_turns": handoff_turns},
         "sends": sends,
         "followups": followups,
+        "staff_checks": staff_checks,
     }
 
 
@@ -137,5 +151,6 @@ def format_report(m: dict[str, Any]) -> str:
          f"({m['leads']['by_status']})"),
         f"  Sends:              {m['sends']}",
         f"  Follow-ups:         {m['followups']}",
+        f"  Staff checks:       {m['staff_checks']}",
     ]
     return "\n".join(lines)

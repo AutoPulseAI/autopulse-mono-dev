@@ -7,7 +7,7 @@ import asyncio
 import base64
 import contextlib
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import pytest
@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
-from tests.unit.conftest import make_settings
+from tests.unit.conftest import make_settings, set_clock
 from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps, run_turn
 from upsell_agent.api.leads import lead_profile
@@ -50,6 +50,22 @@ from upsell_agent.worker.locks import Busy
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 DAY = timedelta(hours=24)
+# A Tuesday, 10:00 in New York: well inside the 8:00-20:00 SMS contact window
+# and business hours, and 24h later still is (architecture §15, decision 11).
+START = datetime(2026, 9, 22, 14, 0, tzinfo=UTC)
+_start_offset = 0.0
+
+
+@pytest.fixture(autouse=True)
+def daytime_start():
+    global _start_offset
+    set_clock(START)
+    _start_offset = clock.offset_s()
+
+
+def _since_start(seconds: float) -> None:
+    """Move the clock to `seconds` after the test's start."""
+    clock.set_offset(_start_offset + seconds)
 
 
 @pytest.fixture
@@ -161,7 +177,7 @@ async def test_a_permanent_send_failure_makes_the_followup_due_now(mongo, live_d
 async def test_nothing_fires_before_it_is_due(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset((DAY - timedelta(minutes=1)).total_seconds())
+    _since_start((DAY - timedelta(minutes=1)).total_seconds())
     assert (await followups.fire_due(_deps()))["fired"] == 0
     assert (await _followups(mongo, created))[0]["status"] == "pending"
 
@@ -170,7 +186,7 @@ async def test_after_24h_the_email_version_goes_out_once(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
     [scheduled] = await _followups(mongo, created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
 
     summary = await followups.fire_due(_deps())
     assert summary["results"] == {"sent": 1}
@@ -189,7 +205,7 @@ async def test_after_24h_the_email_version_goes_out_once(mongo, live_dealer):
     assert state["last_followup_at"] and state["last_send_status"] == "sent"
 
     # Never a second switch: nothing new is scheduled or sent.
-    clock.set_offset(3 * DAY.total_seconds())
+    _since_start(3 * DAY.total_seconds())
     assert (await followups.fire_due(_deps()))["fired"] == 0
     assert len(await _followups(mongo, created)) == 1
     assert len(await _outbox(mongo, created)) == 2
@@ -200,7 +216,7 @@ async def test_an_email_lead_switches_to_sms(mongo, live_dealer):
     await _first_reply(created, channel="email")
     [doc] = await _followups(mongo, created)
     assert doc["to_channel"] == "sms" and doc["subject"] is None and len(doc["text"]) <= 320
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     await followups.fire_due(_deps())
     [sms] = await _outbox(mongo, created, "sms")
     assert sms["to"].startswith("+1")
@@ -225,9 +241,9 @@ async def test_a_reply_one_second_before_due_still_cancels(mongo, live_dealer):
     await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].update_one({"_id": doc["_id"]}, {"$set": {"status": "pending"}})
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {"status": "active"}})
 
-    clock.set_offset(DAY.total_seconds() - 1)
+    _since_start(DAY.total_seconds() - 1)
     await _reply(created, text="thanks, will call you")
-    clock.set_offset(DAY.total_seconds() + 1)
+    _since_start(DAY.total_seconds() + 1)
     await followups.fire_due(_deps())
     assert await _outbox(mongo, created, "email") == []
 
@@ -235,7 +251,7 @@ async def test_a_reply_one_second_before_due_still_cancels(mongo, live_dealer):
 async def test_a_reply_that_lands_after_the_claim_cancels_it_at_the_recheck(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     doc = await followups.claim_next("w1")
     # The customer's reply was recorded between the claim and the send.
     await mongo[AI_MESSAGES_COLLECTION].insert_one(
@@ -264,7 +280,7 @@ async def test_rechecks_cancel_instead_of_sending(mongo, live_dealer, setup, rea
         await users.delete_one({"_id": ObjectId(DEALER)})
     else:
         await users.update_one({"_id": ObjectId(DEALER)}, {"$set": {"ai_mode": setup}})
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     assert (await followups.fire_due(_deps()))["results"] == {"cancelled": 1}
     [doc] = await _followups(mongo, created)
     assert doc["status"] == "cancelled" and doc["reason"].startswith(reason)
@@ -276,7 +292,7 @@ async def test_auto_reply_off_counts_as_off(mongo, live_dealer):
                                                       {"$set": {"setting.autoReplyEnabled": False}})
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     assert (await followups.fire_due(_deps()))["results"] == {"cancelled": 1}
 
 
@@ -284,7 +300,7 @@ async def test_two_workers_racing_send_exactly_once(mongo, live_dealer):
     leads = [await _lead() for _ in range(3)]
     for created in leads:
         await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
 
     first, second = await asyncio.gather(
         followups.fire_due(_deps(), claimed_by="worker-1"), followups.fire_due(_deps(), claimed_by="worker-2"))
@@ -297,7 +313,7 @@ async def test_two_workers_racing_send_exactly_once(mongo, live_dealer):
 async def test_a_busy_lead_puts_the_followup_back_for_shortly_after(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
 
     @contextlib.asynccontextmanager
     async def busy(_dealer_id, _lead_id):
@@ -315,7 +331,7 @@ async def test_a_busy_lead_puts_the_followup_back_for_shortly_after(mongo, live_
 async def test_a_stuck_claim_is_reset_and_sent_once(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     await followups.claim_next("dead-worker")  # the worker died right after claiming
 
     assert (await followups.fire_due(_deps()))["fired"] == 0  # younger than 5 minutes: left alone
@@ -328,7 +344,7 @@ async def test_a_stuck_claim_is_reset_and_sent_once(mongo, live_dealer):
 async def test_a_crash_mid_send_is_never_sent_twice(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     doc = await followups.claim_next("dead-worker")
     # The dead worker had reached the provider: its row is stuck in `sending`.
     await dealer_scoped_db(DEALER).collection(AI_MESSAGES_COLLECTION).insert_one(
@@ -378,7 +394,7 @@ async def test_a_late_callback_never_moves_status_backwards(mongo, live_dealer):
 async def test_a_failed_followup_never_triggers_another(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
     await followups.fire_due(_deps())
     email = await mongo[AI_MESSAGES_COLLECTION].find_one({"lead_id": created["lead_id"], "is_fallback": True})
     result = await apply_delivery_status(StubPlatformClient(), "bounced", provider_id=email["provider_id"])
@@ -505,7 +521,7 @@ async def test_a_campaigns_worth_of_due_followups_drains_concurrently_and_once_e
     leads = [await _lead() for _ in range(25)]
     for created in leads:
         await _first_reply(created)
-    clock.set_offset(DAY.total_seconds() + 60)
+    _since_start(DAY.total_seconds() + 60)
 
     in_flight = {"now": 0, "peak": 0}
     driver = FakeChannelDriver()

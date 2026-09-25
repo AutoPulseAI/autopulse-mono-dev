@@ -101,15 +101,15 @@ SERVICE_ALL = [_fact("vehicle.year", 2020), _fact("vehicle.make", "Subaru"), _fa
 
 
 @pytest.mark.parametrize(("lead_type", "facts", "action", "asked"), [
-    # nothing filled: the two highest-priority requirements
-    (LeadType.SALES, [], "ask", ["interest.new_or_used", "interest.model"]),
-    (LeadType.TRADE_IN, [], "ask", ["trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"]),
-    # service leads: what they need first, then which vehicle
-    (LeadType.SERVICE, [], "ask", ["interest.service_needed", "vehicle.year", "vehicle.make", "vehicle.model"]),
+    # nothing filled: the highest-priority requirement, one per message (MASTER_PLAN_2 Phase 5)
+    (LeadType.SALES, [], "ask", ["interest.new_or_used"]),
+    (LeadType.TRADE_IN, [], "ask", ["trade_in.year", "trade_in.make", "trade_in.model"]),
+    # service leads: what they need first
+    (LeadType.SERVICE, [], "ask", ["interest.service_needed"]),
     (LeadType.GENERAL, [], "ask", ["interest.lead_type"]),
-    # partly filled: next missing ones, budget OR payment as one requirement
-    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment", "interest.timeline"]),
-    (LeadType.TRADE_IN, TRADE_ALL[:4], "ask", ["trade_in.condition", "trade_in.payoff"]),
+    # partly filled: the next missing one, budget OR payment as one requirement
+    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment"]),
+    (LeadType.TRADE_IN, TRADE_ALL[:4], "ask", ["trade_in.condition"]),
     # everything filled
     (LeadType.SALES, SALES_ALL, "qualified", []),
     (LeadType.TRADE_IN, TRADE_ALL, "qualified", []),
@@ -118,12 +118,11 @@ SERVICE_ALL = [_fact("vehicle.year", 2020), _fact("vehicle.make", "Subaru"), _fa
     (LeadType.SALES, [*SALES_ALL[:2], _fact("interest.monthly_payment", 450), *SALES_ALL[3:]], "qualified", []),
     # has a trade: the trade-in details become required
     (LeadType.SALES, [*SALES_ALL[:4], _fact("trade_in.has_trade", True)], "ask",
-     ["trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"]),
+     ["trade_in.year", "trade_in.make", "trade_in.model"]),
     (LeadType.SALES, [*SALES_ALL[:4], _fact("trade_in.has_trade", True), *TRADE_ALL], "qualified", []),
     # general lead that told us it's here for service takes the service list
     (LeadType.GENERAL, [_fact("interest.lead_type", "service"), *SERVICE_ALL], "qualified", []),
-    (LeadType.GENERAL, [_fact("interest.lead_type", "service")], "ask",
-     ["interest.service_needed", "vehicle.year", "vehicle.make", "vehicle.model"]),
+    (LeadType.GENERAL, [_fact("interest.lead_type", "service")], "ask", ["interest.service_needed"]),
     # stale counts as missing
     (LeadType.TRADE_IN, [*TRADE_ALL[:3], _fact("trade_in.mileage", 60000, age_days=45), *TRADE_ALL[4:]], "ask",
      ["trade_in.mileage"]),
@@ -141,22 +140,25 @@ def test_decide_rule_order_stop_beats_handoff_beats_everything():
     profile = _profile(LeadType.SALES)
     assert next_action(profile, Flags(opted_out=True, wants_human=True))["action"] == "stop"
     assert next_action(profile, Flags(wants_human=True))["action"] == "handoff"
-    assert next_action(profile, Flags(upset=True))["action"] == "handoff"
+    assert next_action(profile, Flags(upset=True, upset_confidence=0.9))["action"] == "handoff"
+    # MASTER_PLAN_2 Phase 4: one ambiguous message or frustration with the bot isn't a handoff.
+    assert next_action(profile, Flags(upset=True, upset_confidence=0.6))["action"] != "handoff"
+    assert next_action(profile, Flags(annoyed_at_bot=True))["action"] != "handoff"
     rules = next_action(profile, Flags(wants_human=True))["rules"]
-    assert [r["result"] for r in rules] == ["no", "fired", "skipped", "skipped", "skipped"]
+    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 7
 
 
 def test_decide_is_deterministic_and_passes_questions_through():
     profile = _profile(LeadType.SALES, *SALES_ALL[:2])
-    flags = Flags(customer_questions=["Is it AWD?"])
+    flags = Flags(questions=[{"text": "Is it AWD?", "label": "answerable"}])
     assert next_action(profile, flags) == next_action(profile, flags)
-    assert next_action(profile, flags)["answer_questions"] == ["Is it AWD?"]
+    assert next_action(profile, flags)["answer_questions"] == [{"text": "Is it AWD?", "label": "answerable"}]
     assert next_action(profile, flags)["required_filled"] == 2 and next_action(profile, flags)["required_total"] == 5
 
 
-def test_at_most_two_requirements_are_asked():
+def test_one_requirement_is_asked_per_message():
     decision = next_action(_profile(LeadType.SALES), Flags())
-    assert len(decision["asks"]) == 2
+    assert len(decision["asks"]) == 1
 
 
 # --- profile ---------------------------------------------------------------------

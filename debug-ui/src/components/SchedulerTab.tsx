@@ -2,10 +2,12 @@ import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
-import type { Followup, FollowupStatus, Lead } from "../types";
+import { formatDateTime, formatInZone } from "../time";
+import type { Dealer, Followup, FollowupStatus, Lead } from "../types";
 
 interface Props {
   dealerId: string;
+  dealer?: Dealer;
   leads: Lead[];
   onError: (m: string) => void;
 }
@@ -32,7 +34,7 @@ function countdown(dueMs: number, nowMs: number): string {
   return h > 0 ? `in ${h}h ${m}m` : m > 0 ? `in ${m}m ${s % 60}s` : `in ${s}s`;
 }
 
-export function SchedulerTab({ dealerId, leads, onError }: Props) {
+export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
   const [followups, setFollowups] = useState<Followup[]>([]);
   const [serverNow, setServerNow] = useState<{ at: number; fetchedAt: number; offset: number } | null>(null);
   const [, setTick] = useState(0);
@@ -70,9 +72,10 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
     }
   };
 
-  // A pending follow-up waits in the lane it will leave; once sent it moves to its target lane.
+  // A pending channel switch waits in the lane it will leave; once sent it
+  // moves to its target lane. A staff check stays on the lead's own channel.
   const laneOf = (f: Followup) =>
-    f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
+    f.kind === "handoff_check" || f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -80,7 +83,7 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Dev clock</div>
           <div className="font-mono text-[15px] font-semibold tabular-nums">
-            {new Date(now).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}
+            {formatDateTime(now, true)}
           </div>
           <div className="text-[11px] text-muted">
             {serverNow && serverNow.offset > 0
@@ -88,6 +91,19 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
               : "real time"}
           </div>
         </div>
+        {dealer?.time_zone && (
+          <div className="border-l border-line pl-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Dealer time</div>
+            <div className="font-mono text-[15px] font-semibold tabular-nums">{formatInZone(now, dealer.time_zone)}</div>
+            <div
+              className="text-[11px] text-muted"
+              title={Object.entries(dealer.hours ?? {}).map(([d, h]) => `${d}: ${h}`).join("\n")}
+            >
+              {dealer.time_zone} · proactive SMS 8:00-20:00 · hover for opening hours
+              {dealer.hours_from_record ? "" : " (default)"}
+            </div>
+          </div>
+        )}
         <div className="ml-auto flex gap-1.5">
           <button type="button" onClick={() => act(() => api.advanceClock(3600))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
             +1 hour
@@ -107,7 +123,8 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
             <div className="text-[14px] font-semibold text-ink">No follow-ups scheduled</div>
             <div className="mt-1 max-w-md">
               Every message the AI sends gets a follow-up here with a 24-hour countdown. "+24 hours" fires it: the card
-              moves to the other channel's lane. A customer reply cancels it.
+              moves to the other channel's lane. A customer reply cancels it. A handoff adds a staff check, due 30
+              business minutes later.
             </div>
           </div>
         </div>
@@ -135,7 +152,12 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
                           title={f.text ?? ""}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[12px] font-semibold">{leadName(f.lead_id)}</span>
+                            <span className="truncate text-[12px] font-semibold">
+                              {f.kind === "handoff_check" && (
+                                <span className="mr-1 rounded bg-warn-soft px-1 text-[10px] text-warn">staff check</span>
+                              )}
+                              {leadName(f.lead_id)}
+                            </span>
                             <span
                               className={`shrink-0 text-[11px] font-semibold ${FADED.has(f.status) ? "line-through" : ""}`}
                               style={{ color: STATUS_STYLE[f.status]?.fg }}
@@ -144,15 +166,17 @@ export function SchedulerTab({ dealerId, leads, onError }: Props) {
                             </span>
                           </div>
                           <div className="text-[11px] text-muted">
-                            {f.from_channel.toUpperCase()} → {f.to_channel.toUpperCase()}
-                            {f.to ? ` (${f.to})` : ""} ·{" "}
+                            {f.kind === "handoff_check"
+                              ? `holding reply by ${f.to_channel.toUpperCase()} if staff haven't taken over`
+                              : `${f.from_channel.toUpperCase()} → ${f.to_channel.toUpperCase()}${f.to ? ` (${f.to})` : ""}`}{" "}
+                            ·{" "}
                             {f.status === "pending"
                               ? countdown(new Date(f.due_at).getTime(), now)
-                              : new Date(f.fired_at ?? f.closed_at ?? f.due_at).toLocaleString()}
+                              : formatDateTime(f.fired_at ?? f.closed_at ?? f.due_at)}
                           </div>
                           {f.text && <div className="mt-0.5 line-clamp-2 text-[11px] text-ink/80">{f.text}</div>}
                           {f.reason && <div className="mt-0.5 text-[10px] italic text-muted">{f.reason}</div>}
-                          {f.status === "pending" && (
+                          {f.status === "pending" && f.kind !== "handoff_check" && (
                             <button
                               type="button"
                               onClick={() => act(() => api.failSms(dealerId, f.id))}

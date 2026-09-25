@@ -20,18 +20,25 @@ OUTPUT_TOKENS = 500
 
 def _allowed_slots() -> list[dict[str, Any]]:
     return [{"path": s.path, "label": s.label, "kind": s.kind, "choices": list(s.choices)}
-            for s in SLOTS if s.priority is not None]
+            for s in SLOTS if s.extractable]
+
+
+def extract_payload(state: AgentState) -> dict[str, Any]:
+    """What Extract is given: the new messages to read, and the same context
+    pack Compose gets, for understanding them (MASTER_PLAN_2 Phase 1)."""
+    pack = state.context_pack or {}
+    return {
+        "customer_text": state.customer_text or state.inbound_text,
+        "lead_type": (state.profile or {}).get("effective_lead_type") or "general",
+        "allowed_slots": _allowed_slots(),
+        "recently_asked": (pack.get("conversation") or {}).get("last_asked", []),
+        "context": {k: v for k, v in pack.items() if k != "budget"},
+    }
 
 
 async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     model = ctx.settings.model_extract
-    last_asked = (ctx.lead_state or {}).get("last_asked_slots") or []
-    payload = {
-        "customer_text": state.inbound_text,
-        "lead_type": (state.profile or {}).get("effective_lead_type") or "general",
-        "allowed_slots": _allowed_slots(),
-        "recently_asked": last_asked,
-    }
+    payload = extract_payload(state)
     span.metrics = {"model": model}
     try:
         ctx.spend_ai_call()
@@ -53,12 +60,14 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
         f"{v['value']!r}, confidence {v['confidence']:.2f}"
         for v in extraction["values"]
     ] or ["No slot values in the message."]
-    if extraction["customer_questions"]:
-        span.reasoning.append(f"Questions asked: {len(extraction['customer_questions'])}.")
+    for question in extraction["questions"]:
+        span.reasoning.append(f"Question ({question['label'].replace('_', ' ')}): \"{question['text']}\"")
     if extraction["wants_human"]:
         span.reasoning.append("The customer asked for a person.")
-    if extraction["negative_sentiment"]:
-        span.reasoning.append("The customer sounds upset.")
+    if extraction["upset"]:
+        span.reasoning.append(f"The customer sounds upset (confidence {extraction['upset_confidence']:.2f}).")
+    if extraction["annoyed_at_bot"]:
+        span.reasoning.append("The customer is frustrated with this conversation: change approach, don't hand off.")
     n = len(extraction["values"])
     span.edge_label = f"{n} value{'s' if n != 1 else ''} found"
     return {"extraction": extraction}
@@ -68,5 +77,6 @@ def _failed(span: NodeSpan, reason: str) -> dict[str, Any]:
     span.output = {"error": reason, "values": []}
     span.reasoning = [f"Extract failed: {reason}. Sending the template instead."]
     span.edge_label = "failed"
-    return {"extraction": {"error": reason, "values": [], "customer_questions": [], "wants_human": False,
-                           "negative_sentiment": False}, "fallback_reason": f"extract failed: {reason}"}
+    return {"extraction": {"error": reason, "values": [], "questions": [], "wants_human": False, "upset": False,
+                           "upset_confidence": 0.0, "annoyed_at_bot": False},
+            "fallback_reason": f"extract failed: {reason}"}

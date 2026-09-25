@@ -240,6 +240,221 @@ export function ComposePreview({ output }: { output: any }) {
           {output.why}
         </div>
       )}
+      {Array.isArray(output.promises) && output.promises.length > 0 && (
+        <div className="rounded-lg bg-panel-2 px-2 py-1.5 text-[11px]">
+          <span className="font-semibold">Promises the team: </span>
+          {output.promises.join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LAYER_LABELS: Record<string, string> = {
+  new_messages: "New messages",
+  working_memory: "Working memory",
+  profile: "Profile",
+  conversation: "Conversation state",
+  campaign: "Campaign",
+  summary: "Summary",
+};
+
+// The context pack a turn's AI steps read (MASTER_PLAN_2 Phase 1).
+export function ContextPackView({ output }: { output: any }) {
+  const budget = output?.context?.budget;
+  const pack = output?.prompt?.context_pack;
+  const conversation = pack?.conversation ?? output?.context?.conversation;
+  if (!budget) return null;
+  const tokens = Object.entries((budget.tokens ?? {}) as Record<string, number>);
+  const max = Math.max(1, ...tokens.map(([, n]) => n));
+  const asks = Object.entries((conversation?.asks ?? {}) as Record<string, { count: number; last_turn: number }>);
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Context pack · about {tokens.reduce((sum, [, n]) => sum + n, 0).toLocaleString()} tokens
+        </div>
+        <div className="space-y-1">
+          {tokens.map(([layer, n], i) => (
+            <div key={layer} className="flex items-center gap-2 text-[11px]">
+              <span className="w-32 shrink-0 text-muted">{LAYER_LABELS[layer] ?? layer}</span>
+              <div className="h-2 flex-1 overflow-hidden rounded bg-panel-2">
+                <motion.div
+                  className="h-full rounded bg-accent"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(n / max) * 100}%` }}
+                  transition={{ delay: i * 0.05 }}
+                />
+              </div>
+              <span className="w-10 shrink-0 text-right tabular-nums">{n}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 text-[11px] text-muted">
+          Working memory: {budget.kept} of {budget.loaded} earlier message(s), {budget.working_used} of {budget.working_tokens} tokens
+          {budget.dropped ? ` · ${budget.dropped} older left out` : ""}
+          {budget.more_not_loaded ? " · more history beyond the load limit" : ""}
+        </div>
+      </div>
+
+      {pack?.summary && (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Summary of {budget.summary_covers} earlier message(s)
+          </div>
+          <div className="whitespace-pre-wrap rounded-lg bg-panel-2 p-2 text-[11px]">{pack.summary}</div>
+        </div>
+      )}
+      {budget.summary_behind && (
+        <div className="text-[11px] text-warn">Older messages aren't summarized yet: updated after this turn's send.</div>
+      )}
+
+      {pack && (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">What the AI read</div>
+          <div className="space-y-1 rounded-lg border border-line p-2">
+            {pack.working_memory.map((m: any, i: number) => (
+              <div key={`w${i}`} className={`text-[11px] ${m.direction === "outbound" ? "text-right text-ai" : "text-ink"}`}>
+                <span className="font-semibold">{m.direction === "outbound" ? "AI" : "Customer"}{m.resend ? " (re-sent)" : ""}: </span>
+                {m.text}
+              </div>
+            ))}
+            {pack.new_messages.map((m: any, i: number) => (
+              <div key={`n${i}`} className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px]">
+                <span className="font-semibold">New{m.source === "lead_form" ? " (lead form)" : ""}: </span>
+                {m.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pack?.dealer?.info && (
+        <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-lg bg-panel-2 p-2">
+            <div className="mb-1 font-semibold">Dealer details it may use</div>
+            {pack.dealer.info.address && <div>{pack.dealer.info.address}</div>}
+            {pack.dealer.info.phone && <div>{pack.dealer.info.phone}</div>}
+            {pack.dealer.info.hours_summary && <div>{pack.dealer.info.hours_summary}</div>}
+            {pack.dealer.info.missing?.length > 0 && (
+              <div className="mt-1 text-warn">Not entered (the team will confirm): {pack.dealer.info.missing.join(", ")}</div>
+            )}
+          </div>
+          <div className="rounded-lg bg-panel-2 p-2">
+            <div className="mb-1 font-semibold">What it may say it knows</div>
+            {(pack.about_customer?.known ?? []).length === 0 && (pack.about_customer?.unconfirmed ?? []).length === 0 && (
+              <div className="text-muted">nothing yet</div>
+            )}
+            {(pack.about_customer?.known ?? []).map((k: any, i: number) => (
+              <div key={`k${i}`}>
+                {k.label}: {k.value} <span className="text-muted">({k.from})</span>
+              </div>
+            ))}
+            {(pack.about_customer?.unconfirmed ?? []).map((u: any, i: number) => (
+              <div key={`u${i}`} className="text-warn">
+                {u.label}: {u.value} (to confirm)
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {conversation && (
+        <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-lg bg-panel-2 p-2">
+            <div className="mb-1 font-semibold">Asked so far (reply #{conversation.turn})</div>
+            {asks.length === 0 ? <div className="text-muted">nothing yet</div> : asks.map(([path, a]) => (
+              <div key={path} className="flex justify-between gap-2">
+                <span className="truncate">{path}</span>
+                <span className="tabular-nums text-muted">×{a.count}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-lg bg-panel-2 p-2">
+            <div className="mb-1 font-semibold">Open questions</div>
+            {conversation.open_questions.length === 0 ? <div className="text-muted">none</div> : conversation.open_questions.map((q: any, i: number) => (
+              <div key={i}>
+                “{q.text}” <span className="rounded bg-panel px-1 text-[10px] text-muted">{String(q.label ?? "").replaceAll("_", " ")}</span>
+              </div>
+            ))}
+            <div className="mb-1 mt-2 font-semibold">Promises</div>
+            {conversation.promises.length === 0 ? <div className="text-muted">none</div> : conversation.promises.map((p: any, i: number) => (
+              <div key={i}>{p.text}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// What Decide chose beyond the rule (MASTER_PLAN_2 Phases 5 and 9): the
+// questions it answers, the one follow-up, a clarification, and why details
+// weren't asked.
+export function DecideDetails({ output }: { output: any }) {
+  if (!output) return null;
+  const questions: { text: string; label: string }[] = output.answer_questions ?? [];
+  const asks: { label: string; question?: string; hint?: string }[] = output.asks ?? [];
+  const notAsked: { label: string; why: string }[] = output.not_asked ?? [];
+  const clarify: { label: string; question?: string; explanation?: string }[] = output.clarify?.items ?? [];
+  return (
+    <div className="space-y-2 text-[11px]">
+      {output.annoyed_at_bot && (
+        <div className="rounded-lg bg-warn-soft px-2 py-1.5 text-warn">
+          The customer is frustrated with the conversation: no questions this time.
+        </div>
+      )}
+      {questions.length > 0 && (
+        <Block title="Answers first">
+          {questions.map((q, i) => (
+            <div key={i}>
+              "{q.text}" <span className="rounded bg-panel-2 px-1 text-[10px] text-muted">{String(q.label ?? "").replaceAll("_", " ")}</span>
+            </div>
+          ))}
+        </Block>
+      )}
+      {clarify.length > 0 && (
+        <Block title="Explains again, then asks the same question">
+          {clarify.map((c, i) => (
+            <div key={i}>
+              <div className="text-muted">{c.explanation}</div>
+              <div className="font-semibold">{c.question}</div>
+            </div>
+          ))}
+        </Block>
+      )}
+      {output.confirm && (
+        <Block title="Then checks">
+          <div>
+            {output.confirm.label}: <span className="font-semibold">{output.confirm.display ?? String(output.confirm.value)}</span>
+          </div>
+        </Block>
+      )}
+      {asks.length > 0 && (
+        <Block title={output.action === "answer" ? "Then asks (one question)" : "Asks (one question)"}>
+          {asks.map((a, i) => (
+            <div key={i} className="font-semibold">{a.question ?? a.hint ?? a.label}</div>
+          ))}
+        </Block>
+      )}
+      {notAsked.length > 0 && (
+        <Block title="Not asking">
+          {notAsked.map((n, i) => (
+            <div key={i}>
+              {n.label}: <span className="text-muted">{n.why}</span>
+            </div>
+          ))}
+        </Block>
+      )}
+    </div>
+  );
+}
+
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-panel-2 px-2 py-1.5">
+      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</div>
+      <div className="space-y-0.5">{children}</div>
     </div>
   );
 }

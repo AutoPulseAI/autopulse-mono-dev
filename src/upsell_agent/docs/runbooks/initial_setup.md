@@ -61,7 +61,10 @@ make ai-ping      # the worker answers a test job
 ```
 
 - Debug UI: http://localhost:5173. Pick a dealer and a lead, send a simulated
-  message, and watch it go through the pipeline.
+  message, and watch it go through the pipeline. Times are shown in Pakistan
+  time (PKT); the Scheduler tab also shows the dealer's own local time, which
+  business hours and the 8:00-20:00 SMS window follow. The dev dealers are in
+  New York (A), Chicago (B) and Los Angeles (C).
 - AI API health: http://localhost:8100/health
 
 ## 4. Run everything together with the platform
@@ -127,6 +130,20 @@ MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o make ai-evals   # t
 
 Langfuse traces appear once `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set.
 
+A full report on the real models (every reply and conversation case, pass rates, template fallbacks,
+time and cost per reply; saved in `agentic-upsell/evals/reports/`):
+
+```bash
+MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o make ai-evals-report
+```
+
+The Debug UI's banner shows which models are running.
+
+## 8b. Testing by hand
+
+`docs/runbooks/manual_test_script.md` has the conversations to replay in the Debug UI Simulator,
+with what a good reply looks like and where to check why the AI said it.
+
 ## 9. Real SMS and email (staging only)
 
 In `agentic-upsell/.env`, set:
@@ -157,3 +174,6 @@ conversation screen.
 | `npx` fails with `ECOMPROMISED` during `make ai-evals` | `npm cache clean --force`, then run it again. |
 | Scenarios fail after a burst test | Leftover follow-ups can fall due when a scenario moves the clock; `make ai-seed` resets the dev data. |
 | The Redis checkpointer tests are skipped | Expected: they need Redis Stack (RediSearch); the dev Redis is plain `redis:7`. |
+| A Debug UI code change doesn't show up | The dev server in Docker doesn't see file changes on a Windows mount: `docker compose --profile dev restart ai-debug-ui`. |
+| `make ai-test` fails with `unknown command 'eval'` | The test dependencies are out of date: `make ai-install` (installs `fakeredis[lua]`). |
+| Every reply is the template with real models; the model error says `401 invalid_organization` | The OpenAI key belongs to an organization it can no longer use. Create a new key in an active organization and put it in `agentic-upsell/.env`. `make ai-evals-report` checks the key before running anything. |

@@ -56,8 +56,13 @@ async def test_pause_cancels_followups_and_silences_replies(mongo):
 
     reply = await handlers.handle_inbound_message(_inbound(created, "anyone there?"), TurnDeps())
     assert reply["status"] == "saved_only"
+    # Nothing sent, but the reason is on record (MASTER_PLAN_2 Phase 2: never silent).
     assert await mongo[AI_MESSAGES_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 1
-    assert await mongo[AI_TURN_LOG_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 0
+    [held] = await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
+    assert held["trigger"] == "inbound_held" and held["outcome"] == "saved_only"
+    assert "Paused" in held["summary"]["reason"] and "Staff replied" in held["summary"]["reason"]
+    message = await mongo[AI_MESSAGES_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert message["answered_turn_id"] == held["turn_id"]
 
 
 async def test_resume_lets_the_ai_reply_again(mongo):
@@ -113,10 +118,13 @@ async def test_stop_opts_out_and_is_never_answered(mongo):
     assert state["status"] == "opted_out"
     consent = await mongo["ai_consent"].find_one({"customer_id": created["customer_id"]})
     assert consent["sms"]["allowed"] is False
-    assert await mongo[AI_TURN_LOG_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 0
+    [held] = await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
+    assert held["outcome"] == "opted_out" and "STOP" in held["summary"]["reason"]
+    assert await mongo[AI_MESSAGES_COLLECTION].count_documents(
+        {"lead_id": created["lead_id"], "direction": "outbound"}) == 0
 
     later = await handlers.handle_inbound_message(_inbound(created, "hello?", event_id="m2"), TurnDeps())
-    assert later["status"] == "saved_only"
+    assert later["status"] == "saved_only" and "opted out" in later["reason"]
 
 
 async def test_start_after_stop_opts_back_in(mongo):

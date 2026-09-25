@@ -1,0 +1,19 @@
+name: A handed-off lead still gets an answer, once
+stage: 102
+description: The customer asks for a person, so the AI hands off and a staff check is scheduled. Two more messages inside two hours are saved for staff with the reason on record, and the customer isn't told the same thing again.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: h, dealer: A, lead_type: sales, channel: sms, name: Hana Holding, comments: "Looking at a used Honda CR-V"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 20}
+  - reply: {lead: h, text: "Can a real person call me instead?"}
+  - wait_turns: {lead: h, count: 2, timeout_s: 20}
+  - expect_turn: {lead: h, outcome: handoff}
+  - expect_followup: {lead: h, kind: handoff_check, status: pending, count: 1}
+  - reply: {lead: h, text: "Also I'm free after 5"}
+  - wait_turns: {lead: h, count: 3, timeout_s: 20}
+  - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
+  - reply: {lead: h, text: "Hello?"}
+  - wait_turns: {lead: h, count: 4, timeout_s: 20}
+  - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
+  - expect_outbox: {lead: h, channel: sms, count: 2, contains: "passing this to a member of our team"}
+  - expect_followup: {lead: h, kind: handoff_check, status: pending}

@@ -10,6 +10,8 @@ and is scored on:
 - Right behaviour: the expected outcome (ask / handoff / ...), asking for the
   expected details, mentioning what it must, and not falling back to the
   template where the AI should manage.
+- Plain reply (MASTER_PLAN_2 Phase 7): a reading level of grade 8 or below, and
+  no internal terms (slot codes, snake_case, "slot", "lead type").
 
 - Default (MODEL_EXTRACT/MODEL_COMPOSE=offline): checks the pipeline and the
   offline model.
@@ -30,6 +32,7 @@ from deepeval.test_case import LLMTestCase
 from evals import harness
 from upsell_agent.config import get_settings
 from upsell_agent.guardrails.draft_guard import SMS_MAX, check_draft
+from upsell_agent.guardrails.plain_language import READING_GRADE_TARGET, find_jargon, reading_grade
 
 CASES = [json.loads(line) for line in (Path(__file__).parent / "datasets" / "reply_cases.jsonl")
          .read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -102,6 +105,17 @@ class RightBehaviour(_Rules):
         return rules or {"nothing expected": True}
 
 
+class PlainReply(_Rules):
+    name = "Plain reply"
+
+    def rules(self) -> dict[str, bool]:
+        reply = self.result["reply"]
+        grade = reading_grade(reply)
+        jargon = find_jargon(reply)
+        return {f"reading grade {grade} <= {READING_GRADE_TARGET:g}": grade <= READING_GRADE_TARGET,
+                f"no internal terms {jargon}": not jargon}
+
+
 def _real_model_without_key() -> bool:
     return harness.uses_real_models() and not get_settings().openai_api_key.startswith("sk-")
 
@@ -111,4 +125,5 @@ def _real_model_without_key() -> bool:
 def test_reply(case):
     result = asyncio.run(harness.run_case(case))
     test_case = LLMTestCase(input=case["text"], actual_output=result["reply"])
-    assert_test(test_case, [SafeReply(case, result), RightBehaviour(case, result)], run_async=False)
+    assert_test(test_case, [SafeReply(case, result), RightBehaviour(case, result), PlainReply(case, result)],
+                run_async=False)

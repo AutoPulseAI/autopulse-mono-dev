@@ -59,9 +59,12 @@ class AgentState(BaseModel):
     trigger: str
     channel: Channel | None = None
     turn_id: str | None = None
-    # Customer text this turn answers: the lead's own comments on the first
-    # reply, or every unanswered inbound message batched together.
+    # Customer text this turn answers, as received: the lead's own comments on
+    # the first reply, or every unanswered inbound message batched together.
     inbound_text: str = ""
+    # The ai_messages rows of that batch (none on a first reply). Load context
+    # lists them one by one in the context pack.
+    new_message_ids: list[str] = Field(default_factory=list)
     shadow: bool = False
     # A new lead's first reply goes straight to the template while
     # FIRST_REPLY_MODE=template (MASTER_PLAN_1 Stage 4; Stage 8 turns it off).
@@ -75,8 +78,11 @@ class AgentState(BaseModel):
     campaign: dict[str, Any] | None = None
     # slots/profile.py Profile.to_api(): every slot's value and state.
     profile: dict[str, Any] | None = None
-    # Last messages of the conversation, oldest first: {direction, channel, text}.
-    recent_messages: list[dict[str, Any]] = Field(default_factory=list)
+    # agent/context_pack.ContextPack.model_dump(): what Extract and Compose see.
+    context_pack: dict[str, Any] | None = None
+    # The new messages as the models read them (a customer email's quoted
+    # chain removed). Extract reads it and Validate checks quotes against it.
+    customer_text: str = ""
 
     # --- One entry per pipeline step (§7): extract → validate → decide → compose → guard ---
     extraction: dict[str, Any] | None = None

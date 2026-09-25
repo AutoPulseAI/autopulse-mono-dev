@@ -1,0 +1,17 @@
+name: Staff taking the lead over cancels the staff check
+stage: 102
+description: Staff pause the handed-off lead (they replied from the conversation screen), so the staff check is cancelled and the customer's next message is saved for them with the reason on record.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sofia Staff, comments: "Used SUV under 30k"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+  - reply: {lead: s, text: "Can someone call me?"}
+  - wait_turns: {lead: s, count: 2, timeout_s: 20}
+  - pause: {lead: s, reason: "Staff replied from the conversation screen"}
+  - wait_status: {lead: s, status: paused}
+  - expect_followup: {lead: s, kind: handoff_check, status: cancelled}
+  - reply: {lead: s, text: "Thanks!"}
+  - wait_turns: {lead: s, count: 3, timeout_s: 20}
+  - expect_turn: {lead: s, trigger: inbound_held, outcome: saved_only}
+  - advance_clock: {hours: 1}
+  - expect_outbox: {lead: s, channel: sms, count: 2}

@@ -10,38 +10,55 @@
 ```
    ┌──────────┐        ┌──────────────────────────┐
    │   DMS    │──lead─▶│  aidmvcs-be-dev (Next.js)│◀── customer replies (SMS / email)
-   └──────────┘        │  saves Lead & Customer   │
+   └──────────┘        │  saves Lead & Customer   │    dealer record: hours, address, timezone
                        └────────────┬─────────────┘
-                                    │  event: "new lead" / "new reply"
+                                    │  event: "new lead" / "new reply" / "lead paused"
                                     ▼
-   ┌──────────────────────────────────────────────────────────────────────────┐
-   │  API process (FastAPI)                                                   │
-   │  checks shared secret → ignores duplicates → puts a job on the queue     │
-   └────────────────────────────────────┬─────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │  API process (FastAPI)                                                       │
+   │  checks shared secret → ignores duplicates → puts a job on the queue         │
+   └────────────────────────────────────┬─────────────────────────────────────────┘
                                         │  job queue (SAQ on Redis)
                                         ▼
-   ┌──────────────────────────────────────────────────────────────────────────┐
-   │  WORKER process (SAQ)                                                    │
-   │                                                                          │
-   │   ┌───────────────────── Turn pipeline (LangGraph) ────────────────────┐ │
-   │   │                                                                    │ │
-   │   │  Load     ─▶  Extract  ─▶  Validate ─▶  Decide  ─▶ Compose ─▶ Guard│ │
-   │   │  context      (AI)         (code)       (code)     (AI)      (code)│ │
-   │   │                                                                    │ │
-   │   └──────────────────────────────────────┬─────────────────────────────┘ │
-   │                                          │ approved draft                │
-   │                                          ▼                               │
-   │   ┌──────────────┐   schedule    ┌───────────────┐                       │
-   │   │  Scheduler   │◀──────────────│    Sender     │──▶ Twilio  (SMS)      │
-   │   │  (24h check) │──── resend ──▶│               │──▶ SendGrid (email)   │
-   │   └──────────────┘               └───────────────┘                       │
-   └──────────────────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │  WORKER process (SAQ)                                                        │
+   │                                                                              │
+   │   lead with staff / paused / opted out ──▶ Hold: holding reply (at most one  │
+   │                                            every 2h) or a recorded reason    │
+   │                                                                              │
+   │   ┌──────────────────────── Turn pipeline (LangGraph) ────────────────────┐  │
+   │   │  Load context ──▶ one CONTEXT PACK read by both AI steps:             │  │
+   │   │    recent messages (token budget) · rolling summary · profile ·       │  │
+   │   │    what we may say we know · conversation state (asks, open           │  │
+   │   │    questions, promises) · dealer details · dealer's local time        │  │
+   │   │                                                                       │  │
+   │   │  Extract ─▶ Validate ─▶ Decide ─▶ Compose ─▶ Guard                    │  │
+   │   │  (AI:       (code:      (code:     (AI:       (code: invented         │  │
+   │   │  labelled   quotes,     9 rules,   plain      numbers, internal       │  │
+   │   │  questions, dates       answer     English,   terms, questions left   │  │
+   │   │  short      resolved    first, one one        unanswered; one         │  │
+   │   │  replies)   in code)    ask)       question)  rewrite, then template) │  │
+   │   └──────────────────────────────────────┬────────────────────────────────┘  │
+   │                                          │ approved draft                    │
+   │                                          ▼                                   │
+   │   ┌───────────────────────┐   schedule   ┌───────────────┐                   │
+   │   │  Scheduler            │◀─────────────│    Sender     │──▶ Twilio  (SMS)  │
+   │   │  24h channel switch · │── resend ───▶│  (consent,    │──▶ SendGrid(email)│
+   │   │  staff check after a  │              │  idempotent)  │                   │
+   │   │  handoff · SMS only   │              └───────┬───────┘                   │
+   │   │  8:00-20:00 dealer    │                      │ after the send            │
+   │   │  time                 │                      ▼                           │
+   │   └───────────────────────┘              Summary job (cheap model): folds    │
+   │                                          messages that left working memory   │
+   └──────────────────────────────────────────────────────────────────────────────┘
           │                    │                        │
           ▼                    ▼                        ▼
    ┌─────────────┐     ┌───────────────┐        ┌─────────────┐
    │  MongoDB    │     │    Redis      │        │  Langfuse   │
    │ facts, msgs,│     │ queue, locks, │        │  traces     │
-   │ follow-ups  │     │ graph state   │        │             │
+   │ lead state, │     │ graph state   │        │             │
+   │ follow-ups, │     │               │        │             │
+   │ turn log    │     │               │        │             │
    └─────────────┘     └───────────────┘        └─────────────┘
 
    Twilio / SendGrid delivery status ──▶ API process ──▶ updates message status
@@ -103,7 +120,9 @@ new lead never waits.
 2. The worker **first cancels any pending follow-ups** for this lead. The customer replied, so no channel switch is needed.
 3. Quick checks run in code, with no AI:
    - The reply is STOP or UNSUBSCRIBE → mark the customer opted out and don't reply.
-   - The lead is handed to a human or opted out → save the message and don't reply.
+   - The lead is **handed to a human** → a short holding reply from a fixed template ("I've passed this to the team"), at most one every 2 hours; inside those 2 hours the message is saved for staff.
+   - The lead is **paused** (a person is replying) or **opted out** → save the message and don't reply.
+   - Whatever happens, the message is never left without a reason: a short "held" entry in the turn log says what was done and why (§15, decision 12).
 4. The worker takes the lead lock. If another job holds it, this job retries in 2 seconds.
 5. The worker collects **all** unanswered messages from this customer. Three texts in a row get one reply, not three.
 6. The turn pipeline runs, and the reply goes out on the channel the customer just used.
@@ -127,6 +146,7 @@ answers.
   - a due time 24 hours from now
 
   This only happens if we have the customer's contact for the other channel and they haven't opted out of it.
+- **Contact window.** The switch is a message the AI starts on its own, so if it goes by SMS it is only sent between 8:00 and 20:00 dealer time. One that falls due outside that window waits for the next 8:00, both when it is planned and when it fires. Email isn't held (§15, decision 11).
 - **Firing.** A scheduled job runs every minute on every worker.
   1. It claims due follow-ups one at a time with a single atomic database update, so two workers can never send the same one.
   2. Just before sending, it checks again whether the customer has replied. If so, it cancels.
@@ -134,6 +154,14 @@ answers.
 - **Once only.** A switched message never schedules another switch.
 - **Failed SMS.** If Twilio reports an SMS as failed or undelivered, the follow-up fires immediately instead of waiting 24 hours.
 - **Stuck claims.** A worker can crash mid-send. A claim older than 5 minutes that hasn't been sent is put back as due.
+
+**Staff check after a handoff.** The same collection and the same firing job
+also hold one other kind of scheduled item. When a lead is handed to a person,
+a check is due **30 business minutes** later (opening hours only, dealer
+time). If staff still haven't taken the lead over by then, the customer gets
+one "sorry for the wait" message and a staff alert is recorded on the lead.
+The lead stays with staff. A customer message doesn't cancel the check; staff
+pausing or resuming the lead does. Its SMS follows the contact window too.
 
 **Why MongoDB and not delayed queue jobs:** cancelling is one database
 update, the schedule survives a Redis restart, and the dealer UI can show
@@ -145,12 +173,17 @@ pending follow-ups.
 
 | Step | Who | What happens |
 |---|---|---|
-| **Load context** | Code | Loads the lead's AI state, the customer's current profile (slots), the last 20 messages, and campaign info if relevant. On the first turn, the profile is pre-filled from the platform's Customer 360 data (vehicles, deals, service records, appointments). |
-| **Extract** | AI, cheap model | Reads the new customer text. Returns found values, each with the exact words it came from and a confidence score. Also returns: questions the customer asked, whether they want a human, whether they sound upset. |
+| **Load context** | Code | Builds the turn's **context pack**, which both AI steps read:<br>• the dealer's local date and time;<br>• the dealer's own details a customer may be told (address, phone, website, opening hours), from its platform record; anything missing is "the team will confirm";<br>• what we know about the customer, in plain words: confirmed values, and separately those still to confirm;<br>• the customer's profile (slots, including what was pre-filled from Customer 360 on the first turn);<br>• the new messages this turn answers;<br>• the conversation before them, word for word, within a token budget (the last 6 messages always kept; customer emails without their quoted chain);<br>• a **rolling summary** of everything older, updated after each send by a separate job with the cheap model, so it adds no time to the reply;<br>• the **conversation state**: what we asked and how often, the customer's still-open questions, what we promised;<br>• campaign info if relevant. |
+| **Extract** | AI, cheap model | Reads the new customer text in the light of the context pack (usually our last message is what they're answering). Short replies ("used", "yes", "2019") are read as answers to what we asked last. Returns found values, each with the exact words it came from (in the new text only) and a confidence score. Also returns:<br>• each question the customer asked, labelled: answerable / restricted / off topic / "what do you mean?" / "what do you know about me?";<br>• whether they asked for a person;<br>• whether they're upset, and how sure that is;<br>• whether they're frustrated with the conversation itself. |
 | **Validate** | Code | Accepts a value only if all four checks pass (below). Rejected values are logged. |
 | **Decide** | Code | Picks exactly one next step (§8.3). |
-| **Compose** | AI, stronger model | Writes the message for that step: an SMS version (max 320 characters) and an email version (subject + body). |
-| **Guard** | Code | Blocks invented prices, trade-in values, approvals or availability, and checks channel format. A failure gets **one** rewrite. A second failure sends a safe template and flags the lead for a human. |
+| **Compose** | AI, stronger model | Writes the message for that step from the same context pack: an SMS version (max 320 characters), an email version (subject + body), a list of what the message promises the team will do, and which of the customer's questions it answered.<br>Plain English, about a grade 6-8 reading level, one question per message, using each detail's customer question and explanation. Dates are said plainly ("Wednesday, September 30 (tomorrow)"). |
+| **Guard** | Code | Blocks invented prices, trade-in values, approvals or availability; internal terms a customer wouldn't understand (field codes, "slot"); and a reply that skipped a question it was meant to answer. Checks channel format. Numbers from the dealer's own details and the customer's values in plain words count as known. A failure gets **one** rewrite. A second failure sends a safe template and flags the lead for a human. |
+
+**Dates.** The customer's words ("tomorrow", "next Friday at 3", "the 15th") are turned into a real date **in code**, against the dealer's local now, never by the model:
+- the date is saved next to the words, and sets the timeline;
+- an unclear date ("next Friday", or "tomorrow" said after midnight) is confirmed with the actual date first;
+- a past date is rejected with the reason.
 
 **Checks in Validate:**
 
@@ -211,13 +244,26 @@ guess is only used when the source doesn't tell us.
 It checks these in order and stops at the first one that applies:
 
 1. Customer opted out → **stop**.
-2. Customer wants a human or is upset → **hand off** (the AI pauses on this lead until staff resume it).
-3. A value needs confirming → **confirm** it.
-4. Required slots are missing or stale → **ask** for up to 2 of them, highest priority first, and answer any question the customer asked.
-5. Nothing missing → **qualified**: notify the dealer, answer questions, stop asking.
+2. Customer asked for a person, or is **clearly** upset (not just one ambiguous message) → **hand off**. The AI steps back on this lead until staff resume it.
+3. Customer asked what our last message meant → **clarify**: explain it again, with nothing new asked.
+4. Customer asked questions → **answer** them first, then at most **one** follow-up: a confirmation if one is waiting, otherwise one ask.
+5. A value needs confirming → **confirm** it.
+6. A required detail can be asked → **ask** for **one**.
+7. Nothing missing → **qualified**: notify the dealer, stop asking.
+8. Every missing detail has been asked twice → **partly qualified**: the lead goes to the team with what we have, and nothing more is asked.
+9. Otherwise → **acknowledge**: reply without a question.
 
-The same profile and the same customer message always produce the same next
-step.
+Asking follows the conversation state (§15, decision 13):
+- the least-asked detail comes first;
+- never the detail our last message asked for;
+- a detail asked twice is parked until 3 other replies have gone out;
+- a customer frustrated with the conversation itself ("you keep asking the same thing") is asked nothing. That frustration is **not** a handoff.
+
+A reply meant to answer questions must answer every one of them. The guard
+sends it back for one rewrite if it doesn't.
+
+The same profile, conversation state and customer message always produce the
+same next step.
 
 ### 8.4 How values are stored
 
@@ -251,12 +297,12 @@ right after.
 
 | Collection | Holds |
 |---|---|
-| `ai_lead_state` | Per lead: lead type, status (active / qualified / handoff / paused / opted out) and the reason, last inbound and outbound times |
+| `ai_lead_state` | Per lead:<br>• lead type, status (active / qualified / partly qualified / handoff / paused / opted out) and the reason;<br>• last inbound and outbound times;<br>• the **conversation state** (asks per slot, open questions with their labels, promises, last topic);<br>• the **rolling summary** of what came before working memory;<br>• the current handoff, when the customer was last told the team has it, and any staff alert |
 | `qualification_facts` | Slot values with source, dates and replace history (exists) |
 | `ai_messages` | Every inbound and outbound message: channel, text, SMS and email versions, campaign ID, delivery status |
-| `scheduled_followups` | Pending, claimed, sent or cancelled channel switches with due time |
+| `scheduled_followups` | Scheduled messages with their due time and status: the 24h channel switch, and the staff check after a handoff (`kind`) |
 | `ai_events` | Event IDs already processed (auto-deleted after 7 days) |
-| `ai_turn_log` | Per turn: what was extracted, what was rejected, the decision, drafts, guard results, cost, time (auto-deleted after 90 days) |
+| `ai_turn_log` | Per turn: what was extracted, what was rejected, the decision, drafts, guard results, cost, time. Also a short entry for every customer message the AI didn't answer, with the reason, and for each channel switch and staff check that fired (auto-deleted after 90 days) |
 | `ai_consent` | Per customer and channel: opted out or not, set by STOP / START replies |
 
 **Platform data** (`Lead`, `Customer`, `Vehicle`, `Deal`, `RepairOrder`,
@@ -347,8 +393,14 @@ tagged with dealer, lead type and trigger. The trace ID is saved in
 | No double messaging with n8n / FollowUpJob, staff takeover (Stage 11) | Built |
 | Live Twilio / SendGrid drivers, allowlist, burst hardening, eval gate (CI), metrics (Stage 12) | Built. The drivers are tested against mocked provider APIs; the first real use is `make ai-provider-check`. |
 | Shadow comparison, go-live checks, DEV copy, rollback (Stage 13) | Built. The real rollout of a dealer follows `docs/runbooks/rollout.md`. |
+| Context pack and conversation state (MASTER_PLAN_2 Phase 1) | Built |
+| Rolling summary, understanding the customer, conversational Decide (MASTER_PLAN_2 Phases 3-5) | Built |
+| Never silent: holding replies, staff check after a handoff, SMS contact window, a reason for every unanswered message (MASTER_PLAN_2 Phase 2) | Built |
+| Answer sources, plain explainable replies, dates (MASTER_PLAN_2 Phases 6-8) | Built |
+| Debug UI updates, conversation evals, manual test script (MASTER_PLAN_2 Phases 9-10) | Built. The real-model eval run is waiting on a working OpenAI key (`make ai-evals-report` with the real models). |
+| Inventory | Planned: `docs/plans/PLAN_3/MASTER_PLAN_3.md` |
 
-Progress and per-file changes: `docs/plans/PLAN_1/progress_1.md`.
+Progress and per-file changes: `docs/plans/PLAN_1/progress_1.md` (Plan 1), `docs/plans/PLAN_2/progress_2.md` (Plan 2).
 
 **Models:** extract and compose run on a deterministic offline model by default
 (`MODEL_EXTRACT` / `MODEL_COMPOSE = offline`), so dev and tests need no API
@@ -368,3 +420,40 @@ with the LangGraph Redis saver. SAQ runs on the same Redis.
 4. **SMS sender.** AI texts go out from the dealer's existing Twilio number, so replies arrive through the existing inbound SMS path.
 5. **Event IDs.** `lead-created` uses the Lead ID. `inbound-message` uses the platform's `Email` record ID.
 6. **Environment flag.** Only `ENVIRONMENT=DEV` turns on debug-only behaviour (the `/dev/*` routes, live trace stream, stored prompts, seed script). Any other value, or none, is production.
+
+### Decided for MASTER_PLAN_2 (Phase 0)
+
+7. **Inventory.** Not in Plan 2. Stock questions are "restricted" and get "the team will check what's in stock for you". The inventory work is planned in `docs/plans/PLAN_3/MASTER_PLAN_3.md`.
+8. **Dealer info.** Read from the dealer's own platform record: the `User` document of type dealer, filled in when the dealer registers and in the admin dealer form, under `dealer_account_information`.
+   - The AI may use what a customer would see on the dealer's website:
+     - `store_name` (or the record's `name`)
+     - `store_address`, `store_city`, `store_state`, `store_postal`
+     - `store_website`
+     - the dealer's texting number `sms_conversion_phone`, and `alternative_contact_number`
+     - `weekly_availability` (opening hours)
+     - `time_zone`
+   - Staff contact details (the general manager's and F&I manager's phone and email) are never given to customers.
+   - A field that's empty is answered with "the team will confirm".
+9. **Dealer timezone.** `dealer_account_information.time_zone` (the platform's own default is `America/New_York`). With no value, `America/New_York` is used.
+   - Every dealer-facing time rule uses it: business hours, the contact window, and dates in replies.
+   - The Debug UI shows times in Pakistan time (`Asia/Karachi`), for the team testing it. It also shows the dealer's local time where business hours matter. Display only: no rule uses the tester's timezone.
+10. **Business hours.** From `dealer_account_information.weekly_availability`: per weekday, whether the store is open and its opening and closing times, in the dealer's timezone. If a dealer has none, Monday to Saturday 9:00 to 18:00 is used.
+11. **Contact window (US messaging law).** Two kinds of message:
+    - **A reply to a message the customer just sent** goes out right away, at any hour. The customer started that exchange. This includes the holding reply below.
+    - **A message the AI starts on its own (proactive)** goes out by SMS only between 8:00 and 20:00 in the customer's local time. Proactive messages are the 24h channel switch and the handoff-timeout holding reply. A proactive SMS that falls due outside the window waits for the next 8:00.
+      - 8:00–20:00 is the strictest common window: the federal TCPA allows 8:00–21:00, and several states (for example Florida) allow 8:00–20:00.
+      - The customer's own timezone isn't known yet, so the dealer's timezone is used; dealership customers are almost always local.
+      - Email has no time-of-day rule, so a proactive email isn't held.
+    - STOP / opt-out and consent are already checked before every send (§9).
+    - This is an engineering rule chosen to stay inside those laws, not legal advice. Have counsel confirm it before the first live dealer.
+12. **While a lead is with staff (handoff) and the handoff timeout.**
+    - A customer message on a handed-off lead gets a short **holding reply** from a fixed template (no AI): "Thanks, I've passed this to the team and someone will reach out shortly."
+    - At most one holding reply every **2 hours** per lead. Messages inside those 2 hours are saved for staff, and the reason is recorded in the trace.
+    - Paused (a person is replying) and opted-out leads get no holding reply. The reason is recorded in the trace.
+    - When a lead is handed to a person, a check is scheduled for **30 business minutes** later: minutes inside the dealer's business hours only.
+    - If by then staff haven't taken the lead over (replied, paused it or resumed it), the customer gets one more holding reply. A staff alert is recorded on the lead, and shown in the Debug UI and the go-live checks.
+    - The lead stays with staff: the AI doesn't take it back on its own. This happens once per handoff.
+    - The holding reply, when it's proactive, follows the contact window above.
+13. **Ask limit.**
+    - A required detail is asked at most **2** times per lead, and never twice in a row.
+    - After 2 asks it's parked. A parked detail can be asked again only after 3 other turns, and optional details never are.

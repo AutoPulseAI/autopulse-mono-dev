@@ -21,6 +21,7 @@ from upsell_agent.integrations.mongodb import (
     as_object_id,
     dealer_scoped_db,
 )
+from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_HANDOFF_CHECK
 from upsell_agent.slots.profile import build_profile
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.slots.store import current_facts, fact_history
@@ -47,14 +48,19 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         await current_facts(db, customer_id, lead_id) if customer_id else [],
         await fact_history(db, customer_id, lead_id) if customer_id else [],
     )
-    pending = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
-        {"lead_id": lead_id, "status": "pending"}).sort("due_at", 1).to_list(1)
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    pending = await followups.find(
+        {"lead_id": lead_id, "status": "pending", **CHANNEL_SWITCHES}).sort("due_at", 1).to_list(1)
+    check = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_HANDOFF_CHECK})
+    alert = state.get("staff_alert")
     return {
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
         **profile.to_api(),
         "pending_followup": ({"channel": pending[0].get("to_channel"), "due_at": _iso(pending[0].get("due_at"))}
                              if pending else None),
+        "pending_staff_check": {"due_at": _iso(check.get("due_at"))} if check else None,
+        "staff_alert": {**alert, "at": _iso(alert.get("at"))} if alert else None,
     }
 
 

@@ -1,0 +1,18 @@
+name: Nobody took the lead over in 30 business minutes
+stage: 102
+description: After a handoff, 30 business minutes pass with no staff action. The customer gets one "sorry for the wait" message and staff get an alert; the lead stays with staff. Two hours later a new message gets a holding reply.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tariq Timeout, comments: "Interested in a used F-150"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - reply: {lead: t, text: "Please have a manager call me"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  - advance_clock: {hours: 0.6}
+  - expect_followup: {lead: t, kind: handoff_check, status: sent, timeout_s: 20}
+  - expect_lead: {lead: t, status: handoff, staff_alert: true}
+  - expect_outbox: {lead: t, channel: sms, count: 3, contains: "Sorry for the wait"}
+  - advance_clock: {hours: 2.1}
+  - reply: {lead: t, text: "Anyone there?"}
+  - wait_turns: {lead: t, count: 4, timeout_s: 20}
+  - expect_turn: {lead: t, trigger: inbound_held, outcome: holding_reply}
+  - expect_outbox: {lead: t, channel: sms, count: 4, contains: "passed this to the team"}

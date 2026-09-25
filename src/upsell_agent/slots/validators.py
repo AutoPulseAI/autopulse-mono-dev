@@ -115,9 +115,14 @@ def validate(defn: SlotDef, raw: Any) -> Validated:
         if isinstance(raw, date):
             return Validated(True, raw.isoformat())
         try:
-            return Validated(True, datetime.fromisoformat(str(raw).strip()).date().isoformat())
+            parsed = datetime.fromisoformat(str(raw).strip())
         except ValueError:
             return Validated(False, reason=f"{raw!r} is not a date")
+        # A time the customer gave ("next Tuesday at 3", resolved in code: no
+        # timezone) is kept; platform timestamps (with one) are dates.
+        if parsed.tzinfo is None and parsed.time() != datetime.min.time():
+            return Validated(True, parsed.strftime("%Y-%m-%dT%H:%M"))
+        return Validated(True, parsed.date().isoformat())
 
     text = re.sub(r"\s+", " ", str(raw)).strip()
     if len(text) > MAX_TEXT:
