@@ -1,0 +1,538 @@
+"""Scenario runner (MASTER_PLAN_1 Stage 3.7).
+
+A scenario is a YAML file in agentic-upsell/scenarios/ describing a scripted
+conversation and what must be true afterwards. The Debug UI's Scenarios page
+and `make ai-scenarios` (CI) run the same files, which is how everyone sees how
+far the build has got.
+
+Steps (one key per step):
+  ping_worker:        {timeout_s}
+  new_lead:           {as, dealer: A|B|<id>, lead_type, channel, name, comments, send_event: true,
+                       history?: DMS records, see devtools/simulate.insert_history}
+  send_lead_created:  {lead, event_id?, expect: queued|duplicate}
+  reply:              {lead, text, channel?}   like the platform: not sent at all if the dealer is off
+  pause / resume:     {lead, reason?}
+  wait_turns:         {lead, count, timeout_s}
+  wait_status:        {lead, status, timeout_s}
+  expect_turn:        {lead, index: -1, outcome?, nodes?: [...], attempts?: {node: n}, ran?: [...], not_ran?: [...],
+                       campaign_found?: bool}
+  expect_turn_count:  {lead, count, settle_s}
+  expect_messages:    {lead, direction: outbound, count, status?, settle_s}
+  expect_last_sent:   {lead, channel?, max_latency_ms?, text_starts_with?, contains?}
+  expect_slots:       {lead, filled?: [paths], missing?: [paths], sources?: {path: platform|customer},
+                       values?: {path: value}}
+  send_campaign:      {lead, name, body?, days_ago?}   the dealer sent this lead a campaign
+  compare_360:        {dealers: [A, B]}   stub vs live Customer 360 for seeded customers (needs the platform)
+  set_dealer_mode:    {dealer, mode: off|shadow|live}   on the platform dealer record (restored after the scenario)
+  advance_clock:      {hours}   moves the dev clock and fires due follow-ups (reset after the scenario)
+  expect_followup:    {lead, status, to_channel?, count?, index: -1, timeout_s}   one of the lead's follow-ups,
+                      oldest first (-1 = the latest)
+  delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
+  expect_outbox:      {lead, channel, count, contains?, settle_s}   what actually left through the fake driver
+  expect_no_followup: {lead, settle_s}   nothing was scheduled for the lead
+  platform_reply:     {lead, text, by: n8n|staff}   the platform (n8n / staff) sent the customer this
+  expect_shadow:      {lead, drafts, with_actual?}   the Shadow tab's pairs for this lead
+  sleep:              {seconds}
+
+Run from the CLI:  python -m upsell_agent.devtools.scenarios [name ...]
+"""
+
+import asyncio
+import os
+import sys
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+from saq import Queue
+
+from upsell_agent import clock
+from upsell_agent.config import get_settings
+from upsell_agent.devtools import compare_360, simulate
+from upsell_agent.events.intake import accept_event
+from upsell_agent.events.models import LeadPausedEvent, LeadResumedEvent
+from upsell_agent.integrations.mongodb import (
+    AI_LEAD_STATE_COLLECTION,
+    AI_MESSAGES_COLLECTION,
+    AI_TURN_LOG_COLLECTION,
+    DEV_OUTBOX_COLLECTION,
+    SCHEDULED_FOLLOWUPS_COLLECTION,
+    dealer_scoped_db,
+    get_db,
+)
+from upsell_agent.worker.queue import Enqueue
+
+DEV_SCENARIO_RUNS_COLLECTION = "dev_scenario_runs"  # DEV only, not per dealer
+DEALER_ALIASES = {"A": simulate.DEV_DEALERS[0]["_id"], "B": simulate.DEV_DEALERS[1]["_id"],
+                  "C": simulate.DEV_DEALERS[2]["_id"]}
+POLL_S = 0.25
+
+
+def scenarios_dir() -> Path:
+    return Path(os.environ.get("SCENARIOS_DIR", Path.cwd() / "scenarios"))
+
+
+def load_scenarios() -> list[dict[str, Any]]:
+    scenarios = []
+    for path in sorted(scenarios_dir().glob("*.yaml")):
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data["id"] = path.stem
+        scenarios.append(data)
+    return scenarios
+
+
+class ScenarioFailed(AssertionError):
+    pass
+
+
+@dataclass
+class RunContext:
+    enqueue: Enqueue
+    queue: Queue | None
+    leads: dict[str, dict[str, str]] = field(default_factory=dict)
+    moved_clock: bool = False
+    changed_dealers: bool = False
+
+    def lead(self, alias: str) -> dict[str, str]:
+        if alias not in self.leads:
+            raise ScenarioFailed(f"unknown lead alias {alias!r}; create it with new_lead first")
+        return self.leads[alias]
+
+
+async def _turns(lead: dict[str, str]) -> list[dict]:
+    cursor = dealer_scoped_db(lead["dealer_id"]).collection(AI_TURN_LOG_COLLECTION).find({"lead_id": lead["lead_id"]})
+    return sorted(await cursor.to_list(None), key=lambda t: t["created_at"])
+
+
+async def _wait(predicate, timeout_s: float, what: str) -> Any:
+    deadline = time.monotonic() + timeout_s
+    while True:
+        value = await predicate()
+        if value:
+            return value
+        if time.monotonic() > deadline:
+            raise ScenarioFailed(f"timed out after {timeout_s}s waiting for {what}")
+        await asyncio.sleep(POLL_S)
+
+
+def _done_nodes(turn: dict) -> list[str]:
+    ordered: list[str] = []
+    for node in turn.get("nodes", []):
+        if node.get("status") == "done" and (not ordered or ordered[-1] != node["node"]):
+            ordered.append(node["node"])
+    return ordered
+
+
+def _unique_vins(history: dict[str, list[dict]] | None) -> dict[str, list[dict]] | None:
+    """The platform keeps vehicles unique per dealer and VIN, so a scenario's
+    fixed VINs get a per-run suffix (the same one everywhere in this history,
+    so a deal still points at its vehicle)."""
+    if not history:
+        return history
+    suffix = uuid.uuid4().hex[:6].upper()
+    return {kind: [{**rec, "vin": f"{rec['vin'][:11]}{suffix}"} if rec.get("vin") else rec for rec in records]
+            for kind, records in history.items()}
+
+
+async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
+    if kind == "ping_worker":
+        if ctx.queue is None:
+            raise ScenarioFailed("no queue available to ping")
+        nonce = uuid.uuid4().hex[:8]
+        result = await ctx.queue.apply("ping", nonce=nonce, timeout=int(args.get("timeout_s", 10)))
+        if not result or result.get("pong") != nonce:
+            raise ScenarioFailed(f"unexpected ping result {result!r}")
+        return f"worker {result['worker']} answered"
+
+    if kind == "new_lead":
+        dealer_id = DEALER_ALIASES.get(args.get("dealer", "A"), args.get("dealer"))
+        created = await simulate.create_lead(
+            dealer_id, lead_type=args.get("lead_type", "sales"), channel=args.get("channel", "sms"),
+            name=args.get("name", "Scenario Customer"), comments=args.get("comments", ""),
+            history=_unique_vins(args.get("history")),
+        )
+        ctx.leads[args["as"]] = {**created, "dealer_id": dealer_id, "channel": args.get("channel", "sms")}
+        if args.get("send_event", True):
+            await simulate.send_lead_created(dealer_id, created["lead_id"], created["customer_id"],
+                                             args.get("channel", "sms"), ctx.enqueue)
+        return f"lead {created['lead_id']}"
+
+    if kind == "send_lead_created":
+        lead = ctx.lead(args["lead"])
+        result = await simulate.send_lead_created(lead["dealer_id"], lead["lead_id"], lead["customer_id"],
+                                                  lead["channel"], ctx.enqueue, event_id=args.get("event_id"))
+        expected = args.get("expect")
+        if expected and result.status != expected:
+            raise ScenarioFailed(f"expected {expected}, got {result.status}")
+        return result.status
+
+    if kind == "reply":
+        lead = ctx.lead(args["lead"])
+        result = await simulate.send_reply(lead["dealer_id"], lead["lead_id"], args.get("channel", lead["channel"]),
+                                           args["text"], ctx.enqueue)
+        note = " (dealer AI is off: no event sent)" if result.status == "skipped" else ""
+        return f"customer: {args['text']!r}{note}"
+
+    if kind in ("pause", "resume"):
+        lead = ctx.lead(args["lead"])
+        event_id = uuid.uuid4().hex
+        if kind == "pause":
+            event = LeadPausedEvent(event_id=event_id, dealer_id=lead["dealer_id"], lead_id=lead["lead_id"],
+                                    reason=args.get("reason"))
+        else:
+            event = LeadResumedEvent(event_id=event_id, dealer_id=lead["dealer_id"], lead_id=lead["lead_id"])
+        result = await accept_event(f"lead-{kind}d", event, ctx.enqueue)
+        return result.status
+
+    if kind == "wait_turns":
+        lead = ctx.lead(args["lead"])
+        count = int(args.get("count", 1))
+
+        async def enough():
+            turns = await _turns(lead)
+            return len(turns) >= count and all(t.get("outcome") for t in turns)
+
+        await _wait(enough, float(args.get("timeout_s", 30)), f"{count} finished turn(s)")
+        return f"{count} turn(s) finished"
+
+    if kind == "wait_status":
+        lead = ctx.lead(args["lead"])
+
+        async def status_matches():
+            doc = await dealer_scoped_db(lead["dealer_id"]).collection(AI_LEAD_STATE_COLLECTION).find_one(
+                {"lead_id": lead["lead_id"]})
+            return doc and doc.get("status") == args["status"]
+
+        await _wait(status_matches, float(args.get("timeout_s", 15)), f"status {args['status']!r}")
+        return f"status is {args['status']}"
+
+    if kind == "expect_turn":
+        lead = ctx.lead(args["lead"])
+        turns = await _turns(lead)
+        if not turns:
+            raise ScenarioFailed("no turns recorded")
+        turn = turns[int(args.get("index", -1))]
+        problems = []
+        if "outcome" in args and turn.get("outcome") != args["outcome"]:
+            problems.append(f"outcome {turn.get('outcome')!r} != {args['outcome']!r}")
+        if "nodes" in args and _done_nodes(turn) != args["nodes"]:
+            problems.append(f"nodes {_done_nodes(turn)} != {args['nodes']}")
+        attempts = {}
+        for node in turn.get("nodes", []):
+            attempts[node["node"]] = max(attempts.get(node["node"], 0), node.get("attempt", 0))
+        for node, n in (args.get("attempts") or {}).items():
+            if attempts.get(node, 0) != n:
+                problems.append(f"{node} ran {attempts.get(node, 0)} time(s), expected {n}")
+        ran = set(_done_nodes(turn))
+        for node in args.get("ran", []):
+            if node not in ran:
+                problems.append(f"{node} did not run")
+        for node in args.get("not_ran", []):
+            if node in ran:
+                problems.append(f"{node} ran but should not have")
+        if "campaign_found" in args:
+            load = next((n for n in turn.get("nodes", []) if n["node"] == "load_context"), {})
+            found = bool((load.get("output") or {}).get("campaign"))
+            if found != bool(args["campaign_found"]):
+                problems.append(f"campaign found={found}, expected {args['campaign_found']}")
+        if problems:
+            raise ScenarioFailed("; ".join(problems))
+        return f"turn outcome {turn.get('outcome')!r}"
+
+    if kind == "expect_turn_count":
+        lead = ctx.lead(args["lead"])
+        await asyncio.sleep(float(args.get("settle_s", 2)))
+        count = len(await _turns(lead))
+        if count != int(args["count"]):
+            raise ScenarioFailed(f"{count} turn(s), expected {args['count']}")
+        return f"{count} turn(s)"
+
+    if kind == "expect_messages":
+        lead = ctx.lead(args["lead"])
+        await asyncio.sleep(float(args.get("settle_s", 1)))
+        flt: dict[str, Any] = {"lead_id": lead["lead_id"], "direction": args.get("direction", "outbound")}
+        if "status" in args:
+            flt["status"] = args["status"]
+        count = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).count_documents(flt)
+        if count != int(args["count"]):
+            raise ScenarioFailed(f"{count} {flt['direction']} message(s) matching {args.get('status', 'any status')}, "
+                                 f"expected {args['count']}")
+        return f"{count} {flt['direction']} message(s)"
+
+    if kind == "expect_last_sent":
+        lead = ctx.lead(args["lead"])
+        rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).find(
+            {"lead_id": lead["lead_id"], "direction": "outbound"}).to_list(None)
+        if not rows:
+            raise ScenarioFailed("no outbound message")
+        last = max(rows, key=lambda r: r["created_at"])
+        problems = []
+        if last.get("status") != "sent":
+            problems.append(f"status {last.get('status')!r} ({last.get('reason')})")
+        if "channel" in args and last.get("channel") != args["channel"]:
+            problems.append(f"channel {last.get('channel')!r} != {args['channel']!r}")
+        if "max_latency_ms" in args and (last.get("latency_ms") is None or last["latency_ms"] > args["max_latency_ms"]):
+            problems.append(f"event-to-send {last.get('latency_ms')} ms > {args['max_latency_ms']} ms")
+        if "text_starts_with" in args and not str(last.get("text", "")).startswith(args["text_starts_with"]):
+            problems.append(f"text {str(last.get('text'))[:60]!r} does not start with {args['text_starts_with']!r}")
+        if "contains" in args and args["contains"].lower() not in str(last.get("text", "")).lower():
+            problems.append(f"text {str(last.get('text'))[:80]!r} does not mention {args['contains']!r}")
+        if problems:
+            raise ScenarioFailed("; ".join(problems))
+        return f"sent on {last['channel']} in {last.get('latency_ms')} ms to {last.get('to')}"
+
+    if kind == "expect_slots":
+        from upsell_agent.api.leads import lead_profile
+
+        lead = ctx.lead(args["lead"])
+        profile = await lead_profile(lead["dealer_id"], lead["lead_id"])
+        rows = {r["path"]: r for r in (profile or {}).get("slots", [])}
+        problems = []
+        for path in args.get("filled", []):
+            if rows.get(path, {}).get("state") != "filled":
+                problems.append(f"{path} is {rows.get(path, {}).get('state', 'absent')}, expected filled")
+        for path in args.get("missing", []):
+            if rows.get(path, {}).get("state") not in ("missing", "stale"):
+                problems.append(f"{path} is {rows.get(path, {}).get('state')}, expected missing")
+        for path, source in (args.get("sources") or {}).items():
+            if rows.get(path, {}).get("source") != source:
+                problems.append(f"{path} source {rows.get(path, {}).get('source')!r}, expected {source!r}")
+        for path, value in (args.get("values") or {}).items():
+            if rows.get(path, {}).get("value") != value:
+                problems.append(f"{path} = {rows.get(path, {}).get('value')!r}, expected {value!r}")
+        if problems:
+            raise ScenarioFailed("; ".join(problems))
+        required = (profile or {}).get("required", {})
+        return f"{required.get('filled')}/{required.get('total')} required details collected"
+
+    if kind == "send_campaign":
+        from datetime import timedelta
+
+        from bson import ObjectId
+
+        lead = ctx.lead(args["lead"])
+        campaign_id = ObjectId()
+        await get_db()["campaigns"].insert_one({
+            "_id": campaign_id, "name": args["name"], "description": args.get("goal", ""),
+            "message_type": lead["channel"], "dealer_id": ObjectId(lead["dealer_id"]), "status": "completed",
+            "message_content": {"subject": "", "body": args.get("body", "Reply to find out more!")}, "dev_seed": True})
+        await get_db()["campaignleads"].insert_one({
+            "campaign_id": str(campaign_id), "name": args["name"], "lead_id": ObjectId(lead["lead_id"]),
+            "dealer_id": lead["dealer_id"], "status": "sent", "dev_seed": True,
+            "sent_at": clock.now() - timedelta(days=float(args.get("days_ago", 0.01)))})
+        return f"campaign {campaign_id} sent"
+
+    if kind == "compare_360":
+        dealers = [DEALER_ALIASES.get(d, d) for d in args.get("dealers", ["A", "B"])]
+        results = await compare_360.compare_dealers(dealers)
+        if not results:
+            raise ScenarioFailed("no seeded customers to compare; run `make ai-seed` first")
+        errors = [r for r in results if r["error"]]
+        if errors:
+            raise ScenarioFailed(errors[0]["error"])
+        mismatched = [r for r in results if r["problems"]]
+        if mismatched:
+            first = mismatched[0]
+            raise ScenarioFailed(f"{len(mismatched)}/{len(results)} customers differ; "
+                                 f"{first['name']}: {first['problems'][0]}")
+        return f"{len(results)} customers match between stub and live"
+
+    if kind == "set_dealer_mode":
+        from bson import ObjectId
+
+        from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
+
+        dealer_id = DEALER_ALIASES.get(args["dealer"], args["dealer"])
+        ctx.changed_dealers = True
+        await get_db()[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(dealer_id)},
+                                                             {"$set": {"ai_mode": args["mode"]}})
+        return f"dealer {args['dealer']} is now {args['mode']}"
+
+    if kind == "advance_clock":
+        from upsell_agent.integrations.redis_client import get_redis
+
+        ctx.moved_clock = True
+        await clock.advance(get_redis(), float(args["hours"]) * 3600)
+        await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
+        return f"clock is now {clock.now():%Y-%m-%d %H:%M} UTC"
+
+    if kind == "expect_followup":
+        lead = ctx.lead(args["lead"])
+        followups = dealer_scoped_db(lead["dealer_id"]).collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+
+        async def latest():
+            rows = await followups.find({"lead_id": lead["lead_id"]}).to_list(None)
+            if not rows:
+                return None
+            rows.sort(key=lambda r: r["created_at"])
+            index = int(args.get("index", -1))
+            if index >= len(rows) or index < -len(rows):
+                return None
+            last = rows[index]
+            return (last, len(rows)) if last["status"] == args["status"] else None
+
+        try:
+            last, count = await _wait(latest, float(args.get("timeout_s", 15)), f"a {args['status']} follow-up")
+        except ScenarioFailed:
+            rows = sorted(await followups.find({"lead_id": lead["lead_id"]}).to_list(None),
+                          key=lambda r: r["created_at"])
+            seen = [f"{r['status']} ({r.get('reason')})" for r in rows]
+            raise ScenarioFailed(f"expected follow-up [{args.get('index', -1)}] to be {args['status']}; "
+                                 f"saw {seen or 'none'}") from None
+        if "to_channel" in args and last["to_channel"] != args["to_channel"]:
+            raise ScenarioFailed(f"follow-up goes to {last['to_channel']}, expected {args['to_channel']}")
+        if "count" in args and count != int(args["count"]):
+            raise ScenarioFailed(f"{count} follow-up(s) for this lead, expected {args['count']}")
+        return f"follow-up to {last['to_channel']} is {last['status']}" + (
+            f" ({last['reason']})" if last.get("reason") else "")
+
+    if kind == "delivery_status":
+        from upsell_agent.channels.delivery import apply_delivery_status
+        from upsell_agent.integrations.platform_client import get_platform_client
+
+        lead = ctx.lead(args["lead"])
+        flt = {"lead_id": lead["lead_id"], "direction": "outbound", "status": "sent"}
+        if "channel" in args:
+            flt["channel"] = args["channel"]
+        rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).find(flt).to_list(None)
+        if not rows:
+            raise ScenarioFailed(f"no sent {args.get('channel', '')} message to report on")
+        last = max(rows, key=lambda r: r["created_at"])
+        result = await apply_delivery_status(get_platform_client(get_settings()), args["status"],
+                                             provider_id=last.get("provider_id"), error="scenario")
+        if result.followup_due_now:
+            await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
+        return result.detail
+
+    if kind == "expect_outbox":
+        lead = ctx.lead(args["lead"])
+        await asyncio.sleep(float(args.get("settle_s", 1)))
+        rows = await dealer_scoped_db(lead["dealer_id"]).collection(DEV_OUTBOX_COLLECTION).find(
+            {"lead_id": lead["lead_id"], "channel": args["channel"]}).to_list(None)
+        if len(rows) != int(args["count"]):
+            raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected {args['count']}")
+        if "contains" in args and rows and not any(args["contains"].lower() in r["text"].lower() for r in rows):
+            raise ScenarioFailed(f"no {args['channel']} message mentions {args['contains']!r}")
+        return f"{len(rows)} {args['channel']} message(s) left" + (f" to {rows[-1]['to']}" if rows else "")
+
+    if kind == "expect_no_followup":
+        lead = ctx.lead(args["lead"])
+        await asyncio.sleep(float(args.get("settle_s", 1)))
+        rows = await dealer_scoped_db(lead["dealer_id"]).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
+            {"lead_id": lead["lead_id"]}).to_list(None)
+        if rows:
+            raise ScenarioFailed(f"{len(rows)} follow-up(s) scheduled: {[r['status'] for r in rows]}")
+        return "no follow-up scheduled"
+
+    if kind == "platform_reply":
+        from bson import ObjectId
+
+        lead = ctx.lead(args["lead"])
+        await asyncio.sleep(0.5)  # after the AI's draft, like a real n8n reply
+        await get_db()["emails"].insert_one({
+            "dealer_id": lead["dealer_id"], "lead_id": ObjectId(lead["lead_id"]), "status": "sent",
+            "ai_generated": False, "communication_type": lead["channel"], "mail_content": args["text"],
+            "timestamp": clock.now(), **({"message_by": ObjectId()} if args.get("by") == "staff" else {})})
+        return f"{args.get('by', 'n8n')} sent: {args['text']!r}"
+
+    if kind == "expect_shadow":
+        from upsell_agent.devtools.shadow import shadow_pairs
+
+        lead = ctx.lead(args["lead"])
+        pairs = [p for p in (await shadow_pairs(lead["dealer_id"], days=1))["pairs"] if p["lead_id"] == lead["lead_id"]]
+        if len(pairs) != int(args["drafts"]):
+            raise ScenarioFailed(f"{len(pairs)} shadow draft(s) for this lead, expected {args['drafts']}")
+        with_actual = sum(1 for p in pairs if p["actual"])
+        if "with_actual" in args and with_actual != int(args["with_actual"]):
+            raise ScenarioFailed(f"{with_actual} draft(s) paired with a platform reply, expected {args['with_actual']}")
+        return f"{len(pairs)} draft(s), {with_actual} next to what the customer actually got"
+
+    if kind == "sleep":
+        await asyncio.sleep(float(args.get("seconds", 1)))
+        return "slept"
+
+    raise ScenarioFailed(f"unknown step {kind!r}")
+
+
+async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue | None) -> dict[str, Any]:
+    ctx = RunContext(enqueue=enqueue, queue=queue)
+    started = time.perf_counter()
+    results, passed = [], True
+    for raw in scenario.get("steps", []):
+        (kind, args), = raw.items()
+        args = args or {}
+        if not passed:
+            results.append({"step": kind, "status": "skipped", "detail": ""})
+            continue
+        try:
+            detail = await _step(ctx, kind, args)
+            results.append({"step": kind, "status": "passed", "detail": detail})
+        except Exception as exc:  # noqa: BLE001 - a failing step fails the scenario, never the runner
+            passed = False
+            results.append({"step": kind, "status": "failed", "detail": str(exc) or repr(exc)})
+    if ctx.changed_dealers:
+        await simulate.ensure_platform_dealers()
+    if ctx.moved_clock:
+        # Every scenario starts on real time.
+        from upsell_agent.integrations.redis_client import get_redis
+
+        await clock.reset(get_redis())
+    run = {"_id": scenario["id"], "name": scenario.get("name", scenario["id"]), "stage": scenario.get("stage"),
+           "passed": passed, "steps": results, "ms": round((time.perf_counter() - started) * 1000),
+           "last_run_at": clock.now()}
+    await get_db()[DEV_SCENARIO_RUNS_COLLECTION].replace_one({"_id": run["_id"]}, run, upsert=True)
+    return run
+
+
+async def run_all(enqueue: Enqueue, queue: Queue | None, only: list[str] | None = None) -> list[dict[str, Any]]:
+    # Follow-ups check the dealer's AI mode on the platform's dealer record.
+    await simulate.ensure_platform_dealers()
+    runs = []
+    for scenario in load_scenarios():
+        if only and scenario["id"] not in only:
+            continue
+        runs.append(await run_scenario(scenario, enqueue, queue))
+    return runs
+
+
+async def last_runs() -> dict[str, dict[str, Any]]:
+    docs = await get_db()[DEV_SCENARIO_RUNS_COLLECTION].find({}).to_list(None)
+    return {d["_id"]: d for d in docs}
+
+
+async def _cli(only: list[str]) -> int:
+    from upsell_agent.integrations.mongodb import close_mongo, ensure_indexes, init_mongo
+    from upsell_agent.integrations.redis_client import close_redis, init_redis
+    from upsell_agent.worker.queue import make_enqueue, make_queue
+
+    settings = get_settings()
+    if not settings.is_dev:
+        print("Scenarios only run with ENVIRONMENT=DEV.")
+        return 2
+    await init_mongo(settings)
+    await ensure_indexes()
+    await init_redis(settings)
+    await simulate.ensure_dev_dealers()
+    queue = make_queue(settings)
+    await queue.connect()
+    try:
+        runs = await run_all(make_enqueue(queue), queue, only or None)
+    finally:
+        await queue.disconnect()
+        await close_mongo()
+        await close_redis()
+    for run in runs:
+        print(f"{'PASS' if run['passed'] else 'FAIL'}  stage {run['stage']}  {run['name']}  ({run['ms']} ms)")
+        for step in run["steps"]:
+            if step["status"] != "passed":
+                print(f"        {step['status']}: {step['step']} — {step['detail']}")
+    failed = [r for r in runs if not r["passed"]]
+    print(f"\n{len(runs) - len(failed)}/{len(runs)} scenarios passed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(_cli(sys.argv[1:])))

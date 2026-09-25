@@ -1,7 +1,7 @@
 """Customer 360 lookup tool.
 
 Reads the SAME collections aidmvcs-be-dev's /api/customers/[id]/360 assembles
-from (see docs/architecture/architecture.md §5.9): Customer, Lead, Deal,
+from (see docs/architecture/the revision-5 architecture (git history)): Customer, Lead, Deal,
 RepairOrder, TradeIn. Calls that existing endpoint (via
 integrations/autopulse_api_client.py) rather than re-implementing its join
 logic (already known to be loose/string-based, see architecture.md §9) a

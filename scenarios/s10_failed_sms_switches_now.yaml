@@ -1,0 +1,10 @@
+name: A failed SMS switches to email straight away
+stage: 10
+description: Twilio reports the first SMS as undelivered, so the email version goes out now instead of in 24 hours.
+steps:
+  - new_lead: {as: f, dealer: A, lead_type: service, channel: sms, name: Fred Failed, comments: "Need an oil change"}
+  - wait_turns: {lead: f, count: 1, timeout_s: 15}
+  - expect_followup: {lead: f, status: pending, to_channel: email}
+  - delivery_status: {lead: f, channel: sms, status: undelivered}
+  - expect_followup: {lead: f, status: sent, to_channel: email, timeout_s: 20}
+  - expect_outbox: {lead: f, channel: email, count: 1}

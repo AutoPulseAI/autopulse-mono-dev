@@ -1,7 +1,7 @@
 """Vehicle inventory lookup — for trade-up recommendations.
 
 Calls the existing `/api/car` endpoint (the same one the Pulse chat engine
-uses, see docs/architecture/architecture.md §5.10) via
+uses, see docs/architecture/the revision-5 architecture (git history)) via
 integrations/autopulse_api_client.py, rather than re-querying Vehicle
 documents directly — one source of truth for "what's actually in stock."
 

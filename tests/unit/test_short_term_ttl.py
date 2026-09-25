@@ -1,5 +1,5 @@
 """Tests for memory/short_term.py's idle-expiry configuration
-(docs/plans/AI/PLAN_1.md Phase 0.2, docs/architecture/architecture.md §17.3).
+(the previous AI plan (git history), docs/architecture/architecture.md §12).
 
 Constructs AsyncShallowRedisSaver directly with a dummy redis_client (rather
 than through checkpointer_context()'s from_conn_string(), which needs a real
@@ -43,7 +43,7 @@ def test_thread_ids_for_different_dealers_never_collide_even_with_same_lead_id()
     """Same lead_id value under two different dealers must produce different
     thread_ids — otherwise one dealer's conversation state could be read or
     resumed under another dealer's request, which is exactly the isolation
-    failure §17.7 (and Phase 0.1's DealerScopedCollection) exists to prevent,
+    failure §10 (and Phase 0.1's DealerScopedCollection) exists to prevent,
     just on the Redis side instead of Mongo.
     """
     assert thread_id_for("dealer_a", "lead_1", "cust_1") != thread_id_for("dealer_b", "lead_1", "cust_1")

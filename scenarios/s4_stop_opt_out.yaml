@@ -1,0 +1,11 @@
+name: STOP opts the customer out
+stage: 4
+description: A customer who texts STOP is marked opted out, gets no reply to it, and later messages are saved without an answer.
+steps:
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Scenario, comments: "Just browsing"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 15}
+  - reply: {lead: s, text: "STOP"}
+  - wait_status: {lead: s, status: opted_out}
+  - reply: {lead: s, text: "are you there?"}
+  - expect_turn_count: {lead: s, count: 1, settle_s: 2}
+  - expect_messages: {lead: s, direction: outbound, count: 1}

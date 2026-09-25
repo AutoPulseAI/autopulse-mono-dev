@@ -1,0 +1,14 @@
+name: Pause stops replies, resume brings them back
+stage: 2
+description: A paused lead saves the customer's message without a reply; after resume the AI answers again.
+steps:
+  - new_lead: {as: p, dealer: A, lead_type: service, channel: sms, name: Pause Test, comments: "Need an oil change"}
+  - wait_turns: {lead: p, count: 1, timeout_s: 30}
+  - pause: {lead: p, reason: "Staff took over"}
+  - wait_status: {lead: p, status: paused}
+  - reply: {lead: p, text: "Are you there?"}
+  - expect_turn_count: {lead: p, count: 1, settle_s: 3}
+  - resume: {lead: p}
+  - wait_status: {lead: p, status: active}
+  - reply: {lead: p, text: "It's a 2020 Subaru with 54k miles"}
+  - wait_turns: {lead: p, count: 2, timeout_s: 30}

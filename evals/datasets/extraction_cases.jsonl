@@ -1,0 +1,13 @@
+{"case_id": "sales-new-model", "lead_type": "sales", "text": "Hi, I'm interested in a new Toyota RAV4", "expected": {"interest.new_or_used": "new", "interest.model": "Toyota RAV4"}}
+{"case_id": "sales-budget-timeline", "lead_type": "sales", "text": "My budget is $35,000 and I'd like to buy this month", "expected": {"interest.budget": 35000, "interest.timeline": "this_month"}}
+{"case_id": "sales-monthly", "lead_type": "sales", "text": "I can do about $450 a month", "expected": {"interest.monthly_payment": 450}}
+{"case_id": "sales-used-asap", "lead_type": "sales", "text": "Looking for a used Honda Civic asap", "expected": {"interest.new_or_used": "used", "interest.model": "Honda Civic", "interest.timeline": "now"}}
+{"case_id": "sales-no-trade", "lead_type": "sales", "text": "No trade-in, just buying", "expected": {"trade_in.has_trade": false}}
+{"case_id": "sales-with-trade", "lead_type": "sales", "text": "I'd trade in my 2018 Jeep Wrangler, 71k miles", "expected": {"trade_in.has_trade": true, "trade_in.year": 2018, "trade_in.make": "Jeep", "trade_in.model": "Wrangler", "trade_in.mileage": 71000}}
+{"case_id": "trade-full", "lead_type": "trade_in", "text": "It's a 2019 Honda Civic with 60,000 miles, good condition, I owe $8,000 on it", "expected": {"trade_in.year": 2019, "trade_in.make": "Honda", "trade_in.model": "Civic", "trade_in.mileage": 60000, "trade_in.condition": "good", "trade_in.payoff": 8000}}
+{"case_id": "trade-paid-off", "lead_type": "trade_in", "text": "2016 Ford F-150, paid off, fair condition", "expected": {"trade_in.year": 2016, "trade_in.make": "Ford", "trade_in.model": "F-150", "trade_in.payoff": 0, "trade_in.condition": "fair"}}
+{"case_id": "service-full", "lead_type": "service", "text": "2020 Subaru Outback, 54,000 miles, needs brakes. Mornings are best", "expected": {"vehicle.year": 2020, "vehicle.make": "Subaru", "vehicle.model": "Outback", "vehicle.mileage": 54000, "interest.service_needed": "brakes", "contact.best_time": "morning"}}
+{"case_id": "service-oil", "lead_type": "service", "text": "Need an oil change this week, evenings work", "expected": {"interest.service_needed": "oil change", "contact.best_time": "evening"}}
+{"case_id": "general-service", "lead_type": "general", "text": "I want to book service for my car", "expected": {"interest.lead_type": "service"}}
+{"case_id": "nothing", "lead_type": "sales", "text": "hello?", "expected": {}}
+{"case_id": "question-only", "lead_type": "sales", "text": "What are your hours on Saturday?", "expected": {}}

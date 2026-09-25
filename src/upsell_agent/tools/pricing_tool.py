@@ -5,7 +5,7 @@ a real pricing/promotions data source today (dealer-entered offers, a DMS
 feed, a finance-partner API), or does this need to be built as new backend
 state first? There is currently no `Package`/`Promotion`-type model for
 finance offers in aidmvcs-be-dev/app/models (see docs/architecture/architecture.md
-§4.3) — `Package` there is the AutoPulse *subscription* plan, not a dealer
+the revision-5 architecture, git history) — `Package` there is the AutoPulse *subscription* plan, not a dealer
 product/finance offer. This is a real gap to close before `recommend.py` can
 ground a warranty/finance recommendation in anything real.
 

@@ -24,15 +24,15 @@ lifespan wiring in main.py rather than a bare `build_checkpointer()` return
 value.
 
 Uses AsyncShallowRedisSaver, not the plain AsyncRedisSaver — per
-docs/architecture/architecture.md §17.3, this service keeps only the LATEST
+docs/architecture/architecture.md §12, this service keeps only the LATEST
 snapshot per conversation in Redis (aput() overwrites one key in place rather
 than appending a new one per step), not a full step-by-step history. The full
 history already lives in MongoDB once Phase 1 (memory/long_term.py's per-turn
-write) is built — see §5.7 — so nothing is lost by not keeping every
+write) is built — see §7 — so nothing is lost by not keeping every
 intermediate Redis snapshot; this only affects how much LangGraph itself can
 replay from Redis alone, not what's durably recorded.
 
-Idle-expiry (§17.3): a conversation with no activity for IDLE_EXPIRY_DAYS is
+Idle-expiry (§12): a conversation with no activity for IDLE_EXPIRY_DAYS is
 allowed to drop out of Redis entirely, via a Redis-native TTL passed as the
 `ttl` constructor arg — verified against BaseRedisSaver's real ttl_config
 handling (langgraph/checkpoint/redis/base.py): `default_ttl` is applied (in
@@ -43,7 +43,7 @@ this is a rolling idle timer, not a fixed expiry from conversation start. If a
 message arrives for a conversation whose key has already expired, LangGraph
 starts a fresh checkpoint for that thread_id (there is nothing to resume),
 and agent/graph.py is responsible for rebuilding working state (current
-facts, recent history) from MongoDB in that case, per §5.7 — this module only
+facts, recent history) from MongoDB in that case, per §7 — this module only
 owns the Redis side of that behavior, not the rebuild.
 """
 

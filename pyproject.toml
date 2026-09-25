@@ -1,7 +1,7 @@
 [project]
 name = "upsell-agent"
 version = "0.1.0"
-description = "AutoPulse agentic upsell layer: LangGraph orchestration + Pydantic AI typed outputs, grounded against real inventory/pricing/customer data."
+description = "AutoPulse AI layer: instant replies, deterministic slot filling, campaign replies and channel fallback for dealer leads."
 requires-python = ">=3.11"
 readme = "README.md"
 
@@ -31,6 +31,14 @@ dependencies = [
     # HTTP client for calling the existing Next.js API / other tools
     "httpx>=0.27",
 
+    # Job queue for the worker process. SAQ, not arq: arq pins redis-py < 6,
+    # which conflicts with langgraph-checkpoint-redis (redisvl needs >= 6.3).
+    "saq>=0.26,<0.27",
+
+    # Debug UI live trace stream (DEV only) + scenario files
+    "sse-starlette>=2.1",
+    "pyyaml>=6.0",
+
     # Observability
     "langfuse>=2.53",
 
@@ -43,6 +51,8 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "deepeval>=2.0",         # evals / hallucination test gate
+    "mongomock-motor>=0.0.36",  # in-memory MongoDB for unit tests
+    "fakeredis>=2.26",       # in-memory Redis for unit tests
     "ruff>=0.7",
     "mypy>=1.13",
 ]

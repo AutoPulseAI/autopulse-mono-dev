@@ -23,9 +23,10 @@ def test_state_constructs_with_no_qualification_data_yet():
     state = _base_state()
     assert state.lead_type is None
     assert state.captured_facts == {}
-    assert state.customer_objective is None
-    assert state.appointment_offer is None
-    assert state.objection_attempt_count == 0
+    assert state.extraction is None
+    assert state.decision is None
+    assert state.draft is None
+    assert state.retry_count == 0
 
 
 def test_captured_facts_merge_overwrites_by_field_name_not_duplicates():
@@ -68,8 +69,8 @@ def test_captured_facts_merge_is_additive_across_different_fields():
     assert set(merged.keys()) == {"trade_mileage", "trade_payoff_cents"}
 
 
-def test_all_four_lead_types_from_conversations_md_are_represented():
-    assert {LeadType.CREDIT, LeadType.TRADE_IN, LeadType.PRICE_PAYMENT, LeadType.SERVICE_INTERVAL} <= set(LeadType)
+def test_lead_types_match_architecture_8_2():
+    assert {t.value for t in LeadType} == {"sales", "trade_in", "service", "general"}
 
 
 def test_state_carries_a_conversation_turn():

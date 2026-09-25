@@ -1,55 +1,38 @@
-"""First smoke tests — confirm the FastAPI app boots, the router is wired, and
-the internal-service auth check actually rejects/accepts as expected.
-Run: pytest tests/unit/test_api_health.py -v
-(Requires OPENAI_API_KEY/MONGODB_URI/REDIS_URL/AUTOPULSE_API_BASE_URL/
-UPSELL_SERVICE_SHARED_SECRET set in .env, since config.Settings validates them
-at import time — see config.py.)
-"""
+"""The API boots, /health is open, and the /dev routes exist only in DEV
+(MASTER_PLAN_1 Stage 3.2, layer 1)."""
 
+import pytest
 from fastapi.testclient import TestClient
 
-from upsell_agent.config import get_settings
-from upsell_agent.main import app
+from tests.unit.conftest import make_settings
+from upsell_agent.main import create_app
 
 
-def test_health_endpoint_has_no_auth_requirement():
-    """/health is intentionally unprotected for infra liveness probes."""
-    with TestClient(app) as client:
-        response = client.get("/upsell/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+def test_health_is_open_and_reports_environment():
+    with TestClient(create_app(make_settings("DEV"), connect=False)) as client:
+        response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["environment"] == "DEV"
 
 
-def test_recommend_rejects_missing_auth():
-    with TestClient(app) as client:
-        response = client.post(
-            "/upsell/recommend",
-            json={"dealer_id": "d1", "customer_id": "c1", "trigger": "appointment_booked"},
-        )
-        assert response.status_code == 401
+@pytest.mark.parametrize("environment", ["PROD", "production", "development", "test", ""])
+def test_dev_routes_do_not_exist_outside_dev(environment):
+    with TestClient(create_app(make_settings(environment), connect=False)) as client:
+        assert client.get("/dev/ping").status_code == 404
+        assert client.get("/dev/pipeline").status_code == 404
+        assert client.get("/dev/stream").status_code == 404
+        assert client.get("/health").json()["environment"] == "PROD"
 
 
-def test_recommend_rejects_wrong_token():
-    with TestClient(app) as client:
-        response = client.post(
-            "/upsell/recommend",
-            json={"dealer_id": "d1", "customer_id": "c1", "trigger": "appointment_booked"},
-            headers={"Authorization": "Bearer not-the-right-secret"},
-        )
-        assert response.status_code == 401
+@pytest.mark.parametrize("environment", ["DEV", "dev", " Dev "])
+def test_dev_routes_exist_in_dev(environment):
+    with TestClient(create_app(make_settings(environment), connect=False)) as client:
+        assert client.get("/dev/ping").json()["environment"] == "DEV"
+        pipeline = client.get("/dev/pipeline").json()
+    assert [n["id"] for n in pipeline["nodes"]][:6] == ["load_context", "extract", "validate", "decide", "compose", "guard"]
+    assert {e["kind"] for e in pipeline["edges"]} == {"main", "retry", "fallback"}
 
 
-def test_recommend_stub_returns_not_implemented_marker_when_authenticated():
-    """The stub route must be honest about being unimplemented, not return
-    something that looks like a real recommendation."""
-    settings = get_settings()
-    with TestClient(app) as client:
-        response = client.post(
-            "/upsell/recommend",
-            json={"dealer_id": "d1", "customer_id": "c1", "trigger": "appointment_booked"},
-            headers={"Authorization": f"Bearer {settings.upsell_service_shared_secret}"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["recommendations"] == []
-        assert body["suppressed_reason"] is not None
+def test_upsell_routes_are_not_registered():
+    with TestClient(create_app(make_settings("DEV"), connect=False)) as client:
+        assert client.post("/upsell/recommend", json={}).status_code == 404

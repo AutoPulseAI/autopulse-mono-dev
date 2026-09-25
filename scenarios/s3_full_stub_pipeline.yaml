@@ -1,0 +1,13 @@
+name: A customer reply runs every pipeline step
+stage: 3
+description: After the instant first reply, the customer's reply goes through all steps in order and ends by asking for the next missing details.
+steps:
+  - new_lead: {as: m, dealer: A, lead_type: sales, channel: sms, name: Maria Scenario, comments: "Hi, looking at SUVs"}
+  - wait_turns: {lead: m, count: 1, timeout_s: 30}
+  - reply: {lead: m, text: "I want a new Toyota RAV4"}
+  - wait_turns: {lead: m, count: 2, timeout_s: 30}
+  - expect_turn:
+      lead: m
+      outcome: ask
+      nodes: [load_context, extract, validate, decide, compose, guard, send, schedule]
+      not_ran: [fallback]

@@ -1,12 +1,16 @@
-"""Typed state that flows through the LangGraph graph.
+"""Typed state that flows through one conversation turn (architecture §7).
 
 Every node reads and returns a (partial) AgentState. Keeping this typed and
-explicit is what makes memory inspectable — you can always answer "what did
-the agent know when it made this decision" by looking at one object, instead
-of reverse-engineering it from prompt strings.
+explicit is what makes a turn inspectable — "what did the agent know when it
+made this decision" is answered by looking at one object, and the Debug UI
+shows exactly these fields per node.
+
+Long-lived data (slots, messages, lead status) lives in MongoDB and is loaded
+by `load_context` at the start of every turn. This state only holds what one
+turn needs while it runs.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,32 +18,16 @@ from upsell_agent.agent.qualification import (
     AppointmentOffer,
     CapturedFact,
     ConversationTurn,
-    CustomerObjective,
     LeadType,
 )
-from upsell_agent.api.schemas import GroundedUpsellItem
 
-
-class CustomerContext(BaseModel):
-    """Output of tools/customer_tool.py — everything the agent knows about this
-    customer, pulled fresh from Mongo (Customer/Lead/Deal/RepairOrder/TradeIn),
-    not from the model's own memory.
-    """
-
-    customer_id: str
-    name: str | None = None
-    owned_vehicles: list[dict[str, Any]] = Field(default_factory=list)
-    last_service_visit: dict[str, Any] | None = None
-    open_leads: list[dict[str, Any]] = Field(default_factory=list)
-    # From memory/long_term.py — prior upsell decisions for this customer, so the
-    # agent doesn't re-offer something already declined twice.
-    upsell_history: list[dict[str, Any]] = Field(default_factory=list)
+Channel = Literal["sms", "email"]
+Trigger = Literal["lead_created", "inbound_message"]
 
 
 class ToolCallRecord(BaseModel):
     """Every tool call the agent made this run, and exactly what it returned.
-    This is the ground truth that guardrails/output_validation.py checks
-    recommendations against, and what observability/tracing.py logs.
+    Kept for the deferred upsell capability (guardrails/output_validation.py).
     """
 
     tool_name: str
@@ -54,53 +42,62 @@ def _append(existing: list, new: list) -> list:
 
 
 def _merge_facts(existing: dict[str, CapturedFact], new: dict[str, CapturedFact]) -> dict[str, CapturedFact]:
-    """Reducer for `captured_facts`: a later turn's value for the same
-    field_name overwrites an earlier one (the customer corrected themselves),
-    but nothing is ever silently dropped mid-run — this is a merge, not a
-    reset, which is what makes CAPTURE cumulative across turns rather than
-    per-turn amnesia.
+    """Reducer for `captured_facts`: a later value for the same field_name
+    overwrites an earlier one (the customer corrected themselves), but nothing
+    is ever silently dropped mid-run — a merge, not a reset.
     """
     return {**existing, **new}
 
 
 class AgentState(BaseModel):
-    """Covers BOTH capabilities this service has: the ongoing lead-qualification
-    conversation loop (conversations.md — CAPTURE/INTERPRET/LEVERAGE/ADVANCE
-    fields below) and the original single-shot triggered product
-    recommendation (draft_recommendations/final_recommendations). They are
-    kept in one state type because a qualification conversation's outcome
-    (an appointment gets booked) is exactly the kind of event that later
-    triggers the single-shot recommendation flow — see README.md's open scope
-    question on how tightly these two should actually be wired together.
-    """
-
     model_config = {"arbitrary_types_allowed": True}
 
-    # Input
+    # --- Input: what started this turn ---
     dealer_id: str
     customer_id: str
     lead_id: str | None = None
     trigger: str
+    channel: Channel | None = None
+    turn_id: str | None = None
+    # Customer text this turn answers: the lead's own comments on the first
+    # reply, or every unanswered inbound message batched together.
+    inbound_text: str = ""
+    shadow: bool = False
+    # A new lead's first reply goes straight to the template while
+    # FIRST_REPLY_MODE=template (MASTER_PLAN_1 Stage 4; Stage 8 turns it off).
+    first_reply_via_template: bool = False
+    customer_name: str | None = None
 
-    # --- Qualification conversation loop (conversations.md) ---
+    # --- Loaded context ---
     lead_type: LeadType | None = None
     conversation_history: Annotated[list[ConversationTurn], _append] = Field(default_factory=list)
-    # CAPTURE: keyed by CapturedFact.field_name. A dict, not a list, because a
-    # later turn correcting an earlier answer should replace it, not create a
-    # second, stale copy an INTERPRET/LEVERAGE step might read by accident.
     captured_facts: Annotated[dict[str, CapturedFact], _merge_facts] = Field(default_factory=dict)
-    # INTERPRET
-    customer_objective: CustomerObjective | None = None
-    # LEVERAGE + ADVANCE
+    campaign: dict[str, Any] | None = None
+    # slots/profile.py Profile.to_api(): every slot's value and state.
+    profile: dict[str, Any] | None = None
+    # Last messages of the conversation, oldest first: {direction, channel, text}.
+    recent_messages: list[dict[str, Any]] = Field(default_factory=list)
+
+    # --- One entry per pipeline step (§7): extract → validate → decide → compose → guard ---
+    extraction: dict[str, Any] | None = None
+    validation: dict[str, Any] | None = None
+    decision: dict[str, Any] | None = None
+    draft: dict[str, Any] | None = None
+    guard_result: dict[str, Any] | None = None
+    retry_count: int = 0
+    # used_template: the reply came from agent/templates.py for any reason.
+    # used_fallback: specifically because the guard rejected the AI's drafts.
+    used_template: bool = False
+    used_fallback: bool = False
+    # Why the template is being used (a step failed, the guard said no twice).
+    fallback_reason: str | None = None
+    # The guard rejected the AI twice: a person should look at this lead.
+    flag_human: bool = False
+    outcome: str | None = None
+
+    # Read by guardrails/never_invent.py until Stage 8 rewires the guard to
+    # check `draft` directly.
     appointment_offer: AppointmentOffer | None = None
-    objection_attempt_count: int = 0  # bounds the resist-and-relever loop, see agent/graph.py TODO
 
-    # --- Original single-shot triggered recommendation flow ---
-    customer_context: CustomerContext | None = None
-    tool_calls: Annotated[list[ToolCallRecord], _append] = Field(default_factory=list)
-    draft_recommendations: list[GroundedUpsellItem] = Field(default_factory=list)
-    grounding_passed: bool | None = None
-    final_recommendations: list[GroundedUpsellItem] = Field(default_factory=list)
-
-    # Shared: why nothing is being sent right now, from either flow.
+    # Why nothing is being sent right now, if anything.
     suppressed_reason: str | None = None

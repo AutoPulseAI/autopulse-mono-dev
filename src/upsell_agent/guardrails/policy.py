@@ -20,7 +20,7 @@ def is_contact_allowed(dealer_id: str, customer_id: str) -> bool:
           not re-derive this logic independently; two different quiet-hours
           implementations drifting apart is a compliance risk, not just a bug.
         - dnd_check: respect Lead.fe_lead_status == 'DND' (see
-          architecture.md §4.3) — an upsell recommendation must never be
+          the revision-5 architecture (git history)) — an upsell recommendation must never be
           generated for a DND customer, full stop, before any model call.
           This needs a tool call (tools/customer_tool.py already fetches Lead
           data via the 360 endpoint) — deliberately not implemented here

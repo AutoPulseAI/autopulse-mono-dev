@@ -1,0 +1,13 @@
+name: Rolling a dealer back to off stops the AI
+stage: 13
+description: Rollback is setting the dealer to off. The platform stops sending events (the customer's reply never reaches the AI), and the AI's pending follow-up is cancelled when it comes due instead of being sent.
+steps:
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rory Rollback, comments: "Looking at a used Civic"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 15}
+  - expect_followup: {lead: r, status: pending}
+  - set_dealer_mode: {dealer: A, mode: "off"}
+  - reply: {lead: r, text: "Is it still there?"}
+  - expect_turn_count: {lead: r, count: 1, settle_s: 2}
+  - advance_clock: {hours: 24.1}
+  - expect_followup: {lead: r, status: cancelled, timeout_s: 20}
+  - expect_outbox: {lead: r, channel: email, count: 0}

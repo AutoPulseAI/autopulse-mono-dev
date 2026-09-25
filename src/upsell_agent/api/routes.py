@@ -1,6 +1,5 @@
-"""HTTP routes. Called by aidmvcs-be-dev's server-side API route
-(app/api/upsell/recommend/route.js), never directly by the browser — see
-../../INTEGRATION.md.
+"""Upsell routes — NOT registered in main.py. Upselling is out of scope
+(architecture PURPOSE.md); the file is kept for when it comes back.
 """
 
 from datetime import UTC, datetime

@@ -1,6 +1,6 @@
 """Types for the lead-qualification conversation loop specified in
-docs/data/conversations.md: CAPTURE → INTERPRET → LEVERAGE → ADVANCE, across
-four lead types (Credit, Trade-in, Price/Payment, Service Interval).
+docs/data/conversations.md, across the lead types in architecture §8.2
+(sales, trade-in, service, general).
 
 This is a DIFFERENT, broader capability than the original single-shot
 "recommend a priced product" flow (api/schemas.py's GroundedUpsellItem,
@@ -23,21 +23,14 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class LeadType(str, Enum):
-    """The four buckets conversations.md defines. Maps onto (but is not
-    identical to) the n8n blueprint's three "source intent buckets" (Credit,
-    Trade-in, General Sales) plus Service, which the n8n blueprint treats
-    separately — see n8n-active/docs/AutoPulse_Sales_Lead_Layer_1_Business_Source_of_Truth.md.
-    Keeping this as its own enum rather than reusing an n8n-side constant
-    because this service doesn't share code with n8n's workflow JSON; the
-    mapping between the two needs to be an explicit, reviewed decision if/when
-    this service and n8n's conversation logic need to agree on classification
-    for the same lead — see README.md's open scope question.
+    """The lead types the slot engine has required-slot lists for
+    (architecture §8.2). Set in code from the lead's source in the platform;
+    the model's guess is only used when the source maps to GENERAL.
     """
 
-    CREDIT = "credit"
+    SALES = "sales"
     TRADE_IN = "trade_in"
-    PRICE_PAYMENT = "price_payment"
-    SERVICE_INTERVAL = "service_interval"
+    SERVICE = "service"
     GENERAL = "general"
 
 
@@ -66,8 +59,8 @@ class NeverInventCategory(str, Enum):
 
 class FactSource(str, Enum):
     """Trust tier a fact was captured under — docs/architecture/architecture.md
-    §5.3's four-tier model, in decreasing order of trust. Extended from two to
-    four tiers in docs/plans/AI/PLAN_1.md Phase 0.3.
+    §8.4's four-tier model, in decreasing order of trust. Extended from two to
+    four tiers in the previous AI plan (git history)
 
     1. CUSTOMER_STATED — the customer said this, this conversation. Always
        trustworthy to reflect back, including in guardrails/never_invent.py's
@@ -95,10 +88,10 @@ class FactSource(str, Enum):
     BOT_INFERRED = "bot_inferred"
 
 
-# Per-fact-type staleness rule (§5.4): how long a fact stays "current" before
+# Per-fact-type staleness rule (§8.1): how long a fact stays "current" before
 # a read should mark it "needs re-confirming" instead of treating it as still
 # true. `vehicle_availability` maps to timedelta(0) — "always stale" — since
-# §5.4 says availability-type facts are never trusted from memory at all;
+# §8.1 says availability-type facts are never trusted from memory at all;
 # Phase 3's inventory tool re-checks every time regardless of what's stored.
 # Small and hand-picked on purpose, not derived from anything: this is a
 # product judgment call, and changing a number here should be a one-line,
@@ -135,7 +128,7 @@ class CapturedFact(BaseModel):
     strict categories.
 
     Temporal-validity fields (valid_from, valid_to, replaced_by) added in
-    Phase 0.3, per §5.4: a CapturedFact instance is a point-in-time record,
+    Phase 0.3, per §8.1: a CapturedFact instance is a point-in-time record,
     never edited in place once written — see supersede() below for how an
     older fact gets closed out when a newer one for the same field arrives.
     """
@@ -151,7 +144,7 @@ class CapturedFact(BaseModel):
         default=None,
         description=(
             "Required when source is BOT_EXTRACTED — links back to the exact customer "
-            "message this was pulled from, so it can be checked against their actual words (§5.3)"
+            "message this was pulled from, so it can be checked against their actual words (§8.4)"
         ),
     )
     valid_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -165,7 +158,7 @@ class CapturedFact(BaseModel):
     @model_validator(mode="after")
     def _bot_extracted_needs_source_message(self) -> "CapturedFact":
         if self.source == FactSource.BOT_EXTRACTED and not self.source_message_id:
-            raise ValueError("a BOT_EXTRACTED fact must carry source_message_id (§5.3)")
+            raise ValueError("a BOT_EXTRACTED fact must carry source_message_id (§8.4)")
         return self
 
 

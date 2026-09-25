@@ -1,5 +1,5 @@
 """Tests for integrations/mongodb.py's DealerScopedCollection — the
-enforcement point docs/plans/AI/PLAN_1.md Phase 0.1 calls "the most important
+enforcement point the previous AI plan (git history) calls "the most important
 item in the whole plan": no individual query can forget dealer_id, because it
 never gets the chance to build a raw, unscoped filter.
 
@@ -73,7 +73,7 @@ async def test_find_one_is_scoped_to_the_given_dealer(raw_collection):
 
 
 async def test_dealer_a_cannot_read_dealer_b_data_by_asking_for_it_explicitly(raw_collection):
-    """This is the exact scenario docs/plans/AI/PLAN_1.md Phase 0.1 requires:
+    """This is the exact scenario the previous AI plan (git history) requires:
     'a dedicated test that requests Dealer B's data while acting as Dealer A
     ... confirms it fails.' A caller that's confused (or compromised) and
     tries to pass dealer_id='dealer_b' into a filter while holding a

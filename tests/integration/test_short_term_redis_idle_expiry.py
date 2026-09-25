@@ -1,6 +1,6 @@
-"""Integration test for docs/plans/AI/PLAN_1.md Phase 0.2: 'expire a
+"""Integration test for the previous AI plan (git history): 'expire a
 conversation's Redis state mid-conversation by hand, send a message for it,
-and confirm it resumes correctly' — one of the four §17.9 rollout tests,
+and confirm it resumes correctly' — one of the four §13 rollout tests,
 built now rather than deferred to Phase 11.
 
 Scope note: this exercises the CHECKPOINTER's own idle-expiry mechanics
@@ -35,7 +35,10 @@ async def _redis_reachable() -> bool:
         client = Redis.from_url(REDIS_URL, socket_connect_timeout=1)
         try:
             await client.ping()
-            return True
+            # The checkpointer needs the RediSearch module (Redis Stack);
+            # the plain redis:7 dev image doesn't have it.
+            modules = await client.module_list()
+            return any(m.get(b"name", m.get("name")) in (b"search", "search") for m in modules)
         finally:
             await client.aclose()
     except Exception:  # noqa: BLE001 — any failure here just means "treat as unreachable, skip"
@@ -45,7 +48,7 @@ async def _redis_reachable() -> bool:
 @pytest.fixture
 async def skip_if_no_redis():
     if not await _redis_reachable():
-        pytest.skip(f"no Redis reachable at {REDIS_URL} — this is an integration test, run with Redis up")
+        pytest.skip(f"no Redis with RediSearch at {REDIS_URL} — this is an integration test, run with Redis Stack up")
 
 
 async def test_checkpoint_key_gets_a_ttl_matching_idle_expiry(skip_if_no_redis):

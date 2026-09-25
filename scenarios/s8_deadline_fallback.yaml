@@ -1,0 +1,8 @@
+name: A model that is too slow never leaves the customer waiting
+stage: 8
+description: When the model doesn't answer in time, the turn's limit sends the safe template instead of nothing.
+steps:
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sid Scenario, comments: "hello #slow"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+  - expect_turn: {lead: s, outcome: fallback, ran: [fallback, send]}
+  - expect_last_sent: {lead: s, contains: "thanks for reaching out"}

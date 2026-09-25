@@ -1,0 +1,9 @@
+name: Asking for a person hands off
+stage: 3
+description: When the customer asks for a real person, Decide fires the hand-off rule.
+steps:
+  - new_lead: {as: h, dealer: B, lead_type: sales, channel: sms, name: Handoff Scenario, comments: "Interested in a used truck"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 30}
+  - reply: {lead: h, text: "Can a real person call me instead?"}
+  - wait_turns: {lead: h, count: 2, timeout_s: 30}
+  - expect_turn: {lead: h, outcome: handoff}

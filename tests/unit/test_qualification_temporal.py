@@ -1,6 +1,6 @@
 """Tests for agent/qualification.py's Phase 0.3 extensions: the four-tier
 FactSource, temporal-validity fields on CapturedFact, and the staleness rule
-table (docs/architecture/architecture.md §5.3, §5.4).
+table (docs/architecture/architecture.md §8.1, §8.4).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -60,7 +60,7 @@ def test_new_fact_defaults_to_currently_valid():
 
 
 def test_supersede_closes_out_the_old_fact_without_mutating_it():
-    """The exact property docs/plans/AI/PLAN_1.md Phase 0.3 asks for: 'a new
+    """The exact property the previous AI plan (git history) asks for: 'a new
     fact with the same field name closes out the old one's valid_to rather
     than leaving two current facts.'
     """
@@ -91,7 +91,7 @@ def test_staleness_rule_for_unknown_field_falls_back_to_default():
 
 
 def test_vehicle_availability_is_always_stale():
-    """§5.4: availability-type facts are never trusted from memory at all —
+    """§8.1: availability-type facts are never trusted from memory at all —
     modeled here as a staleness window of zero, so any read is immediately
     past it and Phase 3's inventory tool always re-checks."""
     assert staleness_rule_for("vehicle_availability") == timedelta(0)

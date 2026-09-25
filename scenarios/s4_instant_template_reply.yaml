@@ -1,0 +1,8 @@
+name: New lead gets a reply in under 2 seconds
+stage: 4
+description: A new SMS lead is answered straight away and the message is actually sent within 2 seconds of the event.
+steps:
+  - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tina Scenario, comments: "Interested in a new truck"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 15}
+  - expect_last_sent: {lead: t, channel: sms, max_latency_ms: 2000}
+  - expect_messages: {lead: t, direction: outbound, status: sent, count: 1}

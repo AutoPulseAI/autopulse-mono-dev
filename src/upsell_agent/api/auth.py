@@ -5,14 +5,13 @@ opposite direction (app/lib/internalServiceAuth.js) - same shared secret,
 same "hash both sides then constant-time compare" technique, so the two
 implementations can't drift into checking different things.
 
-Applied as a FastAPI dependency on every route that isn't a plain liveness
-probe - see api/routes.py.
+Applied as a FastAPI dependency on every /v1/events route - see api/events.py.
 """
 
 import hashlib
 import hmac
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from upsell_agent.config import Settings, get_settings
@@ -27,9 +26,12 @@ def _constant_time_equals(a: str, b: str) -> bool:
 
 
 async def require_internal_auth(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    settings: Settings = Depends(get_settings),
 ) -> None:
+    # The app's own settings (main.create_app), so a test app built with its
+    # own secret is checked against that secret, not the process-wide one.
+    settings: Settings = getattr(request.app.state, "settings", None) or get_settings()
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 

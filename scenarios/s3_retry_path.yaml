@@ -1,0 +1,9 @@
+name: Guard failure triggers one rewrite
+stage: 3
+description: The first draft invents an offer, the guard sends it back once, and the rewrite passes.
+steps:
+  - new_lead: {as: r, dealer: A, lead_type: trade_in, channel: email, name: Retry Scenario, comments: "Trading my 2018 Honda"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 30}
+  - reply: {lead: r, text: "It has 80k miles #retry"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 30}
+  - expect_turn: {lead: r, attempts: {compose: 2, guard: 2}, not_ran: [fallback], ran: [send]}
