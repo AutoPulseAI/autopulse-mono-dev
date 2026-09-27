@@ -22,7 +22,7 @@ from upsell_agent.observability.trace import MemoryTraceSink
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 OTHER = simulate.DEV_DEALERS[1]["_id"]
-AI_PATH = ["load_context", "extract", "validate", "decide", "compose", "guard", "send", "schedule"]
+AI_PATH = ["load_context", "extract", "validate", "search_stock", "decide", "compose", "guard", "send", "schedule"]
 
 
 def _settings(**overrides):

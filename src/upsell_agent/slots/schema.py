@@ -65,6 +65,13 @@ SLOTS: list[SlotDef] = [
             "whether you're looking at new or used", ("new", "used", "either")),
     SlotDef("interest.model", "Vehicle they want", "interest", "text", "lead", 20, 60 * DAYS,
             "which model you have in mind"),
+    # Shopping criteria (MASTER_PLAN_3 Phase 2): taken when the customer says
+    # them ("a white SUV"), never asked for, never required. They narrow the
+    # stock search (agent/nodes/search_stock.py).
+    SlotDef("interest.body_type", "Body type", "interest", "enum", "lead", None, 60 * DAYS,
+            choices=("coupe", "convertible", "hatchback", "sedan", "wagon", "suv", "minivan", "van", "truck"),
+            volunteered=True),
+    SlotDef("interest.color", "Colour", "interest", "text", "lead", None, 60 * DAYS, volunteered=True),
     SlotDef("interest.budget", "Budget", "interest", "money", "lead", 30, 30 * DAYS,
             "roughly what budget you're working with (or a monthly payment)"),
     SlotDef("interest.monthly_payment", "Monthly payment", "interest", "money", "lead", 31, 30 * DAYS,

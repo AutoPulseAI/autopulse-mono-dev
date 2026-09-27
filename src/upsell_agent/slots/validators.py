@@ -42,6 +42,9 @@ _ENUM_SYNONYMS: dict[str, dict[str, str]] = {
                           "evenings": "evening", "night": "evening", "after work": "evening",
                           "weekends": "weekend", "saturday": "weekend", "sunday": "weekend",
                           "any time": "anytime", "whenever": "anytime"},
+    "interest.body_type": {"suvs": "suv", "crossover": "suv", "pickup": "truck", "pickup truck": "truck",
+                           "trucks": "truck", "sedans": "sedan", "minivans": "minivan", "coupes": "coupe",
+                           "hatch": "hatchback", "vans": "van", "wagons": "wagon"},
     "contact.preferred_channel": {"text": "sms", "texting": "sms", "phone": "sms", "e-mail": "email", "mail": "email"},
 }
 

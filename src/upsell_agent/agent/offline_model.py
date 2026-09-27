@@ -22,6 +22,7 @@ from typing import Any
 from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from upsell_agent.agent.question_topics import is_price_question, is_stock_question
 from upsell_agent.config import get_settings
 from upsell_agent.slots.dates import DATE_PHRASE
 
@@ -55,6 +56,13 @@ _MONEY = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k\b|thousand\b
 _TRADE = re.compile(r"\btrad(?:e|ed|es|ing)(?:-in)?\b", re.IGNORECASE)
 _NO_TRADE = re.compile(r"\b(no trade(?:-in)?|nothing to trade|don'?t have a trade|not trading|no,? no trade)\b", re.IGNORECASE)
 _PAID_OFF = re.compile(r"\b(paid off|own it outright|no loan|don'?t owe|owe nothing|nothing owed)\b", re.IGNORECASE)
+_BODY = re.compile(r"\b(suvs?|crossover|pickup|trucks?|sedans?|coupes?|minivans?|vans?|hatchback|wagons?|convertible)\b",
+                   re.IGNORECASE)
+_COLOR = re.compile(r"\b(white|black|silver|gr[ae]y|red|blue|green|orange|yellow|brown|beige|gold|purple|maroon|tan)\b",
+                    re.IGNORECASE)
+# Trim words said right after the model ("RAV4 XLE Hybrid").
+_TRIM_AFTER = re.compile(r"\s+((?:(?:le|xle|se|xse|limited|platinum|sport|touring|ex-l|ex|lx|sr5|trd|adventure|hybrid|"
+                         r"premium|lariat|xlt|lt|ltz|sv|sl|sel|long range|standard)\b\s*)+)", re.IGNORECASE)
 _HUMAN = re.compile(r"\b(real person|human|someone call|call me|talk to (?:a|someone|somebody)|manager|salesperson)\b", re.IGNORECASE)
 _PREFERENCE = re.compile(r"\b(best|works?|work for me|prefer|good for me|available|free|reach me|call me)\b", re.IGNORECASE)
 # Upset with the dealer or the situation: clear (a handoff signal) or mild (not enough on its own).
@@ -70,9 +78,6 @@ _CLARIFY = re.compile(r"(what do you mean|what does that mean|what'?s that mean|
                       r"i don'?t understand|not sure what you mean|meaning\?)", re.IGNORECASE)
 _ABOUT_ME = re.compile(r"((?:know|have|got) (?:so far )?about me|on file (?:for|about) me|what do you know|my (?:details|info|information|profile))",
                        re.IGNORECASE)
-_RESTRICTED = re.compile(r"\b(price|cost|how much|payments?|financ\w*|apr|interest rate|discount|deal|worth|value|"
-                         r"approv\w*|credit|in stock|available|availability|still (?:there|have)|do you have)\b",
-                         re.IGNORECASE)
 _OFF_TOPIC = re.compile(r"\b(weather|joke|politic\w*|sports?|recipe|movie|football|cricket|bitcoin|stock market|"
                         r"homework)\b", re.IGNORECASE)
 _SHORT_YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|i do|correct)\b[\s.!]*$", re.IGNORECASE)
@@ -147,8 +152,15 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
     if owned == "interest":
         if model_match or make_match:
             span = (model_match or make_match)[0]
-            desired = " ".join(filter(None, [year.group(0) if year else None, make, model]))
+            trim = _TRIM_AFTER.match(text[span.end():]) if model_match else None
+            desired = " ".join(filter(None, [year.group(0) if year else None, make, model,
+                                             trim.group(1).strip() if trim else None]))
             _add(values, allowed, "interest.model", desired, text[span.start():span.end()])
+        # Shopping criteria (MASTER_PLAN_3 Phase 2): only about what they want, never their trade.
+        if m := _BODY.search(text):
+            _add(values, allowed, "interest.body_type", m.group(1).lower(), m.group(0), 0.9)
+        if m := _COLOR.search(text):
+            _add(values, allowed, "interest.color", m.group(1).lower(), m.group(0), 0.9)
     else:
         if year:
             _add(values, allowed, f"{owned}.year", int(year.group(0)), year.group(0), 0.6 if _hedged(text, year) else 0.93)
@@ -248,7 +260,8 @@ def _label(question: str) -> str:
         return "clarify"
     if _ABOUT_ME.search(question):
         return "about_me"
-    if _RESTRICTED.search(question):
+    # Two separate rules (agent/question_topics.py); stock stays restricted until Phase 3.
+    if is_price_question(question) or is_stock_question(question):
         return "restricted"
     if _OFF_TOPIC.search(question):
         return "off_topic"

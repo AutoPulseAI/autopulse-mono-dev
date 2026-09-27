@@ -1,12 +1,14 @@
 """One conversation turn as a LangGraph graph (architecture §7):
 
-    load_context ─┬─▶ extract ─┬─▶ validate → decide → compose → guard ─┬─▶ END
-                  │            │                         ▲              │
-                  │            │                         └── retry ×1 ──┤
+    load_context ─┬─▶ extract ─┬─▶ validate → search_stock → decide → compose → guard ─┬─▶ END
+                  │            │                                        ▲              │
+                  │            │                                        └── retry ×1 ──┤
                   │            └── failed ───────────────▶ fallback ◀───┘ (2nd failure / compose failed)
                   └── first reply (FIRST_REPLY_MODE=template) ─▶ fallback ─▶ END
 
 - Extract and Compose call the AI (agent/llm.py). Everything else is code.
+- `search_stock` loads the dealer's stock from this turn's validated profile
+  (MASTER_PLAN_3 Phase 2); it runs after Validate so it sees this message.
 - `fallback` is the template reply step (agent/nodes/template_reply.py).
 - Decide choosing "stop" skips Compose entirely: nothing is written.
 
@@ -33,6 +35,7 @@ from upsell_agent.agent.nodes.decide import decide
 from upsell_agent.agent.nodes.extract import extract
 from upsell_agent.agent.nodes.guard import guard
 from upsell_agent.agent.nodes.load_context import load_context
+from upsell_agent.agent.nodes.search_stock import search_stock
 from upsell_agent.agent.nodes.template_reply import template_reply
 from upsell_agent.agent.nodes.validate import validate
 from upsell_agent.agent.state import AgentState
@@ -55,6 +58,11 @@ def _node_input(name: str, state: AgentState) -> dict[str, Any]:
                             "now": pack.get("now")}}
     if name == "validate":
         return {"extraction": state.extraction, "text": state.customer_text or state.inbound_text}
+    if name == "search_stock":
+        return {"profile_criteria": {s["path"]: s.get("value") for s in (state.profile or {}).get("slots", [])
+                                     if s["path"].startswith("interest.") and s.get("state") in ("filled", "stale")},
+                "questions": (state.extraction or {}).get("questions", []),
+                "text": state.customer_text or state.inbound_text}
     if name == "decide":
         return {"lead_type": (state.profile or {}).get("effective_lead_type"),
                 "required": (state.profile or {}).get("required"),
@@ -107,13 +115,14 @@ def build_graph(checkpointer=None):
     mid-turn; MongoDB stays the source of truth either way."""
     graph = StateGraph(AgentState)
     for name, fn in [("load_context", load_context), ("extract", extract), ("validate", validate),
-                     ("decide", decide), ("compose", compose), ("guard", guard), ("fallback", template_reply)]:
+                     ("search_stock", search_stock), ("decide", decide), ("compose", compose), ("guard", guard), ("fallback", template_reply)]:
         graph.add_node(name, _traced(name, fn))
 
     graph.set_entry_point("load_context")
     graph.add_conditional_edges("load_context", _after_load, {"extract": "extract", "fallback": "fallback"})
     graph.add_conditional_edges("extract", _after_extract, {"validate": "validate", "fallback": "fallback"})
-    graph.add_edge("validate", "decide")
+    graph.add_edge("validate", "search_stock")
+    graph.add_edge("search_stock", "decide")
     graph.add_conditional_edges("decide", _after_decide, {"compose": "compose", END: END})
     graph.add_edge("compose", "guard")
     graph.add_conditional_edges("guard", _after_guard, {"send": END, "compose": "compose", "fallback": "fallback"})

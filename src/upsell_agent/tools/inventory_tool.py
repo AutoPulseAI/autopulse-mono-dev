@@ -69,22 +69,35 @@ KNOWN_MAKES = {
 BODY_WORDS = {"suv": "SUV", "truck": "Truck", "pickup": "Truck", "sedan": "Sedan", "coupe": "Coupe",
               "minivan": "Minivan", "van": "Van", "hatchback": "Hatchback", "wagon": "Wagon",
               "convertible": "Convertible"}
+# Trim names said after a model ("RAV4 XLE"). Only used to split them off;
+# the record's own trim is what's checked (Phase 2 item 4).
+TRIM_WORDS = {"le", "xle", "se", "xse", "limited", "platinum", "sport", "touring", "ex", "ex-l", "lx", "sr5", "trd",
+              "adventure", "hybrid", "premium", "lariat", "xlt", "lt", "ltz", "sv", "sl", "sel", "range", "standard"}
 _YEAR = re.compile(r"^(19[89]\d|20[0-4]\d)$")
 _REGEX_CHARS = re.compile(r"[.*+?^${}()|\[\]\\]")
 
 
 class InventoryCriteria(BaseModel):
-    """What to search for. Every field optional; an empty criteria is never searched."""
+    """What to search for. Every field optional.
+
+    Phase 2 adds `body_types` (several at once, for a size tier), `exterior_color`,
+    `price_max` (the budget: used to filter, never said) and `trim`. `trim` is
+    never sent: /api/car has no trim parameter, so it's checked on our side
+    against each record's own trim (tools/stock_search.py)."""
 
     make: str | None = None
     model: str | None = None
     condition: str | None = None  # "new" / "used"
     body_type: str | None = None
+    body_types: list[str] | None = None  # a size tier: any of these ("something bigger")
     year_min: int | None = None
     year_max: int | None = None
+    exterior_color: str | None = None  # sent as the dealer's own stored spelling
+    price_max: int | None = None
+    trim: str | None = None  # client-side only
 
     def is_empty(self) -> bool:
-        return not (self.make or self.model or self.body_type)
+        return not (self.make or self.model or self.body_type or self.body_types)
 
     def to_params(self, dealer_id: str) -> dict[str, str]:
         """The /api/car query string. Always dealer-scoped; years only as `year_range`."""
@@ -93,8 +106,16 @@ class InventoryCriteria(BaseModel):
                            ("body_type", self.body_type)):
             if value and (safe := safe_param(value)):
                 params[key] = safe
+        if self.body_types:
+            # The route splits body_type on commas into `^value$` regexes: several at once.
+            params["body_type"] = ",".join(s for b in self.body_types if (s := safe_param(b)))
         if self.year_min or self.year_max:
             params["year_range"] = f"{self.year_min or self.year_max}-{self.year_max or self.year_min}"
+        if self.exterior_color and (colour := " ".join(self.exterior_color.replace(",", " ").split())):
+            # A literal, case-sensitive match on the platform (not a regex): no escaping, commas removed.
+            params["exterior_color"] = colour
+        if self.price_max:
+            params["price_range"] = f"0-{int(self.price_max)}"
         return params
 
 
@@ -104,9 +125,23 @@ def safe_param(value: str) -> str:
     return _REGEX_CHARS.sub(lambda m: "\\" + m.group(0), " ".join(value.replace(",", " ").split()))
 
 
+def split_trim(model: str) -> tuple[str, str | None]:
+    """"RAV4 XLE Hybrid" -> ("RAV4", "XLE Hybrid"): trailing words that are
+    known trim names. "Grand Cherokee" and "Model Y" stay whole."""
+    words = model.split()
+    cut = len(words)
+    while cut > 1 and words[cut - 1].lower() in TRIM_WORDS:
+        cut -= 1
+    if cut > 1 and words[cut - 1].lower() == "long" and cut < len(words) and words[cut].lower() == "range":
+        cut -= 1
+    return " ".join(words[:cut]), (" ".join(words[cut:]) or None)
+
+
 def criteria_from_profile(profile: dict[str, Any]) -> InventoryCriteria:
-    """Phase 1: the vehicle the profile says they want ("2021 Honda CR-V")
-    and new or used. Phase 2 adds the message, body type, colour and budget."""
+    """What this turn's (validated) profile says they want (MASTER_PLAN_3
+    Phase 2 item 2): the vehicle ("2021 Toyota RAV4 XLE"), new or used, body
+    type, colour and budget. Only filled (or stale) values count: a value
+    still waiting to be confirmed doesn't narrow the search."""
     slots = {s["path"]: s for s in profile.get("slots", []) if s.get("state") in ("filled", "stale")}
     criteria = InventoryCriteria()
     wanted = (slots.get("interest.model") or {}).get("value")
@@ -120,10 +155,19 @@ def criteria_from_profile(profile: dict[str, Any]) -> InventoryCriteria:
         if rest.lower() in BODY_WORDS:
             criteria.body_type = BODY_WORDS[rest.lower()]
         elif rest:
-            criteria.model = rest
+            criteria.model, criteria.trim = split_trim(rest)
     condition = (slots.get("interest.new_or_used") or {}).get("value")
     if condition in ("new", "used"):
         criteria.condition = condition
+    body = (slots.get("interest.body_type") or {}).get("value")
+    if isinstance(body, str) and body.lower() in BODY_WORDS and not criteria.body_type:
+        criteria.body_type = BODY_WORDS[body.lower()]
+    colour = (slots.get("interest.color") or {}).get("value")
+    if isinstance(colour, str) and colour.strip():
+        criteria.exterior_color = colour.strip()
+    budget = (slots.get("interest.budget") or {}).get("value")
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0:
+        criteria.price_max = int(budget)
     return criteria
 
 
@@ -217,6 +261,11 @@ class StubInventorySource:
         if params.get("vin"):
             vins = [v.strip() for v in params["vin"].split(",")]
             flt["vin"] = {"$in": vins} if len(vins) > 1 else vins[0]
+        if params.get("exterior_color"):
+            # route.js: `{ $in: value.split(',') }`, a literal, case-sensitive match.
+            flt["exteriorcolor"] = {"$in": params["exterior_color"].split(",")}
+        if params.get("price_range"):
+            flt["internetreduced"] = _range(params["price_range"])
         if params.get("year_range"):
             flt["year"] = _range(params["year_range"])
         vehicles = dealer_scoped_db(params["dealer_id"]).collection(PLATFORM_VEHICLES_COLLECTION, dealer_field="dealerId")

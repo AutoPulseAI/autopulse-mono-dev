@@ -1,9 +1,9 @@
 name: First reply is written by the AI pipeline
 stage: 8
-description: A new lead's comments go through extract, validate, decide, compose and guard, and the reply asks for the next missing details.
+description: A new lead's comments go through extract, validate, search_stock, decide, compose and guard, and the reply asks for the next missing details.
 steps:
   - new_lead: {as: a, dealer: A, lead_type: trade_in, channel: sms, name: Avery Scenario, comments: "I'd like to trade in my 2019 Honda Civic"}
   - wait_turns: {lead: a, count: 1, timeout_s: 15}
-  - expect_turn: {lead: a, outcome: ask, nodes: [load_context, extract, validate, decide, compose, guard, send, schedule]}
+  - expect_turn: {lead: a, outcome: ask, nodes: [load_context, extract, validate, search_stock, decide, compose, guard, send, schedule]}
   - expect_slots: {lead: a, filled: [trade_in.year, trade_in.make, trade_in.model], missing: [trade_in.mileage]}
   - expect_last_sent: {lead: a, max_latency_ms: 8000, contains: miles}

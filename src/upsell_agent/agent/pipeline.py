@@ -35,6 +35,8 @@ NODES: list[PipelineNode] = [
      "description": "Pull slot values out of the customer's words"},
     {"id": "validate", "label": "Validate", "kind": "code", "stage": 8,
      "description": "4 checks per value: slot exists, valid, quoted, confident"},
+    {"id": "search_stock", "label": "Search stock", "kind": "code", "stage": 202,
+     "description": "Dealer stock from this turn's criteria, loosened step by step"},
     {"id": "decide", "label": "Decide", "kind": "code", "stage": 7,
      "description": "Pick exactly one next step from 9 rules"},
     {"id": "compose", "label": "Compose", "kind": "ai", "stage": 8,
@@ -65,7 +67,8 @@ EDGES: list[PipelineEdge] = [
     {"id": "extract-validate", "source": "extract", "target": "validate", "kind": "main"},
     # Extract failed (timeout, provider error, AI-call budget): template instead.
     {"id": "extract-fallback", "source": "extract", "target": "fallback", "kind": "fallback"},
-    {"id": "validate-decide", "source": "validate", "target": "decide", "kind": "main"},
+    {"id": "validate-search_stock", "source": "validate", "target": "search_stock", "kind": "main"},
+    {"id": "search_stock-decide", "source": "search_stock", "target": "decide", "kind": "main"},
     {"id": "decide-compose", "source": "decide", "target": "compose", "kind": "main"},
     {"id": "compose-guard", "source": "compose", "target": "guard", "kind": "main"},
     {"id": "guard-send", "source": "guard", "target": "send", "kind": "main"},

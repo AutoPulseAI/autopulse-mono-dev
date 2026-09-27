@@ -30,6 +30,7 @@ const STAGE_NAMES: Record<number, string> = {
   108: "Dates and time",
   // MASTER_PLAN_3 Part A phases are stored as 200 + phase.
   201: "Inventory read layer",
+  202: "Shopping criteria",
 };
 
 const stageLabel = (stage: number) =>

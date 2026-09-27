@@ -260,30 +260,78 @@ const LAYER_LABELS: Record<string, string> = {
   inventory: "Stock",
 };
 
-// The stock Load context loaded for this turn (MASTER_PLAN_3 Phase 1).
+// Records given to the AI per turn (tools/inventory_tool.py MAX_LOADED; architecture decision 16).
+const MAX_LOADED = 3;
+
+const kv = (o: Record<string, unknown> | undefined) =>
+  Object.entries(o ?? {})
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join("/") : v}`)
+    .join(" · ");
+
+// The stock Search stock loaded for this turn (MASTER_PLAN_3 Phases 1-2):
+// why it searched, the criteria, each loosening step, the records with VINs.
 export function InventoryView({ inventory }: { inventory: any }) {
   if (!inventory) return null;
   const records: any[] = inventory.records ?? [];
   const excluded: any[] = inventory.excluded ?? [];
-  const query = Object.entries((inventory.query ?? {}) as Record<string, unknown>)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(" · ");
+  const loosened: any[] = inventory.loosened ?? [];
+  const attempts: any[] = inventory.attempts ?? [];
   return (
     <div>
       <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-        Stock · {inventory.searched ? `${records.length} given to the AI` : "not searched"}
+        Stock ·{" "}
+        {inventory.searched
+          ? `${inventory.matched ?? 0} matched · ${records.length} given to the AI` +
+            ((inventory.matched ?? 0) > records.length ? ` (max ${MAX_LOADED} per reply)` : "")
+          : "not searched"}
         {inventory.cached ? " · from the cache" : ""}
       </div>
       {!inventory.searched && (
-        <div className="text-[11px] text-muted">No vehicle in the profile yet, so no search this turn.</div>
+        <div className="text-[11px] text-muted">
+          No stock question, and the profile doesn't name a vehicle (or a body type with new/used) yet.
+        </div>
       )}
       {inventory.error && <div className="text-[11px] text-bad">Search failed, replying without stock: {inventory.error}</div>}
       {inventory.searched && !inventory.error && (
         <div className="space-y-1.5 text-[11px]">
+          {inventory.trigger && <div className="text-muted">Searched because {inventory.trigger}.</div>}
           <div className="text-muted">
-            Query: {query || "—"} · {inventory.matched} matched
+            From the profile: {kv(inventory.query) || "—"}
             {inventory.checked_at ? ` · checked ${new Date(inventory.checked_at).toLocaleTimeString()}` : ""}
           </div>
+          {inventory.colour && (
+            <div className="text-muted">
+              Colour “{inventory.colour.asked}” →{" "}
+              {inventory.colour.stored ? (
+                <>
+                  sent as the dealer's own spelling <span className="font-mono">“{inventory.colour.stored}”</span>
+                </>
+              ) : (
+                "not in the dealer's matching stock"
+              )}
+            </div>
+          )}
+          {loosened.length > 0 && (
+            <div className="rounded-lg bg-warn-soft p-2">
+              <div className="mb-0.5 font-semibold">Loosened, in order</div>
+              <ol className="list-decimal pl-4">
+                {loosened.map((l, i) => (
+                  <li key={i}>
+                    <span className="font-semibold">{l.step}</span>: {l.detail}
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-1">
+                <span className="font-semibold">Actually searched: </span>
+                {kv(inventory.final_query) || "—"}
+              </div>
+            </div>
+          )}
+          {attempts.length > 1 && (
+            <div className="text-muted">
+              Attempts: {attempts.map((a) => `${a.step} ${a.found}`).join(" → ")}
+            </div>
+          )}
           <div className="text-muted">
             Sent to /api/car:{" "}
             <span className="font-mono">
@@ -291,9 +339,13 @@ export function InventoryView({ inventory }: { inventory: any }) {
                 .map(([k, v]) => `${k}=${v}`)
                 .join("&")}
             </span>
+            {" "}· {inventory.matched} matched
+            {(inventory.matched ?? 0) > records.length
+              ? ` · the newest ${records.length} go to the AI (at most ${MAX_LOADED} per reply)`
+              : ""}
           </div>
           {records.length === 0 ? (
-            <div className="rounded-lg bg-panel-2 p-2 text-muted">No current vehicle matched.</div>
+            <div className="rounded-lg bg-panel-2 p-2 text-muted">No vehicle matched the search actually sent, even after loosening.</div>
           ) : (
             <div className="space-y-1">
               {records.map((r) => (
@@ -307,9 +359,7 @@ export function InventoryView({ inventory }: { inventory: any }) {
                       .filter(Boolean)
                       .join(" · ")}
                   </div>
-                  <div className="font-mono text-[10px] text-muted">
-                    VIN {r.vin}
-                  </div>
+                  <div className="font-mono text-[10px] text-muted">VIN {r.vin}</div>
                 </div>
               ))}
             </div>
@@ -324,7 +374,9 @@ export function InventoryView({ inventory }: { inventory: any }) {
               ))}
             </div>
           )}
-          <div className="text-[10px] text-muted">Held back from the models until the grounding check (Plan 3 Phase 4).</div>
+          <div className="text-[10px] text-muted">
+            Held back from the models until the grounding check (Plan 3 Phase 4). A budget filters the search, it's never said.
+          </div>
         </div>
       )}
     </div>
@@ -400,8 +452,6 @@ export function ContextPackView({ output }: { output: any }) {
           </div>
         </div>
       )}
-
-      <InventoryView inventory={output?.inventory} />
 
       {pack?.dealer?.info && (
         <div className="grid grid-cols-2 gap-2 text-[11px]">

@@ -70,7 +70,7 @@ def test_simulated_lead_runs_a_turn_and_shows_up_everywhere(client):
     turn = client.get(f"/dev/turns/{turns[0]['turn_id']}", params={"dealer_id": DEALER}).json()
     assert turn["events"][0]["type"] == "turn_started" and turn["events"][-1]["type"] == "turn_finished"
     assert [n["node"] for n in turn["nodes"] if n["status"] == "done"] == [
-        "load_context", "extract", "validate", "decide", "compose", "guard", "send", "schedule"]
+        "load_context", "extract", "validate", "search_stock", "decide", "compose", "guard", "send", "schedule"]
 
     # The lead comments "Trading my 2018 Honda" filled trade-in slots (Stage 7).
     slots = client.get(f"/dev/leads/{created['lead_id']}/slots", params={"dealer_id": DEALER}).json()

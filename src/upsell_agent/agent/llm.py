@@ -49,7 +49,8 @@ class CustomerQuestion(BaseModel):
     text: str = Field(description="The question, verbatim from customer_text")
     label: QuestionLabel = Field(description=(
         "answerable: we can answer from the conversation, their profile or dealer details; "
-        "restricted: price, payment, financing, trade-in value, discount, approval or stock/availability; "
+        "restricted: (a) price, payment, financing, trade-in value, discount or approval; "
+        "(b) separately, whether a vehicle is in stock or available; "
         "off_topic: nothing to do with buying, trading or servicing a vehicle here; "
         "clarify: they're asking what our last message meant; "
         "about_me: they're asking what we know about them"))
@@ -103,7 +104,8 @@ Rules:
 - confidence: 0.9+ when stated plainly; below 0.7 when hedged ("maybe", "I think") or ambiguous.
 - questions: each question they asked, verbatim, with a label:
   answerable (we can answer it from the conversation, their details or the dealership's details),
-  restricted (price, payment, financing, trade-in value, discounts, approval, whether a car is in stock),
+  restricted, for two separate reasons: (a) price, payment, financing, trade-in value, discounts, approval;
+  (b) whether a car is in stock or available ("do you have a white RAV4?"),
   off_topic (nothing to do with buying, trading in or servicing a vehicle here),
   clarify ("what do you mean?", "what's that?": they ask what our last message meant; count it even
   without a question mark), about_me ("what do you know about me?").

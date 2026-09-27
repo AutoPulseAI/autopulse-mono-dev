@@ -29,7 +29,8 @@ def test_dev_routes_exist_in_dev(environment):
     with TestClient(create_app(make_settings(environment), connect=False)) as client:
         assert client.get("/dev/ping").json()["environment"] == "DEV"
         pipeline = client.get("/dev/pipeline").json()
-    assert [n["id"] for n in pipeline["nodes"]][:6] == ["load_context", "extract", "validate", "decide", "compose", "guard"]
+    assert [n["id"] for n in pipeline["nodes"]][:7] == ["load_context", "extract", "validate", "search_stock", "decide", "compose",
+                                                     "guard"]
     assert {e["kind"] for e in pipeline["edges"]} == {"main", "retry", "fallback"}
 
 

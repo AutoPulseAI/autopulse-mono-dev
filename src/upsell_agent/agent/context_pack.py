@@ -21,7 +21,8 @@ Layers:
   inventory       stock records loaded this turn, each with its VIN as
                   `source_id`, the criteria used (`inventory_query`) and when
                   they were loaded (`inventory_checked_at`); MASTER_PLAN_3
-                  Phase 1, tools/inventory_tool.py. Held back from the models
+                  Phases 1-2. Empty when built; filled by Search stock
+                  (agent/nodes/search_stock.py), after Validate. Held back from the models
                   (HELD_FROM_MODELS) until the grounding check (Phase 4) can
                   catch a wrong vehicle fact.
 

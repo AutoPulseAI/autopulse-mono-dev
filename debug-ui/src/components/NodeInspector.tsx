@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { NodeRun, TurnView } from "../trace/reducer";
 import type { Pipeline } from "../types";
 import { JsonView } from "./JsonView";
-import { ComposePreview, ContextPackView, DecideDetails, DecideRules, GuardChecks, ValidateBins } from "./StepViews";
+import { ComposePreview, ContextPackView, DecideDetails, DecideRules, GuardChecks, InventoryView, ValidateBins } from "./StepViews";
 
 type Tab = "reasoning" | "input" | "output" | "metrics";
 const TABS: { id: Tab; label: string }[] = [
@@ -133,6 +133,7 @@ function ReasoningTab({ nodeId, run, pipeline, runKey }: { nodeId: string; run: 
   return (
     <div className="space-y-3">
       {nodeId === "load_context" && <ContextPackView output={run.output} />}
+      {nodeId === "search_stock" && <InventoryView inventory={run.output} />}
       {nodeId === "validate" && <ValidateBins output={run.output} pipeline={pipeline} runKey={runKey} />}
       {nodeId === "decide" && <DecideRules output={run.output} pipeline={pipeline} runKey={runKey} />}
       {nodeId === "decide" && <DecideDetails output={run.output} />}

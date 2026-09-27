@@ -8,7 +8,10 @@ values in every field the inventory tool reads. Rows with the same
 
 The searches: every make/model in the dealer's dev stock, each with new and
 used, an exact year (sent as `year_range`, the way the tool always sends
-it), and one that must find nothing.
+it), and one that must find nothing. Phase 2 adds each vehicle's colour as
+stored and in lower case (the platform's colour match is case-sensitive, so
+the lower-case one must find nothing on both), a budget cap (`price_range`),
+and a size tier (several body types at once).
 
 Needs `make ai-seed`, the platform running (`make dev-full`) and ENVIRONMENT=DEV.
 Run:  python -m upsell_agent.devtools.compare_inventory
@@ -35,12 +38,16 @@ FIELDS = [("vin",), ("miles",), ("vdp_url",), ("exterior_color",), ("inventory_t
 
 def searches(dealer_id: str) -> list[InventoryCriteria]:
     found: list[InventoryCriteria] = []
-    for year, make, model, *_ in STOCK.get(dealer_id, []):
+    for year, make, model, _trim, _body, _condition, colour, _miles, price in STOCK.get(dealer_id, []):
         for criteria in (InventoryCriteria(make=make, model=model), InventoryCriteria(model=model, condition="used"),
                          InventoryCriteria(model=model, condition="new"),
-                         InventoryCriteria(model=model, year_min=year, year_max=year)):
+                         InventoryCriteria(model=model, year_min=year, year_max=year),
+                         InventoryCriteria(model=model, exterior_color=colour),
+                         InventoryCriteria(model=model, exterior_color=colour.lower()),
+                         InventoryCriteria(model=model, price_max=price)):
             if criteria not in found:
                 found.append(criteria)
+    found.append(InventoryCriteria(body_types=["Minivan", "Van", "Truck"]))
     found.append(InventoryCriteria(model="No Such Model"))
     return found
 

@@ -400,6 +400,12 @@ async def _load(mongo, created, index=-1):
                 if n["node"] == "load_context" and n.get("status") == "done")
 
 
+async def _search(mongo, created, index=-1):
+    """The Search stock step (Phase 2 moved the search out of Load context)."""
+    return next(n for n in await _turn_nodes(mongo, created, index)
+                if n["node"] == "search_stock" and n.get("status") == "done")
+
+
 async def test_turn_loads_matching_stock_into_the_pack(mongo):
     await _stock(mongo,
                  _vehicle("VIN00000000000151", added_minutes_ago=20),
@@ -408,18 +414,15 @@ async def test_turn_loads_matching_stock_into_the_pack(mongo):
                  _vehicle("VIN00000000000155", make="Toyota", model="RAV4"))
     created = await _new_lead("Looking at a used Honda CR-V")
 
-    first = await _load(mongo, created)
-    assert first["output"]["inventory"] == {"searched": False, "records": []}  # profile empty before Extract
-
-    await _reply(created, "Next month probably")
-    load = await _load(mongo, created)
-    inventory = load["output"]["inventory"]
+    # Phase 2: the first turn already searches (Search stock runs after Extract).
+    search = await _search(mongo, created)
+    inventory = search["output"]
     assert inventory["searched"] and inventory["query"] == {"make": "Honda", "model": "CR-V", "condition": "used"}
     assert inventory["params"]["dealer_id"] == DEALER and "year" not in inventory["params"]
     assert [r["vin"] for r in inventory["records"]] == ["VIN00000000000152", "VIN00000000000151"]
-    assert inventory["matched"] == 2 and inventory["excluded"] == []
-    assert any(line.startswith("Stock: ") and "VIN00000000000152" in line for line in load["reasoning"])
-    assert load["output"]["context"]["budget"]["tokens"]["inventory"] > 0
+    assert inventory["matched"] == 2 and inventory["excluded"] == [] and inventory["loosened"] == []
+    assert any(line.startswith("Actually searched: ") and "VIN00000000000152" in line for line in search["reasoning"])
+    assert "inventory" not in (await _load(mongo, created))["output"]  # one search per turn, not two
 
 
 async def test_stock_is_in_the_pack_but_held_back_from_the_models(mongo):
@@ -445,9 +448,9 @@ async def test_platform_down_means_a_reply_without_stock(mongo, monkeypatch):
     monkeypatch.setattr(StubInventorySource, "search", down)
     created = await _new_lead("Looking at a used Honda CR-V")
     await _reply(created, "Next month probably")
-    load = await _load(mongo, created)
-    assert load["output"]["inventory"]["error"] and load["output"]["inventory"]["records"] == []
-    assert any("search failed" in line for line in load["reasoning"])
+    search = await _search(mongo, created)
+    assert search["output"]["error"] and search["output"]["records"] == []
+    assert any("search failed" in line.lower() for line in search["reasoning"])
     assert any(n["node"] == "send" and n.get("status") == "done" for n in await _turn_nodes(mongo, created))
 
 
@@ -461,6 +464,6 @@ async def test_no_vehicle_named_means_no_search(mongo, monkeypatch):
     created = await _new_lead("Hi, what are your hours?")
     await _reply(created, "ok thanks")
     assert calls == []
-    load = await _load(mongo, created)
-    assert load["output"]["inventory"] == {"searched": False, "records": []}
-    assert "Stock: not searched (no vehicle in the profile yet)." in load["reasoning"]
+    search = await _search(mongo, created)
+    assert search["output"]["searched"] is False and search["output"]["records"] == []
+    assert search["reasoning"][0].startswith("Not searched")

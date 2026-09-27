@@ -9,5 +9,5 @@ steps:
   - expect_turn:
       lead: m
       outcome: ask
-      nodes: [load_context, extract, validate, decide, compose, guard, send, schedule]
+      nodes: [load_context, extract, validate, search_stock, decide, compose, guard, send, schedule]
       not_ran: [fallback]

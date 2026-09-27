@@ -43,9 +43,12 @@ Steps (one key per step):
   add_stock:          {as, dealer: A, vehicles: [{year, make, model, trim?, body?, condition?, color?, miles?}]}
                       dealer stock shaped like the vAuto feed (removed after the scenario)
   expect_inventory:   {lead, index: -1, searched?: bool, query?: {...}, min_loaded?, loaded_include?: <stock alias>,
-                       never_loaded?: <stock alias>}   the stock that turn's Load context loaded (MASTER_PLAN_3
-                      Phase 1): loaded_include = that add_stock's vehicles (up to the per-turn limit) were given
-                      to the AI; never_loaded = none came back from the search at all (e.g. another dealer's)
+                       never_loaded?: <stock alias>, only_loaded?: <stock alias>, loosened?: [steps],
+                       colour_sent?: str, trigger?: str}   the stock that turn's Search stock step loaded
+                      (MASTER_PLAN_3 Phases 1-2): loaded_include = that add_stock's vehicles (up to the per-turn
+                      limit) were given to the AI; never_loaded = none came back from the search at all (e.g.
+                      another dealer's); only_loaded = nothing else was given; loosened = the loosening steps,
+                      in order; colour_sent = the colour spelling sent to /api/car
   compare_inventory:  {dealers: [A, B]}   stub vs live /api/car for the dev stock (needs the platform)
   sleep:              {seconds}
 
@@ -619,10 +622,10 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         if not turns:
             raise ScenarioFailed("no turns recorded")
         turn = turns[int(args.get("index", -1))]
-        load = next((n for n in turn.get("nodes", []) if n["node"] == "load_context" and n.get("status") == "done"), None)
-        inventory = ((load or {}).get("output") or {}).get("inventory")
+        node = next((n for n in turn.get("nodes", []) if n["node"] == "search_stock" and n.get("status") == "done"), None)
+        inventory = (node or {}).get("output")
         if inventory is None:
-            raise ScenarioFailed("that turn's Load context recorded no inventory")
+            raise ScenarioFailed("that turn has no Search stock step")
         loaded = [r["vin"] for r in inventory.get("records", [])]
         excluded = [e["vin"] for e in inventory.get("excluded", [])]
         problems = []
@@ -642,6 +645,18 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             wanted = [r["vin"] for r in ctx.stock[alias]][:MAX_LOADED]
             if missing := [v for v in wanted if v not in loaded]:
                 problems.append(f"{alias}: {missing} not loaded (loaded {loaded})")
+        if "loosened" in args and [st["step"] for st in inventory.get("loosened", [])] != list(args["loosened"]):
+            problems.append(f"loosened {[st['step'] for st in inventory.get('loosened', [])]} != {args['loosened']}")
+        if "colour_sent" in args and (inventory.get("params") or {}).get("exterior_color") != args["colour_sent"]:
+            sent = [a["params"].get("exterior_color") for a in inventory.get("attempts", [])]
+            if args["colour_sent"] not in sent:
+                problems.append(f"colour {args['colour_sent']!r} never sent (sent {sent})")
+        if "trigger" in args and args["trigger"] not in (inventory.get("trigger") or ""):
+            problems.append(f"trigger {inventory.get('trigger')!r} doesn't mention {args['trigger']!r}")
+        if alias := args.get("only_loaded"):
+            allowed = {r["vin"] for r in ctx.stock[alias]}
+            if wrong := [v for v in loaded if v not in allowed]:
+                problems.append(f"loaded {wrong}, which aren't in {alias}")
         returned = set(loaded) | set(excluded)
         if (alias := args.get("never_loaded")) and (wrong := [r["vin"] for r in ctx.stock[alias] if r["vin"] in returned]):
             problems.append(f"{alias}: {wrong} came back from the search")
@@ -649,8 +664,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             raise ScenarioFailed("; ".join(problems))
         if not inventory.get("searched"):
             return "no search this turn"
+        steps = [st["step"] for st in inventory.get("loosened", [])]
         return (f"{inventory.get('query')} matched {inventory.get('matched')}, {len(loaded)} loaded "
-                f"({', '.join(loaded)}), {len(excluded)} left out")
+                f"({', '.join(loaded)}), {len(excluded)} left out" + (f", loosened {', '.join(steps)}" if steps else ""))
 
     if kind == "compare_inventory":
         dealers = [DEALER_ALIASES.get(d, d) for d in args.get("dealers", ["A", "B"])]
