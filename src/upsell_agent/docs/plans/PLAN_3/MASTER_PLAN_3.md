@@ -177,26 +177,51 @@ Write the answers into architecture.md.
 
 ## Phase 2: Shopping criteria
 
-1. **Criteria from what we know**, built in code:
-   - the profile: desired model, new or used, budget, monthly payment;
-   - the current message: colour, body type, "under 30k", "something bigger".
-   New criteria slots are added to the slot schema where needed (e.g. `interest.body_type`, `interest.color`), with Plan 2's customer wording and explanations.
-2. **Search when it helps.** Stock is loaded when:
-   - the customer asks about stock (Plan 2's `answerable` label now covers stock questions);
+> **Readiness review, 27 Sept:** the phase text below was checked against the running code (not re-read from the plan alone) before building, the same way Phase 0/1's `/api/car` defects were checked. Three decisions came out of that review and are recorded here; nothing below is a guess made during implementation.
+
+1. **Where the search runs — decided 27 Sept, changes Phase 1's wiring.** `load_context` is the graph's entry point (`agent/graph.py`), running *before* `extract`/`validate`. Phase 1's search lives inside `load_context` and can only ever see the profile as it stood *before* this turn's message was read — that's why Phase 1's own scenario needs a second turn before stock shows up. Phase 2 needs "the current message" and "the customer asked about stock" as search triggers, and neither exists yet at `load_context` time.
+   - **Decided:** a new graph node, **`search_stock`**, runs *after* `validate` (`load_context → extract → validate → search_stock → decide → compose → …`). It builds criteria from `state.profile` (already this turn's validated profile — the same value `compose_context()` in `agent/nodes/compose.py` already re-reads for the same reason) and from Extract's question labels (item 6 below), then patches `inventory` / `inventory_query` / `inventory_checked_at` onto `state.context_pack`, the same way `compose_context()` already patches `profile` onto it — no change to the `ContextPack` Pydantic model itself.
+   - **Phase 1's `load_context`-time search is removed, not duplicated.** One search per turn, using the most current information, not two.
+   - **Side benefit:** this also removes the "search only starts on turn 2" limitation noted in Phase 1's progress doc — Extract already runs on turn 1 (the lead-form text), so `search_stock` finds stock from turn 1 too.
+2. **Criteria from what we know**, built in code:
+   - the profile: desired model, new or used, budget, monthly payment (all available via `state.profile` post-validate, per item 1);
+   - the current message: colour, body type, "under 30k" (a budget cap, parsed like the existing money patterns in `agent/offline_model.py`).
+   - **"Something bigger" — decided 27 Sept, our own default, flagged for client feedback.** No size ordering of body types exists anywhere in the schema or the client's documents, so one is defined here rather than guessed during implementation:
+
+     | Tier | Body types |
+     |---|---|
+     | 1 — smallest | Coupe, Convertible, Hatchback |
+     | 2 — compact family car | Sedan, Wagon |
+     | 3 — more room | SUV |
+     | 4 — largest | Minivan, Van, Truck |
+
+     "Something bigger" moves the search up one tier from whatever body type the customer was already looking at; if that tier has nothing, it moves up again, the same idea as the colour/trim/year loosening chain. Uses the 9 body types `tools/inventory_tool.py`'s `BODY_WORDS` already recognises (Phase 1). Not a client requirement — ordinary common sense, like the plan's other "our default" items (e.g. decisions 26, 28, 30 in `architecture.md`).
+   New criteria slots are added to the slot schema (`interest.body_type`, `interest.color`) as **extractable, not required** — confirmed against `slots/requirements.py`, where "required" is a separate opt-in list per lead type, so adding these to `slots/schema.py` alone does not make Decide start asking about them; they're only captured when a customer mentions them. The real model's Extract already reads `allowed_slots` straight from the schema (`agent/nodes/extract.py`); only the offline test model needs hand-written extraction added (`agent/offline_model.py`), the same pattern as the existing `new_or_used` parsing.
+3. **Search when it helps.** Stock is loaded when:
+   - the customer asks about stock — see item 6 below for how that's detected in this phase;
    - or the profile has enough to search (at least a model, or a body type + new/used).
    Otherwise the turn doesn't search, which saves time and cost.
-3. **Loosening.** No exact match loosens the search in a fixed order and records what was loosened:
-   1. colour
-   2. trim
-   3. year ±1
-   4. the same body type from another make
+4. **Loosening.** No exact match loosens the search in a fixed order and records what was loosened:
+   1. colour — a real `/api/car` parameter (`exterior_color`), sent case-corrected (item 5).
+   2. trim — **not a `/api/car` parameter at all.** Checked directly against `aidmvcs-be-dev/app/api/car/route.js`: the route returns each vehicle's `trim` in the response, but has no query parameter for it (no `searchParams.get('trim')` anywhere in the file) — unlike colour, year and body type, which the route does let us filter by. So "loosen trim" can't be done by changing the request, the way the other three steps are. **Decided 27 Sept:** trim is filtered on our side, in code, after the broader make/model/condition search comes back — fetch once without a trim filter, then check each returned record's own `trim` field; "loosen trim" means stop checking it. This is a different code path from the other three loosening steps, not a variation on the same one.
+   3. year ±1 — Phase 1's existing `year_range` mechanism, just widened.
+   4. the same body type from another make — drop `make`, keep `body_type`.
+   5. new or used — **decided 28 Sept, added after the Debug UI review found a gap:** "anything bigger?" on a new RAV4, with nothing new in the next size tier, returned nothing rather than offering a used one. Last in the order, so it's tried only once everything else has been loosened. **Our default**, flagged for client feedback.
    Compose can then say "not in white, but we have it in silver".
-4. **Budget handling.** If Phase 0 keeps prices restricted, the budget can still filter the search (the price is used, not said). The reply never states or implies a price.
+5. **Colour matching — decided 27 Sept.** `route.js` matches `make`/`model`/`body_type`/`car_type` case-insensitively (`createCaseInsensitiveFilters`, a `^value$/i` regex), but `exterior_color` is a **literal, case-sensitive** `$in` match — confirmed by reading the route directly. A colour sent as the customer said it ("white") can silently match nothing against a stored "White". **No fixed casing is assumed.** Before sending a colour, the tool reads the dealer's own distinct colour values from their stock, matches the customer's word against that list case-insensitively, and sends back whatever casing is actually stored for that dealer — never a guessed convention.
+6. **"Restricted" vs. "answerable" for stock questions — decided 27 Sept, changed from the original wording below.**
+   - ~~Stock is loaded when the customer asks about stock (Plan 2's `answerable` label now covers stock questions)~~. Checked against the code: `agent/llm.py`'s `QUESTION_LABELS` prompt text and `agent/offline_model.py`'s `_RESTRICTED` regex both currently treat stock-availability wording ("in stock", "available", "still there", "do you have") as the *same* concern as price/financing/discount/approval wording, in one merged rule. Flipping stock questions to `answerable` requires splitting that rule apart regardless of anything else, since pricing questions must stay `restricted`.
+   - Checked whether flipping the label early (before Phase 3 exists to actually answer from stock) is safe: it is — `slots/policy.py` routes *every* non-`clarify` question to the same `answer` action regardless of label, and the offline model's `_answers()` already falls back to "the team will confirm" for any `answerable` question it doesn't specifically know how to answer (today, that's true of stock questions). So relabelling alone wouldn't produce a wrong answer, just an unchanged one.
+   - **Decided:** split the detection now — separate the stock-availability wording from the price/financing wording, as two distinct, separately testable rules instead of one merged regex/prompt clause. **Keep stock questions labelled `restricted` until Phase 3**, which flips the label in the same change that adds the real "answer from loaded stock" logic. This avoids a label in the Debug UI/evals that claims more than the system can currently do.
+7. **Budget handling.** The budget can filter the search (the price is used, not said) as long as Phase 0 keeps prices restricted. **Already safe by construction:** `InventoryRecord` has no price field (Phase 1), and `inventory_query` — which would carry the raw budget number — is already in `HELD_FROM_MODELS` (`agent/context_pack.py`), so it never reaches the model even indirectly via the trace. The reply never states or implies a price.
 
 **Tests:**
 - Criteria building from the profile + message, table-driven.
 - The search-or-not rule.
-- The loosening order and its record.
+- The loosening order and its record, including the trim step's client-side filter.
+- Colour case-correction against a dealer's real stock values.
+- `search_stock` uses this turn's validated profile, not the one `load_context` saw (a value changed by this turn's message is reflected the same turn).
+- The stock/price detection split: a stock-availability question is no longer caught by the same rule as a price question, but both still route as `restricted` in this phase.
 
 **Scenario:** `p2_loosened_search.yaml`. "White RAV4" with only a silver one in stock; the trace shows colour loosened.
 
@@ -204,6 +229,7 @@ Write the answers into architecture.md.
 
 ## Phase 3: Answering stock questions
 
+0. **Relabel stock questions `answerable`.** Phase 2 split the stock-availability wording out of the price/financing detection rule but deliberately left it marked `restricted` (Phase 2 item 6), since nothing could yet answer it. This phase is what the label change is waiting for: flip stock-availability questions to `answerable` in the same change as item 1 below, so the label and the real behaviour ship together.
 1. **Decide:** a stock question with loaded results is answered by the `answer` rule, using the inventory layer. With no exact match, the reply is never a bare "not available" — the client's blueprint requires an alternative offered alongside it (`docs/client/autpulse.workflowblueprint.png`, "VEHICLE TYPE OVERRIDE RULE" / inventory guidance). Order:
    - Phase 2's loosened search found something close (different colour, trim, year, or the same body type from another make): offer that instead ("Not in white, but we have it in silver — want details?").
    - Nothing close either: name the closest thing on the lot if one exists, otherwise say the team will check and add it to `promises` ("I don't have one in stock right now, but I can have the team let you know the moment one comes in").

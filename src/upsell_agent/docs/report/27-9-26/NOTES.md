@@ -1,6 +1,8 @@
 # Plan 3 notes: 27 September 2026
 
-Branch `plan_3`. No Plan 3 code yet. Recorded in `docs/architecture/architecture.md` §15 (decisions 21–30) and `docs/plans/PLAN_3/MASTER_PLAN_3.md`.
+Branch `plan_3`. Recorded in `docs/architecture/architecture.md` §15 (decisions 21–30) and `docs/plans/PLAN_3/MASTER_PLAN_3.md`.
+
+**Update, later the same day:** Part A Phase 1 (inventory read layer) was built, tested and committed; see `docs/plans/PLAN_3/progress_3.md`. Phase 2 (shopping criteria) went through a readiness review before building — see "Phase 2 readiness review" below.
 
 **Our default** = decided by us because no client document answers it. Every one of these is flagged for client feedback (list at the bottom).
 
@@ -190,9 +192,35 @@ Added a C4 note on the Touch 1 wording clash.
 - ~~The consent record (was a platform change).~~ Decided: see "Consent".
 - Whether platform reminders fire after a cancelled booking.
 
+## Phase 2 readiness review (later the same day)
+
+Before building Part A Phase 2 (shopping criteria), its text was checked against the running code rather than re-read from the plan alone — the same way the `/api/car` defects above were caught before Phase 1 was built. Four things needed a decision, all now recorded in `MASTER_PLAN_3.md`'s Phase 2 section:
+
+- **Where the search runs.** `load_context` runs before `extract`/`validate` in the pipeline, so Phase 1's search (built inside `load_context`) can only ever see the profile as it stood before this turn's message. Phase 2 needs this turn's message as a search input, which doesn't exist yet at that point. Decided: a new step, `search_stock`, runs after `validate` instead, replacing Phase 1's search rather than running both.
+- **Trim isn't a real search field.** Checked `aidmvcs-be-dev/app/api/car/route.js` directly: it returns each vehicle's trim but has no way to filter by it in a request, unlike colour, year and body type. Decided: trim is filtered on our side after the results come back, not sent to the platform like the other three loosening steps.
+- **Colour matching is case-sensitive on the platform**, unlike make/model/body type (checked in the same route). Decided: colours are matched against the dealer's own real stock values before being sent, not a guessed casing.
+- **"Something bigger" — our own default, flagged for client feedback.** No document defines a body-type size ordering, so one was agreed rather than left for implementation to guess: 4 tiers, smallest to largest — Coupe/Convertible/Hatchback; Sedan/Wagon; SUV; Minivan/Van/Truck. "Something bigger" moves up one tier (further if that tier is empty too), the same idea as the existing colour/trim/year loosening chain.
+
+Also reconsidered, not newly decided: relabelling stock questions from `restricted` to `answerable` (the plan's original Phase 2 wording) turned out lower-risk than first thought — every non-`clarify` question routes the same way in code regardless of label, and the fallback for an `answerable` question the system can't actually answer is already "the team will confirm," same as `restricted`. Decided to split the stock-vs-price detection rule now (they're currently one merged rule, which also blocks the relabel), but keep the label as `restricted` until Phase 3 ships the real answering logic — so the label and the behaviour change together, not the label alone first.
+
+**Verdict: Phase 2 is ready to build.**
+
 ## Changes made in this session
 
 - Reviewed MASTER_PLAN_3's first-to-build phase (B0/B1) against the code and client docs. Citations checked out; one undocumented dependency found (B1 relied on the undecided B0.2, now decided).
 - Found the Twilio SMS driver already built; corrected MASTER_PLAN_3 Phase 0 item 7.
 - Recorded decisions 21–30 in `architecture.md` §15; pointed decisions 11, 18 and 20 at them.
 - Updated MASTER_PLAN_3: build order and dependency table, the 26 Sept open-questions list, Phase 0 items 3 and 7, B0.2, B0.5, B0.6, B0.8, B0.10, B0.11, B0.13, B1 item 2, B3 (time of day, frequency, time zone, scenario), B4 item 4, and the "Not in this plan" list.
+- Later the same day: built, tested and committed Part A Phase 1 (inventory read layer) — see `progress_3.md`.
+- Reviewed Part A Phase 2 against the running code before building it; recorded 4 decisions (where the search runs, trim, colour case-sensitivity, the "something bigger" size ordering) in MASTER_PLAN_3's Phase 2 section and `progress_3.md`.
+
+## 28 Sept — Part A Phase 2 built, then fixed after a Debug UI review
+
+- Built Part A Phase 2 (shopping criteria) end to end: the `search_stock` graph step, `tools/stock_search.py`'s loosening chain, the two new slots (`interest.body_type`, `interest.color`), the stock/price question split, and the Debug UI's Search stock panel. Recorded as decisions 37–40 in `architecture.md` §15 and in full in `progress_3.md`.
+- Verified against the running code, not just unit tests: 715 unit tests, 56 evals, 39/39 scenarios in Docker, and 142/142 searches matching between the stub and the real, running `/api/car` (including confirming live that the platform's colour match is case-sensitive, as the plan assumed).
+- **User review in the Debug UI surfaced two real issues**, neither a search bug:
+  1. The panel showed "N given to the AI" with no mention of how many actually matched, so a 5-match / 3-loaded turn looked wrong. Fixed: the panel now says "N matched · 3 given to the AI (max 3 per reply)".
+  2. The panel's "Asked for" line showed the criteria *before* loosening (still naming the RAV4) next to a search that had actually dropped the vehicle entirely for a body-type search. Fixed: split into "From the profile" (before) and "Actually searched" (after), and the reasoning trace now says the named vehicle "is swapped for the next size up" on a bigger-size search.
+  - Both fixes are UI/trace wording only; no change to the search logic itself. Two regression tests added (`test_bigger_after_a_named_rav4_never_sends_the_rav4`, `test_more_matches_than_the_per_reply_limit_says_so`).
+- **User then asked**, correctly: if the next size tier has nothing in the customer's stated condition (e.g. no *new* trucks/vans), should the search drop new/used as a last resort rather than return nothing? Agreed as decision 41 (our default, flagged for client feedback) and built as the fifth and last loosening step. `MASTER_PLAN_3.md` Phase 2 item 4 updated to list it.
+- Final state: 775 unit tests, 56 evals, 39/39 scenarios, Debug UI `tsc` clean, verified live in the browser against the user's exact reported conversation.
