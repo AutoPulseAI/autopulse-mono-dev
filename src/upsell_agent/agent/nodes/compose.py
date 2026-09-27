@@ -16,7 +16,7 @@ from datetime import date
 from typing import Any
 
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
-from upsell_agent.agent.context_pack import profile_layer
+from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
 from upsell_agent.agent.llm import compose_agent, run_agent
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
@@ -30,7 +30,7 @@ OUTPUT_TOKENS = 600
 def compose_context(state: AgentState) -> dict[str, Any]:
     """The turn's context pack, with the profile layers brought up to date
     with what Validate saved this turn."""
-    pack = {k: v for k, v in (state.context_pack or {}).items() if k != "budget"}
+    pack = {k: v for k, v in (state.context_pack or {}).items() if k not in HELD_FROM_MODELS}
     if state.profile:
         today = date.fromisoformat(pack["now"]["date"]) if pack.get("now") else None
         pack["profile"] = profile_layer(state.profile, today)

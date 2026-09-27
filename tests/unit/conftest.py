@@ -19,6 +19,7 @@ from mongomock_motor import AsyncMongoMockClient
 from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations import dealer_profile, mongodb
+from upsell_agent.tools import inventory_tool
 
 
 @pytest.fixture
@@ -34,9 +35,11 @@ def mongo():
 def reset_clock():
     clock.set_offset(0)
     dealer_profile.clear_cache()
+    inventory_tool.clear_cache()
     yield
     clock.set_offset(0)
     dealer_profile.clear_cache()
+    inventory_tool.clear_cache()
 
 
 def set_clock(at: datetime) -> None:

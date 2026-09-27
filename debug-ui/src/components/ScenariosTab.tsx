@@ -28,9 +28,12 @@ const STAGE_NAMES: Record<number, string> = {
   106: "Answer sources",
   107: "Plain, explainable replies",
   108: "Dates and time",
+  // MASTER_PLAN_3 Part A phases are stored as 200 + phase.
+  201: "Inventory read layer",
 };
 
-const stageLabel = (stage: number) => (stage > 100 ? `Plan 2 · Phase ${stage - 100}` : `Stage ${stage}`);
+const stageLabel = (stage: number) =>
+  stage > 200 ? `Plan 3 · Phase A${stage - 200}` : stage > 100 ? `Plan 2 · Phase ${stage - 100}` : `Stage ${stage}`;
 
 export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);

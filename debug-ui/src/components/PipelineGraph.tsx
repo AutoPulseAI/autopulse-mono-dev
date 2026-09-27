@@ -98,6 +98,10 @@ function Graph({ pipeline, view, selectedNode, onSelectNode }: Props) {
       fitViewOptions={{ padding: 0.12 }}
       nodesConnectable={false}
       elementsSelectable={false}
+      // Without a node handler, React Flow gives nodes pointer-events: none
+      // (they're neither draggable nor selectable), so clicks fell through to
+      // the canvas and panned it instead of opening the step.
+      onNodeClick={(_, node) => onSelectNode(node.id)}
       proOptions={{ hideAttribution: true }}
       minZoom={0.4}
       maxZoom={1.6}

@@ -40,6 +40,13 @@ Steps (one key per step):
                        memory_excludes?}   the context pack that turn's AI steps read (MASTER_PLAN_2)
   chat:               {lead, messages?: [texts], filler?: n, filler_chars: 700, timeout_s}   the customer sends
                       each message and waits for its reply (filler: n long, neutral messages)
+  add_stock:          {as, dealer: A, vehicles: [{year, make, model, trim?, body?, condition?, color?, miles?}]}
+                      dealer stock shaped like the vAuto feed (removed after the scenario)
+  expect_inventory:   {lead, index: -1, searched?: bool, query?: {...}, min_loaded?, loaded_include?: <stock alias>,
+                       never_loaded?: <stock alias>}   the stock that turn's Load context loaded (MASTER_PLAN_3
+                      Phase 1): loaded_include = that add_stock's vehicles (up to the per-turn limit) were given
+                      to the AI; never_loaded = none came back from the search at all (e.g. another dealer's)
+  compare_inventory:  {dealers: [A, B]}   stub vs live /api/car for the dev stock (needs the platform)
   sleep:              {seconds}
 
 Run from the CLI:  python -m upsell_agent.devtools.scenarios [name ...]
@@ -60,7 +67,7 @@ from saq import Queue
 
 from upsell_agent import clock
 from upsell_agent.config import get_settings
-from upsell_agent.devtools import compare_360, simulate
+from upsell_agent.devtools import compare_360, compare_inventory, simulate
 from upsell_agent.events.intake import accept_event
 from upsell_agent.events.models import LeadPausedEvent, LeadResumedEvent
 from upsell_agent.integrations.mongodb import (
@@ -104,6 +111,8 @@ class RunContext:
     leads: dict[str, dict[str, str]] = field(default_factory=dict)
     moved_clock: bool = False
     changed_dealers: bool = False
+    # add_stock alias -> the vehicles it inserted
+    stock: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     def lead(self, alias: str) -> dict[str, str]:
         if alias not in self.leads:
@@ -587,6 +596,77 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         return (f"{len(pack['new_messages'])} new, {len(memory)} in working memory, "
                 f"reply #{conversation['turn'] + 1}, {len(conversation['promises'])} promise(s)")
 
+    if kind == "add_stock":
+        from upsell_agent.devtools.dev_inventory import insert_stock
+        from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION
+
+        dealer_id = DEALER_ALIASES.get(args.get("dealer", "A"), args.get("dealer", "A"))
+        rows = [(v["year"], v["make"], v["model"], v.get("trim", ""), v.get("body", ""), v.get("condition", "used"),
+                 v.get("color", ""), v.get("miles", 0), v.get("price", 0))
+                for v in args["vehicles"]]
+        records = await insert_stock(dealer_id, rows, salt=uuid.uuid4().hex)
+        await get_db()[PLATFORM_VEHICLES_COLLECTION].update_many(
+            {"vin": {"$in": [r["vin"] for r in records]}, "dealerId": dealer_id},
+            {"$set": {"dev_scenario": True}})
+        ctx.stock[args["as"]] = records
+        return f"{len(records)} vehicle(s) in stock: {', '.join(r['vin'] for r in records)}"
+
+    if kind == "expect_inventory":
+        from upsell_agent.tools.inventory_tool import MAX_LOADED
+
+        lead = ctx.lead(args["lead"])
+        turns = await _turns(lead)
+        if not turns:
+            raise ScenarioFailed("no turns recorded")
+        turn = turns[int(args.get("index", -1))]
+        load = next((n for n in turn.get("nodes", []) if n["node"] == "load_context" and n.get("status") == "done"), None)
+        inventory = ((load or {}).get("output") or {}).get("inventory")
+        if inventory is None:
+            raise ScenarioFailed("that turn's Load context recorded no inventory")
+        loaded = [r["vin"] for r in inventory.get("records", [])]
+        excluded = [e["vin"] for e in inventory.get("excluded", [])]
+        problems = []
+        if "searched" in args and bool(inventory.get("searched")) != bool(args["searched"]):
+            problems.append(f"searched is {inventory.get('searched')}")
+        if inventory.get("error"):
+            problems.append(f"the search failed: {inventory['error']}")
+        if "query" in args and inventory.get("query") != args["query"]:
+            problems.append(f"query {inventory.get('query')} != {args['query']}")
+        if len(loaded) < int(args.get("min_loaded", 0)):
+            problems.append(f"{len(loaded)} vehicle(s) loaded, expected at least {args['min_loaded']}")
+        if len(loaded) > MAX_LOADED:
+            problems.append(f"{len(loaded)} vehicles given to the AI, the limit is {MAX_LOADED}")
+        if "year" in (inventory.get("params") or {}):
+            problems.append("the broken `year` parameter was sent")
+        if alias := args.get("loaded_include"):
+            wanted = [r["vin"] for r in ctx.stock[alias]][:MAX_LOADED]
+            if missing := [v for v in wanted if v not in loaded]:
+                problems.append(f"{alias}: {missing} not loaded (loaded {loaded})")
+        returned = set(loaded) | set(excluded)
+        if (alias := args.get("never_loaded")) and (wrong := [r["vin"] for r in ctx.stock[alias] if r["vin"] in returned]):
+            problems.append(f"{alias}: {wrong} came back from the search")
+        if problems:
+            raise ScenarioFailed("; ".join(problems))
+        if not inventory.get("searched"):
+            return "no search this turn"
+        return (f"{inventory.get('query')} matched {inventory.get('matched')}, {len(loaded)} loaded "
+                f"({', '.join(loaded)}), {len(excluded)} left out")
+
+    if kind == "compare_inventory":
+        dealers = [DEALER_ALIASES.get(d, d) for d in args.get("dealers", ["A", "B"])]
+        results = await compare_inventory.compare_dealers(dealers)
+        errors = [r for r in results if r["error"]]
+        if errors:
+            raise ScenarioFailed(errors[0]["error"])
+        if not any(r["found"] for r in results):
+            raise ScenarioFailed("no dev stock found; run `make ai-seed` first")
+        mismatched = [r for r in results if r["problems"]]
+        if mismatched:
+            first = mismatched[0]
+            raise ScenarioFailed(f"{len(mismatched)}/{len(results)} searches differ; "
+                                 f"{first['search']}: {first['problems'][0]}")
+        return f"{len(results)} searches match between stub and live /api/car"
+
     if kind == "sleep":
         await asyncio.sleep(float(args.get("seconds", 1)))
         return "slept"
@@ -633,6 +713,11 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
         else:
             results.append({"step": "plain replies", "status": "passed",
                             "detail": "no internal terms in any reply"})
+    if ctx.stock:
+        from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION
+
+        vins = [r["vin"] for rows in ctx.stock.values() for r in rows]
+        await get_db()[PLATFORM_VEHICLES_COLLECTION].delete_many({"vin": {"$in": vins}, "dev_scenario": True})
     if ctx.changed_dealers:
         await simulate.ensure_platform_dealers()
     if ctx.moved_clock:

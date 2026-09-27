@@ -18,6 +18,12 @@ Layers:
   summary         older turns, folded in after the send (agent/summary.py)
   conversation    asks, open questions, promises (agent/conversation.py)
   campaign        the campaign the customer is replying to, if any
+  inventory       stock records loaded this turn, each with its VIN as
+                  `source_id`, the criteria used (`inventory_query`) and when
+                  they were loaded (`inventory_checked_at`); MASTER_PLAN_3
+                  Phase 1, tools/inventory_tool.py. Held back from the models
+                  (HELD_FROM_MODELS) until the grounding check (Phase 4) can
+                  catch a wrong vehicle fact.
 
 Tokens are estimated at CHARS_PER_TOKEN characters each: close enough for a
 budget, and it needs no tokenizer download.
@@ -42,6 +48,8 @@ LOAD_LIMIT = 60
 # One message longer than this is cut, so a pasted essay can't take the budget.
 MAX_MESSAGE_CHARS = 2000
 TRIMMED = " …[trimmed]"
+# Pack layers the models don't see yet. Shown in the Debug UI all the same.
+HELD_FROM_MODELS = frozenset({"budget", "inventory", "inventory_query", "inventory_checked_at"})
 
 
 class PackMessage(BaseModel):
@@ -82,11 +90,15 @@ class ContextPack(BaseModel):
     summary: str | None = None
     conversation: ConversationState
     campaign: dict[str, Any] | None = None
+    inventory: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_query: dict[str, Any] | None = None
+    inventory_checked_at: str | None = None
     budget: PackBudget
 
     def for_prompt(self) -> dict[str, Any]:
-        """What the models see: everything but the budget bookkeeping."""
-        return self.model_dump(exclude={"budget"}, mode="json")
+        """What the models see: everything but the budget bookkeeping and
+        the layers still held back (HELD_FROM_MODELS)."""
+        return self.model_dump(exclude=set(HELD_FROM_MODELS), mode="json")
 
     def customer_text(self) -> str:
         """The new messages as one text: what Extract reads and Validate
@@ -194,6 +206,9 @@ def build_pack(
     summary: str | None = None,
     summary_covers: int = 0,
     summary_behind: bool = False,
+    inventory: list[dict[str, Any]] | None = None,
+    inventory_query: dict[str, Any] | None = None,
+    inventory_checked_at: str | None = None,
 ) -> ContextPack:
     """`history`: the thread before this turn's new messages, oldest first."""
     working, used = select_working_memory(history, working_tokens)
@@ -212,6 +227,9 @@ def build_pack(
         summary=summary or None,
         conversation=conversation,
         campaign=campaign,
+        inventory=inventory or [],
+        inventory_query=inventory_query,
+        inventory_checked_at=inventory_checked_at,
         budget=PackBudget(working_tokens=working_tokens, working_used=used["used"], loaded=len(history),
                           kept=len(working), dropped=len(history) - len(working), more_not_loaded=more_not_loaded,
                           trimmed_messages=used["trimmed"], summary_behind=summary_behind,
@@ -224,5 +242,6 @@ def build_pack(
         "conversation": estimate_tokens(conversation.model_dump_json()),
         "campaign": estimate_tokens(str(campaign)) if campaign else 0,
         "summary": estimate_tokens(pack.summary or ""),
+        "inventory": estimate_tokens(str(pack.inventory)) if pack.inventory else 0,
     }
     return pack

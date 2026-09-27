@@ -13,6 +13,7 @@ from upsell_agent.config import Settings
 from upsell_agent.integrations.mongodb import DealerScopedDatabase
 from upsell_agent.integrations.platform_client import PlatformClient
 from upsell_agent.observability.trace import TurnTracer
+from upsell_agent.tools.inventory_tool import InventorySource
 
 
 class AiBudgetExceeded(RuntimeError):
@@ -33,6 +34,8 @@ class TurnContext:
     source_message_id: str
     ai_calls: int = 0
     model_calls: list[dict[str, Any]] = field(default_factory=list)
+    # Where stock is read (tools/inventory_tool.py); None = the one PLATFORM_CLIENT picks.
+    inventory: InventorySource | None = None
 
     def spend_ai_call(self) -> None:
         if self.ai_calls >= self.settings.max_ai_calls_per_turn:

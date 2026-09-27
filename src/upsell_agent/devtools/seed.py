@@ -12,6 +12,8 @@ Mongoose models, so both the AI service and the real platform read it:
   service appointments and trade-ins, using DealerTrack's column names
 - 12 leads covering every lead type, including a returning customer
 - one sent campaign with CampaignLead records
+- dealer stock for each dealer, shaped like the vAuto feed
+  (devtools/dev_inventory.py, MASTER_PLAN_3 Phase 1)
 
 Refuses to run unless ENVIRONMENT=DEV and MONGODB_URI points at a local
 database. Re-running first deletes everything it created before (and all AI
@@ -28,6 +30,7 @@ from bson import ObjectId
 
 from upsell_agent import clock
 from upsell_agent.config import get_settings
+from upsell_agent.devtools.dev_inventory import seed_stock
 from upsell_agent.devtools.simulate import (
     DEV_DEALERS,
     PLATFORM_EMAIL_ACCOUNTS_COLLECTION,
@@ -215,8 +218,9 @@ async def seed() -> dict[str, int]:
             "status": "sent", "sent_at": clock.now() - timedelta(days=2), "dev_seed": True,
         })
 
+    stock = await seed_stock()
     return {"dealers": len(DEV_DEALERS), "customers": len(CUSTOMERS) + 1, "leads": leads,
-            "campaigns": 1, "campaign_leads": len(campaign_targets)}
+            "campaigns": 1, "campaign_leads": len(campaign_targets), "stock_vehicles": stock}
 
 
 async def main() -> None:

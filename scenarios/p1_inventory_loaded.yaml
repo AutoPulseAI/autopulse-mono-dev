@@ -1,0 +1,21 @@
+name: A turn loads the dealer's matching stock
+stage: 201
+description: A sales lead for a used RAV4 (an SUV). The first turn has nothing in the profile yet, so it doesn't search. Once the profile holds the model, Load context searches this dealer's stock and gives the AI at most 3 records, each with its VIN. Another dealer's RAV4 never comes back. Stock stays hidden from the models until the grounding check (Phase 4).
+steps:
+  - add_stock:
+      as: rav4s
+      dealer: A
+      vehicles:
+        - {year: 2023, make: Toyota, model: RAV4, trim: XLE, body: SUV, condition: used, color: White, miles: 18000}
+        - {year: 2022, make: Toyota, model: RAV4, trim: LE, body: SUV, condition: used, color: Silver, miles: 29000}
+  - add_stock:
+      as: other_dealer
+      dealer: B
+      vehicles:
+        - {year: 2023, make: Toyota, model: RAV4, trim: XLE, body: SUV, condition: used, color: Red, miles: 15000}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rhea Rav, comments: "Looking for a used Toyota RAV4"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 20}
+  - expect_inventory: {lead: r, searched: false}
+  - reply: {lead: r, text: "Sometime next month"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 20}
+  - expect_inventory: {lead: r, searched: true, query: {make: Toyota, model: RAV4, condition: used}, min_loaded: 2, loaded_include: rav4s, never_loaded: other_dealer}

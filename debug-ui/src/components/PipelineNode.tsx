@@ -65,7 +65,8 @@ export function PipelineNode({ data }: NodeProps<PipelineFlowNode>) {
       type="button"
       onClick={() => onSelect(def.id)}
       animate={animate}
-      className="relative w-[184px] rounded-xl border-2 bg-panel px-3 py-2 text-left outline-none"
+      // nopan / nodrag: a press on the node selects it instead of starting a canvas pan.
+      className="nopan nodrag relative w-[184px] cursor-pointer rounded-xl border-2 bg-panel px-3 py-2 text-left outline-none"
       style={{
         borderColor: BORDER[status],
         outline: selected ? "2px solid var(--accent)" : "none",

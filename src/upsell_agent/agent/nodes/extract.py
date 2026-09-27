@@ -10,6 +10,7 @@ never nothing).
 from typing import Any
 
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
+from upsell_agent.agent.context_pack import HELD_FROM_MODELS
 from upsell_agent.agent.llm import extract_agent, run_agent
 from upsell_agent.agent.state import AgentState
 from upsell_agent.observability.trace import NodeSpan
@@ -32,7 +33,7 @@ def extract_payload(state: AgentState) -> dict[str, Any]:
         "lead_type": (state.profile or {}).get("effective_lead_type") or "general",
         "allowed_slots": _allowed_slots(),
         "recently_asked": (pack.get("conversation") or {}).get("last_asked", []),
-        "context": {k: v for k, v in pack.items() if k != "budget"},
+        "context": {k: v for k, v in pack.items() if k not in HELD_FROM_MODELS},
     }
 
 

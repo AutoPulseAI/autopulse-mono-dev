@@ -11,6 +11,8 @@ both read.
 - the conversation state: asks, open questions, promises (agent/conversation.py)
 - the rolling summary of what came before working memory (agent/summary.py)
 - the campaign the customer is replying to, if any (Stage 9)
+- the dealer's stock matching what the profile says they want
+  (MASTER_PLAN_3 Phase 1, tools/inventory_tool.py)
 """
 
 from typing import Any
@@ -40,6 +42,12 @@ from upsell_agent.slots.prefill import prefill_from_360
 from upsell_agent.slots.profile import build_profile
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.slots.store import current_facts, fact_history
+from upsell_agent.tools.inventory_tool import (
+    MAX_LOADED,
+    criteria_from_profile,
+    get_inventory_source,
+    search_inventory,
+)
 
 # Only what the customer actually received, plus everything they sent.
 _THREAD = {"$or": [{"direction": "inbound"}, {"direction": "outbound", "status": "sent"}]}
@@ -71,6 +79,28 @@ async def _new_messages(ctx: TurnContext, state: AgentState) -> tuple[list[PackM
         text = clean_email_text(text)
     found = [PackMessage(direction="inbound", channel=state.channel or "sms", text=text)] if text else []
     return found, {"$nor": [{"direction": "inbound", "answered_turn_id": None}]}
+
+
+async def load_inventory(ctx: TurnContext, state: AgentState, profile: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The stock records for this turn and one line for the trace. Never
+    stops the turn: the platform being down means a turn without stock."""
+    criteria = criteria_from_profile(profile)
+    if criteria.is_empty():
+        return {"searched": False, "records": []}, "Stock: not searched (no vehicle in the profile yet)."
+    source = ctx.inventory or get_inventory_source(ctx.settings)
+    try:
+        result = await search_inventory(state.dealer_id, criteria, source)
+    except Exception as exc:  # noqa: BLE001 - stock is optional for a reply
+        return ({"searched": True, "error": repr(exc), "query": criteria.model_dump(exclude_none=True), "records": []},
+                f"Stock: search failed ({exc!r}); continuing without stock.")
+    loaded = [r.model_dump() for r in result.loaded(MAX_LOADED)]
+    line = (f"Stock: {result.query} matched {result.matched}; {len(loaded)} given to the AI"
+            + (f" ({', '.join(r['vin'] for r in loaded)})" if loaded else "")
+            + (f"; {len(result.excluded)} left out" if result.excluded else "")
+            + (" [cached]" if result.cached else "") + ".")
+    return {"searched": True, "query": result.query, "params": result.params, "matched": result.matched,
+            "fetched": result.fetched, "records": loaded,
+            "excluded": result.excluded, "checked_at": result.checked_at, "cached": result.cached}, line
 
 
 async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
@@ -117,6 +147,7 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
     campaign = await find_campaign_context(ctx.db, customer_id=state.customer_id)
     dealer = await dealer_profile(state.dealer_id)
     conversation = load_conversation(ctx.lead_state)
+    inventory, inventory_line = await load_inventory(ctx, state, profile.to_api())
     pack = build_pack(
         now_local=clock.now().astimezone(dealer.tz),
         dealer={"name": dealer.name, "timezone": dealer.timezone, "info": dealer.public_info()},
@@ -131,6 +162,9 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         working_tokens=ctx.settings.context_working_tokens,
         summary=summary.text,
         summary_covers=summary.messages,
+        inventory=inventory["records"],
+        inventory_query=inventory.get("query") if inventory["searched"] else None,
+        inventory_checked_at=inventory.get("checked_at"),
     )
     pack.budget.summary_behind = summary_behind(rows, pack.budget.kept, more_not_loaded, summary)
 
@@ -152,6 +186,7 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         reasoning.append(f"Our last reply asked for: {', '.join(conversation.last_asked)}.")
     reasoning.append(f"Dealer time: {pack.now['weekday']} {pack.now['date']} {pack.now['time']} ({dealer.timezone}).")
     reasoning.append(f"Campaign found: replying to '{campaign['name']}'." if campaign else "No campaign in the last 14 days.")
+    reasoning.append(inventory_line)
 
     span.output = {
         "lead_type": lead_type.value,
@@ -163,6 +198,7 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         "required": {"filled": filled, "total": total},
         "messages_loaded": budget.loaded,
         "campaign": campaign,
+        "inventory": inventory,
         "context": {"budget": budget.model_dump(), "now": pack.now, "conversation": conversation.model_dump()},
         # The whole pack, exactly as the AI steps see it. Kept only where
         # prompts are stored (DEV); production traces drop "prompt".

@@ -257,7 +257,79 @@ const LAYER_LABELS: Record<string, string> = {
   conversation: "Conversation state",
   campaign: "Campaign",
   summary: "Summary",
+  inventory: "Stock",
 };
+
+// The stock Load context loaded for this turn (MASTER_PLAN_3 Phase 1).
+export function InventoryView({ inventory }: { inventory: any }) {
+  if (!inventory) return null;
+  const records: any[] = inventory.records ?? [];
+  const excluded: any[] = inventory.excluded ?? [];
+  const query = Object.entries((inventory.query ?? {}) as Record<string, unknown>)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" · ");
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Stock · {inventory.searched ? `${records.length} given to the AI` : "not searched"}
+        {inventory.cached ? " · from the cache" : ""}
+      </div>
+      {!inventory.searched && (
+        <div className="text-[11px] text-muted">No vehicle in the profile yet, so no search this turn.</div>
+      )}
+      {inventory.error && <div className="text-[11px] text-bad">Search failed, replying without stock: {inventory.error}</div>}
+      {inventory.searched && !inventory.error && (
+        <div className="space-y-1.5 text-[11px]">
+          <div className="text-muted">
+            Query: {query || "—"} · {inventory.matched} matched
+            {inventory.checked_at ? ` · checked ${new Date(inventory.checked_at).toLocaleTimeString()}` : ""}
+          </div>
+          <div className="text-muted">
+            Sent to /api/car:{" "}
+            <span className="font-mono">
+              {Object.entries((inventory.params ?? {}) as Record<string, string>)
+                .map(([k, v]) => `${k}=${v}`)
+                .join("&")}
+            </span>
+          </div>
+          {records.length === 0 ? (
+            <div className="rounded-lg bg-panel-2 p-2 text-muted">No current vehicle matched.</div>
+          ) : (
+            <div className="space-y-1">
+              {records.map((r) => (
+                <div key={r.vin} className="rounded-lg border border-line p-2">
+                  <div className="font-semibold">
+                    {[r.year, r.make, r.model, r.trim].filter(Boolean).join(" ")}
+                    <span className="ml-1 rounded bg-panel-2 px-1 text-[10px] font-normal text-muted">{r.condition ?? "?"}</span>
+                  </div>
+                  <div className="text-muted">
+                    {[r.body_type, r.exterior_color, r.miles != null ? `${Number(r.miles).toLocaleString()} miles` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                  <div className="font-mono text-[10px] text-muted">
+                    VIN {r.vin}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {excluded.length > 0 && (
+            <div className="rounded-lg bg-panel-2 p-2">
+              <div className="mb-0.5 font-semibold">Left out</div>
+              {excluded.map((e, i) => (
+                <div key={`${e.vin}${i}`} className="text-warn">
+                  <span className="font-mono text-[10px]">{e.vin || "(no VIN)"}</span>: {e.reason}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-[10px] text-muted">Held back from the models until the grounding check (Plan 3 Phase 4).</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // The context pack a turn's AI steps read (MASTER_PLAN_2 Phase 1).
 export function ContextPackView({ output }: { output: any }) {
@@ -328,6 +400,8 @@ export function ContextPackView({ output }: { output: any }) {
           </div>
         </div>
       )}
+
+      <InventoryView inventory={output?.inventory} />
 
       {pack?.dealer?.info && (
         <div className="grid grid-cols-2 gap-2 text-[11px]">
