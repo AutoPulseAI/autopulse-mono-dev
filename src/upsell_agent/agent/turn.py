@@ -312,6 +312,8 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         new_questions=list((result.get("extraction") or {}).get("questions") or []),
         used_template=bool(result.get("used_template")),
         promises=list(draft.get("promises") or []),
+        shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
+        channel=channel,
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

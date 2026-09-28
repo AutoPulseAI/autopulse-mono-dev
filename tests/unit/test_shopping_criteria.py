@@ -6,7 +6,8 @@
 - colour case-correction against the dealer's own stock values
 - "something bigger" (the size tiers)
 - Search stock uses this turn's validated profile, from the first turn
-- the stock/price question split (both still `restricted` in this phase)
+- the stock/price question split (both `restricted` here; MASTER_PLAN_3 Phase 3
+  flips stock questions to `answerable` - see test_stock_answers.py)
 """
 
 import pytest
@@ -354,14 +355,21 @@ async def test_a_colour_said_in_this_message_counts_this_turn(mongo):
     assert [r["vin"] for r in out["records"]] == ["VIN00000000000522"]
 
 
-async def test_stock_and_budget_never_reach_the_models(mongo):
+async def test_budget_never_reaches_the_models(mongo):
+    """As of Phase 3, `inventory` itself (with its VIN) reaches Compose, so it
+    can answer from real stock (its output names the loaded vehicle); the raw
+    budget number and the search criteria that would carry it
+    (`inventory_query`) never do - the Debug UI's own "input" trace for
+    compose (agent/graph.py `_node_input`) never carries `context` at all, by
+    design, so that's not what proves this either way."""
     await _stock(mongo, _rav4("VIN00000000000531"))
     created = await _new_lead("Do you have a Toyota RAV4 under 40k?")
     out = (await _search(mongo, created))["output"]
     assert out["params"]["price_range"] == "0-40000" and out["records"][0]["vin"] == "VIN00000000000531"
     compose = next(n for n in await _turn_nodes(mongo, created) if n["node"] == "compose")
-    assert "VIN00000000000531" not in str(compose.get("input")) + str(compose.get("output"))
-    assert {"inventory", "inventory_query", "inventory_checked_at"} <= HELD_FROM_MODELS
+    assert compose["output"]["sms_vins"] == ["VIN00000000000531"]  # the model could answer from real stock
+    assert {"inventory_query", "inventory_checked_at"} <= HELD_FROM_MODELS
+    assert "inventory" not in HELD_FROM_MODELS
 
 
 # --- Stock vs price questions (item 6) --------------------------------------------------------------------
@@ -375,15 +383,24 @@ async def test_stock_and_budget_never_reach_the_models(mongo):
     ("What's my trade worth?", False, True),
     ("Do you have any in stock and what's the price?", True, True),
     ("What are your hours?", False, False),
+    # Real texting wording (found live, 29 Sept): "u" for "you", and several
+    # words between "what" and "do you have".
+    ("what RAV4 models do u have in inventory?", True, False),
+    ("do u have any Civics?", True, False),
+    ("do yall carry Fords?", True, False),
 ])
 def test_stock_and_price_are_separate_rules(question, stock, price):
     assert is_stock_question(question) is stock
     assert is_price_question(question) is price
 
 
-@pytest.mark.parametrize("question", ["Do you have a white RAV4?", "Is it still available?", "How much is it?"])
-def test_both_still_labelled_restricted_in_phase_2(question):
-    assert _label(question) == "restricted"
+@pytest.mark.parametrize("question", ["Do you have a white RAV4?", "Is it still available?"])
+def test_stock_questions_are_answerable_from_phase_3(question):
+    assert _label(question) == "answerable"
+
+
+def test_price_questions_stay_restricted():
+    assert _label("How much is it?") == "restricted"
 
 
 # --- Regressions from the Debug UI review (28 Sept) --------------------------------------------------------

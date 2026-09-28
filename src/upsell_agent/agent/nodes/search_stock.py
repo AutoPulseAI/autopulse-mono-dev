@@ -15,8 +15,9 @@ turn.
   body type and new/used. Otherwise nothing is fetched.
 - The result is patched onto the context pack's `inventory`,
   `inventory_query`, `inventory_checked_at` layers, the same way Compose
-  patches `profile`. Still held back from the models (HELD_FROM_MODELS)
-  until the grounding check (Phase 4).
+  patches `profile`. As of Phase 3, `inventory` itself reaches Extract and
+  Compose (the grounding check in guardrails/draft_guard.py now exists);
+  `inventory_query` and `inventory_checked_at` stay held back (HELD_FROM_MODELS).
 - The platform being down means a turn without stock, never a failed turn.
 """
 
@@ -86,7 +87,8 @@ async def search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         span.edge_label = "search failed"
         return {"context_pack": _patch(pack, [], None, None)}
 
-    loaded = [r.model_dump() for r in result.loaded(MAX_LOADED)]
+    shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
+    loaded = [{**r.model_dump(), "already_shown": r.vin in shown} for r in result.loaded(MAX_LOADED)]
     if result.colour:
         stored = result.colour["stored"]
         reasoning.append(f"Colour {result.colour['asked']!r} → sent as the dealer's own spelling {stored!r}."

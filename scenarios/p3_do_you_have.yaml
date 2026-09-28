@@ -1,0 +1,27 @@
+name: A stock question is answered from real stock, or an honest promise
+stage: 203
+description: >
+  Dealer B has one Toyota RAV4. "Do you have a Toyota RAV4?" gets an answer naming that real
+  vehicle (Phase 3), and the guard accepts it on the first attempt (the grounding check, Phase 4,
+  is satisfied by construction). A second lead asks about a Ford Mustang the dealer doesn't have:
+  the reply is never a bare "no" - it promises the team will let them know (decision D).
+steps:
+  - add_stock:
+      as: rav4
+      dealer: B
+      vehicles:
+        - {year: 2022, make: Toyota, model: RAV4, trim: LE, body: SUV, condition: used, color: White, miles: 21000}
+
+  - new_lead: {as: h, dealer: B, lead_type: sales, channel: sms, name: Hank Hasit, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 20}
+  - reply: {lead: h, text: "Do you have a Toyota RAV4?"}
+  - wait_turns: {lead: h, count: 2, timeout_s: 20}
+  - expect_last_sent: {lead: h, contains: "RAV4"}
+  - expect_turn: {lead: h, attempts: {compose: 1, guard: 1}}
+
+  - new_lead: {as: n, dealer: B, lead_type: sales, channel: sms, name: Nora Nomatch, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - reply: {lead: n, text: "Do you have a Ford Mustang?"}
+  - wait_turns: {lead: n, count: 2, timeout_s: 20}
+  - expect_last_sent: {lead: n, contains: "let you know"}
+  - expect_turn: {lead: n, attempts: {compose: 1, guard: 1}}

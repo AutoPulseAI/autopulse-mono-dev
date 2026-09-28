@@ -5,7 +5,11 @@
 (Compose writes both up front, so firing needs no AI call), due 24 hours
 later. Only when the customer has a contact on that channel and hasn't opted
 out of it. A newer message supersedes the lead's older pending follow-up, so a
-lead never has more than one.
+lead never has more than one. If the original message named a vehicle
+(MASTER_PLAN_3 Phase 3), the stock-free version Compose wrote alongside is
+what gets stored and later sent, not the vehicle version - a car mentioned
+now may have sold by the time this fires (decision L; Phase 5 will re-check
+instead of always dropping the vehicle).
 
 **Fire.** A cron job on every worker runs every minute (worker/main.py). It
 resets stuck claims, then claims due follow-ups one at a time with a single
@@ -136,10 +140,15 @@ async def plan_followup(
     if sent.status not in ("sent", "failed"):
         return {"created": False, "reason": f"message not sent ({sent.status})"}
 
+    # MASTER_PLAN_3 Phase 3 decision L: a vehicle mention is never resent hours
+    # later on the other channel, since it may have sold by then (until
+    # Phase 5's before-send re-check exists). Compose writes a stock-free
+    # version alongside whenever it named one; that's what the switch stores.
     if other == "sms":
-        text, subject = draft.get("sms_text"), None
+        text, subject = draft.get("sms_text_no_vehicles") or draft.get("sms_text"), None
     else:
-        text, subject = draft.get("email_body"), draft.get("email_subject")
+        text = draft.get("email_body_no_vehicles") or draft.get("email_body")
+        subject = draft.get("email_subject_no_vehicles") or draft.get("email_subject")
     if not text:
         return {"created": False, "reason": f"the draft has no {other} version"}
 

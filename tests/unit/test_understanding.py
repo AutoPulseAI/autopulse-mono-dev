@@ -73,7 +73,9 @@ def test_short_number_goes_to_the_slot_it_fits():
     ("What's that?", "clarify"),
     ("How much is it?", "restricted"),
     ("Can I get financing?", "restricted"),
-    ("Is the blue one still available?", "restricted"),
+    # Stock availability is answerable as of MASTER_PLAN_3 Phase 3 (the
+    # inventory layer + grounding check exist); price stays restricted.
+    ("Is the blue one still available?", "answerable"),
     ("Can you tell me a joke?", "off_topic"),
     ("Is it AWD?", "answerable"),
     ("When are you open on Saturday?", "answerable"),

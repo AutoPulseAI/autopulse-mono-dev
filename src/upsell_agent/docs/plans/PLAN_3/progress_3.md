@@ -7,8 +7,8 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept): Part A (exc
 | A0. Decisions | Done (architecture.md §15, decisions 14–36) |
 | A1. Inventory read layer | **Done, verified end to end (27 Sept 2026)** |
 | A2. Shopping criteria | **Done, verified end to end (27 Sept 2026)** |
-| A3. Answering stock questions | Not started. Built together with A4 (28 Sept); readiness review: decisions A–O recorded (28 Sept) (see MASTER_PLAN_3 Phase 3). Links and MMS moved into A3 |
-| A4. Grounding check | Not started. Built together with A3 |
+| A3. Answering stock questions | **Core built, verified end to end (29 Sept 2026).** See "What was built" and "What's deferred" below. |
+| A4. Grounding check | **Built together with A3**, as decision A requires. Verified end to end (29 Sept 2026). |
 | A5. Freshness (sold re-checks) | Not started (needs a "sold" signal: C5's manager outcome) |
 | A6. Debug UI and dev inventory | Not started (Phase 1 added a first dev stock set and the Stock section) |
 | A7. Evals, shadow and rollout | Not started |
@@ -129,3 +129,99 @@ One more item was reconsidered, not just decided: reclassifying stock questions 
 | Parity, stub vs the real `/api/car` | 142 / 142 (lower-case colours return 0 on both: the route's colour match is case-sensitive, confirmed live) |
 | Ruff on changed files / Debug UI `tsc` | Clean / clean |
 | Debug UI in a real browser | "Do you have a red Toyota RAV4?" then "Used please. Anything bigger?": Search stock shows colour sent as `Red`, size loosened SUV → Minivan/Van/Truck, a used red F-150 loaded with its VIN |
+
+---
+
+## Phase A3 + A4: Answering stock questions and grounding — built and verified end to end (29 Sept 2026)
+
+Built first against a shell that this environment's command sandbox couldn't reach (its safety check kept failing
+to return a verdict), so the change was written and read back for internal consistency before any test could run.
+Once the sandbox recovered, the run surfaced 4 real bugs, none of them in `check_draft`'s core rules - listed
+under "Fixed after the first real test run" below - and every one is fixed and re-verified.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| `inventory` unhidden from Extract/Compose (item 0 / decision A); `inventory_query`/`inventory_checked_at` stay hidden | `agent/context_pack.py` (`HELD_FROM_MODELS`) |
+| Stock questions relabelled `answerable` (item 0) | `agent/offline_model.py` `_label`; `agent/llm.py` (`CustomerQuestion`, `EXTRACT_INSTRUCTIONS`) |
+| Compose answers from real stock: never a bare "no" (decision D), an alternative from Phase 2's own loosened search when there is one, otherwise an honest promise | `agent/offline_model.py` (`_stock_answer`, `_answers`); `agent/llm.py` (`COMPOSE_INSTRUCTIONS`) |
+| `sms_vins` / `email_vins` on every draft, capped at 2 / 3 (architecture decision 16) | `agent/llm.py` (`ComposedMessage`); `agent/offline_model.py` |
+| Grounding check: every named VIN is in this turn's `inventory`; a named trim or make must belong to one of the named records; a bare "not available" with no vehicle and no promise is rejected; "in stock"/"available" wording is only allowed once a real vehicle is named | `guardrails/draft_guard.py` (`_grounding`, `_mentioned`); wired in `agent/nodes/guard.py` |
+| A named vehicle's own year/miles are allowed numbers (decision C) - computed inside `check_draft` itself from `inventory` + the vins, not by the caller | `guardrails/draft_guard.py` |
+| `shown_vehicles` on `ConversationState`, capped at 10, per lead (decision F) | `agent/conversation.py` (`ShownVehicle`, `after_turn`); wired from `agent/turn.py` |
+| Loaded records marked `already_shown`, so a reply doesn't offer the same vehicle again as new | `agent/nodes/search_stock.py` |
+| `#badtrim` dev hint (an offline-only test tag): injects a trim not on the named vehicle so the grounding check and the one-rewrite path can be tested | `agent/offline_model.py` |
+| 24h channel switch never resends a named vehicle (decision L): Compose writes a stock-free version of whichever text named one (`sms_text_no_vehicles` / `email_subject_no_vehicles` / `email_body_no_vehicles`), and the follow-up is planned from that instead | `agent/llm.py`, `agent/offline_model.py`, `scheduler/followups.py` |
+| Tests: grounding rejections and acceptances direct on `check_draft`; full-turn tests for a real answer, an honest "nothing found," the already-shown rule, the `#badtrim` rewrite, and the channel-switch substitution; `shown_vehicles` capping and per-lead isolation | `tests/unit/test_stock_answers.py` (new) |
+| Phase 2's own tests updated for the label flip and for `inventory` now reaching Compose | `tests/unit/test_shopping_criteria.py`, `tests/unit/test_understanding.py` |
+| Scenarios: a real answer + an honest "nothing found" (one file); the `#badtrim` guard rejection and clean rewrite (one file) | `scenarios/p3_do_you_have.yaml`, `scenarios/p4_invented_trim.yaml` (new) |
+
+### Fixed after the first real test run
+
+Four real bugs, caught by the first `make ai-test` run this environment could actually complete, not by reading
+the code back:
+
+1. **A denial paired with a promise was still rejected.** "Sorry, we don't have that in stock." contains the exact
+   words "in stock" that the *affirmative* availability check also scans for, so it fired a second, wrong violation
+   even though the promise made the denial acceptable. Fixed by excluding any availability-pattern match that
+   overlaps a recognised denial phrase - the two checks now share which words they've already claimed, in
+   `guardrails/draft_guard.py`'s `_grounding`.
+2. **The "no stock at all" fallback text tripped the guard's own availability check.** The wording "I'm not seeing
+   one **in stock** right now" contains the same trigger phrase. Reworded to "I'm not seeing a matching one right
+   now" in `agent/offline_model.py`'s `_stock_answer`, which sidesteps the phrase entirely rather than special-casing it.
+3. **A test added stock mid-conversation and expected the second search to see it, but hit the 60-second cache**
+   from the first search with identical parameters. Not a product bug - the cache is deliberate
+   (`tools/inventory_tool.py`) - but a test bug: fixed by calling `clear_cache()` between the two turns in
+   `tests/unit/test_stock_answers.py`.
+4. **Two Phase 2-era tests asserted the old, since-changed behaviour on purpose left over from before this phase**:
+   `test_shopping_criteria.py`'s "the compose input trace never contains inventory" (that trace has never carried
+   `context` at all, before or after this change - not what proves anything either way; rewritten to check the
+   compose *output* actually names the loaded vehicle instead) and `test_understanding.py`'s
+   `test_question_labels` still expecting "Is the blue one still available?" to be `restricted`. Both updated to
+   the Phase 3 behaviour the plan itself calls for.
+
+### Verification (29 Sept 2026)
+
+| Check | Result |
+|---|---|
+| AI unit tests (`make ai-test`) | 736 passed (719 before this phase; +17 in `test_stock_answers.py`, net of the Phase 2 test updates) |
+| Offline eval gate (`pytest evals`) | 56 / 56 |
+| Promptfoo injection suite | Not run this session - `npx` failed with its own lock-file error (`ECOMPROMISED`), unrelated to this change; not retried |
+| Scenarios, live in Docker (`make ai-scenarios`) | 39 / 41. The 2 failures are the pre-existing platform-auth parity checks (`s6_customer360_parity`, `p1_inventory_parity`), which need the platform's web server running with a valid token - not a regression from this phase, and not run against it this session |
+| Ruff on all changed files | Clean |
+| Burst test (`make ai-burst`, 300 replies over 600s) | 8 / 8 checks: 0 errors, 0 template fallbacks, 0 handoffs, reply p95 2.57 s (max 10.5 s), dealer A never above its in-flight cap, the other dealer's first reply unaffected |
+
+### What's deferred (explicitly, not silently dropped)
+
+- **Decision G, resolving "the second one" / "the silver one" to a VIN.** Needs a new `selected_vin` field on
+  `ExtractionResult`, a new context-pack layer of the last reply's shown vehicles (with their details) for Extract
+  to read, and the offline model's short-reply matching extended to ordinals and colours. Scoped but not built:
+  today, a customer referring back to a shown vehicle this way gets the normal short-reply handling, which won't
+  resolve it to that vehicle. Not a regression - this is new behaviour Phase 3 doesn't yet add.
+- **Decision H, links and MMS images (Phase 0 items 4 and 7).** A whole separate feature: `InventoryRecord.photo_url`,
+  an image-reachability/size check, `OutboundMessage.media_urls`, `channels/twilio.py` `MediaUrl` support, and the
+  `MMS_ENABLED` rollout switch. Today's replies never include a link or a photo, same as before this phase; that's
+  the "otherwise personalise around intent, with no vehicle" branch of the client's own fallback order, so it's
+  a safe (if less complete) default, not a broken one.
+- **Decision E's extra budget-only search.** When Phase 2's loosened search still finds nothing at all, this phase
+  falls straight to "the team will let you know," rather than first trying a broader budget-only search across every
+  body type. A real improvement to try later; the honest-promise fallback is the safety-critical half of decision D
+  and is built.
+- **Vehicle colour isn't grounded**, only VIN, trim and make. Colours are open vocabulary (there's no fixed list to
+  check a claimed colour against, unlike the fixed trim-word and make lists), so a wrong colour claim isn't caught
+  by this phase's check. Decision O's narrower rule (the customer's own colour word is echoed back only in a
+  "not X, but…" sentence already backed by this turn's search) is followed by the prompt, but nothing in code
+  verifies it. Flagging as a real gap, not something decided away.
+- **The offline model always uses the SMS cap (2) for both channels**, rather than giving email its extra third
+  slot. A real model may use the full email cap; documented as a deliberate offline-model simplification, not a
+  bug, in `agent/offline_model.py`.
+
+### Known risk, not yet checked
+
+- The make/trim vocabulary check in `guardrails/draft_guard.py` runs on the whole message whenever any vehicle is
+  named, using a fixed word list (`TRIM_WORDS`, `KNOWN_MAKES` from `tools/inventory_tool.py`). Several trim words
+  are ordinary English words ("sport," "premium," "range," "standard"). If a real model's phrasing happens to use
+  one of these words for something other than a trim, the guard will reject the draft and force one rewrite - not
+  a wrong reply reaching the customer (the rewrite/template fallback still applies), but worth watching in the
+  real-model eval run for how often it fires without cause.

@@ -1,5 +1,6 @@
 """Guard (architecture §7): nothing the AI wrote is sent until it passes
-guardrails/draft_guard.py. One rewrite is allowed; a second failure sends
+guardrails/draft_guard.py, including the grounding check on any vehicle it
+named (MASTER_PLAN_3 Phase 4). One rewrite is allowed; a second failure sends
 the safe template and flags the lead for a human."""
 
 from typing import Any
@@ -56,8 +57,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # The dealer wrote the campaign: its name and offer may be repeated.
         known += [state.campaign.get(k) for k in ("name", "goal", "subject", "body")]
     known += known_from_sources(state)
-    result = check_draft(state.draft, customer_texts=customer_texts, known_values=known)
+    inventory = pack.get("inventory") or []
     draft = state.draft or {}
+    # check_draft itself allows a mentioned vehicle's own year/miles and does
+    # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
+    result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory)
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
     if jargon:

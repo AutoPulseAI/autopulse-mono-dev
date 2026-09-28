@@ -8,6 +8,10 @@ conversation itself, beyond the slot values. Stored on
   open_questions  the customer's questions no AI-written reply has answered yet
   promises        what our replies said the team would do
   last_topic      what the last reply was about
+  shown_vehicles  VINs this reply named (MASTER_PLAN_3 Phase 3 decision F), so
+                  the next turn doesn't offer the same vehicle as new. Stored
+                  on this lead's own state, so nothing is shared across leads
+                  or dealers.
 
 Updated only after a turn whose reply went out (sent, or failed and handed
 to the channel switch). Shadow turns change nothing: the customer never saw
@@ -21,6 +25,7 @@ from pydantic import BaseModel, Field
 
 MAX_OPEN_QUESTIONS = 10
 MAX_PROMISES = 10
+MAX_SHOWN_VEHICLES = 10
 # A clarification re-explains our last question: it doesn't count as asking again,
 # and what we last asked stays what the customer is answering.
 KEEPS_LAST_ASK = {"clarify"}
@@ -46,6 +51,12 @@ class Promise(BaseModel):
     turn: int = 0
 
 
+class ShownVehicle(BaseModel):
+    vin: str
+    turn: int = 0
+    channel: str | None = None
+
+
 class ConversationState(BaseModel):
     turn: int = 0
     asks: dict[str, SlotAsks] = Field(default_factory=dict)
@@ -53,6 +64,7 @@ class ConversationState(BaseModel):
     open_questions: list[OpenQuestion] = Field(default_factory=list)
     promises: list[Promise] = Field(default_factory=list)
     last_topic: str | None = None
+    shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
 
 
 def _key(text: str) -> str:
@@ -107,12 +119,16 @@ def after_turn(
     new_questions: list[dict | str],
     used_template: bool,
     promises: list[str],
+    shown_vins: list[str] | None = None,
+    channel: str | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
     the questions the AI-written reply says it answered. The customer's new
     questions are recorded even if nothing was sent, so they're answered next
-    time."""
+    time. `shown_vins`: the vehicles the reply that actually went out named
+    (MASTER_PLAN_3 Phase 3 decision F), so the next turn doesn't offer them
+    again as new."""
     if shadow:
         return state
     at = now.isoformat()
@@ -140,8 +156,14 @@ def after_turn(
             if _key(text) and _key(text) not in made:
                 updated.promises.append(Promise(text=text.strip(), made_at=at, turn=updated.turn))
                 made.add(_key(text))
+        shown = {v.vin for v in updated.shown_vehicles}
+        for vin in shown_vins or []:
+            if vin and vin not in shown:
+                updated.shown_vehicles.append(ShownVehicle(vin=vin, turn=updated.turn, channel=channel))
+                shown.add(vin)
         updated.last_topic = _topic(action, asked_slots, used_template)
 
     updated.open_questions = updated.open_questions[-MAX_OPEN_QUESTIONS:]
     updated.promises = updated.promises[-MAX_PROMISES:]
+    updated.shown_vehicles = updated.shown_vehicles[-MAX_SHOWN_VEHICLES:]
     return updated

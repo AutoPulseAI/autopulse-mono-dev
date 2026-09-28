@@ -1,6 +1,6 @@
 name: A turn loads the dealer's matching stock
 stage: 201
-description: A sales lead for a used RAV4 (an SUV). Since Phase 2 the search runs after Extract (Search stock), so the first turn already finds it from the lead form. It searches this dealer's stock and gives the AI at most 3 records, each with its VIN. Another dealer's RAV4 never comes back. Stock stays hidden from the models until the grounding check (Phase 4).
+description: A sales lead for a used RAV4 (an SUV). Since Phase 2 the search runs after Extract (Search stock), so the first turn already finds it from the lead form. It searches this dealer's stock and gives the AI at most 3 records, each with its VIN. Another dealer's RAV4 never comes back. `inventory` reaches the models from Phase 3 onward, now that the grounding check (Phase 4) exists to catch a wrong vehicle fact.
 steps:
   - add_stock:
       as: rav4s

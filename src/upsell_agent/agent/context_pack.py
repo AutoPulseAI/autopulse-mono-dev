@@ -22,9 +22,12 @@ Layers:
                   `source_id`, the criteria used (`inventory_query`) and when
                   they were loaded (`inventory_checked_at`); MASTER_PLAN_3
                   Phases 1-2. Empty when built; filled by Search stock
-                  (agent/nodes/search_stock.py), after Validate. Held back from the models
-                  (HELD_FROM_MODELS) until the grounding check (Phase 4) can
-                  catch a wrong vehicle fact.
+                  (agent/nodes/search_stock.py), after Validate. `inventory`
+                  itself reaches the models from Phase 3 onward, now that the
+                  grounding check (Phase 4, guardrails/draft_guard.py) can
+                  catch a wrong vehicle fact; `inventory_query` and
+                  `inventory_checked_at` stay held back (they carry the raw
+                  budget number and are never needed to write the reply).
 
 Tokens are estimated at CHARS_PER_TOKEN characters each: close enough for a
 budget, and it needs no tokenizer download.
@@ -49,8 +52,10 @@ LOAD_LIMIT = 60
 # One message longer than this is cut, so a pasted essay can't take the budget.
 MAX_MESSAGE_CHARS = 2000
 TRIMMED = " …[trimmed]"
-# Pack layers the models don't see yet. Shown in the Debug UI all the same.
-HELD_FROM_MODELS = frozenset({"budget", "inventory", "inventory_query", "inventory_checked_at"})
+# Pack layers the models don't see. Shown in the Debug UI all the same.
+# `inventory` itself is unhidden as of MASTER_PLAN_3 Phase 3: the grounding
+# check in guardrails/draft_guard.py now exists to catch a wrong vehicle fact.
+HELD_FROM_MODELS = frozenset({"budget", "inventory_query", "inventory_checked_at"})
 
 
 class PackMessage(BaseModel):
