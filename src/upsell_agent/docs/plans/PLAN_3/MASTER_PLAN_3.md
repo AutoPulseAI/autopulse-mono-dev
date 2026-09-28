@@ -134,7 +134,7 @@ Six client requirements were checked against `docs/client/` and `docs/data/` and
 4. **Links. Decided 26 Sept (architecture.md decision 15), overriding the line below.**
    - ~~SMS: none (Plan 1 rule).~~ **Client override:** the first quality response to a vehicle-specific lead includes a vehicle link and image, when both are verified available; link only if no image; image only if no clean link; otherwise personalize around intent instead of a vehicle (`docs/client/autpulse.workflowblueprint.png`, "6. FIRST QUALITY RESPONSE RULE" and "A. NO-RESPONSE CADENCE" Day 1 Touch 1).
    - Email: the vehicle's page on the dealer site, if the record has one. (Unchanged — the client didn't ask for a change here.)
-   - **Open question:** the live SMS Compose prompt (`agent/llm.py:166`) still says "no links" and needs updating once this phase is built, so the two documents don't disagree in the meantime.
+   - **Built in Phase 3 (28 Sept, decision 47)**, together with the SMS prompt's "no links" line.
 5. **How many vehicles per reply. Decided (architecture.md decision 16), unaffected by the 26 Sept client review.**
    - SMS: at most 2 named, from at most 3 loaded (the existing n8n SMS v8 rule).
    - Email: at most 3.
@@ -142,7 +142,7 @@ Six client requirements were checked against `docs/client/` and `docs/data/` and
 7. **Photos. Decided 26 Sept, overriding the line below.**
    - ~~Not in this plan (SMS stays text-only).~~ **Client override:** item 4 above requires sending an actual vehicle image in SMS when no clean link is available, not just a link. This is a real vehicle photo (MMS), not text.
    - **Corrected 27 Sept:** the real Twilio driver is built and live-capable (`channels/twilio.py`, wired via `CHANNEL_DRIVER=live` in `channels/live.py`/`config.py`; the rollout runbook already lists it as a go-live item). It is text-only: `TwilioSmsDriver.send()` posts `To`/`From`/`Body` to Twilio's Messages API and never sets `MediaUrl`.
-   - **Decided 27 Sept (architecture.md decision 21): MMS through Twilio.** `channels/twilio.py` gains `MediaUrl` support (and `channels/fake.py` the same), sending the vehicle's own `imagesSecure` URL, no re-hosting. Before sending, code checks the image URL is public and under the carrier size limit (about 5 MB); if not, the message falls back per item 4's order (link only, then no vehicle). Never an unrelated or stand-in photo. Still to do before it's live: a cost review (an MMS costs roughly 3× an SMS). No dependency on Part B or C.
+   - **Decided 27 Sept (architecture.md decision 21): MMS through Twilio.** `channels/twilio.py` gains `MediaUrl` support (and `channels/fake.py` the same), sending the vehicle's own `imagesSecure` URL, no re-hosting. Before sending, code checks the image URL is public and under the carrier size limit (about 5 MB); if not, the message falls back per item 4's order (link only, then no vehicle). Never an unrelated or stand-in photo. Still to do before it's live: a cost review (an MMS costs roughly 3× an SMS). No dependency on Part B or C. **Built in Phase 3 (28 Sept, decision 47)**, behind a per-dealer `MMS_ENABLED` switch until the cost review is done.
 
 Write the answers into architecture.md.
 
@@ -229,6 +229,38 @@ Write the answers into architecture.md.
 
 ## Phase 3: Answering stock questions
 
+> **Readiness review, 28 Sept (Phases 3 and 4 together).** Checked against the running code before building.
+>
+> **Decided** (A–E):
+>
+> - **A. Phases 3 and 4 are built and shipped as one change** (architecture.md decision 40). Search stock keeps `inventory` hidden from the models (`HELD_FROM_MODELS` in `agent/context_pack.py`) until the grounding check exists. Shipping Phase 3 alone would let vehicle mentions with no check behind them reach customers. So `inventory` is unhidden in the same change that adds Phase 4's check, and every open item in Phases 3 and 4 is settled here before implementation starts. `budget` and `inventory_query` stay hidden.
+> - **B. The offline model's stock answering moves from Phase 6 item 4 into Phase 3** (decision 41). Phase 3's scenarios (`p3_do_you_have`, `p3_none_in_stock`) run on the offline model, so they can't pass without it. The scope doesn't change, only which phase owns it. The offline model answers stock questions by fixed rules from the `inventory` layer only. It fills `mentioned_vins` with the VINs it names and never names a vehicle outside `inventory`, and it follows the same alternative-or-promise order as item 1 below. `#badtrim` (Phase 4's test tag) ships in the same change, since Phases 3 and 4 ship together.
+>
+> - **C. The guard is narrowed, not removed** (decision 42, 28 Sept). **Why it exists:** the client's rule "Never invent information, approvals, pricing, trade values, availability" (`docs/data/conversations.md` rule 8; also its "must never … invent vehicle availability"), built in Plan 1 Stage 8 as `guardrails/draft_guard.py`. At that time the AI had no stock data, so *any* availability claim was necessarily invented, and a blanket block ("in stock", "still available", "on the lot") was the simplest way to enforce the rule. The number check was written for prices, trade values and payments (its docstring); a vehicle's year and miles weren't in view. The client rule stays. What changes is that availability can now be *verified*, so the blanket block is replaced by a verified one:
+>   - availability wording is allowed only when `mentioned_vins` is not empty and every VIN in it is in this turn's `inventory` (Phase 4 checks the rest of the vehicle details);
+>   - a vehicle's year and miles are allowed only from a record in `mentioned_vins`, not from any loaded record;
+>   - money amounts (`$`, "k" next to price words) are never allowed from vehicle records; prices stay restricted (Phase 0 item 3).
+> - **D. "Not available" plus an alternative is allowed; a bare no is not** (decision 43, 28 Sept). The client forbids a *bare* no, not a no with an alternative: "Not in white, but we have it in silver — want details?" is the wanted reply. Decide chooses the outcome in code: `offer_vehicles` (with VINs) or `promise_to_check`. The guard:
+>   - rejects a reply to a stock question that names no vehicle and makes no promise (the bare no);
+>   - allows "not available" wording ("don't have", "not in white") only when the same reply names a loaded vehicle or records a promise;
+>   - allows it only when it's true: this turn's search actually ran and its exact step found nothing. Otherwise saying "we don't have it" is itself invented availability.
+> - **E. When all five loosening steps find nothing** (decision 44, 28 Sept; our default, flagged for client feedback). Follows the blueprint's "best-fit alternatives", "vehicles in similar price/payment range" and "upcoming inventory":
+>   1. with a known budget, the dealer's stock in the customer's condition (new or used) within that budget, marked as a budget match in the trace;
+>   2. otherwise, a promise that the team will let them know when one arrives.
+>
+>   It never offers stock picked at random. Every alternative records *why* it was offered: a loosening step or the budget.
+
+> - **F. `shown_vehicles`, stored per lead** (decision 45). A new field on `ConversationState` (`agent/conversation.py`): a list of `{vin, turn, channel}`, capped at 10 like `promises`. Conversation state is already saved on the lead's own state record (`agent/turn.py`) and loaded from it (`load_context`), so each lead has its own list; nothing is shared across leads or dealers. A test proves that two leads at the same dealer, shown different vehicles, never see each other's list. Shown vehicles stay in search results but are marked `already_shown`: Compose doesn't offer one again as new, but can talk about it when the customer asks. If every loaded vehicle was already shown, Decide treats it as "nothing new" and goes to the next loosening step or decision 44's fallback.
+> - **G. "The second one" / "the silver one" is resolved in code** (decision 46). Extract gets the last reply's shown vehicles in order (VIN, year, make, model, trim, colour) and outputs `selected_vin`. Code accepts it only if that VIN is in this lead's `shown_vehicles`, then fills `interest.model` from the record as platform-verified, with a new `source_vin` on the slot's provenance (`slots/profile.py`). A reference that could mean more than one vehicle becomes a `clarify` question, never a guess.
+> - **H. Links and MMS images both ship in Phase 3** (decision 47). See item 5 below. Phase 0 items 4 and 7 are built here.
+> - **I. Stock and price in one message** (decision 48). Two questions: stock `answerable`, price `restricted`. The reply answers stock and says the team will confirm pricing. The guard still rejects any price (decision 42). Test and scenario `p3_stock_and_price.yaml`.
+> - **J. Done when** (decision 49). See the end of this phase.
+> - **K. Sold cars: still assumed in stock** (decision 50). The 27 Sept interim decision (Phase 0 item 1) stands for Phases 3 and 4. Every record `/api/car` returns counts as in stock until C5's "Sold" outcome exists. Known gap, unchanged.
+> - **L. The 24h channel switch sends a stock-free version** (decision 51). Until Phase 5 exists, Compose writes a stock-free version of the other channel's message alongside the normal one, and `scheduler/followups.py` always stores and sends that one. No vehicle is named 24h after it was checked. Phase 5 later changes this to "re-check, and send the vehicle version if all its vehicles are still there".
+> - **M. Vehicles per version: `sms_vins` and `email_vins`** (decision 52), replacing a single `mentioned_vins`. The guard checks each version against its own list and its own limit (SMS ≤ 2, email ≤ 3). Wherever this plan says `mentioned_vins`, it means the two lists.
+> - **N. Unlisted vehicle names are caught with a vocabulary built in code** (decision 53): the dealer's own distinct makes and models (from `/api/car`, cached like the colour list) plus a fixed list of common makes. A make or model in the text that matches none of the version's listed records is rejected.
+> - **O. The customer's own words** (decision 54). The customer's colour/model words are allowed *only* when echoing what they asked for in a "not X, but …" sentence, which decision 43 already requires to be backed by this turn's search. They never describe a vehicle we offer, and are never treated as a fact about our stock.
+
 0. **Relabel stock questions `answerable`.** Phase 2 split the stock-availability wording out of the price/financing detection rule but deliberately left it marked `restricted` (Phase 2 item 6), since nothing could yet answer it. This phase is what the label change is waiting for: flip stock-availability questions to `answerable` in the same change as item 1 below, so the label and the real behaviour ship together.
 1. **Decide:** a stock question with loaded results is answered by the `answer` rule, using the inventory layer. With no exact match, the reply is never a bare "not available" — the client's blueprint requires an alternative offered alongside it (`docs/client/autpulse.workflowblueprint.png`, "VEHICLE TYPE OVERRIDE RULE" / inventory guidance). Order:
    - Phase 2's loosened search found something close (different colour, trim, year, or the same body type from another make): offer that instead ("Not in white, but we have it in silver — want details?").
@@ -245,6 +277,16 @@ Write the answers into architecture.md.
    - Interest in a shown vehicle fills `interest.model` with its details and source VIN.
 4. **Still restricted:** holding a vehicle, price, discounts, payments, trade-in value and booking a test drive. These get "the team will confirm", as today.
 
+5. **Links and vehicle images (Phase 0 items 4 and 7, decision 47).** For the first quality reply to a lead tied to a specific vehicle, in the client's order: link + image when both are verified; link only if no image; image only if no clean link; otherwise personalise around intent, with no vehicle.
+   - **Record:** `InventoryRecord` gains `photo_url` (the first of `/api/car`'s `media.photo_links`, which comes from `imagesSecure`). `page_url` already exists.
+   - **Link:** Compose may include only the `page_url` of a vehicle in that version's `sms_vins`/`email_vins`. The guard rejects any other URL. The SMS prompt's "no links" line (`agent/llm.py`) changes in the same change.
+   - **Image:** Compose returns `sms_media_vin` (one vehicle, from `sms_vins`); code, not the model, takes that record's `photo_url`. Before sending, code checks the URL is https, publicly reachable (HEAD 200), an image type, and ≤ 5 MB. If any check fails, the message falls back down the client's order. Never a stand-in or unrelated photo.
+   - **Driver:** `OutboundMessage` gains `media_urls`. `channels/twilio.py` sends each as `MediaUrl`; `channels/fake.py` records them. Consent, contact windows and idempotency are the same as SMS. The idempotency key covers the media, so a retry never sends a second picture.
+   - **Rollout switch:** `MMS_ENABLED` per dealer, off by default, so a dealer can go live on text + link while the MMS cost review (about 3× an SMS) is done. With it off, the order simply skips the image steps.
+   - **Debug UI and trace:** the chosen link, the image URL, each image check's result and the fallback step taken.
+   - **Tests:** each step of the fallback order; a URL not from a listed record rejected; each image check failing; the Twilio request carries `MediaUrl`; the switch off.
+   - **Scenario:** `p3_first_reply_media.yaml`: a vehicle lead gets link + image; with the image made unreachable, it gets link only.
+
 **Tests:**
 - Answer with results, answer with none.
 - `mentioned_vins` present.
@@ -254,6 +296,14 @@ Write the answers into architecture.md.
 **Scenarios:**
 - `p3_do_you_have.yaml`: a yes answer naming a real seeded vehicle.
 - `p3_none_in_stock.yaml`: no exact or close match — the reply offers the closest alternative or records a promise to check, never a bare no.
+- `p3_stock_and_price.yaml`: stock answered, price left to the team.
+- `p3_second_one.yaml`: "the second one" picks the right VIN; an ambiguous "the silver one" asks which.
+
+**Done when (Phases 3 and 4 together, decision 49):**
+- every Phase 3 and 4 scenario passes live in Docker;
+- zero grounding rejections left after the rewrite across the offline eval set;
+- the burst test still passes, with reply p95 within the current budget;
+- in the Debug UI, a stock answer shows `sms_vins`/`email_vins`, each matched to a loaded record, the guard result per vehicle, and the media choice.
 
 ---
 
@@ -279,7 +329,7 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 **Depends on Phase 0 item 1 being resolved.** Everything below assumes `get_vehicle` can tell a sold car from an available one. Until real feed data answers that, this phase's re-checks have nothing to check against — they'll pass every vehicle as fine, the same way Phase 1 currently assumes all-in-stock. This phase can be built now, but its actual safety guarantee (rollout's "sold vehicle mentioned: must be 0") doesn't hold until Phase 0 item 1 is answered.
 
 1. **Before the send:** if the turn took long, the mentioned VINs are re-checked with `get_vehicle` right before sending. A vehicle that sold in the meantime rejects the draft (rewrite without it).
-2. **24h channel switch:** the saved follow-up keeps its `mentioned_vins`. At fire time each is re-checked. If any sold, the stock-free version of the message is sent instead: Compose writes one alongside, the same way it already writes an SMS and an email version.
+2. **24h channel switch** (until this phase, the stock-free version is always sent, decision 51): the saved follow-up keeps its `mentioned_vins`. At fire time each is re-checked. If any sold, the stock-free version of the message is sent instead: Compose writes one alongside, the same way it already writes an SMS and an email version.
 3. ~~**Old records:** anything past Phase 0's freshness limit is never loaded.~~ Removed 27 Sept: no age limit (Phase 0 item 6).
 4. **Metric:** "sold vehicle mentioned". Must be 0 in the rollout check.
 
@@ -299,7 +349,7 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
    - which VINs the draft mentioned;
    - the grounding result per vehicle.
 3. **A simulator shortcut** to mark a vehicle sold, for testing freshness by hand.
-4. **Offline model:** answers stock questions from the inventory layer by simple rules, and `#badtrim` exercises the grounding check.
+4. ~~**Offline model:** answers stock questions from the inventory layer by simple rules, and `#badtrim` exercises the grounding check.~~ **Moved to Phase 3 (28 Sept, decision 41).** Phase 3's scenarios need it, and `#badtrim` ships with Phase 4 in the same change.
 
 ---
 

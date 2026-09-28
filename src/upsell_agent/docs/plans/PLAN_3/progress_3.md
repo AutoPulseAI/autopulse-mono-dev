@@ -7,8 +7,8 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept): Part A (exc
 | A0. Decisions | Done (architecture.md §15, decisions 14–36) |
 | A1. Inventory read layer | **Done, verified end to end (27 Sept 2026)** |
 | A2. Shopping criteria | **Done, verified end to end (27 Sept 2026)** |
-| A3. Answering stock questions | Not started |
-| A4. Grounding check | Not started |
+| A3. Answering stock questions | Not started. Built together with A4 (28 Sept); readiness review: decisions A–O recorded (28 Sept) (see MASTER_PLAN_3 Phase 3). Links and MMS moved into A3 |
+| A4. Grounding check | Not started. Built together with A3 |
 | A5. Freshness (sold re-checks) | Not started (needs a "sold" signal: C5's manager outcome) |
 | A6. Debug UI and dev inventory | Not started (Phase 1 added a first dev stock set and the Stock section) |
 | A7. Evals, shadow and rollout | Not started |
