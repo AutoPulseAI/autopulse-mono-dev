@@ -131,12 +131,17 @@ async def test_opted_out_channel_is_suppressed(mongo):
     assert await mongo[DEV_PLATFORM_MESSAGES_COLLECTION].count_documents({}) == 0
 
 
-async def test_phone_marked_sms_opt_in_false_is_suppressed(mongo):
+async def test_phone_marked_sms_opt_in_false_blocks_marketing_texts_not_replies(mongo):
+    # An explicit no stops texts the business starts; a reply to the customer
+    # still goes out (MASTER_PLAN_3 B0.4 step 1, architecture decision 36).
     created = await _lead()
     await mongo["customers"].update_one({}, {"$set": {"phones.0.sms_opt_in": False}})
     await mongo["leads"].update_one({}, {"$set": {"phone": None}})
-    outcome = await _sender().send(_request(created))
-    assert outcome.status == "suppressed" and "sms_opt_in" in outcome.reason
+    followup = await _sender().send(_request(created, turn="t-followup", purpose="marketing", is_reply=False))
+    assert followup.status == "suppressed" and "sms_opt_in" in followup.reason
+    assert followup.compliance["outcome"] == "BLOCK" and followup.compliance["rule"] == "explicit_no"
+    reply = await _sender().send(_request(created, turn="t-reply"))
+    assert reply.status == "sent"
 
 
 async def test_no_contact_on_file_is_suppressed(mongo):

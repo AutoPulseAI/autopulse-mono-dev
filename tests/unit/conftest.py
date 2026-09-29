@@ -33,6 +33,11 @@ def mongo():
 
 @pytest.fixture(autouse=True)
 def reset_clock():
+    # The eval harness pins every customer to New York (evals/harness.py); a
+    # run with both suites mustn't carry that into the unit tests.
+    from upsell_agent.compliance import customer_zone, engine
+
+    engine.customer_zone = customer_zone.customer_zone
     clock.set_offset(0)
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
@@ -40,6 +45,20 @@ def reset_clock():
     clock.set_offset(0)
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
+
+
+@pytest.fixture
+def ny_customer(monkeypatch):
+    """The customer lives in New York, like the dev dealer. Dev customers have
+    555 phones and no DealerVault address, so the send check would otherwise
+    use only the hours legal in every continental zone (MASTER_PLAN_3 B0.5)."""
+    from upsell_agent.compliance import engine
+    from upsell_agent.compliance.customer_zone import CustomerZone
+
+    async def fixed(_db, _customer_id, _phone):
+        return CustomerZone(("America/New_York",), "zip", "ZIP 10001 (test)", "NY")
+
+    monkeypatch.setattr(engine, "customer_zone", fixed)
 
 
 def set_clock(at: datetime) -> None:

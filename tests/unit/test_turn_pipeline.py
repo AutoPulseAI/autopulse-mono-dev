@@ -4,11 +4,11 @@ compose, guard with one rewrite, template fallbacks, the turn deadline, the
 AI-call budget, lead status, and campaign replies. Runs the actual LangGraph
 graph end to end."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from bson import ObjectId
 
-from tests.unit.conftest import make_settings
+from tests.unit.conftest import make_settings, set_clock
 from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps, run_turn
 from upsell_agent.devtools import simulate
@@ -212,6 +212,12 @@ async def test_email_reply_and_model_metrics(mongo):
 
 # --- Stage 9: campaign replies ----------------------------------------------------
 
+# A campaign reply is an outbound conversation: at night it asks nothing and
+# says the team picks up at 8:00 (MASTER_PLAN_3 C1, architecture decision 29).
+# These tests run at a fixed Tuesday 10:00 in New York.
+CAMPAIGN_DAYTIME = datetime(2026, 9, 22, 14, 0, tzinfo=UTC)
+
+
 async def _campaign(created, *, dealer=DEALER, days_ago=1, name="Spring Service Event"):
     from upsell_agent.integrations.mongodb import get_db
     campaign_id = ObjectId()
@@ -224,7 +230,8 @@ async def _campaign(created, *, dealer=DEALER, days_ago=1, name="Spring Service 
     return str(campaign_id)
 
 
-async def test_a_reply_to_a_campaign_is_answered_in_its_context(mongo):
+async def test_a_reply_to_a_campaign_is_answered_in_its_context(mongo, ny_customer):
+    set_clock(CAMPAIGN_DAYTIME)
     created = await _lead(lead_type="service")
     campaign_id = await _campaign(created)
     log = await _turn(created, "Yes please, can I book an oil change?")
@@ -239,7 +246,8 @@ async def test_a_reply_to_a_campaign_is_answered_in_its_context(mongo):
     assert _node(later, "load_context")["output"]["campaign"] is None
 
 
-async def test_a_campaign_named_after_a_model_with_digits_passes_the_guard(mongo):
+async def test_a_campaign_named_after_a_model_with_digits_passes_the_guard(mongo, ny_customer):
+    set_clock(CAMPAIGN_DAYTIME)
     # Burst test finding (Stage 12): "RAV4" was read as an invented number 4,
     # so every reply to this campaign failed the guard twice, went out as the
     # template and handed the lead to a person.

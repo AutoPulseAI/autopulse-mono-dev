@@ -36,6 +36,8 @@ from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender
+from upsell_agent.compliance import engine
+from upsell_agent.compliance.customer_zone import CustomerZone
 from upsell_agent.config import get_settings
 from upsell_agent.devtools import simulate
 from upsell_agent.events import handlers
@@ -60,6 +62,10 @@ def uses_real_models() -> bool:
     return "offline" not in (settings.model_extract, settings.model_compose)
 
 
+async def _new_york_customer(_db, _customer_id, _phone) -> CustomerZone:
+    return CustomerZone(("America/New_York",), "zip", "ZIP 10001 (evals)", "NY")
+
+
 def _deps() -> TurnDeps:
     return TurnDeps(settings=get_settings(), sink=MemoryTraceSink(),
                     sender=Sender(FakeChannelDriver(), StubPlatformClient(), retry_base_s=0))
@@ -70,6 +76,11 @@ async def _setup(case: dict[str, Any]) -> dict[str, str]:
     lead (whose first reply runs when `comments` is given or the trigger is a new lead)."""
     mongodb.set_db_for_tests(AsyncMongoMockClient()[f"evals_{ObjectId()}"])
     dealer_profile.clear_cache()
+    # Dev customers have 555 phones and no DealerVault address, so the send
+    # check would use only hours legal in every US zone, and a campaign reply
+    # at 10:00 New York (7:00 Los Angeles) would be held to "no questions"
+    # (MASTER_PLAN_3 C1). The evals judge replies, not zones: customers are in New York.
+    engine.customer_zone = _new_york_customer
     clock.set_offset((EVAL_NOW - datetime.now(UTC)).total_seconds())
     await simulate.ensure_platform_dealers()
     if case.get("dealer_info"):

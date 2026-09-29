@@ -252,7 +252,21 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         "questions": _questions(text),
         "wants_human": bool(_HUMAN.search(text)),
         **_sentiment(text),
+        **_possible_opt_out(text),
     }
+
+
+# Unclear opt-outs; the clear ones are caught in code first (compliance/opt_out.py).
+_MAYBE_OPT_OUT = re.compile(
+    r"why do you keep (?:texting|messaging|emailing|contacting)|too many (?:texts|messages|emails)|"
+    r"(?:getting|get) (?:a lot of|so many) (?:texts|messages|emails)|please stop\b|how do i (?:stop|unsubscribe)|"
+    r"who gave you my (?:number|email)|enough with the (?:texts|messages|emails)", re.IGNORECASE)
+
+
+def _possible_opt_out(text: str) -> dict[str, Any]:
+    if _MAYBE_OPT_OUT.search(text):
+        return {"possible_opt_out": True, "opt_out_confidence": 0.7}
+    return {"possible_opt_out": False, "opt_out_confidence": 0.0}
 
 
 def _label(question: str) -> str:
@@ -444,6 +458,11 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         body = f"Thanks, {name} - noted!"
         why = "Nothing to ask right now, so the reply just acknowledges the message."
+    if payload.get("quiet_hours"):
+        body += " The team will pick this up at 8:00 AM."
+        why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."
+    elif payload.get("hold_questions"):
+        why += " Possible opt-out under review: a plain reply, nothing asked or offered."
 
     if "#fallback" in text or ("#retry" in text and attempt == 1):
         body += " Plus $500 off, guaranteed!"

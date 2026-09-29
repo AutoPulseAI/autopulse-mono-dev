@@ -79,5 +79,6 @@ def _failed(span: NodeSpan, reason: str) -> dict[str, Any]:
     span.reasoning = [f"Extract failed: {reason}. Sending the template instead."]
     span.edge_label = "failed"
     return {"extraction": {"error": reason, "values": [], "questions": [], "wants_human": False, "upset": False,
-                           "upset_confidence": 0.0, "annoyed_at_bot": False},
+                           "upset_confidence": 0.0, "annoyed_at_bot": False, "possible_opt_out": False,
+                           "opt_out_confidence": 0.0},
             "fallback_reason": f"extract failed: {reason}"}

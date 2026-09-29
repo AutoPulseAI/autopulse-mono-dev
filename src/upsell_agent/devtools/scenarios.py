@@ -50,6 +50,13 @@ Steps (one key per step):
                       another dealer's); only_loaded = nothing else was given; loosened = the loosening steps,
                       in order; colour_sent = the colour spelling sent to /api/car
   compare_inventory:  {dealers: [A, B]}   stub vs live /api/car for the dev stock (needs the platform)
+  set_contact:        {lead, source?, dealervault?: bool, sms_opt_in?: bool|null, zip?, comments?}   the platform
+                      lead / customer as the send check reads them (MASTER_PLAN_3 C1); a zip is a DealerVault deal
+                      row (removed after the scenario). Use new_lead's send_event: false, then send_lead_created
+  expect_origin:      {lead, origin: inbound|outbound, timeout_s}   the lead's origin as the last turn saved it
+  campaign_check:     {lead, expect: ALLOW|HOLD|REVIEW|BLOCK, reason_contains?, until_local?: "HH:MM", timeout_s}
+                      the platform campaign worker's check request, answered by the worker (decision 66)
+  expect_followup's due_local: "HH:MM"   the follow-up's due time in the dealer's timezone
   sleep:              {seconds}
 
 Run from the CLI:  python -m upsell_agent.devtools.scenarios [name ...]
@@ -62,10 +69,12 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
 import yaml
+from bson import ObjectId
 from saq import Queue
 
 from upsell_agent import clock
@@ -73,11 +82,16 @@ from upsell_agent.config import get_settings
 from upsell_agent.devtools import compare_360, compare_inventory, simulate
 from upsell_agent.events.intake import accept_event
 from upsell_agent.events.models import LeadPausedEvent, LeadResumedEvent
+from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
+    AI_SEND_CHECKS_COLLECTION,
     AI_TURN_LOG_COLLECTION,
     DEV_OUTBOX_COLLECTION,
+    PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_DEALS_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     dealer_scoped_db,
     get_db,
@@ -116,6 +130,9 @@ class RunContext:
     changed_dealers: bool = False
     # add_stock alias -> the vehicles it inserted
     stock: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # set_contact's DealerVault rows and campaign_check's requests (removed after)
+    deals: list[Any] = field(default_factory=list)
+    send_checks: list[str] = field(default_factory=list)
 
     def lead(self, alias: str) -> dict[str, str]:
         if alias not in self.leads:
@@ -377,8 +394,6 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
     if kind == "send_campaign":
         from datetime import timedelta
 
-        from bson import ObjectId
-
         lead = ctx.lead(args["lead"])
         campaign_id = ObjectId()
         await get_db()["campaigns"].insert_one({
@@ -407,8 +422,6 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         return f"{len(results)} customers match between stub and live"
 
     if kind == "set_dealer_mode":
-        from bson import ObjectId
-
         from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
 
         dealer_id = DEALER_ALIASES.get(args["dealer"], args["dealer"])
@@ -459,6 +472,12 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             raise ScenarioFailed(f"follow-up goes to {last['to_channel']}, expected {args['to_channel']}")
         if "count" in args and count != int(args["count"]):
             raise ScenarioFailed(f"{count} follow-up(s) for this lead, expected {args['count']}")
+        if "due_local" in args:
+            profile = await dealer_profile(lead["dealer_id"])
+            due = last["due_at"].replace(tzinfo=UTC).astimezone(profile.tz).strftime("%H:%M")
+            if due != str(args["due_local"]):
+                raise ScenarioFailed(f"follow-up is due at {due} dealer time, expected {args['due_local']}"
+                                     f" ({last.get('reason')})")
         return f"follow-up to {last['to_channel']} is {last['status']}" + (
             f" ({last['reason']})" if last.get("reason") else "")
 
@@ -543,8 +562,6 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         return f"{len(texts)} message(s) sent and answered"
 
     if kind == "platform_reply":
-        from bson import ObjectId
-
         lead = ctx.lead(args["lead"])
         await asyncio.sleep(0.5)  # after the AI's draft, like a real n8n reply
         await get_db()["emails"].insert_one({
@@ -683,6 +700,73 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                                  f"{first['search']}: {first['problems'][0]}")
         return f"{len(results)} searches match between stub and live /api/car"
 
+    if kind == "set_contact":
+        lead = ctx.lead(args["lead"])
+        db = get_db()
+        lead_set: dict[str, Any] = {}
+        if "source" in args:
+            lead_set.update(source=args["source"], lead_source=args["source"])
+        if "comments" in args:
+            lead_set.update({"comments": args["comments"], "data.comments": args["comments"]})
+        if lead_set:
+            await db[PLATFORM_LEADS_COLLECTION].update_one({"_id": ObjectId(lead["lead_id"])}, {"$set": lead_set})
+        customer_set: dict[str, Any] = {}
+        if "dealervault" in args:
+            customer_set["dealervault_upload"] = bool(args["dealervault"])
+        if "sms_opt_in" in args:
+            customer_set["phones.0.sms_opt_in"] = args["sms_opt_in"]
+        if customer_set:
+            await db[PLATFORM_CUSTOMERS_COLLECTION].update_one({"_id": ObjectId(lead["customer_id"])},
+                                                               {"$set": customer_set})
+        if args.get("zip"):
+            inserted = await db[PLATFORM_DEALS_COLLECTION].insert_one(
+                {"dealer_id": lead["dealer_id"], "deal_number": f"scenario-{uuid.uuid4().hex[:8]}",
+                 "customer_id": ObjectId(lead["customer_id"]), "Zip": str(args["zip"]), "dev_scenario": True})
+            ctx.deals.append(inserted.inserted_id)
+        return ", ".join(f"{k}={v!r}" for k, v in args.items() if k != "lead")
+
+    if kind == "expect_origin":
+        lead = ctx.lead(args["lead"])
+
+        async def origin():
+            doc = await dealer_scoped_db(lead["dealer_id"]).collection(AI_LEAD_STATE_COLLECTION).find_one(
+                {"lead_id": lead["lead_id"]}) or {}
+            return doc.get("origin")
+
+        found = await _wait(origin, float(args.get("timeout_s", 10)), "the lead's origin")
+        if found.get("origin") != args["origin"]:
+            raise ScenarioFailed(f"lead is {found.get('origin')} ({found.get('rule')}), expected {args['origin']}")
+        return f"{found['origin']}: {found.get('rule')}"
+
+    if kind == "campaign_check":
+        lead = ctx.lead(args["lead"])
+        key = f"scenario:{uuid.uuid4().hex[:10]}"
+        checks = get_db()[AI_SEND_CHECKS_COLLECTION]
+        await checks.insert_one({
+            "request_key": key, "dealer_id": lead["dealer_id"], "campaign_id": "scenario",
+            "campaign_lead_id": key, "lead_id": lead["lead_id"], "customer_id": lead["customer_id"], "phone": None,
+            "channel": "sms", "purpose": "marketing", "status": "pending", "requested_at": clock.now(),
+            "dev_scenario": True})
+        ctx.send_checks.append(key)
+
+        async def answered():
+            entry = await checks.find_one({"request_key": key})
+            return entry if entry and entry.get("status") == "answered" else None
+
+        entry = await _wait(answered, float(args.get("timeout_s", 15)), "the send check's answer")
+        detail = f"{entry['decision']}: {entry.get('reason')}"
+        if entry["decision"] != args["expect"]:
+            raise ScenarioFailed(f"expected {args['expect']}, got {detail}")
+        if "reason_contains" in args and args["reason_contains"].lower() not in (entry.get("reason") or "").lower():
+            raise ScenarioFailed(f"reason {entry.get('reason')!r} doesn't mention {args['reason_contains']!r}")
+        if "until_local" in args:
+            profile = await dealer_profile(lead["dealer_id"])
+            until = entry["until"].replace(tzinfo=UTC).astimezone(profile.tz).strftime("%H:%M")
+            if until != str(args["until_local"]):
+                raise ScenarioFailed(f"held until {until} dealer time, expected {args['until_local']}")
+            detail += f" (until {until} dealer time)"
+        return detail
+
     if kind == "sleep":
         await asyncio.sleep(float(args.get("seconds", 1)))
         return "slept"
@@ -734,6 +818,10 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
 
         vins = [r["vin"] for rows in ctx.stock.values() for r in rows]
         await get_db()[PLATFORM_VEHICLES_COLLECTION].delete_many({"vin": {"$in": vins}, "dev_scenario": True})
+    if ctx.deals:
+        await get_db()[PLATFORM_DEALS_COLLECTION].delete_many({"_id": {"$in": ctx.deals}, "dev_scenario": True})
+    if ctx.send_checks:
+        await get_db()[AI_SEND_CHECKS_COLLECTION].delete_many({"request_key": {"$in": ctx.send_checks}})
     if ctx.changed_dealers:
         await simulate.ensure_platform_dealers()
     if ctx.moved_clock:

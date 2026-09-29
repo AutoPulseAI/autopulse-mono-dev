@@ -116,8 +116,10 @@ async def test_stop_opts_out_and_is_never_answered(mongo):
     assert result["status"] == "opted_out"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["status"] == "opted_out"
-    consent = await mongo["ai_consent"].find_one({"customer_id": created["customer_id"]})
-    assert consent["sms"]["allowed"] is False
+    # Consent is an add-only history (MASTER_PLAN_3 C1, decision 77).
+    [entry] = await mongo["ai_consent"].find({"customer_id": created["customer_id"]}).to_list(None)
+    assert entry["channel"] == "sms" and entry["consent_type"] == "opt_out"
+    assert entry["consent_status"] == "opted_out" and entry["consent_source"] == "customer_stop"
     [held] = await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
     assert held["outcome"] == "opted_out" and "STOP" in held["summary"]["reason"]
     assert await mongo[AI_MESSAGES_COLLECTION].count_documents(
@@ -134,8 +136,10 @@ async def test_start_after_stop_opts_back_in(mongo):
     assert result["status"] == "opted_in"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["status"] == "active"
-    consent = await mongo["ai_consent"].find_one({"customer_id": created["customer_id"]})
-    assert consent["sms"]["allowed"] is True
+    # The STOP stays on record; the START is a new entry (decision 77).
+    entries = await mongo["ai_consent"].find({"customer_id": created["customer_id"]}).sort(
+        "recorded_at", 1).to_list(None)
+    assert [e["consent_status"] for e in entries] == ["opted_out", "opted_in"]
 
 
 async def test_yes_is_a_normal_answer_unless_opted_out(mongo):

@@ -22,6 +22,7 @@ from typing import Any
 
 from upsell_agent import clock
 from upsell_agent.integrations.mongodb import (
+    AI_COMPLIANCE_LOG_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
@@ -106,6 +107,25 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         counts = staff_checks if row.get("kind") == KIND_HANDOFF_CHECK else followups
         counts[row["status"]] = counts.get(row["status"], 0) + 1
 
+    # The send check (MASTER_PLAN_3 C1/B3 item 6): decisions by outcome and
+    # rule; a text the system started, allowed outside the customer's window
+    # or the dealer's hours, must be 0. B2 item 5: lead sources the origin
+    # table couldn't map, for the client to classify.
+    send_checks: dict[str, dict[str, int]] = {}
+    outside_hours = 0
+    async for row in db.collection(AI_COMPLIANCE_LOG_COLLECTION).find(
+            {"logged_at": {"$gte": since}}, projection={"decision": 1, "rule": 1, "is_reply": 1, "checks": 1}):
+        by_rule = send_checks.setdefault(row.get("decision", "?"), {})
+        by_rule[row.get("rule", "?")] = by_rule.get(row.get("rule", "?"), 0) + 1
+        if row.get("decision") == "ALLOW" and not row.get("is_reply") and any(
+                c["rule"] in ("customer_time", "dealer_hours") and not c["passed"] for c in row.get("checks") or []):
+            outside_hours += 1
+    unmapped: dict[str, int] = {}
+    async for state in db.collection(AI_LEAD_STATE_COLLECTION).find(
+            {"origin.unmapped": True}, projection={"origin.source": 1}):
+        source = (state.get("origin") or {}).get("source") or "(none)"
+        unmapped[source] = unmapped.get(source, 0) + 1
+
     ai_turns = total - template_by_design
     return {
         "dealer_id": dealer_id, "days": days, "since": since.isoformat(),
@@ -127,6 +147,8 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         "sends": sends,
         "followups": followups,
         "staff_checks": staff_checks,
+        "send_checks": {"by_decision": send_checks, "sent_outside_allowed_hours": outside_hours},
+        "unmapped_lead_sources": dict(sorted(unmapped.items(), key=lambda kv: -kv[1])),
     }
 
 
@@ -152,5 +174,8 @@ def format_report(m: dict[str, Any]) -> str:
         f"  Sends:              {m['sends']}",
         f"  Follow-ups:         {m['followups']}",
         f"  Staff checks:       {m['staff_checks']}",
+        (f"  Send checks:        {m['send_checks']['by_decision']} "
+         f"(allowed outside hours: {m['send_checks']['sent_outside_allowed_hours']})"),
+        f"  Unmapped sources:   {m['unmapped_lead_sources'] or 'none'}",
     ]
     return "\n".join(lines)

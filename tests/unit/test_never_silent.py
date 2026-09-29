@@ -49,6 +49,8 @@ from upsell_agent.scheduler.contact_window import (
 
 NY = ZoneInfo("America/New_York")
 DEALER = simulate.DEV_DEALERS[0]["_id"]
+# The send check needs the customer's zone; dev customers have none (conftest.py).
+pytestmark = pytest.mark.usefixtures("ny_customer")
 
 
 def ny(day: int, hour: int, minute: int = 0) -> datetime:
@@ -283,8 +285,9 @@ async def test_switch_to_sms_planned_after_dark_waits_for_8am(mongo, dealers):
     created = await _lead(channel="email")
     [switch] = await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)
     assert switch["to_channel"] == "sms"
-    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(24, 8)).total_seconds()) < 5
-    assert "contact window" in switch["reason"]
+    # The send check: 8:00 customer time and the dealer open (9:00), architecture decision 24.
+    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(24, 9)).total_seconds()) < 5
+    assert "send check" in switch["reason"] and "dealer closed" in switch["reason"]
 
 
 async def test_switch_to_email_is_never_held(mongo, dealers):
@@ -303,13 +306,13 @@ async def test_sms_switch_due_after_dark_is_deferred_when_it_fires(mongo, dealer
     await followups.fire_due(_deps())
 
     doc = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": switch["_id"]})
-    assert doc["status"] == "pending" and "contact window" in doc["reason"]
-    assert abs((doc["due_at"].replace(tzinfo=UTC) - ny(23, 8)).total_seconds()) < 5
+    assert doc["status"] == "pending" and "send check" in doc["reason"]
+    assert abs((doc["due_at"].replace(tzinfo=UTC) - ny(23, 9)).total_seconds()) < 5
     assert await _outbox(mongo, created, "sms") == []
     turn = await mongo[AI_TURN_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "trigger": "followup"})
     assert turn["outcome"] == "followup_deferred"
 
-    set_clock(ny(23, 8, 1))
+    set_clock(ny(23, 9, 1))
     await followups.fire_due(_deps())
     assert len(await _outbox(mongo, created, "sms")) == 1
 
@@ -324,7 +327,7 @@ async def test_failed_email_switches_to_sms_only_inside_the_window(mongo, dealer
     await run_turn(dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
                    trigger="lead_created", channel="email", inbound_text="hi", shadow=False, deps=deps)
     [switch] = await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)
-    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(23, 8)).total_seconds()) < 5
+    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(23, 9)).total_seconds()) < 5
 
 
 async def test_debug_conversation_shows_each_sent_message_once(mongo, dealers):

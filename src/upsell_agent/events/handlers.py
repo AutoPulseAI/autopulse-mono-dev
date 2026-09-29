@@ -25,6 +25,7 @@ from upsell_agent.agent.turn import (
 )
 from upsell_agent.channels import consent
 from upsell_agent.channels.sender import SendRequest
+from upsell_agent.compliance.opt_out import NL_CONFIRMATION, detect_opt_out
 from upsell_agent.events.models import (
     InboundMessageEvent,
     LeadCreatedEvent,
@@ -202,15 +203,20 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         span.edge_label = "holding reply" if action == "holding_reply" else action.replace("_", " ")
 
     sent = None
-    if action == "holding_reply":
-        customer = await find_customer(db, event.customer_id)
-        lead = await find_lead(db, lead_id)
-        draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
+    if action in ("holding_reply", "opt_out_confirmation"):
+        if action == "holding_reply":
+            customer = await find_customer(db, event.customer_id)
+            lead = await find_lead(db, lead_id)
+            draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
+            text = draft["sms_text"] if channel == "sms" else draft["email_body"]
+            subject, purpose = None if channel == "sms" else draft["email_subject"], "transactional"
+        else:
+            text, subject, purpose = NL_CONFIRMATION, None if channel == "sms" else "Your request", \
+                "opt_out_confirmation"
         request = SendRequest(
             dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
-            channel=channel, text=draft["sms_text"] if channel == "sms" else draft["email_body"],
-            subject=None if channel == "sms" else draft["email_subject"], shadow=event.shadow,
-            event_received_at=received_at)
+            channel=channel, text=text, subject=subject, shadow=event.shadow, event_received_at=received_at,
+            purpose=purpose, is_reply=True)
         async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                         "text": request.text, "subject": request.subject}) as span:
             sent = await deps.sender.send(request)
@@ -219,7 +225,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
             span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
             span.edge_label = sent.status
         await tracer.skipped("schedule", "A holding reply never schedules a channel switch.")
-        if sent.status == "sent":
+        if sent.status == "sent" and action == "holding_reply":
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                 {"lead_id": lead_id}, {"$set": {"last_handoff_notice_at": clock.now(), "last_outbound_at": clock.now(),
                                                 "last_send_status": sent.status}})
@@ -227,7 +233,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         await tracer.skipped("send", reason)
         await tracer.skipped("schedule", "Nothing was sent.")
 
-    outcome = action if action in ("holding_reply", "opted_out", "opted_in") else "saved_only"
+    outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation") else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
         "batched": len(rows)})
@@ -260,19 +266,38 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         {"lead_id": lead_id}, {"$set": {"last_inbound_at": event.received_at}}
     )
 
-    # Carrier keywords, handled in code with no AI (architecture §5 step 3).
-    # The carrier sends its own confirmation, so we never reply to these.
+    # Opt-outs, handled in code with no AI (architecture §5 step 3,
+    # MASTER_PLAN_3 C1 item 3). A keyword stops its channel and the carrier
+    # confirms it; a phrase stops the channel it names (every channel when it
+    # names none) and gets one plain confirmation from us.
     for message in unanswered:
         keyword = consent.classify_keyword(message["text"])
         channel = message["channel"]
-        if keyword == "stop":
-            await consent.set_channel_consent(db, event.customer_id, channel, False, source="customer_stop")
-            await _set_status(db, lead_id, "opted_out", f"Customer replied STOP on {channel}")
-            await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_out",
-                               reason=f"The customer replied STOP on {channel}: opted out. The carrier sends its "
-                                      "own confirmation, so nothing is sent.",
+        opt_out = detect_opt_out(message["text"], channel)
+        if opt_out:
+            for stopped in opt_out.channels:
+                await consent.set_channel_consent(
+                    db, event.customer_id, stopped, False,
+                    source="customer_stop" if opt_out.kind == "keyword" else "customer_opt_out_phrase",
+                    lead_id=lead_id, evidence={"message": message["text"], "matched": opt_out.matched,
+                                               "message_id": str(message["_id"]), "channel": channel})
+            scope = ", ".join(opt_out.channels)
+            if channel in opt_out.channels:
+                await _set_status(db, lead_id, "opted_out",
+                                  f"Customer replied STOP on {channel}" if opt_out.kind == "keyword"
+                                  else f"Customer asked us to stop ({opt_out.matched!r}): {scope}")
+            if opt_out.kind == "keyword":
+                reason = (f"The customer replied STOP on {channel}: opted out. The carrier sends its own "
+                          "confirmation, so nothing is sent.")
+                action = "opted_out"
+            else:
+                reason = (f"The customer asked us to stop ({opt_out.matched!r}): opted out of {scope}. One plain "
+                          f"confirmation goes out on {channel}.")
+                action = "opt_out_confirmation"
+            await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                received_at=_parse_received_at(received_at))
-            return {"status": "opted_out", "channel": channel, "followups_cancelled": cancelled}
+            return {"status": "opted_out", "channel": channel, "channels": list(opt_out.channels),
+                    "kind": opt_out.kind, "followups_cancelled": cancelled}
         if keyword == "start" and await consent.is_opted_out(db, event.customer_id, channel):
             await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start")
             if state["status"] == "opted_out":
@@ -282,6 +307,12 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                       "its own confirmation, so nothing is sent.",
                                received_at=_parse_received_at(received_at))
             return {"status": "opted_in", "channel": channel, "followups_cancelled": cancelled}
+
+    # A possible opt-out under review is resolved by the customer writing
+    # again with something that isn't one (decision 72). This message may
+    # open a new review in its own turn.
+    await _resolve_review(db, event.customer_id, lead_id, "customer_wrote_again",
+                          {"message": unanswered[-1]["text"]})
 
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
@@ -324,8 +355,22 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
     return {"status": "paused", "followups_cancelled": cancelled}
 
 
+async def _resolve_review(db: DealerScopedDatabase, customer_id: str | None, lead_id: str, source: str,
+                          evidence: dict[str, Any]) -> bool:
+    if not customer_id or not await consent.open_review(db, customer_id):
+        return False
+    await consent.record_consent(db, customer_id=customer_id, channel="all", consent_type="review",
+                                 status="resolved", source=source, lead_id=lead_id, evidence=evidence)
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id}, {"$set": {"compliance_review": None}})
+    return True
+
+
 async def handle_lead_resumed(event: LeadResumedEvent) -> dict[str, Any]:
     db = dealer_scoped_db(event.dealer_id)
+    # An admin resuming the AI resolves an open review (decision 72).
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
+    await _resolve_review(db, state.get("customer_id"), event.lead_id, "admin_resumed_ai", {})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
         {"$set": {"status": "active", "status_reason": None, "resumed_at": clock.now()},

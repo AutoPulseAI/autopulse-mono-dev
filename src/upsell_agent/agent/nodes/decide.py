@@ -9,8 +9,24 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, questions_for_turn
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.state import AgentState
+from upsell_agent.compliance.opt_out import POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import UPSET_HANDOFF_CONFIDENCE, Flags, next_action
+
+
+def possible_opt_out(extraction: dict[str, Any]) -> bool:
+    """Extract thinks the message may be an opt-out, sure enough for REVIEW (C1 item 3)."""
+    return bool(extraction.get("possible_opt_out")) and float(
+        extraction.get("opt_out_confidence") or 0.0) >= POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE
+
+
+def hold_questions_reason(extraction: dict[str, Any], compliance: dict[str, Any] | None) -> str | None:
+    if possible_opt_out(extraction):
+        return (f"the message may be an opt-out (confidence {float(extraction.get('opt_out_confidence') or 0):.2f}); "
+                "a plain reply while staff review it, no asks and no offers")
+    if (compliance or {}).get("quiet_hours"):
+        return "an outbound conversation outside 8:00-21:00 customer time: the team picks up at 8:00"
+    return None
 
 
 async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
@@ -20,7 +36,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # Questions an earlier reply left unanswered (a template went out) come first.
     questions = questions_for_turn(conversation, list(extraction.get("questions") or []))
     status = (ctx.lead_state or {}).get("status")
+    hold = hold_questions_reason(extraction, ctx.compliance)
     decision = next_action(profile, Flags(
+        hold_questions=hold,
         opted_out=status == "opted_out",
         already_qualified=status == "qualified",
         stop_asking=status == "partly_qualified",
@@ -33,6 +51,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
         questions=questions,
     ))
+    if (ctx.compliance or {}).get("quiet_hours"):
+        decision["quiet_hours"] = {"resume_at": ctx.compliance.get("resume_at")}
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]
@@ -44,6 +64,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                               + (f", {carried} still open from earlier." if carried > 0 else "."))
     for skipped in decision["not_asked"]:
         span.reasoning.append(f"Not asking {skipped['label']}: {skipped['why']}.")
+    if hold:
+        span.reasoning.append(f"No questions this time: {hold}.")
     if extraction.get("annoyed_at_bot"):
         span.reasoning.append("The customer is frustrated with the conversation: no questions this time.")
     if extraction.get("upset") and decision["action"] != "handoff":

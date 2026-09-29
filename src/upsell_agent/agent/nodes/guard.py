@@ -56,6 +56,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # The dealer wrote the campaign: its name and offer may be repeated.
         known += [state.campaign.get(k) for k in ("name", "goal", "subject", "body")]
     known += known_from_sources(state)
+    if (state.decision or {}).get("quiet_hours"):
+        # The send check's own resume time (decision 29): "the team will pick this up at 8:00 AM".
+        known.append("8:00 AM")
     result = check_draft(state.draft, customer_texts=customer_texts, known_values=known)
     draft = state.draft or {}
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")

@@ -6,14 +6,17 @@ The order matters:
    idempotency key (`<turn>:<channel>`) BEFORE talking to any provider. A
    retried job finds the row and does not send again.
 2. **Find the recipient** from the lead, then the customer's primary contact.
-3. **Check consent** (channels/consent.py).
+3. **The send check** (compliance/engine.py `can_contact`, MASTER_PLAN_3
+   C1): ALLOW sends; HOLD leaves the row `held` (resumable) with the time it
+   may go; REVIEW and BLOCK suppress it with the reason. Every decision is
+   in the compliance log.
 4. **Send** through the channel driver, retrying retryable failures with a
    doubling delay.
 5. **Record it on the platform** so it shows in the dealer's conversation
    screen (BPLAN Phase 3). A recording failure never un-sends the message;
    it is stored on the row for follow-up.
 
-Row statuses: queued → sending → sent | failed; or suppressed / shadow.
+Row statuses: queued → sending → sent | failed; or held / suppressed / shadow.
 A row left in `sending` means a worker died mid-send and we cannot know if
 the provider got it; a retry marks it `unknown` and does NOT resend, because
 never double-messaging a customer beats never losing a message.
@@ -30,7 +33,8 @@ from pymongo.errors import DuplicateKeyError
 
 from upsell_agent import clock
 from upsell_agent.channels.base import ChannelDriver, ChannelSendError, OutboundMessage
-from upsell_agent.channels.consent import check_channel, resolve_recipient, set_channel_consent
+from upsell_agent.channels.consent import resolve_recipient, set_channel_consent
+from upsell_agent.compliance.engine import Purpose, can_contact
 from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
@@ -43,10 +47,10 @@ from upsell_agent.integrations.platform_client import PlatformClient
 logger = logging.getLogger(__name__)
 
 Channel = Literal["sms", "email"]
-SendStatus = Literal["sent", "failed", "suppressed", "shadow", "duplicate", "unknown"]
+SendStatus = Literal["sent", "failed", "held", "suppressed", "shadow", "duplicate", "unknown"]
 
 # A retry only resumes a row that never reached a provider.
-_RESUMABLE = {"queued"}
+_RESUMABLE = {"queued", "held"}
 PLATFORM_RECORD_ATTEMPTS = 3
 
 
@@ -64,6 +68,10 @@ class SendRequest:
     shadow: bool = False
     # When the platform event reached us, for the event-to-send latency.
     event_received_at: datetime | None = None
+    # For the send check (MASTER_PLAN_3 B2 item 6): what the message is for,
+    # and whether it answers a message the customer just sent.
+    purpose: Purpose = "marketing"
+    is_reply: bool = True
 
     @property
     def idempotency_key(self) -> str:
@@ -83,6 +91,9 @@ class SendOutcome:
     platform_record_id: str | None = None
     latency_ms: int | None = None
     reasoning: list[str] = field(default_factory=list)
+    # The send check's decision (compliance/engine.py), and for HOLD when it may go.
+    compliance: dict[str, Any] | None = None
+    hold_until: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -144,11 +155,23 @@ class Sender:
             return await finish("suppressed", reason=f"no {req.channel} contact on file")
         why.append(f"Recipient {to}")
 
-        # 3. Consent.
-        consent = await check_channel(db, req.customer_id, customer, req.channel, to)
-        why.append(f"Consent: {consent.reason}")
-        if not consent.allowed:
-            return await finish("suppressed", to=to, reason=consent.reason)
+        # 3. The send check.
+        check = await can_contact(
+            dealer_id=req.dealer_id, customer_id=req.customer_id, lead_id=req.lead_id, channel=req.channel,
+            purpose=req.purpose, is_reply=req.is_reply, to=to, lead=lead, customer=customer,
+            source="ai_reply" if req.is_reply else "ai_followup", request_id=key)
+        why.append(f"Send check: {check.summary()}")
+        compliance = check.as_dict()
+        if check.outcome == "HOLD":
+            outcome = await finish("held", to=to, reason=check.reason, held_until=check.until,
+                                   compliance=compliance)
+            outcome.compliance, outcome.hold_until = compliance, compliance["until"]
+            return outcome
+        if not check.allowed:
+            outcome = await finish("suppressed", to=to, reason=f"{check.outcome}: {check.reason}",
+                                   compliance=compliance)
+            outcome.compliance = compliance
+            return outcome
 
         # Shadow mode: the whole turn runs, nothing leaves (Stage 13).
         if req.shadow:

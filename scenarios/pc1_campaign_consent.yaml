@@ -1,0 +1,19 @@
+name: A campaign text needs consent; the send check answers the campaign worker
+stage: 301
+description: MASTER_PLAN_3 B3 (built in C1), decision 66. The platform's campaign worker asks the send check through the shared queue. A DealerVault contact with no text consent is blocked (the report shows "Blocked"); one who texted the dealer (opt-in flag) is allowed; a lead-form "TCPAOptIn true" alone needs review; the same campaign at 21:00 is held to the next allowed time.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: none, dealer: A, lead_type: sales, channel: sms, name: Nell Noconsent, comments: "", send_event: false}
+  - set_contact: {lead: none, source: "", dealervault: true, sms_opt_in: null, zip: "10001"}
+  - campaign_check: {lead: none, expect: BLOCK, reason_contains: "no text consent"}
+
+  - new_lead: {as: yes, dealer: A, lead_type: sales, channel: sms, name: Yuri Optin, comments: "", send_event: false}
+  - set_contact: {lead: yes, source: "", dealervault: true, sms_opt_in: true, zip: "10001"}
+  - campaign_check: {lead: yes, expect: ALLOW}
+
+  - new_lead: {as: form, dealer: A, lead_type: sales, channel: sms, name: Fern Form, comments: "", send_event: false}
+  - set_contact: {lead: form, source: "", dealervault: true, sms_opt_in: null, zip: "10001", comments: "TCPAOptIn: true; wants a truck"}
+  - campaign_check: {lead: form, expect: REVIEW, reason_contains: "CONSENT_REVIEW_REQUIRED"}
+
+  - advance_clock: {hours: 9}
+  - campaign_check: {lead: yes, expect: HOLD, until_local: "09:00"}

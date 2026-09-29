@@ -59,6 +59,8 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "clarify": decision.get("clarify"),
         "answer_questions": decision.get("answer_questions", []),
         "annoyed_at_bot": bool(decision.get("annoyed_at_bot")),
+        "hold_questions": decision.get("hold_questions"),
+        "quiet_hours": decision.get("quiet_hours"),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,
         "campaign": state.campaign,

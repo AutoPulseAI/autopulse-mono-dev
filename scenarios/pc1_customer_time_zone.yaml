@@ -1,0 +1,28 @@
+name: A follow-up text waits for the customer's 8:00 and the dealer's opening
+stage: 301
+description: MASTER_PLAN_3 B0.5 and B3 (built in C1). A New York dealer. A 24h follow-up text due at 9:00 New York goes at 9:00 to a New York customer (ZIP), waits until 11:00 New York (8:00 Los Angeles) for a Los Angeles customer (ZIP), and also waits until 11:00 for a customer with no ZIP or US area code (only hours legal in every zone).
+steps:
+  - advance_clock: {dealer: A, to: "Tue 09:00"}
+  - new_lead: {as: ny, dealer: A, lead_type: sales, channel: email, name: Nia York, comments: "Looking for a new RAV4", send_event: false}
+  - set_contact: {lead: ny, source: website, zip: "10001"}
+  - send_lead_created: {lead: ny}
+  - wait_turns: {lead: ny, count: 1, timeout_s: 20}
+  - expect_followup: {lead: ny, kind: channel_switch, status: pending, to_channel: sms, due_local: "09:00"}
+
+  - new_lead: {as: la, dealer: A, lead_type: sales, channel: email, name: Lars Angeles, comments: "Looking for a new RAV4", send_event: false}
+  - set_contact: {lead: la, source: website, zip: "90012"}
+  - send_lead_created: {lead: la}
+  - wait_turns: {lead: la, count: 1, timeout_s: 20}
+  - expect_followup: {lead: la, kind: channel_switch, status: pending, to_channel: sms, due_local: "11:00"}
+
+  - new_lead: {as: unknown, dealer: A, lead_type: sales, channel: email, name: Una Known, comments: "Looking for a new RAV4", send_event: false}
+  - set_contact: {lead: unknown, source: website}
+  - send_lead_created: {lead: unknown}
+  - wait_turns: {lead: unknown, count: 1, timeout_s: 20}
+  - expect_followup: {lead: unknown, kind: channel_switch, status: pending, to_channel: sms, due_local: "11:00"}
+
+  - advance_clock: {hours: 24.1}
+  - expect_followup: {lead: ny, kind: channel_switch, status: sent, timeout_s: 20}
+  - expect_followup: {lead: la, kind: channel_switch, status: pending}
+  - advance_clock: {hours: 2}
+  - expect_followup: {lead: la, kind: channel_switch, status: sent, timeout_s: 20}

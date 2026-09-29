@@ -1247,8 +1247,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -1353,7 +1353,7 @@ name = "importlib-metadata"
 version = "9.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6f/7e/1e7e8dc30634b93ebb3d58a3dea569ad146e656218d3960ab04f62047b29/importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99", size = 59124, upload-time = "2026-08-28T15:30:34.646Z" }
 wheels = [
@@ -2881,6 +2881,15 @@ wheels = [
 ]
 
 [[package]]
+name = "phonenumbers"
+version = "9.0.40"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/39/66db12a16eec873aa12411fc6da0fe052a86413fe117e208b51836b41740/phonenumbers-9.0.40.tar.gz", hash = "sha256:a0dd1bc98efa0b6f5839c7b1fface2ebdf0a811645dd8211ae3f037a17ec07ac", size = 2311069, upload-time = "2026-09-24T06:59:03.882Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/74/da/c266478ebea2b8d3176484e06756960d94d27cce2d7dc5ca3be6151cb9e3/phonenumbers-9.0.40-py2.py3-none-any.whl", hash = "sha256:189c028c4acd41ee80782e50f74a91260bd76d9115c83be94302509e1cdb5e84", size = 2594747, upload-time = "2026-09-24T06:59:00.564Z" },
+]
+
+[[package]]
 name = "platformdirs"
 version = "4.11.12"
 source = { registry = "https://pypi.org/simple" }
@@ -4055,8 +4064,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography" },
-    { name = "jeepney" },
+    { name = "cryptography", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
+    { name = "jeepney", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
@@ -4299,6 +4308,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-redis" },
     { name = "motor" },
+    { name = "phonenumbers" },
     { name = "pydantic" },
     { name = "pydantic-ai" },
     { name = "pydantic-settings" },
@@ -4309,6 +4319,7 @@ dependencies = [
     { name = "sse-starlette" },
     { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "zipcodes" },
 ]
 
 [package.optional-dependencies]
@@ -4334,6 +4345,7 @@ requires-dist = [
     { name = "mongomock-motor", marker = "extra == 'dev'", specifier = ">=0.0.36" },
     { name = "motor", specifier = ">=3.6" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
+    { name = "phonenumbers", specifier = ">=8.13" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-ai", specifier = ">=0.0.14" },
     { name = "pydantic-settings", specifier = ">=2.6" },
@@ -4347,6 +4359,7 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=2.1" },
     { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "zipcodes", specifier = ">=1.2" },
 ]
 provides-extras = ["dev"]
 
@@ -5078,6 +5091,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/38/02/eef443559563ef8f2e10469387b8b1e97cb5efee95b288a56da60801f7ee/yarl-1.25.1-cp315-cp315t-win_amd64.whl", hash = "sha256:b13b88747769537f3d32e89e3a735da10c0a9e35d7322928c701b5f93d3afffd", size = 106811, upload-time = "2026-09-15T19:34:54.935Z" },
     { url = "https://files.pythonhosted.org/packages/88/91/41e284ca2cf5211e05dae031d126a3668aea88fa759df56e7e35c6ad25ba/yarl-1.25.1-cp315-cp315t-win_arm64.whl", hash = "sha256:783dd1467083f4d3f7722ad6a313f24c173e7571372738fcb7a6e6d1ba48df25", size = 101804, upload-time = "2026-09-15T19:34:57.231Z" },
     { url = "https://files.pythonhosted.org/packages/54/22/318c7980066769c6bcd9221ed2248294f5698811da099013098c670565ed/yarl-1.25.1-py3-none-any.whl", hash = "sha256:681c758b0490f9e96b78e5fa8e8dc6e648e9185bb6eaebe73183c33ea0c445f3", size = 63617, upload-time = "2026-09-15T19:34:59.616Z" },
+]
+
+[[package]]
+name = "zipcodes"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/a6/4f0b4666c54eccffe057124b63e4385b80598dd94a967d6d5eb0a6363ae7/zipcodes-3.0.0.tar.gz", hash = "sha256:9a9426527f1288d334444a4de7d1960d9f6670bb26b843b274234fcf95ce4497", size = 734493, upload-time = "2026-06-14T19:15:04.83Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/0c/5c001eb2ee68cd143d57e2c23f47bc6eb88ed8bb8bd73876bd0541c626d3/zipcodes-3.0.0-cp39-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:70b1d5687930c186c883ef1c05cf76c3d05a68191162e2f3f47a132dc81571a7", size = 2032980, upload-time = "2026-06-14T19:14:57.465Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/6b/4ef5c0a557c042c18d87bcb8a00708083c9ab4d3d5660bc911134a9ef6bd/zipcodes-3.0.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6cb450f427d5568530e4c6a6a497c0d572eaacc987c6f75f8a92b206d6056280", size = 1031320, upload-time = "2026-06-14T19:14:59.025Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/0d/46a183b1c500f81d3013c423557a469b1a3daf2a08627f71fc718a9b94a0/zipcodes-3.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:862d8f6b6b82b50f5268ae2651cf08af1892526ea929fbe658d3872ebe395b1a", size = 1039810, upload-time = "2026-06-14T19:15:00.541Z" },
+    { url = "https://files.pythonhosted.org/packages/33/75/225120a686fb32df12719f1cdf363b701a0471507960f2393933677c3224/zipcodes-3.0.0-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:2f2ce64cd478f753ac9cda90095889e25b6f66cc3b1ebc0f30809d87e40d19a6", size = 1250571, upload-time = "2026-06-14T19:15:01.882Z" },
+    { url = "https://files.pythonhosted.org/packages/37/a0/9ab7dc8b1884141de27cc9677b25e98061eb5b46e9a2eabc3e748765e8b4/zipcodes-3.0.0-cp39-abi3-win_amd64.whl", hash = "sha256:57e61aa5182aaeec2a1f44af3d0358c54c0495aaa0c08f8aebb022c94aed5682", size = 930228, upload-time = "2026-06-14T19:15:03.291Z" },
 ]
 
 [[package]]

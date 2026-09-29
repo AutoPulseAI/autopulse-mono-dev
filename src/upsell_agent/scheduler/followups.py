@@ -34,10 +34,13 @@ unknown; or pending → superseded (a newer message replaced it).
   a staff alert is recorded on the lead. Once per handoff. A customer message
   doesn't cancel it; staff pausing or resuming the lead does.
 
-**Contact window** (decision 11): both are messages the AI starts on its own,
-so an SMS is only sent 8:00-20:00 in the dealer's timezone. One that falls
-outside is planned for, or pushed back to, the next 8:00
-(scheduler/contact_window.py).
+**The send check** (MASTER_PLAN_3 C1, compliance/engine.py): both are
+messages the system starts. The channel switch is marketing (consent, the
+3-per-24h cap), the handoff check transactional. An SMS goes out only inside
+the dealer's opening hours and the customer's own window (decisions 23-25).
+The due time is planned with the check, and a follow-up whose time comes
+outside it (a busy retry, a stuck claim, a clock move) goes back to pending
+until the time the check gives. A REVIEW or BLOCK suppresses it.
 """
 
 import asyncio
@@ -47,15 +50,16 @@ import os
 import socket
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
 from upsell_agent.agent.templates import render_holding_reply
-from upsell_agent.channels.consent import check_channel, resolve_recipient
+from upsell_agent.channels.consent import resolve_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
+from upsell_agent.compliance.engine import can_contact
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
@@ -70,11 +74,7 @@ from upsell_agent.integrations.mongodb import (
     get_db,
 )
 from upsell_agent.observability.trace import TurnTracer
-from upsell_agent.scheduler.contact_window import (
-    add_business_minutes,
-    is_proactive_sms_allowed,
-    proactive_send_time,
-)
+from upsell_agent.scheduler.contact_window import add_business_minutes
 from upsell_agent.worker.locks import Busy
 
 logger = logging.getLogger(__name__)
@@ -146,16 +146,18 @@ async def plan_followup(
     to = resolve_recipient(lead, customer, other)
     if not to:
         return {"created": False, "reason": f"no {other} contact on file"}
-    consent = await check_channel(db, customer_id, customer, other, to)
-    if not consent.allowed:
-        return {"created": False, "reason": f"{other}: {consent.reason}"}
 
     now = clock.now()
     # A permanent send failure doesn't wait a day: try the other channel now
     # (architecture §6 "Failed SMS" - same rule at send time).
     wanted = now if sent.status == "failed" else now + FOLLOWUP_DELAY
+    check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=other,
+                              purpose="marketing", is_reply=False, at=wanted, to=to, lead=lead, customer=customer,
+                              record=False)
+    if check.outcome in ("BLOCK", "REVIEW"):
+        return {"created": False, "reason": f"{other}: {check.outcome} - {check.reason}", "send_check": check.as_dict()}
     profile = await dealer_profile(db.dealer_id)
-    due_at = proactive_send_time(wanted, other, profile.tz)
+    due_at = check.until if check.outcome == "HOLD" and check.until else wanted
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     superseded = await followups.update_many(
         {"lead_id": lead_id, "status": "pending", **CHANNEL_SWITCHES},
@@ -164,7 +166,7 @@ async def plan_followup(
     held = due_at > wanted
     reason = f"{channel} send failed: switching now" if sent.status == "failed" else None
     if held:
-        reason = (reason + "; " if reason else "") + "SMS held to the 8:00-20:00 contact window"
+        reason = (reason + "; " if reason else "") + f"held by the send check: {check.reason}"
     doc = {
         "kind": KIND_CHANNEL_SWITCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "source_message_id": sent.message_id, "source_provider_id": sent.provider_id,
@@ -175,7 +177,7 @@ async def plan_followup(
     return {"created": True, "followup_id": str(inserted.inserted_id), "to_channel": other, "to": to,
             "due_at": due_at.isoformat(), "superseded": superseded.modified_count,
             "due_now": sent.status == "failed" and not held, "held_to_contact_window": held,
-            "timezone": profile.timezone}
+            "held_reason": check.reason if held else None, "timezone": profile.timezone}
 
 
 async def plan_handoff_check(
@@ -193,7 +195,9 @@ async def plan_handoff_check(
     now = clock.now()
     profile = await dealer_profile(db.dealer_id)
     after = add_business_minutes(now, HANDOFF_TIMEOUT_BUSINESS_MINUTES, profile.hours, profile.tz)
-    due_at = proactive_send_time(after, channel, profile.tz)
+    check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                              purpose="transactional", is_reply=False, at=after, record=False)
+    due_at = check.until if check.outcome == "HOLD" and check.until else after
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     await followups.update_many(
         {"lead_id": lead_id, "status": "pending", "kind": KIND_HANDOFF_CHECK},
@@ -202,7 +206,7 @@ async def plan_handoff_check(
         "kind": KIND_HANDOFF_CHECK, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": handoff_id,
         "handoff_id": handoff_id, "handoff_reason": handoff_reason, "from_channel": channel, "to_channel": channel,
         "text": None, "subject": None, "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0,
-        "reason": "SMS held to the 8:00-20:00 contact window" if due_at > after else None,
+        "reason": f"held by the send check: {check.reason}" if due_at > after else None,
     }
     inserted = await followups.insert_one(doc)
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
@@ -345,13 +349,11 @@ async def _fire_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         await tracer.skipped("send", f"Follow-up cancelled: {reason}.")
         await _log(db, tracer, "followup_cancelled", {"followup_id": followup_id, "reason": reason})
         return "cancelled"
-    if deferred := await _defer_outside_contact_window(db, doc, tracer):
-        return deferred
 
     request = SendRequest(
         dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
         turn_id=doc["source_turn_id"], channel=doc["to_channel"], text=doc["text"], subject=doc.get("subject"),
-        is_fallback=True,
+        is_fallback=True, purpose="marketing", is_reply=False,
     )
     async with tracer.node("send", {"channel": request.channel, "idempotency_key": request.idempotency_key,
                                     "text": request.text, "subject": request.subject}) as span:
@@ -360,6 +362,8 @@ async def _fire_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         span.reasoning = sent.reasoning
         span.metrics = {"attempts": sent.attempts}
         span.edge_label = sent.status
+    if sent.status == "held":
+        return await _defer(db, doc, tracer, sent)
     await tracer.skipped("schedule", "A switched message never schedules another one.")
 
     # "duplicate": an earlier attempt already got this far and sent it.
@@ -380,21 +384,16 @@ async def _log(db: DealerScopedDatabase, tracer: TurnTracer, outcome: str, summa
     await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
 
 
-async def _defer_outside_contact_window(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer) -> str | None:
-    """A proactive SMS whose time came outside 8:00-20:00 dealer time (a busy
-    retry, a stuck claim, a clock move) goes back to pending until 8:00."""
-    if doc["to_channel"] != "sms":
-        return None
-    profile = await dealer_profile(db.dealer_id)
-    now = clock.now()
-    if is_proactive_sms_allowed(now, profile.tz):
-        return None
-    due_at = proactive_send_time(now, "sms", profile.tz)
-    reason = f"outside the 8:00-20:00 SMS contact window ({profile.timezone}); held until 8:00"
+async def _defer(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer, sent: SendOutcome) -> str:
+    """The send check said HOLD (outside the customer's window or the
+    dealer's hours, or the 3-per-24h cap): back to pending until the time it
+    gave. The sender left its row `held`, so the retry resumes that row."""
+    due_at = datetime.fromisoformat(sent.hold_until) if sent.hold_until else clock.now() + BUSY_RETRY_AFTER
+    reason = f"held by the send check: {sent.reason}"
     await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
         {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
         {"$set": {"status": "pending", "due_at": due_at, "reason": reason}})
-    await tracer.skipped("send", f"Not sent: {reason}.")
+    await tracer.skipped("schedule", f"Not sent yet: {reason}.")
     kind = doc.get("kind") or KIND_CHANNEL_SWITCH
     await _log(db, tracer, "handoff_check_deferred" if kind == KIND_HANDOFF_CHECK else "followup_deferred",
                {"followup_id": str(doc["_id"]), "reason": reason, "due_at": due_at.isoformat()})
@@ -441,8 +440,6 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
         await tracer.skipped("send", f"Handoff check cancelled: {reason}.")
         await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason})
         return "cancelled"
-    if deferred := await _defer_outside_contact_window(db, doc, tracer):
-        return deferred
 
     customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
     draft = render_holding_reply("still_waiting", (customer or {}).get("name"))
@@ -451,7 +448,7 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
         dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
         turn_id=f"handoff-check-{check_id}", channel=channel,
         text=draft["sms_text"] if channel == "sms" else draft["email_body"],
-        subject=None if channel == "sms" else draft["email_subject"],
+        subject=None if channel == "sms" else draft["email_subject"], purpose="transactional", is_reply=False,
     )
     async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                     "text": request.text, "subject": request.subject}) as span:
@@ -460,6 +457,8 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
         span.reasoning = sent.reasoning
         span.metrics = {"attempts": sent.attempts}
         span.edge_label = sent.status
+    if sent.status == "held":
+        return await _defer(db, doc, tracer, sent)
     await tracer.skipped("schedule", "A handoff check happens once per handoff.")
 
     now = clock.now()

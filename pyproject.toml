@@ -48,6 +48,11 @@ dependencies = [
     # IANA timezones for dealer business hours and the SMS contact window;
     # Windows and slim images have no system timezone database.
     "tzdata>=2024.1",
+
+    # The customer's own time zone for the send check (MASTER_PLAN_3 B0.5):
+    # ZIP -> zone and state, and area code -> zone. Both are offline tables.
+    "zipcodes>=1.2",
+    "phonenumbers>=8.13",
 ]
 
 [project.optional-dependencies]

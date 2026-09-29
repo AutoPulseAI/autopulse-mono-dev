@@ -1,0 +1,28 @@
+name: Every lead is inbound or outbound, and unknown is outbound
+stage: 301
+description: MASTER_PLAN_3 B2 (built in C1). A website-provider lead is inbound; a DealerVault contact, a campaign reply and a lead with no source are outbound.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: web, dealer: A, lead_type: sales, channel: sms, name: Wendy Web, comments: "Is the RAV4 still there?", send_event: false}
+  - set_contact: {lead: web, source: AutoTrader}
+  - send_lead_created: {lead: web}
+  - wait_turns: {lead: web, count: 1, timeout_s: 20}
+  - expect_origin: {lead: web, origin: inbound}
+
+  - new_lead: {as: dv, dealer: A, lead_type: sales, channel: sms, name: Dan Vault, comments: "", send_event: false}
+  - set_contact: {lead: dv, source: "", dealervault: true}
+  - send_lead_created: {lead: dv}
+  - wait_turns: {lead: dv, count: 1, timeout_s: 20}
+  - expect_origin: {lead: dv, origin: outbound}
+
+  - new_lead: {as: camp, dealer: A, lead_type: service, channel: sms, name: Cam Paign, comments: "", send_event: false}
+  - send_campaign: {lead: camp, name: Fall Service Event, body: "Fall service specials this week!"}
+  - reply: {lead: camp, text: "Tell me more"}
+  - wait_turns: {lead: camp, count: 1, timeout_s: 20}
+  - expect_origin: {lead: camp, origin: outbound}
+
+  - new_lead: {as: none, dealer: A, lead_type: sales, channel: sms, name: Nora None, comments: "", send_event: false}
+  - set_contact: {lead: none, source: ""}
+  - send_lead_created: {lead: none}
+  - wait_turns: {lead: none, count: 1, timeout_s: 20}
+  - expect_origin: {lead: none, origin: outbound}

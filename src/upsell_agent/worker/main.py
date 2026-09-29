@@ -5,6 +5,7 @@ Run with:  saq upsell_agent.worker.main.settings
 Scale by running more of these; each one is stateless apart from MongoDB and Redis.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -14,12 +15,14 @@ from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps
 from upsell_agent.channels import get_channel_driver
 from upsell_agent.channels.sender import Sender
+from upsell_agent.compliance import send_checks
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import close_mongo, ensure_indexes, init_mongo
 from upsell_agent.integrations.platform_client import get_platform_client
 from upsell_agent.integrations.redis_client import close_redis, get_redis, init_redis
 from upsell_agent.observability.trace import NullTraceSink, RedisTraceSink
 from upsell_agent.observability.tracing import init_tracing, shutdown_tracing
+from upsell_agent.scheduler.followups import worker_id
 from upsell_agent.worker.jobs import FUNCTIONS, fire_due_followups
 from upsell_agent.worker.queue import make_enqueue, make_queue
 
@@ -54,6 +57,10 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["deps"] = build_turn_deps(settings)
     # Turns queue follow-up work (the rolling summary) on this worker's own queue.
     ctx["deps"].enqueue = make_enqueue(ctx["worker"].queue)
+    # Answers the platform campaign worker's send-check requests every 2s
+    # (MASTER_PLAN_3 decision 66): faster than a per-minute cron, so a
+    # campaign isn't slowed down by waiting for its answers.
+    ctx["send_checks"] = asyncio.create_task(send_checks.run_forever(worker_id()))
     logger.info(
         "worker started (environment=%s, dev=%s, channel_driver=%s, platform_client=%s, first_reply=%s, "
         "models=%s/%s)",
@@ -63,6 +70,8 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
+    if task := ctx.get("send_checks"):
+        task.cancel()
     shutdown_tracing()
     await close_mongo()
     await close_redis()

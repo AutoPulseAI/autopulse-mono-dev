@@ -175,9 +175,15 @@ AI_MESSAGES_COLLECTION = "ai_messages"
 SCHEDULED_FOLLOWUPS_COLLECTION = "scheduled_followups"
 AI_EVENTS_COLLECTION = "ai_events"
 AI_TURN_LOG_COLLECTION = "ai_turn_log"
-# Per customer and channel: has the customer opted out (STOP) or back in
-# (START)? Checked right before every send (architecture §9).
+# Consent history, add-only (MASTER_PLAN_3 C1, decision 77): opt-outs and
+# opt-ins, marketing consent evidence, open reviews (channels/consent.py).
 AI_CONSENT_COLLECTION = "ai_consent"
+# Every send check's decision, add-only, kept 5 years (compliance/engine.py).
+AI_COMPLIANCE_LOG_COLLECTION = "ai_compliance_log"
+# Shared with the platform's campaign worker (decision 66): it writes one
+# check request per campaign text; this service writes the answer onto that
+# entry only (compliance/send_checks.py).
+AI_SEND_CHECKS_COLLECTION = "ai_send_checks"
 # DEV only: where the fake channel driver "sends" to (channels/fake.py).
 DEV_OUTBOX_COLLECTION = "dev_outbox"
 
@@ -196,6 +202,8 @@ PLATFORM_EMAIL_ACCOUNTS_COLLECTION = "emailaccounts"
 
 EVENT_DEDUPE_TTL_S = 7 * 24 * 3600
 TURN_LOG_TTL_S = 90 * 24 * 3600
+# Longer than the TCPA's 4-year window for lawsuits (decision 77).
+COMPLIANCE_RETENTION_S = 5 * 366 * 24 * 3600
 
 INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     AI_LEAD_STATE_COLLECTION: [
@@ -227,7 +235,20 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
         ([("received_at", 1)], {"expireAfterSeconds": EVENT_DEDUPE_TTL_S}),
     ],
     AI_CONSENT_COLLECTION: [
-        ([("dealer_id", 1), ("customer_id", 1)], {"unique": True}),
+        ([("dealer_id", 1), ("customer_id", 1), ("channel", 1), ("consent_type", 1), ("recorded_at", -1)], {}),
+        # The same evidence (a lead form's consent line) is recorded once.
+        ([("consent_evidence_id", 1)],
+         {"unique": True, "partialFilterExpression": {"consent_evidence_id": {"$type": "string"}}}),
+    ],
+    AI_COMPLIANCE_LOG_COLLECTION: [
+        ([("dealer_id", 1), ("customer_id", 1), ("channel", 1), ("at", -1)], {}),
+        ([("dealer_id", 1), ("lead_id", 1), ("at", -1)], {}),
+        ([("logged_at", 1)], {"expireAfterSeconds": COMPLIANCE_RETENTION_S}),
+    ],
+    AI_SEND_CHECKS_COLLECTION: [
+        # The answering job's claim query (cross-dealer by design, like follow-ups).
+        ([("status", 1), ("requested_at", 1)], {}),
+        ([("request_key", 1)], {"unique": True}),
     ],
     AI_TURN_LOG_COLLECTION: [
         ([("dealer_id", 1), ("lead_id", 1), ("created_at", 1)], {}),
@@ -245,6 +266,11 @@ async def ensure_indexes() -> None:
     call on every process startup, not just once by hand. Called from
     main.py's lifespan, after init_mongo().
     """
+    # The pre-C1 consent documents and their unique index go first, or the
+    # new non-unique index on the same keys can't be created.
+    from upsell_agent.channels.consent import migrate_legacy_consent
+
+    await migrate_legacy_consent()
     db = get_db()
     for collection_name, specs in INDEX_SPECS.items():
         for keys, options in specs:

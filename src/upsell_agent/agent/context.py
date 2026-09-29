@@ -36,6 +36,8 @@ class TurnContext:
     model_calls: list[dict[str, Any]] = field(default_factory=list)
     # Where stock is read (tools/inventory_tool.py); None = the one PLATFORM_CLIENT picks.
     inventory: InventorySource | None = None
+    # The send check for this turn's reply, run before the graph (agent/turn.py).
+    compliance: dict[str, Any] | None = None
 
     def spend_ai_call(self) -> None:
         if self.ai_calls >= self.settings.max_ai_calls_per_turn:

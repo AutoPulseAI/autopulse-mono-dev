@@ -22,12 +22,15 @@ from upsell_agent import clock
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
+from upsell_agent.agent.nodes.decide import possible_opt_out
 from upsell_agent.agent.nodes.template_reply import template_draft
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
+from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
+from upsell_agent.compliance.engine import Decision, can_contact
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
@@ -130,6 +133,14 @@ async def run_turn(
         db=db, platform=deps.platform, settings=settings, tracer=tracer, lead=lead, customer=customer,
         lead_state=lead_state, source_message_id=source_message_id or f"lead:{lead_id}",
     )
+    if lead_id:
+        # The reply's send check before drafting (not logged: the Sender logs
+        # the real one), so a night-time reply in an outbound conversation is
+        # written to ask nothing (architecture §15 decision 29).
+        precheck = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                                     purpose="marketing", is_reply=True, lead=lead, customer=customer, record=False)
+        ctx.compliance = precheck.as_dict()
+        await _save_origin(db, lead_id, precheck)
     state = AgentState(
         dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, trigger=trigger,
         channel=channel, turn_id=tracer.turn_id, inbound_text=inbound_text, shadow=shadow,
@@ -185,7 +196,7 @@ async def run_turn(
                     when = "now (the send failed)" if planned["due_now"] else "in 24h if there's no reply"
                     if planned["held_to_contact_window"]:
                         when = (f"at {_dealer_time(planned['due_at'], planned['timezone'])} "
-                                "(SMS waits for the 8:00-20:00 contact window)")
+                                f"(held by the send check: {planned['held_reason']})")
                     span.reasoning = [f"Same message goes to {planned['to_channel']} ({planned['to']}) {when}."]
                     if planned["superseded"]:
                         span.reasoning.append("Replaced this lead's older pending follow-up.")
@@ -206,6 +217,7 @@ async def run_turn(
 
         await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
                                  shadow=shadow, turn_id=tracer.turn_id)
+        review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
             outcome = "template_reply"
@@ -230,9 +242,46 @@ async def run_turn(
             "campaign_id": (result.get("campaign") or {}).get("campaign_id"),
             "batched": len(batch),
             "summary_queued": summary_queued,
+            "send_check": (sent.compliance or {}).get("outcome") if sent else None,
+            "origin": (ctx.compliance or {}).get("origin", {}).get("origin"),
+            "review_opened": review,
         })
         await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
         return log
+
+
+async def _save_origin(db: DealerScopedDatabase, lead_id: str, check: Decision) -> None:
+    """Inbound or outbound and the customer's time zone, on the lead
+    (MASTER_PLAN_3 B2 item 4, B0.5), with how each was found."""
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$set": {"origin": check.origin, **({"customer_zone": check.zone} if check.zone else {})},
+         "$setOnInsert": {"lead_id": lead_id, "created_at": clock.now(), "status": "active"}},
+        upsert=True)
+
+
+async def _open_review_if_possible_opt_out(db: DealerScopedDatabase, lead_id: str | None, customer_id: str,
+                                           result: dict[str, Any], text: str, channel: str) -> bool:
+    """Extract flagged a possible opt-out (C1 item 3, decision 72): marketing
+    stops until the customer writes again with something that isn't one, or
+    an admin resumes the AI. Staff get a notice quoting the message."""
+    extraction = result.get("extraction") or {}
+    if not lead_id or not possible_opt_out(extraction):
+        return False
+    now = clock.now()
+    await consent.record_consent(
+        db, customer_id=customer_id, channel="all", consent_type="review", status="open",
+        source="possible_opt_out", lead_id=lead_id,
+        evidence={"message": text, "channel": channel, "confidence": extraction.get("opt_out_confidence")})
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$set": {"compliance_review": {"at": now, "message": text, "channel": channel,
+                                        "confidence": extraction.get("opt_out_confidence")},
+                  "staff_notice": {"at": now, "kind": "possible_opt_out",
+                                   "text": f"Possible opt-out, please review: {text!r}. Marketing is stopped "
+                                           "until the customer writes again or the AI is resumed; set the "
+                                           "lead to DND if it was an opt-out."}}})
+    return True
 
 
 async def _queue_summary(deps: TurnDeps, result: dict[str, Any], dealer_id: str, lead_id: str | None,
