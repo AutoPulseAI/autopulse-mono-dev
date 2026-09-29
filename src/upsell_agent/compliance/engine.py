@@ -116,9 +116,7 @@ def in_window(at: datetime, zones: tuple[str, ...] | list[str], window: tuple[ti
 
 
 def dealer_open(at: datetime, profile: DealerProfile) -> bool:
-    local = at.astimezone(profile.tz)
-    hours = profile.hours.get(local.weekday())
-    return bool(hours) and hours[0] <= local.time() < hours[1]
+    return profile.is_open(at)
 
 
 def _boundaries(start: datetime, zones: tuple[str, ...], window: tuple[time, time],

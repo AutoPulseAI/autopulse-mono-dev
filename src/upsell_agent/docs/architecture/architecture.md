@@ -180,7 +180,7 @@ pending follow-ups.
 | **Validate** | Code | Accepts a value only if all four checks pass (below). Rejected values are logged. |
 | **Search stock** | Code | MASTER_PLAN_3 Part A Phase 2. Builds shopping criteria from this turn's just-validated profile (vehicle, new/used, body type, colour, budget) and searches the dealer's stock (`tools/inventory_tool.py`, `tools/stock_search.py`). Only when it helps: a stock question, a named make/model, or a body type with new/used. No exact match loosens in order — colour → trim → year ±1 → same body type any make → new/used — each step recorded. Colour is matched against the dealer's own stored spelling (the platform's colour match is case-sensitive); trim is checked in code, since `/api/car` has no trim parameter. Patches `inventory` / `inventory_query` / `inventory_checked_at` onto the context pack, held back from both AI steps until the grounding check (Phase 4) exists. |
 | **Decide** | Code | Picks exactly one next step (§8.3). |
-| **Compose** | AI, stronger model | Writes the message for that step from the same context pack: an SMS version (max 320 characters), an email version (subject + body), a list of what the message promises the team will do, and which of the customer's questions it answered.<br>Plain English, about a grade 6-8 reading level, one question per message, using each detail's customer question and explanation. Dates are said plainly ("Wednesday, September 30 (tomorrow)"). |
+| **Compose** | AI, stronger model | Writes the message for that step from the same context pack: an SMS version (max 320 characters), an email version (subject + body), a list of what the message promises the team will do, and which of the customer's questions it answered.<br>Plain English, about a grade 6-8 reading level, at most two questions per message (a confirmation counts as one; MASTER_PLAN_3 Bq, decision 35), using each detail's customer question and explanation. Dates are said plainly ("Wednesday, September 30 (tomorrow)"). |
 | **Guard** | Code | Blocks invented prices, trade-in values, approvals or availability; internal terms a customer wouldn't understand (field codes, "slot"); and a reply that skipped a question it was meant to answer. Checks channel format. Numbers from the dealer's own details and the customer's values in plain words count as known. A failure gets **one** rewrite. A second failure sends a safe template and flags the lead for a human. |
 
 **Dates.** The customer's words ("tomorrow", "next Friday at 3", "the 15th") are turned into a real date **in code**, against the dealer's local now, never by the model:
@@ -249,9 +249,9 @@ It checks these in order and stops at the first one that applies:
 1. Customer opted out → **stop**.
 2. Customer asked for a person, or is **clearly** upset (not just one ambiguous message) → **hand off**. The AI steps back on this lead until staff resume it.
 3. Customer asked what our last message meant → **clarify**: explain it again, with nothing new asked.
-4. Customer asked questions → **answer** them first, then at most **one** follow-up: a confirmation if one is waiting, otherwise one ask.
-5. A value needs confirming → **confirm** it.
-6. A required detail can be asked → **ask** for **one**.
+4. Customer asked questions → **answer** them first, then at most **two** follow-ups: a confirmation (if one is waiting) and one ask, or two asks.
+5. A value needs confirming → **confirm** it, plus one ask.
+6. A required detail can be asked → **ask** for up to **two**.
 7. Nothing missing → **qualified**: notify the dealer, stop asking.
 8. Every missing detail has been asked twice → **partly qualified**: the lead goes to the team with what we have, and nothing more is asked.
 9. Otherwise → **acknowledge**: reply without a question.
@@ -260,7 +260,9 @@ Asking follows the conversation state (§15, decision 13):
 - the least-asked detail comes first;
 - never the detail our last message asked for;
 - a detail asked twice is parked until 3 other replies have gone out;
-- a customer frustrated with the conversation itself ("you keep asking the same thing") is asked nothing. That frustration is **not** a handoff.
+- a customer frustrated with the conversation itself ("you keep asking the same thing") is asked nothing. That frustration is **not** a handoff;
+- at most two questions per message; the detail being confirmed is never also asked; the Guard sends back a draft with more than two `?` (MASTER_PLAN_3 Bq, decisions 88–89);
+- the after-hours choice (MASTER_PLAN_3 B1, `agent/after_hours.py`): a reply offering "now or when we open?" asks nothing else, and the thank-you after "later" asks nothing (decisions 90–98).
 
 A reply meant to answer questions must answer every one of them. The guard
 sends it back for one rewrite if it doesn't.
@@ -415,6 +417,8 @@ tagged with dealer, lead type and trigger. The trace ID is saved in
 | Debug UI updates, conversation evals, manual test script (MASTER_PLAN_2 Phases 9-10) | Built. The real-model eval run is waiting on a working OpenAI key (`make ai-evals-report` with the real models). |
 | Inventory read layer, shopping criteria (MASTER_PLAN_3 Part A Phases 1–2) | Built |
 | Answering stock questions, grounding check, freshness, evals (MASTER_PLAN_3 Part A Phases 3–7) | Planned: `docs/plans/PLAN_3/MASTER_PLAN_3.md` |
+| Two questions per message (MASTER_PLAN_3 Bq) | **Closed (1 Oct)** |
+| After-hours first reply: "now or when we open?", the morning message at opening (MASTER_PLAN_3 B1) | **Closed (1 Oct)**, including three fixes from live testing (decisions 99–101). The team's notice is on the AI's lead state only; a platform notification is still to build |
 | Send check (compliance engine) with origin, customer time zone, consent history, opt-out phrases, REVIEW, audit log and the platform campaign check (MASTER_PLAN_3 C1, with B2/B3) | **Provisionally closed (29 Sept)**. The platform side is in `aidmvcs-be-dev` (campaign worker, `CampaignLead`, campaign report). Known bug deferred, not blocking: an opt-out silences replies too, not just marketing (decision 87); planned fix is the C1 extension in `docs/plans/PLAN_3/MASTER_PLAN_3.md` |
 
 Progress and per-file changes: `docs/plans/PLAN_1/progress_1.md` (Plan 1), `docs/plans/PLAN_2/progress_2.md` (Plan 2), `docs/plans/PLAN_3/progress_3.md` (Plan 3).
@@ -509,7 +513,7 @@ Items marked **our default** were decided by us because no client document answe
 32. **Booking.** Through the existing `POST`/`PUT /api/booking`, unchanged; it doesn't pause the AI. Availability, no double booking, no second confirmation, `HH:MM` times and sending `booking_status` on a move are handled in the AI service. The booking needs both email and phone: the AI asks for whichever is missing (a phone given for the booking isn't marketing consent); if the customer won't give it, the requested time goes to the team.
 33. **C5 ships.** Built in the AI service: the day-before Y/N confirmation and its router (confirm via `PUT /api/booking`), a daily countdown with vehicle photos, the +1h / +24h no-show messages then back into follow-ups, and "showed" when staff set Visited. Not built: the client's 15-minute details message (the booking endpoint already sends a confirmation). For AI dealers the platform's own reminders are switched off in the dealer's Reminder settings (no code). The platform's no-show message has no switch: if staff set "No Show" first, our +1h message is skipped (**our default**). **Manager outcome** (Sold pending / Sold delivered / Unsold): planned to be shipped, as a platform change to the status dropdowns, the status route and `STAFF_OWNED_STATUSES`, plus a prompt for the outcome after "Visited". Source: Omnichannel PDF §7–10.
 34. **First-reply ending.** The client's Touch 1 must "ALWAYS end" with "Tell me, what are you driving now?" (Omnichannel PDF p.3). B1's after-hours choice and B4's visit offer override it; otherwise the driving question is used. Flagged for client feedback.
-35. **At most 2 questions per message** (was 1). MASTER_PLAN_2's one-question rule was our own design ("two questions in one text read like a form"), not a client requirement. Decide may give Compose up to 2 asks, and Compose's instructions say "at most two questions". Supersedes the "one question per message" wording in §7 and §8.3 once built.
+35. **At most 2 questions per message** (was 1). MASTER_PLAN_2's one-question rule was our own design ("two questions in one text read like a form"), not a client requirement. Decide may give Compose up to 2 asks, and Compose's instructions say "at most two questions". Supersedes the "one question per message" wording in §7 and §8.3. **Built 29 Sept** (decisions 88–89).
 36. **Consent for marketing texts** (texts the business starts; replies never need it; email needs none). In order:
     1. An explicit no wins: STOP, a phone marked `sms_opt_in: false`, or the lead form saying no (e.g. AutoTrader's `TCPAOptIn: false`); it also stops follow-ups on their inquiry (agreed 27 Sept; the first reply still goes out).
     2. The platform's opt-in flag (`sms_opt_in: true`, set when the customer texts the dealer) counts as consent.
@@ -598,3 +602,28 @@ Asked before building: all of B2 and B3 go into C1; the four platform campaign f
 ### Decided 29 Sept (C1 closed provisionally, evening)
 
 87. **C1 is closed provisionally**, a known bug and an incomplete opt-in/opt-out design left for later, not blocking it or the rest of Part B. Found in Debug UI testing: an opt-out currently silences the whole lead, including replies to the customer's own later messages, not just marketing (via `events/handlers.py`'s `SILENT_STATUSES`, and `engine.py`'s opt-out check running ahead of its reply check) — stricter than the TCPA PDF's "stop automated marketing" wording (decision 74). Planned fix, not built: four opt-out tiers (marketing-only, follow-up-only, full marketing+follow-up, total no-contact) crossed with channel scope, plus a matching natural-language opt-in (today only `start` / `unstop` / `yes` reverse anything, and only on the one channel that was opted out). Full plan: `docs/plans/PLAN_3/MASTER_PLAN_3.md`, "C1 extension" under Phase C1. **Flagged**, needs a decision on phrase-to-tier detection and the `yes` keyword's risk before it's built.
+
+### Decided 29 Sept (MASTER_PLAN_3 Bq and B1 build)
+
+Asked before or while building; items marked **flagged** were decided without an answer from the user and want review.
+
+88. **Two questions: a confirmation counts as one, and can be mixed with an ask.** `answer`: confirmation + one ask, or two asks; `confirm`: confirmation + one ask; `ask`: up to two. The detail being confirmed is never also asked.
+89. **Guard question count.** New Guard check `at_most_two_questions`: more than two `?` in the SMS or the email → one rewrite, then the template.
+90. **Who gets the after-hours choice.** The first reply of an inbound lead (a lead form, or the customer's first text/email) while the dealer is closed (its `weekly_availability`, else Monday–Saturday 9:00–18:00). Outbound leads never (decision 29 applies to them). Not when the reply is a stop or a handoff, or when questions are held (possible opt-out).
+91. **The offer is the reply's only question.** The reply answers the customer, then ends with "We're closed right now and open again at <time>. I can help you here now, or the team can pick this up when we open. Which would you like?" No ask, no confirmation.
+92. **Answers.** "later" → a short thank-you with no questions, and the `resume_at_opening` follow-up. "now", a visit request, or anything else (ignoring the choice) → the conversation carries on; the choice is never offered again.
+93. **Writing again after "later", while still closed.** Answer, then offer the choice again, every time. "later" again keeps the morning message; "now", a visit request, or ignoring the re-offer → carry on, and the morning message is cancelled. An explicit "now" without a re-offer is taken as now (**flagged**).
+94. **Visit requests.** New Extract signal `wants_visit` (+ confidence, counted at ≥ 0.8, our default like upset). Never met with the choice; counts as now. The booking itself is B5 (MASTER_PLAN_3 B5 item 8).
+95. **The morning message** is a whole AI turn (trigger `resume_at_opening`; Extract is skipped), due at the next opening. It is marketing and not a reply, so it goes through the send check: dealer open and the customer's own window; held → waits. When it fires, the lead must still be waiting ("later"), active and the dealer live. It greets, says the team is in, answers what's still open and asks the next questions. Staff taking over cancels it.
+96. **The team's notice** (`staff_notice`, kind `after_hours_resume`, with what we know and what's still open) is kept on the AI's lead state and shown in the Debug UI. **A platform notification must be built later** (a platform change). **Flagged.**
+97. **Once the dealer has opened**, the choice no longer applies: a customer message then carries on normally and cancels a pending morning message. A dealer with no hours on record gets the offer without a time (default hours are never told, decision 8). **Flagged.**
+98. **Extract reads the answer as a pseudo-slot.** While the choice is pending, `contact_preference` (now/later) is added to `allowed_slots`; the Extract step moves it out of the values into its own field, so it is never saved as a slot. A separate output field was often skipped by gpt-4o-mini. **Known gap, flagged:** a first reply that falls back to the template carries no choice, and that lead is never offered it.
+
+### Decided 1 Oct (MASTER_PLAN_3 Bq and B1 closed, after live testing)
+
+Bq and B1 (decisions 88–98) were built 29 Sept; live testing in the Debug UI on 1 Oct (real models) found three bugs, fixed and verified on the offline model before closing both phases.
+
+99. **After-hours "offer" must carry its choice, checked in code.** The real model sometimes dropped the "now or when we open?" question on an offer reply. New Guard check `after_hours_choice_offered`: a draft missing "which would you like" is rejected (one rewrite, then the template).
+100. **A stray extraction value is stripped, not passed to Validate.** Like `contact_preference` before it, the model sometimes also lists `wants_visit` as a slot value; `lift_wants_visit()` (`agent/nodes/extract.py`) removes it and backs the dedicated field.
+101. **A plain acknowledgement is a no-op in the after-hours flow, and greeting is once-per-conversation.** A bare "ok" / "thanks" / "sounds good" (agreed with the user) no longer re-offers the choice or changes its state. Separately, Compose now greets by name only in the very first SMS of a conversation (email keeps its salutation every time, as normal); a new Guard check `no_repeated_greeting` catches a repeated SMS greeting, exempting the after-hours morning message's own greeting.
+

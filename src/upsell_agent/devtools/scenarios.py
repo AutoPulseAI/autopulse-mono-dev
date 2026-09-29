@@ -18,7 +18,7 @@ Steps (one key per step):
                        not_ran?: [...], campaign_found?: bool}
   expect_turn_count:  {lead, count, settle_s}
   expect_messages:    {lead, direction: outbound, count, status?, settle_s}
-  expect_last_sent:   {lead, channel?, max_latency_ms?, text_starts_with?, contains?, question_marks?}
+  expect_last_sent:   {lead, channel?, max_latency_ms?, text_starts_with?, contains?, excludes?, question_marks?}
   expect_no_repeat_asks: {lead}   no two replies in a row asked for the same detail (MASTER_PLAN_2 Phase 5)
   expect_slots:       {lead, filled?: [paths], missing?: [paths], sources?: {path: platform|customer},
                        values?: {path: value}}
@@ -27,12 +27,15 @@ Steps (one key per step):
   set_dealer_mode:    {dealer, mode: off|shadow|live}   on the platform dealer record (restored after the scenario)
   advance_clock:      {hours} or {dealer: A, to: "Tue 10:00"} (the next such time in that dealer's timezone)
                       moves the dev clock and fires due follow-ups (reset after the scenario)
-  expect_followup:    {lead, status, kind: channel_switch|handoff_check, to_channel?, count?, index: -1, timeout_s}
+  expect_followup:    {lead, status, kind: channel_switch|handoff_check|resume_at_opening, to_channel?, count?,
+                       index: -1, timeout_s}
                       one of the lead's scheduled items of that kind, oldest first (-1 = the latest)
   delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
   expect_outbox:      {lead, channel, count, contains?, settle_s}   what actually left through the fake driver
   expect_no_followup: {lead, kind: channel_switch, settle_s}   nothing of that kind was scheduled for the lead
-  expect_lead:        {lead, status?, staff_alert?: bool, summary_contains?, timeout_s}   the AI's state for the lead
+  expect_lead:        {lead, status?, staff_alert?: bool, summary_contains?, after_hours?: offered|now|later,
+                       staff_notice?: <kind>, timeout_s}   the AI's state for the lead (after_hours: the
+                       "now or when we open?" choice, MASTER_PLAN_3 B1)
   platform_reply:     {lead, text, by: n8n|staff}   the platform (n8n / staff) sent the customer this
   expect_shadow:      {lead, drafts, with_actual?}   the Shadow tab's pairs for this lead
   expect_context:     {lead, index: -1, new_messages?: [texts], min_working_memory?, last_from_ai?: bool,
@@ -182,9 +185,15 @@ WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
-    from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_HANDOFF_CHECK
+    from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_HANDOFF_CHECK, KIND_RESUME
 
-    return {"kind": KIND_HANDOFF_CHECK} if args.get("kind") == KIND_HANDOFF_CHECK else dict(CHANNEL_SWITCHES)
+    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME):
+        return {"kind": args["kind"]}
+    return dict(CHANNEL_SWITCHES)
+
+
+def _after_hours_choice(state: dict) -> str | None:
+    return ((state.get("conversation") or {}).get("after_hours") or {}).get("choice")
 
 
 async def _seconds_until_dealer_time(dealer: str, when: str) -> tuple[float, str]:
@@ -360,6 +369,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             problems.append(f"text {str(last.get('text'))[:60]!r} does not start with {args['text_starts_with']!r}")
         if "contains" in args and args["contains"].lower() not in str(last.get("text", "")).lower():
             problems.append(f"text {str(last.get('text'))[:80]!r} does not mention {args['contains']!r}")
+        if "excludes" in args and args["excludes"].lower() in str(last.get("text", "")).lower():
+            problems.append(f"text {str(last.get('text'))[:80]!r} mentions {args['excludes']!r}")
         if "question_marks" in args and str(last.get("text", "")).count("?") != int(args["question_marks"]):
             problems.append(f"{str(last.get('text', '')).count('?')} question(s) in {str(last.get('text'))[:120]!r}, "
                             f"expected {args['question_marks']}")
@@ -528,7 +539,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             ok = ("status" not in args or doc.get("status") == args["status"]) and (
                 "staff_alert" not in args or bool(doc.get("staff_alert")) == bool(args["staff_alert"])) and (
                 "summary_contains" not in args
-                or args["summary_contains"].lower() in ((doc.get("summary") or {}).get("text") or "").lower())
+                or args["summary_contains"].lower() in ((doc.get("summary") or {}).get("text") or "").lower()) and (
+                "after_hours" not in args or _after_hours_choice(doc) == args["after_hours"]) and (
+                "staff_notice" not in args or (doc.get("staff_notice") or {}).get("kind") == args["staff_notice"])
             return doc if ok else None
 
         try:
@@ -537,11 +550,16 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             doc = await dealer_scoped_db(lead["dealer_id"]).collection(AI_LEAD_STATE_COLLECTION).find_one(
                 {"lead_id": lead["lead_id"]}) or {}
             raise ScenarioFailed(f"lead is {doc.get('status')!r}, staff alert "
-                                 f"{(doc.get('staff_alert') or {}).get('reason')!r}") from None
+                                 f"{(doc.get('staff_alert') or {}).get('reason')!r}, after-hours choice "
+                                 f"{_after_hours_choice(doc)!r}, staff notice "
+                                 f"{(doc.get('staff_notice') or {}).get('kind')!r}") from None
         alert = (doc.get("staff_alert") or {}).get("reason")
         covered = (doc.get("summary") or {}).get("messages")
+        notice = (doc.get("staff_notice") or {}).get("text")
         return (f"lead is {doc.get('status')}" + (f"; staff alert: {alert}" if alert else "")
-                + (f"; summary covers {covered} message(s)" if covered else ""))
+                + (f"; summary covers {covered} message(s)" if covered else "")
+                + (f"; after hours: {_after_hours_choice(doc)}" if _after_hours_choice(doc) else "")
+                + (f"; notice for the team: {notice}" if notice else ""))
 
     if kind == "chat":
         lead = ctx.lead(args["lead"])

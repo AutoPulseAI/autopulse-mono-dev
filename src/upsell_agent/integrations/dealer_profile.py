@@ -22,7 +22,7 @@ dealer id itself. Cached for 60 seconds.
 import re
 import time as monotonic_time
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -96,6 +96,32 @@ class DealerProfile:
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
+
+    def is_open(self, at: datetime) -> bool:
+        """Inside opening hours at `at` (MASTER_PLAN_3 B0.1: the default hours when none are on record)."""
+        local = at.astimezone(self.tz)
+        hours = self.hours.get(local.weekday())
+        return bool(hours) and hours[0] <= local.time() < hours[1]
+
+    def next_opening(self, at: datetime) -> datetime | None:
+        """The next time the dealership opens after `at` (None: never open)."""
+        local = at.astimezone(self.tz)
+        for offset in range(8):
+            day = local.date() + timedelta(days=offset)
+            hours = self.hours.get(day.weekday())
+            if hours:
+                opens = datetime.combine(day, hours[0], tzinfo=self.tz)
+                if opens > local:
+                    return opens.astimezone(at.tzinfo)
+        return None
+
+    def opening_text(self, opens: datetime, now: datetime) -> str:
+        """When the dealership opens again as a customer reads it: "9:00 AM today",
+        "9:00 AM tomorrow", "9:00 AM Monday"."""
+        local, today = opens.astimezone(self.tz), now.astimezone(self.tz).date()
+        days = (local.date() - today).days
+        day = "today" if days == 0 else "tomorrow" if days == 1 else WEEKDAYS[local.weekday()].capitalize()
+        return f"{format_time(local.time())} {day}"
 
     def hours_view(self) -> dict[str, str]:
         """Readable opening hours, for traces and the Debug UI."""

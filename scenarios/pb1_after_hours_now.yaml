@@ -1,0 +1,25 @@
+name: After hours, the customer carries on now
+stage: 401
+description: 'MASTER_PLAN_3 B1. A website lead at 23:00 dealer time gets "we''re closed; I can help now, or the team can pick this up when we open. Which would you like?" and nothing else asked. The customer says "now" and the normal conversation carries on at 23:00 (decision 56). A lead during opening hours gets no choice.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 23:00"}
+  - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Nina Night, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: n, zip: "10001"}
+  - send_lead_created: {lead: n}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: n, contains: "9:00", question_marks: 1}
+  - expect_lead: {lead: n, after_hours: offered}
+  - reply: {lead: n, text: "now is fine"}
+  - wait_turns: {lead: n, count: 2, timeout_s: 20}
+  - expect_turn: {lead: n, outcome: ask}
+  - expect_last_sent: {lead: n, excludes: "closed"}
+  - expect_lead: {lead: n, after_hours: now}
+  - expect_no_followup: {lead: n, kind: resume_at_opening}
+
+  - advance_clock: {dealer: A, to: "Wed 12:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dana Day, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: d, zip: "10001"}
+  - send_lead_created: {lead: d}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - expect_turn: {lead: d, outcome: ask}
+  - expect_last_sent: {lead: d, excludes: "closed"}

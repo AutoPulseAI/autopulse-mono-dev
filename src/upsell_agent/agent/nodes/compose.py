@@ -49,6 +49,13 @@ def just_captured(state: AgentState) -> list[dict[str, str]]:
             for v in [*validation.get("accepted", []), *validation.get("needs_confirming", [])] if v["path"] in SCHEMA]
 
 
+def _after_hours(decision: dict[str, Any]) -> dict[str, Any] | None:
+    """What Compose needs of the after-hours plan (MASTER_PLAN_3 B1): which
+    message this is, and when the dealership opens (None: not on record)."""
+    plan = decision.get("after_hours") or {}
+    return {"mode": plan["mode"], "opens_at": plan.get("opens_at")} if plan.get("mode") else None
+
+
 def compose_payload(state: AgentState) -> dict[str, Any]:
     decision = state.decision or {}
     return {
@@ -61,6 +68,7 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "annoyed_at_bot": bool(decision.get("annoyed_at_bot")),
         "hold_questions": decision.get("hold_questions"),
         "quiet_hours": decision.get("quiet_hours"),
+        "after_hours": _after_hours(decision),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,
         "campaign": state.campaign,

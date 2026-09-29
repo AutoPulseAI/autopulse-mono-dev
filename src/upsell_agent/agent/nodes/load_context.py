@@ -120,8 +120,14 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
     campaign = await find_campaign_context(ctx.db, customer_id=state.customer_id)
     dealer = await dealer_profile(state.dealer_id)
     conversation = load_conversation(ctx.lead_state)
+    now = clock.now()
+    opens = None if dealer.is_open(now) else dealer.next_opening(now)
+    opening = {"open_now": dealer.is_open(now), "next_open": opens.isoformat() if opens else None,
+               # Default hours are never told to a customer (integrations/dealer_profile.py).
+               "next_open_text": dealer.opening_text(opens, now) if opens and dealer.hours_from_record else None}
     pack = build_pack(
-        now_local=clock.now().astimezone(dealer.tz),
+        now_local=now.astimezone(dealer.tz),
+        opening=opening,
         dealer={"name": dealer.name, "timezone": dealer.timezone, "info": dealer.public_info()},
         customer={"first_name": first_name(state.customer_name), "channel": state.channel},
         lead_type=profile.effective_lead_type.value,
@@ -153,7 +159,10 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         reasoning.append(f"{len(conversation.open_questions)} customer question(s) still open from earlier.")
     if conversation.last_asked:
         reasoning.append(f"Our last reply asked for: {', '.join(conversation.last_asked)}.")
-    reasoning.append(f"Dealer time: {pack.now['weekday']} {pack.now['date']} {pack.now['time']} ({dealer.timezone}).")
+    reasoning.append(f"Dealer time: {pack.now['weekday']} {pack.now['date']} {pack.now['time']} ({dealer.timezone}), "
+                     + ("open now." if opening["open_now"] else
+                        f"closed; opens {opening['next_open_text'] or 'at ' + str(opening['next_open'])}"
+                        + ("" if dealer.hours_from_record else " (default hours)") + "."))
     reasoning.append(f"Campaign found: replying to '{campaign['name']}'." if campaign else "No campaign in the last 14 days.")
 
     span.output = {

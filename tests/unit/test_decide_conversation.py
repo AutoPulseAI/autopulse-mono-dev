@@ -1,5 +1,5 @@
 """MASTER_PLAN_2 Phase 5, conversational Decide: answer first, then at most
-one follow-up; one ask per message; never the same thing twice in a row;
+two follow-ups; two asks per message (MASTER_PLAN_3 Bq); never the same thing twice in a row;
 parked after two asks; partly qualified when everything missing is parked;
 nothing asked of a frustrated customer."""
 
@@ -30,6 +30,9 @@ from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
 from upsell_agent.slots.policy import Flags, next_action
 
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
+
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 Q = {"text": "Is it AWD?", "label": "answerable"}
 ABOUT_ME = {"text": "what do you know about me?", "label": "about_me"}
@@ -54,10 +57,10 @@ def test_clarify_with_nothing_asked_yet_is_just_answered():
     assert _decide(questions=[CLARIFY])["action"] == "answer"
 
 
-def test_answer_then_one_ask():
+def test_answer_then_two_asks():
     decision = _decide(questions=[ABOUT_ME])
     assert decision["action"] == "answer" and decision["answer_questions"] == [ABOUT_ME]
-    assert [a["requirement"] for a in decision["asks"]] == ["interest.new_or_used"]
+    assert [a["requirement"] for a in decision["asks"]] == ["interest.new_or_used", "interest.model"]
 
 
 def test_answer_then_confirm_rather_than_a_new_ask():
@@ -82,14 +85,15 @@ def test_frustrated_customer_is_asked_nothing():
 
 def test_never_the_same_detail_twice_in_a_row():
     decision = _decide(last_asked=["interest.new_or_used"], asks={"interest.new_or_used": (1, 1)}, replies=1)
-    assert decision["action"] == "ask" and decision["slots"] == ["interest.model"]
+    assert decision["action"] == "ask" and decision["slots"] == ["interest.model", "interest.budget",
+                                                                 "interest.monthly_payment"]
     assert {"label": "New or used", "why": "asked in our last message"} in decision["not_asked"]
 
 
 def test_asked_twice_is_parked_then_asked_again_after_three_other_replies():
     history = {"interest.new_or_used": (2, 3)}
     parked = _decide(asks=history, replies=4, last_asked=["interest.model"])
-    assert parked["slots"] == ["interest.budget", "interest.monthly_payment"]
+    assert parked["slots"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
     assert any(n["why"].startswith("parked") for n in parked["not_asked"])
     # Once every other detail has had its asks, the cooled-down one comes back.
     everyone = {"interest.new_or_used": (2, 3), "interest.budget": (2, 4), "interest.monthly_payment": (2, 4),
@@ -100,7 +104,7 @@ def test_asked_twice_is_parked_then_asked_again_after_three_other_replies():
 
 def test_least_asked_detail_comes_first():
     decision = _decide(asks={"interest.new_or_used": (1, 1), "interest.model": (1, 2)}, replies=2, last_asked=[])
-    assert decision["slots"] == ["interest.budget", "interest.monthly_payment"]
+    assert decision["slots"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
 
 
 def test_everything_missing_parked_means_partly_qualified():
@@ -231,9 +235,11 @@ async def test_clarify_re_explains_and_asks_the_same_question_again(mongo):
     result = await _say(created, "what do you mean")
     assert result["outcome"] == "clarify"
     reply = await _last_sms(mongo, created)
-    assert reply.startswith("Sorry, I should have been clearer") and reply.count("?") == 1
+    # The first reply asked two things (MASTER_PLAN_3 Bq): both are explained and asked again.
+    assert asked_first == ["interest.new_or_used", "interest.model"]
+    assert reply.startswith("Sorry, I should have been clearer")
     # MASTER_PLAN_2 Phase 7: the slot's own explanation, then the same question - nothing new.
-    assert "New means nobody has owned it before" in reply and reply.endswith("Are you looking for a new or a used vehicle?")
+    assert "New means nobody has owned it before" in reply and "Are you looking for a new or a used vehicle?" in reply
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["conversation"]["last_asked"] == asked_first
 

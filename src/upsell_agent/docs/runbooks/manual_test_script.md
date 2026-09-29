@@ -68,11 +68,11 @@ For testers. Replay these conversations in the **Debug UI** (http://localhost:51
 | Reply | `what do you mean?` |
 | Reply | `good` |
 
-**Good reply:** everyday words, one question. After "what do you mean?" it explains the four conditions (excellent, good, fair, poor) simply, then asks the **same** question again, nothing new. "good" fills the trade-in condition.
+**Good reply:** everyday words, at most two questions. After "what do you mean?" it explains the four conditions (excellent, good, fair, poor) simply, then asks the **same** question again, nothing new. "good" fills the trade-in condition.
 
 **Bad signs:**
 - internal words ("slot", "trade_in.condition", "lead type");
-- more than one question;
+- more than two questions;
 - after "what do you mean?", moving on to a different question.
 
 **Check:** Decide shows **clarify**, with the explanation it will use. The Slots panel shows "Trade-in condition: good".
@@ -169,6 +169,24 @@ Send one early message with a personal detail (`It's for my daughter, she just p
 **Check:** the Conversation panel's **Summary** mentions it once it has left the recent messages. The Timeline shows **summary** entries after some replies.
 
 ---
+
+## 10. After hours: "now or when we open?" (MASTER_PLAN_3 B1)
+
+*Needs the dev clock:* Scheduler tab → move it until the dealer time shows 23:00 on a weekday.
+
+| Step | You type |
+|---|---|
+| New lead | **sales**, comments: `Hi, I want a new Toyota RAV4` |
+| Reply | `tomorrow is fine` |
+| Reply | `oh also, is it AWD?` |
+| Reply | `later please` |
+| Scheduler | move the clock to 9:01 the next morning |
+
+**Good reply:** the first reply ends with "We're closed right now and open again at 9:00 AM tomorrow. I can help you here now, or the team can pick this up when we open. Which would you like?" and asks nothing else. "tomorrow is fine" gets a short thank-you with no question. "is it AWD?" is answered, then the choice is offered again. "later please" gets a thank-you again. At 9:00 the customer gets "Good morning… the team is in now" and the next questions.
+
+**Bad signs:** the first reply also asks for budget or new/used; a question after "tomorrow is fine"; nothing sent at 9:00; a "we're closed" line after the customer chose now.
+
+**Check:** Decide shows the "After hours" block. The Conversation panel shows "After hours: later" and then "now", and after 9:00 a "Notice for the team". The Scheduler shows a "morning message" card, sent at 9:00. Try again with `now is fine` as the first answer: the conversation carries on at night, and no morning message is scheduled.
 
 ## Recording results
 

@@ -12,6 +12,9 @@ from upsell_agent.events import handlers
 from upsell_agent.events.models import EVENT_TYPES
 from upsell_agent.main import create_app
 
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
+
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 OTHER = simulate.DEV_DEALERS[1]["_id"]
 

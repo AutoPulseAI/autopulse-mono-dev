@@ -101,15 +101,15 @@ SERVICE_ALL = [_fact("vehicle.year", 2020), _fact("vehicle.make", "Subaru"), _fa
 
 
 @pytest.mark.parametrize(("lead_type", "facts", "action", "asked"), [
-    # nothing filled: the highest-priority requirement, one per message (MASTER_PLAN_2 Phase 5)
-    (LeadType.SALES, [], "ask", ["interest.new_or_used"]),
-    (LeadType.TRADE_IN, [], "ask", ["trade_in.year", "trade_in.make", "trade_in.model"]),
+    # nothing filled: the two highest-priority requirements, two per message (MASTER_PLAN_3 Bq)
+    (LeadType.SALES, [], "ask", ["interest.new_or_used", "interest.model"]),
+    (LeadType.TRADE_IN, [], "ask", ["trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"]),
     # service leads: what they need first
-    (LeadType.SERVICE, [], "ask", ["interest.service_needed"]),
+    (LeadType.SERVICE, [], "ask", ["interest.service_needed", "vehicle.year", "vehicle.make", "vehicle.model"]),
     (LeadType.GENERAL, [], "ask", ["interest.lead_type"]),
-    # partly filled: the next missing one, budget OR payment as one requirement
-    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment"]),
-    (LeadType.TRADE_IN, TRADE_ALL[:4], "ask", ["trade_in.condition"]),
+    # partly filled: the next missing ones, budget OR payment as one requirement
+    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment", "interest.timeline"]),
+    (LeadType.TRADE_IN, TRADE_ALL[:4], "ask", ["trade_in.condition", "trade_in.payoff"]),
     # everything filled
     (LeadType.SALES, SALES_ALL, "qualified", []),
     (LeadType.TRADE_IN, TRADE_ALL, "qualified", []),
@@ -118,11 +118,12 @@ SERVICE_ALL = [_fact("vehicle.year", 2020), _fact("vehicle.make", "Subaru"), _fa
     (LeadType.SALES, [*SALES_ALL[:2], _fact("interest.monthly_payment", 450), *SALES_ALL[3:]], "qualified", []),
     # has a trade: the trade-in details become required
     (LeadType.SALES, [*SALES_ALL[:4], _fact("trade_in.has_trade", True)], "ask",
-     ["trade_in.year", "trade_in.make", "trade_in.model"]),
+     ["trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"]),
     (LeadType.SALES, [*SALES_ALL[:4], _fact("trade_in.has_trade", True), *TRADE_ALL], "qualified", []),
     # general lead that told us it's here for service takes the service list
     (LeadType.GENERAL, [_fact("interest.lead_type", "service"), *SERVICE_ALL], "qualified", []),
-    (LeadType.GENERAL, [_fact("interest.lead_type", "service")], "ask", ["interest.service_needed"]),
+    (LeadType.GENERAL, [_fact("interest.lead_type", "service")], "ask",
+     ["interest.service_needed", "vehicle.year", "vehicle.make", "vehicle.model"]),
     # stale counts as missing
     (LeadType.TRADE_IN, [*TRADE_ALL[:3], _fact("trade_in.mileage", 60000, age_days=45), *TRADE_ALL[4:]], "ask",
      ["trade_in.mileage"]),
@@ -156,9 +157,9 @@ def test_decide_is_deterministic_and_passes_questions_through():
     assert next_action(profile, flags)["required_filled"] == 2 and next_action(profile, flags)["required_total"] == 5
 
 
-def test_one_requirement_is_asked_per_message():
+def test_at_most_two_requirements_are_asked_per_message():
     decision = next_action(_profile(LeadType.SALES), Flags())
-    assert len(decision["asks"]) == 1
+    assert len(decision["asks"]) == 2
 
 
 # --- profile ---------------------------------------------------------------------

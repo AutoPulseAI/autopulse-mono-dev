@@ -4,7 +4,8 @@
                   │            │                                        ▲              │
                   │            │                                        └── retry ×1 ──┤
                   │            └── failed ───────────────▶ fallback ◀───┘ (2nd failure / compose failed)
-                  └── first reply (FIRST_REPLY_MODE=template) ─▶ fallback ─▶ END
+                  ├── first reply (FIRST_REPLY_MODE=template) ─▶ fallback ─▶ END
+                  └── after-hours morning message (no new customer text) ─▶ search_stock
 
 - Extract and Compose call the AI (agent/llm.py). Everything else is code.
 - `search_stock` loads the dealer's stock from this turn's validated profile
@@ -29,6 +30,7 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
+from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.nodes.compose import compose
 from upsell_agent.agent.nodes.decide import decide
@@ -94,7 +96,10 @@ def _traced(name: str, fn: NodeFn) -> Callable[[AgentState, RunnableConfig], Awa
 
 
 def _after_load(state: AgentState) -> str:
-    return "fallback" if state.first_reply_via_template else "extract"
+    if state.first_reply_via_template:
+        return "fallback"
+    # The after-hours morning message (MASTER_PLAN_3 B1) answers no new message: nothing to extract.
+    return "search_stock" if state.trigger == TRIGGER_RESUME else "extract"
 
 
 def _after_extract(state: AgentState) -> str:
@@ -119,7 +124,8 @@ def build_graph(checkpointer=None):
         graph.add_node(name, _traced(name, fn))
 
     graph.set_entry_point("load_context")
-    graph.add_conditional_edges("load_context", _after_load, {"extract": "extract", "fallback": "fallback"})
+    graph.add_conditional_edges("load_context", _after_load, {"extract": "extract", "fallback": "fallback",
+                                                              "search_stock": "search_stock"})
     graph.add_conditional_edges("extract", _after_extract, {"validate": "validate", "fallback": "fallback"})
     graph.add_edge("validate", "search_stock")
     graph.add_edge("search_stock", "decide")

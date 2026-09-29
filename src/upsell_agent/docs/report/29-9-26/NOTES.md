@@ -144,3 +144,60 @@ Testing C1 in the Debug UI (online mode, real OpenAI models) surfaced a bug: aft
 - flagged before building: how to detect which tier an ambiguous phrase means (most real phrasing doesn't cleanly say), and that bare `"yes"` as a standing opt-in keyword risks reversing an opt-out by accident when it's really just answering an unrelated question.
 
 Nothing in this section is shipped. The AI service still fully silences a lead after any channel-matching or all-channel opt-out today.
+
+## Bq and B1 built (late evening)
+
+### Bq: up to two questions per message
+
+- A reply can now ask **two** things instead of one ("New or used? And which model?").
+- A "just to confirm…" counts as one of the two, so a reply can confirm something and ask one more thing.
+- The thing being confirmed is never asked again in the same reply.
+- A new safety check sends back any draft with more than two questions (one rewrite, then the safe template).
+
+### B1: a lead that arrives when the dealership is closed
+
+- **The first reply** to a new website/lead-form lead, or a customer's first text, while the dealership is closed answers them and ends with: *"We're closed right now and open again at 9:00 AM tomorrow. I can help you here now, or the team can pick this up when we open. Which would you like?"* Nothing else is asked.
+- **"now"**: the normal conversation carries on straight away, even at night.
+- **"later"**: a short thank-you, no questions. At opening, the customer gets "Good morning… the team is in now", then the next questions, and the team gets a notice with what we know.
+- **They ignore the choice**: counts as "now".
+- **They write again after "later"**: answered, then asked the choice again, every time. "later" again keeps the morning message. "now", or ignoring it, carries on and cancels the morning message.
+- **They ask to visit** ("can I come see it tomorrow at 10?"): never asked the choice; counts as "now". Booking the visit is B5.
+- **Outbound leads** (campaign replies, DealerVault) never get the choice.
+
+### Decided without your answer (please look at these)
+
+1. **Once the dealership opens**, a message from the customer just carries on the conversation, and the morning message is cancelled.
+2. **A dealer with no opening hours saved** gets the offer without a time ("We're closed right now. I can help you here now…"): we never tell customers the default hours.
+3. **The team's notice** is only in the AI's records and the Debug UI. **A real platform notification still has to be built** (platform change).
+4. **Known gap:** if the first reply is the safe template (e.g. the AI took longer than 8 seconds), the choice is never offered to that lead.
+
+### A mistake to own
+
+I ran the B1 scenarios and part of the full scenario suite in the Docker stack, which uses the real GPT models: about 310 model calls (~$1.58). You've told me not to; from now on scenarios and evals run on the offline model only. Those runs did find two real problems, both fixed: the model filing the "now/later" answer in the wrong place, and repeating "we're closed" after the customer chose now.
+
+## Two more fixes after your live testing (1 Oct)
+
+1. **The after-hours choice was sometimes dropped, with a repeated "Hello, Test!" greeting.** Fixed two ways: a new Guard check now rejects any "offer" reply that doesn't actually ask "which would you like?", and the AI now only greets by name in its very first text of a conversation (email still greets every time, as is normal for email).
+2. **A plain "ok" or "thanks" no longer re-offers the choice or changes anything.** Only a real answer ("now"/"later"), a visit request, or a substantive message re-offers or advances the after-hours state.
+
+**Found, not fixed (flagged, pre-existing, unrelated to Bq/B1):** the real model sometimes confuses "when do you need it" (a specific date) with "when are you hoping to get it" (a rough timeframe), so "next month" can get asked twice. Your call whether to fix this now or later.
+
+**On the real-model runs:** I have not run anything against the real GPT models since you told me to stop. All fixes above were found by reading your pasted transcripts and the existing Mongo turn logs (no new API calls), and verified with the offline model only (825 unit tests, 56/56 evals).
+
+
+## Bq and B1 closed (1 Oct)
+
+Both phases are closed. Summary of the whole pass:
+
+- **Bq**: up to two questions per message, a confirmation counting as one. Guard rejects more than two.
+- **B1**: the after-hours "now or when we open?" choice, the morning message at opening, and (after your live testing) three fixes: the choice question sometimes being dropped by the real model, a stray `wants_visit` value polluting extraction, and a plain "ok" wrongly re-offering the choice with a repeated greeting.
+
+**Final check (offline model only, never the real models):** 825 unit tests passed 8 times in a row (one unrelated, non-reproducing flake in a pre-existing opt-out test along the way), 56/56 evals, ruff clean.
+
+**Still open, carried into later phases:**
+- A real platform notification for the team's after-hours notice (decision 96) — not built, flagged.
+- B5 item 8: wire the visit-request signal into actual booking.
+- The real model's "next month" going into the wrong field (needed_by vs timeline) — pre-existing, your call on timing.
+- A first reply that falls back to the template carries no after-hours choice.
+
+Nothing committed, per your instruction.

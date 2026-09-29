@@ -27,6 +27,8 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   handoff_check: { x: 240, y: 520 },
   // After a turn's send, on its own: the rolling summary (no edges; it feeds the next turn's Load context).
   summary: { x: 480, y: 520 },
+  // The after-hours morning message's checks (MASTER_PLAN_3 B1): they start a turn at Load context.
+  resume: { x: 0, y: -170 },
 };
 
 // Which side of each node an edge leaves from / arrives at.
@@ -47,6 +49,9 @@ const HANDLES: Record<string, [string, string]> = {
   "followup-send": ["s-r", "t-b"],
   "hold-send": ["s-t", "t-b"],
   "handoff_check-send": ["s-t", "t-b"],
+  "resume-load_context": ["s-b", "t-t"],
+  // The morning message skips Extract and Validate: arcs over the top row.
+  "load_context-search_stock": ["s-t", "t-t"],
 };
 
 const nodeTypes = { pipeline: PipelineNode };

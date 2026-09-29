@@ -11,7 +11,8 @@ os.environ["MODEL_COMPOSE"] = "offline"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -48,6 +49,14 @@ def reset_clock():
 
 
 @pytest.fixture
+def during_opening_hours():
+    """Inside the dev dealers' opening hours, whenever the suite runs. A new
+    inbound lead while the dealer is closed gets the after-hours choice
+    (MASTER_PLAN_3 B1), which tests about the normal first reply don't expect."""
+    set_clock(_last_weekday_noon())
+
+
+@pytest.fixture
 def ny_customer(monkeypatch):
     """The customer lives in New York, like the dev dealer. Dev customers have
     555 phones and no DealerVault address, so the send check would otherwise
@@ -59,6 +68,16 @@ def ny_customer(monkeypatch):
         return CustomerZone(("America/New_York",), "zip", "ZIP 10001 (test)", "NY")
 
     monkeypatch.setattr(engine, "customer_zone", fixed)
+
+
+def _last_weekday_noon() -> datetime:
+    """The most recent Tuesday 12:00 New York time: open for the dev dealers and
+    inside every US customer window."""
+    ny = ZoneInfo("America/New_York")
+    local = datetime.now(UTC).astimezone(ny)
+    day = local.date() - timedelta(days=(local.weekday() - 1) % 7)
+    at = datetime.combine(day, time(12), tzinfo=ny)
+    return at if at <= local else at - timedelta(days=7)
 
 
 def set_clock(at: datetime) -> None:

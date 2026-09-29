@@ -25,7 +25,7 @@ finds its row in `sending` and marks it `unknown` instead of sending again.
 Status flow: pending → claimed → sent | cancelled | suppressed | failed |
 unknown; or pending → superseded (a newer message replaced it).
 
-**Two kinds** share this collection and its claim / fire machinery (`kind`):
+**Three kinds** share this collection and its claim / fire machinery (`kind`):
 
 - `channel_switch` (the default; older records have no `kind`): above.
 - `handoff_check` (MASTER_PLAN_2 Phase 2, architecture §15 decision 12): 30
@@ -33,6 +33,14 @@ unknown; or pending → superseded (a newer message replaced it).
   haven't taken it over, the customer gets one "still on it" holding reply and
   a staff alert is recorded on the lead. Once per handoff. A customer message
   doesn't cancel it; staff pausing or resuming the lead does.
+- `resume_at_opening` (MASTER_PLAN_3 B1, agent/after_hours.py): the customer
+  of an after-hours lead chose to have the team pick it up when the
+  dealership opens. Due at the next opening (or later, when the send check
+  holds it). Firing runs a whole AI turn (agent/turn.py, trigger
+  `resume_at_opening`): the "the team is in now" message moves the
+  conversation on, and the team gets a notice. Cancelled by staff taking
+  over, and by the after-hours plan when the customer carries on first; a
+  customer message alone doesn't cancel it (the plan decides).
 
 **The send check** (MASTER_PLAN_3 C1, compliance/engine.py): both are
 messages the system starts. The channel switch is marketing (consent, the
@@ -93,8 +101,9 @@ SILENT_STATUSES = {"handoff", "paused", "opted_out"}
 
 KIND_CHANNEL_SWITCH = "channel_switch"
 KIND_HANDOFF_CHECK = "handoff_check"
+KIND_RESUME = "resume_at_opening"
 # Matches channel switches, including records from before `kind` existed.
-CHANNEL_SWITCHES = {"kind": {"$ne": KIND_HANDOFF_CHECK}}
+CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 
 LeadLock = Callable[[str, str], AbstractAsyncContextManager[Any]]
@@ -214,6 +223,59 @@ async def plan_handoff_check(
             "hours_from_record": profile.hours_from_record}
 
 
+async def plan_resume(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    channel: str,
+    turn_id: str,
+    lead: dict | None = None,
+    customer: dict | None = None,
+) -> dict[str, Any]:
+    """The after-hours morning message (MASTER_PLAN_3 B1): due at the
+    dealership's next opening, on the channel the customer used, and within
+    the send check's rules (a message we start: the customer's own window too).
+    Replaces any older pending one for the lead."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    opens = profile.next_opening(now)
+    if opens is None:
+        return {"created": False, "reason": "No morning message: the dealer has no opening hours."}
+    check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                              purpose="marketing", is_reply=False, at=opens, lead=lead, customer=customer,
+                              record=False)
+    if check.outcome in ("BLOCK", "REVIEW"):
+        return {"created": False, "send_check": check.as_dict(),
+                "reason": f"No morning message: the send check says {check.outcome} ({check.reason})."}
+    due_at = check.until if check.outcome == "HOLD" and check.until else opens
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_RESUME},
+        {"$set": {"status": "superseded", "reason": "a newer morning message", "closed_at": now}})
+    doc = {
+        "kind": KIND_RESUME, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
+        "due_at": due_at, "created_at": now, "claim_count": 0,
+        "reason": f"held by the send check: {check.reason}" if due_at > opens else None,
+    }
+    inserted = await followups.insert_one(doc)
+    local = due_at.astimezone(profile.tz).strftime("%a %H:%M %Z")
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
+            "opens_at": opens.isoformat(), "timezone": profile.timezone,
+            "reason": f"Morning message due {local}" + (
+                f" (the dealership opens at {opens.astimezone(profile.tz):%H:%M}; held by the send check: "
+                f"{check.reason})" if due_at > opens else ", when the dealership opens") + "."}
+
+
+async def cancel_resume(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
+    """The customer carried on before the dealership opened: no morning message."""
+    result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_RESUME},
+        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
+    return result.modified_count
+
+
 # --- Fire ---------------------------------------------------------------------
 
 async def reset_stuck_claims() -> int:
@@ -309,7 +371,8 @@ async def _why_not_send(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, 
 async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
-    fire_locked = _fire_handoff_check_locked if doc.get("kind") == KIND_HANDOFF_CHECK else _fire_locked
+    fire_locked = {KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
+                   KIND_RESUME: _fire_resume_locked}.get(doc.get("kind"), _fire_locked)
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -395,7 +458,8 @@ async def _defer(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer, sent: 
         {"$set": {"status": "pending", "due_at": due_at, "reason": reason}})
     await tracer.skipped("schedule", f"Not sent yet: {reason}.")
     kind = doc.get("kind") or KIND_CHANNEL_SWITCH
-    await _log(db, tracer, "handoff_check_deferred" if kind == KIND_HANDOFF_CHECK else "followup_deferred",
+    await _log(db, tracer, {KIND_HANDOFF_CHECK: "handoff_check_deferred",
+                            KIND_RESUME: "resume_deferred"}.get(kind, "followup_deferred"),
                {"followup_id": str(doc["_id"]), "reason": reason, "due_at": due_at.isoformat()})
     return "deferred"
 
@@ -475,6 +539,83 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
     await _log(db, tracer, f"handoff_check_{status}",
                {"followup_id": check_id, "send_status": sent.status, "reply": request.text, "channel": channel,
                 "staff_alert": alert["reason"]})
+    return status
+
+
+async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """The dealership has opened (MASTER_PLAN_3 B1): if the lead is still
+    waiting for the team and the send check allows it now, run the morning
+    message's AI turn. Held → back to pending until the check's time."""
+    from upsell_agent.agent.after_hours import TRIGGER_RESUME
+    from upsell_agent.agent.turn import run_turn
+
+    resume_id = str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="resume_check", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"resume-check-{resume_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": resume_id, "channel": doc["to_channel"]})
+    async with tracer.node("resume", {"followup_id": resume_id, "due_at": doc["due_at"],
+                                      "channel": doc["to_channel"]}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        choice = ((state.get("conversation") or {}).get("after_hours") or {}).get("choice")
+        mode = await dealer_ai_mode(db.dealer_id)
+        checks = [
+            ("still_waiting", choice == "later",
+             "the customer is still waiting for the team" if choice == "later"
+             else f"the after-hours choice is now {choice!r}"),
+            ("lead_active", status not in SILENT_STATUSES,
+             f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        check = None
+        if not failed:
+            check = await can_contact(dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+                                      channel=doc["to_channel"], purpose="marketing", is_reply=False, record=False)
+            checks.append(("send_check", check.outcome == "ALLOW", check.summary()))
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "send_check": check.as_dict() if check else None,
+                       "decision": "cancel" if failed else "run the turn" if check.outcome == "ALLOW"
+                       else check.outcome.lower()}
+        span.reasoning = [f"{'✓' if ok else '✗'} {d}" for _, ok, d in checks]
+        span.edge_label = span.output["decision"]
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, "resume_cancelled", {"followup_id": resume_id, "reason": reason})
+        return "cancelled"
+    if check.outcome == "HOLD" and check.until:
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": check.until, "reason": f"held by the send check: {check.reason}"}})
+        await _log(db, tracer, "resume_deferred", {"followup_id": resume_id, "reason": check.reason,
+                                                   "due_at": check.until.isoformat()})
+        return "deferred"
+    if check.outcome != "ALLOW":
+        await _close(db, doc, "suppressed", reason=f"{check.outcome}: {check.reason}")
+        await _log(db, tracer, "resume_suppressed", {"followup_id": resume_id, "reason": check.reason})
+        return "suppressed"
+    await _log(db, tracer, "resume_started", {"followup_id": resume_id})
+
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"], trigger=TRIGGER_RESUME,
+        channel=doc["to_channel"], inbound_text="", shadow=False, deps=deps, turn_id=f"resume-{resume_id}",
+        is_reply=False,
+    )
+    sent = log["summary"].get("send_status")
+    if sent == "held":
+        # The check changed between the look above and the send (a clock move, the cap).
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": clock.now() + BUSY_RETRY_AFTER,
+                      "reason": "held by the send check at send time; checking again"}})
+        return "deferred"
+    status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
+    await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
     return status
 
 

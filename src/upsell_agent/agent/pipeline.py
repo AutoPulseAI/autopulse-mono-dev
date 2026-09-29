@@ -56,6 +56,9 @@ NODES: list[PipelineNode] = [
      "description": "Customer wrote while the AI doesn't answer: holding reply or the reason why not"},
     {"id": "handoff_check", "label": "Staff check", "kind": "code", "stage": 102,
      "description": "30 business minutes after a handoff: still nobody? One more holding reply + staff alert"},
+    # MASTER_PLAN_3 B1 (stage 300 + phase, 1 = B1): the after-hours morning message's checks.
+    {"id": "resume", "label": "Morning message due", "kind": "code", "stage": 301,
+     "description": "After-hours lead chose 'when you open': still waiting? Send check allows it? Run the turn"},
     {"id": "summary", "label": "Summarize older turns", "kind": "ai", "stage": 103,
      "description": "After the send: fold messages that left working memory into the lead's summary"},
 ]
@@ -64,6 +67,9 @@ EDGES: list[PipelineEdge] = [
     {"id": "load_context-extract", "source": "load_context", "target": "extract", "kind": "main"},
     # A new lead's first reply goes straight to the template (FIRST_REPLY_MODE=template).
     {"id": "load_context-fallback", "source": "load_context", "target": "fallback", "kind": "main"},
+    # The after-hours morning message has no new customer text: no Extract (MASTER_PLAN_3 B1).
+    {"id": "load_context-search_stock", "source": "load_context", "target": "search_stock", "kind": "main"},
+    {"id": "resume-load_context", "source": "resume", "target": "load_context", "kind": "fallback"},
     {"id": "extract-validate", "source": "extract", "target": "validate", "kind": "main"},
     # Extract failed (timeout, provider error, AI-call budget): template instead.
     {"id": "extract-fallback", "source": "extract", "target": "fallback", "kind": "fallback"},
@@ -89,9 +95,9 @@ DECIDE_RULES: list[dict[str, str]] = [
     {"id": "stop", "label": "Customer opted out → stop"},
     {"id": "handoff", "label": "Asked for a person or clearly upset → hand off"},
     {"id": "clarify", "label": "Asked what we meant → re-explain"},
-    {"id": "answer", "label": "Questions to answer → answer, then at most one follow-up"},
-    {"id": "confirm", "label": "A value needs confirming → confirm"},
-    {"id": "ask", "label": "A required detail can be asked → ask one"},
+    {"id": "answer", "label": "Questions to answer → answer, then at most two follow-ups"},
+    {"id": "confirm", "label": "A value needs confirming → confirm (+ one ask)"},
+    {"id": "ask", "label": "A required detail can be asked → ask up to two"},
     {"id": "qualified", "label": "Nothing missing → qualified"},
     {"id": "partly_qualified", "label": "Everything missing asked twice → pass on what we have"},
     {"id": "acknowledge", "label": "Nothing to ask right now → reply, no question"},

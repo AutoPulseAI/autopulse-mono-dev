@@ -22,6 +22,9 @@ from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, AI_TURN_
 from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
 
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
+
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 
 

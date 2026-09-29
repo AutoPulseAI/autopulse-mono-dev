@@ -513,16 +513,42 @@ export function ContextPackView({ output }: { output: any }) {
 }
 
 // What Decide chose beyond the rule (MASTER_PLAN_2 Phases 5 and 9): the
-// questions it answers, the one follow-up, a clarification, and why details
-// weren't asked.
+// questions it answers, up to two follow-ups (MASTER_PLAN_3 Bq: a check
+// counts as one), a clarification, and why details weren't asked.
 export function DecideDetails({ output }: { output: any }) {
   if (!output) return null;
   const questions: { text: string; label: string }[] = output.answer_questions ?? [];
   const asks: { label: string; question?: string; hint?: string }[] = output.asks ?? [];
   const notAsked: { label: string; why: string }[] = output.not_asked ?? [];
   const clarify: { label: string; question?: string; explanation?: string }[] = output.clarify?.items ?? [];
+  const afterHours = output.after_hours;
   return (
     <div className="space-y-2 text-[11px]">
+      {afterHours?.mode && (
+        <Block
+          title={
+            afterHours.mode === "offer"
+              ? "After hours: ends with the choice (its only question)"
+              : afterHours.mode === "later"
+                ? "After hours: thank-you, nothing asked"
+                : "After hours: the morning message"
+          }
+        >
+          {afterHours.mode === "offer" && (
+            <div className="font-semibold">
+              "…or the team can pick this up when we open{afterHours.opens_at ? ` (${afterHours.opens_at})` : ""}. Which would
+              you like?"
+            </div>
+          )}
+          <div className="text-muted">{afterHours.why}</div>
+          {afterHours.schedule_resume && <div>Schedules the morning message for opening time.</div>}
+        </Block>
+      )}
+      {!afterHours?.mode && afterHours?.cancel_resume && (
+        <Block title="After hours">
+          <div className="text-muted">{afterHours.why} Any pending morning message is cancelled.</div>
+        </Block>
+      )}
       {output.annoyed_at_bot && (
         <div className="rounded-lg bg-warn-soft px-2 py-1.5 text-warn">
           The customer is frustrated with the conversation: no questions this time.
@@ -555,9 +581,12 @@ export function DecideDetails({ output }: { output: any }) {
         </Block>
       )}
       {asks.length > 0 && (
-        <Block title={output.action === "answer" ? "Then asks (one question)" : "Asks (one question)"}>
+        <Block title={`${output.action === "answer" || output.confirm ? "Then asks" : "Asks"} (${asks.length} question${asks.length === 1 ? "" : "s"}${output.confirm ? " + the check" : ""})`}>
           {asks.map((a, i) => (
-            <div key={i} className="font-semibold">{a.question ?? a.hint ?? a.label}</div>
+            <div key={i} className="font-semibold">
+              {asks.length > 1 && <span className="mr-1 text-muted">{i + 1}.</span>}
+              {a.question ?? a.hint ?? a.label}
+            </div>
           ))}
         </Block>
       )}

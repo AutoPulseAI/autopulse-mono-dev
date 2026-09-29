@@ -247,13 +247,42 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
     if "#reject" in lower:
         values.append({"path": "trade_in.payoff", "value": 12000, "quote": "I owe 12k", "confidence": 0.8})
 
+    if payload.get("awaiting_contact_choice") and (preference := _contact_preference(text)):
+        # Like a real model: the answer as a value of the contact_preference slot (agent/nodes/extract.py).
+        values.append({"path": "contact_preference", "value": preference, "quote": text.strip(), "confidence": 0.9})
     return {
         "values": values,
         "questions": _questions(text),
         "wants_human": bool(_HUMAN.search(text)),
         **_sentiment(text),
         **_possible_opt_out(text),
+        **_wants_visit(text),
     }
+
+
+# Answers to "help you now, or have the team pick this up when we open?" (MASTER_PLAN_3 B1).
+_PREFER_NOW = re.compile(r"\b(now|right now|now is (?:fine|good)|let'?s do it|go ahead|here is fine|here'?s fine)\b",
+                         re.IGNORECASE)
+_PREFER_LATER = re.compile(r"\b(later|tomorrow|morning|when you open|when (?:you'?re|you are) open|business hours|"
+                           r"have the team|team can|wait)\b", re.IGNORECASE)
+_VISIT = re.compile(r"\b(come (?:in|by|see|look)|stop by|swing by|test ?drive|see it in person|visit|"
+                    r"book (?:a|an) (?:time|appointment|visit)|schedule (?:a|an) (?:time|appointment|visit))\b",
+                    re.IGNORECASE)
+
+
+def _contact_preference(text: str) -> str | None:
+    later, now = _PREFER_LATER.search(text), _PREFER_NOW.search(text)
+    if later and not now:
+        return "later"
+    if now and not later:
+        return "now"
+    return None
+
+
+def _wants_visit(text: str) -> dict[str, Any]:
+    if _VISIT.search(text):
+        return {"wants_visit": True, "wants_visit_confidence": 0.9}
+    return {"wants_visit": False, "wants_visit_confidence": 0.0}
 
 
 # Unclear opt-outs; the clear ones are caught in code first (compliance/opt_out.py).
@@ -414,15 +443,14 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     if dates and action not in ("handoff", "confirm"):
         opener += f"Got it - {dates[0]}. "
     answered, promises = _answers(questions, payload)
-    follow_up = ""
-    if confirm:
-        follow_up = f" {_confirm_text(confirm)}"
-    elif asks:
-        follow_up = f" {_question_for(asks[0])}"
+    # At most two questions (MASTER_PLAN_3 Bq): the confirmation first, then the asks.
+    follow_ups = ([_confirm_text(confirm)] if confirm else []) + [_question_for(a) for a in asks]
+    follow_up = "".join(f" {q}" for q in follow_ups[:2])
 
     if action == "answer":
         body = f"{opener}{answered}{follow_up}"
-        why = f"Answering {len(questions)} question(s) first" + (", then one follow-up." if follow_up else ".")
+        why = f"Answering {len(questions)} question(s) first" + (
+            f", then {len(follow_ups[:2])} follow-up(s)." if follow_up else ".")
     elif action == "clarify":
         items = (payload.get("clarify") or {}).get("items", [])
         explained = " ".join(i["explanation"] for i in items if i.get("explanation"))
@@ -434,11 +462,12 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
             body += f" {extra}"
         why = "The customer asked what we meant, so the last question is explained and asked again, nothing new."
     elif action == "ask":
-        body = f"{opener}{_question_for(asks[0])}"
-        why = "Asking for the most important missing detail."
+        body = f"{opener}{follow_up.strip()}"
+        why = f"Asking for the {len(asks)} most important missing detail(s)."
     elif action == "confirm":
-        body = f"{opener}{_confirm_text(confirm)}"
-        why = "A value came in uncertain, so it is confirmed before it's relied on."
+        body = f"{opener}{follow_up.strip()}"
+        why = "A value came in uncertain, so it is confirmed before it's relied on" + (
+            ", then one more detail is asked." if asks else ".")
     elif action == "handoff":
         body = "No problem - I'm passing this to a member of our team, who will reach out to you shortly."
         why = "The customer asked for a person or is clearly upset, so the AI steps back."
@@ -458,6 +487,23 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         body = f"Thanks, {name} - noted!"
         why = "Nothing to ask right now, so the reply just acknowledges the message."
+    after_hours = payload.get("after_hours") or {}
+    opens = after_hours.get("opens_at")
+    if after_hours.get("mode") == "offer":
+        body = (f"{answered} " if action in ("answer", "clarify") and answered else "Thanks for reaching out! ") + (
+            f"We're closed right now and open again at {opens}. " if opens else "We're closed right now. ") + (
+            "I can help you here now, or the team can pick this up when we open. Which would you like?")
+        why = "The dealership is closed: answer, then offer to help now or have the team pick it up at opening."
+    elif after_hours.get("mode") == "later":
+        body = (f"{answered} " if answered else "") + f"Thanks, {name}! The team will pick this up when we open" + (
+            f" at {opens}." if opens else ".")
+        why = "The customer chose to wait for the team: a short thank-you, nothing asked."
+    elif after_hours.get("mode") == "resume":
+        hour = int(str(((payload.get("context") or {}).get("now") or {}).get("time", "09:00")).split(":")[0])
+        greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
+        rest = "Just reply here whenever you're ready." if action == "acknowledge" else body.removeprefix(opener)
+        body = f"{greeting}, {name}! The team is in now. {rest}"
+        why = "The dealership has opened: the conversation picks up where it stopped. " + why
     if payload.get("quiet_hours"):
         body += " The team will pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."

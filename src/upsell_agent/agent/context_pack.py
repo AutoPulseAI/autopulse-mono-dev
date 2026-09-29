@@ -3,7 +3,11 @@ about a turn, built once in Load context. Extract and Compose read the same
 pack, so they can't disagree about the turn, and the Debug UI shows it.
 
 Layers:
-  now             the dealer's local date, weekday, time and timezone
+  now             the dealer's local date, weekday, time and timezone; whether
+                  the dealership is open (`open_now`) and when it opens next
+                  (`next_open`, and `next_open_text` as a customer reads it,
+                  only when the hours are on the dealer's record);
+                  MASTER_PLAN_3 B1
   dealer          name, timezone and `info`: what may be told to a customer
                   (address, phone, website, opening hours; `missing` = the
                   team will confirm). From the dealer's platform record.
@@ -80,7 +84,7 @@ class PackBudget(BaseModel):
 
 
 class ContextPack(BaseModel):
-    now: dict[str, str]
+    now: dict[str, Any]
     dealer: dict[str, Any]
     customer: dict[str, Any]
     lead_type: str
@@ -210,6 +214,7 @@ def build_pack(
     inventory: list[dict[str, Any]] | None = None,
     inventory_query: dict[str, Any] | None = None,
     inventory_checked_at: str | None = None,
+    opening: dict[str, Any] | None = None,
 ) -> ContextPack:
     """`history`: the thread before this turn's new messages, oldest first."""
     working, used = select_working_memory(history, working_tokens)
@@ -217,7 +222,7 @@ def build_pack(
     slots = profile_layer(profile, now_local.date())
     pack = ContextPack(
         now={"date": now_local.strftime("%Y-%m-%d"), "weekday": now_local.strftime("%A"),
-             "time": now_local.strftime("%H:%M"), "timezone": dealer.get("timezone", "")},
+             "time": now_local.strftime("%H:%M"), "timezone": dealer.get("timezone", ""), **(opening or {})},
         dealer=dealer,
         customer=customer,
         lead_type=lead_type,

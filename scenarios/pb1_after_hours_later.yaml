@@ -1,0 +1,20 @@
+name: After hours, the team picks it up when the dealership opens
+stage: 401
+description: 'MASTER_PLAN_3 B1. A website lead at 23:00 is offered the choice and says "tomorrow is fine": a short thank-you with no questions, and a morning message due at 9:00 (the dealer opens, and it is 8:00+ in the customer''s New York time). At 9:00 the morning message goes out ("the team is in now", then the next questions), the choice becomes "now", and the team gets a notice.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 23:00"}
+  - new_lead: {as: l, dealer: A, lead_type: sales, channel: sms, name: Leo Later, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: l, zip: "10001"}
+  - send_lead_created: {lead: l}
+  - wait_turns: {lead: l, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: l, question_marks: 1}
+  - expect_lead: {lead: l, after_hours: offered}
+  - reply: {lead: l, text: "tomorrow is fine"}
+  - wait_turns: {lead: l, count: 2, timeout_s: 20}
+  - expect_last_sent: {lead: l, contains: "9:00", question_marks: 0}
+  - expect_lead: {lead: l, after_hours: later}
+  - expect_followup: {lead: l, kind: resume_at_opening, status: pending, due_local: "09:00"}
+  - advance_clock: {dealer: A, to: "Wed 09:01"}
+  - expect_followup: {lead: l, kind: resume_at_opening, status: sent, timeout_s: 30}
+  - expect_outbox: {lead: l, channel: sms, count: 3, contains: "team is in"}
+  - expect_lead: {lead: l, after_hours: now, staff_notice: after_hours_resume}

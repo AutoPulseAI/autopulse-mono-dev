@@ -14,10 +14,11 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | A7. Evals, shadow and rollout | Not started |
 | B0. Decisions (Part B) | Readiness review 28 Sept: decisions 55–71 recorded (architecture.md §15). Campaign texts pass the send check through a shared queue and are still sent by the platform (decision 66, corrected 29 Sept). REVIEW kept, resolved without a new screen (decision 72). Consent-ask email withdrawn for now (decisions 67, 73). **Part B's decisions are complete; ready to build once C1 is built** |
 | C1. Compliance engine (with B2/B3) | **Done, verified end to end (29 Sept 2026).** Built ahead of Part A Phases 3–7 at the user's request (C1 needs nothing from Part A). Includes the approved platform campaign changes. Flags: decisions 75 and 78–86 |
-| Bq. Two questions per message | Not started (added 28 Sept; `MAX_ASKS_PER_MESSAGE` is still 1). **Next** |
+| Bq. Two questions per message | **Closed (29 Sept–1 Oct).** Decisions 88–89. 825 unit tests, 56/56 evals, offline model |
+| B1. After-hours first reply | **Closed (29 Sept–1 Oct).** Decisions 90–98, plus three fixes from live testing (real-model choice drop, stray `wants_visit`, repeated greeting / re-offer on a plain ack). Platform notification for the team still to build (decision 96, flagged). **Next: B5** |
 | B2. Inbound or outbound | **Done inside C1 (29 Sept).** Real `Lead.source` values still to be checked on real data (decision 85) |
 | B3. Send check | **Done inside C1 (29 Sept)**, including item 7's platform campaign changes. Not built: item 7's optional campaign-form note |
-| B1, B4–B6 | Not started. **Known gaps accepted for B5:** old platform reminders after a move/cancel (until C5), and a cancelled booking leaves the lead "Appointment Booked" (interim) |
+| B4–B6 | Not started. B5 must also wire B1's `wants_visit` into booking (B5 item 8). **Known gaps accepted for B5:** old platform reminders after a move/cancel (until C5), and a cancelled booking leaves the lead "Appointment Booked" (interim) |
 
 ---
 
@@ -199,3 +200,88 @@ Not built: B3 item 7's optional campaign-form note ("12 leads can't be texted at
 | Lookups | ZIP 90012 → Los Angeles, 10001 → New York, 79901 → Denver (El Paso, TX); +1 212 → New York; +44 → none |
 | Ruff on changed files / Debug UI `tsc` | Clean / clean |
 | Burst test (`make ai-burst`, 300 replies in 600 s, send check on every send) | 8 / 8 checks passed: 300 / 300 replies sent, 0 errors, no template fallback, reply p95 2.7 s (one at 19.5 s), other dealer's first reply p95 2.7 s (not slowed), dealer A never above its cap |
+
+---
+
+## Phase Bq: Two questions per message (29 Sept 2026)
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| `MAX_ASKS_PER_MESSAGE = 2`; a confirmation counts as one; `answer` → confirmation + one ask, or two asks; `confirm` → confirmation + one ask; `ask` → up to two; the detail being confirmed is never also asked | `slots/policy.py` |
+| Rule labels ("at most two follow-ups", "ask up to two") | `agent/pipeline.py` |
+| Compose's instructions and style guide: "at most two questions" | `agent/llm.py` |
+| Offline model joins up to two questions (confirmation first) | `agent/offline_model.py` |
+| New Guard check `at_most_two_questions` (counts `?` in SMS and email) | `agent/nodes/guard.py` |
+| Decide view lists both asks, numbered, and "+ the check" | `debug-ui/src/components/StepViews.tsx` |
+| Tests: `tests/unit/test_two_questions.py` (new, 18); Plan 2's policy/pipeline tests updated to the new limit | |
+
+## Phase B1: After-hours first reply (29 Sept 2026)
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| The rules, one pure function: offer / later / resume / nothing, and whether to schedule or cancel the morning message | `agent/after_hours.py` (new) |
+| `is_open`, `next_opening`, `opening_text` ("9:00 AM tomorrow") | `integrations/dealer_profile.py` (the compliance engine's `dealer_open` now uses `is_open`) |
+| Context pack `now` layer: `open_now`, `next_open`, `next_open_text` (only with hours on record) | `agent/context_pack.py`, `agent/nodes/load_context.py` |
+| Conversation state `after_hours` {choice, times_offered, offered_turn, decided_at, why} and `awaiting_contact_choice` | `agent/conversation.py` |
+| Extract: `wants_visit` (+ confidence); the now/later answer as the pseudo-slot `contact_preference`, moved out of the values | `agent/llm.py`, `agent/nodes/extract.py`, offline model |
+| Decide runs the plan; the offer and the "later" thank-you ask nothing else | `agent/nodes/decide.py`, `slots/policy.py` (`Flags.contact_choice`) |
+| Compose: the offer's wording, the thank-you, the morning greeting; don't mention being closed otherwise | `agent/llm.py`, `agent/nodes/compose.py`, offline model |
+| Guard accepts the opening time | `agent/nodes/guard.py` |
+| After the send: record the choice, schedule / cancel the morning message; the team's notice when it goes out | `agent/turn.py` |
+| Follow-up kind `resume_at_opening`: plan, cancel, fire (checks, send check, then a whole AI turn; Extract skipped) | `scheduler/followups.py`, `agent/graph.py`, `agent/state.py` |
+| A customer message cancels channel switches only, not the morning message (the plan decides) | `CHANNEL_SWITCHES` in `scheduler/followups.py` |
+| Lead profile: `pending_morning_message`, `staff_notice` | `api/leads.py` |
+| Debug UI: Decide "After hours" block; Conversation panel "After hours" + "Notice for the team"; Scheduler "morning message" cards; timeline labels; `resume` node in the pipeline graph; "Plan 3 · Phase B1" scenario group | `debug-ui/src/...` |
+| Scenarios `pb1_after_hours_now.yaml`, `pb1_after_hours_later.yaml`; runner: `expect_lead` `after_hours` / `staff_notice`, `expect_last_sent` `excludes`, `expect_followup` kind `resume_at_opening` | `scenarios/`, `devtools/scenarios.py` |
+| Tests: `tests/unit/test_after_hours.py` (new, 32). Six test modules now pin the clock inside opening hours (`during_opening_hours` fixture) so their first replies aren't after-hours ones whenever the suite runs | `tests/unit/` |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests (offline model) | 816 passed (784 after Bq) |
+| Offline eval gate (`pytest evals`) | 56 / 56 |
+| Ruff | Clean on changed files (the 4 remaining errors were there before) |
+| Debug UI type check (`tsc -b --noEmit` in `ai-debug-ui`) | Clean |
+| B1 scenarios | Passed, but **run in the Docker stack on the real models by mistake** (about 310 calls, ~$1.58). Those runs found two real-model issues, fixed: the now/later answer landing in the slot values (decision 98), and Compose repeating "we're closed" after "now". The full scenario suite was not completed (stopped). Scenarios and evals are to be run on the offline model only from now on |
+
+### Not built / to do
+
+- A platform notification for the team's notices (decision 96).
+- B5 item 8: a visit request goes straight to booking.
+- Known gap: a template first reply carries no choice (decision 98).
+
+### Fixed after live testing (1 Oct, real models via the Debug UI)
+
+Found through real conversations (not by running scenarios/evals on the real models, which the user has asked never to do again):
+
+| Bug | Fix |
+|---|---|
+| The real model sometimes dropped the after-hours choice question on an "offer" reply, closing with a generic line instead ("let me know if anything else!") | New Guard check `after_hours_choice_offered`: an "offer" draft missing "which would you like" gets one rewrite, then the template. Compose's instructions also say the question is never dropped or paraphrased |
+| A stray `wants_visit` value in the model's `values` list (alongside the real field) was rejected by Validate as an unknown slot | `lift_wants_visit()` in `agent/nodes/extract.py`, same pattern as the earlier `contact_preference` fix |
+| A plain "ok" after "later" re-offered the after-hours choice and the reply re-greeted ("Hello, Test!") mid-conversation | `is_plain_acknowledgement()` (`agent/after_hours.py`): a bare ack ("ok", "thanks", "sounds good"...) is a no-op in the after-hours flow — no re-offer, no state change. Compose only greets in the very first SMS of a conversation now (email keeps its salutation every time); new Guard check `no_repeated_greeting` catches a repeated SMS greeting, exempting the after-hours morning message's own "Good morning" opener |
+
+Also found, not fixed (pre-existing, out of Bq/B1 scope, flagged for the user): the real model sometimes puts a vague timeframe ("next month") into `interest.needed_by` (a specific-date field) instead of `interest.timeline`, and `slots/dates.py` correctly rejects it as not a real date — so timeline stays missing and gets asked again.
+
+**Verification (offline model only):** 825 unit tests, 56/56 evals, ruff clean (same 4 pre-existing errors).
+
+### Bq and B1 closed (1 Oct 2026)
+
+Both built 29 Sept (decisions 88–98), then three real-model bugs turned up in the user's own Debug UI testing on 1 Oct (never reproduced by running scenarios or evals against the real models — that's against the user's standing instruction; all diagnosis was from the user's pasted transcripts and the existing Mongo turn logs, all fixes verified on the offline model only):
+
+1. The real model sometimes dropped the after-hours choice question on an "offer" reply. Fixed with a new Guard check, `after_hours_choice_offered` (rejects a draft missing "which would you like", one rewrite then the template).
+2. A stray `wants_visit` value in the model's `values` list was rejected by Validate as an unknown slot. Fixed the same way as the earlier `contact_preference` fix: `lift_wants_visit()` strips it before Validate sees it.
+3. A plain "ok" after "later" re-offered the choice and re-greeted ("Hello, Test!") mid-conversation. Fixed: `is_plain_acknowledgement()` makes a bare ack a no-op in the after-hours flow (no re-offer, no state change); Compose now greets by name only in the very first SMS of a conversation (email keeps its salutation every time); a new Guard check, `no_repeated_greeting`, catches a repeated SMS greeting (exempting the after-hours morning message's own "Good morning" opener).
+
+**Final verification (offline model only):** 825 unit tests (8 consecutive full runs, one unrelated one-off flake in a pre-existing C1 opt-out test that didn't reproduce), 56/56 evals, ruff clean (same 4 pre-existing errors).
+
+**Flagged, not built, carried forward:**
+- A real platform notification for the team's after-hours notice (decision 96) — today it's on the AI's lead state and the Debug UI only.
+- B5 item 8: wire `wants_visit` into actual booking.
+- The real model sometimes puts a vague timeframe ("next month") into `interest.needed_by` instead of `interest.timeline`, pre-existing and out of Bq/B1 scope — the user's call whether to fix it now or later.
+- A first reply that falls back to the template carries no after-hours choice (decision 98's known gap).
+

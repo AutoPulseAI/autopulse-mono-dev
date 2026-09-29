@@ -78,7 +78,7 @@ every time.
 2. We load what the database already knows about this customer (§5.2).
 3. The Slot Engine picks the first missing slot to ask about.
 4. The AI writes one short message: acknowledge the lead, answer what they
-   asked if we can, and ask one question.
+   asked if we can, and ask at most two questions (MASTER_PLAN_3 Bq).
 5. We send it on the **same channel the lead came from**, and schedule the
    1-day follow-up (§7).
 

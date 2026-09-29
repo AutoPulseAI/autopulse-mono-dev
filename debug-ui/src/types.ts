@@ -152,6 +152,15 @@ export interface ConversationStateView {
   promises: { text: string; made_at: string | null; turn: number }[];
   last_topic: string | null;
   max_asks: number;
+  // MASTER_PLAN_3 B1: the "now or when we open?" choice.
+  after_hours?: {
+    choice: "offered" | "now" | "later";
+    times_offered: number;
+    offered_turn: number;
+    decided_at: string | null;
+    why: string | null;
+  } | null;
+  awaiting_contact_choice?: boolean;
 }
 
 export interface SummaryView {
@@ -163,6 +172,8 @@ export interface SummaryView {
 
 export interface SlotsView {
   conversation?: ConversationStateView;
+  pending_morning_message?: { due_at: string } | null;
+  staff_notice?: { at: string; kind: string; text: string } | null;
   summary?: SummaryView;
   implemented: boolean;
   status: string;
@@ -187,8 +198,9 @@ export type FollowupStatus =
 
 export interface Followup {
   id: string;
-  // channel_switch: the 24h switch; handoff_check: the staff check after a handoff.
-  kind: "channel_switch" | "handoff_check";
+  // channel_switch: the 24h switch; handoff_check: the staff check after a handoff;
+  // resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
+  kind: "channel_switch" | "handoff_check" | "resume_at_opening";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";

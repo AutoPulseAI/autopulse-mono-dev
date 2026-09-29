@@ -22,7 +22,8 @@ from upsell_agent.agent.qualification import (
 )
 
 Channel = Literal["sms", "email"]
-Trigger = Literal["lead_created", "inbound_message"]
+# resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
+Trigger = Literal["lead_created", "inbound_message", "resume_at_opening"]
 
 
 class ToolCallRecord(BaseModel):

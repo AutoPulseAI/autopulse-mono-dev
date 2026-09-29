@@ -8,6 +8,12 @@ UI shows the full path.
 
 Limits (architecture §7): the whole turn gets 8s for a new lead's first reply
 and 20s otherwise. Running out of time sends the template - never nothing.
+
+After-hours (MASTER_PLAN_3 B1, agent/after_hours.py): once the reply is out,
+the choice Decide worked out is saved on the conversation state, and the
+morning message (`resume_at_opening`) is scheduled or cancelled. The morning
+message is itself a turn (trigger `resume_at_opening`, not a reply to the
+customer): it also leaves the team a notice with the lead's details.
 """
 
 import asyncio
@@ -19,6 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
+from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
@@ -44,7 +51,12 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.integrations.platform_client import PlatformClient, StubPlatformClient
 from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTracer
 from upsell_agent.observability.tracing import turn_trace
-from upsell_agent.scheduler.followups import plan_followup, plan_handoff_check
+from upsell_agent.scheduler.followups import (
+    cancel_resume,
+    plan_followup,
+    plan_handoff_check,
+    plan_resume,
+)
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.worker.queue import Enqueue
 
@@ -109,8 +121,12 @@ async def run_turn(
     source_message_id: str | None = None,
     turn_id: str | None = None,
     batch: list[dict[str, Any]] | None = None,
+    is_reply: bool = True,
 ) -> dict[str, Any]:
-    """`turn_id`: the handlers derive it from what triggered the turn, so a
+    """`is_reply`: False for a message the system starts (the after-hours
+    morning message), which the send check treats as outbound.
+
+    `turn_id`: the handlers derive it from what triggered the turn, so a
     re-run of the same job (a retry, or the queue re-delivering it) reuses the
     send's idempotency key and can never message the customer twice.
 
@@ -138,7 +154,8 @@ async def run_turn(
         # the real one), so a night-time reply in an outbound conversation is
         # written to ask nothing (architecture §15 decision 29).
         precheck = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
-                                     purpose="marketing", is_reply=True, lead=lead, customer=customer, record=False)
+                                     purpose="marketing", is_reply=is_reply, lead=lead, customer=customer,
+                                     record=False)
         ctx.compliance = precheck.as_dict()
         await _save_origin(db, lead_id, precheck)
     state = AgentState(
@@ -178,7 +195,7 @@ async def run_turn(
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=None if channel == "sms" else draft.get("email_subject"),
-                shadow=shadow, event_received_at=event_received_at,
+                shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject}) as span:
@@ -214,9 +231,19 @@ async def run_turn(
                         + ("" if check["hours_from_record"] else ", default hours") + "). If nobody has taken "
                         "the lead over by then, the customer gets one more holding reply and staff get an alert.")
                     span.edge_label = "staff check"
+                after_hours = await _after_hours_followup(db, decision, sent, lead_id=lead_id, lead=lead,
+                                                          customer=customer, customer_id=customer_id,
+                                                          channel=channel, turn_id=tracer.turn_id, shadow=shadow)
+                if after_hours:
+                    span.output = {**(span.output or {}), "after_hours": after_hours}
+                    span.reasoning.append(after_hours["reason"])
+                    if after_hours.get("created"):
+                        span.edge_label = "morning message"
 
         await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
                                  shadow=shadow, turn_id=tracer.turn_id)
+        if trigger == TRIGGER_RESUME and sent is not None and sent.status in ("sent", "duplicate") and not shadow:
+            await _notify_team_at_opening(db, lead_id, result)
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
@@ -245,9 +272,47 @@ async def run_turn(
             "send_check": (sent.compliance or {}).get("outcome") if sent else None,
             "origin": (ctx.compliance or {}).get("origin", {}).get("origin"),
             "review_opened": review,
+            "after_hours": (decision.get("after_hours") or {}).get("mode"),
         })
         await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
         return log
+
+
+async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, Any], sent: SendOutcome | None, *,
+                                lead_id: str, lead: dict | None, customer: dict | None, customer_id: str,
+                                channel: str, turn_id: str, shadow: bool) -> dict[str, Any] | None:
+    """The after-hours plan's follow-up (MASTER_PLAN_3 B1): after "later" the
+    morning message is scheduled; after "now" (or a visit request, or the
+    dealer opening) a pending one is cancelled. Only when the reply went out."""
+    plan = decision.get("after_hours") or {}
+    if shadow or sent is None or sent.status not in ("sent", "failed", "duplicate"):
+        return None
+    if plan.get("schedule_resume"):
+        return await plan_resume(db, lead_id=lead_id, customer_id=customer_id, channel=channel, turn_id=turn_id,
+                                 lead=lead, customer=customer)
+    if plan.get("cancel_resume"):
+        cancelled = await cancel_resume(db, lead_id, reason=plan.get("why") or "the conversation carried on")
+        return {"created": False, "cancelled": cancelled,
+                "reason": f"Morning message cancelled: {plan.get('why')}" if cancelled
+                else "No morning message was pending."}
+    return None
+
+
+async def _notify_team_at_opening(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
+    """The team's notice when the morning message goes out (MASTER_PLAN_3 B1,
+    decision 57): a notification only, the AI stays in charge. Saved on the
+    AI's lead state (shown in the Debug UI); the platform doesn't show it yet."""
+    pack = result.get("context_pack") or {}
+    known = [f"{k['label']}: {k['value']}" for k in (pack.get("about_customer") or {}).get("known", [])]
+    open_questions = [q["text"] for q in (pack.get("conversation") or {}).get("open_questions", [])]
+    decision = result.get("decision") or {}
+    text = ("After-hours lead: the customer asked for the team to pick this up at opening, and the AI has just "
+            f"messaged them. {decision.get('required_filled')} of {decision.get('required_total')} required "
+            "details collected" + (f" ({'; '.join(known)})" if known else "") + "."
+            + (f" Still open: {'; '.join(open_questions)}." if open_questions else ""))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$set": {"staff_notice": {"at": clock.now(), "kind": "after_hours_resume", "text": text}}})
 
 
 async def _save_origin(db: DealerScopedDatabase, lead_id: str, check: Decision) -> None:
@@ -339,6 +404,15 @@ def _asked_slots(result: dict[str, Any], channel: str) -> list[str]:
     return list(decision.get("slots", [])) if decision.get("action") in ("ask", "confirm", "answer") else []
 
 
+def _after_hours_record(result: dict[str, Any]) -> dict | None:
+    """The after-hours choice as this turn leaves it. An offer only counts when
+    the AI-written reply (which carries it) went out, not a template."""
+    plan = (result.get("decision") or {}).get("after_hours") or {}
+    if plan.get("mode") == "offer" and result.get("used_template"):
+        return None
+    return plan.get("record")
+
+
 async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
                              sent: SendOutcome | None, result: dict[str, Any], *, lead_state: dict | None,
                              channel: str, shadow: bool, turn_id: str) -> None:
@@ -361,6 +435,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         new_questions=list((result.get("extraction") or {}).get("questions") or []),
         used_template=bool(result.get("used_template")),
         promises=list(draft.get("promises") or []),
+        after_hours=_after_hours_record(result),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

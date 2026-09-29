@@ -8,6 +8,9 @@ conversation itself, beyond the slot values. Stored on
   open_questions  the customer's questions no AI-written reply has answered yet
   promises        what our replies said the team would do
   last_topic      what the last reply was about
+  after_hours     the "now or when we open?" choice (MASTER_PLAN_3 B1,
+                  agent/after_hours.py): offered / now / later, how many times
+                  it was offered, and the reply that last offered it
 
 Updated only after a turn whose reply went out (sent, or failed and handed
 to the channel switch). Shadow turns change nothing: the customer never saw
@@ -16,8 +19,9 @@ those drafts.
 
 import re
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 MAX_OPEN_QUESTIONS = 10
 MAX_PROMISES = 10
@@ -46,6 +50,17 @@ class Promise(BaseModel):
     turn: int = 0
 
 
+class AfterHoursChoice(BaseModel):
+    # offered: asked, no answer yet; now: carry on; later: the team picks it up at opening.
+    choice: Literal["offered", "now", "later"] = "offered"
+    times_offered: int = 0
+    # The reply (ConversationState.turn) that last offered the choice.
+    offered_turn: int = 0
+    decided_at: str | None = None
+    # Why the choice ended up as it is, for the Debug UI.
+    why: str | None = None
+
+
 class ConversationState(BaseModel):
     turn: int = 0
     asks: dict[str, SlotAsks] = Field(default_factory=dict)
@@ -53,6 +68,14 @@ class ConversationState(BaseModel):
     open_questions: list[OpenQuestion] = Field(default_factory=list)
     promises: list[Promise] = Field(default_factory=list)
     last_topic: str | None = None
+    after_hours: AfterHoursChoice | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def awaiting_contact_choice(self) -> bool:
+        """Our last reply offered "now or when we open?" (Extract reads the answer against it)."""
+        return bool(self.after_hours and self.after_hours.choice in ("offered", "later")
+                    and self.after_hours.offered_turn == self.turn and self.turn > 0)
 
 
 def _key(text: str) -> str:
@@ -107,12 +130,14 @@ def after_turn(
     new_questions: list[dict | str],
     used_template: bool,
     promises: list[str],
+    after_hours: dict | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
     the questions the AI-written reply says it answered. The customer's new
     questions are recorded even if nothing was sent, so they're answered next
-    time."""
+    time. `after_hours`: the after-hours choice as this turn left it
+    (agent/after_hours.py), kept only when the reply went out."""
     if shadow:
         return state
     at = now.isoformat()
@@ -141,6 +166,8 @@ def after_turn(
                 updated.promises.append(Promise(text=text.strip(), made_at=at, turn=updated.turn))
                 made.add(_key(text))
         updated.last_topic = _topic(action, asked_slots, used_template)
+        if after_hours is not None:
+            updated.after_hours = AfterHoursChoice.model_validate(after_hours)
 
     updated.open_questions = updated.open_questions[-MAX_OPEN_QUESTIONS:]
     updated.promises = updated.promises[-MAX_PROMISES:]

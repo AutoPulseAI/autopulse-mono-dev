@@ -36,7 +36,8 @@ const STAGE_NAMES: Record<number, string> = {
 };
 
 const stageLabel = (stage: number) =>
-  stage > 300 ? `Plan 3 · Phase C${stage - 300}`
+  stage > 400 ? `Plan 3 · Phase B${stage - 400}`
+    : stage > 300 ? `Plan 3 · Phase C${stage - 300}`
     : stage > 200 ? `Plan 3 · Phase A${stage - 200}` : stage > 100 ? `Plan 2 · Phase ${stage - 100}` : `Stage ${stage}`;
 
 export function ScenariosTab({ onError }: { onError: (m: string) => void }) {

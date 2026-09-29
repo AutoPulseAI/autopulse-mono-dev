@@ -57,6 +57,33 @@ export function ConversationPanel({ slots }: { slots: SlotsView | null }) {
         {c.promises.length === 0 ? <Empty>nothing</Empty> : c.promises.map((p, i) => <div key={i}>{p.text}</div>)}
       </Section>
 
+      {c.after_hours && (
+        <Section title="After hours (now or when we open?)">
+          <div>
+            <span className="rounded bg-accent-soft px-1 text-[10px] font-semibold text-accent">
+              {c.after_hours.choice === "offered" ? "offered, no answer yet" : c.after_hours.choice}
+            </span>{" "}
+            <span className="text-muted">
+              offered x{c.after_hours.times_offered}
+              {c.awaiting_contact_choice ? " · our last reply asked it" : ""}
+            </span>
+          </div>
+          {c.after_hours.why && <div className="text-muted">{c.after_hours.why}</div>}
+          {slots?.pending_morning_message && (
+            <div>Morning message due {new Date(slots.pending_morning_message.due_at).toLocaleString()}</div>
+          )}
+        </Section>
+      )}
+
+      {slots?.staff_notice && (
+        <Section title="Notice for the team">
+          <div className="rounded bg-warn-soft p-1.5 text-warn">{slots.staff_notice.text}</div>
+          <div className="text-[10px] text-muted">
+            Kept on the AI's lead state only: the platform doesn't show these notices yet.
+          </div>
+        </Section>
+      )}
+
       {c.last_topic && (
         <Section title="Last reply was about">
           <div>{c.last_topic}</div>

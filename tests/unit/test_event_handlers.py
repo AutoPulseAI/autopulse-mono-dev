@@ -3,6 +3,8 @@ pause/resume, cancelling follow-ups, and staying silent on paused leads."""
 
 from datetime import UTC, datetime
 
+import pytest
+
 from upsell_agent.agent.turn import TurnDeps
 from upsell_agent.devtools import simulate
 from upsell_agent.events import handlers
@@ -18,6 +20,9 @@ from upsell_agent.integrations.mongodb import (
     AI_TURN_LOG_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
 )
+
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 

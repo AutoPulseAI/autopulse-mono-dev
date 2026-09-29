@@ -68,6 +68,6 @@ def test_clarify_explains_a_shared_question_once():
 
 
 def test_asks_carry_the_customer_wording():
-    [ask] = next_action(_profile(LeadType.SALES), Flags())["asks"]
+    ask, _second = next_action(_profile(LeadType.SALES), Flags())["asks"]
     assert ask["question"] == "Are you looking for a new or a used vehicle?"
     assert ask["explanation"].startswith("New means")

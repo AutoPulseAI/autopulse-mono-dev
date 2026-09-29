@@ -22,6 +22,8 @@ export const TRIGGER_LABEL: Record<string, string> = {
   followup: "follow-up",
   inbound_held: "held",
   handoff_check: "staff check",
+  resume_check: "morning check",
+  resume_at_opening: "morning message",
   summary: "summary",
 };
 

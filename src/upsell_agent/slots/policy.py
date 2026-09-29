@@ -6,14 +6,17 @@ Rules, checked in order; the first that applies wins:
   1. stop              the customer opted out
   2. handoff           they asked for a person, or are clearly upset
   3. clarify           they asked what our last message meant: re-explain it
-  4. answer            they have questions: answer first, then at most one
-                       follow-up (a confirmation, or one ask)
-  5. confirm           a value is waiting for confirmation
-  6. ask               a required detail can be asked (one per message)
+  4. answer            they have questions: answer first, then at most two
+                       follow-ups (a confirmation and an ask, or two asks)
+  5. confirm           a value is waiting for confirmation (plus one ask)
+  6. ask               a required detail can be asked (two per message)
   7. qualified         nothing missing
   8. partly_qualified  every detail still missing has been asked twice: hand
                        what we have to the team, and stop asking
   9. acknowledge       nothing to ask right now: reply without a question
+
+At most MAX_ASKS_PER_MESSAGE questions per message (MASTER_PLAN_3 Bq,
+architecture §15 decision 35): a confirmation counts as one.
 
 Asking (architecture §15, decision 13): the least-asked detail first; never the detail our last message
 asked for; a detail asked twice is parked until 3 other replies have gone out;
@@ -21,7 +24,10 @@ a customer frustrated with the conversation is asked nothing; a lead already
 handed on as partly qualified is asked nothing again. The send check can hold
 questions too (MASTER_PLAN_3 C1): a possible opt-out gets a plain reply with
 no asks and no confirmations, and so does a reply in an outbound conversation
-outside 8:00-21:00 customer time (architecture §15 decision 29).
+outside 8:00-21:00 customer time (architecture §15 decision 29). So does the
+after-hours choice (MASTER_PLAN_3 B1, agent/after_hours.py): a reply that
+offers "now or when we open?" has that as its only question, and the
+thank-you after "later" asks nothing.
 
 Every rule's result is returned too, so the Debug UI can show why.
 """
@@ -35,7 +41,8 @@ from upsell_agent.slots.profile import Profile
 from upsell_agent.slots.requirements import Requirement
 from upsell_agent.slots.schema import SCHEMA
 
-MAX_ASKS_PER_MESSAGE = 1
+# Questions per message, a confirmation included (MASTER_PLAN_3 Bq, decision 35).
+MAX_ASKS_PER_MESSAGE = 2
 MAX_ASKS_PER_SLOT = 2
 # A parked detail can be asked again once this many other replies have gone out.
 PARKED_FOR_REPLIES = 3
@@ -63,6 +70,9 @@ class Flags:
     stop_asking: bool = False
     # Why this reply must ask nothing at all (a possible opt-out, quiet hours).
     hold_questions: str | None = None
+    # The after-hours choice this reply carries (agent/after_hours.py): "offer" (the
+    # choice is the only question) or "later" (a thank-you, nothing asked).
+    contact_choice: str | None = None
 
     @property
     def clearly_upset(self) -> bool:
@@ -109,12 +119,14 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     # "Asked out": every missing detail has had its two asks. Checked without the
     # cooldown, so a customer who never answers isn't asked round and round forever.
     all_parked = bool(missing) and all(times_asked(profile, r, flags) >= MAX_ASKS_PER_SLOT for r in missing)
-    may_ask = not flags.annoyed_at_bot and not flags.stop_asking and not all_parked and not flags.hold_questions
-    if flags.hold_questions:
+    held = flags.hold_questions or flags.contact_choice
+    may_ask = not flags.annoyed_at_bot and not flags.stop_asking and not all_parked and not held
+    if held:
         pending = []
     # Least-asked first, then by priority: every detail gets its first ask, then
     # its second, before anything is asked a third time.
-    askable = sorted((r for r in missing if blocked[r.id] is None),
+    confirming = {pending[0].path} if pending else set()
+    askable = sorted((r for r in missing if blocked[r.id] is None and not confirming & set(r.slots)),
                      key=lambda r: (times_asked(profile, r, flags), r.priority)) if may_ask else []
 
     conditions: dict[str, tuple[bool, str]] = {
@@ -127,7 +139,8 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
         "answer": (bool(other_questions or clarify_questions),
                    f"{len(other_questions or clarify_questions)} question(s) to answer"),
         "confirm": (bool(pending), f"Confirm {SCHEMA[pending[0].path].label}: {pending[0].value!r}" if pending else ""),
-        "ask": (bool(askable), "Missing: " + askable[0].label if askable else ""),
+        "ask": (bool(askable), "Missing: " + ", ".join(r.label for r in askable[:MAX_ASKS_PER_MESSAGE])
+                if askable else ""),
         "qualified": (not missing and not flags.already_qualified, f"All {total} required details collected"),
         "partly_qualified": (all_parked and not flags.stop_asking,
                              "Everything still missing was asked twice: "
@@ -166,10 +179,11 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
                                "display": display_value(SCHEMA[slot.path], slot.value), "kind": SCHEMA[slot.path].kind,
                                "fact_id": slot.fact_id}
 
-    def add_ask() -> None:
-        item = _ask_item(profile, askable[0])
-        decision["asks"] = [item][:MAX_ASKS_PER_MESSAGE]
-        decision["slots"] += [p for p in item["slots"] if p not in decision["slots"]]
+    def add_asks() -> None:
+        room = MAX_ASKS_PER_MESSAGE - (1 if "confirm" in decision else 0)
+        decision["asks"] = [_ask_item(profile, r) for r in askable[:room]]
+        for item in decision["asks"]:
+            decision["slots"] += [p for p in item["slots"] if p not in decision["slots"]]
 
     if fired == "clarify":
         # One entry per distinct question (year, make and model share one).
@@ -182,13 +196,13 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
         decision["answer_questions"] = clarify_questions + other_questions
     elif fired == "answer":
         decision["answer_questions"] = other_questions or clarify_questions
-        # At most one follow-up question after the answers, never when they're frustrated with us.
+        # At most two follow-up questions after the answers, never when they're frustrated with us.
         if pending and not flags.annoyed_at_bot:
             add_confirm()
-        elif askable:
-            add_ask()
+        add_asks()
     elif fired == "confirm":
         add_confirm()
+        add_asks()
     elif fired == "ask":
-        add_ask()
+        add_asks()
     return decision

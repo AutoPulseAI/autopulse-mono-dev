@@ -73,9 +73,10 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
   };
 
   // A pending channel switch waits in the lane it will leave; once sent it
-  // moves to its target lane. A staff check stays on the lead's own channel.
+  // moves to its target lane. A staff check and the after-hours morning
+  // message stay on the lead's own channel.
   const laneOf = (f: Followup) =>
-    f.kind === "handoff_check" || f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
+    f.kind !== "channel_switch" || f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -156,6 +157,9 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                               {f.kind === "handoff_check" && (
                                 <span className="mr-1 rounded bg-warn-soft px-1 text-[10px] text-warn">staff check</span>
                               )}
+                              {f.kind === "resume_at_opening" && (
+                                <span className="mr-1 rounded bg-accent-soft px-1 text-[10px] text-accent">morning message</span>
+                              )}
                               {leadName(f.lead_id)}
                             </span>
                             <span
@@ -168,7 +172,9 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                           <div className="text-[11px] text-muted">
                             {f.kind === "handoff_check"
                               ? `holding reply by ${f.to_channel.toUpperCase()} if staff haven't taken over`
-                              : `${f.from_channel.toUpperCase()} → ${f.to_channel.toUpperCase()}${f.to ? ` (${f.to})` : ""}`}{" "}
+                              : f.kind === "resume_at_opening"
+                                ? `"the team is in now" by ${f.to_channel.toUpperCase()} when the dealership opens`
+                                : `${f.from_channel.toUpperCase()} → ${f.to_channel.toUpperCase()}${f.to ? ` (${f.to})` : ""}`}{" "}
                             ·{" "}
                             {f.status === "pending"
                               ? countdown(new Date(f.due_at).getTime(), now)
@@ -176,7 +182,7 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                           </div>
                           {f.text && <div className="mt-0.5 line-clamp-2 text-[11px] text-ink/80">{f.text}</div>}
                           {f.reason && <div className="mt-0.5 text-[10px] italic text-muted">{f.reason}</div>}
-                          {f.status === "pending" && f.kind !== "handoff_check" && (
+                          {f.status === "pending" && f.kind === "channel_switch" && (
                             <button
                               type="button"
                               onClick={() => act(() => api.failSms(dealerId, f.id))}

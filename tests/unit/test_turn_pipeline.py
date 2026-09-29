@@ -6,6 +6,7 @@ graph end to end."""
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings, set_clock
@@ -19,6 +20,9 @@ from upsell_agent.integrations.mongodb import (
     QUALIFICATION_FACTS_COLLECTION,
 )
 from upsell_agent.observability.trace import MemoryTraceSink
+
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 OTHER = simulate.DEV_DEALERS[1]["_id"]
@@ -62,7 +66,8 @@ async def test_first_reply_runs_the_ai_pipeline_on_the_lead_comments(mongo):
     log = await _turn(created, "Hi, I want a new Toyota RAV4", trigger="lead_created")
     assert _done(log) == AI_PATH
     assert log["outcome"] == "ask"
-    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment"]  # one ask per message
+    # two asks per message (MASTER_PLAN_3 Bq)
+    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
     facts = await _facts(mongo, created)
     assert facts["interest.new_or_used"]["value"] == "new"
     assert facts["interest.model"]["value"] == "Toyota RAV4"
@@ -106,7 +111,8 @@ async def test_trade_in_lead_qualifies_from_one_detailed_message(mongo):
 async def test_a_hedged_value_is_confirmed_before_it_is_relied_on(mongo):
     created = await _lead(lead_type="trade_in")
     first = await _turn(created, "It's a 2019 Honda Civic with about 60,000 miles")
-    assert first["outcome"] == "confirm" and first["summary"]["asked"] == ["trade_in.mileage"]
+    # The confirmation, plus one ask (MASTER_PLAN_3 Bq: a confirmation counts as one of the two).
+    assert first["outcome"] == "confirm" and first["summary"]["asked"] == ["trade_in.mileage", "trade_in.condition"]
     assert (await _facts(mongo, created))["trade_in.mileage"]["pending"] is True
     second = await _turn(created, "Yes, that's right")
     assert _node(second, "validate")["output"]["confirmed"] == ["trade_in.mileage"]
@@ -140,7 +146,7 @@ async def test_prefill_from_customer_360_on_the_first_turn(mongo):
     facts = await _facts(mongo, created)
     assert facts["vehicle.make"]["source"] == "tool_verified"
     # Vehicle known from the platform, service from the customer: only mileage and time remain.
-    assert log["summary"]["asked"] == ["vehicle.mileage"]  # one ask per message
+    assert log["summary"]["asked"] == ["vehicle.mileage", "contact.best_time"]  # two asks per message
     again = await _turn(created, "About 54k miles")
     assert _node(again, "load_context")["output"]["prefilled"] == []  # only once per lead
 

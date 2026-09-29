@@ -36,7 +36,8 @@
 > **Order:** Part A (except the deferred items) → C1 (with B2/B3 folded in) →
 > Bq (two questions per message) → B1 → B5 → B4 → C3 → C4 (then A's price-drop exception) → C5 → C6.
 > **C2 is skipped for now (27 Sept)**, and with it B0.13's 5-minute callback.
-> **29 Sept: C1 (with B2/B3) is built**, ahead of Part A Phases 3–7 at the user's request; C1 needs nothing from Part A. Next: Bq.
+> **29 Sept: C1 (with B2/B3) is built**, ahead of Part A Phases 3–7 at the user's request; C1 needs nothing from Part A.
+> **Bq and B1 closed (29 Sept–1 Oct)** (architecture.md decisions 88–98, and the live-testing fixes below). Next: B5.
 >
 > **Platform code rule (27 Sept):** the platform (`aidmvcs-be-dev`) is not
 > changed by this plan, except two approved changes: B3's campaign check (worker
@@ -493,7 +494,11 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 ## Phase Bq: Two questions per message
 
-Principle 5 (decided 27 Sept, architecture.md decision 35). Built first, before B1, because B1's choice, B4's visit offer and C4's Touch 1 ending each take one of the two question slots. **Not built yet** (checked 28 Sept: `slots/policy.py` still has `MAX_ASKS_PER_MESSAGE = 1`).
+Principle 5 (decided 27 Sept, architecture.md decision 35). Built first, before B1, because B1's choice, B4's visit offer and C4's Touch 1 ending each take one of the two question slots.
+
+> **Built 29 Sept** (`MAX_ASKS_PER_MESSAGE = 2`). Decided with the user while building (architecture.md decisions 88–89):
+> - **A confirmation counts as one of the two, and can be mixed with an ask.** `answer`: a confirmation + one ask, or two asks. `confirm`: the confirmation + one ask. `ask`: up to two asks. The detail being confirmed is never also asked.
+> - **Item 3 needed a new check:** the Guard had no question count before. It now has `at_most_two_questions` (counts `?` in the SMS and the email); more than two → one rewrite, then the template.
 
 1. **Decide:** `MAX_ASKS_PER_MESSAGE = 2` in `slots/policy.py`. The `ask` rule and the `answer` rule's "then at most one follow-up" may give Compose up to 2 asks, picked in the same order as today (least-asked first, then priority). Every other asking rule is unchanged: never re-ask the detail our last message asked for, park a detail asked twice for 3 replies, ask nothing of a frustrated customer.
 2. **Compose:** its instructions and style guide say "at most two questions" instead of one (`agent/llm.py`); the offline model (`agent/offline_model.py`) can join two asks in one message.
@@ -507,6 +512,17 @@ Principle 5 (decided 27 Sept, architecture.md decision 35). Built first, before 
 ---
 
 ## Phase B1: After-hours first reply
+
+> **Built 29 Sept** (`agent/after_hours.py`, architecture.md decisions 90–98). Decided with the user while building:
+> - **Who gets the choice:** the first reply of an **inbound** lead (a lead form, or the customer's first text/email), only while the dealer is closed. Outbound leads never get it (decision 29 covers them).
+> - **The offer is the reply's only question:** it answers what the customer wrote, then ends with the choice. No ask, no confirmation.
+> - **Ignoring the choice** (answering something else) counts as **now**. It is never offered again.
+> - **Writing again after "later", while still closed:** answer, then offer the choice **again, every time**. "later" again keeps waiting; "now", or ignoring the re-offer, carries on and cancels the morning message.
+> - **A visit request** (new Extract signal `wants_visit`, ≥ 0.8) is never met with the choice: it counts as now and cancels the morning message. Wiring it to the actual booking is **B5 item 8**.
+> - **The morning message is a whole AI turn** (trigger `resume_at_opening`; Extract is skipped), sent as marketing through the send check (dealer open **and** the customer's own window). It greets, says the team is in, then answers what's still open and asks the next questions.
+> - **The team's notice** is saved on the AI's lead state (`staff_notice`, kind `after_hours_resume`) and shown in the Debug UI. **The platform doesn't show it yet: a real platform notification must be built later** (platform change, not in this plan's approved list).
+> - Decided without a user answer, **flagged**: once the dealer has opened, the choice no longer applies (a message after opening carries on normally and cancels the morning message); a dealer with no opening hours on record gets the offer without a time (default hours are never told to a customer, decision 8); an unprompted explicit "now" after "later" is taken as now.
+> - **Known gap, flagged:** when the first reply falls back to the template (e.g. the 8 s first-reply limit), the template carries no choice and the lead is never offered it.
 
 1. **Detect:** a new inbound lead outside opening hours (B0.1), in the dealer's time zone. It's shown in the context pack's `now` layer as `open_now: false` with the next opening time.
 2. **The first reply** answers what the customer wrote, and adds one choice instead of a question:
@@ -660,6 +676,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
      4. Fix the reminders' `booking_id`, which actually stores the lead id (`POST /api/booking` passes `_id: lead_id`), so `cancelRemindersForBooking` can find them.
      Once these ship, both gaps close with no AI-service change beyond removing the "please update" notes.
 6. **The team is told** of every booking, with the customer's summary (what they want, budget, trade-in), so staff are ready when they arrive.
+8. **Wire B1's visit signal into booking (added 29 Sept with B1, to build and test in B5).** B1 added Extract's `wants_visit` (+ `wants_visit_confidence`, counted at ≥ 0.8, `agent/after_hours.py`). Today it only stops the after-hours choice from being offered or re-offered (the conversation carries on as "now" and the morning message is cancelled); the reply then says the team will confirm a time, as before. B5 must make a visit request go straight into offering times and booking (including at night, and after a "later"), and test it: a lead at 23:00 saying "can I come see it tomorrow at 10?" gets times (or its time checked) and a booking, never "now or when we open?"; the same after a "later"; `wants_visit` below 0.8 still gets the choice.
 7. **Guard:** ~~"booked", "confirmed" and "see you on…" are allowed only when this turn created or confirmed a booking; otherwise the draft is rejected.~~ **Decided 28 Sept (architecture.md decision 60):** booking wording is allowed whenever the lead has a real booking that isn't cancelled, read fresh from the platform each turn (so "what time am I booked for?" the next day can be answered). The words must match its status: `pending` → "requested" ("I've requested Saturday at 10:00 for you"), `confirmed` → "confirmed" / "booked" / "see you on…". With no active booking, the draft is rejected. Compose's "never say booked" rule is replaced by this.
 
 **Tests:** time building (hours, existing bookings, earliest time); matching the customer's pick; no double booking on retry; slot taken; move (with `booking_status` sent) and cancel; asking for the missing email or phone; no second confirmation from the AI; no pause after an AI booking; the guard's booked rule (pending vs. confirmed wording, a later turn, a cancelled booking); times shown in dealer time, with the zone added only when the customer's differs; the team notification on a move or cancel carries the known-gap notes.

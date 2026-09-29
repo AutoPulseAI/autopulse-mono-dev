@@ -1,10 +1,17 @@
 """Decide (architecture §8.3, MASTER_PLAN_2 Phase 5): one next step, from nine
 rules, in plain code. The rules live in slots/policy.py; this step feeds them
 the profile, what the customer said, the conversation state (what we asked
-and how often) and the lead's status."""
+and how often) and the lead's status.
+
+It also works out the after-hours choice (MASTER_PLAN_3 B1,
+agent/after_hours.py): whether this reply offers "now or when we open?", is
+the thank-you after "later", or is the morning message. The plan travels in
+the decision (`after_hours`); the turn acts on it after the send."""
 
 from typing import Any
 
+from upsell_agent import clock
+from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, questions_for_turn
 from upsell_agent.agent.nodes.load_context import load_profile
@@ -37,8 +44,18 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     questions = questions_for_turn(conversation, list(extraction.get("questions") or []))
     status = (ctx.lead_state or {}).get("status")
     hold = hold_questions_reason(extraction, ctx.compliance)
+    pack = state.context_pack or {}
+    after_hours = plan_after_hours(
+        trigger=state.trigger, origin=((ctx.compliance or {}).get("origin") or {}).get("origin"),
+        now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=clock.now(),
+        text=state.customer_text or state.inbound_text)
+    if hold and after_hours.mode == "offer":
+        # A possible opt-out or quiet hours: nothing is asked, not even the choice.
+        after_hours.mode, after_hours.record = None, None
+        after_hours.why = f"No after-hours choice: {hold}."
     decision = next_action(profile, Flags(
         hold_questions=hold,
+        contact_choice=after_hours.mode if after_hours.mode in ("offer", "later") else None,
         opted_out=status == "opted_out",
         already_qualified=status == "qualified",
         stop_asking=status == "partly_qualified",
@@ -53,6 +70,12 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     ))
     if (ctx.compliance or {}).get("quiet_hours"):
         decision["quiet_hours"] = {"resume_at": ctx.compliance.get("resume_at")}
+    if decision["action"] in ("stop", "handoff") and after_hours.mode in ("offer", "later"):
+        # Staff (or nobody) take it from here: no choice to offer, no morning message.
+        after_hours.mode, after_hours.record, after_hours.schedule_resume = None, None, False
+        after_hours.cancel_resume = True
+        after_hours.why = f"No after-hours choice: the reply is a {decision['action']}."
+    decision["after_hours"] = after_hours.as_dict()
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]
@@ -66,6 +89,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         span.reasoning.append(f"Not asking {skipped['label']}: {skipped['why']}.")
     if hold:
         span.reasoning.append(f"No questions this time: {hold}.")
+    if after_hours.why:
+        span.reasoning.append(f"After hours: {after_hours.why}")
     if extraction.get("annoyed_at_bot"):
         span.reasoning.append("The customer is frustrated with the conversation: no questions this time.")
     if extraction.get("upset") and decision["action"] != "handoff":
@@ -74,4 +99,6 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                               f"{UPSET_HANDOFF_CONFIDENCE:.2f}).")
     span.edge_label = decision["action"] + (f": {', '.join(a['label'] for a in decision['asks'])}"
                                             if decision["asks"] else "")
+    if after_hours.mode:
+        span.edge_label += f" · after hours: {after_hours.mode}"
     return {"decision": decision}

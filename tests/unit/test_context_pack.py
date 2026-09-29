@@ -4,6 +4,7 @@ real turns."""
 
 from datetime import UTC, datetime, time, timedelta
 
+import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings
@@ -49,6 +50,9 @@ from upsell_agent.integrations.mongodb import (
 )
 from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
+
+# MASTER_PLAN_3 B1: these first replies are the in-hours kind.
+pytestmark = pytest.mark.usefixtures("during_opening_hours")
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 NOW = datetime(2026, 9, 22, 15, 0, tzinfo=UTC)
