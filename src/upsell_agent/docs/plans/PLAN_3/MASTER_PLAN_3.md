@@ -34,8 +34,9 @@
 > | C5 appointment flows (**shipping**, 27 Sept) | B5, C3, C4 (a no-show goes back into C4's follow-ups) |
 >
 > **Order:** Part A (except the deferred items) → C1 (with B2/B3 folded in) →
-> B1 → B5 → B4 → C3 → C4 (then A's price-drop exception) → C5 → C6.
+> Bq (two questions per message) → B1 → B5 → B4 → C3 → C4 (then A's price-drop exception) → C5 → C6.
 > **C2 is skipped for now (27 Sept)**, and with it B0.13's 5-minute callback.
+> **29 Sept: C1 (with B2/B3) is built**, ahead of Part A Phases 3–7 at the user's request; C1 needs nothing from Part A. Next: Bq.
 >
 > **Platform code rule (27 Sept):** the platform (`aidmvcs-be-dev`) is not
 > changed by this plan, except two approved changes: B3's campaign check (worker
@@ -74,7 +75,7 @@ Six client requirements were checked against `docs/client/` and `docs/data/` and
 6. **5-minute callback — skipped for now,** together with C2 (staff call tasks), which would need new platform backend and UI.
 7. **"Different angle" — decided:** from the client's own words (blueprint box C, Omnichannel PDF Day 6, `conversations.md`), with a fixed angle set we defined. **Our default** list; to be confirmed by the client. B4 item 4.
 8. **State rules table — still not provided. Interim decision:** the strictest known state rule is applied everywhere until counsel's table arrives. B0.6.
-9. **Replies at night, booking rules — decided with our defaults.** A customer's message is acknowledged right away at any hour; the conversation continues right away only inside the customer's 8:00–21:00, as the blueprint says. Booking defaults set by us. B0.8, B0.10. Both flagged for client feedback.
+9. **Replies at night, booking rules — decided with our defaults.** A customer's message is acknowledged right away at any hour; the conversation continues right away only inside the customer's 8:00–21:00, as the blueprint says. Booking defaults set by us. B0.8, B0.10. Both flagged for client feedback. **Changed 28 Sept for inbound conversations (architecture.md decision 56):** a conversation the customer started (an inbound lead) continues right away at any hour; the 8:00–21:00 limit on continuing now applies only to outbound conversations (B0.8). B0.2.
 
 ---
 
@@ -387,7 +388,7 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 |---|---|---|
 | Bookings | Platform `Booking` model and `POST`/`PUT /api/booking` | Creates a booking (`pending` / `confirmed` / `cancelled` / `completed`), sets the lead to "Appointment Booked", sends a confirmation on the lead's last channel, and creates reminders. Used by staff and by the platform's public customer booking page; no login needed. The AI uses it as is (B5). |
 | Dealer calendar | Platform `dealer/booking` (LeadCalendar) | Staff see bookings here. |
-| Reminders | Platform `appointmentReminderService.js` | Its own quiet hours, 9:00–20:00 dealer time. Can be switched off per dealer on the dealer's Settings → Reminder settings page (see C5). |
+| Reminders | Platform `appointmentReminderService.js` | Its own quiet hours, 9:00–20:00 dealer time. Can be switched off per dealer on the dealer's Settings → Reminder settings page (see C5). **Known gap (28 Sept):** reminders aren't cancelled when a booking is moved or cancelled through `PUT /api/booking`; tolerated until C5 (B5 "Known gaps"). |
 | SMS consent | Platform `Customer.phones[].sms_opt_in` | A yes/no flag per phone. Set to true only when that customer texts the dealer (`worker/processSms.js:339`); the phone entry keeps its `source` and `added_at`. Nothing else sets it (not lead forms, not DealerVault). Counted as consent from 27 Sept (B0.4). |
 | Staff status pauses the AI | Platform `lib/ai/aiStaff.js` (`notifyAiOfStaffStatus`) | Staff moving a lead to "Appointment Booked", "Visited", "Sold", "DND" or "Managerial Review" pauses the AI. Only called from the staff status route (`api/conversations/lead/status/route.js:747`), **not** from `POST /api/booking` — so a booking made through that endpoint doesn't pause the AI (checked 27 Sept). |
 | Business hours, dealer time zone, dates | Plan 2: `integrations/dealer_profile.py`, `slots/dates.py`, `scheduler/contact_window.py` | Ready to reuse for "are we open?", offering times, and reading "Saturday at 10". |
@@ -405,8 +406,9 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 | # | Phase | You can see it when |
 |---|---|---|
-| B0 | Decisions | The answers are written into architecture.md, with counsel's sign-off on B0.2–B0.6 |
-| B1 | After-hours first reply | A lead at 23:00 dealer time gets "chat now or during business hours?", and each answer leads to the right path (the choice itself is about the dealer's hours; the customer-local send window from B0.5/B3 governs when the reply can actually go out) |
+| B0 | Decisions | The answers are written into architecture.md (counsel reviews the compliance rules later; that review doesn't block building, decision 69) |
+| Bq | Two questions per message | A reply can carry up to 2 questions; Plan 2's tests and scenarios pass with the new limit |
+| B1 | After-hours first reply | A lead at 23:00 dealer time gets "chat now or during business hours?", and each answer leads to the right path. The choice is about the dealer's hours; for an inbound lead "now" really means now, at any hour (decision 56) |
 | B2 | Inbound or outbound | Every lead and message shows its origin in the Debug UI, and unknown means outbound |
 | B3 | Send check (US rules) | An outbound SMS with no consent is blocked; one due at 7:30 customer time waits until it's both 8:00 customer time and the dealer is open; each shows its reason |
 | B4 | The visit as the goal | A qualified lead is offered a visit instead of being handed to staff; handoffs drop |
@@ -424,17 +426,28 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
    - **A:** reply by SMS at any hour (fastest; today's behaviour);
    - **B:** at night (20:00–8:00 customer time), reply by email if we have one, and hold the SMS until 8:00;
    - **C:** reply by SMS at night only if the lead arrived in the last few minutes (the customer is waiting for it).
-   ~~**Suggested:** C, with B as the fallback.~~ **Decided 27 Sept (architecture.md decision 29), our default, flagged for client feedback:** the same rule as item 8 — the customer wrote first, so one reply (answering them and offering the after-hours choice) goes out right away at any hour. The conversation continues right away only inside 8:00–21:00 customer-local time; outside it, it resumes at the next 8:00 customer time, and the customer is told so. This follows the blueprint's "AI acknowledges and continues the conversation immediately (**if within TCPA allowed hours**)" (box 0, "CUSTOMER WANTS HELP NOW"). **Counsel to confirm.**
+   ~~**Suggested:** C, with B as the fallback.~~ **Changed 28 Sept (architecture.md decision 56), replacing the 27 Sept rule below for inbound leads:** a new inbound lead is the customer asking to be contacted, so our reply **and the rest of the conversation** go out right away at any hour. The customer-local 8:00–21:00 window doesn't limit replies in a conversation the customer started. B1's "now or during business hours?" choice is about the **dealer's** hours only. Sources: the client's own chat (`conversation_2.md`: "if he says yes i need it now then it will start communication right away"; strict TCPA rules for DealerVault drips/equity "cause that is outbound… where a lead is more classified as an inbound task"); TCPA PDF §4 (consumer-initiated lead responses get "response rules", outbound marketing gets "full outbound campaign compliance checks") and §7 (the time window applies "before every covered outbound attempt"). **Conflicting client source, flagged for client confirmation:** the blueprint's box 0 says the AI "continues the conversation immediately (if within TCPA allowed hours)". We follow the chat and the TCPA spec. Proactive messages on an inbound lead (follow-ups, the resume message, the 24h channel switch) still follow the outbound rules (B0.5, B3). ~~**Decided 27 Sept (architecture.md decision 29), our default, flagged for client feedback:** the same rule as item 8 — the customer wrote first, so one reply (answering them and offering the after-hours choice) goes out right away at any hour. The conversation continues right away only inside 8:00–21:00 customer-local time; outside it, it resumes at the next 8:00 customer time, and the customer is told so. This follows the blueprint's "AI acknowledges and continues the conversation immediately (**if within TCPA allowed hours**)" (box 0, "CUSTOMER WANTS HELP NOW").~~
 3. **What counts as outbound.** A list of lead sources and campaign types, e.g.
    - outbound: Dealer Vault / DMS imports, sales equity, drips, service reminders sent as marketing, re-engagement;
    - inbound: website forms, third-party lead providers, phone-ups, a customer writing first.
    Needs the platform's real `Lead.source` values. **No campaign type (27 Sept):** the platform has one kind of campaign, always dealer-initiated, so every campaign counts as outbound (B2).
+   **Decided 28 Sept (architecture.md decision 65): origin is worked out per lead, not per customer.** Why DealerVault is outbound: DealerVault is the dealer's DMS export, the list of people who once bought or serviced a car there, imported into the platform. Nobody on it asked to be contacted now, so any message to them is the dealer reaching out. The client says so directly (`conversation_2.md`: a DealerVault contact in a drip or equity campaign "is outbound task, where a lead is more classified as an inbound task"), and the TCPA PDF §4–5 says DMS/DealerVault data "may identify an opportunity; it does not itself establish permission". But a DealerVault customer who later submits a website form has made a new inbound lead. Order:
+   1. a reply to a platform campaign → outbound;
+   2. the lead's source is a known website form, lead provider or phone-up → inbound;
+   3. the customer is a DealerVault import (`dealervault_upload`, see `integrations/customer360.py`) with no lead form of their own → outbound;
+   4. anything else → outbound, and the source goes on the "unmapped sources" report.
+   The mapping table is built from the real `Lead.source` values in the dev database before B2 is built.
 4. **Consent. Decided 27 Sept (architecture.md decision 36).** A marketing text the business starts (AI follow-ups, platform campaigns) needs consent. Replies to a message the customer just sent never do. Email needs none (unsubscribe link and the dealer's postal address, CAN-SPAM). Checked in this order:
    1. **An explicit "no" wins:** STOP / unsubscribe; the platform phone marked `sms_opt_in: false`; or the lead form saying the customer didn't opt in (e.g. `TCPAOptIn: false`). No marketing text, including follow-ups on their inquiry (agreed 27 Sept). Their first reply still goes out, since it's a reply.
    2. **The platform's opt-in flag counts as consent.** The platform sets `sms_opt_in: true` on a phone when that customer texts the dealer (`lib/customerResolver.js`, `worker/processSms.js:339`), and the phone entry records its `source` and `added_at`.
-   3. **Consent from the lead form.** Some lead providers send it inside the lead's comments: the AutoTrader sample has `TCPAOptIn: true|false;` (`aidmvcs-be-dev/autotrader_lead.json`). Read in the AI service from the lead text, no platform change. Only AutoTrader's format is known; others are added as real leads show them (a report lists providers whose leads carry no readable consent).
+   3. **Consent from the lead form.** Some lead providers send it inside the lead's comments: the AutoTrader sample has `TCPAOptIn: true|false;` (`aidmvcs-be-dev/autotrader_lead.json`). Read in the AI service from the lead text, no platform change. Only AutoTrader's format is known; others are added as real leads show them (a report lists providers whose leads carry no readable consent). **Changed 29 Sept (architecture.md decision 76):** a bare `TCPAOptIn: true` is **not** counted as consent. The client's spec says not to rely on a third-party boolean alone; without disclosure wording, time and source it's `CONSENT_REVIEW_REQUIRED` and no automated marketing (TCPA PDF §6). The flag and the raw lead are kept as evidence with status "review required". In practice this only affects platform campaigns: follow-ups on the customer's inquiry are still allowed by step 4. `TCPAOptIn: false` still blocks (step 1).
    4. **The customer's own inquiry is consent to follow up on that inquiry.** A lead they submitted, or a message they sent us, allows the AI's follow-ups about what they asked (C4's cadence, visit offers, booking messages) until that opportunity closes (Day 91). It doesn't cover unrelated marketing, such as a platform campaign. **Counsel to confirm.**
-   5. **Asking by email.** A contact with no text consent (e.g. a DealerVault import) can get one email: "Want updates by text? Reply YES." A YES reply is saved as consent. Asked once per contact per dealer, never repeated if unanswered (agreed 27 Sept).
+   5. **Asking by email.** A contact with no text consent (e.g. a DealerVault import) can get one email: "Want updates by text? Reply YES." A YES reply is saved as consent. Asked once per contact per dealer, never repeated if unanswered (agreed 27 Sept). **On hold 28 Sept (architecture.md decision 67): the client never asked for this email.** Checked every client source (`conversation_2.md`, the blueprint, both spec PDFs): none mentions asking for text consent by email, a "Reply YES" or buttons. The email ask was our own proposal (27 Sept). What the client does say about consent: DMS/DealerVault presence never creates consent (TCPA PDF §5, checklist); every consent keeps its evidence, disclosure text and version, and can't be changed afterwards (§2, §6, checklist); missing evidence → `CONSENT_REVIEW_REQUIRED`, no automated marketing (§6); the AI never creates or infers consent (§2, §10); counsel approves consent/disclosure wording per campaign and channel (§12). The only "reply Y / N" in the client's documents is the appointment confirmation (Omnichannel PDF), not consent. Following the rule "do what the client asked", the ask is **not built** unless the user decides otherwise; contacts without text consent get email only (step 6). ~~**Decided 28 Sept:** the AI service sends it, the first time the send check blocks a text to that contact for lack of consent. The email has two buttons, **"Yes, text me"** and **"No thanks"**, instead of asking for a typed reply:
+      - each button is a link to a small page on the AI service, carrying a signed, single-use token (contact, dealer, phone number, which ask); the token expires after 30 days;
+      - the page shows the consent wording (which number, that texts may be automated marketing, reply STOP to end) and one **Confirm** button; consent is saved only when Confirm is pressed. This is because corporate email security scanners open every link in an email automatically, so a plain link would record a "yes" nobody gave;
+      - "Yes" saves consent in `ai_consent` with the evidence: token id, time, the wording version shown, the phone number, and the page request's IP and browser. "No" saves an explicit no (step 1);
+      - a typed "YES" reply to that email still counts as a fallback, only on that email's thread.
+      Needs the AI service's page reachable from the public internet (as its Twilio/SendGrid webhooks already are).~~
    6. Otherwise: no marketing text; email only.
 
    Each consent is saved in the AI service's own record (`ai_consent`, already used for STOP/START) with its source, time and the evidence (the flag's source, the quoted lead-form line, the lead or message id, or the YES email's id). Changes Plan 1's rule in `channels/consent.py`, where an unset flag currently allows texting.
@@ -443,14 +456,15 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
    - **Time zone lookup — decided 27 Sept (architecture.md decision 23):**
      1. **ZIP code, else state.** The platform `Customer` record has no address field. ZIP and State exist on the customer's DealerVault sales and service rows (`worker/dealervault/common/salesFields.js`, `serviceFields.js`, linked by `customer_id`), and on a lead form when the form collects them. So DMS/DealerVault contacts (the outbound ones) usually have one; web leads may not.
      2. **Else the phone's area code.** Less reliable: people keep their number when they move.
+     **Decided 28 Sept (architecture.md decision 70):** when only the state is known and the state spans two time zones (e.g. Texas, Florida, Tennessee, Kentucky, Indiana), only the hours legal in both zones are used. ZIP → time zone and area code → time zone come from lookup tables (the `phonenumbers` library covers area codes).
      3. **Else (our default, flagged for client feedback):** only the hours that are legal in every continental US time zone at once (11:00–20:00 Eastern = 8:00–17:00 Pacific under the default 8:00–20:00 window of B0.6). Never the dealer's time zone alone.
      The zone and how it was found are saved on the lead.
    - **Dealer hours for outbound — decided 27 Sept (architecture.md decision 24), resolving the old open question:** a message the system starts (follow-ups, campaigns, the 24h channel switch, the handoff-timeout reply) must fall inside **both** the dealer's opening hours (`weekly_availability`, else Monday–Saturday 9:00–18:00) **and** the customer-local window. A reply to a message the customer just sent is exempt from the dealer-hours check. Sources: blueprint box "7. BUSINESS HOURS RULE" ("If outside business hours → send at opening next day… **All other touches follow business hours unless customer replies**"); blueprint box 0 ("This check happens BEFORE any outreach"); Omnichannel PDF p.1 (every automated send stays subject to "dealer schedule, time-window" guardrails).
 6. **State rules.** Some states are stricter than the federal TCPA; for example, Florida and Oklahoma limit marketing texts to 8:00–20:00 and to 3 per 24 hours on the same subject. **Counsel provides the state table**; code applies it by the customer's state. **Still open** — no table has been provided.
    - **Who they apply to:** the customer's (recipient's) state, not the dealer's. They cover marketing / solicitation messages the business starts, not replies to a message the customer sent. Some state laws also treat a phone with that state's area code as a resident, so when the ZIP state and the area-code state differ, the stricter of the two applies.
    - **Interim decision 27 Sept (architecture.md decision 25):** until the table arrives, the strictest known state rule is applied to **every** customer, whatever their state: marketing SMS only 8:00–20:00 customer-local time, and at most 3 marketing messages per customer per 24 hours, counted across the AI and campaigns. This is tighter than the client's 8:00–21:00 (decision 18); the stricter one wins until the table says otherwise. **A state rules table from counsel is required to apply state rules properly** (and to loosen states that allow more). Other state rules we don't have reliable details on (e.g. Sunday or holiday limits) aren't in the default; the table must cover them.
-7. **Do-not-call.** An internal do-not-contact list per dealer (from STOP / unsubscribe, already kept by Plan 1), and whether numbers without consent are scrubbed against the national Do Not Call registry (a paid service).
-8. **Replies inside an outbound conversation.** When a customer answers an equity campaign at 22:00, does our reply wait until 8:00? ~~**Suggested:** reply right away (the customer wrote first), but follow-ups keep the outbound rules.~~ **Decided 27 Sept (architecture.md decision 29), checked against the client's after-hours rule, flagged for client feedback:** the customer wrote first, so it isn't outreach (blueprint box 0 applies "BEFORE any outreach"; box 7 exempts touches where the customer replies). One reply answering them goes out right away at any hour. But the blueprint also says the AI "continues the conversation immediately (**if within TCPA allowed hours**)", so outside 8:00–21:00 customer-local time that reply tells them the team will pick it up at 8:00 and asks nothing more; the conversation resumes then. Follow-ups keep the outbound rules. **Counsel to confirm.**
+7. **Do-not-call.** An internal do-not-contact list per dealer (from STOP / unsubscribe, already kept by Plan 1), and whether numbers without consent are scrubbed against the national Do Not Call registry (a paid service). **Decided 28 Sept (architecture.md decision 68):** no national registry check. A marketing text already needs consent (B0.4), so a number without consent is never texted anyway. Leads that staff set to "DND" join the dealer's internal do-not-contact list.
+8. **Replies inside an outbound conversation.** When a customer answers an equity campaign at 22:00, does our reply wait until 8:00? ~~**Suggested:** reply right away (the customer wrote first), but follow-ups keep the outbound rules.~~ **Decided 27 Sept (architecture.md decision 29), checked against the client's after-hours rule, flagged for client feedback:** the customer wrote first, so it isn't outreach (blueprint box 0 applies "BEFORE any outreach"; box 7 exempts touches where the customer replies). One reply answering them goes out right away at any hour. But the blueprint also says the AI "continues the conversation immediately (**if within TCPA allowed hours**)", so outside 8:00–21:00 customer-local time that reply tells them the team will pick it up at 8:00 and asks nothing more; the conversation resumes then. Follow-ups keep the outbound rules. **Counsel to confirm.** **28 Sept:** this rule now applies only to **outbound** conversations (a campaign reply, a DealerVault contact). A conversation the customer started continues at any hour (B0.2, decision 56).
 9. **Visit types.** Sales visit / test drive, and service. **Suggested:** sales visits and test drives first. Service booking stays with the service team for now, because service scheduling usually lives in the DMS.
 10. **Booking rules. Decided 27 Sept (architecture.md decision 30) as our defaults, per-dealer settings, flagged for client feedback** (no client document states any of these):
     - slot length: 30 minutes;
@@ -459,12 +473,12 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
     - last slot of the day: starts at least 30 minutes before closing;
     - how far ahead: 7 days.
 11. **Confirmed or requested.** Does an AI booking go in as `confirmed`, or `pending` until staff confirm? **Decided 27 Sept (decision 30), our default, flagged for client feedback:** a per-dealer setting, `pending` by default. Pending: the customer hears "I've requested Saturday at 10:00; the team will confirm shortly."
-12. **When to offer a visit.** Suggested:
-    - as soon as we know what they want (the model or type) and roughly when; the rest of the questions can happen at the dealership;
+12. **When to offer a visit. Decided 28 Sept (architecture.md decision 62):**
+    - as soon as we know what they want (the model or type) and roughly when they want to buy; budget, trade-in and the other questions can happen at the dealership;
     - or right away when the customer shows a buying signal ("can I come see it?", "test drive", "is it still there?").
 13. **When to hand off. Decided 26 Sept (architecture.md decision 20): two more triggers added to the shipped pair below.**
     - Already shipped (`slots/policy.py`): the customer asks for a person; they are clearly upset (Plan 2's 0.8 rule).
-    - Still suggested, unconfirmed by the client: they declined a visit and still have a question only staff can answer (price, trade-in value, finance) — see B4 item 4 for the updated decline count.
+    - ~~Still suggested, unconfirmed by the client: they declined a visit and still have a question only staff can answer (price, trade-in value, finance) — see B4 item 4 for the updated decline count.~~ **Decided 28 Sept (architecture.md decision 64):** a staff-only question (price, trade-in value, finance) is not a handoff on its own. The AI says "the team will confirm that for you" and keeps offering a visit (up to 3 attempts, B4 item 4). The lead is handed off only when the customer has declined 3 times and that question is still unanswered. Being upset or urgent still hands off at any point, attempts or not.
     - **Client addition:** escalate immediately when the customer indicates an urgent need (`docs/client/autpulse.workflowblueprint.png`, "7. ESCALATION RULES").
     - **Client addition:** when the customer explicitly requests a phone call, respond with a call within 5 business minutes (same source).
     - **Urgent need detection — decided 27 Sept (architecture.md decision 26).** Today, code judges almost nothing about a message's meaning: lead type is a regex on the lead source (`slots/requirements.py`), and the only keywords handled in code are STOP/START (`channels/consent.py`) and yes/no confirmations (`agent/nodes/validate.py`). Everything else is labelled by Extract, and code decides with a threshold (e.g. upset ≥ 0.8, `slots/policy.py`). Urgency follows the same pattern:
@@ -472,7 +486,23 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
       2. Code hands off when `urgent` and confidence ≥ 0.8 (**our default**, the same bar as upset).
       3. Pure-code backstop: when the date resolver (`slots/dates.py`) puts `interest.needed_by` within 48 hours, the lead is urgent without asking the model.
       4. An eval set of about 20 "urgent vs. just eager" examples; a sample goes to the client to confirm where the line sits. **Flagged for client feedback.**
+      5. **Built in B4 (28 Sept).** Decided on 27 Sept but no phase built it; it's now B4 item 8.
     - **The 5-minute callback — skipped for now (27 Sept, updating architecture.md decision 27):** it needs C2's staff call tasks, and C2 is skipped because it would need new platform backend and UI.
+
+---
+
+## Phase Bq: Two questions per message
+
+Principle 5 (decided 27 Sept, architecture.md decision 35). Built first, before B1, because B1's choice, B4's visit offer and C4's Touch 1 ending each take one of the two question slots. **Not built yet** (checked 28 Sept: `slots/policy.py` still has `MAX_ASKS_PER_MESSAGE = 1`).
+
+1. **Decide:** `MAX_ASKS_PER_MESSAGE = 2` in `slots/policy.py`. The `ask` rule and the `answer` rule's "then at most one follow-up" may give Compose up to 2 asks, picked in the same order as today (least-asked first, then priority). Every other asking rule is unchanged: never re-ask the detail our last message asked for, park a detail asked twice for 3 replies, ask nothing of a frustrated customer.
+2. **Compose:** its instructions and style guide say "at most two questions" instead of one (`agent/llm.py`); the offline model (`agent/offline_model.py`) can join two asks in one message.
+3. **Guard/Validate:** any check that counts question marks or asks in a draft uses the new limit.
+4. **Debug UI:** the Decide view lists both asks.
+
+**Tests:** Plan 2's policy tests updated to the new limit; two asks chosen in the right order; one ask when only one detail is missing; zero asks when the customer is frustrated; a draft with 3 questions rejected.
+
+**Done when:** all AI unit tests, evals and Plan 2 scenarios pass with the new limit.
 
 ---
 
@@ -481,11 +511,12 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 1. **Detect:** a new inbound lead outside opening hours (B0.1), in the dealer's time zone. It's shown in the context pack's `now` layer as `open_now: false` with the next opening time.
 2. **The first reply** answers what the customer wrote, and adds one choice instead of a question:
    "We're closed right now and open again at 9:00 tomorrow. I can help you here now, or the team can pick this up when we open. Which would you like?"
-   On SMS at night it follows B0.2 (decided 27 Sept): the reply goes out right away, and outside 8:00–21:00 customer-local time "now" means the conversation resumes at 8:00 customer time, and the reply says so.
+   ~~On SMS at night it follows B0.2 (decided 27 Sept): the reply goes out right away, and outside 8:00–21:00 customer-local time "now" means the conversation resumes at 8:00 customer time, and the reply says so.~~ **28 Sept (B0.2, decision 56):** the reply goes out right away at any hour, and "now" really means now: the conversation carries on whatever the customer's local time. The choice is offered whenever the dealer is closed.
 3. **Understanding the answer:** Extract gets a new field `contact_preference`: `now` / `later` / none. Short replies ("now", "tomorrow is fine", "morning") are read against the choice, like Plan 2's short replies.
 4. **Paths:**
    - **Now:** the normal conversation carries on.
    - **Later:** a short thank-you, no more questions tonight, and a new follow-up kind `resume_at_opening` due at the next opening time. At opening, the team gets the lead with a summary, and the AI sends one message ("Good morning, the team is in now…"), within B3's rules.
+     **Decided 28 Sept (architecture.md decision 57): this is not a handoff.** The team's summary is a notification only; the AI stays in charge. Its morning message moves the conversation on: it answers anything still open, then offers visit times (B4) or asks the next question. **Staff can take over at any time, before or after the notification. Already built, nothing to add:** a staff reply in the platform's conversations screen pauses the AI (`notifyAiOfStaffReply`, `api/conversations/reply/route.js`), as does setting a staff-owned status (Appointment Booked, Visited, Sold, DND, Managerial Review; `notifyAiOfStaffStatus`) or an admin pause (`pauseAiForLead`).
    - **No answer:** the normal 24h follow-up, sent within B3's rules.
 5. **Conversation state** records the choice, so it's never asked again for this lead.
 
@@ -501,9 +532,11 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 ## Phase B2: Inbound or outbound
 
+> **Built 29 Sept 2026 inside C1** (`compliance/origin.py`). The mapping table couldn't be checked against real `Lead.source` values (the local database only has dev leads); unmapped sources are reported in `GET /v1/metrics`.
+
 **Rewritten 27 Sept: no platform changes, no campaign type.** The client asked for strict rules on outbound contact and not on inbound leads (`conversation_2.md`; TCPA PDF §4 "Inbound vs. Outbound Classification"), so we still need to know which is which. We work it out in the AI service:
 
-1. **Leads:** from `Lead.source`, which the AI already reads to set the lead type (`slots/requirements.py`). A B0.3 mapping table: DealerVault/DMS imports → outbound; website forms, third-party lead providers, phone-ups → inbound.
+1. **Leads:** from `Lead.source`, which the AI already reads to set the lead type (`slots/requirements.py`). A B0.3 mapping table: DealerVault/DMS imports → outbound; website forms, third-party lead providers, phone-ups → inbound. **Per lead, in the order decided in B0.3 (28 Sept, decision 65)**, also using the customer record's `dealervault_upload` flag.
 2. **Campaign replies:** every platform campaign is the dealer reaching out, so a conversation that started from a campaign (`agent/campaigns.py`, `find_campaign_context`) is outbound. **No campaign type is tracked:** the platform has only one kind of campaign (a dealer-written blast to a list of leads), no drip/equity types, and no inbound campaigns.
 3. **Our own messages:** a reply to a customer's message vs. a message the AI starts (follow-ups), as the contact window already distinguishes.
 4. The origin is saved in the AI's lead state and shown in the context pack. Missing or unknown means `outbound` (principle 3).
@@ -518,13 +551,15 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 ## Phase B3: Send check (US rules)
 
+> **Built 29 Sept 2026 inside C1** (`compliance/engine.py`, `compliance/send_checks.py`), including item 7's platform campaign changes. Not built: item 7's optional campaign-form note.
+
 One check, used by the AI sender and the AI follow-up scheduler. **The platform's campaign sender** is the one approved exception to the no-platform-changes rule (27 Sept), see item 7. The platform's appointment reminders keep their own 9:00–20:00 dealer-time rule (not changed).
 
-1. **`may_send(customer, channel, origin, kind, at)`** returns `send`, `wait_until <time>` or `blocked <reason>`. Rules:
+1. ~~**`may_send(customer, channel, origin, kind, at)`** returns `send`, `wait_until <time>` or `blocked <reason>`.~~ **Decided 28 Sept (architecture.md decision 55): one signature, C1's, with two added inputs.** `can_contact(customer_id, dealer_id, lead_id, channel, purpose, is_reply, at)` returns `ALLOW`, `HOLD <until>`, `REVIEW <reason>` or `BLOCK <reason>`. `lead_id` gives the origin (B2); `is_reply` says whether this answers a message the customer just sent. `REVIEW` (an unclear opt-out, C1 item 3) stops marketing messages until a person resolves it but still lets a reply go out. Rules:
    - **Opt-out:** STOP / unsubscribe blocks everything except the opt-out confirmation (already in Plan 1; moved here).
    - **Consent:** a marketing SMS the business starts needs consent from one of B0.4's sources (opt-in flag, lead form, the customer's own inquiry for follow-ups on it, or a YES by email); otherwise it's blocked. An explicit "no" always blocks.
-   - **Do-not-contact:** the dealer's list, and the national registry if B0.7 says so.
-   - **Time of day:** 8:00–21:00 in the customer's local time (B0.5, decided 26 Sept), with state rules on top (B0.6) — until counsel's table arrives, that means 8:00–20:00 for every customer (B0.6 interim decision). **And** inside the dealer's opening hours for anything the system starts (B0.5, decided 27 Sept); replies to the customer are exempt from the dealer-hours part. Otherwise the send waits.
+   - **Do-not-contact:** the dealer's list (STOP / unsubscribe, and leads staff set to "DND"). No national registry check (B0.7, decision 68).
+   - **Time of day:** 8:00–21:00 in the customer's local time (B0.5, decided 26 Sept), with state rules on top (B0.6) — until counsel's table arrives, that means 8:00–20:00 for every customer (B0.6 interim decision). **And** inside the dealer's opening hours for anything the system starts (B0.5, decided 27 Sept); replies to the customer are exempt from the dealer-hours part. Otherwise the send waits. **28 Sept (decision 56):** replies in a conversation the customer started (an inbound lead) are exempt from the time-of-day rule entirely; replies in an outbound conversation follow B0.8.
    - **Frequency:** per-state limits counted across the AI and campaigns. Interim (B0.6): at most 3 marketing messages per customer per 24 hours, everywhere, until the state table arrives.
    - **Email:** no time limit; an unsubscribe link and the dealer's postal address on marketing emails (CAN-SPAM).
 2. **Customer time zone** is worked out in code (B0.5: ZIP/state, then area code, then the all-zones safe window) and saved on the lead, with how it was found.
@@ -533,26 +568,29 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 5. **Plan 2's contact window** (`scheduler/contact_window.py`) becomes part of this check.
 6. **Metrics:** sends blocked or delayed, by reason. "Sent outside the allowed hours" must be 0.
 7. **Platform campaigns (approved platform change, 27 Sept).** A campaign is scheduled in the dealer's form, then sent later one lead at a time by `worker/campaignWorker.js`. The check therefore runs in that worker, per lead (each lead has its own time zone), not when the manager clicks "Schedule". Changes:
-   - **Backend (worker):** before each lead's send, ask the check. `send` → send; `wait_until` → re-queue that lead's job for that time; `blocked` → don't send, record the reason on the `CampaignLead`.
-   - **Frontend (needed, small; approved 27 Sept):** today the campaign report only shows sent / delivered / failed. Held and blocked leads would otherwise show nothing, or wrongly as "failed". The report page (`dealer/campaigns/[id]/report/page.js`) gets "Held until <time>" and "Blocked: <reason>" counts and per-lead labels.
+   - ~~**Backend (worker):** before each lead's send, ask the check. `send` → send; `wait_until` → re-queue that lead's job for that time; `blocked` → don't send, record the reason on the `CampaignLead`.~~ **Replaced 28 Sept (architecture.md decision 66): campaign texts are handed to the AI service.** The check lives only in the AI service and covers every rule in item 1 (opt-out, consent, do-not-contact, time of day, dealer hours, frequency cap), not just the hours. ~~When a campaign fires, `worker/campaignWorker.js` doesn't send each lead's SMS itself: it writes one send request per lead into a shared queue collection in the same database. The AI service picks each up, runs the check, and sends (from the dealer's own number, to be confirmed against `channels/dealer_identity.py`), holds it until the given time, or blocks it. It writes the outcome back to that lead's `CampaignLead`.~~ **Corrected 29 Sept (decision 66): the AI service only decides; the platform still sends.** Campaign texts are the dealer's, sent by the platform as today; they only pass through the send check first. When a campaign fires, `worker/campaignWorker.js` writes one check request per lead into a shared queue collection. The AI service runs the check and writes its answer (`ALLOW` / `HOLD <until>` / `BLOCK <reason>`) **onto that queue entry only**; it never writes platform records. The worker reads the answer: `ALLOW` → sends exactly as today (Twilio message id, delivery callback and report all unchanged); `HOLD` → re-queues that lead's job for the given time; `BLOCK` → marks the `CampaignLead` blocked with the reason. An `ALLOW` counts toward the 3-per-24h cap as soon as it's given, so two senders can't both slip in before the real send. If the AI service is down, requests wait in the queue. Rejected alternatives: the worker calling the AI service per lead over HTTP; copying the rules into Node; a pre-computed record the worker finishes; the AI service sending campaign texts itself (it would have to write the platform's send records).
+   - **Frontend (needed, small; approved 27 Sept). The campaign report already exists; it's extended, not built (checked 28 Sept).** Today: `dealer/campaigns/[id]/report/page.js`, fed by `GET /api/campaigns/[id]/report`, with count cards (sent, delivered, …), a per-lead status badge, a status filter and a CSV export. It only knows `CampaignLead.status` = `pending` / `sent` / `delivered` / `failed` / `bounced` (`models/CampaignLead.js`), so held and blocked leads would show as "pending" or wrongly as "failed". Changes:
+     - `models/CampaignLead.js`: `status` gains `held` and `blocked`; new fields `held_until` (date) and `block_reason` (text);
+     - `GET /api/campaigns/[id]/report`: counts `held` and `blocked`;
+     - the report page: two count cards ("Held until…", "Blocked"), badge colours, the two statuses in the filter, and the time / reason on each lead's row and in the export.
    - **Frontend (optional):** a note in the campaign form when the chosen time is outside the window for some leads ("12 leads can't be texted at this time; they'll receive it from 8:00 their time").
    - So a manager scheduling at the wrong time gets no error: the campaign runs, and leads outside the window are held and sent when allowed, which the report shows.
 
 **Tests:** table-driven, one row per rule and state: each consent source (opt-in flag, `TCPAOptIn: true`, own inquiry, email YES), an explicit no (`TCPAOptIn: false`, `sms_opt_in: false`, STOP) beating every source, a campaign not covered by the inquiry rule, opt-out, a customer in another time zone, a frequency cap reached, email always allowed, and unknown data treated strictly.
 
 **Scenarios:**
-- `pb3_no_consent_blocked.yaml`: a platform campaign SMS to a DealerVault contact with no consent is blocked in the campaign worker, with the reason; the contact gets the one "want updates by text?" email instead.
+- `pb3_no_consent_blocked.yaml`: a platform campaign SMS to a DealerVault contact with no consent is blocked by the send check, with the reason shown as "Blocked" on the campaign report. ~~The contact gets the one "want updates by text?" email instead.~~ (Consent-ask email on hold, decision 67.)
 - `pb3_form_opt_out.yaml`: an AutoTrader lead with `TCPAOptIn: false` gets its first reply (a reply is allowed) but no follow-up texts; email follow-ups continue.
 - `pb3_customer_time_zone.yaml`: a New York dealer and a Los Angeles customer (found by ZIP, B0.5); a follow-up due at 9:00 New York time waits until the dealer is open **and** it's 8:00 Los Angeles time (11:00 New York). A second customer with no ZIP and a non-US area code gets only the all-zones safe window.
 
-**Done when:** every AI sender and the platform's campaign worker go through the check, and counsel has reviewed the rules table. (The platform's appointment reminders keep their own rule.)
+**Done when:** every AI sender and the platform's campaign worker go through the check. (The platform's appointment reminders keep their own rule.) **28 Sept (decision 69):** built with the rules decided here; counsel reviews them later, and that review doesn't block building or shipping this phase.
 
 ---
 
 ## Phase B4: The visit as the goal
 
 1. **Decide gets a rule `offer_visit`,** between `answer` and `ask`. It fires when:
-   - what B0.12 needs is known;
+   - what B0.12 needs is known (decided 28 Sept: the vehicle, as a model or type, and roughly when they want to buy);
    - or Extract flags a buying signal (a new `wants_visit` field: "can I come see it", "test drive", "is it still there?").
 2. **The endings change:**
    - `qualified` and `partly_qualified` no longer end with a handoff. They lead to `offer_visit`.
@@ -561,6 +599,8 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 3. **The offer:** one message, two or three concrete times from Phase B5 (not "when would you like to come in?"), plain words, no pressure. It still answers the customer's question first, and it counts as one of the message's (at most 2) questions.
 4. **When the customer declines. Decided 26 Sept (architecture.md decision 19), overriding the count below.**
    - ~~At most twice per lead.~~ **Client override:** up to **3** attempts. Attempt 2 uses a different hot-button/objection angle; attempt 3 uses a different value proposition. After the third decline: stop pushing, record the reason, and schedule a dated follow-up (`docs/client/autpulse.workflowblueprint.png`, "C. APPOINTMENT CONVERSION — ASK UP TO 3 TIMES").
+   - **The dated follow-up — decided 28 Sept (architecture.md decision 63).** Today the scheduler only has two kinds of follow-up (`channel_switch`, `handoff_check` in `scheduler/followups.py`), and C4's cadence comes later. So B4 adds a new kind, `visit_followup`: due on the date the customer gave ("maybe next month"), otherwise 3 days after the third decline; it goes through the send check and makes one fresh visit offer. C4's cadence replaces it when C4 ships.
+   - **A staff-only question after a decline (B0.13, decision 64):** not a handoff on its own; handed off only after the third decline if still unanswered.
    - The visit isn't offered again for 3 replies in between attempts (like Plan 2's parked asks) — unchanged, the client didn't speak to spacing between attempts, only the count.
    - **Angles — decided 27 Sept (architecture.md decision 28).** The client defined the shape; we defined the fixed lists (**our default**, flagged for client feedback):
      - **Attempt 1:** the offer based on their main interest and its value (blueprint box C: "Appointment ask based on primary intent and value").
@@ -571,8 +611,14 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 5. **Conversation state:** visit offers made, the times offered, declined or not.
 6. **Follow-ups:** an unanswered visit offer gets the 24h follow-up with fresh times, inside B3's rules.
 7. **Metrics:** visit offer rate, booking rate, handoff rate. The client's goal is fewer handoffs and more bookings, so both are shown per dealer.
+8. **Handoff reasons after B4 (28 Sept, decision 64).** Checked against the code:
+   - **Asked for a person:** already built (`slots/policy.py`, `wants_human`).
+   - **Clearly upset:** already built (`slots/policy.py`, upset confidence ≥ 0.8, `UPSET_HANDOFF_CONFIDENCE`).
+   - **Urgent need:** decided 27 Sept (B0.13, decision 26) but not built and, until now, in no phase. **Built here:** Extract's `urgent` / `urgent_confidence` / `urgent_reason`, the ≥ 0.8 rule in Decide's `handoff` condition, the `interest.needed_by` within 48 hours backstop, and the ~20-example eval set.
+   - **Declined 3 times with a staff-only question still open:** new, above.
+   - `qualified` and `partly_qualified` are no longer handoffs (item 2).
 
-**Tests:** when `offer_visit` fires and when it doesn't; the buying signal; a decline parks the offer; the new endings; a qualified lead is no longer handed off.
+**Tests:** when `offer_visit` fires and when it doesn't; the buying signal; a decline parks the offer; the new endings; a qualified lead is no longer handed off; an urgent message (and a `needed_by` within 48 hours) hands off; an eager but not urgent one doesn't; a staff-only question hands off only after the third decline; `visit_followup` is due on the customer's date or +3 days.
 
 **Scenarios:**
 - `pb4_offer_after_qualified.yaml`: a sales lead answers the key questions and gets a visit offer, not a handoff.
@@ -585,7 +631,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 
 1. **Available times, in code:**
    - built from the dealer's opening hours, existing platform bookings, and the booking rules in B0.10;
-   - loaded into the context pack as `visit_times`, 2–3 options in the customer's time zone, in plain words ("Saturday at 10:00 AM").
+   - loaded into the context pack as `visit_times`, 2–3 options ~~in the customer's time zone~~ **in the dealership's time zone (decided 28 Sept, architecture.md decision 61: the customer is coming to the dealership, and the platform's own confirmation uses dealer time)**, in plain words ("Saturday at 10:00 AM"). The zone name is added ("10:00 AM Eastern") only when the customer's time zone is known and different.
 2. **Reading the customer's pick:** "the second one", "Saturday 10 works", "after 5 tomorrow". Matched in code to the offered times using Plan 2's date resolver. A time that wasn't offered is checked against availability; an unclear answer gets one confirming question.
 3. **Creating the booking — decided 27 Sept: the existing `POST /api/booking`, unchanged. No new endpoint, no platform code change.** Checked against `aidmvcs-be-dev/app/api/booking/route.js`:
    - **It works for us as is.** `/api/*` is outside the platform's login middleware, so the AI service can call it. It creates the `Booking` as `pending` (the model's default, matching B0.11), sets the lead to "Appointment Booked", sends its own confirmation SMS or email (on the lead's last channel), saves that confirmation in the conversation, and creates the reminders.
@@ -602,11 +648,21 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
      - If the customer won't give it: no booking; the requested time goes to the team as a note, and the reply says the team will confirm.
    - If the time was just taken, the reply offers the next free times instead.
 4. **The AI isn't paused by its own booking — already true, nothing to build.** `notifyAiOfStaffStatus` is only called from the staff status route, not from `/api/booking`. After the booking, the lead is in a `booked` state in the AI's own lead state: the AI answers questions and asks nothing more.
-5. **Changes:** "can we make it 11 instead?" offers new times and moves the booking (`PUT`, above); "I can't make it" cancels it (`PUT` with `booking_status: cancelled`), offers new times once, and tells the team. **To check before building:** a cancel through `PUT` doesn't change the lead's status or delete the platform reminders; whether those reminders still fire for a cancelled booking needs confirming in `appointmentReminderService.js`.
-6. **The team is told** of every booking, with the customer's summary (what they want, budget, trade-in), so staff are ready when they arrive.
-7. **Guard:** "booked", "confirmed" and "see you on…" are allowed only when this turn created or confirmed a booking; otherwise the draft is rejected. Compose's "never say booked" rule is replaced by this.
+5. **Changes:** "can we make it 11 instead?" offers new times and moves the booking (`PUT`, above); "I can't make it" cancels it (`PUT` with `booking_status: cancelled`), offers new times once, and tells the team. ~~**To check before building:** a cancel through `PUT` doesn't change the lead's status or delete the platform reminders; whether those reminders still fire for a cancelled booking needs confirming in `appointmentReminderService.js`.~~ **Checked 28 Sept: two known gaps, accepted for now** (see "Known gaps in B5" below).
 
-**Tests:** time building (hours, existing bookings, earliest time); matching the customer's pick; no double booking on retry; slot taken; move (with `booking_status` sent) and cancel; asking for the missing email or phone; no second confirmation from the AI; no pause after an AI booking; the guard's booked rule.
+   **Known gaps in B5 (28 Sept, architecture.md decisions 58–59).** Both come from platform code we don't change in this plan.
+   - **Gap 1: old reminders still go out after the AI moves or cancels a booking. Tolerated until C5 ships.** Checked in the platform: `PUT /api/booking` creates new reminders on a move but never cancels the old ones, so the customer gets reminders for both the old and new time; a cancel through `PUT` cancels no reminders at all; the reminder sender never checks the booking's status. (Staff don't hit this: their status screen calls `cancelAllRemindersForLead` first.) C5 switches the platform's reminders off for AI dealers, which ends it. Until then, the team notification for a move or cancel says so, so staff can clear the old reminders. The AI service doesn't touch the platform's reminder records.
+   - **Gap 2: a cancelled booking leaves the lead marked "Appointment Booked". Interim, not a permanent solution.** `PUT /api/booking` doesn't change the lead's status, and the only route that does (the staff status route) would pause the AI. Interim: the status is left as is, the team notification says "the customer cancelled; please update the lead's status", and the AI's own lead state goes back to active so it can offer new times.
+   - **The proper fix for both (platform code changes; not approved in this plan):**
+     1. `PUT /api/booking`, on `booking_status: cancelled`: cancel that lead's pending reminders (`cancelAllRemindersForLead`), set the lead's `fe_lead_status` to a status that isn't staff-owned (e.g. back to "Contacted") so the AI isn't paused, and clear the lead's `data.booking` / `booking_status`.
+     2. `PUT /api/booking`, on a date/time change: cancel the lead's pending reminders before creating the new ones.
+     3. The reminder sender (`appointmentReminderService.js`): skip a reminder whose booking is cancelled, as a safety net.
+     4. Fix the reminders' `booking_id`, which actually stores the lead id (`POST /api/booking` passes `_id: lead_id`), so `cancelRemindersForBooking` can find them.
+     Once these ship, both gaps close with no AI-service change beyond removing the "please update" notes.
+6. **The team is told** of every booking, with the customer's summary (what they want, budget, trade-in), so staff are ready when they arrive.
+7. **Guard:** ~~"booked", "confirmed" and "see you on…" are allowed only when this turn created or confirmed a booking; otherwise the draft is rejected.~~ **Decided 28 Sept (architecture.md decision 60):** booking wording is allowed whenever the lead has a real booking that isn't cancelled, read fresh from the platform each turn (so "what time am I booked for?" the next day can be answered). The words must match its status: `pending` → "requested" ("I've requested Saturday at 10:00 for you"), `confirmed` → "confirmed" / "booked" / "see you on…". With no active booking, the draft is rejected. Compose's "never say booked" rule is replaced by this.
+
+**Tests:** time building (hours, existing bookings, earliest time); matching the customer's pick; no double booking on retry; slot taken; move (with `booking_status` sent) and cancel; asking for the missing email or phone; no second confirmation from the AI; no pause after an AI booking; the guard's booked rule (pending vs. confirmed wording, a later turn, a cancelled booking); times shown in dealer time, with the zone added only when the customer's differs; the team notification on a move or cancel carries the known-gap notes.
 
 **Scenarios:**
 - `pb5_book_visit.yaml`: an offer, "the second one", a booking created, and a confirmation sent.
@@ -689,22 +745,87 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 
 ## Phase C1: Compliance Engine & Evidence Schema
 
+> **Provisionally closed 29 Sept 2026**, together with B2 and B3 (see "Built 29 Sept" at the end of this phase). The reply-silencing bug and the opt-out/opt-in tier work below ("C1 extension") are left for later and don't block this or the rest of Part B.
+
 1. **Deterministic Compliance Engine (`can_contact` service):**
-   - Signature: `can_contact(customer_id, dealer_id, channel, purpose, timestamp) -> ALLOW | HOLD | REVIEW | BLOCK`.
+   - Signature: ~~`can_contact(customer_id, dealer_id, channel, purpose, timestamp) -> ALLOW | HOLD | REVIEW | BLOCK`~~ `can_contact(customer_id, dealer_id, lead_id, channel, purpose, is_reply, at) -> ALLOW | HOLD | REVIEW | BLOCK` (decision 55).
    - LLM Guardrail: The LLM is explicitly forbidden from creating, inferring, or changing consent statuses or overriding compliance decisions.
-2. **Consent Evidence Profile:** (stored in the AI service's `ai_consent`; sources decided in B0.4: the platform's opt-in flag, the lead form's consent line, the customer's own inquiry, and YES replies to the email ask.)
+2. **Consent Evidence Profile:** (stored in the AI service's `ai_consent`; sources decided in B0.4: the platform's opt-in flag, the lead form's consent line (as "review required", decision 76), and the customer's own inquiry. ~~YES replies to the email ask~~: withdrawn, decision 73.)
    - Store immutable consent evidence: `consent_status`, `consent_type`, `consent_timestamp`, `consent_source`, `consent_text_version`, `consent_evidence_id`, `consenting_seller_id`, `source_url`.
+   - **Decided 29 Sept (architecture.md decision 77): add-only records, kept 5 years.** Today `ai_consent` overwrites a customer's consent in place (`channels/consent.py`, `set_channel_consent`), which breaks "immutable". Consent becomes a history: every change (opt-in, opt-out, review required) is a new entry that is never edited, and the current state is the latest entry per customer, dealer and channel. The compliance log (item 5) is add-only too. Both are kept for **5 years** (longer than the TCPA's 4-year window for lawsuits); counsel may change this later (TCPA PDF §12 lists retention for counsel).
    - DMS/DealerVault rule: DMS presence *never* implies consent (`TCPA_PERMISSION = YES`).
 3. **Natural-Language Opt-Out & Ambiguity Handling:**
    - Explicit keywords: `STOP`, `END`, `CANCEL`, `UNSUBSCRIBE`, `QUIT`.
    - Natural language: "don't text me", "leave me alone", "remove my number", "take me off your list".
    - Ambiguous phrases route to `REVIEW` and immediately suspend automated marketing.
+   - **Detection — decided 29 Sept (architecture.md decision 74).** Today only a message that is exactly a keyword is caught (`channels/consent.py`, `classify_keyword`). Added:
+     - a fixed phrase list in code ("don't text me", "don't call me", "leave me alone", "remove my number", "take me off your list", "no more messages", "stop contacting me", …); a match is an opt-out (`BLOCK`);
+     - Extract gets `possible_opt_out` with a confidence; code routes it to `REVIEW`. The model's label can only make a send stricter, never allow one, so the LLM still never creates or grants consent;
+     - "I'm not interested" and similar objections are **not** opt-outs (TCPA PDF §3); they're handled as objections (B4).
+   - **Scope and confirmation — decided 29 Sept (architecture.md decision 75):**
+     - keyword STOP / UNSUBSCRIBE: that channel only, as today;
+     - a phrase that names a channel ("don't text me", "stop emailing me", "remove my number"): that channel only;
+     - a phrase that names no channel ("stop contacting me", "leave me alone", "take me off your list", "no more messages"): **all channels**, because the customer didn't limit it, and treating it as one channel keeps contacting someone who asked us to stop (TCPA PDF §3: suppress immediately; FCC 24-24: revocation "by any reasonable means"). **Flagged: the user questioned this; channel-only for these phrases is the alternative;**
+     - a natural-language opt-out gets **one** plain, non-marketing confirmation on the channel it came in on ("Understood, we won't contact you again."). A keyword STOP gets none from us (the carrier sends its own). Counsel reviews the wording later (TCPA PDF §3).
+   - **Resolving a REVIEW — decided 29 Sept (architecture.md decision 72).** Kept because the client asked for it (TCPA PDF p.2 "Ambiguity" and §3: "use REVIEW and stop automated marketing while unresolved"). The platform has no review screen and none is built:
+     - staff get a notification quoting the customer's message;
+     - marketing stays stopped until the customer writes again with something that isn't an opt-out (our reply to them is allowed anyway), or an admin uses the existing "resume AI" action on that lead (`resumeAiForLead`);
+     - if staff decide it was an opt-out, they set the lead to "DND", which counts as do-not-contact (decision 68).
 4. **AI Voice Channel Control:**
    - AI outbound voice treated as a separate, higher-risk channel, disabled by default.
 5. **Auditable Compliance Event Logging:**
    - Record timestamp, dealer_id, customer_id, channel, purpose, consent_evidence_id, jurisdiction, local_time, DNC results, frequency check, decision, and decision_reason for every attempted send.
+   - Add-only, kept 5 years (decision 77).
 
-**Tests:** `can_contact` table-driven tests for all 4 outcomes, natural-language opt-out parsing, evidence immutability, and compliance audit log generation.
+**Tests:** `can_contact` table-driven tests for all 4 outcomes, natural-language opt-out parsing (phrase list, channel-named vs. general phrases, "not interested" is not an opt-out, a possible opt-out goes to REVIEW), the one confirmation for a natural-language opt-out and none for keyword STOP, `TCPAOptIn: true` giving "review required" not consent, evidence immutability (a change adds an entry, never edits one), and compliance audit log generation.
+
+**Built 29 Sept 2026, with B2 and B3** (details and verification: `progress_3.md`, "Phase C1"). Decided with the user before building: all of B2 and B3 are in; ZIP → time zone from a pip package (`zipcodes`); a possible opt-out gets a plain reply with no asks and no offers; the handoff check's message is transactional; `possible_opt_out` routes to REVIEW at confidence ≥ 0.5; the 3-per-24h cap counts texts only; the four platform campaign files may be edited (they are Prashanth's; approved for this change only). Decided while building, **flagged for review** (architecture.md decisions 78–86):
+- Email is never held for time of day, including the dealer-hours part of decision 24 (B3 item 1 "Email: no time limit").
+- A transactional text the system starts uses 8:00–21:00 customer time plus dealer hours; a marketing one 8:00–20:00 plus dealer hours.
+- `sms_opt_in: false` now blocks marketing texts only; a reply still goes out (B0.4 step 1). Before C1 it blocked every text.
+- A lead-form `TCPAOptIn: true` alone gives REVIEW; the campaign report shows it as "Blocked: Needs review: …".
+- The staff notice for a REVIEW is recorded on the AI's lead state and turn log, not sent to a platform screen (the platform has no notification the AI service can write without another platform change).
+- Campaign **emails** don't go through the check (decision 66 covers campaign texts).
+- **The real `Lead.source` values couldn't be pulled:** the local database only holds dev-simulator leads. The inbound/outbound table is built from the values the platform code writes (ADF provider names, `sms`, `email`, `website`, `campaign`, DealerVault); anything else is outbound and listed under `unmapped_lead_sources` in `GET /v1/metrics`.
+
+### C1 extension: opt-out silences replies too (bug), and four opt-out types (planned, not built)
+
+> **Found 29 Sept 2026, evening, in Debug UI testing.** Not built yet — this section is the plan; it needs a pass to confirm nothing here contradicts the client's TCPA PDF or an existing numbered decision before any code changes.
+
+**The bug.** After a channel-matching or all-channel opt-out, `events/handlers.py` sets the **lead's** status to `opted_out`, which is in `SILENT_STATUSES` alongside `handoff` and `paused`. A lead in a silent status gets no AI turn at all — not just no marketing, no reply either — until the customer sends the literal keyword `START` on that channel or a human manually resumes the AI. So "wait nevermind" or any other reply from the customer after an opt-out currently gets silence, forever, by default.
+
+This is stricter than the spec asks for. The TCPA PDF language we already have on file (decision 74, "Ambiguity") says to stop automated **marketing**, not to stop responding to the customer altogether. The fix: an opt-out should suppress AI-initiated marketing and follow-ups on the affected channel(s), and leave replies to the customer's own messages working, the same way a `DND`/explicit-no already lets replies through today (decision 80) — **except** for a new "total no-contact" type, below, which is meant to stop everything including replies.
+
+**Decided 29 Sept, evening:**
+- Once this ships, a reply to the customer after an opt-out is **not** given any special "don't upsell" instruction — it's composed the same as any other reply, no new signal to Compose. (Asked and confirmed with the user; simpler, and Guard already exists to catch anything inappropriate.)
+- Four opt-out types, not two. Today there is one axis (channel scope: this channel / all channels). Adding a second axis, how much it silences:
+  1. **Marketing-only.** Stops AI-initiated marketing sends on the named channel(s). Replies and transactional sends (handoff notice, etc.) still go.
+  2. **Follow-up-only.** Stops the AI's own proactive follow-ups (24h channel switch, campaign-adjacent AI nudges) on the named channel(s), but the AI still answers direct questions, including ones that touch on the vehicle. Narrower than marketing-only: a customer might not mind an answer to "does it still have the AWD trim" but doesn't want to be chased.
+  3. **Full marketing + follow-up (today's default meaning of STOP / a phrase).** Stops both. Replies still go. This is what decisions 74/75/84 already describe once the reply-silencing bug above is fixed — no behavior change to this tier, just no longer over-blocking replies.
+  4. **Total no-contact.** Stops everything, including replies — the customer wants zero contact, not just less marketing ("don't ever contact me again", "lose my number and don't text back"). This is the only tier that should still route through the current `SILENT_STATUSES` / lead-status mechanism.
+
+**Open before building (needs a decision, not an assumption):**
+- **Detection is the hard part.** Today's phrase list (`compliance/opt_out.py`) only encodes channel scope, not tier. Most real customer phrasing ("don't text me", "stop contacting me") doesn't cleanly signal tier 1 vs 2 vs 3 vs 4 — e.g. "stop contacting me" could mean tier 3 (stop marketing/follow-ups, still answer if I write back) or tier 4 (leave me alone entirely) depending on tone the phrase list can't read. Getting this wrong in the tier-4 direction under-serves the customer (goes silent when they'd have accepted a reply); getting it wrong in the other direction re-contacts someone who wanted silence, which is the exact harm the TCPA PDF exists to prevent. Needs either: a conservative default (ambiguous tier → treat as tier 4 until reviewed, same ratchet logic as decision 74's `possible_opt_out` → REVIEW), or explicit phrase-to-tier mapping reviewed line by line before it ships.
+- **Cross-check against existing decisions before implementing**, at minimum: decision 74 (phrase list = opt-out, ratchet-only), 75/84 (channel scope), 72 (REVIEW resolution path — does a tier-4 total no-contact still resolve the same way, i.e. only an explicit START or admin resume, or does "the customer writes again" auto-resolve it the way an open REVIEW does?), 80 (explicit no blocks marketing texts, not replies — tier 1 should reduce to the same rule), 68 (DND = do-not-contact — is DND effectively tier 4, and should staff setting DND be the same code path as a customer's tier-4 opt-out?).
+- **Where the tier is recorded.** `ai_consent` currently stores one `opt_out` entry per customer/channel (opted_in/opted_out). Four tiers needs a `scope` or `tier` field added to that entry, add-only per decision 77, without breaking the existing `is_opted_out()` reads other code paths already rely on.
+
+**Not started:** no code changes for this section yet — phrase detection, `ai_consent` schema, `engine.py` rule ordering (moving the reply check ahead of the opt-out block, or making tiers 1–3 skip it), and `events/handlers.py`'s status handling all need to change together once the open questions above are settled.
+
+#### Opt-in flexibility (added 29 Sept, evening, same planning pass)
+
+**Today.** `classify_keyword` (`compliance/opt_out.py`) recognizes exactly three literal words as opt-in: `start`, `unstop`, `yes`. A match reverses the opt-out on the one channel the message arrived on, only if that channel was already opted out (`events/handlers.py:301-309`). Nothing else counts — "you can text me again", "I changed my mind, go ahead and follow up", "email is fine now" all fall through as ordinary conversation and do nothing to consent.
+
+**The ask.** Natural-language opt-in, mirroring the natural-language opt-out phrase list (decision 74) instead of only exact keywords, and scoped the same two ways opt-out will be once the tier work above ships:
+- **Channel scope:** "you can text me again" reverses SMS only; "you can email me too" adds email; a phrase naming no channel reverses whatever was named in the original opt-out (not channels the customer never mentioned either way).
+- **Tier scope:** matching the four opt-out tiers — a customer can opt back into marketing only ("go ahead and send me deals again"), follow-ups only ("you can check in with me"), or ask for full reversal ("you can contact me again") without that phrase being read as reaching further than tier 4 if the original opt-out was total no-contact.
+
+**Open before building:**
+- **Symmetry with the opt-out tiers above:** this can't be designed independently of the four-tier opt-out work — the opt-in phrase list needs the same tier field to reverse into, so these two should ship together, not opt-in first and opt-out tiers later (or the reversal would have nothing to reverse into).
+- **`yes` as a standing keyword is risky and should probably be narrowed, not just left in the phrase list.** Today ANY message that is exactly "yes" reverses an opt-out unconditionally (`START_WORDS`), including a "yes" that's actually answering "are you looking at new or used?" and has nothing to do with consent — a false opt-in, not a false opt-out, so the harm is different (over-eager re-contact of someone who never intended to reverse anything) but still real. Options to flag for a decision: drop bare "yes" from the keyword list and require a fuller phrase; or only treat "yes" as opt-in when it directly follows a message where **we** asked the customer to confirm re-consent (state-dependent, not a standalone keyword match).
+- **Re-opt-in into tier 4 (total no-contact) should have a higher bar than tiers 1–3.** Wrongly failing to reverse a marketing-only opt-out costs one missed pitch; wrongly reversing a "never contact me again" and then texting them is the exact harm-case the TCPA PDF is written to prevent. Suggest: ambiguous phrases reverse at most tier 3 (marketing + follow-up), and a full tier-4 reversal needs either the literal `START` keyword or an explicit, unambiguous phrase reviewed and approved the same way the opt-out phrase list itself was (decision 74).
+- **Where it's recorded:** same `ai_consent` add-only history as the opt-out side (decision 77) — a reversal is a new entry, never an edit, so the full channel/tier history stays intact for the audit log.
+
+**Not started:** no code changes for this either — depends on the opt-out tier schema landing first (same `ai_consent` field), then a symmetric phrase list, the `yes`-narrowing decision above, and the tier-4 higher-bar rule, all before `classify_keyword`/`detect_opt_out`'s counterpart is built.
 
 ---
 
@@ -779,7 +900,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 > - **Showed:** staff setting "Visited" on the appointment day → `PUT /api/booking` with `booking_status: completed`.
 > - **Manager outcome — planned to be shipped (platform change, approved 27 Sept):** "Sold pending", "Sold delivered" and "Unsold" added to the lead status dropdowns (`dealer/leads/components/StatusModal.js`, `dealer/conversations/components/StatusModal.js`, the lead list filters), accepted by the status route (`api/conversations/lead/status/route.js`), and added to `STAFF_OWNED_STATUSES` (`lib/ai/aiStaff.js`) so they pause the AI. After a lead is set to "Visited", the status screen asks for one of the three outcomes (new UI behaviour).
 > - **Not built:** the client's "15 minutes after booking" details message. The platform's booking endpoint already sends a confirmation straight away; sending ours too would double it.
-> - **Dealer setup (no code):** for AI dealers, the platform's reminders are switched off on Settings → Reminder settings ("enabled" off; `post_enabled` stays off), so our countdown and Y/N replace them. To be added to the rollout runbook (`docs/runbooks/rollout.md`) when C5 is built.
+> - **Dealer setup (no code):** for AI dealers, the platform's reminders are switched off on Settings → Reminder settings ("enabled" off; `post_enabled` stays off), so our countdown and Y/N replace them. To be added to the rollout runbook (`docs/runbooks/rollout.md`) when C5 is built. This also closes B5's known gap 1 (old reminders firing after a move or cancel, decision 58).
 > - **No-show clash (our default, flagged):** the platform always sends its own no-show message when staff set "No Show". If staff set it before our +1 hour message, ours is skipped (theirs already went). Dealers are told not to set "No Show" on AI leads; our flow handles it.
 >
 > What exists already, checked against the platform:

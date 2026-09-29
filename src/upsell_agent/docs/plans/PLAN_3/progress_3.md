@@ -1,6 +1,6 @@
 # MASTER_PLAN_3 progress
 
-Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept): Part A (except the deferred items) → C1 → B1 → B5 → B4 → C3 → C4 → C5 → C6.
+Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 Sept): Part A (except the deferred items) → C1 → Bq → B1 → B5 → B4 → C3 → C4 → C5 → C6.
 
 | Phase | State |
 |---|---|
@@ -12,6 +12,12 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept): Part A (exc
 | A5. Freshness (sold re-checks) | Not started (needs a "sold" signal: C5's manager outcome) |
 | A6. Debug UI and dev inventory | Not started (Phase 1 added a first dev stock set and the Stock section) |
 | A7. Evals, shadow and rollout | Not started |
+| B0. Decisions (Part B) | Readiness review 28 Sept: decisions 55–71 recorded (architecture.md §15). Campaign texts pass the send check through a shared queue and are still sent by the platform (decision 66, corrected 29 Sept). REVIEW kept, resolved without a new screen (decision 72). Consent-ask email withdrawn for now (decisions 67, 73). **Part B's decisions are complete; ready to build once C1 is built** |
+| C1. Compliance engine (with B2/B3) | **Done, verified end to end (29 Sept 2026).** Built ahead of Part A Phases 3–7 at the user's request (C1 needs nothing from Part A). Includes the approved platform campaign changes. Flags: decisions 75 and 78–86 |
+| Bq. Two questions per message | Not started (added 28 Sept; `MAX_ASKS_PER_MESSAGE` is still 1). **Next** |
+| B2. Inbound or outbound | **Done inside C1 (29 Sept).** Real `Lead.source` values still to be checked on real data (decision 85) |
+| B3. Send check | **Done inside C1 (29 Sept)**, including item 7's platform campaign changes. Not built: item 7's optional campaign-form note |
+| B1, B4–B6 | Not started. **Known gaps accepted for B5:** old platform reminders after a move/cancel (until C5), and a cancelled booking leaves the lead "Appointment Booked" (interim) |
 
 ---
 
@@ -128,4 +134,68 @@ One more item was reconsidered, not just decided: reclassifying stock questions 
 | Scenarios, live in Docker | 39 / 39, including `p2_loosened_search` and both live parity checks |
 | Parity, stub vs the real `/api/car` | 142 / 142 (lower-case colours return 0 on both: the route's colour match is case-sensitive, confirmed live) |
 | Ruff on changed files / Debug UI `tsc` | Clean / clean |
+| Burst test (`make ai-burst`, 300 replies in 600 s, send check on every send) | 8 / 8 checks passed: 300 / 300 replies sent, 0 errors, no template fallback, reply p95 2.7 s (one at 19.5 s), other dealer's first reply p95 2.7 s (not slowed), dealer A never above its cap |
 | Debug UI in a real browser | "Do you have a red Toyota RAV4?" then "Used please. Anything bigger?": Search stock shows colour sent as `Red`, size loosened SUV → Minivan/Van/Truck, a used red F-150 loaded with its VIN |
+
+---
+
+## Phase C1: Compliance engine (with B2 and B3) — provisionally closed (29 Sept 2026)
+
+**Provisionally closed, evening 29 Sept.** A bug found in Debug UI testing after ship: an opt-out silences the whole lead, including replies to later messages, not just marketing/follow-ups. Left for later, not blocking C1 or the rest of Part B. Planned fix — four opt-out tiers (marketing-only, follow-up-only, full, total no-contact) with a matching natural-language opt-in — is written up as the "C1 extension" in `MASTER_PLAN_3.md` under Phase C1. Not built. See `docs/report/29-9-26/NOTES.md` for the finding and `architecture.md` decision 87.
+
+Asked before building (answers in `docs/report/29-9-26/NOTES.md`): full C1 + B2 + B3; ZIP table from a pip package; a possible opt-out gets a plain reply; the handoff check is transactional; REVIEW at `possible_opt_out` ≥ 0.5; the cap counts texts only; the four platform campaign files (Prashanth's) may be edited for this change only.
+
+### What was built (AI service)
+
+| Piece | Where |
+|---|---|
+| **`can_contact(customer_id, dealer_id, lead_id, channel, purpose, is_reply, at)`** → ALLOW / HOLD until / REVIEW / BLOCK, in plain code, in order: AI voice off → opt-out (except the one opt-out confirmation) → DND → explicit no (marketing texts) → replies (any hour inbound; outbound at night: quiet hours) → open review → consent → customer window + dealer hours → 3-per-24h cap | `compliance/engine.py` |
+| Customer time zone: DealerVault `Zip` (the `zipcodes` package) → `State` (two-zone states keep both) → area code (`phonenumbers`) → every continental zone; a ZIP state and a different area-code state keep both | `compliance/customer_zone.py` |
+| Inbound / outbound per lead (B2): campaign → outbound; known web / provider / phone-up / customer-first source → inbound; DealerVault without a lead form → outbound; anything else → outbound and "unmapped" | `compliance/origin.py` |
+| Opt-outs in the customer's words: keywords (channel only, no reply from us); a fixed phrase list (named channel only, or every channel; one plain confirmation); objections aren't opt-outs | `compliance/opt_out.py`, `events/handlers.py` |
+| Possible opt-out: Extract's `possible_opt_out` + `opt_out_confidence`; ≥ 0.5 → a reply with no asks or offers, a REVIEW entry, a staff notice on the lead. Resolved when the customer writes again with a non-opt-out, or an admin resumes the AI | `agent/llm.py`, `agent/offline_model.py`, `agent/nodes/decide.py`, `slots/policy.py` (`hold_questions`), `agent/turn.py`, `events/handlers.py` |
+| Outbound conversation at night (decision 29): the reply asks nothing and says the team picks up at 8:00 AM (the guard knows that time) | `agent/turn.py` (pre-check), `agent/nodes/decide.py`, `compose.py`, `guard.py`, `offline_model.py`, `llm.py` |
+| Consent history, add-only: `opt_out`, `marketing_consent` (platform flag, lead-form line: `TCPAOptIn: true` → `review_required`), `review`, each with the client's evidence fields; old documents migrated at startup and their unique index dropped | `channels/consent.py`, `integrations/mongodb.py` |
+| Compliance log, add-only, 5-year auto-delete: every checked send with consent evidence, zones and local times, DNC, frequency, decision and reason | `ai_compliance_log`, `compliance/engine.py` |
+| Every AI send goes through the check: a HOLD leaves the message row `held` (resumable), REVIEW / BLOCK suppress it with the reason; purpose and `is_reply` on every request | `channels/sender.py` |
+| Follow-ups: due times planned with the check (the channel switch is marketing, the handoff check transactional); a HOLD at firing time puts it back to pending until the time given. Replaces the dealer-time 8:00–20:00 window (`contact_window.py` keeps only business minutes in use) | `scheduler/followups.py` |
+| Origin and customer zone saved on the lead | `agent/turn.py` (`ai_lead_state.origin`, `customer_zone`) |
+| Campaign check queue: the worker answers `ai_send_checks` requests every 2 s (atomic claim, stuck claims reset after 2 min) | `compliance/send_checks.py`, `worker/main.py` |
+| Metrics: send-check decisions by rule, texts allowed outside the hours (must be 0), unmapped lead sources | `observability/metrics.py` (`GET /v1/metrics`, `make ai-report`) |
+| Scenario steps `set_contact`, `expect_origin`, `campaign_check`, `expect_followup … due_local`; stage 301 in the Debug UI | `devtools/scenarios.py`, `debug-ui/.../ScenariosTab.tsx` |
+| Dependencies `zipcodes`, `phonenumbers` (rebuild the image: `make ai-build`) | `pyproject.toml`, `uv.lock` |
+
+### Platform changes (`aidmvcs-be-dev`) — approved by the user 29 Sept
+
+| File | Owner | Change |
+|---|---|---|
+| `app/worker/campaignWorker.js` | Prashanth | Before each campaign text: `checkCampaignSend`, waiting up to 20 s. ALLOW → sends as before. HOLD → `CampaignLead` `held` with `held_until` / `block_reason`, job re-queued for that time (next check attempt). REVIEW / BLOCK → `blocked` with the reason, nothing sent. No answer → re-queued in 60 s. `held` leads are re-processed and count as unfinished for campaign completion |
+| `app/models/CampaignLead.js` | Prashanth | `status` gains `held`, `blocked`; new `held_until`, `block_reason` |
+| `app/api/campaigns/[id]/report/route.js` | Prashanth | `stats.held`, `stats.blocked`; `processed` excludes held; each lead has `held_until`, `block_reason` |
+| `app/dealer/campaigns/[id]/report/page.js` | Prashanth | "Held until…" and "Blocked" count cards, badge colours, filter options, the time / reason on each lead, CSV columns |
+| `app/lib/ai/aiSendCheck.js` | new | The request / wait / answer helper for `ai_send_checks` |
+| `test-ai-send-check.js`, `Makefile` (`platform-test`) | new / OmgItsAmmer | Tests for the helper |
+
+Not built: B3 item 7's optional campaign-form note ("12 leads can't be texted at this time").
+
+### Changed behaviour (flag if you disagree; architecture.md decisions 78–86)
+
+- `sms_opt_in: false` blocks marketing texts only; replies still go (before: every text).
+- Email is never held for time of day, including dealer hours.
+- Unknown-zone customers (every dev customer: 555 phones, no ZIP) get texts the system starts only from 11:00 New York. Tests and evals pin customers to New York (`ny_customer` fixture, `evals/harness.py`); `scenarios/p2_handoff_timeout.yaml` starts at 11:30.
+- The REVIEW staff notice is on the AI's lead state and turn log, not on a platform screen.
+- Campaign emails aren't checked.
+- The real `Lead.source` values couldn't be pulled (the local database has only dev leads).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests | 768 passed (719 before; +49 in `tests/unit/test_compliance.py`; 9 existing tests updated for the new rules: consent as history, `sms_opt_in: false` vs replies, 9:00 not 8:00 when the dealer opens at 9, daytime clock for campaign replies) |
+| Offline eval gate (`pytest evals`) | 56 / 56 (unit + evals together, either order: 824) |
+| Scenarios, live in Docker | 41 / 43: the two failures are the parity checks that need the platform web server (`make dev-full`), unchanged. New: `pc1_origin`, `pc1_campaign_consent`, `pc1_form_opt_out`, `pc1_customer_time_zone` all pass |
+| Platform campaign worker end to end | The real `processCampaignLead` against the local database, AI worker in Docker answering: a DealerVault contact without consent → `CampaignLead` `blocked` with "no text consent …", campaign completed, no Twilio call. The HOLD path is covered by `pc1_campaign_consent` (AI side) and `test-ai-send-check.js` (platform side), not run end to end (needs the BullMQ queue) |
+| Platform tests | `node --test test-ai-send-check.js`: 3 / 3; `node --check` on the changed platform files: clean |
+| Lookups | ZIP 90012 → Los Angeles, 10001 → New York, 79901 → Denver (El Paso, TX); +1 212 → New York; +44 → none |
+| Ruff on changed files / Debug UI `tsc` | Clean / clean |
+| Burst test (`make ai-burst`, 300 replies in 600 s, send check on every send) | 8 / 8 checks passed: 300 / 300 replies sent, 0 errors, no template fallback, reply p95 2.7 s (one at 19.5 s), other dealer's first reply p95 2.7 s (not slowed), dealer A never above its cap |
