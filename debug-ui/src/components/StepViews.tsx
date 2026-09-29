@@ -512,6 +512,39 @@ export function ContextPackView({ output }: { output: any }) {
   );
 }
 
+// The visit offer and booking (MASTER_PLAN_3 B4/B5): whether a visit is offered
+// this turn (attempt, angle, times), a booking made / moved / cancelled, a
+// pick waiting for contact details, or why no offer was made.
+function VisitBlock({ offer, visit, plan }: { offer: any; visit: any; plan: any }) {
+  if (!offer && !plan?.why && !visit?.just_booked && !visit?.cancelled_this_turn && !visit?.ask_contact
+      && !visit?.slot_taken) {
+    return null;
+  }
+  const title = offer
+    ? `Visit offer: attempt ${offer.attempt} of 3 (${String(offer.angle ?? "").replaceAll("_", " ")})`
+    : visit?.just_booked
+      ? `Visit ${visit.moved_this_turn ? "moved" : "booked"}: ${visit.display} (${visit.status})`
+      : visit?.cancelled_this_turn
+        ? "Visit cancelled"
+        : visit?.ask_contact
+          ? `Visit: picked ${visit.display}, asking for their ${visit.ask_contact}`
+          : "Visit";
+  return (
+    <Block title={title}>
+      {visit?.slot_taken && <div className="text-warn">{visit.slot_taken} was just taken: fresh times.</div>}
+      {offer && (
+        <>
+          <div className="font-semibold">{(offer.times ?? []).map((t: any) => t.display).join(" · ")}</div>
+          <div className="text-muted">Reason given: {offer.value_proposition}</div>
+        </>
+      )}
+      {plan?.why && <div className="text-muted">{plan.why}</div>}
+      {plan?.schedule_followup && <div>Schedules a fresh visit offer for {plan.followup_due}.</div>}
+      {plan?.handoff && <div className="text-warn">A staff-only question is still open: handed to the team.</div>}
+    </Block>
+  );
+}
+
 // What Decide chose beyond the rule (MASTER_PLAN_2 Phases 5 and 9): the
 // questions it answers, up to two follow-ups (MASTER_PLAN_3 Bq: a check
 // counts as one), a clarification, and why details weren't asked.
@@ -549,6 +582,7 @@ export function DecideDetails({ output }: { output: any }) {
           <div className="text-muted">{afterHours.why} Any pending morning message is cancelled.</div>
         </Block>
       )}
+      <VisitBlock offer={output.visit_offer} visit={output.visit} plan={output.visit_plan} />
       {output.annoyed_at_bot && (
         <div className="rounded-lg bg-warn-soft px-2 py-1.5 text-warn">
           The customer is frustrated with the conversation: no questions this time.

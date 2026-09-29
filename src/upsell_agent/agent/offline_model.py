@@ -257,6 +257,8 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         **_sentiment(text),
         **_possible_opt_out(text),
         **_wants_visit(text),
+        **_declines_visit(text, payload),
+        **_urgent(text),
     }
 
 
@@ -268,6 +270,30 @@ _PREFER_LATER = re.compile(r"\b(later|tomorrow|morning|when you open|when (?:you
 _VISIT = re.compile(r"\b(come (?:in|by|see|look)|stop by|swing by|test ?drive|see it in person|visit|"
                     r"book (?:a|an) (?:time|appointment|visit)|schedule (?:a|an) (?:time|appointment|visit))\b",
                     re.IGNORECASE)
+# Turning down a visit offer (MASTER_PLAN_3 B4 item 4). Only read when our last message
+# offered specific times (payload's context.conversation.awaiting_visit_pick).
+_DECLINE_VISIT = re.compile(
+    r"\b(not yet|not right now|not today|maybe later|can'?t make it|can'?t come in|i'?m just looking|"
+    r"just browsing|not ready|no thanks|not this week|can'?t this week|rather not|skip that|"
+    r"not interested in (?:coming|visiting)|no,? not now)\b", re.IGNORECASE)
+_OBJECTION_PATTERNS = [
+    (r"\b(busy|don'?t have time|no time|tight schedule|hard to get away)\b", "time_convenience"),
+    (r"\b(just looking|just browsing|not ready|window shopping)\b", "just_looking"),
+    (r"\b(price|numbers|cost|how much|what'?s it going to cost)\b", "wants_numbers"),
+    (r"\b(credit|approv\w*|financ\w*)\b", "credit_worry"),
+    (r"\b(trade|worth|trade-?in value)\b", "trade_value_unsure"),
+]
+# Urgent-need signals (MASTER_PLAN_3 B0.13 decision 26, built in B4 item 8).
+_URGENT_PATTERNS = [
+    (r"\b(car broke down|no (?:working )?car|without a car|stranded|no transportation|can'?t get around)\b",
+     "no_transportation"),
+    ((r"\b(need (?:it|a car|a vehicle) (?:by|within|in) (?:tomorrow|today|\d+\s*(?:hours?|hrs?|days?))|"
+      r"need something (?:asap|right away|immediately))\b"), "needed_within_48h"),
+    (r"\b(not safe to drive|unsafe|brakes? (?:are |is )?(?:going|gone|failing)|dangerous to drive)\b",
+     "safety_problem"),
+    ((r"\b(lease (?:is )?ending|other offer expir\w*|deal (?:falls?|falling) through|losing (?:my|the) "
+      r"(?:offer|deal))\b"), "external_deadline"),
+]
 
 
 def _contact_preference(text: str) -> str | None:
@@ -283,6 +309,29 @@ def _wants_visit(text: str) -> dict[str, Any]:
     if _VISIT.search(text):
         return {"wants_visit": True, "wants_visit_confidence": 0.9}
     return {"wants_visit": False, "wants_visit_confidence": 0.0}
+
+
+def _declines_visit(text: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """MASTER_PLAN_3 B4 item 4: only read as a decline when our last message
+    offered specific visit times (agent/conversation.py's
+    `awaiting_visit_pick`, mirroring how B1's contact_preference is only
+    read while awaiting_contact_choice)."""
+    awaiting = bool(((payload.get("context") or {}).get("conversation") or {}).get("awaiting_visit_pick"))
+    if not awaiting or not _DECLINE_VISIT.search(text):
+        return {"declines_visit": False, "declines_visit_confidence": 0.0, "visit_objection": "none",
+                "visit_later_when": None}
+    objection = next((label for pattern, label in _OBJECTION_PATTERNS if re.search(pattern, text, re.IGNORECASE)),
+                     "none")
+    later = m.group(0) if (m := DATE_PHRASE.search(text)) else None
+    return {"declines_visit": True, "declines_visit_confidence": 0.85, "visit_objection": objection,
+            "visit_later_when": later}
+
+
+def _urgent(text: str) -> dict[str, Any]:
+    for pattern, reason in _URGENT_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return {"urgent": True, "urgent_confidence": 0.9, "urgent_reason": reason}
+    return {"urgent": False, "urgent_confidence": 0.0, "urgent_reason": "none"}
 
 
 # Unclear opt-outs; the clear ones are caught in code first (compliance/opt_out.py).
@@ -427,6 +476,19 @@ def _confirm_text(confirm: dict[str, Any]) -> str:
     return f"Just to confirm, your {confirm.get('label', 'detail').lower()} is {shown}, right?"
 
 
+def _visit_offer_text(visit_offer: dict[str, Any]) -> str:
+    """MASTER_PLAN_3 B4 item 3: 2-3 concrete times, grounded in the offer's
+    own value_proposition, never a vague "when would you like to come in?".
+    Exactly one "?" (it counts as one question, MASTER_PLAN_3 Bq/B4 decision
+    107): the lead-in is a statement, not its own question."""
+    times = [t["display"] for t in visit_offer.get("times") or []]
+    choices = (", or ".join(times) if len(times) <= 1
+              else ", ".join(times[:-1]) + f", or {times[-1]}")
+    reason = visit_offer.get("value_proposition") or ""
+    lead_in = f"Want to come by {reason}" if reason else "Want to come by"
+    return f"{lead_in} - I've got {choices}. Which one works?" if choices else f"{lead_in}?"
+
+
 def compose(payload: dict[str, Any]) -> dict[str, Any]:
     action = payload.get("action")
     name = payload.get("customer_first_name") or "there"
@@ -437,20 +499,31 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     attempt = int(payload.get("attempt", 1))
     asks = payload.get("asks") or []
     confirm = payload.get("confirm")
+    visit_offer = payload.get("visit_offer")
+    visit = payload.get("visit") or {}
 
     opener = f"Thanks for replying to our {campaign['name']}! " if campaign else "Thanks! "
     dates = [c["display"] for c in payload.get("just_captured") or [] if c.get("kind") == "date"]
     if dates and action not in ("handoff", "confirm"):
         opener += f"Got it - {dates[0]}. "
     answered, promises = _answers(questions, payload)
-    # At most two questions (MASTER_PLAN_3 Bq): the confirmation first, then the asks.
-    follow_ups = ([_confirm_text(confirm)] if confirm else []) + [_question_for(a) for a in asks]
+    # At most two questions (MASTER_PLAN_3 Bq): the confirmation first, then the asks. A visit offer
+    # takes the confirmation's bonus-question slot when it's given (MASTER_PLAN_3 B4, decision 107).
+    follow_ups = ([_visit_offer_text(visit_offer)] if visit_offer else
+                 [_confirm_text(confirm)] if confirm else []) + [_question_for(a) for a in asks]
     follow_up = "".join(f" {q}" for q in follow_ups[:2])
 
     if action == "answer":
         body = f"{opener}{answered}{follow_up}"
         why = f"Answering {len(questions)} question(s) first" + (
             f", then {len(follow_ups[:2])} follow-up(s)." if follow_up else ".")
+        if visit_offer:
+            why += f" A visit offer (attempt {visit_offer.get('attempt')}) is the bonus question."
+    elif action == "offer_visit":
+        taken = f"Sorry, {visit['slot_taken']} was just taken. " if visit.get("slot_taken") else ""
+        body = f"{opener}{taken}{follow_up.strip()}"
+        why = f"Offering a visit (attempt {visit_offer.get('attempt') if visit_offer else '?'} of 3, " \
+              f"angle: {visit_offer.get('angle') if visit_offer else '?'})."
     elif action == "clarify":
         items = (payload.get("clarify") or {}).get("items", [])
         explained = " ".join(i["explanation"] for i in items if i.get("explanation"))
@@ -473,14 +546,22 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         why = "The customer asked for a person or is clearly upset, so the AI steps back."
         promises.append("A member of the team will reach out shortly.")
     elif action == "qualified":
-        body = f"{opener}That's everything we need, {name}. A member of our team will reach out shortly with next steps."
-        why = "All required details are collected, so the reply wraps up without asking more."
-        promises.append("A member of the team will reach out with next steps.")
+        if visit.get("stopped"):
+            body = f"{opener}Thanks, {name}!"
+            why = "All required details are collected, but the visit offer was already declined 3 times: just acknowledge."
+        else:
+            body = f"{opener}That's everything we need, {name}. A member of our team will reach out shortly with next steps."
+            why = "All required details are collected, so the reply wraps up without asking more."
+            promises.append("A member of the team will reach out with next steps.")
     elif action == "partly_qualified":
-        body = (f"Thanks, {name}. I've passed what we have to the team, and someone will reach out shortly "
-                "with next steps.")
-        why = "Everything still missing was asked twice, so the lead goes to the team with what we have."
-        promises.append("A member of the team will reach out with next steps.")
+        if visit.get("stopped"):
+            body = f"Thanks, {name}. I've passed what we have to the team."
+            why = "Everything still missing was asked twice, and the visit offer was already declined 3 times."
+        else:
+            body = (f"Thanks, {name}. I've passed what we have to the team, and someone will reach out shortly "
+                    "with next steps.")
+            why = "Everything still missing was asked twice, so the lead goes to the team with what we have."
+            promises.append("A member of the team will reach out with next steps.")
     elif payload.get("annoyed_at_bot"):
         body = f"Sorry about that, {name} - I won't keep asking. Just tell me whatever you need and I'll help."
         why = "The customer is frustrated with the conversation: apologise, ask nothing."
@@ -504,6 +585,25 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         rest = "Just reply here whenever you're ready." if action == "acknowledge" else body.removeprefix(opener)
         body = f"{greeting}, {name}! The team is in now. {rest}"
         why = "The dealership has opened: the conversation picks up where it stopped. " + why
+    if visit.get("just_booked"):
+        # A booking was created (or moved) this turn (MASTER_PLAN_3 B5 item 7, architecture §15
+        # decision 60): wording matches the booking's real status, never "booked" for a pending one.
+        wording = "confirmed" if visit.get("status") == "confirmed" else "requested"
+        verb = "moved" if visit.get("moved_this_turn") else wording
+        lead_in = f"{answered} " if answered else ""
+        body = (f"{lead_in}Great - I've {verb} {visit.get('display')} for you." +
+               (" The team will confirm shortly." if wording == "requested" else " See you then!"))
+        why = f"A booking was {verb} this turn ({wording}, matching its real status)."
+        if wording == "requested":
+            promises = [*promises, "The team will confirm the visit shortly."]
+    elif visit.get("cancelled_this_turn"):
+        body = f"{f'{answered} ' if answered else ''}No problem, {name} - I've cancelled that. Happy to find another time whenever works."
+        why = "The customer cancelled their booking this turn."
+    elif visit.get("ask_contact"):
+        field_question = ("What's the best email for your confirmation?" if visit["ask_contact"] == "email"
+                          else "What's a good phone number for the visit?")
+        body = f"{f'{answered} ' if answered else ''}Got it - {visit.get('display')} works. {field_question}"
+        why = f"The customer picked a time, but we're missing their {visit['ask_contact']} before it can be booked."
     if payload.get("quiet_hours"):
         body += " The team will pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."

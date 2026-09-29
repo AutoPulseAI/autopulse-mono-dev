@@ -69,6 +69,10 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "hold_questions": decision.get("hold_questions"),
         "quiet_hours": decision.get("quiet_hours"),
         "after_hours": _after_hours(decision),
+        # MASTER_PLAN_3 B4/B5: the offer to present (only when Decide fired one this turn), and
+        # the lead's current visit/booking state (for wording that matches a real booking, decision 60).
+        "visit_offer": decision.get("visit_offer"),
+        "visit": decision.get("visit"),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,
         "campaign": state.campaign,

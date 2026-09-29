@@ -1,6 +1,6 @@
 # MASTER_PLAN_3 progress
 
-Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 Sept): Part A (except the deferred items) → C1 → Bq → B1 → B5 → B4 → C3 → C4 → C5 → C6.
+Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 Sept): Part A (except the deferred items) → C1 → Bq → B1 → B4 + B5 (built together, decision 112) → C3 → C4 → C5 → C6.
 
 | Phase | State |
 |---|---|
@@ -15,10 +15,12 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | B0. Decisions (Part B) | Readiness review 28 Sept: decisions 55–71 recorded (architecture.md §15). Campaign texts pass the send check through a shared queue and are still sent by the platform (decision 66, corrected 29 Sept). REVIEW kept, resolved without a new screen (decision 72). Consent-ask email withdrawn for now (decisions 67, 73). **Part B's decisions are complete; ready to build once C1 is built** |
 | C1. Compliance engine (with B2/B3) | **Done, verified end to end (29 Sept 2026).** Built ahead of Part A Phases 3–7 at the user's request (C1 needs nothing from Part A). Includes the approved platform campaign changes. Flags: decisions 75 and 78–86 |
 | Bq. Two questions per message | **Closed (29 Sept–1 Oct).** Decisions 88–89. 825 unit tests, 56/56 evals, offline model |
-| B1. After-hours first reply | **Closed (29 Sept–1 Oct).** Decisions 90–98, plus three fixes from live testing (real-model choice drop, stray `wants_visit`, repeated greeting / re-offer on a plain ack). Platform notification for the team still to build (decision 96, flagged). **Next: B5** |
+| B1. After-hours first reply | **Closed (29 Sept–1 Oct).** Decisions 90–98, plus three fixes from live testing (real-model choice drop, stray `wants_visit`, repeated greeting / re-offer on a plain ack). Platform notification for the team still to build (decision 96, flagged) |
 | B2. Inbound or outbound | **Done inside C1 (29 Sept).** Real `Lead.source` values still to be checked on real data (decision 85) |
 | B3. Send check | **Done inside C1 (29 Sept)**, including item 7's platform campaign changes. Not built: item 7's optional campaign-form note |
-| B4–B6 | Not started. B5 must also wire B1's `wants_visit` into booking (B5 item 8). **Known gaps accepted for B5:** old platform reminders after a move/cancel (until C5), and a cancelled booking leaves the lead "Appointment Booked" (interim) |
+| B4. The visit as the goal | **Built (29 Sept), with B5.** Decisions 102–122. Offline model only: not yet tested on the real models or the running platform. **Next: the user's live Debug UI test, then C3** |
+| B5. Booking the visit | **Built (29 Sept), with B4**, including item 8 (a visit request naming its own time is booked, at any hour). **Known gaps accepted:** old platform reminders after a move/cancel (until C5), a cancelled booking leaves the lead "Appointment Booked" (interim); both are in the team's notice. Platform e2e to run by hand (below) |
+| B6. Debug UI, evals and rollout | Not started. The minimal Visit panels were pulled forward into B4/B5 (decision 111) |
 
 ---
 
@@ -285,3 +287,77 @@ Both built 29 Sept (decisions 88–98), then three real-model bugs turned up in 
 - The real model sometimes puts a vague timeframe ("next month") into `interest.needed_by` instead of `interest.timeline`, pre-existing and out of Bq/B1 scope — the user's call whether to fix it now or later.
 - A first reply that falls back to the template carries no after-hours choice (decision 98's known gap).
 
+---
+
+## Phases B4 + B5: the visit as the goal, and booking it (29 Sept 2026)
+
+Built together in one pass (decision 112). Readiness decisions 102–112 were asked before building; 113–122 were decided while building (architecture.md §15; **flagged** ones want review).
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| Available times: 30-minute slots inside opening hours, at least 2h out, last slot 30 min before closing, 7 days ahead, at most 2 bookings per slot (B0.10); the earliest 2-3 offered, in dealer time, with the zone name only when the customer's differs | `tools/booking_tool.py` (new) |
+| Existing bookings read straight from the platform's `bookings` collection (not cancelled), fresh every turn | `booking_tool.existing_bookings`, `find_active_booking`; `PLATFORM_BOOKINGS_COLLECTION` in `integrations/mongodb.py` |
+| Matching the customer's pick in code: "the second one", "option 2", "Saturday at 10 works", a free time that wasn't offered | `booking_tool.match_pick` (uses `slots/dates.py`) |
+| Create / move / cancel through the platform's unchanged `POST` / `PUT /api/booking` (`booking_status` always sent on a PUT); the dev stub writes the same shape; no double booking on a retry | `integrations/platform_client.py` `create_booking` / `update_booking`; `booking_tool.ensure_booking` / `move_booking` / `cancel_booking` |
+| The visit offer: eligibility (B0.12, every lead type), 3 attempts with 3 angles (primary interest → objection or the customer's own priority → value proposition by lead type), parked for 3 replies after a decline, stopped after the 3rd, times kept on the table for one extra reply | `agent/visit_offer.py` (new) |
+| Decide's new rule `offer_visit` (between `confirm` and `ask`); the offer as the bonus question on `answer`; new handoff triggers: urgent, and 3rd decline with a staff-only question open | `slots/policy.py`, `agent/pipeline.py` |
+| Booking in Decide before Compose; a taken slot → fresh times (same attempt); missing email/phone → asked for, the pick kept (`pending_pick`) and booked when they give it; a visit request naming its own free time → booked straight away (B5 item 8, any hour); "can't make it" → cancel; "can we make it … instead" → move | `agent/nodes/decide.py` |
+| Urgent need: Extract's `urgent` / `urgent_confidence` / `urgent_reason` (≥ 0.8), plus the 48h `needed_by` backstop (this turn's value only) | `agent/llm.py`, `agent/nodes/decide.py`, offline model |
+| Extract: `declines_visit` (+ confidence), `visit_objection`, `visit_later_when` | `agent/llm.py`, offline model |
+| Compose: the offer (concrete times, the angle's reason, one question), booking wording by status ("requested" while pending), asking for a missing email/phone, a taken slot, a cancel or move; no "team will reach out" after the 3rd decline | `agent/llm.py`, `agent/nodes/compose.py`, `agent/offline_model.py` |
+| Guard: `booking_wording_matches_status` (no "booked"/"confirmed" unless confirmed, no booking words with no active booking); offered and booked times allowed as numbers | `agent/nodes/guard.py` |
+| Conversation state `visit` {attempts, angles_used, offered_times, offered_turn, declined, declined_turn, stopped, objections, followup_due, pending_pick, held_over, why} | `agent/conversation.py` |
+| Follow-up kind `visit_followup`: planned on the 3rd decline (the customer's date, else +3 days, 10:00 dealer time, send check applied); firing checks the lead is active, unbooked and the dealer live, resets the offer to a fresh attempt 1 and runs a whole turn (Extract skipped); cancelled by a booking | `scheduler/followups.py`, `agent/graph.py`, `agent/state.py`, `agent/turn.py` |
+| The team is told of every booking, move and cancel (with the known-gap notes) | `agent/turn.py` `_notify_team_of_booking` (`staff_notice` kinds `visit_booked` / `visit_moved` / `visit_cancelled`) |
+| Lead profile: `visit`, `pending_visit_followup`, `booking` | `api/leads.py` |
+| Metrics: visit offer rate, booking rate, handoff rate per dealer | `observability/metrics.py` (+ `visit_offer_attempt` / `booked` on each turn log) |
+| Debug UI: Decide "Visit offer / booked / cancelled" block; Conversation panel "Visit / booking"; Scheduler "visit follow-up" cards; timeline labels; `visit_followup` node in the pipeline graph; "Plan 3 · Phase B4 / B5" scenario groups | `debug-ui/src/components/StepViews.tsx`, `ConversationPanel.tsx`, `SchedulerTab.tsx`, `Timeline.tsx`, `PipelineGraph.tsx`, `ScenariosTab.tsx`, `types.ts` |
+| Scenarios `pb4_offer_after_qualified`, `pb4_buying_signal`, `pb4_declined`, `pb5_book_visit`, `pb5_slot_taken`, `pb5_reschedule`; runner steps `expect_booking`, `take_offered_time`, `expect_lead` `visit_attempts` / `visit_declined`, `expect_followup` kind `visit_followup` | `scenarios/`, `devtools/scenarios.py` |
+| Evals: 20 "urgent vs. just eager" cases (B4 item 8); offered times allowed in the reply eval's number check | `evals/datasets/reply_cases.jsonl`, `evals/test_replies.py` |
+| Tests: `test_visit_offer.py`, `test_booking_tool.py`, `test_booking_flow.py` (through the real pipeline) | `tests/unit/` |
+
+### Existing tests changed (the new behaviour is intended)
+
+- `test_slots.py`: Decide has 10 rules now (`offer_visit`).
+- `test_turn_pipeline.py::test_sales_lead_is_qualified_over_a_chat`: once the RAV4 and "this month" are known, a visit is offered instead of asking about the trade-in (B0.12).
+- `test_dates.py` and the `tomorrow` eval case: "I need it by tomorrow" is now an urgent handoff (decision 26's 48h backstop), so they use "the day after tomorrow".
+
+### Found and fixed while building
+
+- The offer text had two "?" and failed the two-question Guard (fixed: one question).
+- "tomorrow is fine" (answering the after-hours choice) was read as a purchase date and handed the lead off, and the stale value kept doing so on later turns (decision 120).
+- Re-offering right after a decline, against B4 item 4's 3-reply parking (decision 114).
+- A picked time was booked even if it had filled up since it was offered (decision 116).
+- The picked time was forgotten while we asked for a missing email (decision 117).
+- A question while times were on the table used up an attempt (decision 115).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests (offline model) | 871 passed (825 before) |
+| Offline eval gate (`pytest evals`) | 76 / 76 (56 before + 20 urgent cases) |
+| Ruff on changed files | Clean (remaining warnings are in files not touched) |
+| Debug UI type check (`tsc -b --noEmit` in `ai-debug-ui`) | Clean |
+| Scenarios | **Not run**: the Docker stack uses the real models (standing instruction). The six new files parse and use only known steps; the same flows run offline in `test_booking_flow.py` |
+| Real models / live platform | **Not run** |
+
+### Platform e2e to run by hand (decision 105)
+
+With the platform's web server running and `PLATFORM_CLIENT=live`:
+
+1. New sales lead "I want a new Toyota RAV4", then "budget $35k, buying this month": the reply offers 2-3 times.
+2. "the first one": in the dealer's **Lead Calendar** (`dealer/booking/calendar`) the booking appears; the lead shows "Appointment Booked"; the platform sent its own confirmation SMS/email and created the reminders; the AI's reply says "requested … the team will confirm".
+3. Send another message: the AI still answers (not paused).
+4. "can we make it Wednesday at 11am instead?": the booking moves (PUT with `booking_status`); the team notice mentions the old reminders.
+5. "I can't make it, need to cancel": the booking is cancelled; the lead stays "Appointment Booked" (known gap 2); the team notice says so.
+
+### Not built / to do
+
+- B4 item 6's fresh times on the 24h resend: the channel switch stays as it was (decision 110).
+- B5 item 3's "requested time goes to the team as a note" when the customer never gives the missing email/phone (decision 117).
+- "can we do another day?" with no day and time isn't read as a move (decision 119).
+- The Debug UI Metrics tab doesn't show the visit rates yet (they're in `GET /v1/metrics` and `make ai-report`).
+- For the user to decide: whether a plain "I need it by tomorrow" should really hand off (decision 120, following decision 26).

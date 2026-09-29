@@ -1,0 +1,19 @@
+name: A booked customer moves the visit
+stage: 405
+description: 'MASTER_PLAN_3 B5 item 5. After booking, "can we make it Wednesday at 11 instead?" moves the booking with PUT /api/booking (booking_status sent with it), the reply says it was moved, and the team notice carries the known gap: old platform reminders are not cleared on a move (decision 58).'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Ray Reschedule, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: r, zip: "10001"}
+  - send_lead_created: {lead: r}
+  - wait_turns: {lead: r, count: 1, timeout_s: 20}
+  - reply: {lead: r, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 20}
+  - reply: {lead: r, text: "the first one"}
+  - wait_turns: {lead: r, count: 3, timeout_s: 20}
+  - expect_booking: {lead: r, status: pending}
+  - reply: {lead: r, text: "can we make it Wednesday at 11am instead?"}
+  - wait_turns: {lead: r, count: 4, timeout_s: 20}
+  - expect_booking: {lead: r, status: pending, time: "11:00"}
+  - expect_last_sent: {lead: r, contains: "moved"}
+  - expect_lead: {lead: r, staff_notice: visit_moved}

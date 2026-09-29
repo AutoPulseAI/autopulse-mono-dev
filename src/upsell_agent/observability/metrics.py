@@ -126,6 +126,16 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         source = (state.get("origin") or {}).get("source") or "(none)"
         unmapped[source] = unmapped.get(source, 0) + 1
 
+    # MASTER_PLAN_3 B4 item 7: the client's goal is fewer handoffs and more bookings.
+    offered: set[str] = set()
+    booked: set[str] = set()
+    async for turn in turns.find({"created_at": {"$gte": since}}, projection={"lead_id": 1, "summary": 1}):
+        summary = turn.get("summary") or {}
+        if summary.get("visit_offer_attempt"):
+            offered.add(turn.get("lead_id"))
+        if summary.get("booked"):
+            booked.add(turn.get("lead_id"))
+
     ai_turns = total - template_by_design
     return {
         "dealer_id": dealer_id, "days": days, "since": since.isoformat(),
@@ -144,6 +154,9 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
                   "qualified_rate": _rate(by_status.get("qualified", 0), len(states)),
                   "handoff_rate": _rate(by_status.get("handoff", 0), len(states)),
                   "handoff_turns": handoff_turns},
+        "visits": {"offered_leads": len(offered), "booked_leads": len(booked),
+                   "offer_rate": _rate(len(offered), len(states)), "booking_rate": _rate(len(booked), len(states)),
+                   "handoff_rate": _rate(by_status.get("handoff", 0), len(states))},
         "sends": sends,
         "followups": followups,
         "staff_checks": staff_checks,
@@ -171,6 +184,8 @@ def format_report(m: dict[str, Any]) -> str:
          + ", ".join(f"{d} ${c:.4f}" for d, c in m["cost_usd"]["by_day"].items())),
         (f"  Qualified:          {pct(m['leads']['qualified_rate'])}, handed off {pct(m['leads']['handoff_rate'])} "
          f"({m['leads']['by_status']})"),
+        (f"  Visits:             offered to {pct(m['visits']['offer_rate'])}, booked {pct(m['visits']['booking_rate'])}, "
+         f"handed off {pct(m['visits']['handoff_rate'])}"),
         f"  Sends:              {m['sends']}",
         f"  Follow-ups:         {m['followups']}",
         f"  Staff checks:       {m['staff_checks']}",

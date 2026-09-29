@@ -199,6 +199,11 @@ PLATFORM_TRADE_INS_COLLECTION = "tradeins"
 # Dealers are `User` documents of type "dealer"; `ai_mode` lives there (Stage 5).
 PLATFORM_USERS_COLLECTION = "users"
 PLATFORM_EMAIL_ACCOUNTS_COLLECTION = "emailaccounts"
+# `Booking` documents (aidmvcs-be-dev/app/models/Booking.js): the source of
+# truth for availability (MASTER_PLAN_3 B5, architecture §15 decision 103) -
+# read directly rather than through the lead's `booking_status` flag, which
+# goes stale on a move or cancel (B5's known gaps).
+PLATFORM_BOOKINGS_COLLECTION = "bookings"
 
 EVENT_DEDUPE_TTL_S = 7 * 24 * 3600
 TURN_LOG_TTL_S = 90 * 24 * 3600

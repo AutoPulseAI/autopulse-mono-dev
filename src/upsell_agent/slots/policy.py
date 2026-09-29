@@ -4,16 +4,23 @@ extraction always give the same answer.
 
 Rules, checked in order; the first that applies wins:
   1. stop              the customer opted out
-  2. handoff           they asked for a person, or are clearly upset
+  2. handoff           they asked for a person, are clearly upset, sound
+                       urgent, or declined a visit 3 times with a staff-only
+                       question still open (MASTER_PLAN_3 B4 item 8)
   3. clarify           they asked what our last message meant: re-explain it
-  4. answer            they have questions: answer first, then at most two
-                       follow-ups (a confirmation and an ask, or two asks)
+  4. answer            they have questions: answer first, then at most one
+                       follow-up (a visit offer or a confirmation, and an
+                       ask - unless a visit is still pending, see below)
   5. confirm           a value is waiting for confirmation (plus one ask)
-  6. ask               a required detail can be asked (two per message)
-  7. qualified         nothing missing
-  8. partly_qualified  every detail still missing has been asked twice: hand
+  6. offer_visit       a visit can be offered (nothing else this reply,
+                       decision 107 revised) - MASTER_PLAN_3 B4: every
+                       qualified or partly-qualified lead is offered a
+                       visit before anything is passed to staff
+  7. ask               a required detail can be asked (two per message)
+  8. qualified         nothing missing
+  9. partly_qualified  every detail still missing has been asked twice: hand
                        what we have to the team, and stop asking
-  9. acknowledge       nothing to ask right now: reply without a question
+  10. acknowledge      nothing to ask right now: reply without a question
 
 At most MAX_ASKS_PER_MESSAGE questions per message (MASTER_PLAN_3 Bq,
 architecture §15 decision 35): a confirmation counts as one.
@@ -49,6 +56,8 @@ PARKED_FOR_REPLIES = 3
 # Upset is a handoff signal only when this sure (MASTER_PLAN_2 Phase 4): one
 # ambiguous message isn't enough. Frustration with the bot itself never is.
 UPSET_HANDOFF_CONFIDENCE = 0.8
+# Urgent is a handoff signal at the same bar (MASTER_PLAN_3 B0.13 decision 26, built in B4 item 8).
+URGENT_HANDOFF_CONFIDENCE = 0.8
 
 
 @dataclass
@@ -73,10 +82,29 @@ class Flags:
     # The after-hours choice this reply carries (agent/after_hours.py): "offer" (the
     # choice is the only question) or "later" (a thank-you, nothing asked).
     contact_choice: str | None = None
+    # Urgent-need signals (MASTER_PLAN_3 B0.13 decision 26, agent/nodes/decide.py): Extract's
+    # `urgent`/`urgent_confidence`, or the pure-code 48h `needed_by` backstop.
+    urgent: bool = False
+    urgent_confidence: float = 0.0
+    # The visit offer Decide should carry this turn (agent/visit_offer.py's VisitOfferPlan,
+    # only when it fires), or None. MASTER_PLAN_3 B4.
+    visit_offer: dict[str, Any] | None = None
+    # 3rd decline with a staff-only question still open (agent/visit_offer.py, B4 item 8).
+    visit_handoff: bool = False
+    # A visit offer is live this turn (visit_offer above) or still awaiting the customer's
+    # pick from last turn (conversation.awaiting_visit_pick, incl. the one-reply hold-over).
+    # While true, a reply stays on the visit topic: no bonus slot-ask stacked alongside it
+    # (architecture §15 decision 107, revised: a customer mid-conversation about the offer
+    # got a trade-in question shoved in with it - confusing, not "strike while the iron's hot").
+    visit_pending: bool = False
 
     @property
     def clearly_upset(self) -> bool:
         return self.upset and self.upset_confidence >= UPSET_HANDOFF_CONFIDENCE
+
+    @property
+    def clearly_urgent(self) -> bool:
+        return self.urgent and self.urgent_confidence >= URGENT_HANDOFF_CONFIDENCE
 
 
 def _unfilled(profile: Profile, requirement: Requirement) -> list[str]:
@@ -131,14 +159,18 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
 
     conditions: dict[str, tuple[bool, str]] = {
         "stop": (flags.opted_out, "Customer opted out"),
-        "handoff": (flags.wants_human or flags.clearly_upset,
+        "handoff": (flags.wants_human or flags.clearly_upset or flags.clearly_urgent or flags.visit_handoff,
                     "Customer asked for a person" if flags.wants_human
-                    else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})"),
+                    else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})" if flags.clearly_upset
+                    else f"Customer sounds urgent (confidence {flags.urgent_confidence:.2f})" if flags.clearly_urgent
+                    else "Declined a visit 3 times and a staff-only question is still open"),
         "clarify": (bool(clarify_questions and flags.last_asked),
                     f"Asked what we meant: {clarify_questions[0]['text']!r}" if clarify_questions else ""),
         "answer": (bool(other_questions or clarify_questions),
                    f"{len(other_questions or clarify_questions)} question(s) to answer"),
         "confirm": (bool(pending), f"Confirm {SCHEMA[pending[0].path].label}: {pending[0].value!r}" if pending else ""),
+        "offer_visit": (bool(flags.visit_offer),
+                        flags.visit_offer.get("why", "Offering a visit") if flags.visit_offer else ""),
         "ask": (bool(askable), "Missing: " + ", ".join(r.label for r in askable[:MAX_ASKS_PER_MESSAGE])
                 if askable else ""),
         "qualified": (not missing and not flags.already_qualified, f"All {total} required details collected"),
@@ -179,8 +211,11 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
                                "display": display_value(SCHEMA[slot.path], slot.value), "kind": SCHEMA[slot.path].kind,
                                "fact_id": slot.fact_id}
 
+    def add_visit_offer() -> None:
+        decision["visit_offer"] = flags.visit_offer
+
     def add_asks() -> None:
-        room = MAX_ASKS_PER_MESSAGE - (1 if "confirm" in decision else 0)
+        room = MAX_ASKS_PER_MESSAGE - (1 if ("confirm" in decision or "visit_offer" in decision) else 0)
         decision["asks"] = [_ask_item(profile, r) for r in askable[:room]]
         for item in decision["asks"]:
             decision["slots"] += [p for p in item["slots"] if p not in decision["slots"]]
@@ -197,12 +232,23 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     elif fired == "answer":
         decision["answer_questions"] = other_questions or clarify_questions
         # At most two follow-up questions after the answers, never when they're frustrated with us.
-        if pending and not flags.annoyed_at_bot:
+        # A visit offer takes the bonus-question slot a confirmation would otherwise take (architecture
+        # §15 decision 107).
+        if flags.visit_offer and not flags.annoyed_at_bot:
+            add_visit_offer()
+        elif pending and not flags.annoyed_at_bot:
             add_confirm()
-        add_asks()
+        # ...but never on top of a visit still pending (decision 107, revised): the reply stays
+        # on the visit topic until it's resolved, instead of also opening a new required slot.
+        if not flags.visit_pending:
+            add_asks()
     elif fired == "confirm":
         add_confirm()
         add_asks()
+    elif fired == "offer_visit":
+        # The offer is the whole reply now (decision 107, revised): no bonus slot-ask stacked
+        # alongside it, so the customer isn't answering two unrelated things at once.
+        add_visit_offer()
     elif fired == "ask":
         add_asks()
     return decision

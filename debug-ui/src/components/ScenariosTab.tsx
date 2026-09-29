@@ -33,6 +33,10 @@ const STAGE_NAMES: Record<number, string> = {
   202: "Shopping criteria",
   // MASTER_PLAN_3 Part C phases are stored as 300 + phase.
   301: "Send check (compliance engine, with B2/B3)",
+  // MASTER_PLAN_3 Part B phases are stored as 400 + phase.
+  401: "After-hours first reply",
+  404: "The visit as the goal",
+  405: "Booking the visit",
 };
 
 const stageLabel = (stage: number) =>

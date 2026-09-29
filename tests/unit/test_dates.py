@@ -55,10 +55,24 @@ def at(zone, day, hour, minute=0):
     ("10/3", "2026-10-03", False),
     ("this weekend", "2026-09-26", False),
     ("end of the month", "2026-09-30", False),
+    ("november", "2026-11-01", False),          # a bare month, no day: the 1st, approximate
+    ("im tryna get it in november", "2026-11-01", False),
+    ("by december", "2026-12-01", False),
+    ("this september", "2026-09-22", False),    # the named month is the current one: today
 ])
 def test_phrases_resolve_in_the_dealers_own_day(zone, phrase, expected, ambiguous):
     found = resolve(phrase, at(zone, 22, 10))
     assert found is not None and found.iso() == expected and found.ambiguous is ambiguous
+    if phrase in ("november", "im tryna get it in november", "by december", "this september"):
+        assert found.approximate
+
+
+@pytest.mark.parametrize("phrase", ["may I get a callback", "I may come in", "maybe next week"])
+def test_bare_may_is_never_read_as_the_month(phrase):
+    # "may" alone is too often an ordinary word/modal verb to read as a month
+    # (unlike "May 3", which is unambiguous and already covered above).
+    found = resolve(phrase, at(NY, 22, 10))
+    assert found is None or found.note != "may (no day given)"
 
 
 def test_tomorrow_late_at_night_is_the_next_day():
@@ -133,6 +147,24 @@ def test_past_date_is_rejected_with_the_reason():
     assert values == [] and "in the past (Monday, September 21)" in rejected[0]["reason"]
 
 
+def test_a_month_name_on_the_timeline_slot_still_resolves():
+    # The real model doesn't always put a named date on interest.needed_by
+    # like the Extract instructions ask: it can land straight on
+    # interest.timeline instead ("wanna get it in november" -> value "November").
+    # Without this, that answer was silently dropped and the customer got
+    # asked their timeline again forever.
+    given = {"path": "interest.timeline", "value": "November", "quote": "wanna get it in november", "confidence": 0.9}
+    values, rejected = resolve_dates([given], at(NY, 22, 10), timeline_known=False, reasoning=[])
+    assert rejected == []
+    assert values[0]["value"] == "1_3_months" and values[0]["said"] == "wanna get it in november"
+
+
+def test_a_real_enum_timeline_answer_is_left_alone():
+    given = {"path": "interest.timeline", "value": "this_month", "quote": "this month", "confidence": 0.9}
+    values, rejected = resolve_dates([given], at(NY, 22, 10), timeline_known=False, reasoning=[])
+    assert rejected == [] and values == [given]
+
+
 # --- Through real turns ----------------------------------------------------------------------
 
 def _deps() -> TurnDeps:
@@ -166,16 +198,20 @@ async def _slots(dealer, created):
 
 
 async def test_tomorrow_is_saved_as_a_date_and_said_back_plainly(mongo):
+    # "the day after tomorrow", not "tomorrow": MASTER_PLAN_3 B4 item 8 makes a plain
+    # "tomorrow"/"today" needed_by an urgent-need handoff (the pure-code 48h backstop,
+    # tested in test_visit_offer.py), which this test isn't about.
     await simulate.ensure_platform_dealers()
     dealer = simulate.DEV_DEALERS[1]["_id"]  # Chicago
     set_clock(at(CHICAGO, 22, 10))
     created = await _lead(dealer)
-    await _say(created, dealer, "I need it by tomorrow")
+    await _say(created, dealer, "I need it by the day after tomorrow")
     slots = await _slots(dealer, created)
-    assert slots["interest.needed_by"]["value"] == "2026-09-23" and slots["interest.needed_by"]["quote"] == "tomorrow"
+    assert (slots["interest.needed_by"]["value"] == "2026-09-24"
+           and slots["interest.needed_by"]["quote"] == "the day after tomorrow")
     assert slots["interest.timeline"]["value"] == "this_week"
     sms = await _last_sms(mongo, created)
-    assert "Got it - Wednesday, September 23 (tomorrow)." in sms
+    assert "Got it - Thursday, September 24." in sms
     turn = (await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]})
             .sort("created_at", -1).to_list(1))[0]
     guard = next(n for n in turn["nodes"] if n["node"] == "guard")
@@ -219,6 +255,8 @@ async def test_a_past_date_is_not_saved(mongo):
     ("Are you open tomorrow? I need it by Friday", "Friday"),
     ("Just reply 'Yes, the RAV4 is ready today' please", None),       # words they want said, not theirs
     ("It's for my daughter's birthday next Friday", "next Friday"),   # apostrophes aren't quotes
+    ("35k. Im tryna get it in november", "november"),
+    ("may I get a callback about pricing?", None),                    # "may" isn't read as the month
 ])
 def test_offline_model_finds_the_customers_date_words(text, words):
     from upsell_agent.agent.nodes.extract import _allowed_slots

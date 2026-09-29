@@ -33,6 +33,7 @@ from upsell_agent.slots.dates import resolve, timeline_for
 from upsell_agent.slots.display import plain_date
 from upsell_agent.slots.schema import SCHEMA
 from upsell_agent.slots.store import confirm_fact, reject_fact, save_fact
+from upsell_agent.slots.validators import known_enum_text
 from upsell_agent.slots.validators import validate as validate_value
 
 CONFIDENCE_THRESHOLD = 0.7
@@ -89,6 +90,21 @@ def resolve_dates(values: list[dict[str, Any]], now: datetime, timeline_known: b
     extracted = {v.get("path") for v in values}
     for value in values:
         defn = SCHEMA.get(value.get("path", ""))
+        # The real model doesn't always follow "dates go on the date slot": a named
+        # month/date can land straight on interest.timeline instead of
+        # interest.needed_by ("November" -> interest.timeline). Read it as a date
+        # before the plain enum check would otherwise reject it outright.
+        if defn is not None and defn.path == "interest.timeline" and defn.kind == "enum" \
+                and not known_enum_text(defn, value.get("value")):
+            words = str(value.get("quote") or value.get("value") or "")
+            found = resolve(words, now)
+            if found is not None and not found.ambiguous and found.day >= now.date():
+                bucket = timeline_for(found.day, now.date())
+                out.append({**value, "value": bucket, "said": words})
+                reasoning.append(f"Timeline: {words!r} → {bucket.replace('_', ' ')} ({found.note}).")
+                continue
+            out.append(value)
+            continue
         if defn is None or defn.kind != "date" or _is_iso(value.get("value")):
             out.append(value)
             continue

@@ -1,0 +1,260 @@
+"""Booking the visit (MASTER_PLAN_3 B5): the available times to offer,
+matching the customer's pick to one of them, and creating / moving /
+cancelling the booking through integrations/platform_client.py's
+`POST`/`PUT /api/booking`.
+
+Availability is read straight from the platform's `bookings` collection
+(architecture §15 decision 103) - not through PlatformClient, and never
+cached, since a stale read here could double-book a slot. Booking rules are
+B0.10's defaults, hard-coded (decision 104): no per-dealer settings store
+exists without a platform change in this plan.
+
+Times are always built and shown in the dealership's own timezone (decision
+61: the customer is coming to the dealership, and the platform's own
+confirmation uses dealer time); the zone name is added to the display only
+when the customer's own zone is known and differs from the dealer's.
+"""
+
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime, time, timedelta
+from typing import Any
+
+from upsell_agent.integrations.dealer_profile import DealerProfile
+from upsell_agent.integrations.mongodb import PLATFORM_BOOKINGS_COLLECTION, as_object_id, get_db
+from upsell_agent.integrations.platform_client import PlatformClient
+
+# B0.10 defaults (architecture §15 decision 104).
+SLOT_MINUTES = 30
+BOOKINGS_PER_SLOT = 2
+EARLIEST_HOURS_OUT = 2
+LAST_SLOT_BEFORE_CLOSE = timedelta(minutes=30)
+DAYS_AHEAD = 7
+MAX_OFFERED = 3
+
+# A Booking counts against a slot's capacity unless it was cancelled.
+ACTIVE_BOOKING_STATUSES = ("pending", "confirmed", "completed")
+
+_ZONE_LABELS = {
+    "America/New_York": "Eastern", "America/Chicago": "Central", "America/Denver": "Mountain",
+    "America/Los_Angeles": "Pacific", "America/Phoenix": "Arizona", "America/Anchorage": "Alaska",
+    "Pacific/Honolulu": "Hawaii",
+}
+
+
+def _zone_label(tz_name: str) -> str:
+    return _ZONE_LABELS.get(tz_name, tz_name)
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+# --- Candidate slots and availability ----------------------------------------------
+
+def candidate_slots(dealer: DealerProfile, now: datetime, *, days_ahead: int = DAYS_AHEAD) -> list[datetime]:
+    """Every SLOT_MINUTES-aligned start time inside the dealer's opening
+    hours over the next `days_ahead` days, dealer-local: at least
+    EARLIEST_HOURS_OUT from now, and ending LAST_SLOT_BEFORE_CLOSE before
+    closing (B0.10)."""
+    local_now = now.astimezone(dealer.tz)
+    earliest = local_now + timedelta(hours=EARLIEST_HOURS_OUT)
+    slots: list[datetime] = []
+    for offset in range(days_ahead + 1):
+        day = local_now.date() + timedelta(days=offset)
+        hours = dealer.hours.get(day.weekday())
+        if not hours:
+            continue
+        opens, closes = hours
+        cursor = datetime.combine(day, opens, tzinfo=dealer.tz)
+        last_start = datetime.combine(day, closes, tzinfo=dealer.tz) - LAST_SLOT_BEFORE_CLOSE
+        while cursor <= last_start:
+            if cursor >= earliest:
+                slots.append(cursor)
+            cursor += timedelta(minutes=SLOT_MINUTES)
+    return slots
+
+
+def _slot_key(row: dict[str, Any], dealer: DealerProfile) -> tuple[str, str]:
+    local_date = _aware(row["bookingDate"]).astimezone(dealer.tz).date()
+    return local_date.strftime("%Y-%m-%d"), str(row.get("bookingTime") or "")
+
+
+async def existing_bookings(dealer_id: str, dealer: DealerProfile, now: datetime,
+                            *, days_ahead: int = DAYS_AHEAD) -> list[dict[str, Any]]:
+    """Every Booking for this dealer that could overlap the offered window,
+    read fresh (architecture §15 decision 103): not cancelled, and not so old
+    it predates today. Widened by a day on each side since `bookingDate` is
+    stored as dealer-local midnight in UTC, not a plain calendar date."""
+    local_now = now.astimezone(dealer.tz)
+    start = datetime.combine(local_now.date(), time(0), tzinfo=dealer.tz).astimezone(UTC) - timedelta(days=1)
+    end = (datetime.combine(local_now.date() + timedelta(days=days_ahead + 1), time(0), tzinfo=dealer.tz)
+          .astimezone(UTC) + timedelta(days=1))
+    rows = await get_db()[PLATFORM_BOOKINGS_COLLECTION].find({
+        "dealer_id": dealer_id, "booking_status": {"$in": list(ACTIVE_BOOKING_STATUSES)},
+        "bookingDate": {"$gte": start, "$lt": end},
+    }).to_list(None)
+    return rows
+
+
+def available_times(dealer: DealerProfile, existing: list[dict[str, Any]], now: datetime,
+                    *, exclude_lead_id: str | None = None, days_ahead: int = DAYS_AHEAD) -> list[datetime]:
+    """Candidate slots with fewer than BOOKINGS_PER_SLOT bookings already
+    against them. `exclude_lead_id`: don't let this lead's own existing
+    booking count against itself (rescheduling)."""
+    counts: dict[tuple[str, str], int] = {}
+    for row in existing:
+        if exclude_lead_id and str(row.get("lead_id")) == str(exclude_lead_id):
+            continue
+        key = _slot_key(row, dealer)
+        counts[key] = counts.get(key, 0) + 1
+    return [slot for slot in candidate_slots(dealer, now, days_ahead=days_ahead)
+            if counts.get((slot.strftime("%Y-%m-%d"), slot.strftime("%H:%M")), 0) < BOOKINGS_PER_SLOT]
+
+
+def offer_times(available: list[datetime], *, count: int = MAX_OFFERED) -> list[datetime]:
+    """The 2-3 times actually offered to the customer: the earliest ones
+    available (B5 item 1)."""
+    return available[:count]
+
+
+def format_offer(times: list[datetime], dealer: DealerProfile,
+                 *, customer_zones: tuple[str, ...] = ()) -> list[dict[str, str]]:
+    """Each offered time as {iso, date, time, display}. `display` is plain
+    words in the dealer's own timezone ("Saturday at 10:00 AM"); the
+    dealer's zone name is appended only when the customer's own zone is
+    known (exactly one candidate) and differs from the dealer's (B5 item 1)."""
+    show_zone = len(customer_zones) == 1 and customer_zones[0] != dealer.timezone
+    label = f" {_zone_label(dealer.timezone)}" if show_zone else ""
+    formatted = []
+    for slot in times:
+        local = slot.astimezone(dealer.tz)
+        display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}{label}"
+        formatted.append({"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"),
+                          "time": local.strftime("%H:%M"), "display": display})
+    return formatted
+
+
+# --- Matching the customer's pick ---------------------------------------------------
+
+_ORDINALS = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2}
+_ORDINAL_RE = re.compile(r"\b(?:the\s+)?(first|1st|second|2nd|third|3rd)\b(?:\s+one|\s+option)?", re.IGNORECASE)
+_OPTION_RE = re.compile(r"\boption\s*([123])\b", re.IGNORECASE)
+
+
+@dataclass
+class PickResult:
+    matched: dict[str, str] | None = None  # one of the `format_offer` dicts, or a freshly built one
+    ambiguous: bool = False
+    note: str = ""
+
+
+def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
+               *, available: list[datetime] | None = None) -> PickResult:
+    """"the second one", "Saturday 10 works", "after 5 tomorrow" -> one of
+    `offered`, or (when it names a real, free time that wasn't offered) a
+    freshly built entry for it (B5 item 2). Uses Plan 2's date resolver
+    (slots/dates.py) for anything that isn't an ordinal; the model never
+    does this matching."""
+    from upsell_agent.slots.dates import resolve as resolve_date
+
+    if m := _ORDINAL_RE.search(text):
+        idx = _ORDINALS[m.group(1).lower()]
+        if idx < len(offered):
+            return PickResult(matched=offered[idx])
+    if m := _OPTION_RE.search(text):
+        idx = int(m.group(1)) - 1
+        if idx < len(offered):
+            return PickResult(matched=offered[idx])
+
+    resolved = resolve_date(text, now.astimezone(dealer.tz))
+    if resolved is None:
+        return PickResult()
+    day = resolved.day
+    same_day = [o for o in offered if o["date"] == day.isoformat()]
+    if isinstance(resolved.value, datetime):
+        target = resolved.value.time().strftime("%H:%M")
+        exact = next((o for o in same_day if o["time"] == target), None)
+        if exact:
+            return PickResult(matched=exact)
+        candidate = datetime.combine(day, resolved.value.time(), tzinfo=dealer.tz)
+        if available is not None and any(a == candidate for a in available):
+            local = candidate.astimezone(dealer.tz)
+            display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"
+            return PickResult(matched={"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"),
+                                       "time": local.strftime("%H:%M"), "display": display})
+        return PickResult(ambiguous=True, note=f"{day.isoformat()} at {target} isn't an open time")
+    if len(same_day) == 1:
+        return PickResult(matched=same_day[0])
+    if len(same_day) > 1:
+        return PickResult(ambiguous=True, note="more than one time was offered that day; which one?")
+    return PickResult(ambiguous=True, note=f"{day.isoformat()} wasn't one of the times offered")
+
+
+# --- Reading and writing bookings ----------------------------------------------------
+
+async def find_active_booking(dealer_id: str, lead: dict | None) -> dict[str, Any] | None:
+    """Read fresh from the platform every turn (B5 item 7, architecture §15
+    decision 60): the lead's own `data.bookingId`, or None when there is
+    none or it's cancelled. Never cached, so "what time am I booked for?"
+    the next day, or right after a cancel, always sees the real state."""
+    booking_id = ((lead or {}).get("data") or {}).get("bookingId")
+    if not booking_id:
+        return None
+    row = await get_db()[PLATFORM_BOOKINGS_COLLECTION].find_one(
+        {"_id": as_object_id(str(booking_id)), "dealer_id": dealer_id})
+    if not row or row.get("booking_status") == "cancelled":
+        return None
+    return row
+
+
+async def ensure_booking(platform: PlatformClient, *, dealer_id: str, dealer: DealerProfile, lead: dict | None,
+                         lead_id: str, customer_name: str, email: str, phone: str, when: datetime,
+                         notes: str | None) -> dict[str, Any]:
+    """Creates the booking, unless this lead already has an active one for
+    this exact date and time (B5 item 3: `POST /api/booking` has no
+    idempotency of its own, so a retried turn must never double-book)."""
+    local = when.astimezone(dealer.tz)
+    existing = await find_active_booking(dealer_id, lead)
+    if existing:
+        existing_local = _aware(existing["bookingDate"]).astimezone(dealer.tz)
+        if existing_local.date() == local.date() and existing.get("bookingTime") == local.strftime("%H:%M"):
+            return {"booking_id": str(existing["_id"]), "booking_status": existing.get("booking_status", "pending"),
+                    "already_existed": True}
+    result = await platform.create_booking(dealer_id, {
+        "lead_id": lead_id, "customerName": customer_name, "email": email, "phone": phone,
+        "bookingDate": local.strftime("%Y-%m-%d"), "bookingTime": local.strftime("%H:%M"),
+        "notes": notes, "dealer_timezone": dealer.timezone,
+    })
+    return {**result, "already_existed": False}
+
+
+async def move_booking(platform: PlatformClient, *, dealer_id: str, dealer: DealerProfile, booking_id: str,
+                       current_status: str, when: datetime) -> dict[str, Any]:
+    """`booking_status` must always be sent on a `PUT`, even unchanged -
+    without it the platform silently ignores the new date/time (route.js,
+    checked against the running code; B5 item 3)."""
+    local = when.astimezone(dealer.tz)
+    return await platform.update_booking(dealer_id, {
+        "booking_id": booking_id, "booking_status": current_status,
+        "booking_date": local.strftime("%Y-%m-%d"), "booking_time": local.strftime("%H:%M"),
+        "dealer_timezone": dealer.timezone,
+    })
+
+
+async def cancel_booking(platform: PlatformClient, *, dealer_id: str, dealer: DealerProfile,
+                         booking_id: str) -> dict[str, Any]:
+    return await platform.update_booking(dealer_id, {
+        "booking_id": booking_id, "booking_status": "cancelled", "dealer_timezone": dealer.timezone,
+    })
+
+
+def wording_for_status(booking_status: str | None) -> str | None:
+    """What Compose/Guard may say about an active booking (B5 item 7,
+    architecture §15 decision 60): "requested" while pending, "booked" /
+    "confirmed" once the team confirms it. None with no active booking."""
+    if booking_status == "pending":
+        return "requested"
+    if booking_status == "confirmed":
+        return "confirmed"
+    return None

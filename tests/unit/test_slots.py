@@ -146,7 +146,8 @@ def test_decide_rule_order_stop_beats_handoff_beats_everything():
     assert next_action(profile, Flags(upset=True, upset_confidence=0.6))["action"] != "handoff"
     assert next_action(profile, Flags(annoyed_at_bot=True))["action"] != "handoff"
     rules = next_action(profile, Flags(wants_human=True))["rules"]
-    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 7
+    # 10 rules since MASTER_PLAN_3 B4 added offer_visit between confirm and ask.
+    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 8
 
 
 def test_decide_is_deterministic_and_passes_questions_through():
@@ -160,6 +161,34 @@ def test_decide_is_deterministic_and_passes_questions_through():
 def test_at_most_two_requirements_are_asked_per_message():
     decision = next_action(_profile(LeadType.SALES), Flags())
     assert len(decision["asks"]) == 2
+
+
+def test_offer_visit_carries_no_bonus_ask():
+    # decision 107, revised: the offer used to come with one extra required-slot
+    # question stacked on ("Let's arrange a time... Do you have a trade-in?");
+    # a customer mid-conversation about the offer found that confusing. The
+    # offer is now the whole reply.
+    profile = _profile(LeadType.SALES, *SALES_ALL[:4])  # trade-in still missing
+    decision = next_action(profile, Flags(visit_offer={"attempt": 1, "why": "Offering a visit"}))
+    assert decision["action"] == "offer_visit" and decision["asks"] == []
+
+
+def test_answering_a_question_while_a_visit_is_pending_carries_no_bonus_ask():
+    # The customer asked "thursday what date?" about a visit offer that's still
+    # awaiting their pick (held over one reply): the reply should answer that
+    # and stop there, not also ask about a trade-in.
+    profile = _profile(LeadType.SALES, *SALES_ALL[:4])
+    flags = Flags(questions=[{"text": "thursday what date?", "label": "clarify"}], visit_pending=True)
+    decision = next_action(profile, flags)
+    assert decision["action"] == "answer" and decision["asks"] == []
+
+
+def test_answering_a_question_with_no_visit_pending_still_asks():
+    # Same shape, but nothing about a visit is open: the usual bonus ask applies.
+    profile = _profile(LeadType.SALES, *SALES_ALL[:4])
+    flags = Flags(questions=[{"text": "what colors do you have?", "label": "answerable"}], visit_pending=False)
+    decision = next_action(profile, flags)
+    assert decision["action"] == "answer" and decision["asks"] != []
 
 
 # --- profile ---------------------------------------------------------------------

@@ -53,9 +53,11 @@ from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTrace
 from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import (
     cancel_resume,
+    cancel_visit_followup,
     plan_followup,
     plan_handoff_check,
     plan_resume,
+    plan_visit_followup,
 )
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.worker.queue import Enqueue
@@ -239,11 +241,22 @@ async def run_turn(
                     span.reasoning.append(after_hours["reason"])
                     if after_hours.get("created"):
                         span.edge_label = "morning message"
+                visit_followup = await _visit_followup_schedule(
+                    db, decision, sent, lead_id=lead_id, lead=lead, customer=customer, customer_id=customer_id,
+                    channel=channel, turn_id=tracer.turn_id, shadow=shadow)
+                if visit_followup:
+                    span.output = {**(span.output or {}), "visit_followup": visit_followup}
+                    if visit_followup.get("reason"):
+                        span.reasoning.append(visit_followup["reason"])
+                    if visit_followup.get("created"):
+                        span.edge_label = "visit follow-up"
 
         await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
                                  shadow=shadow, turn_id=tracer.turn_id)
         if trigger == TRIGGER_RESUME and sent is not None and sent.status in ("sent", "duplicate") and not shadow:
             await _notify_team_at_opening(db, lead_id, result)
+        if sent is not None and sent.status in ("sent", "duplicate") and not shadow:
+            await _notify_team_of_booking(db, lead_id, decision)
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
@@ -273,6 +286,10 @@ async def run_turn(
             "origin": (ctx.compliance or {}).get("origin", {}).get("origin"),
             "review_opened": review,
             "after_hours": (decision.get("after_hours") or {}).get("mode"),
+            # MASTER_PLAN_3 B4 item 7: for the visit offer / booking rates.
+            "visit_offer_attempt": (decision.get("visit_offer") or {}).get("attempt"),
+            "booked": bool((decision.get("visit") or {}).get("just_booked")
+                           and not (decision.get("visit") or {}).get("moved_this_turn")),
         })
         await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
         return log
@@ -296,6 +313,47 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
                 "reason": f"Morning message cancelled: {plan.get('why')}" if cancelled
                 else "No morning message was pending."}
     return None
+
+
+async def _visit_followup_schedule(db: DealerScopedDatabase, decision: dict[str, Any], sent: SendOutcome | None, *,
+                                   lead_id: str, lead: dict | None, customer: dict | None, customer_id: str,
+                                   channel: str, turn_id: str, shadow: bool) -> dict[str, Any] | None:
+    """The dated visit follow-up after a 3rd decline (MASTER_PLAN_3 B4 item
+    4): scheduled once the decline reply goes out; cancelled once a booking
+    exists (nothing left to follow up on). Only when the reply went out."""
+    plan = decision.get("visit_plan") or {}
+    if shadow or sent is None or sent.status not in ("sent", "failed", "duplicate"):
+        return None
+    if plan.get("schedule_followup") and plan.get("followup_due"):
+        planned = await plan_visit_followup(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
+                                            turn_id=turn_id, due_date=plan["followup_due"], lead=lead,
+                                            customer=customer)
+        return {**planned, "reason": planned.get("reason") or f"No visit follow-up: {planned.get('reason', '')}"}
+    if (decision.get("visit") or {}).get("just_booked"):
+        cancelled = await cancel_visit_followup(db, lead_id, reason="a booking was made")
+        return {"created": False, "reason": "Visit follow-up cancelled: a booking was made."} if cancelled else None
+    return None
+
+
+async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[str, Any]) -> None:
+    """The team is told of every booking, move or cancel (B5 item 6), with
+    the known-gap notes (architecture §15 decisions 58-59: old reminders and
+    the lead's status may need a manual check until C5)."""
+    visit = decision.get("visit") or {}
+    if visit.get("just_booked"):
+        kind = "visit_moved" if visit.get("moved_this_turn") else "visit_booked"
+        text = (f"Visit {'moved to' if visit.get('moved_this_turn') else 'booked for'} {visit.get('display')} "
+                f"({visit.get('status')}).")
+        if visit.get("moved_this_turn"):
+            text += " Known gap: the platform doesn't cancel the old reminders on a move - please clear them."
+    elif visit.get("cancelled_this_turn"):
+        kind, text = "visit_cancelled", ("The customer cancelled their visit. Known gaps: the platform doesn't "
+                                         "cancel reminders on a cancel, and the lead's status still needs updating "
+                                         "by hand (both until C5).")
+    else:
+        return
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
 
 
 async def _notify_team_at_opening(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
@@ -413,6 +471,16 @@ def _after_hours_record(result: dict[str, Any]) -> dict | None:
     return plan.get("record")
 
 
+def _visit_record(result: dict[str, Any]) -> dict | None:
+    """The visit-offer state as this turn leaves it (MASTER_PLAN_3 B4/B5). An
+    offer only counts when the AI-written reply (which carries it) went out,
+    not a template - the same rule as _after_hours_record."""
+    plan = (result.get("decision") or {}).get("visit_plan") or {}
+    if plan.get("fire") and result.get("used_template"):
+        return None
+    return plan.get("record")
+
+
 async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
                              sent: SendOutcome | None, result: dict[str, Any], *, lead_state: dict | None,
                              channel: str, shadow: bool, turn_id: str) -> None:
@@ -436,6 +504,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         used_template=bool(result.get("used_template")),
         promises=list(draft.get("promises") or []),
         after_hours=_after_hours_record(result),
+        visit=_visit_record(result),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

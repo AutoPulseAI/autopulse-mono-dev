@@ -60,6 +60,10 @@ Steps (one key per step):
   campaign_check:     {lead, expect: ALLOW|HOLD|REVIEW|BLOCK, reason_contains?, until_local?: "HH:MM", timeout_s}
                       the platform campaign worker's check request, answered by the worker (decision 66)
   expect_followup's due_local: "HH:MM"   the follow-up's due time in the dealer's timezone
+  expect_booking:     {lead, status: pending|confirmed|cancelled|none, time?: "HH:MM", timeout_s}
+                      the lead's platform booking (MASTER_PLAN_3 B5)
+  take_offered_time:  {lead, index: 0, count: 2}  other customers fill a time we just offered (B5 item 3)
+  expect_lead's visit_attempts / visit_declined: the visit offer's state (MASTER_PLAN_3 B4)
   sleep:              {seconds}
 
 Run from the CLI:  python -m upsell_agent.devtools.scenarios [name ...]
@@ -92,6 +96,7 @@ from upsell_agent.integrations.mongodb import (
     AI_SEND_CHECKS_COLLECTION,
     AI_TURN_LOG_COLLECTION,
     DEV_OUTBOX_COLLECTION,
+    PLATFORM_BOOKINGS_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
@@ -185,15 +190,35 @@ WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
-    from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_HANDOFF_CHECK, KIND_RESUME
+    from upsell_agent.scheduler.followups import (
+        CHANNEL_SWITCHES,
+        KIND_HANDOFF_CHECK,
+        KIND_RESUME,
+        KIND_VISIT_FOLLOWUP,
+    )
 
-    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME):
+    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP):
         return {"kind": args["kind"]}
     return dict(CHANNEL_SWITCHES)
 
 
 def _after_hours_choice(state: dict) -> str | None:
     return ((state.get("conversation") or {}).get("after_hours") or {}).get("choice")
+
+
+def _visit(state: dict) -> dict:
+    """The visit offer's state (MASTER_PLAN_3 B4/B5)."""
+    return (state.get("conversation") or {}).get("visit") or {}
+
+
+async def _booking(lead: dict) -> dict | None:
+    """The lead's platform booking (MASTER_PLAN_3 B5), read like the AI reads it."""
+    db = dealer_scoped_db(lead["dealer_id"])
+    row = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": ObjectId(lead["lead_id"])}) or {}
+    booking_id = (row.get("data") or {}).get("bookingId")
+    if not booking_id:
+        return None
+    return await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one({"_id": ObjectId(str(booking_id))})
 
 
 async def _seconds_until_dealer_time(dealer: str, when: str) -> tuple[float, str]:
@@ -541,7 +566,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 "summary_contains" not in args
                 or args["summary_contains"].lower() in ((doc.get("summary") or {}).get("text") or "").lower()) and (
                 "after_hours" not in args or _after_hours_choice(doc) == args["after_hours"]) and (
-                "staff_notice" not in args or (doc.get("staff_notice") or {}).get("kind") == args["staff_notice"])
+                "staff_notice" not in args or (doc.get("staff_notice") or {}).get("kind") == args["staff_notice"]) and (
+                "visit_attempts" not in args or _visit(doc).get("attempts") == args["visit_attempts"]) and (
+                "visit_declined" not in args or bool(_visit(doc).get("declined")) == bool(args["visit_declined"]))
             return doc if ok else None
 
         try:
@@ -552,7 +579,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             raise ScenarioFailed(f"lead is {doc.get('status')!r}, staff alert "
                                  f"{(doc.get('staff_alert') or {}).get('reason')!r}, after-hours choice "
                                  f"{_after_hours_choice(doc)!r}, staff notice "
-                                 f"{(doc.get('staff_notice') or {}).get('kind')!r}") from None
+                                 f"{(doc.get('staff_notice') or {}).get('kind')!r}, visit attempts "
+                                 f"{_visit(doc).get('attempts')!r} (declined {_visit(doc).get('declined')!r})"
+                                 ) from None
         alert = (doc.get("staff_alert") or {}).get("reason")
         covered = (doc.get("summary") or {}).get("messages")
         notice = (doc.get("staff_notice") or {}).get("text")
@@ -560,6 +589,49 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 + (f"; summary covers {covered} message(s)" if covered else "")
                 + (f"; after hours: {_after_hours_choice(doc)}" if _after_hours_choice(doc) else "")
                 + (f"; notice for the team: {notice}" if notice else ""))
+
+    if kind == "expect_booking":
+        # MASTER_PLAN_3 B5: {lead, status: pending|confirmed|cancelled|none, time?: "HH:MM"}
+        lead = ctx.lead(args["lead"])
+        want = args.get("status", "pending")
+
+        async def found():
+            booking = await _booking(lead)
+            if want == "none":
+                return {} if booking is None else None
+            return booking if booking and booking.get("booking_status") == want and (
+                "time" not in args or booking.get("bookingTime") == str(args["time"])) else None
+
+        try:
+            booking = await _wait(found, float(args.get("timeout_s", 10)), f"a {want} booking")
+        except ScenarioFailed:
+            booking = await _booking(lead)
+            raise ScenarioFailed(f"booking is {booking and booking.get('booking_status')!r} at "
+                                 f"{booking and booking.get('bookingTime')!r}, expected {want}") from None
+        return "no booking" if want == "none" else (
+            f"booking {booking['booking_status']} at {booking['bookingTime']} ({booking.get('notes')})")
+
+    if kind == "take_offered_time":
+        # MASTER_PLAN_3 B5 item 3: other customers fill one of the times we just offered this lead.
+        lead = ctx.lead(args["lead"])
+        state = await dealer_scoped_db(lead["dealer_id"]).collection(AI_LEAD_STATE_COLLECTION).find_one(
+            {"lead_id": lead["lead_id"]}) or {}
+        offered = _visit(state).get("offered_times") or []
+        index = int(args.get("index", 0))
+        if index >= len(offered):
+            raise ScenarioFailed(f"only {len(offered)} time(s) offered")
+        slot = offered[index]
+        profile = await dealer_profile(lead["dealer_id"])
+        from datetime import datetime
+        day = datetime.fromisoformat(slot["iso"]).astimezone(profile.tz)
+        midnight = day.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+        bookings = dealer_scoped_db(lead["dealer_id"]).collection(PLATFORM_BOOKINGS_COLLECTION)
+        for n in range(int(args.get("count", 2))):
+            await bookings.insert_one({"dealer_id": lead["dealer_id"], "lead_id": f"scenario-other-{uuid.uuid4().hex[:8]}",
+                                       "customerName": f"Other {n + 1}", "email": "other@example.test",
+                                       "phone": "5550000000", "bookingDate": midnight, "bookingTime": slot["time"],
+                                       "booking_status": "pending", "notes": "scenario: fills the slot"})
+        return f"{slot['display']} filled by {args.get('count', 2)} other booking(s)"
 
     if kind == "chat":
         lead = ctx.lead(args["lead"])

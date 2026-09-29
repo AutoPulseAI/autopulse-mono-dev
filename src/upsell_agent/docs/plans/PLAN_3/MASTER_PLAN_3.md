@@ -412,8 +412,8 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 | B1 | After-hours first reply | A lead at 23:00 dealer time gets "chat now or during business hours?", and each answer leads to the right path. The choice is about the dealer's hours; for an inbound lead "now" really means now, at any hour (decision 56) |
 | B2 | Inbound or outbound | Every lead and message shows its origin in the Debug UI, and unknown means outbound |
 | B3 | Send check (US rules) | An outbound SMS with no consent is blocked; one due at 7:30 customer time waits until it's both 8:00 customer time and the dealer is open; each shows its reason |
-| B4 | The visit as the goal | A qualified lead is offered a visit instead of being handed to staff; handoffs drop |
-| B5 | Booking the visit | "Saturday at 10 works" creates a booking in the dealer's calendar, and the customer gets a confirmation |
+| B4 | The visit as the goal | A qualified lead is offered a visit instead of being handed to staff; handoffs drop. **Built 29 Sept** |
+| B5 | Booking the visit | "Saturday at 10 works" creates a booking in the dealer's calendar, and the customer gets a confirmation. **Built 29 Sept** |
 | B6 | Debug UI, evals and rollout | Evals for booking and compliance pass on the real models, and the rollout check tracks booking rate and blocked sends |
 
 **Order (27 Sept):** Part B no longer goes first; see the build order at the top of this plan. B2 and B3 are built as part of C1's compliance engine, and B1 follows it.
@@ -605,6 +605,16 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 
 ## Phase B4: The visit as the goal
 
+> **Built 29 Sept, together with B5** (`agent/visit_offer.py`; Decide's new `offer_visit` rule in `slots/policy.py`; architecture.md decisions 102–122). Decided with the user before building:
+> - **Every lead type gets the offer** (sales, trade-in, service, general; decision 106, the user's call).
+> - **The offer's place among the two questions:** folded into `answer` as the bonus question when the customer asked something; otherwise the offer plus at most one ask. `offer_visit` sits between `confirm` and `ask` (decision 107).
+> - **Reading a decline:** Extract's `declines_visit` (+ confidence ≥ 0.8), `visit_objection` and `visit_later_when` (decision 108).
+> - **After the 3rd decline** the offer stops (only the dated `visit_followup` makes a fresh one) and `qualified` / `partly_qualified` no longer say "the team will reach out" (decisions 109, 121).
+> - **The 24h follow-up on an unanswered offer** stays the existing channel switch, unchanged (decision 110, the user's call). Item 6's "fresh times" is therefore not built.
+> - Decided while building, **flagged**: a message that neither picks nor declines keeps the times on the table for one more reply (115); the urgent 48h backstop only counts a `needed_by` captured this turn, never while "now or when we open?" is pending, and only "today" / "tomorrow" count (120).
+> - **Built:** item 1 (rule + buying signal), 2 (new endings), 3 (2-3 real times, reason from the angle), 4 (3 attempts, 3 angles, parked for 3 replies, `visit_followup` on the customer's date or +3 days), 5 (conversation state `visit`), 7 (visit offer / booking / handoff rates in `GET /v1/metrics` and `make ai-report`), 8 (urgent: Extract fields, ≥ 0.8 rule, 48h backstop, 20-case eval set; declined 3 times with a staff-only question open → handoff).
+> - **Not built:** item 6's fresh times on the 24h resend (decision 110); the Debug UI Metrics tab doesn't show the visit rates yet.
+
 1. **Decide gets a rule `offer_visit`,** between `answer` and `ask`. It fires when:
    - what B0.12 needs is known (decided 28 Sept: the vehicle, as a model or type, and roughly when they want to buy);
    - or Extract flags a buying signal (a new `wants_visit` field: "can I come see it", "test drive", "is it still there?").
@@ -644,6 +654,14 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 ---
 
 ## Phase B5: Booking the visit
+
+> **Built 29 Sept, together with B4** (`tools/booking_tool.py`, `integrations/platform_client.py` `create_booking` / `update_booking`, booking in `agent/nodes/decide.py`, the Guard's `booking_wording_matches_status`). Decided with the user before building:
+> - **Dev bookings:** `PLATFORM_CLIENT=stub` writes the `Booking` and the lead's booking fields itself, like `POST /api/booking`, without a confirmation or reminders; live calls the real route (decision 102).
+> - **Availability** is read straight from the platform's `bookings` collection, not cancelled ones, fresh every turn; no separate client calendar exists (the platform calendar is built on the same bookings; decision 103).
+> - **Booking rules** are B0.10's defaults for every dealer, and every AI booking is `pending` (decision 104).
+> - **Platform e2e:** not run by the AI (no real-model runs; decision 105): written up in progress_3.md for the user to run.
+> - Decided while building, **flagged**: the booking is made in Decide, before Compose (113); a picked time that was just taken gets fresh times without using an attempt (116); a missing email or phone is asked for and the picked time is kept until the customer gives it (117; the "note to the team" part isn't built); a visit request naming its own free time is booked straight away, at any hour (118, item 8); move and cancel are read from the customer's words in code (119).
+> - **Built:** items 1–8. **Not built / known gaps:** B5's two platform gaps stay as accepted (old reminders after a move or cancel; a cancelled booking leaves the lead "Appointment Booked"), both now written into the team's notice; "can we do another day?" without a day and time isn't read as a move.
 
 1. **Available times, in code:**
    - built from the dealer's opening hours, existing platform bookings, and the booking rules in B0.10;

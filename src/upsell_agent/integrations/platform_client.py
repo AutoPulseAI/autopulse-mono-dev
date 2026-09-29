@@ -26,16 +26,45 @@ aidmvcs-be-dev/app/api/internal/ai/messages/route.js, BPLAN Phase 3):
 
 It is idempotent on `idempotency_key`: recording the same send twice returns
 the same Email record.
+
+Booking contract (MASTER_PLAN_3 B5; the platform side is
+aidmvcs-be-dev/app/api/booking/route.js, unchanged by this plan):
+
+    POST /api/booking
+    {dealer_id, lead_id, customerName, email, phone, bookingDate: "YYYY-MM-DD"
+     (dealer-local), bookingTime: "HH:MM" (24h, dealer-local), notes,
+     dealer_timezone (stub only, to place bookingDate at dealer-local
+     midnight the way the route's own moment-tz call does)}
+    → 200 {"booking_id": str, "booking_status": "pending"}
+
+    PUT /api/booking
+    {booking_id, booking_status: "pending"|"confirmed"|"cancelled"|
+     "completed", booking_date?, booking_time?, dealer_timezone (stub only)}
+    → 200 {"booking_id": str, "booking_status": str}
+
+`booking_id`/`booking_status` are the AI service's own snake_case names for
+the route's `bookingId`/`booking_status` fields; `LivePlatformClient`
+translates between them. Availability is read separately, straight from the
+platform's `bookings` collection (tools/booking_tool.py, architecture §15
+decision 103) - never through this client, and never cached, since a stale
+read here could double-book a slot.
 """
 
+from datetime import UTC, date, datetime, time
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations.customer360 import EMPTY_360, build_customer_360
-from upsell_agent.integrations.mongodb import dealer_scoped_db
+from upsell_agent.integrations.mongodb import (
+    PLATFORM_BOOKINGS_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
+    as_object_id,
+    dealer_scoped_db,
+)
 
 DEV_PLATFORM_MESSAGES_COLLECTION = "dev_platform_messages"
 __all__ = ["EMPTY_360", "LivePlatformClient", "PlatformClient", "PlatformError", "StubPlatformClient",
@@ -54,6 +83,18 @@ class PlatformClient(Protocol):
     async def record_message(self, dealer_id: str, message: dict[str, Any]) -> str: ...
 
     async def update_message_status(self, dealer_id: str, provider_id: str, status: str) -> bool: ...
+
+    async def create_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def update_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+
+def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
+    """The same value route.js's `moment.tz(bookingDate, 'YYYY-MM-DD',
+    dealerTimezone).startOf('day').utc().toDate()` computes: `bookingDate`
+    placed at dealer-local midnight, in UTC."""
+    local_midnight = datetime.combine(date.fromisoformat(booking_date), time(0), tzinfo=ZoneInfo(dealer_timezone))
+    return local_midnight.astimezone(UTC)
 
 
 class StubPlatformClient:
@@ -75,6 +116,48 @@ class StubPlatformClient:
             {"provider_id": provider_id}, {"$set": {"delivery_status": status, "status_at": clock.now()}}
         )
         return result.matched_count > 0
+
+    async def create_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Writes the same shape `POST /api/booking` does (architecture §15
+        decision 102): a `Booking` document, plus the lead's booking fields.
+        Sends no confirmation itself (Compose's reply is the confirmation)
+        and creates no reminders (the dev stub has no reminder service)."""
+        db = dealer_scoped_db(dealer_id)
+        now = clock.now()
+        booking_date_utc = _dealer_local_midnight_utc(payload["bookingDate"], payload["dealer_timezone"])
+        doc = {
+            "dealer_id": dealer_id, "lead_id": payload["lead_id"], "customerName": payload["customerName"],
+            "email": payload["email"], "phone": payload["phone"], "bookingDate": booking_date_utc,
+            "bookingTime": payload["bookingTime"], "notes": payload.get("notes"), "booking_status": "pending",
+            "createdAt": now, "updatedAt": now,
+        }
+        inserted = await db.collection(PLATFORM_BOOKINGS_COLLECTION).insert_one(doc)
+        booking_id = str(inserted.inserted_id)
+        await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
+            {"_id": as_object_id(payload["lead_id"])},
+            {"$set": {"data.bookingId": booking_id, "status": "Appointment Booked",
+                      "statusChangedAt": now, "data.booking.booking_date": booking_date_utc,
+                      "data.booking.booking_time": payload["bookingTime"]}},
+        )
+        return {"booking_id": booking_id, "booking_status": "pending"}
+
+    async def update_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Writes the same shape `PUT /api/booking` does. Mirrors the
+        platform's own known gaps (B5, architecture §15 decisions 58-59): a
+        cancel here doesn't change the lead's status or touch reminders
+        either - the AI's own lead state and the team notice carry that."""
+        db = dealer_scoped_db(dealer_id)
+        update: dict[str, Any] = {"updatedAt": clock.now()}
+        if payload.get("booking_status") is not None:
+            update["booking_status"] = payload["booking_status"]
+        if payload.get("booking_date"):
+            update["bookingDate"] = _dealer_local_midnight_utc(payload["booking_date"], payload["dealer_timezone"])
+        if payload.get("booking_time"):
+            update["bookingTime"] = payload["booking_time"]
+        await db.collection(PLATFORM_BOOKINGS_COLLECTION).update_one(
+            {"_id": as_object_id(payload["booking_id"])}, {"$set": update})
+        doc = await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one({"_id": as_object_id(payload["booking_id"])})
+        return {"booking_id": payload["booking_id"], "booking_status": (doc or {}).get("booking_status")}
 
 
 class LivePlatformClient:
@@ -103,11 +186,37 @@ class LivePlatformClient:
         )
         return bool(body.get("updated"))
 
-    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def create_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """`POST /api/booking` (unchanged by this plan): creates the
+        `Booking`, sets the lead to "Appointment Booked", and sends the
+        platform's own confirmation SMS/email + reminders (route.js).
+        `dealer_timezone` is stub-only and dropped here; the route works out
+        the dealer's timezone itself."""
+        body = await self._post("/api/booking", {
+            "dealer_id": dealer_id, "lead_id": payload["lead_id"], "customerName": payload["customerName"],
+            "email": payload["email"], "phone": payload["phone"], "bookingDate": payload["bookingDate"],
+            "bookingTime": payload["bookingTime"], "notes": payload.get("notes"),
+        })
+        return {"booking_id": str(body.get("bookingId") or (body.get("booking") or {}).get("_id") or ""),
+                "booking_status": (body.get("booking") or {}).get("booking_status", "pending")}
+
+    async def update_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """`PUT /api/booking`: `booking_status` must always be sent, even
+        unchanged - without it a date/time change is silently ignored
+        (route.js, checked against the running code, B5 item 3)."""
+        body = await self._post("/api/booking", {
+            "bookingId": payload["booking_id"], "booking_status": payload["booking_status"],
+            **({"booking_date": payload["booking_date"]} if payload.get("booking_date") else {}),
+            **({"booking_time": payload["booking_time"]} if payload.get("booking_time") else {}),
+        }, method="PUT")
+        return {"booking_id": payload["booking_id"],
+                "booking_status": (body.get("booking") or {}).get("booking_status", payload["booking_status"])}
+
+    async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=RECORD_TIMEOUT_S) as client:
-            response = await client.post(f"{self._base_url}{path}", json=payload, headers=self._headers)
+            response = await client.request(method, f"{self._base_url}{path}", json=payload, headers=self._headers)
         if response.status_code >= 400:
-            raise PlatformError(f"POST {path} → {response.status_code}: {response.text[:300]}")
+            raise PlatformError(f"{method} {path} → {response.status_code}: {response.text[:300]}")
         return response.json()
 
 

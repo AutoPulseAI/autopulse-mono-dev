@@ -1,0 +1,14 @@
+name: A sales lead is offered a visit, not handed to staff
+stage: 404
+description: 'MASTER_PLAN_3 B4. Once we know what they want (a new RAV4) and roughly when (this month), the reply offers 2-3 concrete visit times instead of asking about the trade-in or handing the lead to the team. Budget and trade-in can wait for the dealership (B0.12).'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: q, dealer: A, lead_type: sales, channel: sms, name: Quinn Qualified, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: q, zip: "10001"}
+  - send_lead_created: {lead: q}
+  - wait_turns: {lead: q, count: 1, timeout_s: 20}
+  - reply: {lead: q, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: q, count: 2, timeout_s: 20}
+  - expect_turn: {lead: q, outcome: offer_visit}
+  - expect_last_sent: {lead: q, contains: "Which one works?"}
+  - expect_lead: {lead: q, visit_attempts: 1, visit_declined: false}

@@ -33,6 +33,9 @@ _LATE_NIGHT_UNTIL = time(4)
 
 _DAY = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?"
 _MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Like _MONTH but without "may": alone (no day number after it) it's too often an
+# ordinary word ("may I", "I may") to safely read as the month.
+_MONTH_ONLY = r"(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 _TIME = re.compile(r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?!\w)|\bat\s+(\d{1,2})(?::(\d{2}))?\b|\b(noon)\b",
                    re.IGNORECASE)
 
@@ -43,7 +46,7 @@ DATE_PHRASE = re.compile(
     rf"|\b(?:next|this|last|on|coming)\s+{_DAY}\b|\b{_DAY}\b"
     rf"|\bin\s+(?:a couple of|a couple|a few|an|a|one|two|three|four|five|six|\d+)\s+(?:days?|weeks?|months?)\b"
     rf"|\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTH}(?![a-z])"
-    rf"|\bthe\s+\d{{1,2}}(?:st|nd|rd|th)\b|\b\d{{1,2}}/\d{{1,2}}\b",
+    rf"|\bthe\s+\d{{1,2}}(?:st|nd|rd|th)\b|\b\d{{1,2}}/\d{{1,2}}\b|\b{_MONTH_ONLY}\b",
     re.IGNORECASE)
 
 
@@ -161,6 +164,13 @@ def _day_of(text: str, today: date, now: datetime) -> DateResolution | None:
         if not 1 <= month <= 12 or not 1 <= day_number <= calendar.monthrange(today.year, month)[1]:
             return None
         return DateResolution(date(today.year, month, day_number), note=f"{month}/{day_number} (month/day)")
+    if m := re.search(rf"\b{_MONTH_ONLY}\b", t):
+        month = _month_index(m.group(0))
+        if month == today.month:
+            return DateResolution(today, approximate=True, note=f"{MONTHS[month - 1]} (this month, no day given)")
+        year = today.year if month > today.month else today.year + 1
+        return DateResolution(date(year, month, 1), approximate=True,
+                              note=f"{MONTHS[month - 1]} (no day given)")
     if m := re.search(r"\bthe\s+(\d{1,2})(?:st|nd|rd|th)\b|^\s*(\d{1,2})(?:st|nd|rd|th)\s*$", t):
         day_number = int(m.group(1) or m.group(2))
         month_start = today.replace(day=1) if day_number >= today.day else _add_months(today.replace(day=1), 1)

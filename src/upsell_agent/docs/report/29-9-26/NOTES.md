@@ -201,3 +201,65 @@ Both phases are closed. Summary of the whole pass:
 - A first reply that falls back to the template carries no after-hours choice.
 
 Nothing committed, per your instruction.
+
+
+## B4 and B5 built (29 Sept, night)
+
+B4 (the visit as the goal) and B5 (booking the visit), built together in one pass. Recorded in `docs/architecture/architecture.md` §15 (decisions 102–122), `docs/plans/PLAN_3/MASTER_PLAN_3.md` (B4, B5) and `docs/plans/PLAN_3/progress_3.md` ("Phases B4 + B5").
+
+### What you decided before I built it (decisions 102–112)
+
+- **Where availability comes from:** you asked me to check the client's documents for a calendar. None of them describes one. The platform's own dealer calendar (`dealer/booking/calendar`) shows the same bookings, through a flag on the lead that goes stale after a move or cancel. So the AI reads the `bookings` collection directly, fresh every turn (decision 103).
+- **Every lead type gets the offer**, not just sales and trade-in (decision 106, your call).
+- **The 24-hour follow-up stays the channel switch as it is** (decision 110, your call). The resend repeats the same times, which may be gone by then; I left that as is.
+- **B4 and B5 built together** (decision 112, your call).
+- As I proposed and you accepted: the dev stub writes bookings itself (102); every AI booking is `pending` and the booking rules are the defaults for every dealer (104); I don't run the platform e2e myself (105); the offer counts as one of the two questions (107); how a decline is read (108); the ending after 3 declines (109); a minimal Debug UI now, the rest in B6 (111).
+
+### What a customer now sees
+
+1. Once we know what they want (a model, a type, their trade or the car to service) and roughly when, the next reply offers **2 or 3 real times**. Examples: "Want to come by to see the Toyota RAV4 in person… I've got Tuesday at 2:30 PM, Tuesday at 3:00 PM, or Tuesday at 3:30 PM. Which one works?". A customer who asks to come in gets times straight away.
+2. **They pick one** ("the second one", "Saturday at 10 works"). A pending booking is created on the platform. The reply says "I've requested … the team will confirm shortly", and never "booked" while it's pending. The team gets a notice. The AI keeps answering afterwards; it isn't paused.
+3. **They name their own time** ("can I come see it tomorrow at 10?"). If that time is free, it's booked straight away, even at night or after they chose "later".
+4. **We're missing their email or phone:** the reply asks for it, and the next message that contains it books the time they picked.
+5. **The time filled up meanwhile:** "Sorry, that time was just taken", and fresh times are offered.
+6. **"Not yet"** is recorded, and we don't offer again for 3 replies. Attempt 2 uses their objection or their own priority as the reason; attempt 3 uses a reason that fits their lead type (appraisal for a trade-in, comparison for sales). After the 3rd "no" we stop. A fresh offer is scheduled for the date they named ("in a month"), or 3 days later.
+7. **"Can we make it Wednesday at 11 instead?"** moves the booking. **"I can't make it"** cancels it. The team's notice mentions the two platform gaps we accepted: old reminders aren't cleared, and a cancelled lead stays "Appointment Booked".
+8. **Handoffs now happen only when:** they ask for a person, they're clearly upset, they're **urgent** (car broke down, need a car within 48 hours, safety problem, a deadline elsewhere), or they declined 3 times with a price, trade or finance question still open.
+
+### Decided while building (please look at these)
+
+- **113:** the booking is made before the reply is written, so the reply and the guard both see the real booking.
+- **115:** a message that neither picks nor declines keeps the times on the table for one more reply. After that they come off, and the next reply offers again with the next angle.
+- **117:** "the requested time goes to the team as a note" (when the customer never gives the missing email or phone) is **not built**.
+- **119:** move and cancel are read from the customer's words in code. "Can we do another day?" with no day and time isn't caught yet.
+- **120 (the one to decide):** "I need it by tomorrow" is now an **urgent handoff**, exactly as decision 26 says. That may be too eager for a customer who's simply keen. Found in testing and fixed: "tomorrow is fine", said in answer to "now or when we open?", was being taken as a purchase date.
+
+### Checked
+
+- 871 unit tests pass (825 before), all on the offline model.
+- 76 / 76 offline evals, including 20 new "urgent vs. just eager" cases.
+- Lint and the Debug UI type check are clean.
+- Not run: the real models, the six new scenarios (the Docker stack uses the real models), and the live platform. The platform steps to run by hand are in progress_3.md.
+
+### How to test in the Debug UI
+
+Restart the stack first (`make ai-restart`) so the new code is running. The dev dealer is "Sunrise Motors" (New York, Mon–Fri 9–7, Sat 9–5).
+
+1. **Offer.** In the Simulator, create a sales lead "Hi, I want a new Toyota RAV4". Reply "My budget is $35,000 and I'd like to buy this month".
+   - The reply offers 3 times.
+   - Click **Decide**: the rule is `offer_visit`, and the "Visit offer: attempt 1 of 3 (primary interest)" block lists the times and the reason.
+   - The **Conversation** panel's "Visit / booking" section says "offered (attempt 1 of 3)" and lists the times.
+2. **Book.** Reply "the second one".
+   - The reply says "I've requested … The team will confirm shortly".
+   - The Decide block says "Visit booked: … (pending)".
+   - The Conversation panel shows the booking (pending) and "Notice for the team: Visit booked for …".
+   - Click **Guard**: "booking wording matches status" is ✓.
+3. **Not paused.** Send "what should I bring?": the AI answers.
+4. **Move.** Send "can we make it Wednesday at 11am instead?" (pick a day and time when the dealership is open). The booking shows 11:00, the reply says "moved", and the notice mentions the old reminders.
+5. **Cancel.** Send "I can't make it, need to cancel". The booking shows cancelled, and the notice says to update the lead's status by hand.
+6. **Named time.** New lead, reply "can I come see it tomorrow at 10am?". It's booked straight away, with no "which works?". Try it once in the evening too: it's booked, and the after-hours choice isn't offered.
+7. **Decline.** New lead, qualify it as in step 1, then reply "not right now, I'm busy". The Conversation panel says "declined, parked (attempt 1 of 3)". The next reply ("does it come in blue?") doesn't offer again.
+8. **Missing email.** Remove the lead's and customer's email in Mongo, qualify, and pick a time. The reply asks for an email, and the panel shows "Picked …, waiting for their email or phone". Reply with an email and it's booked.
+9. **Urgent.** Reply "my car broke down, I need something today". Decide shows `handoff` "Customer sounds urgent".
+10. **Scheduler tab.** After a 3rd decline, a "visit follow-up" card appears, due at 10:00 on the date.
+11. **Scenarios tab.** The new groups "Plan 3 · Phase B4" and "Phase B5" list the six scenarios. They run on whatever models the stack uses.

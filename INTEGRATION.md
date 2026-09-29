@@ -10,6 +10,9 @@ capability that plugs in at two points.
   [`../docs/architecture/architecture.md#43-data-model-mongodb`](../docs/architecture/architecture.md)).
   This service reads that data and writes its own collections (`upsell_profile`, `upsell_recommendation`,
   `upsell_decision_log`) into the same database — no new datastore to run, back up, or keep in sync.
+- **One write into platform data: bookings** (MASTER_PLAN_3 B5). The AI books, moves and cancels a customer's
+  visit through the platform's own, unchanged `POST` / `PUT /api/booking`, and reads availability straight from
+  the `bookings` collection. Details: `src/upsell_agent/docs/architecture/architecture.md` §10 and decisions 102–122.
 - `integrations/redis_client.py` connects to the same Redis `aidmvcs-be-dev`'s BullMQ queues already run on.
   LangGraph's checkpointer uses its own keyspace there; it does not touch the existing BullMQ queues.
 

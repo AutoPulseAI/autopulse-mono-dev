@@ -131,3 +131,18 @@ def validate(defn: SlotDef, raw: Any) -> Validated:
     if len(text) > MAX_TEXT:
         return Validated(False, reason=f"longer than {MAX_TEXT} characters")
     return Validated(True, text)
+
+
+def known_enum_text(defn: SlotDef, raw: Any) -> bool:
+    """True when `raw` already matches one of `defn`'s literal choices or
+    synonyms (validate() would accept it as-is, no date fallback needed).
+    Used by agent/nodes/validate.py's resolve_dates() to tell a real enum
+    answer ("this month") from a named date that landed on the wrong slot
+    ("November", on interest.timeline instead of interest.needed_by: the
+    real model doesn't always put dates on the date slot, despite the
+    instruction to)."""
+    if defn.kind != "enum":
+        return False
+    text = str(raw).strip().lower().replace("_", " ")
+    return (any(text == choice.replace("_", " ") for choice in defn.choices)
+           or text in _ENUM_SYNONYMS.get(defn.path, {}))

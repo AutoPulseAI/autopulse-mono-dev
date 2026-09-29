@@ -58,7 +58,7 @@ import os
 import socket
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -102,9 +102,14 @@ SILENT_STATUSES = {"handoff", "paused", "opted_out"}
 KIND_CHANNEL_SWITCH = "channel_switch"
 KIND_HANDOFF_CHECK = "handoff_check"
 KIND_RESUME = "resume_at_opening"
+# MASTER_PLAN_3 B4 item 4: the dated fresh visit offer after a 3rd decline.
+KIND_VISIT_FOLLOWUP = "visit_followup"
+TRIGGER_VISIT_FOLLOWUP = KIND_VISIT_FOLLOWUP
 # Matches channel switches, including records from before `kind` existed.
-CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME]}}
+CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
+# The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
+VISIT_FOLLOWUP_HOUR = 10
 
 LeadLock = Callable[[str, str], AbstractAsyncContextManager[Any]]
 
@@ -276,6 +281,57 @@ async def cancel_resume(db: DealerScopedDatabase, lead_id: str, *, reason: str) 
     return result.modified_count
 
 
+async def plan_visit_followup(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    channel: str,
+    turn_id: str,
+    due_date: str,
+    lead: dict | None = None,
+    customer: dict | None = None,
+) -> dict[str, Any]:
+    """The dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4 item
+    4): due at VISIT_FOLLOWUP_HOUR dealer-local on `due_date` (the customer's
+    own date, or +3 days, agent/visit_offer.py), within the send check's
+    rules (marketing: dealer open and the customer's own window). Replaces
+    any older pending one for the lead."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    wanted = datetime.combine(date.fromisoformat(due_date), time(VISIT_FOLLOWUP_HOUR), tzinfo=profile.tz)
+    wanted = max(wanted, now)
+    check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                              purpose="marketing", is_reply=False, at=wanted, lead=lead, customer=customer,
+                              record=False)
+    if check.outcome in ("BLOCK", "REVIEW"):
+        return {"created": False, "send_check": check.as_dict(),
+                "reason": f"No visit follow-up: the send check says {check.outcome} ({check.reason})."}
+    due_at = check.until if check.outcome == "HOLD" and check.until else wanted
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_VISIT_FOLLOWUP},
+        {"$set": {"status": "superseded", "reason": "a newer visit follow-up", "closed_at": now}})
+    doc = {
+        "kind": KIND_VISIT_FOLLOWUP, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
+        "due_at": due_at, "created_at": now, "claim_count": 0,
+        "reason": f"held by the send check: {check.reason}" if due_at > wanted else None,
+    }
+    inserted = await followups.insert_one(doc)
+    local = due_at.astimezone(profile.tz).strftime("%a %H:%M %Z")
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
+            "timezone": profile.timezone, "reason": f"Visit follow-up due {local}."}
+
+
+async def cancel_visit_followup(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
+    """A booking was made, or the lead is no longer active: the dated visit follow-up isn't needed."""
+    result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_VISIT_FOLLOWUP},
+        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
+    return result.modified_count
+
+
 # --- Fire ---------------------------------------------------------------------
 
 async def reset_stuck_claims() -> int:
@@ -372,7 +428,8 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
     fire_locked = {KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
-                   KIND_RESUME: _fire_resume_locked}.get(doc.get("kind"), _fire_locked)
+                   KIND_RESUME: _fire_resume_locked,
+                   KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked}.get(doc.get("kind"), _fire_locked)
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -605,6 +662,67 @@ async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) ->
         dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"], trigger=TRIGGER_RESUME,
         channel=doc["to_channel"], inbound_text="", shadow=False, deps=deps, turn_id=f"resume-{resume_id}",
         is_reply=False,
+    )
+    sent = log["summary"].get("send_status")
+    if sent == "held":
+        # The check changed between the look above and the send (a clock move, the cap).
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": clock.now() + BUSY_RETRY_AFTER,
+                      "reason": "held by the send check at send time; checking again"}})
+        return "deferred"
+    status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
+    await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
+    return status
+
+
+async def _fire_visit_followup_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """The dated fresh visit offer (MASTER_PLAN_3 B4 item 4): if the lead is
+    still active and has no booking yet, the visit-offer record is reset to
+    a fresh attempt 1 and a whole AI turn runs, so it makes one new offer,
+    within the send check's rules."""
+    from upsell_agent.agent.turn import run_turn
+    from upsell_agent.integrations.mongodb import PLATFORM_LEADS_COLLECTION, as_object_id
+    from upsell_agent.tools.booking_tool import find_active_booking
+
+    followup_id = str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="visit_followup_check", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"visit-followup-check-{followup_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": followup_id, "channel": doc["to_channel"]})
+    async with tracer.node("visit_followup", {"followup_id": followup_id, "due_at": doc["due_at"]}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(doc["lead_id"])})
+        active_booking = await find_active_booking(db.dealer_id, lead)
+        mode = await dealer_ai_mode(db.dealer_id)
+        checks = [
+            ("lead_active", status not in SILENT_STATUSES, f"lead is {status}"),
+            ("no_booking_yet", active_booking is None, "already booked" if active_booking else "no booking yet"),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "decision": "cancel" if failed else "run the turn"}
+        span.reasoning = [f"{'✓' if ok else '✗'} {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else "run the turn"
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, "visit_followup_cancelled", {"followup_id": followup_id, "reason": reason})
+        return "cancelled"
+
+    # A fresh attempt 1 (agent/visit_offer.py): the customer asked to be offered again later.
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": doc["lead_id"]}, {"$unset": {"conversation.visit": ""}})
+    await _log(db, tracer, "visit_followup_started", {"followup_id": followup_id})
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+        trigger=TRIGGER_VISIT_FOLLOWUP, channel=doc["to_channel"], inbound_text="", shadow=False, deps=deps,
+        turn_id=f"visit-followup-{followup_id}", is_reply=False,
     )
     sent = log["summary"].get("send_status")
     if sent == "held":

@@ -86,15 +86,18 @@ async def test_template_mode_skips_the_ai(mongo):
 # --- Stage 7/8: qualifying over a conversation ----------------------------------
 
 async def test_sales_lead_is_qualified_over_a_chat(mongo):
+    """MASTER_PLAN_3 B4: once the model and roughly when are both known (here,
+    turn 2), a visit is offered before trade-in or anything else is asked -
+    qualified/partly_qualified only apply once the offer is resolved
+    (declined 3 times, or booked). See tests/unit/test_visit_offer.py and
+    test_booking_tool.py for the offer/decline/booking flow itself."""
     created = await _lead(comments="Looking for a new Toyota RAV4")
     await _turn(created, "Looking for a new Toyota RAV4", trigger="lead_created")
     second = await _turn(created, "My budget is $35,000 and I'd like to buy this month")
-    assert second["outcome"] == "ask" and second["summary"]["asked"] == ["trade_in.has_trade"]
-    third = await _turn(created, "No trade-in")
-    assert third["outcome"] == "qualified"
+    assert second["outcome"] == "offer_visit"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
-    assert state.get("status") == "qualified"
-    assert state["required"] == {"filled": 5, "total": 5}
+    assert state["conversation"]["visit"]["attempts"] == 1
+    assert state["required"] == {"filled": 4, "total": 5}
 
 
 async def test_trade_in_lead_qualifies_from_one_detailed_message(mongo):

@@ -161,6 +161,38 @@ export interface ConversationStateView {
     why: string | null;
   } | null;
   awaiting_contact_choice?: boolean;
+  // MASTER_PLAN_3 B4/B5: the visit offer.
+  visit?: VisitView | null;
+  awaiting_visit_pick?: boolean;
+}
+
+export interface VisitTime {
+  iso: string;
+  date: string;
+  time: string;
+  display: string;
+}
+
+export interface VisitView {
+  attempts: number;
+  angles_used: string[];
+  offered_times: VisitTime[];
+  offered_turn: number;
+  declined: boolean;
+  declined_turn: number;
+  stopped: boolean;
+  objections: string[];
+  followup_due: string | null;
+  pending_pick: VisitTime | null;
+  why: string | null;
+}
+
+export interface BookingView {
+  id: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  date: string;
+  time: string;
+  notes: string | null;
 }
 
 export interface SummaryView {
@@ -174,6 +206,9 @@ export interface SlotsView {
   conversation?: ConversationStateView;
   pending_morning_message?: { due_at: string } | null;
   staff_notice?: { at: string; kind: string; text: string } | null;
+  // MASTER_PLAN_3 B4/B5.
+  pending_visit_followup?: { due_at: string } | null;
+  booking?: BookingView | null;
   summary?: SummaryView;
   implemented: boolean;
   status: string;
@@ -200,7 +235,8 @@ export interface Followup {
   id: string;
   // channel_switch: the 24h switch; handoff_check: the staff check after a handoff;
   // resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
-  kind: "channel_switch" | "handoff_check" | "resume_at_opening";
+  // visit_followup: the dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4).
+  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";

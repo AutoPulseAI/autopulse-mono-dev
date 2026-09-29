@@ -6,8 +6,12 @@ Also checked here: every question Decide gave was answered (MASTER_PLAN_2
 Phase 5), no version asks more than two questions (MASTER_PLAN_3 Bq,
 counted as question marks), an after-hours "offer" carries its choice
 question (MASTER_PLAN_3 B1: seen live, the real model sometimes dropped it),
-and a reply after the first one doesn't open with a fresh greeting (seen
-live, 1 Oct: "Hello, Test!" repeated mid-conversation)."""
+a reply after the first one doesn't open with a fresh greeting (seen live, 1
+Oct: "Hello, Test!" repeated mid-conversation), and booking wording matches
+a real, current booking's status (MASTER_PLAN_3 B5 item 7, architecture §15
+decision 60): never "booked"/"confirmed" for a merely-requested (pending)
+visit, and never any of those words with no active booking on the lead at
+all - "never claim a booking that doesn't exist" (B4's principle 4)."""
 
 import re
 from typing import Any
@@ -77,6 +81,31 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
             if "which would you like" not in str(draft.get(key) or "").lower()]
 
 
+_CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then))\b", re.IGNORECASE)
+_REQUESTED_WORDING = re.compile(r"\brequested\b", re.IGNORECASE)
+
+
+def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """MASTER_PLAN_3 B5 item 7, architecture §15 decision 60: booking words
+    are allowed only when the lead has a real, active booking (read fresh
+    this turn, agent/nodes/decide.py), and must match its actual status -
+    "requested" while pending, "booked"/"confirmed" only once confirmed."""
+    visit = decision.get("visit") or {}
+    status = visit.get("status")
+    active = status in ("pending", "confirmed")
+    violations = []
+    for name, key in (("SMS", "sms_text"), ("email", "email_body")):
+        text = str(draft.get(key) or "")
+        confirmed_words, requested_words = _CONFIRMED_WORDING.search(text), _REQUESTED_WORDING.search(text)
+        if not (confirmed_words or requested_words):
+            continue
+        if not active:
+            violations.append(f"the {name} claims a booking, but there's no active booking on this lead")
+        elif confirmed_words and status != "confirmed":
+            violations.append(f"the {name} says the visit is booked/confirmed, but it's only {status}")
+    return violations
+
+
 async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     if state.fallback_reason:  # Compose failed: nothing to check
         result = {"passed": False, "checks": {}, "violations": [state.fallback_reason], "next": "fallback"}
@@ -99,6 +128,12 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if opens := ((state.decision or {}).get("after_hours") or {}).get("opens_at"):
         # When the dealership opens again (MASTER_PLAN_3 B1), from its own hours.
         known.append(opens)
+    if visit_offer := (state.decision or {}).get("visit_offer"):
+        # The times just offered (MASTER_PLAN_3 B4), built from real availability, not invented.
+        known += [t.get("display") for t in visit_offer.get("times") or []]
+    visit = (state.decision or {}).get("visit") or {}
+    # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
+    known += [visit[k] for k in ("display", "slot_taken") if visit.get(k)]
     result = check_draft(state.draft, customer_texts=customer_texts, known_values=known)
     draft = state.draft or {}
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
@@ -131,6 +166,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if greeted_again:
         result["passed"] = False
         result["violations"] += greeted_again
+    bad_booking_wording = invalid_booking_wording(state.decision or {}, state.draft or {})
+    result["checks"]["booking_wording_matches_status"] = not bad_booking_wording
+    if bad_booking_wording:
+        result["passed"] = False
+        result["violations"] += bad_booking_wording
     will_retry = not result["passed"] and state.retry_count < MAX_REWRITES
     result["next"] = "send" if result["passed"] else ("compose" if will_retry else "fallback")
 

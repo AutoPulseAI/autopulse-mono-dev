@@ -78,6 +78,9 @@ class SafeReply(_Rules):
         allowed += self.case.get("allowed_numbers", []) + self.case.get("must_mention", [])
         if self.case.get("campaign"):
             allowed.append(self.case["campaign"])
+        # Visit times offered (MASTER_PLAN_3 B4/B5) come from real availability, as the Guard allows.
+        decision = self.result.get("decision") or {}
+        allowed += [t.get("display") or "" for t in (decision.get("visit_offer") or {}).get("times") or []]
         guard = check_draft({"sms_text": reply[:SMS_MAX] or "-", "email_subject": "s", "email_body": "b"},
                             customer_texts=allowed, known_values=[])
         rules = {f"guard: {v}": False for v in guard["violations"]}

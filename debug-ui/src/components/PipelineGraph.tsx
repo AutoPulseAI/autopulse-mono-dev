@@ -29,6 +29,8 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   summary: { x: 480, y: 520 },
   // The after-hours morning message's checks (MASTER_PLAN_3 B1): they start a turn at Load context.
   resume: { x: 0, y: -170 },
+  // The dated fresh visit offer's checks (MASTER_PLAN_3 B4): they also start a turn at Load context.
+  visit_followup: { x: 240, y: -170 },
 };
 
 // Which side of each node an edge leaves from / arrives at.
@@ -50,6 +52,7 @@ const HANDLES: Record<string, [string, string]> = {
   "hold-send": ["s-t", "t-b"],
   "handoff_check-send": ["s-t", "t-b"],
   "resume-load_context": ["s-b", "t-t"],
+  "visit_followup-load_context": ["s-b", "t-t"],
   // The morning message skips Extract and Validate: arcs over the top row.
   "load_context-search_stock": ["s-t", "t-t"],
 };

@@ -16,12 +16,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from upsell_agent.api.auth import require_internal_auth
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
+    PLATFORM_BOOKINGS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     as_object_id,
     dealer_scoped_db,
 )
-from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_HANDOFF_CHECK, KIND_RESUME
+from upsell_agent.scheduler.followups import (
+    CHANNEL_SWITCHES,
+    KIND_HANDOFF_CHECK,
+    KIND_RESUME,
+    KIND_VISIT_FOLLOWUP,
+)
 from upsell_agent.slots.profile import build_profile
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.slots.store import current_facts, fact_history
@@ -53,8 +59,13 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         {"lead_id": lead_id, "status": "pending", **CHANNEL_SWITCHES}).sort("due_at", 1).to_list(1)
     check = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_HANDOFF_CHECK})
     morning = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_RESUME})
+    visit_followup = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_VISIT_FOLLOWUP})
     alert = state.get("staff_alert")
     notice = state.get("staff_notice")
+    visit = (state.get("conversation") or {}).get("visit")
+    booking_id = (lead.get("data") or {}).get("bookingId")
+    booking = await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one(
+        {"_id": as_object_id(str(booking_id))}) if booking_id else None
     return {
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
@@ -67,6 +78,14 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         # opt-out, after-hours lead picked up). Kept on the AI's lead state; the platform doesn't show them yet.
         "pending_morning_message": {"due_at": _iso(morning.get("due_at"))} if morning else None,
         "staff_notice": {**notice, "at": _iso(notice.get("at"))} if notice else None,
+        # MASTER_PLAN_3 B4/B5: the visit offer's state (attempts, angles used, times offered,
+        # declined/stopped) and the dated fresh-offer follow-up after a 3rd decline.
+        "visit": visit,
+        "pending_visit_followup": {"due_at": _iso(visit_followup.get("due_at"))} if visit_followup else None,
+        # The platform booking itself (MASTER_PLAN_3 B5), cancelled ones included.
+        "booking": ({"id": str(booking["_id"]), "status": booking.get("booking_status"),
+                     "date": _iso(booking.get("bookingDate")), "time": booking.get("bookingTime"),
+                     "notes": booking.get("notes")} if booking else None),
     }
 
 

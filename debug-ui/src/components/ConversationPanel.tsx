@@ -75,6 +75,49 @@ export function ConversationPanel({ slots }: { slots: SlotsView | null }) {
         </Section>
       )}
 
+      {(c.visit || slots?.booking || slots?.pending_visit_followup) && (
+        <Section title="Visit / booking">
+          {c.visit && (
+            <>
+              <div>
+                <span className="rounded bg-accent-soft px-1 text-[10px] font-semibold text-accent">
+                  {c.visit.stopped
+                    ? "declined 3 times: no more offers"
+                    : c.visit.declined
+                      ? `declined, parked (attempt ${c.visit.attempts} of 3)`
+                      : `offered (attempt ${c.visit.attempts} of 3)`}
+                </span>{" "}
+                <span className="text-muted">
+                  angles: {c.visit.angles_used.join(" → ").replaceAll("_", " ") || "none"}
+                  {c.awaiting_visit_pick ? " · our last reply offered times" : ""}
+                </span>
+              </div>
+              {c.visit.offered_times.length > 0 && (
+                <div>Times offered: {c.visit.offered_times.map((t) => t.display).join(", ")}</div>
+              )}
+              {c.visit.pending_pick && (
+                <div>Picked {c.visit.pending_pick.display}, waiting for their email or phone to book it</div>
+              )}
+              {c.visit.objections.length > 0 && (
+                <div className="text-muted">Objections: {c.visit.objections.join(", ").replaceAll("_", " ")}</div>
+              )}
+              {c.visit.why && <div className="text-muted">{c.visit.why}</div>}
+            </>
+          )}
+          {slots?.booking && (
+            <div>
+              Booking{" "}
+              <span className="rounded bg-panel-2 px-1 text-[10px] font-semibold">{slots.booking.status}</span>{" "}
+              {new Date(slots.booking.date).toLocaleDateString(undefined, { timeZone: "UTC" })} at {slots.booking.time}
+              {slots.booking.notes && <span className="text-muted"> · {slots.booking.notes}</span>}
+            </div>
+          )}
+          {slots?.pending_visit_followup && (
+            <div>Fresh visit offer due {new Date(slots.pending_visit_followup.due_at).toLocaleString()}</div>
+          )}
+        </Section>
+      )}
+
       {slots?.staff_notice && (
         <Section title="Notice for the team">
           <div className="rounded bg-warn-soft p-1.5 text-warn">{slots.staff_notice.text}</div>

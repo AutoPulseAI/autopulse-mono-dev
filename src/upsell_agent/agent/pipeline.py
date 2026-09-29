@@ -59,6 +59,9 @@ NODES: list[PipelineNode] = [
     # MASTER_PLAN_3 B1 (stage 300 + phase, 1 = B1): the after-hours morning message's checks.
     {"id": "resume", "label": "Morning message due", "kind": "code", "stage": 301,
      "description": "After-hours lead chose 'when you open': still waiting? Send check allows it? Run the turn"},
+    # MASTER_PLAN_3 B4 (stage 404): the dated fresh visit offer after a 3rd decline.
+    {"id": "visit_followup", "label": "Visit follow-up due", "kind": "code", "stage": 404,
+     "description": "Declined 3 times, date reached: still active, no booking? Fresh offer turn"},
     {"id": "summary", "label": "Summarize older turns", "kind": "ai", "stage": 103,
      "description": "After the send: fold messages that left working memory into the lead's summary"},
 ]
@@ -70,6 +73,7 @@ EDGES: list[PipelineEdge] = [
     # The after-hours morning message has no new customer text: no Extract (MASTER_PLAN_3 B1).
     {"id": "load_context-search_stock", "source": "load_context", "target": "search_stock", "kind": "main"},
     {"id": "resume-load_context", "source": "resume", "target": "load_context", "kind": "fallback"},
+    {"id": "visit_followup-load_context", "source": "visit_followup", "target": "load_context", "kind": "fallback"},
     {"id": "extract-validate", "source": "extract", "target": "validate", "kind": "main"},
     # Extract failed (timeout, provider error, AI-call budget): template instead.
     {"id": "extract-fallback", "source": "extract", "target": "fallback", "kind": "fallback"},
@@ -90,13 +94,16 @@ EDGES: list[PipelineEdge] = [
     {"id": "handoff_check-send", "source": "handoff_check", "target": "send", "kind": "fallback"},
 ]
 
-# Decide's rules, in the order they're checked (architecture §8.3, MASTER_PLAN_2 Phase 5).
+# Decide's rules, in the order they're checked (architecture §8.3, MASTER_PLAN_2 Phase 5;
+# offer_visit added MASTER_PLAN_3 B4).
 DECIDE_RULES: list[dict[str, str]] = [
     {"id": "stop", "label": "Customer opted out → stop"},
-    {"id": "handoff", "label": "Asked for a person or clearly upset → hand off"},
+    {"id": "handoff", "label": "Asked for a person, clearly upset, urgent, or declined 3x with a staff-only "
+                              "question open → hand off"},
     {"id": "clarify", "label": "Asked what we meant → re-explain"},
-    {"id": "answer", "label": "Questions to answer → answer, then at most two follow-ups"},
+    {"id": "answer", "label": "Questions to answer → answer, then a visit offer or a follow-up (up to two)"},
     {"id": "confirm", "label": "A value needs confirming → confirm (+ one ask)"},
+    {"id": "offer_visit", "label": "A visit can be offered → offer it (+ one ask)"},
     {"id": "ask", "label": "A required detail can be asked → ask up to two"},
     {"id": "qualified", "label": "Nothing missing → qualified"},
     {"id": "partly_qualified", "label": "Everything missing asked twice → pass on what we have"},
