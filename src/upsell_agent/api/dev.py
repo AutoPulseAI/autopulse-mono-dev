@@ -361,6 +361,25 @@ async def message_status(message_id: str, body: DeliveryUpdate, request: Request
     return _json(result.as_dict())
 
 
+# --- Stock (MASTER_PLAN_3 Phase 6 item 3) -------------------------------------
+
+@router.post("/stock/{vin}/mark-sold")
+async def mark_sold(vin: str, dealer_id: str = Query(...)) -> dict:
+    """A simulator shortcut for testing freshness (Phase 5) by hand: removes
+    this vehicle from the dealer's dev stock, the same as it dropping out of
+    a real feed. `get_vehicle`/`find_sold` then see it as sold immediately -
+    the 60s search cache is cleared too, so the next reply reflects it."""
+    from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION
+    from upsell_agent.tools.inventory_tool import clear_cache
+
+    result = await dealer_scoped_db(dealer_id).collection(
+        PLATFORM_VEHICLES_COLLECTION, dealer_field="dealerId").delete_one({"vin": vin})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="no such vehicle for this dealer")
+    clear_cache()
+    return {"status": "sold", "vin": vin}
+
+
 # --- Metrics -----------------------------------------------------------------
 
 @router.get("/metrics")
@@ -430,5 +449,8 @@ async def run_scenarios(body: RunScenarios, request: Request) -> list[dict]:
     if _run_lock.locked():
         raise HTTPException(status_code=409, detail="A scenario run is already in progress")
     async with _run_lock:
-        runs = await scenarios.run_all(request.app.state.enqueue, request.app.state.queue, body.ids)
+        try:
+            runs = await scenarios.run_all(request.app.state.enqueue, request.app.state.queue, body.ids)
+        except scenarios.RealModelsRefused as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _json(runs)

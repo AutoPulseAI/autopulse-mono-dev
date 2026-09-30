@@ -36,6 +36,13 @@ class Template:
 # What every template tells the customer the team will do.
 TEMPLATE_PROMISE = "A member of the team will follow up shortly."
 
+# MASTER_PLAN_3 Phase 5: sent only when a mentioned vehicle sold and, despite
+# the instruction to always write one, Compose left no stock-free version to
+# fall back to. Never the vehicle's own name-naming text - the whole point of
+# this text is to guarantee a sold vehicle is never sent, even in that gap.
+SOLD_VEHICLE_FALLBACK_TEXT = "Sorry for the wait - that one's no longer available, but the team can find you another option."
+SOLD_VEHICLE_FALLBACK_SUBJECT = "Update on your inquiry"
+
 
 _SIGN_OFF = "\n\nThanks,\nThe {team} Team"
 

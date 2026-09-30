@@ -75,6 +75,26 @@ class Conversation(_Rules):
             rules[f"lead status {result['status']!r}"] = result["status"] == expect["status"]
         if expect.get("all_answered"):
             rules[f"{result['unanswered']} message(s) without a reply or a reason"] = result["unanswered"] == 0
+        # MASTER_PLAN_3 Phase 7 item 1: inventory-answering evals.
+        if expect.get("vins_grounded"):
+            draft, inventory = last["draft"] or {}, last["inventory"] or {}
+            named = {*(draft.get("sms_vins") or []), *(draft.get("email_vins") or [])}
+            loaded = {r["vin"] for r in (inventory.get("records") or [])}
+            rules[f"every named vehicle {sorted(named)} was actually loaded {sorted(loaded)}"] = named <= loaded
+        if "max_named_vehicles" in expect:
+            draft = last["draft"] or {}
+            for channel, limit in expect["max_named_vehicles"].items():
+                count = len(draft.get(f"{channel}_vins") or [])
+                rules[f"at most {limit} vehicle(s) named by {channel} (got {count})"] = count <= limit
+        if expect.get("no_bare_no_on_no_stock"):
+            draft, inventory = last["draft"] or {}, last["inventory"] or {}
+            no_stock = bool(inventory.get("searched")) and not (inventory.get("records") or [])
+            named = bool(draft.get("sms_vins") or draft.get("email_vins"))
+            promised = bool(draft.get("promises"))
+            rules["no stock found still comes with an alternative or a promise, never a bare no"] = (
+                not no_stock or named or promised)
+        if expect.get("no_price_mentioned"):
+            rules["no price ($ sign) in the last reply"] = "$" not in last["reply"]
         return rules
 
 

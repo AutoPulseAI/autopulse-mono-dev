@@ -53,6 +53,8 @@ export const api = {
   shadow: (dealerId: string, days: number) => request<ShadowView>(`/shadow?${q({ dealer_id: dealerId, days: String(days) })}`),
   reviewShadow: (dealerId: string, turnId: string, verdict: Verdict, note?: string) =>
     post<{ status: string }>("/shadow/review", { dealer_id: dealerId, turn_id: turnId, verdict, note: note ?? null }),
+  markSold: (dealerId: string, vin: string) =>
+    post<{ status: string; vin: string }>(`/stock/${vin}/mark-sold?${q({ dealer_id: dealerId })}`, {}),
   scenarios: () => request<Scenario[]>("/scenarios"),
   runScenarios: (ids?: string[]) => post<ScenarioRun[]>("/scenarios/run", { ids: ids ?? null }),
   streamUrl: (dealerId: string) => `${BASE}/stream?${q({ dealer_id: dealerId })}`,

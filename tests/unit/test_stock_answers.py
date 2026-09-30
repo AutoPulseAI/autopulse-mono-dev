@@ -110,6 +110,21 @@ def test_availability_with_no_named_vehicle_is_rejected():
     assert any("without naming a real one" in v for v in result["violations"])
 
 
+def test_per_vehicle_grounding_result_for_a_clean_draft():
+    """MASTER_PLAN_3 Phase 6 item 2: the Debug UI shows a grounding result per
+    named vehicle, not just one overall pass/fail."""
+    result = _guard(_draft("Good news - we have a 2022 White Toyota RAV4 LE (18,000 miles) in stock.",
+                           sms_vins=[RAV4["vin"]], email_vins=[RAV4["vin"]]),
+                    inventory=[RAV4])
+    assert result["per_vehicle"] == {RAV4["vin"]: {"ok": True, "problems": []}}
+
+
+def test_per_vehicle_grounding_result_flags_an_unknown_vin():
+    result = _guard(_draft("We have it in stock.", sms_vins=["MADE-UP-VIN"]), inventory=[RAV4])
+    assert result["per_vehicle"]["MADE-UP-VIN"]["ok"] is False
+    assert "not in this turn's stock" in result["per_vehicle"]["MADE-UP-VIN"]["problems"][0]
+
+
 def test_a_makes_own_car_mention_isnt_flagged_as_grounding():
     """The customer's own trade-in, echoed back in plain words, names no
     vehicle from inventory and isn't a stock claim - not a grounding problem."""

@@ -6,10 +6,12 @@
 later. Only when the customer has a contact on that channel and hasn't opted
 out of it. A newer message supersedes the lead's older pending follow-up, so a
 lead never has more than one. If the original message named a vehicle
-(MASTER_PLAN_3 Phase 3), the stock-free version Compose wrote alongside is
-what gets stored and later sent, not the vehicle version - a car mentioned
-now may have sold by the time this fires (decision L; Phase 5 will re-check
-instead of always dropping the vehicle).
+(MASTER_PLAN_3 Phase 3), the stock-free version Compose wrote alongside it is
+stored as the default `text`/`subject` - the safe choice if firing never gets
+to re-check it - alongside the vehicle version and the VINs it named
+(`vehicle_text`/`vehicle_subject`/`mentioned_vins`). **At fire time** (Phase 5
+item 2), those VINs are re-checked fresh; if none sold, the nicer vehicle
+version is sent after all, in place of the stored stock-free default.
 
 **Fire.** A cron job on every worker runs every minute (worker/main.py). It
 resets stuck claims, then claims due follow-ups one at a time with a single
@@ -57,9 +59,14 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
-from upsell_agent.agent.templates import render_holding_reply
+from upsell_agent.agent.templates import (
+    SOLD_VEHICLE_FALLBACK_SUBJECT,
+    SOLD_VEHICLE_FALLBACK_TEXT,
+    render_holding_reply,
+)
 from upsell_agent.channels.consent import check_channel, resolve_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
+from upsell_agent.config import get_settings
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
@@ -79,6 +86,7 @@ from upsell_agent.scheduler.contact_window import (
     is_proactive_sms_allowed,
     proactive_send_time,
 )
+from upsell_agent.tools.inventory_tool import find_sold, get_inventory_source
 from upsell_agent.worker.locks import Busy
 
 logger = logging.getLogger(__name__)
@@ -140,15 +148,22 @@ async def plan_followup(
     if sent.status not in ("sent", "failed"):
         return {"created": False, "reason": f"message not sent ({sent.status})"}
 
-    # MASTER_PLAN_3 Phase 3 decision L: a vehicle mention is never resent hours
-    # later on the other channel, since it may have sold by then (until
-    # Phase 5's before-send re-check exists). Compose writes a stock-free
-    # version alongside whenever it named one; that's what the switch stores.
+    # MASTER_PLAN_3 Phase 3 decision L / Phase 5 item 2: the stock-free version
+    # is the stored default (safe if this never gets re-checked), but the
+    # vehicle version and its VINs are kept too, so firing can use the nicer
+    # version once it re-checks the vehicle hasn't sold since. Never falls
+    # back to the vehicle version if the stock-free one is missing (decision
+    # L's original gap): that would store exactly what this exists to avoid.
+    mentioned_vins = list((draft.get(f"{other}_vins")) or [])
     if other == "sms":
-        text, subject = draft.get("sms_text_no_vehicles") or draft.get("sms_text"), None
+        vehicle_text, vehicle_subject = draft.get("sms_text"), None
+        text = draft.get("sms_text_no_vehicles") or (SOLD_VEHICLE_FALLBACK_TEXT if mentioned_vins else vehicle_text)
+        subject = None
     else:
-        text = draft.get("email_body_no_vehicles") or draft.get("email_body")
-        subject = draft.get("email_subject_no_vehicles") or draft.get("email_subject")
+        vehicle_text, vehicle_subject = draft.get("email_body"), draft.get("email_subject")
+        text = draft.get("email_body_no_vehicles") or (SOLD_VEHICLE_FALLBACK_TEXT if mentioned_vins else vehicle_text)
+        subject = draft.get("email_subject_no_vehicles") or (
+            SOLD_VEHICLE_FALLBACK_SUBJECT if mentioned_vins else vehicle_subject)
     if not text:
         return {"created": False, "reason": f"the draft has no {other} version"}
 
@@ -180,6 +195,10 @@ async def plan_followup(
         "from_channel": channel, "to_channel": other, "to": to, "text": text, "subject": subject,
         "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0, "reason": reason,
     }
+    if mentioned_vins:
+        # Phase 5 item 2: kept so firing can re-check and use the nicer
+        # version if the vehicle(s) are still there.
+        doc.update(mentioned_vins=mentioned_vins, vehicle_text=vehicle_text, vehicle_subject=vehicle_subject)
     inserted = await followups.insert_one(doc)
     return {"created": True, "followup_id": str(inserted.inserted_id), "to_channel": other, "to": to,
             "due_at": due_at.isoformat(), "superseded": superseded.modified_count,
@@ -311,6 +330,22 @@ async def _why_not_send(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, 
     ]
 
 
+async def _fresh_followup_text(dealer_id: str, doc: dict[str, Any]) -> tuple[str, str | None, dict[str, Any] | None]:
+    """MASTER_PLAN_3 Phase 5 item 2: a follow-up that named a vehicle stored
+    the stock-free version as its default (`text`/`subject`) and the nicer
+    vehicle version separately (`vehicle_text`/`vehicle_subject`,
+    `mentioned_vins`). Re-checked fresh here, at fire time, not at the time it
+    was planned 24h ago: if none sold, the vehicle version is sent after all."""
+    vins = doc.get("mentioned_vins")
+    if not vins:
+        return doc["text"], doc.get("subject"), None
+    source = get_inventory_source(get_settings())
+    sold = await find_sold(dealer_id, vins, source)
+    if sold:
+        return doc["text"], doc.get("subject"), {"checked": vins, "sold": sold}
+    return doc["vehicle_text"] or doc["text"], doc.get("vehicle_subject") or doc.get("subject"), {"checked": vins, "sold": []}
+
+
 async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
@@ -357,16 +392,23 @@ async def _fire_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     if deferred := await _defer_outside_contact_window(db, doc, tracer):
         return deferred
 
+    text, subject, freshness = await _fresh_followup_text(db.dealer_id, doc)
+
     request = SendRequest(
         dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
-        turn_id=doc["source_turn_id"], channel=doc["to_channel"], text=doc["text"], subject=doc.get("subject"),
+        turn_id=doc["source_turn_id"], channel=doc["to_channel"], text=text, subject=subject,
         is_fallback=True,
     )
     async with tracer.node("send", {"channel": request.channel, "idempotency_key": request.idempotency_key,
                                     "text": request.text, "subject": request.subject}) as span:
         sent = await deps.sender.send(request)
-        span.output = sent.as_dict()
-        span.reasoning = sent.reasoning
+        span.output = {**sent.as_dict(), "freshness_recheck": freshness}
+        span.reasoning = list(sent.reasoning)
+        if freshness:
+            span.reasoning.insert(0, (f"Re-checked {', '.join(freshness['checked'])} before sending: still there, "
+                                      "so the version naming it was sent." if not freshness["sold"] else
+                                      f"Re-checked before sending: {', '.join(freshness['sold'])} sold since this "
+                                      "was drafted, so the stock-free version was sent instead."))
         span.metrics = {"attempts": sent.attempts}
         span.edge_label = sent.status
     await tracer.skipped("schedule", "A switched message never schedules another one.")
@@ -379,7 +421,7 @@ async def _fire_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         fields["last_outbound_at"] = clock.now()
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": fields})
     await _log(db, tracer, "followup_sent" if status == "sent" else f"followup_{status}",
-               {"followup_id": followup_id, "send_status": sent.status, "reply": doc["text"],
+               {"followup_id": followup_id, "send_status": sent.status, "reply": text,
                 "channel": doc["to_channel"]})
     return status
 

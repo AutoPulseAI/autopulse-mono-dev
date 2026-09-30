@@ -9,7 +9,7 @@ export function ConversationPanel({ slots }: { slots: SlotsView | null }) {
     return <div className="border-l border-line p-3 text-[11px] text-muted">No conversation yet.</div>;
   }
   return (
-    <div className="scroll-thin min-h-0 space-y-2 overflow-y-auto border-l border-line p-2 text-[11px]">
+    <div className="scroll-thin h-full min-h-0 space-y-2 overflow-y-auto border-l border-line p-2 text-[11px]">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Conversation</span>
         <span className="text-muted">{c.turn} repl{c.turn === 1 ? "y" : "ies"} sent</span>

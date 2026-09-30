@@ -107,21 +107,33 @@ def _mentioned(draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[d
     return [by_vin[v] for v in vins if v in by_vin]
 
 
-def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[str]:
+def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """MASTER_PLAN_3 Phase 4: every vehicle the draft names must be real stock
-    loaded this turn, described only with that record's own fields."""
+    loaded this turn, described only with that record's own fields.
+
+    Returns the overall violation messages, and `per_vehicle`: one entry per
+    VIN this draft actually named (MASTER_PLAN_3 Phase 6 item 2, for the
+    Debug UI), each `{ok, problems}`. A bad trim or make can't be pinned to a
+    specific one of several named vehicles from the text alone, so it's
+    recorded against every vehicle named on that version (SMS or email) - an
+    approximation, not a per-word attribution."""
     violations: list[str] = []
     by_vin = {r["vin"]: r for r in inventory if r.get("vin")}
     sms_vins, email_vins = list(draft.get("sms_vins") or []), list(draft.get("email_vins") or [])
+    all_vins = [*sms_vins, *email_vins]
+    per_vehicle: dict[str, dict[str, Any]] = {v: {"ok": True, "problems": []} for v in dict.fromkeys(all_vins)}
 
     if len(sms_vins) > SMS_MAX_VEHICLES:
         violations.append(f"names {len(sms_vins)} vehicles by SMS (at most {SMS_MAX_VEHICLES})")
     if len(email_vins) > EMAIL_MAX_VEHICLES:
         violations.append(f"names {len(email_vins)} vehicles by email (at most {EMAIL_MAX_VEHICLES})")
 
-    unknown = sorted({v for v in [*sms_vins, *email_vins] if v not in by_vin})
+    unknown = sorted({v for v in all_vins if v not in by_vin})
     if unknown:
         violations.append(f"vehicle(s) not in this turn's stock: {', '.join(unknown)}")
+        for v in unknown:
+            per_vehicle[v]["ok"] = False
+            per_vehicle[v]["problems"].append("not in this turn's stock")
 
     mentioned = _mentioned(draft, inventory)
 
@@ -136,6 +148,10 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
         bad_trims = sorted(w for w in trim_words if not any(w in have for have in have_trims))
         if bad_trims:
             violations.append(f"a trim not on the named vehicle(s): {', '.join(bad_trims)}")
+            for v, info in per_vehicle.items():
+                if v in by_vin:
+                    info["ok"] = False
+                    info["problems"].append(f"trim not on this vehicle: {', '.join(bad_trims)}")
 
         have_makes = {(r.get("make") or "").lower() for r in mentioned}
         named_makes = {m.lower() for m in KNOWN_MAKES.values()
@@ -143,6 +159,10 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
         bad_makes = sorted(m for m in named_makes if m not in have_makes)
         if bad_makes:
             violations.append(f"a make not on the named vehicle(s): {', '.join(bad_makes)}")
+            for v, info in per_vehicle.items():
+                if v in by_vin:
+                    info["ok"] = False
+                    info["problems"].append(f"make not on this vehicle: {', '.join(bad_makes)}")
 
     # "we don't have that in stock" contains the same words as an affirmative
     # "it's in stock" claim, so a denial's own wording must never also trip
@@ -157,7 +177,7 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
     if unavailable_spans and not mentioned and not (draft.get("promises") or []):
         violations.append("says a vehicle isn't available with no alternative offered and no promise made")
 
-    return violations
+    return violations, per_vehicle
 
 
 def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], known_values: Iterable[Any],
@@ -183,7 +203,7 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     if approval:
         violations.append("approval or guarantee language")
 
-    grounding = _grounding(text, draft, inventory or [])
+    grounding, per_vehicle = _grounding(text, draft, inventory or [])
     violations += grounding
 
     checks = {
@@ -197,4 +217,7 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
         violations.append(f"SMS must be 1-{SMS_MAX} characters (is {len(sms)})")
     if not checks["email_complete"]:
         violations.append("email needs a subject and a body")
-    return {"passed": all(checks.values()), "checks": checks, "violations": violations}
+    result = {"passed": all(checks.values()), "checks": checks, "violations": violations}
+    if per_vehicle:  # MASTER_PLAN_3 Phase 6 item 2: shown in the Debug UI's Guard step
+        result["per_vehicle"] = per_vehicle
+    return result

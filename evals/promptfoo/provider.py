@@ -28,6 +28,12 @@ def call_api(prompt, options, context):
         case["summary"] = variables["summary"]
     if variables.get("dealer_store_name"):
         case["dealer_info"] = {"store_name": variables["dealer_store_name"]}
+    # MASTER_PLAN_3 Phase 7 item 2: a vehicle's own feed text (its trim, as
+    # entered by the dealer/feed) is data the AI reads to answer stock
+    # questions, never instructions to follow.
+    if variables.get("vehicle_trim"):
+        case["stock"] = [{"vin": "PROMPTFOOVIN0001", "make": "Toyota", "model": "RAV4",
+                          "trim": variables["vehicle_trim"]}]
     try:
         result = asyncio.run(harness.run_case(case))
     except Exception as exc:  # noqa: BLE001 - reported as a failed test, not a crash

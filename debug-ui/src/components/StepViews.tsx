@@ -5,6 +5,7 @@
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 
+import { api } from "../api";
 import type { Pipeline } from "../types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -183,6 +184,10 @@ export function DecideRules({ output, pipeline, runKey }: { output: any; pipelin
 
 export function GuardChecks({ output }: { output: any }) {
   const checks = Object.entries((output?.checks ?? {}) as Record<string, boolean>);
+  const violations: string[] = output?.violations ?? [];
+  // MASTER_PLAN_3 Phase 6 item 2: the grounding result per vehicle the draft
+  // named, when it named any (guardrails/draft_guard.py `per_vehicle`).
+  const perVehicle: Record<string, { ok: boolean; problems: string[] }> = output?.per_vehicle ?? {};
   return (
     <div className="space-y-1">
       {checks.map(([name, ok], i) => (
@@ -198,6 +203,32 @@ export function GuardChecks({ output }: { output: any }) {
           <span className="text-[12px] text-ink">{name.replaceAll("_", " ")}</span>
         </motion.div>
       ))}
+      {Object.keys(perVehicle).length > 0 && (
+        <div className="space-y-1 pt-1">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Grounding, per vehicle</div>
+          {Object.entries(perVehicle).map(([vin, v]) => (
+            <div
+              key={vin}
+              className="rounded-lg px-2 py-1 text-[11px]"
+              style={{ background: v.ok ? "var(--ok-soft)" : "var(--bad-soft)" }}
+            >
+              <span className="font-bold" style={{ color: v.ok ? "var(--ok)" : "var(--bad)" }}>{v.ok ? "✓" : "✗"}</span>{" "}
+              <span className="font-mono">{vin}</span>
+              {v.problems.length > 0 && <span className="text-muted"> — {v.problems.join("; ")}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {violations.length > 0 && (
+        <div className="rounded-lg bg-bad-soft p-2 text-[11px] text-bad">
+          <div className="mb-0.5 font-semibold">Why it failed</div>
+          <ul className="list-disc pl-4">
+            {violations.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {output?.next && (
         <div className="pt-1 text-[11px] text-muted">
           Next: <span className="font-semibold text-ink">{output.next}</span>
@@ -246,6 +277,14 @@ export function ComposePreview({ output }: { output: any }) {
           {output.promises.join(" · ")}
         </div>
       )}
+      {(output.sms_vins?.length > 0 || output.email_vins?.length > 0) && (
+        <div className="rounded-lg bg-panel-2 px-2 py-1.5 font-mono text-[11px]">
+          <span className="font-sans font-semibold">Vehicles named — </span>
+          {output.sms_vins?.length > 0 && <span>SMS: {output.sms_vins.join(", ")}</span>}
+          {output.sms_vins?.length > 0 && output.email_vins?.length > 0 && " · "}
+          {output.email_vins?.length > 0 && <span>Email: {output.email_vins.join(", ")}</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -268,9 +307,37 @@ const kv = (o: Record<string, unknown> | undefined) =>
     .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join("/") : v}`)
     .join(" · ");
 
+// A "mark sold" shortcut for testing freshness (MASTER_PLAN_3 Phase 5) by
+// hand: removes the vehicle from dev stock, the same as it dropping out of a
+// real feed (Phase 6 item 3).
+function MarkSoldButton({ dealerId, vin }: { dealerId: string | null; vin: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  if (!dealerId) return null;
+  if (state === "done") return <span className="text-[10px] font-semibold text-bad">Marked sold</span>;
+  return (
+    <button
+      type="button"
+      disabled={state === "busy"}
+      onClick={async () => {
+        setState("busy");
+        try {
+          await api.markSold(dealerId, vin);
+          setState("done");
+        } catch {
+          setState("error");
+        }
+      }}
+      className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-muted hover:bg-panel-2 disabled:opacity-50"
+      title="Remove this vehicle from dev stock, to test the freshness re-check (Phase 5)"
+    >
+      {state === "error" ? "Failed - retry?" : "Mark sold"}
+    </button>
+  );
+}
+
 // The stock Search stock loaded for this turn (MASTER_PLAN_3 Phases 1-2):
 // why it searched, the criteria, each loosening step, the records with VINs.
-export function InventoryView({ inventory }: { inventory: any }) {
+export function InventoryView({ inventory, dealerId }: { inventory: any; dealerId?: string | null }) {
   if (!inventory) return null;
   const records: any[] = inventory.records ?? [];
   const excluded: any[] = inventory.excluded ?? [];
@@ -350,9 +417,12 @@ export function InventoryView({ inventory }: { inventory: any }) {
             <div className="space-y-1">
               {records.map((r) => (
                 <div key={r.vin} className="rounded-lg border border-line p-2">
-                  <div className="font-semibold">
-                    {[r.year, r.make, r.model, r.trim].filter(Boolean).join(" ")}
-                    <span className="ml-1 rounded bg-panel-2 px-1 text-[10px] font-normal text-muted">{r.condition ?? "?"}</span>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">
+                      {[r.year, r.make, r.model, r.trim].filter(Boolean).join(" ")}
+                      <span className="ml-1 rounded bg-panel-2 px-1 text-[10px] font-normal text-muted">{r.condition ?? "?"}</span>
+                    </div>
+                    <MarkSoldButton dealerId={dealerId ?? null} vin={r.vin} />
                   </div>
                   <div className="text-muted">
                     {[r.body_type, r.exterior_color, r.miles != null ? `${Number(r.miles).toLocaleString()} miles` : null]

@@ -26,6 +26,7 @@ from upsell_agent.agent.nodes.template_reply import template_draft
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
+from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
 from upsell_agent.config import Settings, get_settings
@@ -43,6 +44,7 @@ from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTrace
 from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import plan_followup, plan_handoff_check
 from upsell_agent.slots.requirements import lead_type_for
+from upsell_agent.tools.inventory_tool import find_sold, get_inventory_source
 from upsell_agent.worker.queue import Enqueue
 
 logger = logging.getLogger(__name__)
@@ -164,16 +166,21 @@ async def run_turn(
             await tracer.skipped("send", "No lead to reply on.")
             await tracer.skipped("schedule", "No lead.")
         else:
+            subject = None if channel == "sms" else draft.get("email_subject")
+            reply, subject, freshness = await _fresh_send_text(ctx, dealer_id, draft, channel, reply, subject)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
-                channel=channel, text=reply or "", subject=None if channel == "sms" else draft.get("email_subject"),
+                channel=channel, text=reply or "", subject=subject,
                 shadow=shadow, event_received_at=event_received_at,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject}) as span:
                 sent = await deps.sender.send(request)
-                span.output = sent.as_dict()
-                span.reasoning = sent.reasoning
+                span.output = {**sent.as_dict(), "freshness_recheck": freshness}
+                span.reasoning = list(sent.reasoning)
+                if freshness and freshness["sold"]:
+                    span.reasoning.insert(0, f"Re-checked stock right before sending: {', '.join(freshness['sold'])} "
+                                             "sold in the meantime, so the stock-free version was sent instead.")
                 span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
                 span.edge_label = sent.status
             async with tracer.node("schedule", {"sent_status": sent.status, "channel": channel}) as span:
@@ -267,6 +274,32 @@ async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: fl
 def _dealer_time(iso: str, timezone: str) -> str:
     """A due time as the dealer reads it, e.g. "Tue 10:30 EDT"."""
     return datetime.fromisoformat(iso).astimezone(ZoneInfo(timezone)).strftime("%a %H:%M %Z")
+
+
+async def _fresh_send_text(ctx: TurnContext, dealer_id: str, draft: dict[str, Any], channel: str,
+                           reply: str | None, subject: str | None) -> tuple[str | None, str | None, dict[str, Any] | None]:
+    """MASTER_PLAN_3 Phase 5 item 1: if this turn named a vehicle, re-check it
+    right before sending (writing the reply, the guard, and a possible rewrite
+    all take time). One sold in the meantime means sending the stock-free
+    version Compose already wrote alongside it (decision L), not a bare
+    fallback and not another AI call. `None` (no vins named) skips the check
+    entirely - the common case, and free."""
+    vins = list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or [])
+    if not vins:
+        return reply, subject, None
+    source = ctx.inventory or get_inventory_source(ctx.settings)
+    sold = await find_sold(dealer_id, vins, source)
+    info = {"checked": vins, "sold": sold}
+    if not sold:
+        return reply, subject, info
+    no_vehicle_reply = draft.get("sms_text_no_vehicles") if channel == "sms" else draft.get("email_body_no_vehicles")
+    no_vehicle_subject = None if channel == "sms" else draft.get("email_subject_no_vehicles")
+    # Never fall back to `reply` here: it's the version that names the sold
+    # vehicle. A missing stock-free version (Compose didn't write one despite
+    # the instruction to) gets the generic fallback instead, never the original.
+    if no_vehicle_reply:
+        return no_vehicle_reply, no_vehicle_subject or subject, info
+    return SOLD_VEHICLE_FALLBACK_TEXT, (None if channel == "sms" else SOLD_VEHICLE_FALLBACK_SUBJECT), info
 
 
 def _hands_off(result: dict[str, Any]) -> bool:
