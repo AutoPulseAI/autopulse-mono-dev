@@ -52,6 +52,9 @@ LIMITS = {
     "template_fallback_rate": 0.05,
     "guard_failure_rate": 0.10,
     "send_failure_rate": 0.02,
+    # MASTER_PLAN_3 Phase 7 item 5.
+    "grounding_rejection_rate": 0.02,
+    "inventory_query_p95_ms": 2_000,
 }
 
 
@@ -144,6 +147,14 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
     fr_p95 = metrics["first_reply_ms"]["p95"]
     fallback = metrics["template_fallback"]["rate"]
     guard = metrics["guard_failures"]["rate"]
+    grounding_rate = metrics["grounding_rejections"]["rate"]
+    inv_p95 = metrics["inventory_query_ms"]["p95"]
+    # MASTER_PLAN_3 Phase 7 item 5's "sold-vehicle mentions (0)" has no separate
+    # audit query here: the freshness re-check (Phase 5) and the grounding
+    # check (Phase 4) never let the send/schedule code paths fall through to a
+    # sold vehicle's own text, so this is a structural guarantee, verified by
+    # tests/unit/test_freshness.py - not a runtime count that could read 0 by
+    # luck. `caught_sold` below is how often that safety net actually fired.
 
     def within(value, limit):
         return value is None or value <= limit
@@ -160,6 +171,10 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
         f"guard failures under {LIMITS['guard_failure_rate']:.0%}": within(guard, LIMITS["guard_failure_rate"]),
         f"send failures under {LIMITS['send_failure_rate']:.0%}": within(send_failure_rate,
                                                                          LIMITS["send_failure_rate"]),
+        f"grounding rejections under {LIMITS['grounding_rejection_rate']:.0%}": within(
+            grounding_rate, LIMITS["grounding_rejection_rate"]),
+        f"inventory query p95 under {LIMITS['inventory_query_p95_ms'] / 1000:g}s": within(
+            inv_p95, LIMITS["inventory_query_p95_ms"]),
     }
     return {
         "dealer_id": dealer_id, "ai_mode": mode, "days": days, "leads": len(states),
@@ -169,7 +184,10 @@ async def rollout_check(dealer_id: str, days: float = 7) -> dict[str, Any]:
         "events_never_handled": lost["events_never_handled"][:50],
         "staff_alerts": staff_alerts[:50],
         "numbers": {"first_reply_p95_ms": fr_p95, "template_fallback_rate": fallback, "guard_failure_rate": guard,
-                    "send_failure_rate": None if send_failure_rate is None else round(send_failure_rate, 4)},
+                    "send_failure_rate": None if send_failure_rate is None else round(send_failure_rate, 4),
+                    "grounding_rejection_rate": grounding_rate, "inventory_query_p95_ms": inv_p95,
+                    "freshness_rechecked": metrics["freshness"]["rechecked"],
+                    "freshness_caught_sold": metrics["freshness"]["caught_sold"]},
         "limits": LIMITS,
     }
 

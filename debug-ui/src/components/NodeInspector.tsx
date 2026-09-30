@@ -20,9 +20,10 @@ interface Props {
   nodeId: string | null;
   follow: boolean;
   onFollowChange: (follow: boolean) => void;
+  dealerId: string | null;
 }
 
-export function NodeInspector({ pipeline, view, nodeId, follow, onFollowChange }: Props) {
+export function NodeInspector({ pipeline, view, nodeId, follow, onFollowChange, dealerId }: Props) {
   const [tab, setTab] = useState<Tab>("reasoning");
   const def = pipeline.nodes.find((n) => n.id === nodeId);
   const attempts = (nodeId && view.attempts[nodeId]) || [];
@@ -114,7 +115,9 @@ export function NodeInspector({ pipeline, view, nodeId, follow, onFollowChange }
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  {tab === "reasoning" && <ReasoningTab nodeId={def.id} run={run} pipeline={pipeline} runKey={runKey} />}
+                  {tab === "reasoning" && (
+                    <ReasoningTab nodeId={def.id} run={run} pipeline={pipeline} runKey={runKey} dealerId={dealerId} />
+                  )}
                   {tab === "input" && <JsonView value={run.input} />}
                   {tab === "output" && <JsonView value={run.output} />}
                   {tab === "metrics" && <MetricsTab run={run} />}
@@ -128,12 +131,14 @@ export function NodeInspector({ pipeline, view, nodeId, follow, onFollowChange }
   );
 }
 
-function ReasoningTab({ nodeId, run, pipeline, runKey }: { nodeId: string; run: NodeRun; pipeline: Pipeline; runKey: string }) {
+function ReasoningTab({ nodeId, run, pipeline, runKey, dealerId }: {
+  nodeId: string; run: NodeRun; pipeline: Pipeline; runKey: string; dealerId: string | null;
+}) {
   const lines = Array.isArray(run.reasoning) ? run.reasoning : run.reasoning ? [run.reasoning] : [];
   return (
     <div className="space-y-3">
       {nodeId === "load_context" && <ContextPackView output={run.output} />}
-      {nodeId === "search_stock" && <InventoryView inventory={run.output} />}
+      {nodeId === "search_stock" && <InventoryView inventory={run.output} dealerId={dealerId} />}
       {nodeId === "validate" && <ValidateBins output={run.output} pipeline={pipeline} runKey={runKey} />}
       {nodeId === "decide" && <DecideRules output={run.output} pipeline={pipeline} runKey={runKey} />}
       {nodeId === "decide" && <DecideDetails output={run.output} />}

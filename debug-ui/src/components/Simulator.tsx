@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
+import { formatDateTime } from "../time";
 import type { ConversationItem, Lead } from "../types";
 import { StatusBadge } from "./ui";
 
@@ -97,12 +98,27 @@ export function Simulator({ dealerId, offline, leads, selectedLeadId, onSelectLe
   );
 }
 
+const DEFAULT_COMMENTS: Record<string, string> = {
+  sales: "Hi, I'm interested in a new Toyota RAV4.",
+  trade_in: "Hi, I'd like to trade in my 2018 Honda Civic.",
+  service: "Hi, my check engine light is on. Can I book a service appointment?",
+  general: "Hi, I have a question about your dealership.",
+};
+
 function NewLeadForm({ dealerId, onCreated, onError }: { dealerId: string; onCreated: (id: string) => void; onError: (m: string) => void }) {
   const [name, setName] = useState("Test Customer");
   const [leadType, setLeadType] = useState("sales");
   const [channel, setChannel] = useState("sms");
-  const [comments, setComments] = useState("Hi, I'm interested in a new Toyota RAV4.");
+  const [comments, setComments] = useState(DEFAULT_COMMENTS.sales);
+  const [commentsTouched, setCommentsTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const changeLeadType = (value: string) => {
+    setLeadType(value);
+    if (!commentsTouched) {
+      setComments(DEFAULT_COMMENTS[value] ?? "");
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -121,7 +137,7 @@ function NewLeadForm({ dealerId, onCreated, onError }: { dealerId: string; onCre
     <div className="space-y-1.5 p-3">
       <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer name" />
       <div className="flex gap-1.5">
-        <select className={field} value={leadType} onChange={(e) => setLeadType(e.target.value)}>
+        <select className={field} value={leadType} onChange={(e) => changeLeadType(e.target.value)}>
           <option value="sales">Sales</option>
           <option value="trade_in">Trade-in</option>
           <option value="service">Service</option>
@@ -135,7 +151,10 @@ function NewLeadForm({ dealerId, onCreated, onError }: { dealerId: string; onCre
       <textarea
         className={`${field} h-14 resize-none`}
         value={comments}
-        onChange={(e) => setComments(e.target.value)}
+        onChange={(e) => {
+          setComments(e.target.value);
+          setCommentsTouched(true);
+        }}
         placeholder="What the lead said (DMS comments)"
       />
       <button
@@ -175,6 +194,17 @@ function outboundStyle(m: ConversationItem): React.CSSProperties {
   return { background: "color-mix(in srgb, var(--accent) 70%, transparent)", border: "1px dashed var(--accent)" };
 }
 
+function chatTranscript(lead: Lead, conversation: ConversationItem[]): string {
+  const lines = conversation.map((m) => {
+    const at = m.at ? formatDateTime(m.at, true) : "—";
+    const who = m.direction === "inbound" ? lead.name : "AI";
+    const detail = m.direction === "inbound" ? (m.kind === "lead" ? "lead comments" : m.channel.toUpperCase())
+      : `${m.channel.toUpperCase()} · ${statusLabel(m)}`;
+    return `[${at}] ${who} (${detail}):\n${m.text}`;
+  });
+  return `Chat with ${lead.name} (${lead.id})\n\n${lines.join("\n\n")}`;
+}
+
 function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
   dealerId: string;
   lead: Lead;
@@ -186,7 +216,18 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
   const [text, setText] = useState("");
   const [channel, setChannel] = useState<"sms" | "email">(lead.channel);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
+
+  const copyChat = async () => {
+    try {
+      await navigator.clipboard.writeText(chatTranscript(lead, conversation));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      onError(String(e));
+    }
+  };
 
   useEffect(() => {
     setChannel(lead.channel);
@@ -225,15 +266,26 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
         <div className="text-[11px] text-muted">
           Chatting as <span className="font-semibold text-ink">{lead.name}</span>
         </div>
-        {lead.status === "paused" ? (
-          <button type="button" onClick={() => toggle("resume")} className="text-[11px] font-semibold text-ok">
-            Resume AI
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void copyChat()}
+            disabled={conversation.length === 0}
+            className="text-[11px] font-semibold text-muted disabled:opacity-40"
+            title="Copy this chat as text"
+          >
+            {copied ? "Copied ✓" : "Copy chat"}
           </button>
-        ) : (
-          <button type="button" onClick={() => toggle("pause")} className="text-[11px] font-semibold text-warn">
-            Pause AI
-          </button>
-        )}
+          {lead.status === "paused" ? (
+            <button type="button" onClick={() => toggle("resume")} className="text-[11px] font-semibold text-ok">
+              Resume AI
+            </button>
+          ) : (
+            <button type="button" onClick={() => toggle("pause")} className="text-[11px] font-semibold text-warn">
+              Pause AI
+            </button>
+          )}
+        </div>
       </div>
       <div className="scroll-thin flex-1 space-y-1.5 overflow-y-auto px-3 pb-2">
         <AnimatePresence initial={false}>

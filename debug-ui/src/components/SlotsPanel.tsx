@@ -35,7 +35,7 @@ export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
   const groups = (slots?.groups ?? []).filter((g) => slots?.slots.some((s) => s.group === g.id));
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Slots</div>
         {slots && (
@@ -62,7 +62,7 @@ export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
           </div>
         </div>
       </div>
-      <div className="scroll-thin flex flex-1 gap-3 overflow-x-auto overflow-y-auto p-2">
+      <div className="scroll-thin flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-auto p-2">
         {!slots || slots.slots.length === 0 ? (
           <div className="text-[12px] text-muted">No slots captured yet for this lead.</div>
         ) : (

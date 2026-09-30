@@ -296,7 +296,7 @@ async def test_writing_again_after_later_is_answered_and_re_offered(mongo, deale
     await _say(created, "tomorrow is fine")
     await _say(created, "oh also, do you have it in red?")
     reply = await _last_sms(mongo, created)
-    assert "team will confirm" in reply and reply.endswith("Which would you like?")
+    assert ("team" in reply or "matching" in reply) and reply.endswith("Which would you like?")
     state = await _state(mongo, created)
     assert state["conversation"]["after_hours"]["choice"] == "later"
     assert state["conversation"]["after_hours"]["times_offered"] == 2

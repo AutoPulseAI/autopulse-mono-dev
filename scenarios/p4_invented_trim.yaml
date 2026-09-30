@@ -1,0 +1,18 @@
+name: An invented trim is rejected, then the rewrite is clean
+stage: 204
+description: >
+  #badtrim (an offline-model-only dev hint) makes the first draft claim a trim not on the named
+  vehicle. The grounding check (Phase 4) rejects it; the one allowed rewrite then sends a reply
+  that correctly names the real vehicle, with zero grounding rejections left after the rewrite.
+steps:
+  - add_stock:
+      as: rav4
+      dealer: B
+      vehicles:
+        - {year: 2022, make: Toyota, model: RAV4, trim: LE, body: SUV, condition: used, color: White, miles: 21000}
+  - new_lead: {as: t, dealer: B, lead_type: sales, channel: sms, name: Tia Trim, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - reply: {lead: t, text: "#badtrim Do you have a Toyota RAV4?"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  - expect_turn: {lead: t, attempts: {compose: 2, guard: 2}}
+  - expect_last_sent: {lead: t, contains: "RAV4"}

@@ -276,7 +276,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1">
+      <main className="min-h-0 flex-1 overflow-hidden">
         {tab === "pipeline" && (
           <div className="grid h-full grid-cols-[300px_1fr_380px]">
             <aside className="min-h-0 border-r border-line bg-panel">
@@ -300,14 +300,21 @@ export default function App() {
               <div className="min-h-0 flex-[3]">
                 <PipelineGraph pipeline={pipeline} view={view} selectedNode={selectedNode} onSelectNode={setSelectedNode} />
               </div>
-              <div className="grid min-h-0 flex-[1.2] grid-cols-[1fr_300px] border-t border-line bg-panel">
+              <div className="grid min-h-0 flex-[1.2] grid-cols-[1fr_300px] overflow-hidden border-t border-line bg-panel">
                 <SlotsPanel slots={slots} />
                 <ConversationPanel slots={slots} />
               </div>
             </section>
 
             <aside className="min-h-0 border-l border-line bg-panel">
-              <NodeInspector pipeline={pipeline} view={view} nodeId={selectedNode} follow={follow} onFollowChange={setFollow} />
+              <NodeInspector
+                pipeline={pipeline}
+                view={view}
+                nodeId={selectedNode}
+                follow={follow}
+                onFollowChange={setFollow}
+                dealerId={dealerId}
+              />
             </aside>
           </div>
         )}

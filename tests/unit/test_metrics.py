@@ -8,6 +8,7 @@ from datetime import timedelta
 from fastapi.testclient import TestClient
 
 from tests.unit.conftest import make_settings
+from tests.unit.test_inventory_tool import _stock, _vehicle
 from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps, run_turn
 from upsell_agent.devtools import simulate
@@ -56,6 +57,23 @@ async def test_metrics_count_what_happened(mongo):
 
     text = format_report(m)
     assert "First reply" in text and "Template fallback:  1 turn(s), 20.0%" in text
+
+
+async def test_grounding_rejections_and_inventory_timing_are_counted(mongo):
+    """MASTER_PLAN_3 Phase 7 item 5: a grounding-specific rejection (#badtrim)
+    is counted separately from an ordinary guard failure, and a search_stock
+    run's own time is tracked."""
+    await _stock(mongo, _vehicle("VIN00000000000901", make="Toyota", model="RAV4", trim="LE"))
+    a = await _lead("Gwen")
+    await _turn(a, "Hi, I saw your ad", trigger="lead_created")
+    await _turn(a, "#badtrim Do you have a Toyota RAV4?")  # grounding rejects attempt 1, rewrite passes
+
+    m = await dealer_metrics(DEALER, days=1)
+    assert m["grounding_rejections"] == {"drafts": 1, "turns": 1, "rate": 0.5}
+    assert m["inventory_query_ms"]["n"] >= 1 and m["inventory_query_ms"]["p50"] is not None
+
+    text = format_report(m)
+    assert "Grounding rejected" in text and "Inventory query" in text
 
 
 async def test_old_turns_fall_outside_the_window(mongo):

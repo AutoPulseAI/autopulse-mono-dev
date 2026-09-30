@@ -32,6 +32,7 @@ campaign replies doesn't run the same search hundreds of times.
 `get_vehicle` (re-checks before a send, Phase 5) is never cached.
 """
 
+import logging
 import re
 import time as monotonic_time
 from dataclasses import dataclass, field, replace
@@ -43,6 +44,8 @@ from pydantic import BaseModel
 from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION, dealer_scoped_db
+
+logger = logging.getLogger(__name__)
 
 CACHE_TTL_S = 60.0
 # Rows asked of /api/car per search. `matched` still reports the full count.
@@ -342,6 +345,31 @@ async def get_vehicle(dealer_id: str, vin: str, source: InventorySource) -> Inve
     body = await source.search({"dealer_id": dealer_id, "vin": vin}, 1)
     records, _ = _records(dealer_id, [x for x in body.get("listings") or [] if x.get("vin") == vin])
     return records[0] if records else None
+
+
+async def find_sold(dealer_id: str, vins: list[str], source: InventorySource) -> list[str]:
+    """MASTER_PLAN_3 Phase 5: which of these VINs are no longer this dealer's
+    stock, checked fresh (never cached) with `get_vehicle`.
+
+    Today's `/api/car` has no in-stock filter (Phase 0 item 1's interim
+    decision), so in production this can only ever notice a vehicle removed
+    from the feed entirely - it can't yet see one marked sold but still
+    returned. It's built now so the re-check is already wired in everywhere
+    it needs to be the moment a real "sold" signal exists (Part C's C5
+    manager outcome). A lookup failure (the platform unreachable) is never
+    treated as sold: a slow/down platform must mean "send it anyway", the
+    same rule Search stock already follows.
+    """
+    sold: list[str] = []
+    for vin in vins:
+        try:
+            record = await get_vehicle(dealer_id, vin, source)
+        except Exception as exc:  # noqa: BLE001 - a failed re-check must never block the send
+            logger.warning("Freshness re-check failed for %s/%s: %r", dealer_id, vin, exc)
+            continue
+        if record is None:
+            sold.append(vin)
+    return sold
 
 
 def clear_cache() -> None:

@@ -48,9 +48,10 @@ QUESTION_LABELS: tuple[str, ...] = ("answerable", "restricted", "off_topic", "cl
 class CustomerQuestion(BaseModel):
     text: str = Field(description="The question, verbatim from customer_text")
     label: QuestionLabel = Field(description=(
-        "answerable: we can answer from the conversation, their profile or dealer details; "
-        "restricted: (a) price, payment, financing, trade-in value, discount or approval; "
-        "(b) separately, whether a vehicle is in stock or available; "
+        "answerable: we can answer from the conversation, their profile, dealer details, or the "
+        "dealer's real stock (context.inventory); this includes whether a vehicle is in stock or "
+        "available (MASTER_PLAN_3 Phase 3) - only price/payment/financing/discount/approval stay restricted; "
+        "restricted: price, payment, financing, trade-in value, discount or approval; "
         "off_topic: nothing to do with buying, trading or servicing a vehicle here; "
         "clarify: they're asking what our last message meant; "
         "about_me: they're asking what we know about them"))
@@ -102,6 +103,19 @@ class ComposedMessage(BaseModel):
         "(e.g. 'The team will confirm whether the RAV4 has AWD.'). Empty if it promises nothing."))
     answered_questions: list[str] = Field(default_factory=list, description=(
         "The text of each question from answer_questions that this message answers, copied exactly"))
+    sms_vins: list[str] = Field(default_factory=list, description=(
+        "The `vin` of every vehicle sms_text names, at most 2, each one from context.inventory. Empty if sms_text "
+        "names no vehicle."))
+    email_vins: list[str] = Field(default_factory=list, description=(
+        "The `vin` of every vehicle email_body names, at most 3, each one from context.inventory. Empty if "
+        "email_body names no vehicle."))
+    sms_text_no_vehicles: str | None = Field(default=None, description=(
+        "Only when sms_vins is non-empty: the same message with the vehicle mention replaced by 'the team will "
+        "confirm what's available'. Used only if this message is resent by email hours later, when the vehicle "
+        "may have sold - never sent as sms_text itself."))
+    email_subject_no_vehicles: str | None = Field(default=None, description="Same idea as sms_text_no_vehicles, for email_subject.")
+    email_body_no_vehicles: str | None = Field(default=None, description=(
+        "Only when email_vins is non-empty: the same idea as sms_text_no_vehicles, for email_body."))
 
 
 # --- Instructions ------------------------------------------------------------------
@@ -130,9 +144,10 @@ Rules:
   reply answers, don't guess: extract nothing, or give confidence below 0.7.
 - confidence: 0.9+ when stated plainly; below 0.7 when hedged ("maybe", "I think") or ambiguous.
 - questions: each question they asked, verbatim, with a label:
-  answerable (we can answer it from the conversation, their details or the dealership's details),
-  restricted, for two separate reasons: (a) price, payment, financing, trade-in value, discounts, approval;
-  (b) whether a car is in stock or available ("do you have a white RAV4?"),
+  answerable (we can answer it from the conversation, their details, the dealership's details, or the
+  dealer's real stock in context.inventory - this includes "do you have a white RAV4?" / "is it still
+  available?"),
+  restricted (price, payment, financing, trade-in value, discounts, approval),
   off_topic (nothing to do with buying, trading in or servicing a vehicle here),
   clarify ("what do you mean?", "what's that?": they ask what our last message meant; count it even
   without a question mark), about_me ("what do you know about me?").
@@ -182,7 +197,8 @@ quiet_hours, after_hours, customer_first_name,
 campaign, customer_text (the new
 message or messages you are replying to), channel, guard_feedback, and context: the conversation so far
 (working_memory, oldest first, "outbound" is us), what we know about the customer (profile), the conversation
-state (what we asked before, open questions, promises already made) and the dealer's local date and time (now).
+state (what we asked before, open questions, promises already made), the dealer's local date and time (now), and
+inventory (real stock this dealer has right now, each with a `vin` - MASTER_PLAN_3 Phase 3).
 Rules:
 - Stay consistent with the conversation in context: don't contradict what was already said, and don't
   make a new promise that conflicts with one already made.
@@ -193,8 +209,19 @@ Rules:
 - answer_questions come with a label.
   answerable: answer from context. Questions about the dealership (opening hours, address, phone, website)
     are answered only from context.dealer.info, copying the details exactly; a detail listed in
-    info.missing (or not there) gets "the team will confirm" instead, as a promise. Never guess hours or
-    an address. Other answerable questions: answer from the conversation, or say the team will confirm.
+    info.missing (or not there) gets "the team will confirm" instead, as a promise.
+    Questions about whether a vehicle is in stock or available are answered only from context.inventory:
+    - Name only vehicles that are in context.inventory, described only with that record's own fields
+      (year, make, model, trim, colour, miles) - never a made-up trim, colour, year or mileage.
+      Never mention a vehicle already marked already_shown as if it were new, but you may still talk
+      about it if the customer is asking about it directly.
+      List the `vin` of every vehicle you name in sms_vins (at most 2) / email_vins (at most 3).
+    - If context.inventory has nothing matching exactly but has something close, offer that instead and
+      say what's different ("Not in white, but we have it in silver - want details?").
+    - If context.inventory is empty for this question, never leave it as a bare "we don't have that": say
+      the team will let you know when a matching one comes in, and list that as a promise.
+    - Never guess hours, an address, or availability with nothing in context to back it up.
+    Other answerable questions: answer from the conversation, or say the team will confirm.
   restricted: say the team will confirm (and list that as a promise).
   off_topic: say politely you can only help with their vehicle.
   about_me: say only what context.about_customer holds: its "known" values in plain words, and its
@@ -250,10 +277,18 @@ Rules:
 - When the context has a value's `display`, say it that way (e.g. dates as "Saturday, September 27").
 - just_captured lists what the customer told us in this message, in plain words. When it has a date,
   repeat that date back briefly ("Got it - Saturday, September 27.") so they can see we understood.
-- Never state a price, payment, trade-in value, discount, availability, or approval. If asked, say the team will
-  confirm. Never promise anything except that the team will follow up, confirm, or reach out. Only mention
-  numbers the customer gave you, or a visit time from visit_offer/visit. Never invent urgency or pressure
-  ("only one left", "today only") - the reason for a visit comes only from visit_offer.value_proposition.
+- Never state a price, payment, trade-in value, discount, or approval. If asked, say the team will confirm.
+  Never promise anything beyond the team following up. Only mention numbers the customer gave you, a
+  visit time from visit_offer/visit, or a vehicle's own year/miles from a record in context.inventory that you name in
+  sms_vins/email_vins. Never invent urgency or pressure ("only one left", "today only") - the reason for a visit comes
+  only from visit_offer.value_proposition.
+- Availability may only be stated about a specific vehicle from context.inventory that you name in
+  sms_vins/email_vins (see the answerable rule above) - never as a general "yes it's available" with no
+  vehicle behind it.
+- If sms_vins is non-empty, also fill sms_text_no_vehicles: the same message with the vehicle swapped for
+  "the team will confirm what's available" - this may be sent later, by which time it could have sold.
+  Do the same for email_vins with email_subject_no_vehicles / email_body_no_vehicles. Leave all three empty
+  if the message names no vehicle.
 - If a campaign is given, the customer is replying to that campaign: acknowledge it naturally.
 - sms_text at most 320 characters, no links. email_body: greeting, 2-4 short sentences, sign-off.
 - If guard_feedback is present, your previous draft broke those rules: rewrite without those problems.

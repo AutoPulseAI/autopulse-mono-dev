@@ -85,6 +85,7 @@ from bson import ObjectId
 from saq import Queue
 
 from upsell_agent import clock
+from upsell_agent.agent.llm import OFFLINE
 from upsell_agent.config import get_settings
 from upsell_agent.devtools import compare_360, compare_inventory, simulate
 from upsell_agent.events.intake import accept_event
@@ -926,7 +927,22 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
     return run
 
 
+class RealModelsRefused(Exception):
+    """Scenarios never call a real AI model. ai-api and ai-worker both read
+    the same agentic-upsell/.env, so this check is accurate for both, even
+    though this code runs in ai-api's own process: the actual model calls
+    happen in ai-worker (scenarios enqueue jobs to it, the same as a real
+    customer message), not here."""
+
+
 async def run_all(enqueue: Enqueue, queue: Queue | None, only: list[str] | None = None) -> list[dict[str, Any]]:
+    settings = get_settings()
+    if settings.model_extract != OFFLINE or settings.model_compose != OFFLINE:
+        raise RealModelsRefused(
+            f"Refusing to run scenarios: MODEL_EXTRACT={settings.model_extract!r}, "
+            f"MODEL_COMPOSE={settings.model_compose!r}. Scenarios call real AI models when these "
+            "aren't 'offline' - set both to offline in agentic-upsell/.env and restart ai-api/ai-worker "
+            "(`make ai-restart`) before running scenarios.")
     # Follow-ups check the dealer's AI mode on the platform's dealer record.
     await simulate.ensure_platform_dealers()
     runs = []
@@ -959,6 +975,9 @@ async def _cli(only: list[str]) -> int:
     await queue.connect()
     try:
         runs = await run_all(make_enqueue(queue), queue, only or None)
+    except RealModelsRefused as exc:
+        print(str(exc))
+        return 2
     finally:
         await queue.disconnect()
         await close_mongo()

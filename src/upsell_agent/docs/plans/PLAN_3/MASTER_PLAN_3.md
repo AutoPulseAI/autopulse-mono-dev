@@ -16,22 +16,22 @@
 > depend on Part C (B3's send check is the same engine as C1's `can_contact`),
 > so it can't go first.
 >
-> | Part / phase | Needs first |
-> |---|---|
-> | **A** Phases 1–4, 6–7 | Nothing in this plan (only Plan 2 and the existing `/api/car`) |
-> | A Phase 0 item 3 (price-drop exception) | **C4** (the Day 8–90 cadence it is used in) — deferred until C4 ships |
-> | A Phase 0 item 7 (MMS) | Nothing — driver work on `channels/twilio.py` |
-> | A Phase 5 (freshness) | Phase 0 item 1 (real feed data), not another part |
-> | A Phase 3's visit offer ("want to come see it?") | B4 — added once B4 ships; Phase 3 works without it |
-> | **C1** compliance engine | Nothing — build it once; B2 (origin) and B3 (send rules) become its inputs and rule set |
-> | B1 after-hours reply | C1 (the "later" path and every send go through the send check), customer time zone (B0.5) |
-> | C2 call tasks (**skipped for now**) | C1 |
-> | B0.13 5-minute callback (**skipped for now**) | C2 |
-> | B4 visit offer | B5 (the offered times) |
-> | B5 booking | Nothing — uses the platform's existing `POST`/`PUT /api/booking` unchanged |
-> | C3 state machine | C1 |
-> | C4 cadence | C3 (C2's call tasks are skipped, so C4 runs as SMS + email only) |
-> | C5 appointment flows (**shipping**, 27 Sept) | B5, C3, C4 (a no-show goes back into C4's follow-ups) |
+> | Part / phase                                        | Needs first                                                                               |
+> | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+> | **A** Phases 1–4, 6–7                       | Nothing in this plan (only Plan 2 and the existing `/api/car`)                          |
+> | A Phase 0 item 3 (price-drop exception)             | **C4** (the Day 8–90 cadence it is used in) — deferred until C4 ships             |
+> | A Phase 0 item 7 (MMS)                              | Nothing — driver work on `channels/twilio.py`                                          |
+> | A Phase 5 (freshness)                               | Phase 0 item 1 (real feed data), not another part                                         |
+> | A Phase 3's visit offer ("want to come see it?")    | B4 — added once B4 ships; Phase 3 works without it                                       |
+> | **C1** compliance engine                      | Nothing — build it once; B2 (origin) and B3 (send rules) become its inputs and rule set  |
+> | B1 after-hours reply                                | C1 (the "later" path and every send go through the send check), customer time zone (B0.5) |
+> | C2 call tasks (**skipped for now**)           | C1                                                                                        |
+> | B0.13 5-minute callback (**skipped for now**) | C2                                                                                        |
+> | B4 visit offer                                      | B5 (the offered times)                                                                    |
+> | B5 booking                                          | Nothing — uses the platform's existing `POST`/`PUT /api/booking` unchanged           |
+> | C3 state machine                                    | C1                                                                                        |
+> | C4 cadence                                          | C3 (C2's call tasks are skipped, so C4 runs as SMS + email only)                          |
+> | C5 appointment flows (**shipping**, 27 Sept)  | B5, C3, C4 (a no-show goes back into C4's follow-ups)                                     |
 >
 > **Order:** Part A (except the deferred items) → C1 (with B2/B3 folded in) →
 > Bq (two questions per message) → B1 → B5 → B4 → C3 → C4 (then A's price-drop exception) → C5 → C6.
@@ -41,8 +41,9 @@
 >
 > **Platform code rule (27 Sept):** the platform (`aidmvcs-be-dev`) is not
 > changed by this plan, except two approved changes: B3's campaign check (worker
+>
 > + campaign report), and C5's manager outcome selection. Everything else is
-> done in the AI service, using platform endpoints and data as they are today.
+>   done in the AI service, using platform endpoints and data as they are today.
 >
 > **Assumes:** [`../PLAN_2/MASTER_PLAN_2.md`](../PLAN_2/MASTER_PLAN_2.md) is finished end to end:
 >
@@ -84,12 +85,12 @@ Six client requirements were checked against `docs/client/` and `docs/data/` and
 
 ## What already exists
 
-| Piece | Where | State |
-|---|---|---|
-| Vehicle records | Platform `vehicles` collection (Mongoose `Vehicle`, `strict: false`, unique per dealer + VIN) | In production, only the vAuto inventory feed writes here (DealerVault doesn't; see Phase 0 item 1). Only the AI's dev seed adds customer-owned cars. |
-| Inventory API | Platform `GET /api/car` | Filters by dealer, make, model, year, `car_type` (new / used), body type, price range, miles range, and more. Maps prices from `internetreduced` / `instoreprice`. |
-| Inventory tool | `agentic-upsell/src/upsell_agent/tools/inventory_tool.py` | A stub. Its docstring already asks for raw rows, so every mention can be traced back to a VIN. |
-| Grounding nodes | `agent/nodes/recommend.py`, `agent/nodes/verify_grounding.py` | Stubs from the original design, not in the graph. |
+| Piece           | Where                                                                                               | State                                                                                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vehicle records | Platform `vehicles` collection (Mongoose `Vehicle`, `strict: false`, unique per dealer + VIN) | In production, only the vAuto inventory feed writes here (DealerVault doesn't; see Phase 0 item 1). Only the AI's dev seed adds customer-owned cars.                    |
+| Inventory API   | Platform `GET /api/car`                                                                           | Filters by dealer, make, model, year,`car_type` (new / used), body type, price range, miles range, and more. Maps prices from `internetreduced` / `instoreprice`. |
+| Inventory tool  | `agentic-upsell/src/upsell_agent/tools/inventory_tool.py`                                         | A stub. Its docstring already asks for raw rows, so every mention can be traced back to a VIN.                                                                          |
+| Grounding nodes | `agent/nodes/recommend.py`, `agent/nodes/verify_grounding.py`                                   | Stubs from the original design, not in the graph.                                                                                                                       |
 
 ## Principles
 
@@ -103,16 +104,16 @@ Six client requirements were checked against `docs/client/` and `docs/data/` and
 
 ## Phase overview
 
-| # | Phase | You can see it when |
-|---|---|---|
-| 0 | Decisions | The answers are written into architecture.md |
-| 1 | Inventory read layer | The Debug UI shows the stock records a turn loaded, each with its VIN |
-| 2 | Shopping criteria | "White SUV under 30k" becomes structured search criteria from the profile and the message |
-| 3 | Answering stock questions | "Do you have a RAV4?" is answered from real stock; with none, the reply is never a bare "no" — it always offers the closest alternatives or a promise to check |
-| 4 | Grounding check | A draft that names a car or a detail not in the loaded records is rejected |
-| 5 | Freshness | A car sold since the message was written is never mentioned in a later send |
-| 6 | Debug UI and dev inventory | Seeded stock per dev dealer, and an Inventory panel per turn |
-| 7 | Evals, shadow and rollout | Inventory evals pass on the real models, and shadow review shows no wrong vehicle facts |
+| # | Phase                      | You can see it when                                                                                                                                             |
+| - | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 | Decisions                  | The answers are written into architecture.md                                                                                                                    |
+| 1 | Inventory read layer       | The Debug UI shows the stock records a turn loaded, each with its VIN                                                                                           |
+| 2 | Shopping criteria          | "White SUV under 30k" becomes structured search criteria from the profile and the message                                                                       |
+| 3 | Answering stock questions  | "Do you have a RAV4?" is answered from real stock; with none, the reply is never a bare "no" — it always offers the closest alternatives or a promise to check |
+| 4 | Grounding check            | A draft that names a car or a detail not in the loaded records is rejected                                                                                      |
+| 5 | Freshness                  | A car sold since the message was written is never mentioned in a later send                                                                                     |
+| 6 | Debug UI and dev inventory | Seeded stock per dev dealer, and an Inventory panel per turn                                                                                                    |
+| 7 | Evals, shadow and rollout  | Inventory evals pass on the real models, and shadow review shows no wrong vehicle facts                                                                         |
 
 ---
 
@@ -155,8 +156,8 @@ Write the answers into architecture.md.
 1. **Implement `tools/inventory_tool.py`** as decided in Phase 0:
    - `search_inventory(dealer_id, criteria, limit)` returns raw records, calling `/api/car` with `year_range` (never the broken `year` parameter — see Phase 0 item 2);
    - `get_vehicle(dealer_id, vin)` is used for re-checks.
-   It is dealer-scoped and read-only. **It does not apply an in-stock rule yet** — Phase 0 item 1's interim decision (27 Sept) is to treat every returned record as in stock, until real feed data settles what "sold" looks like.
-2. **A typed view** of each record, all from `/api/car`'s response: VIN, year, make, model, trim, body type, new/used, exterior colour, miles, and the page link if allowed. No stock number (the client didn't ask for one) and no import time (no freshness rule, Phase 0 item 6). The price is loaded only if Phase 0 allows it.
+     It is dealer-scoped and read-only. **It does not apply an in-stock rule yet** — Phase 0 item 1's interim decision (27 Sept) is to treat every returned record as in stock, until real feed data settles what "sold" looks like.
+2. **A typed view** of each record, all from `/api/car`'s respocnse: VIN, year, make, model, trim, body type, new/used, exterior colour, miles, and the page link if allowed. No stock number (the client didn't ask for one) and no import time (no freshness rule, Phase 0 item 6). The price is loaded only if Phase 0 allows it.
 3. **Short cache** (e.g. 60 s per dealer + criteria), so a burst of campaign replies doesn't query the same stock 300 times.
 4. **Inventory layer in the context pack:**
    - `inventory`: the records loaded this turn, with each record's `source_id` (the VIN);
@@ -165,6 +166,7 @@ Write the answers into architecture.md.
 5. **Trace:** Load context shows the query, how many records matched, and which were given to the AI.
 
 **Tests:**
+
 - Old records are still loaded (no age limit, Phase 0 item 6). (No in-stock-rule test — there isn't one yet; see Phase 0 item 1's interim decision.)
 - Dealer scoping (no cross-dealer read).
 - The cache.
@@ -190,26 +192,26 @@ Write the answers into architecture.md.
    - the current message: colour, body type, "under 30k" (a budget cap, parsed like the existing money patterns in `agent/offline_model.py`).
    - **"Something bigger" — decided 27 Sept, our own default, flagged for client feedback.** No size ordering of body types exists anywhere in the schema or the client's documents, so one is defined here rather than guessed during implementation:
 
-     | Tier | Body types |
-     |---|---|
-     | 1 — smallest | Coupe, Convertible, Hatchback |
-     | 2 — compact family car | Sedan, Wagon |
-     | 3 — more room | SUV |
-     | 4 — largest | Minivan, Van, Truck |
+     | Tier                    | Body types                    |
+     | ----------------------- | ----------------------------- |
+     | 1 — smallest           | Coupe, Convertible, Hatchback |
+     | 2 — compact family car | Sedan, Wagon                  |
+     | 3 — more room          | SUV                           |
+     | 4 — largest            | Minivan, Van, Truck           |
 
      "Something bigger" moves the search up one tier from whatever body type the customer was already looking at; if that tier has nothing, it moves up again, the same idea as the colour/trim/year loosening chain. Uses the 9 body types `tools/inventory_tool.py`'s `BODY_WORDS` already recognises (Phase 1). Not a client requirement — ordinary common sense, like the plan's other "our default" items (e.g. decisions 26, 28, 30 in `architecture.md`).
-   New criteria slots are added to the slot schema (`interest.body_type`, `interest.color`) as **extractable, not required** — confirmed against `slots/requirements.py`, where "required" is a separate opt-in list per lead type, so adding these to `slots/schema.py` alone does not make Decide start asking about them; they're only captured when a customer mentions them. The real model's Extract already reads `allowed_slots` straight from the schema (`agent/nodes/extract.py`); only the offline test model needs hand-written extraction added (`agent/offline_model.py`), the same pattern as the existing `new_or_used` parsing.
+     New criteria slots are added to the slot schema (`interest.body_type`, `interest.color`) as **extractable, not required** — confirmed against `slots/requirements.py`, where "required" is a separate opt-in list per lead type, so adding these to `slots/schema.py` alone does not make Decide start asking about them; they're only captured when a customer mentions them. The real model's Extract already reads `allowed_slots` straight from the schema (`agent/nodes/extract.py`); only the offline test model needs hand-written extraction added (`agent/offline_model.py`), the same pattern as the existing `new_or_used` parsing.
 3. **Search when it helps.** Stock is loaded when:
    - the customer asks about stock — see item 6 below for how that's detected in this phase;
    - or the profile has enough to search (at least a model, or a body type + new/used).
-   Otherwise the turn doesn't search, which saves time and cost.
+     Otherwise the turn doesn't search, which saves time and cost.
 4. **Loosening.** No exact match loosens the search in a fixed order and records what was loosened:
    1. colour — a real `/api/car` parameter (`exterior_color`), sent case-corrected (item 5).
    2. trim — **not a `/api/car` parameter at all.** Checked directly against `aidmvcs-be-dev/app/api/car/route.js`: the route returns each vehicle's `trim` in the response, but has no query parameter for it (no `searchParams.get('trim')` anywhere in the file) — unlike colour, year and body type, which the route does let us filter by. So "loosen trim" can't be done by changing the request, the way the other three steps are. **Decided 27 Sept:** trim is filtered on our side, in code, after the broader make/model/condition search comes back — fetch once without a trim filter, then check each returned record's own `trim` field; "loosen trim" means stop checking it. This is a different code path from the other three loosening steps, not a variation on the same one.
    3. year ±1 — Phase 1's existing `year_range` mechanism, just widened.
    4. the same body type from another make — drop `make`, keep `body_type`.
    5. new or used — **decided 28 Sept, added after the Debug UI review found a gap:** "anything bigger?" on a new RAV4, with nothing new in the next size tier, returned nothing rather than offering a used one. Last in the order, so it's tried only once everything else has been loosened. **Our default**, flagged for client feedback.
-   Compose can then say "not in white, but we have it in silver".
+      Compose can then say "not in white, but we have it in silver".
 5. **Colour matching — decided 27 Sept.** `route.js` matches `make`/`model`/`body_type`/`car_type` case-insensitively (`createCaseInsensitiveFilters`, a `^value$/i` regex), but `exterior_color` is a **literal, case-sensitive** `$in` match — confirmed by reading the route directly. A colour sent as the customer said it ("white") can silently match nothing against a stored "White". **No fixed casing is assumed.** Before sending a colour, the tool reads the dealer's own distinct colour values from their stock, matches the customer's word against that list case-insensitively, and sends back whatever casing is actually stored for that dealer — never a guessed convention.
 6. **"Restricted" vs. "answerable" for stock questions — decided 27 Sept, changed from the original wording below.**
    - ~~Stock is loaded when the customer asks about stock (Plan 2's `answerable` label now covers stock questions)~~. Checked against the code: `agent/llm.py`'s `QUESTION_LABELS` prompt text and `agent/offline_model.py`'s `_RESTRICTED` regex both currently treat stock-availability wording ("in stock", "available", "still there", "do you have") as the *same* concern as price/financing/discount/approval wording, in one merged rule. Flipping stock questions to `answerable` requires splitting that rule apart regardless of anything else, since pricing questions must stay `restricted`.
@@ -218,6 +220,7 @@ Write the answers into architecture.md.
 7. **Budget handling.** The budget can filter the search (the price is used, not said) as long as Phase 0 keeps prices restricted. **Already safe by construction:** `InventoryRecord` has no price field (Phase 1), and `inventory_query` — which would carry the raw budget number — is already in `HELD_FROM_MODELS` (`agent/context_pack.py`), so it never reaches the model even indirectly via the trace. The reply never states or implies a price.
 
 **Tests:**
+
 - Criteria building from the profile + message, table-driven.
 - The search-or-not rule.
 - The loosening order and its record, including the trim step's client-side filter.
@@ -237,16 +240,18 @@ Write the answers into architecture.md.
 >
 > - **A. Phases 3 and 4 are built and shipped as one change** (architecture.md decision 40). Search stock keeps `inventory` hidden from the models (`HELD_FROM_MODELS` in `agent/context_pack.py`) until the grounding check exists. Shipping Phase 3 alone would let vehicle mentions with no check behind them reach customers. So `inventory` is unhidden in the same change that adds Phase 4's check, and every open item in Phases 3 and 4 is settled here before implementation starts. `budget` and `inventory_query` stay hidden.
 > - **B. The offline model's stock answering moves from Phase 6 item 4 into Phase 3** (decision 41). Phase 3's scenarios (`p3_do_you_have`, `p3_none_in_stock`) run on the offline model, so they can't pass without it. The scope doesn't change, only which phase owns it. The offline model answers stock questions by fixed rules from the `inventory` layer only. It fills `mentioned_vins` with the VINs it names and never names a vehicle outside `inventory`, and it follows the same alternative-or-promise order as item 1 below. `#badtrim` (Phase 4's test tag) ships in the same change, since Phases 3 and 4 ship together.
->
 > - **C. The guard is narrowed, not removed** (decision 42, 28 Sept). **Why it exists:** the client's rule "Never invent information, approvals, pricing, trade values, availability" (`docs/data/conversations.md` rule 8; also its "must never … invent vehicle availability"), built in Plan 1 Stage 8 as `guardrails/draft_guard.py`. At that time the AI had no stock data, so *any* availability claim was necessarily invented, and a blanket block ("in stock", "still available", "on the lot") was the simplest way to enforce the rule. The number check was written for prices, trade values and payments (its docstring); a vehicle's year and miles weren't in view. The client rule stays. What changes is that availability can now be *verified*, so the blanket block is replaced by a verified one:
+>
 >   - availability wording is allowed only when `mentioned_vins` is not empty and every VIN in it is in this turn's `inventory` (Phase 4 checks the rest of the vehicle details);
 >   - a vehicle's year and miles are allowed only from a record in `mentioned_vins`, not from any loaded record;
 >   - money amounts (`$`, "k" next to price words) are never allowed from vehicle records; prices stay restricted (Phase 0 item 3).
 > - **D. "Not available" plus an alternative is allowed; a bare no is not** (decision 43, 28 Sept). The client forbids a *bare* no, not a no with an alternative: "Not in white, but we have it in silver — want details?" is the wanted reply. Decide chooses the outcome in code: `offer_vehicles` (with VINs) or `promise_to_check`. The guard:
+>
 >   - rejects a reply to a stock question that names no vehicle and makes no promise (the bare no);
 >   - allows "not available" wording ("don't have", "not in white") only when the same reply names a loaded vehicle or records a promise;
 >   - allows it only when it's true: this turn's search actually ran and its exact step found nothing. Otherwise saying "we don't have it" is itself invented availability.
 > - **E. When all five loosening steps find nothing** (decision 44, 28 Sept; our default, flagged for client feedback). Follows the blueprint's "best-fit alternatives", "vehicles in similar price/payment range" and "upcoming inventory":
+>
 >   1. with a known budget, the dealer's stock in the customer's condition (new or used) within that budget, marked as a budget match in the trace;
 >   2. otherwise, a promise that the team will let them know when one arrives.
 >
@@ -265,21 +270,24 @@ Write the answers into architecture.md.
 
 0. **Relabel stock questions `answerable`.** Phase 2 split the stock-availability wording out of the price/financing detection rule but deliberately left it marked `restricted` (Phase 2 item 6), since nothing could yet answer it. This phase is what the label change is waiting for: flip stock-availability questions to `answerable` in the same change as item 1 below, so the label and the real behaviour ship together.
 1. **Decide:** a stock question with loaded results is answered by the `answer` rule, using the inventory layer. With no exact match, the reply is never a bare "not available" — the client's blueprint requires an alternative offered alongside it (`docs/client/autpulse.workflowblueprint.png`, "VEHICLE TYPE OVERRIDE RULE" / inventory guidance). Order:
+
    - Phase 2's loosened search found something close (different colour, trim, year, or the same body type from another make): offer that instead ("Not in white, but we have it in silver — want details?").
    - Nothing close either: name the closest thing on the lot if one exists, otherwise say the team will check and add it to `promises` ("I don't have one in stock right now, but I can have the team let you know the moment one comes in").
    - The bare "we don't have that, no alternative offered" reply is a guard failure, not an acceptable outcome.
 2. **Compose rules:**
+
    - Mention only vehicles from `inventory`.
    - Describe them only with their record's fields.
    - Keep to Phase 0's per-channel count.
    - Put each mentioned VIN in a structured output field (`mentioned_vins`), not only in the text.
 3. **Conversation state:**
+
    - The vehicles mentioned are recorded (`shown_vehicles`), so the next turns don't repeat them.
    - "The second one" / "the silver one" can be resolved against them (Plan 2 Phase 4's short replies).
    - Interest in a shown vehicle fills `interest.model` with its details and source VIN.
 4. **Still restricted:** holding a vehicle, price, discounts, payments, trade-in value and booking a test drive. These get "the team will confirm", as today.
-
 5. **Links and vehicle images (Phase 0 items 4 and 7, decision 47).** For the first quality reply to a lead tied to a specific vehicle, in the client's order: link + image when both are verified; link only if no image; image only if no clean link; otherwise personalise around intent, with no vehicle.
+
    - **Record:** `InventoryRecord` gains `photo_url` (the first of `/api/car`'s `media.photo_links`, which comes from `imagesSecure`). `page_url` already exists.
    - **Link:** Compose may include only the `page_url` of a vehicle in that version's `sms_vins`/`email_vins`. The guard rejects any other URL. The SMS prompt's "no links" line (`agent/llm.py`) changes in the same change.
    - **Image:** Compose returns `sms_media_vin` (one vehicle, from `sms_vins`); code, not the model, takes that record's `photo_url`. Before sending, code checks the URL is https, publicly reachable (HEAD 200), an image type, and ≤ 5 MB. If any check fails, the message falls back down the client's order. Never a stand-in or unrelated photo.
@@ -290,18 +298,21 @@ Write the answers into architecture.md.
    - **Scenario:** `p3_first_reply_media.yaml`: a vehicle lead gets link + image; with the image made unreachable, it gets link only.
 
 **Tests:**
+
 - Answer with results, answer with none.
 - `mentioned_vins` present.
 - A second reference resolved.
 - Shown vehicles not repeated.
 
 **Scenarios:**
+
 - `p3_do_you_have.yaml`: a yes answer naming a real seeded vehicle.
 - `p3_none_in_stock.yaml`: no exact or close match — the reply offers the closest alternative or records a promise to check, never a bare no.
 - `p3_stock_and_price.yaml`: stock answered, price left to the team.
 - `p3_second_one.yaml`: "the second one" picks the right VIN; an ambiguous "the silver one" asks which.
 
 **Done when (Phases 3 and 4 together, decision 49):**
+
 - every Phase 3 and 4 scenario passes live in Docker;
 - zero grounding rejections left after the rewrite across the offline eval set;
 - the burst test still passes, with reply p95 within the current budget;
@@ -377,11 +388,11 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 ## What the client asked for
 
-| # | Client's words (short) | In plain terms | Built today? |
-|---|---|---|---|
-| 1 | "If a lead comes in after hours, send a confirmation with the option to connect now or during business hours." | A lead at 11pm gets a first message that lets the customer choose: carry on now, or be contacted when the dealership opens. | **No.** The first reply goes out straight away at any hour and offers no choice. The 8:00–20:00 window covers only follow-ups the AI sends on its own ([scheduler/contact_window.py](../../../scheduler/contact_window.py)). |
-| 2 | "Dealer Vault contacts, drip service or sales equity campaigns need the TCPA US rules strictly enforced. That is outbound, where a lead is inbound." | Contacting people who didn't just reach out (old DMS contacts, drips, equity campaigns) is marketing. It needs consent, quiet hours in the **customer's** time, opt-out and do-not-call handling. | **Partly.** The AI sends no campaigns (the platform does) and keeps its own follow-ups to 8:00–20:00 **dealer** time. Nothing tells inbound and outbound apart, checks consent or uses the customer's time zone. In the platform, only appointment reminders have quiet hours ([appointmentReminderService.js](../../../../../../aidmvcs-be-dev/app/lib/appointmentReminderService.js), 9:00–20:00 dealer time). |
-| 3 | "The main goals are always qualifying the customer and using their responses to schedule an APPOINTMENT. Don't escalate every customer; strike while the iron is hot." | The conversation should end with a booked visit, not a handoff to staff. | **No.** Booking was out of scope in Plans 1 and 2. A qualified lead is passed to staff, and Compose is told never to say a visit is booked ([agent/llm.py](../../../agent/llm.py)). |
+| # | Client's words (short)                                                                                                                                                 | In plain terms                                                                                                                                                                                         | Built today?                                                                                                                                                                                                                                                                                                                                                                                                                |
+| - | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 | "If a lead comes in after hours, send a confirmation with the option to connect now or during business hours."                                                         | A lead at 11pm gets a first message that lets the customer choose: carry on now, or be contacted when the dealership opens.                                                                            | **No.** The first reply goes out straight away at any hour and offers no choice. The 8:00–20:00 window covers only follow-ups the AI sends on its own ([scheduler/contact_window.py](../../../scheduler/contact_window.py)).                                                                                                                                                                                            |
+| 2 | "Dealer Vault contacts, drip service or sales equity campaigns need the TCPA US rules strictly enforced. That is outbound, where a lead is inbound."                   | Contacting people who didn't just reach out (old DMS contacts, drips, equity campaigns) is marketing. It needs consent, quiet hours in the**customer's** time, opt-out and do-not-call handling. | **Partly.** The AI sends no campaigns (the platform does) and keeps its own follow-ups to 8:00–20:00 **dealer** time. Nothing tells inbound and outbound apart, checks consent or uses the customer's time zone. In the platform, only appointment reminders have quiet hours ([appointmentReminderService.js](../../../../../../aidmvcs-be-dev/app/lib/appointmentReminderService.js), 9:00–20:00 dealer time). |
+| 3 | "The main goals are always qualifying the customer and using their responses to schedule an APPOINTMENT. Don't escalate every customer; strike while the iron is hot." | The conversation should end with a booked visit, not a handoff to staff.                                                                                                                               | **No.** Booking was out of scope in Plans 1 and 2. A qualified lead is passed to staff, and Compose is told never to say a visit is booked ([agent/llm.py](../../../agent/llm.py)).                                                                                                                                                                                                                                      |
 
 ## What already exists
 
@@ -424,11 +435,13 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
 1. **What "after hours" means.** Suggested: outside the dealer's opening hours (`weekly_availability`, otherwise Monday–Saturday 9:00–18:00), not the 8:00–20:00 contact window. A lead at 19:00 is after hours but can still be texted.
 2. **The first reply to an inbound lead at night.** The customer just asked to be contacted, but it's still a text at night. Options:
+
    - **A:** reply by SMS at any hour (fastest; today's behaviour);
    - **B:** at night (20:00–8:00 customer time), reply by email if we have one, and hold the SMS until 8:00;
    - **C:** reply by SMS at night only if the lead arrived in the last few minutes (the customer is waiting for it).
    ~~**Suggested:** C, with B as the fallback.~~ **Changed 28 Sept (architecture.md decision 56), replacing the 27 Sept rule below for inbound leads:** a new inbound lead is the customer asking to be contacted, so our reply **and the rest of the conversation** go out right away at any hour. The customer-local 8:00–21:00 window doesn't limit replies in a conversation the customer started. B1's "now or during business hours?" choice is about the **dealer's** hours only. Sources: the client's own chat (`conversation_2.md`: "if he says yes i need it now then it will start communication right away"; strict TCPA rules for DealerVault drips/equity "cause that is outbound… where a lead is more classified as an inbound task"); TCPA PDF §4 (consumer-initiated lead responses get "response rules", outbound marketing gets "full outbound campaign compliance checks") and §7 (the time window applies "before every covered outbound attempt"). **Conflicting client source, flagged for client confirmation:** the blueprint's box 0 says the AI "continues the conversation immediately (if within TCPA allowed hours)". We follow the chat and the TCPA spec. Proactive messages on an inbound lead (follow-ups, the resume message, the 24h channel switch) still follow the outbound rules (B0.5, B3). ~~**Decided 27 Sept (architecture.md decision 29), our default, flagged for client feedback:** the same rule as item 8 — the customer wrote first, so one reply (answering them and offering the after-hours choice) goes out right away at any hour. The conversation continues right away only inside 8:00–21:00 customer-local time; outside it, it resumes at the next 8:00 customer time, and the customer is told so. This follows the blueprint's "AI acknowledges and continues the conversation immediately (**if within TCPA allowed hours**)" (box 0, "CUSTOMER WANTS HELP NOW").~~
 3. **What counts as outbound.** A list of lead sources and campaign types, e.g.
+
    - outbound: Dealer Vault / DMS imports, sales equity, drips, service reminders sent as marketing, re-engagement;
    - inbound: website forms, third-party lead providers, phone-ups, a customer writing first.
    Needs the platform's real `Lead.source` values. **No campaign type (27 Sept):** the platform has one kind of campaign, always dealer-initiated, so every campaign counts as outbound (B2).
@@ -439,6 +452,7 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
    4. anything else → outbound, and the source goes on the "unmapped sources" report.
    The mapping table is built from the real `Lead.source` values in the dev database before B2 is built.
 4. **Consent. Decided 27 Sept (architecture.md decision 36).** A marketing text the business starts (AI follow-ups, platform campaigns) needs consent. Replies to a message the customer just sent never do. Email needs none (unsubscribe link and the dealer's postal address, CAN-SPAM). Checked in this order:
+
    1. **An explicit "no" wins:** STOP / unsubscribe; the platform phone marked `sms_opt_in: false`; or the lead form saying the customer didn't opt in (e.g. `TCPAOptIn: false`). No marketing text, including follow-ups on their inquiry (agreed 27 Sept). Their first reply still goes out, since it's a reply.
    2. **The platform's opt-in flag counts as consent.** The platform sets `sms_opt_in: true` on a phone when that customer texts the dealer (`lib/customerResolver.js`, `worker/processSms.js:339`), and the phone entry records its `source` and `added_at`.
    3. **Consent from the lead form.** Some lead providers send it inside the lead's comments: the AutoTrader sample has `TCPAOptIn: true|false;` (`aidmvcs-be-dev/autotrader_lead.json`). Read in the AI service from the lead text, no platform change. Only AutoTrader's format is known; others are added as real leads show them (a report lists providers whose leads carry no readable consent). **Changed 29 Sept (architecture.md decision 76):** a bare `TCPAOptIn: true` is **not** counted as consent. The client's spec says not to rely on a third-party boolean alone; without disclosure wording, time and source it's `CONSENT_REVIEW_REQUIRED` and no automated marketing (TCPA PDF §6). The flag and the raw lead are kept as evidence with status "review required". In practice this only affects platform campaigns: follow-ups on the customer's inquiry are still allowed by step 4. `TCPAOptIn: false` still blocks (step 1).
@@ -453,21 +467,24 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
 
    Each consent is saved in the AI service's own record (`ai_consent`, already used for STOP/START) with its source, time and the evidence (the flag's source, the quoted lead-form line, the lead or message id, or the YES email's id). Changes Plan 1's rule in `channels/consent.py`, where an unset flag currently allows texting.
 5. **Customer time zone. Window decided 26 Sept (architecture.md decision 18); lookup method decided 27 Sept (decision 23).**
+
    - **Client decision, overrides the "both" rule below:** outbound SMS only when it's 8:00–21:00 in the **customer's** own local time (`docs/client/autpulse.workflowblueprint.png`, "0. AFTER-HOURS & TCPA COMPLIANCE RULE"; `docs/data/pdf_dump.txt`, TCPA PDF p.2 "Hours" and p.4 §7). This replaces the dealer-time 8:00–20:00 rule Plan 2 shipped (`scheduler/contact_window.py`).
    - **Time zone lookup — decided 27 Sept (architecture.md decision 23):**
      1. **ZIP code, else state.** The platform `Customer` record has no address field. ZIP and State exist on the customer's DealerVault sales and service rows (`worker/dealervault/common/salesFields.js`, `serviceFields.js`, linked by `customer_id`), and on a lead form when the form collects them. So DMS/DealerVault contacts (the outbound ones) usually have one; web leads may not.
      2. **Else the phone's area code.** Less reliable: people keep their number when they move.
      **Decided 28 Sept (architecture.md decision 70):** when only the state is known and the state spans two time zones (e.g. Texas, Florida, Tennessee, Kentucky, Indiana), only the hours legal in both zones are used. ZIP → time zone and area code → time zone come from lookup tables (the `phonenumbers` library covers area codes).
      3. **Else (our default, flagged for client feedback):** only the hours that are legal in every continental US time zone at once (11:00–20:00 Eastern = 8:00–17:00 Pacific under the default 8:00–20:00 window of B0.6). Never the dealer's time zone alone.
-     The zone and how it was found are saved on the lead.
+        The zone and how it was found are saved on the lead.
    - **Dealer hours for outbound — decided 27 Sept (architecture.md decision 24), resolving the old open question:** a message the system starts (follow-ups, campaigns, the 24h channel switch, the handoff-timeout reply) must fall inside **both** the dealer's opening hours (`weekly_availability`, else Monday–Saturday 9:00–18:00) **and** the customer-local window. A reply to a message the customer just sent is exempt from the dealer-hours check. Sources: blueprint box "7. BUSINESS HOURS RULE" ("If outside business hours → send at opening next day… **All other touches follow business hours unless customer replies**"); blueprint box 0 ("This check happens BEFORE any outreach"); Omnichannel PDF p.1 (every automated send stays subject to "dealer schedule, time-window" guardrails).
 6. **State rules.** Some states are stricter than the federal TCPA; for example, Florida and Oklahoma limit marketing texts to 8:00–20:00 and to 3 per 24 hours on the same subject. **Counsel provides the state table**; code applies it by the customer's state. **Still open** — no table has been provided.
+
    - **Who they apply to:** the customer's (recipient's) state, not the dealer's. They cover marketing / solicitation messages the business starts, not replies to a message the customer sent. Some state laws also treat a phone with that state's area code as a resident, so when the ZIP state and the area-code state differ, the stricter of the two applies.
    - **Interim decision 27 Sept (architecture.md decision 25):** until the table arrives, the strictest known state rule is applied to **every** customer, whatever their state: marketing SMS only 8:00–20:00 customer-local time, and at most 3 marketing messages per customer per 24 hours, counted across the AI and campaigns. This is tighter than the client's 8:00–21:00 (decision 18); the stricter one wins until the table says otherwise. **A state rules table from counsel is required to apply state rules properly** (and to loosen states that allow more). Other state rules we don't have reliable details on (e.g. Sunday or holiday limits) aren't in the default; the table must cover them.
 7. **Do-not-call.** An internal do-not-contact list per dealer (from STOP / unsubscribe, already kept by Plan 1), and whether numbers without consent are scrubbed against the national Do Not Call registry (a paid service). **Decided 28 Sept (architecture.md decision 68):** no national registry check. A marketing text already needs consent (B0.4), so a number without consent is never texted anyway. Leads that staff set to "DND" join the dealer's internal do-not-contact list.
 8. **Replies inside an outbound conversation.** When a customer answers an equity campaign at 22:00, does our reply wait until 8:00? ~~**Suggested:** reply right away (the customer wrote first), but follow-ups keep the outbound rules.~~ **Decided 27 Sept (architecture.md decision 29), checked against the client's after-hours rule, flagged for client feedback:** the customer wrote first, so it isn't outreach (blueprint box 0 applies "BEFORE any outreach"; box 7 exempts touches where the customer replies). One reply answering them goes out right away at any hour. But the blueprint also says the AI "continues the conversation immediately (**if within TCPA allowed hours**)", so outside 8:00–21:00 customer-local time that reply tells them the team will pick it up at 8:00 and asks nothing more; the conversation resumes then. Follow-ups keep the outbound rules. **Counsel to confirm.** **28 Sept:** this rule now applies only to **outbound** conversations (a campaign reply, a DealerVault contact). A conversation the customer started continues at any hour (B0.2, decision 56).
 9. **Visit types.** Sales visit / test drive, and service. **Suggested:** sales visits and test drives first. Service booking stays with the service team for now, because service scheduling usually lives in the DMS.
 10. **Booking rules. Decided 27 Sept (architecture.md decision 30) as our defaults, per-dealer settings, flagged for client feedback** (no client document states any of these):
+
     - slot length: 30 minutes;
     - bookings per slot: 2;
     - earliest time offered: at least 2 hours from now, and inside opening hours;
@@ -478,6 +495,7 @@ The existing stubs (`agent/nodes/verify_grounding.py`, `guardrails/output_valida
     - as soon as we know what they want (the model or type) and roughly when they want to buy; budget, trade-in and the other questions can happen at the dealership;
     - or right away when the customer shows a buying signal ("can I come see it?", "test drive", "is it still there?").
 13. **When to hand off. Decided 26 Sept (architecture.md decision 20): two more triggers added to the shipped pair below.**
+
     - Already shipped (`slots/policy.py`): the customer asks for a person; they are clearly upset (Plan 2's 0.8 rule).
     - ~~Still suggested, unconfirmed by the client: they declined a visit and still have a question only staff can answer (price, trade-in value, finance) — see B4 item 4 for the updated decline count.~~ **Decided 28 Sept (architecture.md decision 64):** a staff-only question (price, trade-in value, finance) is not a handoff on its own. The AI says "the team will confirm that for you" and keeps offering a visit (up to 3 attempts, B4 item 4). The lead is handed off only when the customer has declined 3 times and that question is still unanswered. Being upset or urgent still hands off at any point, attempts or not.
     - **Client addition:** escalate immediately when the customer indicates an urgent need (`docs/client/autpulse.workflowblueprint.png`, "7. ESCALATION RULES").
@@ -539,6 +557,7 @@ Principle 5 (decided 27 Sept, architecture.md decision 35). Built first, before 
 **Tests:** after-hours detection per dealer time zone and hours; each path; the choice asked once; a `later` answer stops questions until opening.
 
 **Scenarios:**
+
 - `pb1_after_hours_now.yaml`: a lead at 23:00, the customer says "now", the conversation carries on.
 - `pb1_after_hours_later.yaml`: the customer says "tomorrow", then the clock moves to 9:00 and the resume message goes out.
 
@@ -647,6 +666,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 **Tests:** when `offer_visit` fires and when it doesn't; the buying signal; a decline parks the offer; the new endings; a qualified lead is no longer handed off; an urgent message (and a `needed_by` within 48 hours) hands off; an eager but not urgent one doesn't; a staff-only question hands off only after the third decline; `visit_followup` is due on the customer's date or +3 days.
 
 **Scenarios:**
+
 - `pb4_offer_after_qualified.yaml`: a sales lead answers the key questions and gets a visit offer, not a handoff.
 - `pb4_buying_signal.yaml`: "can I come see it this weekend?" on the first reply gets times straight away.
 - `pb4_declined.yaml`: "not yet" parks the offer, and the conversation carries on.
@@ -700,6 +720,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 **Tests:** time building (hours, existing bookings, earliest time); matching the customer's pick; no double booking on retry; slot taken; move (with `booking_status` sent) and cancel; asking for the missing email or phone; no second confirmation from the AI; no pause after an AI booking; the guard's booked rule (pending vs. confirmed wording, a later turn, a cancelled booking); times shown in dealer time, with the zone added only when the customer's differs; the team notification on a move or cancel carries the known-gap notes.
 
 **Scenarios:**
+
 - `pb5_book_visit.yaml`: an offer, "the second one", a booking created, and a confirmation sent.
 - `pb5_slot_taken.yaml`: the chosen time is taken meanwhile, and new times are offered.
 - `pb5_reschedule.yaml`: a booked customer asks to move it.
@@ -748,6 +769,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 # Part C: TCPA AI Compliance Guardrails & Omnichannel Workflow Spec Implementation
 
 > **Source Documents:**
+>
 > 1. [`../../data/AutoPulse_TCPA_AI_Compliance_Guardrails_Developer_Spec.pdf`](../../data/AutoPulse_TCPA_AI_Compliance_Guardrails_Developer_Spec.pdf)
 > 2. [`../../data/AutoPulse_New_Lead_Follow_Up_Workflow_OMNICHANNEL_FINAL.pdf`](../../data/AutoPulse_New_Lead_Follow_Up_Workflow_OMNICHANNEL_FINAL.pdf)
 > 3. [`../../data/conversation_3.md`](../../data/conversation_3.md)
@@ -758,6 +780,7 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 > **27 Sept status:** principles 2 and 3 below (call tasks, the 1-hour call timer) are **skipped for now** with C2. C3 is AI-service only. C5 ships, including the manager outcome (a platform change).
 >
 > **Key Principles:**
+>
 > 1. **Compliance Engine Gate:** The AI *never* decides whether a message is legal. Every send passes through a deterministic Compliance Engine returning `ALLOW`, `HOLD`, `REVIEW`, or `BLOCK`. `BLOCK` / `REVIEW` can never be overridden by the AI or users.
 > 2. **Omnichannel Mandate (CALL + TEXT + EMAIL):** Every scheduled follow-up touch engages all permitted channels simultaneously (AI SMS + AI Email + Human Call Task).
 > 3. **1-Hour Call Escalation Timer:** Every AI touch starts a 60-minute connection timer. If no meaningful contact occurs within 60 minutes, a human call task is activated for dealership staff (respecting agent work hours).
@@ -767,14 +790,14 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 
 ## Phase Overview (Part C)
 
-| # | Phase | You can see it when |
-|---|---|---|
-| C1 | Compliance Engine & Evidence Schema | Sends return `ALLOW`/`HOLD`/`REVIEW`/`BLOCK`, natural-language opt-outs route to `REVIEW`/suppression, and evidence metadata is saved |
-| C2 | Omnichannel Rule & 1-Hour Call Escalation | Scheduled follow-up sends SMS + Email and starts a 60-min timer that activates a staff call task if no response |
-| C3 | Master State Machine & Priority Engine | Lead transitions cleanly through Short-Term, Specific, Appointment, No-Show, Sales Visit, and Day 91 closure with pre-send rechecks |
-| C4 | Short-Term Cadence & Required Touch Rules | Touch 1 ends with "Tell me, what are you driving now?", Touch 2 sends "{FirstName}?" nudge 3 hours later, and Days 2-7 follow thematic angles |
-| C5 | Appointment Confirmation, No-Show & Sales Visit | 15-min confirmation sent, Day-before Y/N router handles replies, +1h No Show triggers check-in, and Sales Visit requires manager outcome |
-| C6 | Edge Cases & Operational Hardening | Wrong number/bad phone suppressed, email hard-bounces handled, duplicate leads merged, and photo fallbacks enforced |
+| #  | Phase                                           | You can see it when                                                                                                                             |
+| -- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1 | Compliance Engine & Evidence Schema             | Sends return `ALLOW`/`HOLD`/`REVIEW`/`BLOCK`, natural-language opt-outs route to `REVIEW`/suppression, and evidence metadata is saved |
+| C2 | Omnichannel Rule & 1-Hour Call Escalation       | Scheduled follow-up sends SMS + Email and starts a 60-min timer that activates a staff call task if no response                                 |
+| C3 | Master State Machine & Priority Engine          | Lead transitions cleanly through Short-Term, Specific, Appointment, No-Show, Sales Visit, and Day 91 closure with pre-send rechecks             |
+| C4 | Short-Term Cadence & Required Touch Rules       | Touch 1 ends with "Tell me, what are you driving now?", Touch 2 sends "{FirstName}?" nudge 3 hours later, and Days 2-7 follow thematic angles   |
+| C5 | Appointment Confirmation, No-Show & Sales Visit | 15-min confirmation sent, Day-before Y/N router handles replies, +1h No Show triggers check-in, and Sales Visit requires manager outcome        |
+| C6 | Edge Cases & Operational Hardening              | Wrong number/bad phone suppressed, email hard-bounces handled, duplicate leads merged, and photo fallbacks enforced                             |
 
 ---
 
@@ -940,16 +963,16 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 >
 > What exists already, checked against the platform:
 >
-> | C5 piece | Already done by the platform? | If we build it |
-> |---|---|---|
-> | Details text/email after booking | **Yes:** `POST /api/booking` sends a confirmation straight away | Nothing to build; skip ours |
-> | Reminders before the appointment | **Yes:** `appointmentReminderService.js`, per-dealer settings | Would duplicate unless switched off. **Can be switched off, no code change:** dealer Settings → Reminder settings (`dealer/settings/reminder-settings`), "enabled" toggle (`appointment_reminder_settings.enabled`; off also stops the post-appointment messages) |
-> | Messages after the appointment | **Yes, if the dealer turns them on:** same settings page, `post_enabled` (off by default) | Would clash with the no-show messages; must stay off for AI dealers |
-> | Day-before "Does this still work? Reply Y or N", and reading the reply | No (the platform's reminders don't ask Y/N) | AI service: send, read Y/N, mark `confirmed` via existing `PUT /api/booking`, reschedule on N. No platform change |
-> | Daily countdown with a vehicle photo | No | AI service (needs MMS) |
-> | No-show: +1h "are you here?", +24h "how did it go?", then back to follow-ups | **Partly:** when *staff* set "No Show", the platform sends its own no-show message (`status/route.js:609`) | AI service, timed from the booking; "no visit" = staff haven't set Visited. **Conflict:** if staff also click "No Show", the customer gets the platform's message and ours. **This one has no switch:** the platform always sends it when staff set "No Show" (`status/route.js:609`, no setting checked) |
-> | Visit stops all automation | **Yes:** staff setting "Visited" already pauses the AI | Nothing to build |
-> | Manager must pick SOLD PENDING / SOLD DELIVERED / UNSOLD | No (the platform has only "Sold") | **Platform change** (new status options in the existing status dropdown, `StatusModal.js`, plus the status route). **Planned to be shipped (27 Sept)**; see above |
+> | C5 piece                                                                     | Already done by the platform?                                                                                        | If we build it                                                                                                                                                                                                                                                                                                         |
+> | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | Details text/email after booking                                             | **Yes:** `POST /api/booking` sends a confirmation straight away                                              | Nothing to build; skip ours                                                                                                                                                                                                                                                                                            |
+> | Reminders before the appointment                                             | **Yes:** `appointmentReminderService.js`, per-dealer settings                                                | Would duplicate unless switched off.**Can be switched off, no code change:** dealer Settings → Reminder settings (`dealer/settings/reminder-settings`), "enabled" toggle (`appointment_reminder_settings.enabled`; off also stops the post-appointment messages)                                            |
+> | Messages after the appointment                                               | **Yes, if the dealer turns them on:** same settings page, `post_enabled` (off by default)                    | Would clash with the no-show messages; must stay off for AI dealers                                                                                                                                                                                                                                                    |
+> | Day-before "Does this still work? Reply Y or N", and reading the reply       | No (the platform's reminders don't ask Y/N)                                                                          | AI service: send, read Y/N, mark `confirmed` via existing `PUT /api/booking`, reschedule on N. No platform change                                                                                                                                                                                                  |
+> | Daily countdown with a vehicle photo                                         | No                                                                                                                   | AI service (needs MMS)                                                                                                                                                                                                                                                                                                 |
+> | No-show: +1h "are you here?", +24h "how did it go?", then back to follow-ups | **Partly:** when *staff* set "No Show", the platform sends its own no-show message (`status/route.js:609`) | AI service, timed from the booking; "no visit" = staff haven't set Visited.**Conflict:** if staff also click "No Show", the customer gets the platform's message and ours. **This one has no switch:** the platform always sends it when staff set "No Show" (`status/route.js:609`, no setting checked) |
+> | Visit stops all automation                                                   | **Yes:** staff setting "Visited" already pauses the AI                                                         | Nothing to build                                                                                                                                                                                                                                                                                                       |
+> | Manager must pick SOLD PENDING / SOLD DELIVERED / UNSOLD                     | No (the platform has only "Sold")                                                                                    | **Platform change** (new status options in the existing status dropdown, `StatusModal.js`, plus the status route). **Planned to be shipped (27 Sept)**; see above                                                                                                                                        |
 >
 > The platform's rule-based follow-ups (`followupService.js`) are **not** a conflict: they're already switched off for dealers whose AI is live (`aiOwnsFollowUps`).
 >
@@ -986,4 +1009,3 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - If requested vehicle photo is unavailable, never send unrelated or fabricated photos; fall back to non-photo text message.
 
 **Tests:** Bad number suppression, email hard-bounce channel isolation, duplicate lead merge prevention, and photo fallback enforcement.
-

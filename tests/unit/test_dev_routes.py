@@ -155,3 +155,47 @@ def test_slots_come_with_the_conversation_state(client):
     assert "just asked" in statuses.values()                     # the second reply's ask
     assert all(a["label"] and a["count"] == 1 for a in conversation["asks"])
     assert body["summary"]["text"] == ""                         # nothing to summarize yet
+
+
+# --- MASTER_PLAN_3 Phase 6 item 3: mark a vehicle sold, for testing freshness by hand ------------
+
+async def test_mark_sold_removes_the_vehicle_so_it_reads_as_gone(client, mongo):
+    from upsell_agent import clock
+    from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION
+    from upsell_agent.tools.inventory_tool import StubInventorySource, get_vehicle
+
+    vin = "VIN00000000000901"
+    await mongo[PLATFORM_VEHICLES_COLLECTION].insert_one({
+        "dealerId": DEALER, "vin": vin, "year": 2022, "make": "Toyota", "model": "RAV4", "condition": "used",
+        "createdAt": clock.now()})
+    source = StubInventorySource()
+    assert await get_vehicle(DEALER, vin, source) is not None
+
+    res = client.post(f"/dev/stock/{vin}/mark-sold", params={"dealer_id": DEALER})
+    assert res.status_code == 200 and res.json() == {"status": "sold", "vin": vin}
+    assert await get_vehicle(DEALER, vin, source) is None
+
+
+def test_mark_sold_404s_for_an_unknown_vin(client):
+    res = client.post("/dev/stock/NOSUCHVIN/mark-sold", params={"dealer_id": DEALER})
+    assert res.status_code == 404
+
+
+# --- Scenarios never call a real AI model ---------------------------------------------------------
+
+async def test_scenarios_refuse_to_run_with_real_models(monkeypatch):
+    from upsell_agent.devtools import scenarios
+
+    monkeypatch.setattr(scenarios, "get_settings", lambda: make_settings("DEV").model_copy(
+        update={"model_extract": "openai:gpt-4o-mini", "model_compose": "openai:gpt-4o"}))
+    with pytest.raises(scenarios.RealModelsRefused, match="MODEL_EXTRACT"):
+        await scenarios.run_all(enqueue=None, queue=None)
+
+
+def test_scenario_run_endpoint_refuses_real_models(client, monkeypatch):
+    from upsell_agent.devtools import scenarios
+
+    monkeypatch.setattr(scenarios, "get_settings", lambda: make_settings("DEV").model_copy(
+        update={"model_extract": "openai:gpt-4o-mini", "model_compose": "openai:gpt-4o"}))
+    res = client.post("/dev/scenarios/run", json={})
+    assert res.status_code == 400 and "MODEL_EXTRACT" in res.json()["detail"]

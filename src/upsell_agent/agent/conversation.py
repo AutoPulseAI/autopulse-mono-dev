@@ -15,6 +15,10 @@ conversation itself, beyond the slot values. Stored on
                   how many times it's been offered, the angle and times each
                   attempt used, whether it's been declined out, and any
                   active booking
+  shown_vehicles  VINs this reply named (MASTER_PLAN_3 Phase 3 decision F), so
+                  the next turn doesn't offer the same vehicle as new. Stored
+                  on this lead's own state, so nothing is shared across leads
+                  or dealers.
 
 Updated only after a turn whose reply went out (sent, or failed and handed
 to the channel switch). Shadow turns change nothing: the customer never saw
@@ -29,6 +33,7 @@ from pydantic import BaseModel, Field, computed_field
 
 MAX_OPEN_QUESTIONS = 10
 MAX_PROMISES = 10
+MAX_SHOWN_VEHICLES = 10
 # A clarification re-explains our last question: it doesn't count as asking again,
 # and what we last asked stays what the customer is answering.
 KEEPS_LAST_ASK = {"clarify"}
@@ -94,6 +99,12 @@ class VisitState(BaseModel):
     why: str | None = None
 
 
+class ShownVehicle(BaseModel):
+    vin: str
+    turn: int = 0
+    channel: str | None = None
+
+
 class ConversationState(BaseModel):
     turn: int = 0
     asks: dict[str, SlotAsks] = Field(default_factory=dict)
@@ -103,6 +114,7 @@ class ConversationState(BaseModel):
     last_topic: str | None = None
     after_hours: AfterHoursChoice | None = None
     visit: VisitState | None = None
+    shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -174,6 +186,8 @@ def after_turn(
     promises: list[str],
     after_hours: dict | None = None,
     visit: dict | None = None,
+    shown_vins: list[str] | None = None,
+    channel: str | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -181,7 +195,10 @@ def after_turn(
     questions are recorded even if nothing was sent, so they're answered next
     time. `after_hours`: the after-hours choice as this turn left it
     (agent/after_hours.py), kept only when the reply went out. `visit`: the
-    visit offer as this turn left it (agent/visit_offer.py), same rule."""
+    visit offer as this turn left it (agent/visit_offer.py), same rule.
+    `shown_vins`: the vehicles the reply that actually went out named
+    (MASTER_PLAN_3 Phase 3 decision F), so the next turn doesn't offer them
+    again as new."""
     if shadow:
         return state
     at = now.isoformat()
@@ -209,6 +226,11 @@ def after_turn(
             if _key(text) and _key(text) not in made:
                 updated.promises.append(Promise(text=text.strip(), made_at=at, turn=updated.turn))
                 made.add(_key(text))
+        shown = {v.vin for v in updated.shown_vehicles}
+        for vin in shown_vins or []:
+            if vin and vin not in shown:
+                updated.shown_vehicles.append(ShownVehicle(vin=vin, turn=updated.turn, channel=channel))
+                shown.add(vin)
         updated.last_topic = _topic(action, asked_slots, used_template)
         if after_hours is not None:
             updated.after_hours = AfterHoursChoice.model_validate(after_hours)
@@ -217,4 +239,6 @@ def after_turn(
 
     updated.open_questions = updated.open_questions[-MAX_OPEN_QUESTIONS:]
     updated.promises = updated.promises[-MAX_PROMISES:]
+    updated.shown_vehicles = updated.shown_vehicles[-MAX_SHOWN_VEHICLES:]
     return updated
+

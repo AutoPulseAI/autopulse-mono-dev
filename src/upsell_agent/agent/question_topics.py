@@ -16,8 +16,14 @@ import re
 
 PRICE_QUESTION = re.compile(r"\b(price|cost|how much|payments?|financ\w*|apr|interest rate|discount|deal|worth|value|"
                             r"approv\w*|credit)\b", re.IGNORECASE)
-STOCK_QUESTION = re.compile(r"\b(in stock|on (?:the|your) lot|available|availability|still (?:there|have|available)|"
-                            r"do you (?:have|got|carry)|have any|got any|what (?:\w+ )?do you have)\b", re.IGNORECASE)
+# "you" is written many ways in a text message ("u", "ya", "yall"), and "what
+# ... do you have" can have several words between "what" and "do you have"
+# ("what RAV4 models do u have"), not just one - both found in real testing.
+STOCK_QUESTION = re.compile(
+    r"\b(in stock|in (?:your |the )?inventory|on (?:the|your) lot|available|availability|"
+    r"still (?:there|have|available)|"
+    r"do (?:you|u|ya|yall|y'all) (?:have|got|carry)|have any|got any|"
+    r"what (?:\w+\s+){0,3}do (?:you|u|ya|yall|y'all) have)\b", re.IGNORECASE)
 
 
 def is_price_question(text: str) -> bool:

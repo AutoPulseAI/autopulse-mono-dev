@@ -31,7 +31,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
 
 export function Timeline({ turns, mode, replayTurnId, replay, onPickTurn, onLive }: Props) {
   return (
-    <div className="flex items-center gap-3 border-t border-line bg-panel px-3 py-2">
+    <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-t border-line bg-panel px-3 py-2">
       <button
         type="button"
         onClick={onLive}

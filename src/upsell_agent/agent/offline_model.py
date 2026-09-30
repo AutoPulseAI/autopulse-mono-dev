@@ -352,9 +352,13 @@ def _label(question: str) -> str:
         return "clarify"
     if _ABOUT_ME.search(question):
         return "about_me"
-    # Two separate rules (agent/question_topics.py); stock stays restricted until Phase 3.
-    if is_price_question(question) or is_stock_question(question):
+    if is_price_question(question):
         return "restricted"
+    # MASTER_PLAN_3 Phase 3 item 0: stock questions are answerable now that
+    # the inventory layer + grounding check exist (agent/question_topics.py
+    # keeps price and stock as two separate rules).
+    if is_stock_question(question):
+        return "answerable"
     if _OFF_TOPIC.search(question):
         return "off_topic"
     return "answerable"
@@ -445,13 +449,57 @@ def _dealer_answer(question: str, info: dict[str, Any]) -> str | None:
     return None
 
 
-def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[str, list[str]]:
-    """One short sentence per kind of question, and the promises they make."""
+# MASTER_PLAN_3 Phase 3: vehicles named at once. The offline model always
+# stays at the SMS limit (architecture decision 16) even for email, rather
+# than building a separate, longer email-only version - a real model may use
+# email's extra slot.
+STOCK_MAX_NAMED = 2
+
+
+def _vehicle_phrase(record: dict[str, Any]) -> str:
+    """One vehicle, described only from its own record fields."""
+    name = " ".join(str(p) for p in (record.get("year"), record.get("exterior_color"), record.get("make"),
+                                     record.get("model"), record.get("trim")) if p)
+    extra = [f"{record['miles']:,} miles"] if record.get("miles") is not None else []
+    if record.get("condition"):
+        extra.append(record["condition"])
+    return name + (f" ({', '.join(extra)})" if extra else "")
+
+
+def _stock_answer(payload: dict[str, Any], *, bad_trim: bool = False) -> tuple[str, list[str], list[str]]:
+    """A stock question answered from context.inventory alone (Phase 3 item 1):
+    real vehicles if there are any, never a bare "no" otherwise."""
+    inventory = (payload.get("context") or {}).get("inventory") or []
+    fresh = [r for r in inventory if not r.get("already_shown")] or inventory
+    chosen = fresh[:STOCK_MAX_NAMED]
+    if not chosen:
+        # Wording deliberately avoids "in stock" / "available" (the guard's own
+        # availability patterns): this is an honest "we have nothing" plus a
+        # promise, not an availability claim about a specific vehicle.
+        return ("I'm not seeing a matching one right now, but I can have the team let you know the moment one comes in.",
+                [], ["The team will let you know when a matching vehicle comes in."])
+    names = [_vehicle_phrase(r) for r in chosen]
+    if bad_trim:  # #badtrim (dev hint): a trim not on the named vehicle, to exercise the grounding check
+        fake = "Limited" if (chosen[0].get("trim") or "").lower() != "limited" else "Sport"
+        names[0] += f" in the {fake} trim"
+    return (f"Good news - we have {'; and '.join(names)} in stock.", [r["vin"] for r in chosen], [])
+
+
+def _answers(questions: list[dict[str, str]], payload: dict[str, Any],
+            *, bad_trim: bool = False) -> tuple[str, list[str], list[str]]:
+    """One short sentence per kind of question, the promises they make, and
+    the VINs of any vehicle named."""
     sentences: list[str] = []
     promises: list[str] = []
+    vins: list[str] = []
     info = ((payload.get("context") or {}).get("dealer") or {}).get("info") or {}
     team = [q for q in questions if q["label"] == "restricted"]
-    for q in (q for q in questions if q["label"] == "answerable"):
+    stock = [q for q in questions if q["label"] == "answerable" and is_stock_question(q["text"])]
+    if stock:
+        text, vins, stock_promises = _stock_answer(payload, bad_trim=bad_trim)
+        sentences.append(text)
+        promises += stock_promises
+    for q in (q for q in questions if q["label"] == "answerable" and q not in stock):
         answer = _dealer_answer(q["text"], info)
         if answer:
             sentences.append(answer)
@@ -466,7 +514,7 @@ def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[
         sentences.append("I can only help with your vehicle here, but I'm glad to do that.")
     if any(q["label"] == "clarify" for q in questions):
         sentences.append("Sorry for not being clear - I'm here to help you find the right vehicle.")
-    return " ".join(sentences), promises
+    return " ".join(sentences), promises, vins
 
 
 def _confirm_text(confirm: dict[str, Any]) -> str:
@@ -506,19 +554,28 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     dates = [c["display"] for c in payload.get("just_captured") or [] if c.get("kind") == "date"]
     if dates and action not in ("handoff", "confirm"):
         opener += f"Got it - {dates[0]}. "
-    answered, promises = _answers(questions, payload)
+    bad_trim = "#badtrim" in text and attempt == 1  # dev hint: exercises the grounding check (Phase 4)
+    answered, promises, vins = _answers(questions, payload, bad_trim=bad_trim)
+    # MASTER_PLAN_3 Phase 3 decision L: a stock-free version too, so the 24h
+    # channel switch never resends a vehicle mention hours after it was checked.
+    no_stock_payload = {**payload, "context": {**(payload.get("context") or {}), "inventory": []}}
+    answered_no_stock, _, _ = _answers(questions, no_stock_payload)
+
     # At most two questions (MASTER_PLAN_3 Bq): the confirmation first, then the asks. A visit offer
     # takes the confirmation's bonus-question slot when it's given (MASTER_PLAN_3 B4, decision 107).
     follow_ups = ([_visit_offer_text(visit_offer)] if visit_offer else
                  [_confirm_text(confirm)] if confirm else []) + [_question_for(a) for a in asks]
     follow_up = "".join(f" {q}" for q in follow_ups[:2])
 
+    body_no_vehicles = None
     if action == "answer":
         body = f"{opener}{answered}{follow_up}"
         why = f"Answering {len(questions)} question(s) first" + (
             f", then {len(follow_ups[:2])} follow-up(s)." if follow_up else ".")
         if visit_offer:
             why += f" A visit offer (attempt {visit_offer.get('attempt')}) is the bonus question."
+        if vins:
+            body_no_vehicles = f"{opener}{answered_no_stock}{follow_up}"
     elif action == "offer_visit":
         taken = f"Sorry, {visit['slot_taken']} was just taken. " if visit.get("slot_taken") else ""
         body = f"{opener}{taken}{follow_up.strip()}"
@@ -529,10 +586,14 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         explained = " ".join(i["explanation"] for i in items if i.get("explanation"))
         again = " ".join(i["question"] for i in items if i.get("question"))
         body = f"Sorry, I should have been clearer. {explained} {again}".strip()
+        prefix = body
         others = [q for q in questions if q["label"] != "clarify"]
         if others:
-            extra, promises = _answers(others, payload)
+            extra, promises, vins = _answers(others, payload, bad_trim=bad_trim)
             body += f" {extra}"
+            if vins:
+                extra_no_stock, _, _ = _answers(others, no_stock_payload)
+                body_no_vehicles = f"{prefix} {extra_no_stock}"
         why = "The customer asked what we meant, so the last question is explained and asked again, nothing new."
     elif action == "ask":
         body = f"{opener}{follow_up.strip()}"
@@ -616,9 +677,16 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
 
     sms = body if len(body) <= SMS_MAX else body[: SMS_MAX - 1].rsplit(" ", 1)[0] + "…"
     subject = f"Re: {campaign['name']}" if campaign else "Your inquiry"
-    return {"sms_text": sms, "email_subject": subject,
-            "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
-            "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify") else []}
+    result = {"sms_text": sms, "email_subject": subject,
+             "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
+             "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify") else [],
+             "sms_vins": vins, "email_vins": vins}
+    if body_no_vehicles:
+        no_sms = body_no_vehicles if len(body_no_vehicles) <= SMS_MAX else (
+            body_no_vehicles[: SMS_MAX - 1].rsplit(" ", 1)[0] + "…")
+        result.update(sms_text_no_vehicles=no_sms, email_subject_no_vehicles=subject,
+                      email_body_no_vehicles=f"Hi {name},\n\n{body_no_vehicles}\n\nThanks,\nThe Team")
+    return result
 
 
 def summarize(payload: dict[str, Any]) -> dict[str, Any]:

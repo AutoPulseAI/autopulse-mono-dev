@@ -48,6 +48,7 @@ from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
     PLATFORM_USERS_COLLECTION,
+    PLATFORM_VEHICLES_COLLECTION,
 )
 from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
@@ -71,6 +72,22 @@ def _deps() -> TurnDeps:
                     sender=Sender(FakeChannelDriver(), StubPlatformClient(), retry_base_s=0))
 
 
+def _vehicle(vin: str, **overrides: Any) -> dict[str, Any]:
+    """One `vehicles` row, shaped like the vAuto feed (MASTER_PLAN_3 Phase 7
+    item 1). `overrides` uses the same friendly names a case's `stock` list
+    does: year, make, model, trim, body, condition, color, miles."""
+    row = {"dealerId": DEALER, "vin": vin, "year": 2022, "make": "Toyota", "model": "RAV4", "trim": "LE",
+          "body": "SUV", "condition": "used", "color": "White", "miles": 20000}
+    row.update(overrides)
+    return {
+        "dealerId": row["dealerId"], "vin": vin, "year": row["year"], "make": row["make"], "model": row["model"],
+        "trim": row["trim"], "body": row["body"], "condition": row["condition"], "exteriorcolor": row["color"],
+        "mileage": row["miles"], "internetreduced": 25000, "instoreprice": 26500,
+        "inventoryUrl": f"https://dev.example/{vin}", "imagesSecure": [f"https://dev.example/{vin}.jpg"],
+        "createdAt": clock.now(),
+    }
+
+
 async def _setup(case: dict[str, Any]) -> dict[str, str]:
     """A fresh database with the dev dealers, the clock at EVAL_NOW, and a new
     lead (whose first reply runs when `comments` is given or the trigger is a new lead)."""
@@ -81,11 +98,21 @@ async def _setup(case: dict[str, Any]) -> dict[str, str]:
     # at 10:00 New York (7:00 Los Angeles) would be held to "no questions"
     # (MASTER_PLAN_3 C1). The evals judge replies, not zones: customers are in New York.
     engine.customer_zone = _new_york_customer
+    # tools/inventory_tool.py's 60s cache is a module-level global, keyed by
+    # dealer_id + params - the same dealer_id across every eval case sharing
+    # this process, so a stale hit from an earlier case's (different)
+    # database is otherwise possible within the TTL window.
+    from upsell_agent.tools.inventory_tool import clear_cache as clear_inventory_cache
+
+    clear_inventory_cache()
     clock.set_offset((EVAL_NOW - datetime.now(UTC)).total_seconds())
     await simulate.ensure_platform_dealers()
     if case.get("dealer_info"):
         info = {f"dealer_account_information.{k}": v for k, v in case["dealer_info"].items()}
         await mongodb.get_db()[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(DEALER)}, {"$set": info})
+    for i, row in enumerate(case.get("stock", [])):
+        vin = row.pop("vin", None) or f"EVALVIN{i:010d}"
+        await mongodb.get_db()[PLATFORM_VEHICLES_COLLECTION].insert_one(_vehicle(vin, **row))
     return await simulate.create_lead(DEALER, lead_type=case.get("lead_type", "sales"),
                                       channel=case.get("channel", "sms"), name="Maria Test",
                                       comments=case.get("comments", ""))
@@ -125,6 +152,7 @@ def _turn_view(log: dict) -> dict[str, Any]:
         "guard_violations": [v for g in guards for v in g["output"].get("violations", [])],
         "draft": (nodes.get("compose") or {}).get("output"),
         "decision": (nodes.get("decide") or {}).get("output"),
+        "inventory": (nodes.get("search_stock") or {}).get("output"),
         "questions": ((nodes.get("extract") or {}).get("output") or {}).get("questions", []),
         "cost_usd": float(summary.get("cost_usd") or 0), "ms": log.get("ms"),
     }

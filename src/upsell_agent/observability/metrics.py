@@ -12,6 +12,13 @@ dealer over the last N days:
   also hand-offs and opt-outs
 - sending: sent / failed / suppressed; follow-ups (24h channel switches):
   sent / cancelled / pending; staff checks after a handoff, likewise
+- freshness (MASTER_PLAN_3 Phase 5): how often a vehicle mentioned this turn
+  was re-checked right before sending, and how often that catch something
+  sold. "Sold vehicle mentioned" has no separate audit query: the send/
+  follow-up code paths never fall through to the vehicle-naming text once a
+  VIN is caught sold (guardrails/draft_guard.py's grounding check would also
+  reject it if they somehow did), so this count is a canary on how often the
+  feed goes stale under a dealer, not a search for a leak.
 
 Computed from the service's own collections, scoped to the dealer. Used by
 GET /v1/metrics, the Debug UI Metrics tab and `make ai-report`.
@@ -57,23 +64,40 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
     handoff_turns = await turns.count_documents({**in_window, "outcome": "handoff"})
 
     guard_failures = turns_with_guard_failure = rejected = 0
+    grounding_rejections = turns_with_grounding_rejection = 0
+    freshness_checked = freshness_caught_sold = 0
+    inventory_query_ms: list[float] = []
     cost_by_day: dict[str, float] = {}
     tokens = {"in": 0, "out": 0}
     cursor = turns.find(in_window, projection={"nodes.node": 1, "nodes.status": 1, "nodes.output.passed": 1,
-                                    "nodes.output.rejected": 1, "summary.cost_usd": 1, "summary.tokens_in": 1,
+                                    "nodes.output.rejected": 1, "nodes.output.freshness_recheck": 1,
+                                    "nodes.output.checks.grounded_in_real_stock": 1,
+                                    "nodes.output.searched": 1, "nodes.ms": 1,
+                                    "summary.cost_usd": 1, "summary.tokens_in": 1,
                                     "summary.tokens_out": 1, "created_at": 1})
     async for turn in cursor:
-        failed_here = 0
+        failed_here = grounding_failed_here = 0
         for node in turn.get("nodes", []):
             if node.get("status") != "done":
                 continue
             output = node.get("output") or {}
             if node.get("node") == "guard" and output.get("passed") is False:
                 failed_here += 1
+                # MASTER_PLAN_3 Phase 4/7: specifically a vehicle-fact rejection,
+                # not any guard failure (an invented number rejects too).
+                if (output.get("checks") or {}).get("grounded_in_real_stock") is False:
+                    grounding_failed_here += 1
             elif node.get("node") == "validate":
                 rejected += len(output.get("rejected") or [])
+            elif node.get("node") == "search_stock" and output.get("searched") and node.get("ms") is not None:
+                inventory_query_ms.append(float(node["ms"]))
+            if node.get("node") == "send" and output.get("freshness_recheck"):
+                freshness_checked += 1
+                freshness_caught_sold += 1 if output["freshness_recheck"].get("sold") else 0
         guard_failures += failed_here
         turns_with_guard_failure += 1 if failed_here else 0
+        grounding_rejections += grounding_failed_here
+        turns_with_grounding_rejection += 1 if grounding_failed_here else 0
         summary = turn.get("summary") or {}
         day = turn["created_at"].strftime("%Y-%m-%d")
         cost_by_day[day] = round(cost_by_day.get(day, 0.0) + float(summary.get("cost_usd") or 0), 6)
@@ -88,6 +112,15 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         cost_by_day[day] = round(cost_by_day.get(day, 0.0) + float(summary.get("cost_usd") or 0), 6)
         tokens["in"] += int(summary.get("tokens_in") or 0)
         tokens["out"] += int(summary.get("tokens_out") or 0)
+
+    # A 24h channel switch's own re-check (Phase 5 item 2) logs under its own
+    # "followup" trigger, not one of TURN_TRIGGERS.
+    async for run in turns.find({"created_at": {"$gte": since}, "trigger": "followup"},
+                                projection={"nodes.node": 1, "nodes.status": 1, "nodes.output.freshness_recheck": 1}):
+        for node in run.get("nodes", []):
+            if node.get("status") == "done" and node.get("node") == "send" and (fr := (node.get("output") or {}).get("freshness_recheck")):
+                freshness_checked += 1
+                freshness_caught_sold += 1 if fr.get("sold") else 0
 
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"created_at": {"$gte": since}}, projection={"status": 1, "first_reply_ms": 1}).to_list(None)
@@ -147,6 +180,11 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
                               "template_first_replies_by_design": template_by_design},
         "guard_failures": {"drafts": guard_failures, "turns": turns_with_guard_failure,
                            "rate": _rate(turns_with_guard_failure, ai_turns)},
+        "grounding_rejections": {"drafts": grounding_rejections, "turns": turns_with_grounding_rejection,
+                                 "rate": _rate(turns_with_grounding_rejection, ai_turns)},
+        "inventory_query_ms": {"n": len(inventory_query_ms), "p50": _pct(inventory_query_ms, 50),
+                               "p95": _pct(inventory_query_ms, 95),
+                               "max": max(inventory_query_ms) if inventory_query_ms else None},
         "rejected_extractions": {"values": rejected, "per_turn": _rate(rejected, total)},
         "cost_usd": {"total": round(sum(cost_by_day.values()), 6), "by_day": dict(sorted(cost_by_day.items())),
                      "tokens_in": tokens["in"], "tokens_out": tokens["out"]},
@@ -162,6 +200,7 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         "staff_checks": staff_checks,
         "send_checks": {"by_decision": send_checks, "sent_outside_allowed_hours": outside_hours},
         "unmapped_lead_sources": dict(sorted(unmapped.items(), key=lambda kv: -kv[1])),
+        "freshness": {"rechecked": freshness_checked, "caught_sold": freshness_caught_sold},
     }
 
 
@@ -179,6 +218,10 @@ def format_report(m: dict[str, Any]) -> str:
         (f"  Template fallback:  {fb['turns']} turn(s), {pct(fb['rate'])} "
          f"(+{fb['template_first_replies_by_design']} template first replies by design)"),
         f"  Guard failures:     {gf['drafts']} draft(s) in {gf['turns']} turn(s), {pct(gf['rate'])}",
+        (f"  Grounding rejected: {m['grounding_rejections']['drafts']} draft(s) in "
+         f"{m['grounding_rejections']['turns']} turn(s), {pct(m['grounding_rejections']['rate'])}"),
+        (f"  Inventory query:    p50 {m['inventory_query_ms']['p50']} ms, p95 {m['inventory_query_ms']['p95']} ms, "
+         f"max {m['inventory_query_ms']['max']} ms (n={m['inventory_query_ms']['n']})"),
         f"  Rejected values:    {m['rejected_extractions']['values']}",
         (f"  Cost:               ${m['cost_usd']['total']:.4f} "
          + ", ".join(f"{d} ${c:.4f}" for d, c in m["cost_usd"]["by_day"].items())),
@@ -192,5 +235,6 @@ def format_report(m: dict[str, Any]) -> str:
         (f"  Send checks:        {m['send_checks']['by_decision']} "
          f"(allowed outside hours: {m['send_checks']['sent_outside_allowed_hours']})"),
         f"  Unmapped sources:   {m['unmapped_lead_sources'] or 'none'}",
+        f"  Freshness re-checks: {m['freshness']['rechecked']}, caught sold {m['freshness']['caught_sold']}",
     ]
     return "\n".join(lines)

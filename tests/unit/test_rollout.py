@@ -148,6 +148,18 @@ async def test_numbers_over_the_limits_fail(mongo, dealer):
     assert not result["checks"]["guard failures under 10%"]
 
 
+async def test_grounding_rejections_over_the_limit_fail(mongo, dealer):
+    """MASTER_PLAN_3 Phase 7 item 5."""
+    from tests.unit.test_inventory_tool import _stock, _vehicle
+
+    await _stock(mongo, _vehicle("VIN00000000000902", make="Toyota", model="RAV4", trim="LE"))
+    created = await _lead_with_first_reply()
+    await _reply(created, text="#badtrim Do you have a Toyota RAV4?")
+    result = await _check()
+    assert not result["checks"]["grounding rejections under 2%"]
+    assert result["numbers"]["grounding_rejection_rate"] > 0
+
+
 def test_rollout_check_api_needs_the_shared_secret(mongo):
     app = create_app(make_settings("PROD"), connect=False)
     with TestClient(app) as client:
