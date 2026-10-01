@@ -98,8 +98,9 @@ EDGES: list[PipelineEdge] = [
 # offer_visit added MASTER_PLAN_3 B4).
 DECIDE_RULES: list[dict[str, str]] = [
     {"id": "stop", "label": "Customer opted out → stop"},
-    {"id": "handoff", "label": "Asked for a person, clearly upset, urgent, or declined 3x with a staff-only "
-                              "question open → hand off"},
+    {"id": "handoff", "label": "Asked for a person, clearly upset, urgent, declined 3x with a staff-only "
+                              "question open, or not interested with a reason → hand off"},
+    {"id": "ask_why", "label": "Not interested, no reason given → ask why, once"},
     {"id": "clarify", "label": "Asked what we meant → re-explain"},
     {"id": "answer", "label": "Questions to answer → answer, then a visit offer or a follow-up (up to two)"},
     {"id": "confirm", "label": "A value needs confirming → confirm (+ one ask)"},

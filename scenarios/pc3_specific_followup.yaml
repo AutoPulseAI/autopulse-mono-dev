@@ -1,0 +1,25 @@
+name: '"Call me next week" becomes a dated next step'
+stage: 303
+description: A reply moves the lead from New Lead to Contact Made. "Call me next week" makes it Contact Made - Specific Follow-Up with a dated next step (Omnichannel PDF §6). The reply confirms the date and asks nothing else, and no 24h channel switch is left behind. On the day, the AI checks back as asked and the team gets a "please call" notice. 24 hours with no reply moves the lead to No Contact Made.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Nia Nextweek, comments: "Interested in a used RAV4"}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - expect_lead: {lead: n, stage: new_lead}
+  - reply: {lead: n, text: "Yes, still interested"}
+  - wait_turns: {lead: n, count: 2, timeout_s: 20}
+  - expect_lead: {lead: n, stage: contact_made_no_next_action}
+  - reply: {lead: n, text: "I'm busy right now, call me next week"}
+  - wait_turns: {lead: n, count: 3, timeout_s: 20}
+  - expect_lead: {lead: n, stage: contact_made_specific_followup, next_action: true}
+  - expect_last_sent: {lead: n, contains: "check back with you around Monday", question_marks: 0}
+  - expect_followup: {lead: n, kind: next_action, status: pending, due_local: "10:00"}
+  - expect_no_followup: {lead: n, kind: channel_switch, status: pending}
+  - advance_clock: {dealer: A, to: "Mon 10:05"}
+  - expect_followup: {lead: n, kind: next_action, status: sent, timeout_s: 30}
+  - expect_last_sent: {lead: n, contains: "Checking back in like you asked"}
+  - expect_lead: {lead: n, staff_notice: call_requested}
+  - expect_followup: {lead: n, kind: next_action_check, status: pending}
+  - advance_clock: {hours: 24.5}
+  - expect_followup: {lead: n, kind: next_action_check, status: done, timeout_s: 30}
+  - expect_lead: {lead: n, stage: no_contact_made}

@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
+from upsell_agent.agent import lifecycle
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -120,6 +121,10 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     db = dealer_scoped_db(event.dealer_id)
     lead = await find_lead(db, event.lead_id)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
+    if not event.shadow:
+        # MASTER_PLAN_3 C3: the lead's stage and its opportunity clock start here.
+        await lifecycle.apply(db, event.lead_id, [lifecycle.Event("lead_created", source="lead_created")],
+                              lead=lead, customer_id=event.customer_id)
     if state["status"] in SILENT_STATUSES:
         return {"status": "skipped", "reason": f"lead is {state['status']}"}
     turn_id = first_reply_turn_id(event.lead_id)
@@ -286,6 +291,13 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                 await _set_status(db, lead_id, "opted_out",
                                   f"Customer replied STOP on {channel}" if opt_out.kind == "keyword"
                                   else f"Customer asked us to stop ({opt_out.matched!r}): {scope}")
+            if not event.shadow and await _every_channel_stopped(db, event.customer_id):
+                # MASTER_PLAN_3 C3: the stage is Opted Out only when nothing is left to contact them on;
+                # a single-channel opt-out removes that channel and the rest carry on (Omnichannel PDF §15).
+                await lifecycle.apply(db, lead_id, [lifecycle.Event(
+                    "opted_out", source="customer_opt_out",
+                    reason=f"Opted out of every channel ({opt_out.matched!r})")], lead=lead,
+                    customer_id=event.customer_id)
             if opt_out.kind == "keyword":
                 reason = (f"The customer replied STOP on {channel}: opted out. The carrier sends its own "
                           "confirmation, so nothing is sent.")
@@ -302,6 +314,10 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start")
             if state["status"] == "opted_out":
                 await _set_status(db, lead_id, "active", None)
+            if not event.shadow:
+                await lifecycle.apply(db, lead_id, [lifecycle.Event(
+                    "opted_in", source="customer_start", reason=f"The customer replied START on {channel}",
+                    detail={"previous": state.get("previous_stage")})], lead=lead, customer_id=event.customer_id)
             await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_in",
                                reason=f"The customer replied START on {channel}: opted back in. The carrier sends "
                                       "its own confirmation, so nothing is sent.",
@@ -317,6 +333,12 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
         # doesn't reply, and these aren't answered later on resume either.
+        meaningful, why = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
+        if meaningful and not event.shadow and state["status"] != "opted_out":
+            # It's still contact (Omnichannel PDF §5), even with staff holding the conversation.
+            await lifecycle.apply(db, lead_id, [lifecycle.Event("customer_replied", source="customer_reply",
+                                                                reason=f"The customer replied: {why}")],
+                                  lead=lead, customer_id=event.customer_id)
         action, reason = _hold_decision(state)
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                   received_at=_parse_received_at(received_at))
@@ -344,7 +366,29 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
 
 
 async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
+    """Staff took the lead over (a manual reply, an admin take-over) or moved
+    it to a status they own. MASTER_PLAN_3 C3: a status move also moves the
+    lead's stage (lifecycle.STAFF_STATUS_EVENTS). "Appointment Booked" is the
+    one status that doesn't pause the AI: the appointment workflow (C5) is the
+    AI's to run for staff bookings too (decided with the user, 1 Oct 2026)."""
     db = dealer_scoped_db(event.dealer_id)
+    staff_status = lifecycle.staff_status_from_reason(event.reason)
+    stage_event = lifecycle.STAFF_STATUS_EVENTS.get(staff_status or "")
+    stage_change = None
+    if stage_event:
+        lead = await find_lead(db, event.lead_id)
+        detail: dict[str, Any] = {}
+        if stage_event == "appointment_set":
+            booking = (lead or {}).get("booking") or {}
+            at = booking.get("booking_at") or booking.get("booking_date")
+            detail["appointment"] = {"at": at.isoformat() if isinstance(at, datetime) else at,
+                                     "time": booking.get("booking_time"), "by": "staff"}
+        stage_change = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
+            stage_event, source="staff_status", reason=f'Staff set the lead to "{staff_status}"', detail=detail)],
+            lead=lead, customer_id=str((lead or {}).get("customer_id") or "") or None)
+    if stage_event == "appointment_set":
+        return {"status": "not_paused", "reason": "Appointment Booked: the AI runs the appointment workflow",
+                "stage_change": stage_change}
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
         {"$set": {"status": "paused", "status_reason": event.reason or "Paused by staff", "paused_at": clock.now()},
@@ -352,7 +396,17 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
         upsert=True,
     )
     cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
-    return {"status": "paused", "followups_cancelled": cancelled}
+    return {"status": "paused", "followups_cancelled": cancelled, **({"stage_change": stage_change}
+                                                                     if stage_change else {})}
+
+
+async def _every_channel_stopped(db: DealerScopedDatabase, customer_id: str | None) -> bool:
+    """Both SMS and email are opted out for this customer (MASTER_PLAN_3 C3:
+    only then is the stage Opted Out / Suppressed)."""
+    if not customer_id:
+        return False
+    return all([await consent.is_opted_out(db, customer_id, "sms"),
+                await consent.is_opted_out(db, customer_id, "email")])
 
 
 async def _resolve_review(db: DealerScopedDatabase, customer_id: str | None, lead_id: str, source: str,

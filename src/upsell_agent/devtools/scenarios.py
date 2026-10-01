@@ -194,13 +194,19 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
     from upsell_agent.scheduler.followups import (
         CHANNEL_SWITCHES,
         KIND_HANDOFF_CHECK,
+        KIND_NEXT_ACTION,
+        KIND_NEXT_ACTION_CHECK,
         KIND_RESUME,
         KIND_VISIT_FOLLOWUP,
     )
 
-    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP):
-        return {"kind": args["kind"]}
-    return dict(CHANNEL_SWITCHES)
+    flt: dict[str, Any] = {}
+    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
+                            KIND_NEXT_ACTION_CHECK):
+        flt["kind"] = args["kind"]
+    elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
+        flt.update(CHANNEL_SWITCHES)
+    return flt
 
 
 def _after_hours_choice(state: dict) -> str | None:
@@ -291,6 +297,19 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             event = LeadResumedEvent(event_id=event_id, dealer_id=lead["dealer_id"], lead_id=lead["lead_id"])
         result = await accept_event(f"lead-{kind}d", event, ctx.enqueue)
         return result.status
+
+    if kind == "staff_status":
+        # MASTER_PLAN_3 C3: staff move the lead on the platform's status screen ("Visited", "DND",
+        # "Appointment Booked" with `booking_in_days`), exactly as the platform tells the AI.
+        lead = ctx.lead(args["lead"])
+        from datetime import timedelta as later
+
+        booking_at = None
+        if args.get("booking_in_days") is not None:
+            booking_at = (clock.now() + later(days=float(args["booking_in_days"]))).isoformat()
+        result = await simulate.send_staff_status(lead["dealer_id"], lead["lead_id"], args["status"], ctx.enqueue,
+                                                  booking_at=booking_at)
+        return f"staff set the lead to {args['status']!r} ({result.status})"
 
     if kind == "wait_turns":
         lead = ctx.lead(args["lead"])
@@ -479,6 +498,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             await clock.advance(get_redis(), float(args["hours"]) * 3600)
             detail = ""
         await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
+        # MASTER_PLAN_3 C3: a jump past Day 91 closes leads now, not at the next hourly cron.
+        await ctx.enqueue("close_expired_leads", key=f"close_expired_leads:scenario:{uuid.uuid4().hex[:8]}")
         return f"clock is now {clock.now():%Y-%m-%d %H:%M} UTC{detail}"
 
     if kind == "expect_followup":
@@ -551,7 +572,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         lead = ctx.lead(args["lead"])
         await asyncio.sleep(float(args.get("settle_s", 1)))
         rows = await dealer_scoped_db(lead["dealer_id"]).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
-            {"lead_id": lead["lead_id"], **_kind_filter(args)}).to_list(None)
+            {"lead_id": lead["lead_id"], **_kind_filter(args),
+             **({"status": args["status"]} if "status" in args else {})}).to_list(None)
         if rows:
             raise ScenarioFailed(f"{len(rows)} follow-up(s) scheduled: {[r['status'] for r in rows]}")
         return "no follow-up scheduled"
@@ -569,7 +591,10 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 "after_hours" not in args or _after_hours_choice(doc) == args["after_hours"]) and (
                 "staff_notice" not in args or (doc.get("staff_notice") or {}).get("kind") == args["staff_notice"]) and (
                 "visit_attempts" not in args or _visit(doc).get("attempts") == args["visit_attempts"]) and (
-                "visit_declined" not in args or bool(_visit(doc).get("declined")) == bool(args["visit_declined"]))
+                "visit_declined" not in args or bool(_visit(doc).get("declined")) == bool(args["visit_declined"])) and (
+                # MASTER_PLAN_3 C3: the lifecycle stage (agent/lifecycle.py).
+                "stage" not in args or doc.get("stage") == args["stage"]) and (
+                "next_action" not in args or bool(doc.get("next_action")) == bool(args["next_action"]))
             return doc if ok else None
 
         try:
@@ -577,7 +602,7 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         except ScenarioFailed:
             doc = await dealer_scoped_db(lead["dealer_id"]).collection(AI_LEAD_STATE_COLLECTION).find_one(
                 {"lead_id": lead["lead_id"]}) or {}
-            raise ScenarioFailed(f"lead is {doc.get('status')!r}, staff alert "
+            raise ScenarioFailed(f"lead is {doc.get('status')!r} at stage {doc.get('stage')!r}, staff alert "
                                  f"{(doc.get('staff_alert') or {}).get('reason')!r}, after-hours choice "
                                  f"{_after_hours_choice(doc)!r}, staff notice "
                                  f"{(doc.get('staff_notice') or {}).get('kind')!r}, visit attempts "
@@ -586,7 +611,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         alert = (doc.get("staff_alert") or {}).get("reason")
         covered = (doc.get("summary") or {}).get("messages")
         notice = (doc.get("staff_notice") or {}).get("text")
-        return (f"lead is {doc.get('status')}" + (f"; staff alert: {alert}" if alert else "")
+        return (f"lead is {doc.get('status')}" + (f", stage {doc.get('stage_label')}" if doc.get("stage") else "")
+                + (f"; staff alert: {alert}" if alert else "")
                 + (f"; summary covers {covered} message(s)" if covered else "")
                 + (f"; after hours: {_after_hours_choice(doc)}" if _after_hours_choice(doc) else "")
                 + (f"; notice for the team: {notice}" if notice else ""))

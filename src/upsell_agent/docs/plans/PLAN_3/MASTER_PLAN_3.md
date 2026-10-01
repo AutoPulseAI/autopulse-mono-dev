@@ -925,6 +925,8 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 
 **Tests:** State transitions across all events, priority resolution when events conflict, pre-send re-check canceling stale tasks, and Day 91 opportunity closure.
 
+> **Built 1 Oct 2026** (`agent/lifecycle.py`; architecture.md decisions 123–134; details and verification: `progress_3.md`, "Phase C3"). Decided with the user before building: New Lead → No Contact Made after Touch 2 goes unanswered; staff "Appointment Booked" doesn't pause the AI (it runs the appointment workflow); Day 91 waits for a pending appointment. Also built here, because the stages need them: the dated next step and its 24h check (§6), and "not interested" → ask why → a person (client, scope Q10). Live Docker scenarios not run yet (Docker wasn't running).
+
 ---
 
 ## Phase C4: Short-Term Cadence & Required Touch Rules

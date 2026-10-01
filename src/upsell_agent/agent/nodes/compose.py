@@ -73,6 +73,10 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         # the lead's current visit/booking state (for wording that matches a real booking, decision 60).
         "visit_offer": decision.get("visit_offer"),
         "visit": decision.get("visit"),
+        # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
+        # that we're checking back as they asked.
+        "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
+        "reach_out": decision.get("reach_out"),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,
         "campaign": state.campaign,

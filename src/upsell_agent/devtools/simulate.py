@@ -218,6 +218,40 @@ async def send_reply(dealer_id: str, lead_id: str, channel: str, text: str, enqu
     return await accept_event("inbound-message", event, enqueue)
 
 
+# The platform's staff-owned statuses (aidmvcs-be-dev lib/ai/aiStaff.js STAFF_OWNED_STATUSES): moving a
+# lead to one of these sends the AI `lead-paused` with this exact reason (notifyAiOfStaffStatus).
+STAFF_OWNED_STATUSES = ("Appointment Booked", "Visited", "Sold", "DND", "Managerial Review")
+
+
+async def send_staff_status(dealer_id: str, lead_id: str, status: str, enqueue: Enqueue, *,
+                            booking_at: str | None = None) -> IntakeResult:
+    """What the platform's status route does when staff move a lead
+    (api/conversations/lead/status/route.js): saves the status on the Lead
+    (and, for Appointment Booked, the booking fields, dealer time stored as
+    UTC), then tells the AI with `lead-paused` (MASTER_PLAN_3 C3)."""
+    from upsell_agent.events.models import LeadPausedEvent
+
+    db = dealer_scoped_db(dealer_id)
+    update: dict = {"lead_status": status, "fe_lead_status": status, "statusChangedAt": clock.now()}
+    if status == "Appointment Booked" and booking_at:
+        from datetime import datetime
+        at = datetime.fromisoformat(booking_at)
+        update.update({"booking.booking_at": at, "booking.booking_date": at,
+                       "booking.booking_time": at.strftime("%H:%M"), "booking_status": True})
+    found = await db.collection(PLATFORM_LEADS_COLLECTION).update_one({"_id": as_object_id(lead_id)}, {"$set": update})
+    if found.matched_count == 0:
+        raise LookupError(f"lead {lead_id} not found for dealer {dealer_id}")
+    if status not in STAFF_OWNED_STATUSES:
+        return IntakeResult(status="not_needed")
+    send, _ = await _platform_routing(dealer_id)
+    if not send:
+        return IntakeResult(status="skipped")
+    event = LeadPausedEvent(event_id=f"status-{lead_id}-{''.join(c for c in status if c.isalnum())}-"
+                                     f"{int(clock.now().timestamp() * 1000)}",
+                            dealer_id=dealer_id, lead_id=lead_id, reason=f'Staff moved the lead to "{status}"')
+    return await accept_event("lead-paused", event, enqueue)
+
+
 async def ensure_dev_dealers() -> None:
     """Display names for the Debug UI (DEV-only collection)."""
     for dealer in DEV_DEALERS:

@@ -135,6 +135,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
     known += [visit[k] for k in ("display", "slot_taken") if visit.get(k)]
+    if next_action := (state.decision or {}).get("next_action"):
+        # The date the customer asked us to get back to them (MASTER_PLAN_3 C3), worked out in code from
+        # their own words (slots/dates.py), and its time: confirmed back to them, never invented.
+        known += [next_action.get("display"), next_action.get("date"), next_action.get("time")]
     inventory = pack.get("inventory") or []
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does

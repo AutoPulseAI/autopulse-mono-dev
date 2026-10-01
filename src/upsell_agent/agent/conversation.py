@@ -99,6 +99,15 @@ class VisitState(BaseModel):
     why: str | None = None
 
 
+class NotInterestedState(BaseModel):
+    """"Not interested / no longer in the market" (MASTER_PLAN_3 C3, client
+    scope Q10): when we asked why, and the reason once given. Only a person
+    closes such a lead; the AI asks why once, then hands it on."""
+    # The reply (ConversationState.turn) that asked why.
+    asked_turn: int = 0
+    reason: str | None = None
+
+
 class ShownVehicle(BaseModel):
     vin: str
     turn: int = 0
@@ -115,6 +124,14 @@ class ConversationState(BaseModel):
     after_hours: AfterHoursChoice | None = None
     visit: VisitState | None = None
     shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
+    not_interested: NotInterestedState | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def awaiting_not_interested_reason(self) -> bool:
+        """Our last reply asked why they're no longer interested (Extract reads the answer as the reason)."""
+        return bool(self.not_interested and self.not_interested.asked_turn == self.turn and self.turn > 0
+                    and not self.not_interested.reason)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -188,6 +205,7 @@ def after_turn(
     visit: dict | None = None,
     shown_vins: list[str] | None = None,
     channel: str | None = None,
+    not_interested_reason: str | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -236,6 +254,11 @@ def after_turn(
             updated.after_hours = AfterHoursChoice.model_validate(after_hours)
         if visit is not None:
             updated.visit = VisitState.model_validate(visit)
+        if action == "ask_why" and not used_template:
+            updated.not_interested = NotInterestedState(asked_turn=updated.turn)
+    if not_interested_reason:
+        updated.not_interested = (updated.not_interested or NotInterestedState()).model_copy(
+            update={"reason": not_interested_reason})
 
     updated.open_questions = updated.open_questions[-MAX_OPEN_QUESTIONS:]
     updated.promises = updated.promises[-MAX_PROMISES:]

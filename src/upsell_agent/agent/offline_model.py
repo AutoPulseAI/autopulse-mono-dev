@@ -235,8 +235,12 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
     # "What are your hours on Saturday?" asks about the dealer, it isn't their date:
     # the first date not in a sentence about opening hours.
     about_hours = [s.span() for s in re.finditer(r"[^.?!\n]+[.?!]?", text) if _HOURS_Q.search(s.group(0))]
+    # A date that says when to get back to them ("call me next month", MASTER_PLAN_3 C3) is their
+    # next_contact_when, not when they need the vehicle.
+    next_contact = _next_contact(text)
     m = next((d for d in DATE_PHRASE.finditer(_QUOTED.sub(lambda q: " " * len(q.group(0)), text))
-              if not any(a <= d.start() < b for a, b in about_hours)), None)
+              if not any(a <= d.start() < b for a, b in about_hours)
+              and not (next_contact and next_contact[1] <= d.start() < next_contact[2])), None)
     if m:
         # The words only; the date is worked out in code (slots/dates.py).
         end = m.end()
@@ -259,6 +263,8 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         **_wants_visit(text),
         **_declines_visit(text, payload),
         **_urgent(text),
+        "next_contact_when": next_contact[0] if next_contact else None,
+        **_not_interested(text, payload),
     }
 
 
@@ -294,6 +300,57 @@ _URGENT_PATTERNS = [
     ((r"\b(lease (?:is )?ending|other offer expir\w*|deal (?:falls?|falling) through|losing (?:my|the) "
       r"(?:offer|deal))\b"), "external_deadline"),
 ]
+
+
+# MASTER_PLAN_3 C3: "call me Friday", "check back next month", "not ready until spring".
+_DEFER = re.compile(
+    r"\b(?:(?:call|text|email|contact|reach out to|check (?:back )?(?:in )?with|follow up with|get back to|try|"
+    r"ping|hit)\s+me(?:\s+(?:back|again|up))?|check back|follow up|reach out(?: again)?|talk (?:again|later)|"
+    r"not ready(?: yet)?(?: until| till| before)?|circle back)\b", re.IGNORECASE)
+_NOT_INTERESTED = re.compile(
+    r"\b(not interested(?! in (?:coming|visiting))|no longer interested|(?:no longer|not) in the market|"
+    r"not looking any ?more|no longer looking|i'?ll pass|changed my mind|decided not to (?:buy|trade|go ahead))\b",
+    re.IGNORECASE)
+_IM_GOOD = re.compile(r"^\s*(?:no,?\s*)?(?:i'?m|we'?re)\s+good(?:,?\s*(?:thanks?|thank you))?[.!]*\s*$",
+                      re.IGNORECASE)
+_NOT_INTERESTED_REASON = re.compile(
+    r"\b(?:because|since)\s+([^.!?]+)|\b((?:already )?bought (?:one|a \w+|elsewhere|something)[^.!?]*|"
+    r"found (?:one|a \w+|something)[^.!?]*|went with [^.!?]+|can'?t afford[^.!?]*|too expensive[^.!?]*|"
+    r"keeping my [^.!?]+|moving[^.!?]*|decided to wait[^.!?]*)", re.IGNORECASE)
+
+
+def _next_contact(text: str) -> tuple[str, int, int] | None:
+    """(their words for the time, start, end) when they ask us to get back to
+    them later; the date phrase must follow the deferral in the same sentence."""
+    for sentence in re.finditer(r"[^.?!\n]+[.?!]?", text):
+        defer = _DEFER.search(sentence.group(0))
+        if not defer:
+            continue
+        rest_start = sentence.start() + defer.end()
+        found = DATE_PHRASE.search(text, rest_start, sentence.end()) or DATE_PHRASE.search(
+            text, sentence.start(), sentence.start() + defer.start())
+        if found:
+            end = found.end()
+            if t := re.match(r"\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", text[end:], re.IGNORECASE):
+                end += t.end()
+            return text[found.start():end], found.start(), end
+    return None
+
+
+def _not_interested(text: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """MASTER_PLAN_3 C3, client scope Q10. When our last message asked why
+    they're no longer interested, whatever they answer is the reason."""
+    awaiting = bool(((payload.get("context") or {}).get("conversation") or {}).get("awaiting_not_interested_reason"))
+    said = bool(_NOT_INTERESTED.search(text) or _IM_GOOD.match(text))
+    reason_match = _NOT_INTERESTED_REASON.search(text)
+    reason = next((g for g in reason_match.groups() if g), None) if reason_match else None
+    if awaiting and text.strip() and not reason and "?" not in text:
+        # A question back ("is the RAV4 still there?") is the conversation carrying on, not a reason.
+        reason = text.strip()
+    if not said and not (awaiting and reason):
+        return {"not_interested": False, "not_interested_confidence": 0.0, "not_interested_reason": None}
+    return {"not_interested": True, "not_interested_confidence": 0.9,
+            "not_interested_reason": reason.strip() if reason else None}
 
 
 def _contact_preference(text: str) -> str | None:
@@ -606,6 +663,11 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         body = "No problem - I'm passing this to a member of our team, who will reach out to you shortly."
         why = "The customer asked for a person or is clearly upset, so the AI steps back."
         promises.append("A member of the team will reach out shortly.")
+    elif action == "ask_why":
+        lead_in = f"{answered} " if answered else ""
+        body = (f"{lead_in}Understood, {name} - no pressure at all. Can I ask what changed, or whether "
+                "something didn't work for you?")
+        why = "The customer said they're not interested, with no reason: ask why once (only a person closes the lead)."
     elif action == "qualified":
         if visit.get("stopped"):
             body = f"{opener}Thanks, {name}!"
@@ -646,6 +708,16 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         rest = "Just reply here whenever you're ready." if action == "acknowledge" else body.removeprefix(opener)
         body = f"{greeting}, {name}! The team is in now. {rest}"
         why = "The dealership has opened: the conversation picks up where it stopped. " + why
+    if (planned := payload.get("next_action")) and action not in ("handoff", "stop"):
+        # MASTER_PLAN_3 C3: the customer asked us to get back to them on a date - confirm it, nothing else.
+        lead_in = f"{answered} " if answered and action == "answer" else ""
+        body = f"{lead_in}Sounds good, {name} - I'll check back with you around {planned['display']}."
+        why = f"The customer asked us to get back to them later: confirm {planned['display']}, ask nothing else."
+    if payload.get("reach_out"):
+        # MASTER_PLAN_3 C3: a scheduled next step firing - not a reply, we're checking back as asked.
+        # No greeting line: only the first reply of a conversation greets (the guard's rule).
+        body = f"Checking back in like you asked, {name}. " + body.removeprefix(opener).removeprefix("Thanks! ")
+        why = "Checking back on the date the customer asked for. " + why
     if visit.get("just_booked"):
         # A booking was created (or moved) this turn (MASTER_PLAN_3 B5 item 7, architecture §15
         # decision 60): wording matches the booking's real status, never "booked" for a pending one.
@@ -669,7 +741,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         body += " The team will pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."
     elif payload.get("hold_questions"):
-        why += " Possible opt-out under review: a plain reply, nothing asked or offered."
+        why += f" Nothing asked or offered: {payload['hold_questions']}."
 
     if "#fallback" in text or ("#retry" in text and attempt == 1):
         body += " Plus $500 off, guaranteed!"
@@ -679,7 +751,8 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     subject = f"Re: {campaign['name']}" if campaign else "Your inquiry"
     result = {"sms_text": sms, "email_subject": subject,
              "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
-             "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify") else [],
+             "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify", "ask_why")
+             else [],
              "sms_vins": vins, "email_vins": vins}
     if body_no_vehicles:
         no_sms = body_no_vehicles if len(body_no_vehicles) <= SMS_MAX else (

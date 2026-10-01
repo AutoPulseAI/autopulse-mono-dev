@@ -1,0 +1,471 @@
+"""The lead lifecycle (MASTER_PLAN_3 C3; Omnichannel PDF §1-2, §5, §11-12;
+diagrams: docs/architecture/STATE_MACHINE_DIAGRAMS.md).
+
+Where a lead stands in the client's sales workflow, kept on the AI's own lead
+state (`ai_lead_state.stage`), not on the platform's Lead (C3: AI service only).
+It sits beside `status`, which says who is in charge of the conversation (the AI,
+or staff after a handoff / pause): a lead can be "with staff" and still be at
+Appointment Set.
+
+    stage                            when
+    new_lead                         the lead arrived
+    no_contact_made                  Touch 1 and the 3-hour nudge went out unanswered (C4 sends them)
+    contact_made_no_next_action      the customer replied: no appointment, no dated next step
+    contact_made_specific_followup   the customer gave a dated next step ("call me Friday")
+    appointment_set                  a booking exists (the AI's or one staff made)
+    appointment_no_show              appointment time + 1 hour, no visit (C5)
+    sales_visit                      staff set "Visited" / "Sold"
+    opted_out                        every channel stopped, or staff set "DND"
+    closed_lost                      Day 91 with nothing superseding it, or staff closed it
+
+Rules (Omnichannel PDF §2):
+- One controlling workflow: entering a stage cancels the scheduled work the old
+  stage's workflow had queued (KIND_STAGES). Every follow-up kind is re-checked
+  against the lead's stage again right before it fires (stage_check).
+- Priority when events collide (§11): opt-out, Sales Visit, appointment, dated
+  next step, no-show, contact without a next step, no contact, new lead.
+- The opportunity clock never resets (§12): `opportunity_created_at` is the
+  platform lead's own creation time, written once.
+- Closed - Lost is per lead, never per customer (client, 1 Oct 2026). The AI
+  never closes a lead from a conversation: only the Day 91 sweep and staff do
+  (client, scope Q10).
+- Day 91 doesn't close a lead while an appointment is pending: Appointment Set
+  and Appointment No Show are superseding outcomes until they resolve (decided
+  with the user, 1 Oct 2026).
+"""
+
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Any
+
+from upsell_agent import clock
+from upsell_agent.integrations.mongodb import (
+    AI_LEAD_STATE_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
+    SCHEDULED_FOLLOWUPS_COLLECTION,
+    DealerScopedDatabase,
+    as_object_id,
+    dealer_scoped_db,
+    get_db,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class Stage(StrEnum):
+    NEW_LEAD = "new_lead"
+    NO_CONTACT = "no_contact_made"
+    CONTACT_NO_ACTION = "contact_made_no_next_action"
+    SPECIFIC_FOLLOWUP = "contact_made_specific_followup"
+    APPOINTMENT_SET = "appointment_set"
+    NO_SHOW = "appointment_no_show"
+    SALES_VISIT = "sales_visit"
+    OPTED_OUT = "opted_out"
+    CLOSED_LOST = "closed_lost"
+
+
+# The client's own names (Omnichannel PDF §1; "Closed - Lost" from the 1 Oct answers).
+STAGE_LABELS: dict[Stage, str] = {
+    Stage.NEW_LEAD: "New Lead",
+    Stage.NO_CONTACT: "No Contact Made",
+    Stage.CONTACT_NO_ACTION: "Contact Made - No Next Action",
+    Stage.SPECIFIC_FOLLOWUP: "Contact Made - Specific Follow-Up",
+    Stage.APPOINTMENT_SET: "Appointment Set",
+    Stage.NO_SHOW: "Appointment No Show",
+    Stage.SALES_VISIT: "Sales Visit",
+    Stage.OPTED_OUT: "Opted Out / Suppressed",
+    Stage.CLOSED_LOST: "Closed - Lost",
+}
+
+# §11, lower wins. Closed - Lost is terminal (0): nothing outranks it.
+PRIORITY: dict[Stage, int] = {
+    Stage.CLOSED_LOST: 0,
+    Stage.OPTED_OUT: 1,
+    Stage.SALES_VISIT: 2,
+    Stage.APPOINTMENT_SET: 3,
+    Stage.SPECIFIC_FOLLOWUP: 4,
+    Stage.NO_SHOW: 5,
+    Stage.CONTACT_NO_ACTION: 6,
+    Stage.NO_CONTACT: 7,
+    Stage.NEW_LEAD: 8,
+}
+
+# Stages the Short-Term / Day 1-90 workflow works (Omnichannel PDF §1).
+WORKING = frozenset({Stage.NEW_LEAD, Stage.NO_CONTACT, Stage.CONTACT_NO_ACTION, Stage.SPECIFIC_FOLLOWUP})
+# Day 91 closes only these (an appointment still pending supersedes it).
+CLOSABLE_AT_DAY_91 = WORKING
+OPPORTUNITY_DAYS = 91
+HISTORY_LIMIT = 50
+
+# Scheduled-work kinds (scheduler/followups.py) and the stages each belongs to: a
+# stage change cancels pending work whose kind isn't allowed in the new stage,
+# and each kind is re-checked against the stage right before it fires.
+# Short-Term work. Not in Specific Follow-Up: the customer named when to come back, and "specific
+# timing wins ... rather than continuing aggressive Short-Term cadence" (§2) - only their next step runs.
+SHORT_TERM = WORKING - {Stage.SPECIFIC_FOLLOWUP}
+KIND_STAGES: dict[str, frozenset[Stage]] = {
+    # The 24h resend of our last message on the other channel. Once an appointment exists, an old
+    # switch (often the visit offer itself) is stale work (§2).
+    "channel_switch": SHORT_TERM,
+    "resume_at_opening": SHORT_TERM,
+    "visit_followup": SHORT_TERM,
+    "next_action": frozenset({Stage.SPECIFIC_FOLLOWUP}),
+    "next_action_check": frozenset({Stage.SPECIFIC_FOLLOWUP}),
+    # A handoff check reminds the customer staff have their message: fine in any open stage.
+    "handoff_check": WORKING | {Stage.APPOINTMENT_SET, Stage.NO_SHOW},
+}
+
+# What the platform's staff statuses mean here (aidmvcs-be-dev lib/ai/aiStaff.js
+# STAFF_OWNED_STATUSES; the status arrives in the lead-paused event's reason).
+STAFF_STATUS_EVENTS: dict[str, str] = {
+    "Visited": "sales_visit",
+    "Sold": "sales_visit",
+    "DND": "opted_out",
+    "Appointment Booked": "appointment_set",
+}
+_STAFF_STATUS_REASON = re.compile(r'Staff moved the lead to "([^"]+)"')
+
+# Not a meaningful reply (client, 1 Oct 2026, scope Q10: "auto reply is not
+# meaningful"): out-of-office and carrier/phone auto-replies, and messages with
+# no words at all.
+_AUTO_REPLY = re.compile(
+    r"\b(auto(?:matic)?[- ]?(?:reply|response|generated)|out of (?:the )?office|away from (?:the|my) office|"
+    r"i'?m (?:currently )?(?:driving|away)(?: with do not disturb| right now)?(?: and)? (?:will|i'?ll) "
+    r"(?:see|get back|reply|respond)|do not disturb while driving|this (?:mailbox|inbox|number) is not monitored|"
+    r"do not reply to this|vacation (?:reply|responder))\b", re.IGNORECASE)
+
+
+def stage_of(value: Any) -> Stage | None:
+    try:
+        return Stage(value) if value else None
+    except ValueError:
+        return None
+
+
+def label(stage: Stage | str | None) -> str | None:
+    found = stage_of(stage)
+    return STAGE_LABELS[found] if found else None
+
+
+def is_meaningful_reply(text: str | None) -> tuple[bool, str]:
+    """(meaningful, why). The client's definition (scope Q10): a verified
+    two-way interaction where the customer gave info, intent, a question, an
+    objection, availability or another relevant response. An auto-reply isn't
+    one; neither is a message with no words (an emoji, a blank)."""
+    body = (text or "").strip()
+    if not re.search(r"[A-Za-z0-9]", body):
+        return False, "no words in it"
+    if _AUTO_REPLY.search(body):
+        return False, "it reads as an automatic reply"
+    return True, "the customer wrote back"
+
+
+def staff_status_from_reason(reason: str | None) -> str | None:
+    """The platform status a lead-paused event was sent for, from its reason
+    ('Staff moved the lead to "Visited"'). None for other pauses (a staff
+    reply, an admin take-over): only an explicit status move counts, never the
+    lead's current status, which can be left over from earlier."""
+    m = _STAFF_STATUS_REASON.search(reason or "")
+    return m.group(1) if m else None
+
+
+# --- Transitions (pure) -----------------------------------------------------------
+
+@dataclass
+class Event:
+    """Something that may move the lead. `kind`:
+    lead_created, customer_replied (detail: next_action), appointment_set,
+    appointment_cancelled (detail: next_action), appointment_missed (C5),
+    no_show_unanswered (C5), touch2_unanswered (C4), specific_followup_unanswered,
+    sales_visit, opted_out, opted_in, day_91 (detail: appointment_active),
+    staff_closed_lost, unsold (C5)."""
+    kind: str
+    reason: str = ""
+    detail: dict[str, Any] = field(default_factory=dict)
+    source: str = "ai"
+
+
+@dataclass
+class Transition:
+    stage: Stage | None  # None: no change
+    rule: str
+    reason: str
+    event: Event | None = None
+
+    @property
+    def changes(self) -> bool:
+        return self.stage is not None
+
+
+def _stay(rule: str, reason: str, event: Event) -> Transition:
+    return Transition(None, rule, reason, event)
+
+
+def transition(current: Stage | None, event: Event) -> Transition:
+    """Where `event` moves a lead at `current`. Pure: no clock, no database."""
+    kind, why = event.kind, event.reason
+    if kind == "lead_created":
+        if current is None:
+            return Transition(Stage.NEW_LEAD, "new_lead", why or "New lead received", event)
+        return _stay("already_started", "The lead already has a stage.", event)
+    if current is None:
+        current = Stage.NEW_LEAD
+    if current == Stage.CLOSED_LOST:
+        return _stay("closed", "The lead is Closed - Lost: nothing moves it (a new lead starts its own workflow).",
+                     event)
+
+    if kind == "staff_closed_lost":
+        return Transition(Stage.CLOSED_LOST, "staff_closed_lost", why or "Staff closed the lead as lost", event)
+    if kind == "opted_out":
+        if current == Stage.OPTED_OUT:
+            return _stay("already_opted_out", "Already opted out.", event)
+        return Transition(Stage.OPTED_OUT, "opt_out_wins", why or "Opted out", event)
+    if current == Stage.OPTED_OUT:
+        if kind == "opted_in":
+            back = stage_of(event.detail.get("previous")) or Stage.CONTACT_NO_ACTION
+            if back in (Stage.OPTED_OUT, Stage.CLOSED_LOST):
+                back = Stage.CONTACT_NO_ACTION
+            return Transition(back, "opted_back_in", why or "The customer opted back in", event)
+        return _stay("opted_out", "Opted out: only an opt-in moves the lead on.", event)
+    if kind == "opted_in":
+        return _stay("not_opted_out", "The lead wasn't opted out.", event)
+
+    if kind == "sales_visit":
+        if current == Stage.SALES_VISIT:
+            return _stay("already_visited", "Already at Sales Visit.", event)
+        return Transition(Stage.SALES_VISIT, "sales_visit_wins", why or "The customer visited", event)
+    if current == Stage.SALES_VISIT:
+        if kind == "unsold":
+            return Transition(Stage.CONTACT_NO_ACTION, "unsold", why or "Manager outcome: Unsold", event)
+        return _stay("sales_visit", "Sales Visit stops the lead workflows until a manager outcome.", event)
+
+    if kind == "appointment_set":
+        rule = "appointment_updated" if current == Stage.APPOINTMENT_SET else "appointment_wins"
+        return Transition(Stage.APPOINTMENT_SET, rule, why or "Appointment booked", event)
+    if kind == "appointment_cancelled":
+        if current not in (Stage.APPOINTMENT_SET, Stage.NO_SHOW):
+            return _stay("no_appointment", "There was no appointment to cancel.", event)
+        if event.detail.get("next_action"):
+            return Transition(Stage.SPECIFIC_FOLLOWUP, "cancelled_with_next_action",
+                              why or "Appointment cancelled; the customer gave a date to follow up", event)
+        return Transition(Stage.CONTACT_NO_ACTION, "cancelled", why or "Appointment cancelled, no new time", event)
+    if kind == "appointment_missed":
+        if current != Stage.APPOINTMENT_SET:
+            return _stay("no_appointment", "No appointment was pending.", event)
+        return Transition(Stage.NO_SHOW, "no_show", why or "Appointment time + 1 hour with no visit", event)
+    if kind == "no_show_unanswered":
+        if current != Stage.NO_SHOW:
+            return _stay("not_no_show", "The lead isn't at Appointment No Show.", event)
+        # Client's required business rule (Omnichannel PDF §9): Contact Made, not No Contact Made.
+        return Transition(Stage.CONTACT_NO_ACTION, "no_show_to_short_term",
+                          why or "No reply after the no-show messages", event)
+
+    if kind == "customer_replied":
+        if current == Stage.APPOINTMENT_SET:
+            return _stay("appointment_wins", "An appointment is set: a reply doesn't change that.", event)
+        if event.detail.get("next_action"):
+            rule = "next_action_updated" if current == Stage.SPECIFIC_FOLLOWUP else "specific_timing_wins"
+            return Transition(Stage.SPECIFIC_FOLLOWUP, rule, why or "The customer gave a date to follow up", event)
+        if current == Stage.CONTACT_NO_ACTION:
+            return _stay("still_contact_made", "Already Contact Made - No Next Action.", event)
+        return Transition(Stage.CONTACT_NO_ACTION, "contact_made", why or "The customer replied", event)
+    if kind == "touch2_unanswered":
+        if current != Stage.NEW_LEAD:
+            return _stay("not_new", "Only a New Lead moves to No Contact Made.", event)
+        return Transition(Stage.NO_CONTACT, "no_contact", why or "Touch 1 and the 3-hour nudge went unanswered", event)
+    if kind == "specific_followup_unanswered":
+        if current != Stage.SPECIFIC_FOLLOWUP:
+            return _stay("not_specific", "The lead isn't at Specific Follow-Up any more.", event)
+        return Transition(Stage.NO_CONTACT, "specific_unanswered",
+                          why or "No reply within 24 hours of the scheduled follow-up", event)
+    if kind == "day_91":
+        if current not in CLOSABLE_AT_DAY_91:
+            return _stay("superseded", f"Day 91, but the lead is at {STAGE_LABELS[current]}: that supersedes it.",
+                         event)
+        if event.detail.get("appointment_active"):
+            return _stay("appointment_pending", "Day 91, but an appointment is still pending.", event)
+        return Transition(Stage.CLOSED_LOST, "day_91", why or "Day 91 reached with no superseding outcome", event)
+    return _stay("unknown_event", f"Unknown event {kind!r}.", event)
+
+
+def resolve(current: Stage | None, events: list[Event]) -> Transition:
+    """Several events at once (a reply that also booked a visit): each is
+    tried from the current stage, and the highest-priority result wins
+    (§11). An event that changes nothing loses to one that does."""
+    if not events:
+        return Transition(None, "no_events", "Nothing happened.")
+    results = [transition(current, e) for e in events]
+    moving = [r for r in results if r.changes]
+    if not moving:
+        return results[0]
+    return min(moving, key=lambda r: PRIORITY[r.stage])  # type: ignore[index]
+
+
+def kind_allowed(kind: str | None, stage: Stage | str | None) -> bool:
+    """May scheduled work of `kind` run while the lead is at `stage`? Leads
+    from before C3 (no stage) and kinds C3 doesn't know keep their old
+    behaviour, except that nothing runs on a closed or opted-out lead."""
+    found = stage_of(stage)
+    if found is None:
+        return True
+    allowed = KIND_STAGES.get(kind or "channel_switch")
+    if allowed is None:
+        return found not in (Stage.CLOSED_LOST, Stage.OPTED_OUT)
+    return found in allowed
+
+
+def stage_check(state: dict | None, kind: str | None, *, long_horizon: bool = False) -> tuple[str, bool, str]:
+    """The pre-send re-check's stage line (scheduler/followups.py), as (check, passed, detail).
+    `long_horizon`: a next step kept past Day 91 (cancel_stale_work) may still run on the closed lead."""
+    stage = stage_of((state or {}).get("stage"))
+    ok = kind_allowed(kind, stage) or (long_horizon and kind == "next_action" and stage == Stage.CLOSED_LOST)
+    if stage is None:
+        return "stage", True, "no lifecycle stage yet"
+    return "stage", ok, (f"lead is at {STAGE_LABELS[stage]}" + ("" if ok else f": no {kind or 'channel_switch'} "
+                                                                                 "in this stage"))
+
+
+# --- Applying (database) ------------------------------------------------------------
+
+def _aware(value: Any) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def opportunity_start(lead: dict | None, now: datetime) -> datetime:
+    """The platform lead's own creation time (§12: immutable), else now."""
+    for key in ("createdAt", "created_at"):
+        if found := _aware((lead or {}).get(key)):
+            return found
+    oid = (lead or {}).get("_id")
+    if hasattr(oid, "generation_time"):
+        return oid.generation_time
+    return now
+
+
+def opportunity_age_days(state: dict | None, now: datetime | None = None) -> int | None:
+    start = _aware((state or {}).get("opportunity_created_at"))
+    if start is None:
+        return None
+    return ((now or clock.now()) - start).days
+
+
+async def cancel_stale_work(db: DealerScopedDatabase, lead_id: str, stage: Stage, *, reason: str) -> int:
+    """§2 "status change cancels stale work": pending scheduled work whose
+    kind doesn't belong to the new stage."""
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    pending = await followups.find({"lead_id": lead_id, "status": "pending"}).to_list(None)
+    if stage == Stage.CLOSED_LOST:
+        # §6 long-horizon rule: a dated next step the customer asked for outlives the
+        # opportunity ("call me in a year"); it stays with the customer and still fires.
+        keep = [p["_id"] for p in pending if p.get("kind") == "next_action"]
+        if keep:
+            await followups.update_many({"_id": {"$in": keep}}, {"$set": {"long_horizon": True}})
+        pending = [p for p in pending if p["_id"] not in keep]
+    stale = [p["_id"] for p in pending if not kind_allowed(p.get("kind") or "channel_switch", stage)]
+    if not stale:
+        return 0
+    result = await followups.update_many(
+        {"_id": {"$in": stale}, "status": "pending"},
+        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
+    return result.modified_count
+
+
+async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Event], *,
+                lead: dict | None = None, customer_id: str | None = None) -> dict[str, Any] | None:
+    """Moves the lead per `events` (resolve()) and records it on the AI's
+    lead state: the stage, why, when, an add-only history (last HISTORY_LIMIT),
+    the dated next action, and the closing time. Cancels the old workflow's
+    pending work. Returns what happened, for the trace; None without a lead."""
+    if not lead_id or not events:
+        return None
+    now = clock.now()
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    state = await states.find_one({"lead_id": lead_id}) or {}
+    current = stage_of(state.get("stage"))
+    setup: dict[str, Any] = {}
+    if current is None or not state.get("opportunity_created_at"):
+        # The first event for this lead, or a lead from before C3: start its clock from the platform lead.
+        lead = lead if lead is not None else await db.collection(PLATFORM_LEADS_COLLECTION).find_one(
+            {"_id": as_object_id(lead_id)})
+        setup["opportunity_created_at"] = opportunity_start(lead, now)
+    result = resolve(current, events)
+    out: dict[str, Any] = {"from": current.value if current else None, "rule": result.rule,
+                           "reason": result.reason, "changed": result.changes}
+    if not result.changes:
+        if setup:
+            await states.update_one({"lead_id": lead_id}, {"$set": setup,
+                                                          "$setOnInsert": {"lead_id": lead_id, "created_at": now,
+                                                                           "status": "active"}}, upsert=True)
+        out["stage"] = current.value if current else None
+        return out
+    new = result.stage
+    assert new is not None
+    event = result.event or events[0]
+    entry = {"at": now, "from": current.value if current else None, "to": new.value, "rule": result.rule,
+             "reason": result.reason, "event": event.kind, "source": event.source}
+    fields: dict[str, Any] = {**setup, "stage": new.value, "stage_label": STAGE_LABELS[new],
+                              "stage_reason": result.reason, "stage_at": now, "stage_source": event.source}
+    unset: dict[str, str] = {}
+    if new != current:
+        fields["workflow_entered_at"] = now
+        if current is not None:
+            fields["previous_stage"] = current.value
+    next_action = event.detail.get("next_action")
+    if new == Stage.SPECIFIC_FOLLOWUP and next_action:
+        fields["next_action"] = {**next_action, "entered_at": now}
+    elif new != Stage.SPECIFIC_FOLLOWUP:
+        unset["next_action"] = ""
+    if new == Stage.APPOINTMENT_SET and event.detail.get("appointment"):
+        fields["appointment"] = {**event.detail["appointment"], "set_at": now}
+    if new == Stage.CLOSED_LOST:
+        fields.update(opportunity_closed_at=now, closed_reason=event.detail.get("closed_reason") or result.rule)
+    update: dict[str, Any] = {"$set": fields, "$push": {"stage_history": {"$each": [entry], "$slice": -HISTORY_LIMIT}},
+                              "$setOnInsert": {"lead_id": lead_id, "created_at": now, "status": "active",
+                                               **({"customer_id": customer_id} if customer_id else {})}}
+    if unset:
+        update["$unset"] = unset
+    await states.update_one({"lead_id": lead_id}, update, upsert=True)
+    cancelled = 0
+    if new != current:
+        cancelled = await cancel_stale_work(db, lead_id, new, reason=f"stage changed to {STAGE_LABELS[new]}")
+    out.update(stage=new.value, label=STAGE_LABELS[new], cancelled=cancelled)
+    return out
+
+
+# --- Day 91 ---------------------------------------------------------------------------
+
+async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> dict[str, Any]:
+    """The Day 91 sweep (§4, §12; client, scope Q1): every lead whose
+    opportunity is 91 days old and still in a Short-Term / Day 1-90 stage
+    closes as Closed - Lost. Cross-dealer by design, like the follow-up claim
+    (one query; each lead is then handled through its own dealer's scope).
+    A pending appointment supersedes it (Appointment Set / No Show aren't
+    closable), and a booking on the platform lead is checked again here."""
+    from upsell_agent.tools.booking_tool import find_active_booking
+
+    now = now or clock.now()
+    cutoff = now - timedelta(days=OPPORTUNITY_DAYS)
+    rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(
+        {"opportunity_created_at": {"$lte": cutoff}, "stage": {"$in": [s.value for s in CLOSABLE_AT_DAY_91]}}
+    ).to_list(limit)
+    summary: dict[str, Any] = {"checked": len(rows), "closed": 0, "kept": 0}
+    for row in rows:
+        dealer_id, lead_id = row.get("dealer_id"), row.get("lead_id")
+        if not dealer_id or not lead_id:
+            continue
+        db = dealer_scoped_db(dealer_id)
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+        active = await find_active_booking(dealer_id, lead)
+        moved = await apply(db, lead_id, [Event("day_91", detail={"appointment_active": bool(active),
+                                                                  "closed_reason": "day_91_no_response"},
+                                                source="day_91_sweep")], lead=lead)
+        if moved and moved.get("changed"):
+            summary["closed"] += 1
+        else:
+            summary["kept"] += 1
+    return summary

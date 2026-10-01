@@ -43,8 +43,9 @@ _TIME = re.compile(r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(
 DATE_PHRASE = re.compile(
     rf"\b(?:the\s+)?day after tomorrow\b|\btomorrow\b|\btmrw\b|\btoday\b|\btonight\b|\byesterday\b"
     rf"|\b(?:this|next)\s+weekend\b|\bnext\s+week\b|\blast\s+week\b|\bend of (?:the|this) month\b"
+    rf"|\bnext\s+(?:month|year)\b"
     rf"|\b(?:next|this|last|on|coming)\s+{_DAY}\b|\b{_DAY}\b"
-    rf"|\bin\s+(?:a couple of|a couple|a few|an|a|one|two|three|four|five|six|\d+)\s+(?:days?|weeks?|months?)\b"
+    rf"|\bin\s+(?:a couple of|a couple|a few|an|a|one|two|three|four|five|six|\d+)\s+(?:days?|weeks?|months?|years?)\b"
     rf"|\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTH}(?![a-z])"
     rf"|\bthe\s+\d{{1,2}}(?:st|nd|rd|th)\b|\b\d{{1,2}}/\d{{1,2}}\b|\b{_MONTH_ONLY}\b",
     re.IGNORECASE)
@@ -138,9 +139,16 @@ def _day_of(text: str, today: date, now: datetime) -> DateResolution | None:
     if re.search(r"\bend of (?:the|this) month\b", t):
         last = calendar.monthrange(today.year, today.month)[1]
         return DateResolution(today.replace(day=last), approximate=True, note="end of the month")
-    if m := re.search(r"\bin\s+(a couple of|a couple|a few|an|a|one|two|three|four|five|six|\d+)\s+(day|week|month)s?\b", t):
+    # MASTER_PLAN_3 C3: "call me next month / in a year" (Omnichannel PDF §2, "specific timing wins").
+    if re.search(r"\bnext\s+month\b", t):
+        return DateResolution(_add_months(today, 1), approximate=True, note="next month")
+    if re.search(r"\bnext\s+year\b", t):
+        return DateResolution(_add_months(today, 12), approximate=True, note="next year")
+    if m := re.search(r"\bin\s+(a couple of|a couple|a few|an|a|one|two|three|four|five|six|\d+)\s+(day|week|month|year)s?\b", t):
         n, unit = _count(m.group(1)), m.group(2)
         rough = m.group(1) in ("a few", "a couple", "a couple of")
+        if unit == "year":
+            return DateResolution(_add_months(today, 12 * n), approximate=True, note=f"in {n} year(s)")
         if unit == "month":
             return DateResolution(_add_months(today, n), approximate=True, note=f"in {n} month(s)")
         return DateResolution(today + timedelta(days=n * (7 if unit == "week" else 1)),

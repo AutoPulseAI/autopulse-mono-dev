@@ -163,6 +163,12 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                               {f.kind === "visit_followup" && (
                                 <span className="mr-1 rounded bg-accent-soft px-1 text-[10px] text-accent">visit follow-up</span>
                               )}
+                              {f.kind === "next_action" && (
+                                <span className="mr-1 rounded px-1 text-[10px]" style={{ background: "var(--ai-soft)", color: "var(--ai)" }}>next step</span>
+                              )}
+                              {f.kind === "next_action_check" && (
+                                <span className="mr-1 rounded bg-panel-2 px-1 text-[10px] text-muted">24h reply check</span>
+                              )}
                               {leadName(f.lead_id)}
                             </span>
                             <span
@@ -179,6 +185,10 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                 ? `"the team is in now" by ${f.to_channel.toUpperCase()} when the dealership opens`
                                 : f.kind === "visit_followup"
                                   ? `a fresh visit offer by ${f.to_channel.toUpperCase()} (declined 3 times earlier)`
+                                : f.kind === "next_action"
+                                  ? `checking back by ${f.to_channel.toUpperCase()}, as the customer asked`
+                                : f.kind === "next_action_check"
+                                  ? "no reply by then → No Contact Made"
                                 : `${f.from_channel.toUpperCase()} → ${f.to_channel.toUpperCase()}${f.to ? ` (${f.to})` : ""}`}{" "}
                             ·{" "}
                             {f.status === "pending"

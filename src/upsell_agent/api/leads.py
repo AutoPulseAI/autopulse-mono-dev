@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from upsell_agent.agent import lifecycle
 from upsell_agent.api.auth import require_internal_auth
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
@@ -66,9 +67,23 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
     booking_id = (lead.get("data") or {}).get("bookingId")
     booking = await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one(
         {"_id": as_object_id(str(booking_id))}) if booking_id else None
+    next_action = state.get("next_action")
     return {
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
+        # MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py), its
+        # opportunity clock (never reset), a dated next step, and how it got here.
+        "lifecycle": {
+            "stage": state.get("stage"), "label": lifecycle.label(state.get("stage")),
+            "reason": state.get("stage_reason"), "since": _iso(state.get("stage_at")),
+            "opportunity_created_at": _iso(state.get("opportunity_created_at")),
+            "opportunity_age_days": lifecycle.opportunity_age_days(state),
+            "opportunity_closed_at": _iso(state.get("opportunity_closed_at")),
+            "next_action": ({**next_action, "entered_at": _iso(next_action.get("entered_at"))}
+                            if next_action else None),
+            "appointment": state.get("appointment"),
+            "history": [{**h, "at": _iso(h.get("at"))} for h in state.get("stage_history") or []],
+        },
         **profile.to_api(),
         "pending_followup": ({"channel": pending[0].get("to_channel"), "due_at": _iso(pending[0].get("due_at"))}
                              if pending else None),

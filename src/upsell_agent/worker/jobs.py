@@ -17,7 +17,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from upsell_agent.agent import summary
+from upsell_agent.agent import lifecycle, summary
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
@@ -138,5 +138,12 @@ async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
         ctx["deps"], lock=lambda dealer_id, lead_id: lead_lock(redis, dealer_id, lead_id, settings.lead_lock_ttl_s))
 
 
+async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_3 C3: the Day 91 sweep (agent/lifecycle.py close_expired).
+    Hourly on every worker (worker/main.py cron); each close is one atomic
+    update, so two workers running it together close a lead once."""
+    return await lifecycle.close_expired()
+
+
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
-             fire_due_followups, update_summary]
+             fire_due_followups, update_summary, close_expired_leads]

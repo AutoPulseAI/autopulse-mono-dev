@@ -25,6 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
+from upsell_agent.agent import lifecycle
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -34,8 +35,8 @@ from upsell_agent.agent.nodes.template_reply import template_draft
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
-from upsell_agent.channels import consent
 from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
+from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
 from upsell_agent.compliance.engine import Decision, can_contact
@@ -57,6 +58,7 @@ from upsell_agent.scheduler.followups import (
     cancel_visit_followup,
     plan_followup,
     plan_handoff_check,
+    plan_next_action,
     plan_resume,
     plan_visit_followup,
 )
@@ -260,6 +262,9 @@ async def run_turn(
 
         await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
                                  shadow=shadow, turn_id=tracer.turn_id)
+        stage_change = await _lifecycle_after_turn(db, lead_id, trigger, sent, result, inbound_text=inbound_text,
+                                                   lead=lead, customer=customer, customer_id=customer_id,
+                                                   channel=channel, turn_id=tracer.turn_id, shadow=shadow)
         if trigger == TRIGGER_RESUME and sent is not None and sent.status in ("sent", "duplicate") and not shadow:
             await _notify_team_at_opening(db, lead_id, result)
         if sent is not None and sent.status in ("sent", "duplicate") and not shadow:
@@ -293,6 +298,9 @@ async def run_turn(
             "origin": (ctx.compliance or {}).get("origin", {}).get("origin"),
             "review_opened": review,
             "after_hours": (decision.get("after_hours") or {}).get("mode"),
+            # MASTER_PLAN_3 C3: where the lead now stands, and whether this turn moved it.
+            "stage": (stage_change or {}).get("stage"),
+            "stage_change": stage_change if (stage_change or {}).get("changed") else None,
             # MASTER_PLAN_3 B4 item 7: for the visit offer / booking rates.
             "visit_offer_attempt": (decision.get("visit_offer") or {}).get("attempt"),
             "booked": bool((decision.get("visit") or {}).get("just_booked")
@@ -322,14 +330,63 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
     return None
 
 
+async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
+                                sent: SendOutcome | None, result: dict[str, Any], *, inbound_text: str,
+                                lead: dict | None, customer: dict | None, customer_id: str, channel: str,
+                                turn_id: str, shadow: bool) -> dict[str, Any] | None:
+    """MASTER_PLAN_3 C3: what this turn means for the lead's stage
+    (agent/lifecycle.py's response router, Omnichannel PDF §5): a meaningful
+    customer reply (with or without a dated next step), a booking made or
+    moved, or one cancelled. A dated next step also gets its scheduled
+    check-back (`next_action`). Shadow turns change nothing."""
+    if shadow or not lead_id:
+        return None
+    decision = result.get("decision") or {}
+    visit = decision.get("visit") or {}
+    dated = decision.get("next_action")
+    events: list[lifecycle.Event] = []
+    if trigger == "inbound_message":
+        meaningful, why = lifecycle.is_meaningful_reply(inbound_text)
+        if meaningful:
+            events.append(lifecycle.Event("customer_replied", reason=f"The customer replied: {why}",
+                                          detail={"next_action": dated}))
+    if visit.get("just_booked"):
+        events.append(lifecycle.Event("appointment_set", reason=(
+            f"Appointment {'moved to' if visit.get('moved_this_turn') else 'booked for'} {visit.get('display')}"),
+            detail={"appointment": {"display": visit.get("display"), "booking_id": visit.get("booking_id"),
+                                    "status": visit.get("status"), "by": "ai"}}))
+    elif visit.get("cancelled_this_turn"):
+        events.append(lifecycle.Event("appointment_cancelled", reason="The customer cancelled their appointment",
+                                      detail={"next_action": dated}))
+    if not events:
+        return None
+    change = await lifecycle.apply(db, lead_id, events, lead=lead, customer_id=customer_id)
+    if change and change.get("stage") == lifecycle.Stage.SPECIFIC_FOLLOWUP and dated:
+        change["next_action_scheduled"] = await plan_next_action(
+            db, lead_id=lead_id, customer_id=customer_id, channel=dated.get("channel") or channel, turn_id=turn_id,
+            next_action=dated, lead=lead, customer=customer)
+    if change and change.get("stage") == lifecycle.Stage.CLOSED_LOST and trigger == "inbound_message":
+        # The customer wrote on a closed lead: answered (never silent), and the team is told - only a person
+        # reopens it, or a new lead starts its own workflow (client, 1 Oct 2026).
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+            "at": clock.now(), "kind": "reply_on_closed_lead",
+            "text": f"The customer wrote on a Closed - Lost lead: {inbound_text[:200]!r}. Reopen it or start a "
+                    "new lead if they're back in the market."}}})
+    return change
+
+
 async def _visit_followup_schedule(db: DealerScopedDatabase, decision: dict[str, Any], sent: SendOutcome | None, *,
                                    lead_id: str, lead: dict | None, customer: dict | None, customer_id: str,
                                    channel: str, turn_id: str, shadow: bool) -> dict[str, Any] | None:
     """The dated visit follow-up after a 3rd decline (MASTER_PLAN_3 B4 item
     4): scheduled once the decline reply goes out; cancelled once a booking
-    exists (nothing left to follow up on). Only when the reply went out."""
+    exists (nothing left to follow up on). Only when the reply went out.
+    A decline that named its own date ("maybe next month") is a dated next
+    step instead (MASTER_PLAN_3 C3): `next_action` covers it, not this."""
     plan = decision.get("visit_plan") or {}
     if shadow or sent is None or sent.status not in ("sent", "failed", "duplicate"):
+        return None
+    if decision.get("next_action"):
         return None
     if plan.get("schedule_followup") and plan.get("followup_due"):
         planned = await plan_visit_followup(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
@@ -540,6 +597,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         visit=_visit_record(result),
         shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
         channel=channel,
+        not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

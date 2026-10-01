@@ -202,8 +202,24 @@ export interface SummaryView {
   model: string | null;
 }
 
+// MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py).
+export interface LifecycleView {
+  stage: string | null;
+  label: string | null;
+  reason: string | null;
+  since: string | null;
+  opportunity_created_at: string | null;
+  opportunity_age_days: number | null;
+  opportunity_closed_at: string | null;
+  next_action: { date: string; time: string; display: string; words: string; channel: string;
+    call_requested?: boolean; context_notes: string } | null;
+  appointment: { display?: string; at?: string; by?: string } | null;
+  history: { at: string; from: string | null; to: string; rule: string; reason: string; source: string }[];
+}
+
 export interface SlotsView {
   conversation?: ConversationStateView;
+  lifecycle?: LifecycleView;
   pending_morning_message?: { due_at: string } | null;
   staff_notice?: { at: string; kind: string; text: string } | null;
   // MASTER_PLAN_3 B4/B5.
@@ -236,7 +252,8 @@ export interface Followup {
   // channel_switch: the 24h switch; handoff_check: the staff check after a handoff;
   // resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
   // visit_followup: the dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4).
-  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup";
+  // next_action / next_action_check: the customer's dated next step and the 24h check after it (MASTER_PLAN_3 C3).
+  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";

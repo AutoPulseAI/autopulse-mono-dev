@@ -146,8 +146,9 @@ def test_decide_rule_order_stop_beats_handoff_beats_everything():
     assert next_action(profile, Flags(upset=True, upset_confidence=0.6))["action"] != "handoff"
     assert next_action(profile, Flags(annoyed_at_bot=True))["action"] != "handoff"
     rules = next_action(profile, Flags(wants_human=True))["rules"]
-    # 10 rules since MASTER_PLAN_3 B4 added offer_visit between confirm and ask.
-    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 8
+    # 11 rules: MASTER_PLAN_3 B4 added offer_visit between confirm and ask, and C3 added ask_why
+    # ("not interested", no reason given) right after handoff.
+    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 9
 
 
 def test_decide_is_deterministic_and_passes_questions_through():

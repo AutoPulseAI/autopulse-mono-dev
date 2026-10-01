@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 
 import { formatDate, formatDateTime } from "../time";
-import type { Slot, SlotState, SlotsView } from "../types";
+import type { LifecycleView, Slot, SlotState, SlotsView } from "../types";
 import { StatusBadge } from "./ui";
 
 const STATE_STYLE: Record<SlotState, { bg: string; fg: string; border: string; label: string }> = {
@@ -30,6 +30,35 @@ function tooltip(slot: Slot): string {
   return lines.join("\n");
 }
 
+// MASTER_PLAN_3 C3: the lifecycle stage, coloured by how far along the lead is; hover for the history.
+const STAGE_COLOUR: Record<string, string> = {
+  new_lead: "var(--muted)", no_contact_made: "var(--warn)", contact_made_no_next_action: "var(--accent)",
+  contact_made_specific_followup: "var(--ai)", appointment_set: "var(--ok)", appointment_no_show: "var(--warn)",
+  sales_visit: "var(--ok)", opted_out: "var(--bad)", closed_lost: "var(--bad)",
+};
+
+function StageBadge({ lifecycle }: { lifecycle: LifecycleView }) {
+  const colour = STAGE_COLOUR[lifecycle.stage ?? ""] ?? "var(--muted)";
+  const lines = [
+    `${lifecycle.label}${lifecycle.since ? ` since ${formatDateTime(lifecycle.since)}` : ""}`,
+    lifecycle.reason ? `Why: ${lifecycle.reason}` : "",
+    lifecycle.opportunity_age_days != null ? `Opportunity day ${lifecycle.opportunity_age_days + 1} of 91` : "",
+    lifecycle.next_action ? `Next step: ${lifecycle.next_action.display} at ${lifecycle.next_action.time} ` +
+      `(${lifecycle.next_action.call_requested ? "asked for a call" : lifecycle.next_action.channel}; ` +
+      `"${lifecycle.next_action.words}")` : "",
+    ...(lifecycle.history.length ? ["", "History:"] : []),
+    ...lifecycle.history.slice().reverse().map((h) =>
+      `${formatDateTime(h.at)}  ${h.from ?? "—"} → ${h.to}  (${h.rule}, ${h.source}): ${h.reason}`),
+  ].filter((l, i, all) => l !== "" || (i > 0 && all[i - 1] !== ""));
+  return (
+    <span className="shrink-0 rounded px-1.5 text-[10px] font-bold"
+          style={{ color: colour, border: `1px solid ${colour}` }} title={lines.join("\n")}>
+      {lifecycle.label}
+      {lifecycle.next_action && <span className="ml-1 font-medium">· {lifecycle.next_action.display}</span>}
+    </span>
+  );
+}
+
 export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
   const pct = slots && slots.required.total ? (slots.required.filled / slots.required.total) * 100 : 0;
   const groups = (slots?.groups ?? []).filter((g) => slots?.slots.some((s) => s.group === g.id));
@@ -45,6 +74,7 @@ export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
               {slots.effective_lead_type !== slots.lead_type && ` (was ${slots.lead_type})`}
             </span>
             <StatusBadge status={slots.status} />
+            {slots.lifecycle?.stage && <StageBadge lifecycle={slots.lifecycle} />}
             {slots.status_reason && <span className="truncate text-[10px] text-muted">{slots.status_reason}</span>}
           </>
         )}

@@ -70,6 +70,7 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
+from upsell_agent.agent import lifecycle
 from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_SUBJECT,
     SOLD_VEHICLE_FALLBACK_TEXT,
@@ -95,8 +96,6 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.contact_window import (
     add_business_minutes,
-    is_proactive_sms_allowed,
-    proactive_send_time,
 )
 from upsell_agent.tools.inventory_tool import find_sold, get_inventory_source
 from upsell_agent.worker.locks import Busy
@@ -121,8 +120,15 @@ KIND_RESUME = "resume_at_opening"
 # MASTER_PLAN_3 B4 item 4: the dated fresh visit offer after a 3rd decline.
 KIND_VISIT_FOLLOWUP = "visit_followup"
 TRIGGER_VISIT_FOLLOWUP = KIND_VISIT_FOLLOWUP
+# MASTER_PLAN_3 C3 (Omnichannel PDF §6): the dated next step the customer asked for ("call me
+# Friday"), and the check 24 hours after it went out: no reply moves the lead to No Contact Made.
+KIND_NEXT_ACTION = "next_action"
+KIND_NEXT_ACTION_CHECK = "next_action_check"
+TRIGGER_NEXT_ACTION = KIND_NEXT_ACTION
+NEXT_ACTION_REPLY_WINDOW = timedelta(hours=24)
 # Matches channel switches, including records from before `kind` existed.
-CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP]}}
+CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
+                                      KIND_NEXT_ACTION_CHECK]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -165,6 +171,10 @@ async def plan_followup(
         return {"created": False, "reason": "lead handed to a person; staff follow up, not the AI"}
     if sent.status not in ("sent", "failed"):
         return {"created": False, "reason": f"message not sent ({sent.status})"}
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}, projection={"stage": 1})
+    _, stage_ok, stage_detail = lifecycle.stage_check(state, KIND_CHANNEL_SWITCH)
+    if not stage_ok:
+        return {"created": False, "reason": stage_detail}
 
     # MASTER_PLAN_3 Phase 3 decision L / Phase 5 item 2: the stock-free version
     # is the stored default (safe if this never gets re-checked), but the
@@ -356,6 +366,49 @@ async def plan_visit_followup(
             "timezone": profile.timezone, "reason": f"Visit follow-up due {local}."}
 
 
+async def plan_next_action(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    channel: str,
+    turn_id: str,
+    next_action: dict[str, Any],
+    lead: dict | None = None,
+    customer: dict | None = None,
+) -> dict[str, Any]:
+    """The dated next step (MASTER_PLAN_3 C3, Omnichannel PDF §6): due on the
+    customer's date at their time (else the dealer default), dealer-local,
+    within the send check's rules (marketing: dealer open and the customer's
+    own window). Replaces the lead's older pending next step and its check."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    hour, minute = (int(x) for x in str(next_action.get("time") or "10:00").split(":")[:2])
+    wanted = max(datetime.combine(date.fromisoformat(next_action["date"]), time(hour, minute), tzinfo=profile.tz),
+                 now)
+    check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                              purpose="marketing", is_reply=False, at=wanted, lead=lead, customer=customer,
+                              record=False)
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": {"$in": [KIND_NEXT_ACTION, KIND_NEXT_ACTION_CHECK]}},
+        {"$set": {"status": "superseded", "reason": "a newer next step", "closed_at": now}})
+    if check.outcome in ("BLOCK", "REVIEW"):
+        return {"created": False, "send_check": check.as_dict(),
+                "reason": f"No next step scheduled: the send check says {check.outcome} ({check.reason})."}
+    due_at = check.until if check.outcome == "HOLD" and check.until else wanted
+    doc = {
+        "kind": KIND_NEXT_ACTION, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
+        "due_at": due_at, "created_at": now, "claim_count": 0, "next_action": next_action,
+        "reason": f"held by the send check: {check.reason}" if due_at > wanted else None,
+    }
+    inserted = await followups.insert_one(doc)
+    local = due_at.astimezone(profile.tz).strftime("%a %b %d %H:%M %Z")
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
+            "timezone": profile.timezone, "reason": f"Next step due {local}."}
+
+
 async def cancel_visit_followup(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
     """A booking was made, or the lead is no longer active: the dated visit follow-up isn't needed."""
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
@@ -452,6 +505,7 @@ async def _why_not_send(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, 
          "the customer replied since, so no switch is needed" if replied else "no reply from the customer"),
         ("lead_active", status not in SILENT_STATUSES,
          f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+        lifecycle.stage_check(state, doc.get("kind") or KIND_CHANNEL_SWITCH),
         ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
     ]
 
@@ -477,7 +531,9 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     db = dealer_scoped_db(dealer_id)
     fire_locked = {KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
                    KIND_RESUME: _fire_resume_locked,
-                   KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked}.get(doc.get("kind"), _fire_locked)
+                   KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked,
+                   KIND_NEXT_ACTION: _fire_next_action_locked,
+                   KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked}.get(doc.get("kind"), _fire_locked)
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -602,6 +658,7 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
             ("still_with_staff", same_handoff,
              "staff haven't taken the lead over yet" if same_handoff
              else f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            lifecycle.stage_check(state, KIND_HANDOFF_CHECK),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
         failed = [c for c in checks if not c[1]]
@@ -680,6 +737,7 @@ async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) ->
              else f"the after-hours choice is now {choice!r}"),
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            lifecycle.stage_check(state, KIND_RESUME),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
         failed = [c for c in checks if not c[1]]
@@ -756,6 +814,7 @@ async def _fire_visit_followup_locked(db: DealerScopedDatabase, doc: dict, deps:
         checks = [
             ("lead_active", status not in SILENT_STATUSES, f"lead is {status}"),
             ("no_booking_yet", active_booking is None, "already booked" if active_booking else "no booking yet"),
+            lifecycle.stage_check(state, KIND_VISIT_FOLLOWUP),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
         failed = [c for c in checks if not c[1]]
@@ -790,6 +849,120 @@ async def _fire_visit_followup_locked(db: DealerScopedDatabase, doc: dict, deps:
     status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
     await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
     return status
+
+
+async def _fire_next_action_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """The customer's dated next step is due (MASTER_PLAN_3 C3, Omnichannel PDF
+    §6): if the lead is still waiting on it, run a whole AI turn that checks
+    back as they asked (the appointment stays the goal: a fresh visit offer is
+    allowed again), then plan the 24-hour check. A step kept past Day 91 (the
+    long-horizon rule) still runs on the closed lead."""
+    from upsell_agent.agent.turn import run_turn
+
+    action_id = str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="next_action_check_in", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"next-action-fire-{action_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": action_id, "channel": doc["to_channel"], "next_action": doc.get("next_action")})
+    async with tracer.node("next_action", {"followup_id": action_id, "due_at": doc["due_at"],
+                                           "next_action": doc.get("next_action")}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        planned = (state.get("next_action") or {}).get("date")
+        mode = await dealer_ai_mode(db.dealer_id)
+        long_horizon = bool(doc.get("long_horizon"))
+        checks = [
+            ("lead_active", status not in SILENT_STATUSES, f"lead is {status}"),
+            lifecycle.stage_check(state, KIND_NEXT_ACTION, long_horizon=long_horizon),
+            ("still_this_step", long_horizon or planned == (doc.get("next_action") or {}).get("date"),
+             "the lead is still waiting on this next step" if long_horizon or planned == (doc.get("next_action")
+                                                                                          or {}).get("date")
+             else f"the next step changed since (now {planned})"),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "decision": "cancel" if failed else "run the turn"}
+        span.reasoning = [f"{'✓' if ok else '✗'} {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else "run the turn"
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, "next_action_cancelled", {"followup_id": action_id, "reason": reason})
+        return "cancelled"
+
+    # A fresh visit offer is allowed again: the customer asked us to come back to them now.
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": doc["lead_id"]}, {"$unset": {"conversation.visit": ""}})
+    await _log(db, tracer, "next_action_started", {"followup_id": action_id})
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+        trigger=TRIGGER_NEXT_ACTION, channel=doc["to_channel"], inbound_text="", shadow=False, deps=deps,
+        turn_id=f"next-action-{action_id}", is_reply=False,
+    )
+    sent = log["summary"].get("send_status")
+    if sent == "held":
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": clock.now() + BUSY_RETRY_AFTER,
+                      "reason": "held by the send check at send time; checking again"}})
+        return "deferred"
+    status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
+    await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
+    planned = doc.get("next_action") or {}
+    if planned.get("call_requested"):
+        # The customer asked for a call on this date. Staff call tasks (C2) are skipped for now, so the
+        # team gets a notice instead; the AI's text/email above covers the rest of the touch.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": {
+            "staff_notice": {"at": clock.now(), "kind": "call_requested",
+                             "text": f"The customer asked to be called {planned.get('words')!r} - that's today. "
+                                     f"{planned.get('context_notes') or ''}".strip()}}})
+    if status == "sent":
+        now = clock.now()
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).insert_one({
+            "kind": KIND_NEXT_ACTION_CHECK, "lead_id": doc["lead_id"], "customer_id": doc["customer_id"],
+            "source_turn_id": log["turn_id"], "from_channel": doc["to_channel"], "to_channel": doc["to_channel"],
+            "text": None, "subject": None, "status": "pending", "due_at": now + NEXT_ACTION_REPLY_WINDOW,
+            "created_at": now, "claim_count": 0, "next_action": doc.get("next_action"),
+            "long_horizon": doc.get("long_horizon", False), "reason": None})
+    return status
+
+
+async def _fire_next_action_check_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """24 hours after the next step went out (Omnichannel PDF §6): no reply
+    from the customer since → No Contact Made (back into Short-Term
+    follow-up). Sends nothing itself."""
+    check_id = str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="next_action_reply_check", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"next-action-check-{check_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": check_id})
+    async with tracer.node("next_action_check", {"followup_id": check_id, "due_at": doc["due_at"]}) as span:
+        replied = await db.collection(AI_MESSAGES_COLLECTION).find(
+            {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gt": doc["created_at"]}}
+        ).to_list(1)
+        if replied:
+            span.output = {"decision": "nothing to do", "replied": True}
+            span.reasoning = ["✓ The customer replied after the next step: the reply already moved the lead on."]
+            span.edge_label = "replied"
+        else:
+            moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
+                "specific_followup_unanswered", source="next_action_check",
+                reason="No reply within 24 hours of the scheduled follow-up")])
+            span.output = {"decision": "no reply", "lifecycle": moved}
+            span.reasoning = ["✗ No reply within 24 hours of the next step: " + (
+                f"the lead moves to {lifecycle.label(moved.get('stage'))}." if moved and moved.get("changed")
+                else f"no change ({(moved or {}).get('reason')}).")]
+            span.edge_label = "no contact made" if moved and moved.get("changed") else "no change"
+    await _close(db, doc, "done", reason="customer replied" if replied else "no reply in 24 hours",
+                 fired_at=clock.now())
+    await _log(db, tracer, "next_action_check_done", {"followup_id": check_id, "replied": bool(replied)})
+    return "done"
 
 
 # --- Provider said the message failed -------------------------------------------

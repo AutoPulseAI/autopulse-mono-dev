@@ -21,6 +21,62 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | B4. The visit as the goal | **Built (29 Sept), with B5.** Decisions 102–122. |
 | B5. Booking the visit | **Built (29 Sept), with B4**, including item 8. |
 | B6. Debug UI, evals and rollout | Minimal Visit panels pulled forward into B4/B5 (decision 111) |
+| C2. Omnichannel call tasks | **Skipped for now** (27 Sept). A dated "call me …" step leaves the team a notice instead (decision 131). |
+| C3. Lifecycle state machine | **Built and unit-tested (1 Oct 2026).** Decisions 123–134. 1012 unit tests, 79/79 offline evals, Debug UI type check clean. **Live Docker scenarios not run:** Docker wasn't running (see C3 section). |
+
+---
+
+## Phase C3: Lifecycle state machine and priority engine — built (1 Oct 2026)
+
+The client's statuses (Omnichannel PDF §1), kept on the AI's own lead state (`ai_lead_state.stage`) beside `status`, which still says who runs the conversation. Built with the client's scope answers of 1 Oct ([`../../data/6/conversation_6.md`](../../data/6/conversation_6.md)) and three decisions the user made the same day: No Contact Made after Touch 2; staff bookings run the AI's appointment flow; Day 91 waits for a pending appointment. Decisions 123–134 in architecture.md §15.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| Stages, the client's labels, §11 priority, a pure `transition()` per event, `resolve()` for events that collide, and an add-only stage history | `agent/lifecycle.py` (new) |
+| One `apply()` that moves the lead, starts its opportunity clock from the platform lead's `createdAt` (written once), records the dated next step / appointment / closing time, and **cancels the old stage's scheduled work** (§2) | `agent/lifecycle.py` |
+| The router (§5), fed by the turn: a meaningful reply (auto-replies don't count, client Q10), a dated next step, a booking made / moved / cancelled | `agent/turn.py` `_lifecycle_after_turn` |
+| Event sources: a new lead; opting out of every channel (and START back); a reply while staff hold the lead; staff statuses from `lead-paused` (Appointment Booked → Appointment Set **without pausing**; Visited / Sold → Sales Visit; DND → Opted Out) | `events/handlers.py` |
+| **Pre-send re-check by stage** for every kind of scheduled work (channel switch, staff check, morning message, visit follow-up), and `plan_followup` won't plan a switch the stage doesn't allow | `scheduler/followups.py`, `lifecycle.KIND_STAGES` / `stage_check` |
+| **Dated next step** (§6): Extract's `next_contact_when`, resolved in code; the reply confirms it and asks nothing else; it fires as a whole AI turn ("Checking back in like you asked"); a 24h reply check moves an unanswered one to No Contact Made; "call me …" leaves the team a `call_requested` notice | `agent/llm.py`, `agent/offline_model.py`, `agent/nodes/decide.py`, `scheduler/followups.py` (`next_action`, `next_action_check`) |
+| New date phrases: "next month", "next year", "in a year / in N years" | `slots/dates.py` |
+| **Day 91**: hourly sweep (and on a dev clock jump); closes Short-Term stages as Closed - Lost; a pending appointment or active booking supersedes it; a long-horizon next step survives and still fires | `lifecycle.close_expired`, `worker/jobs.py`, `worker/main.py` |
+| **"Not interested"**: new Decide rule `ask_why` (asks why once, no visit offer); a reason (or the same answer again) hands to a person with the reason recorded; the AI never closes the lead | `slots/policy.py`, `agent/pipeline.py`, `agent/conversation.py`, Compose instructions, offline model |
+| Guard knows the dated next step's date (it was rejecting "Monday, October 5" as an invented number) | `agent/nodes/guard.py` |
+| `GET /v1/leads/{id}/profile` → `lifecycle` (stage, reason, since, opportunity created/age/closed, next step, appointment, history) | `api/leads.py` |
+| Dev: stage in the leads list; `POST /dev/leads/{id}/staff/status` (plays the platform's status route); clock jumps run the Day 91 sweep | `api/dev.py`, `devtools/simulate.py` `send_staff_status` |
+| Debug UI: a stage badge in the Slots panel (hover: reason, opportunity day, next step, history); the Scheduler tab names the two new kinds | `debug-ui/src/components/SlotsPanel.tsx`, `SchedulerTab.tsx`, `types.ts` |
+| Scenario steps: `staff_status`; `expect_lead` takes `stage` / `next_action`; `expect_no_followup` takes `status` and `kind: any`; `advance_clock` also runs the Day 91 sweep | `devtools/scenarios.py` |
+| Scenarios (stage 303): `pc3_specific_followup`, `pc3_staff_statuses`, `pc3_day_91`, `pc3_not_interested` | `scenarios/` |
+| Tests: 76 new (every transition and non-transition, priority, stage/kind table, meaningful replies, date phrases, and end to end through the real handlers, turns and scheduler) | `tests/unit/test_lifecycle.py` (new) |
+
+### Found and fixed while testing
+1. **"Call me next week" handed the lead off.** The existing "asked for a person" signal fires on "call me", so the turn handed off before the dated next step counted. Now a call request with a date is a dated next step (decision 131), which is the client's own example in §2.
+2. **The guard rejected the reply confirming the date** ("Monday, October 5" read as an invented number), so it fell back to the template and a handoff. The next step's date and time are now known values.
+3. **The 24h channel switch would have resent "I'll check back next week" the next day.** Specific timing replaces Short-Term work (decision 132).
+4. **The check-back message greeted the customer again**, which the guard's "only the first reply greets" rule rejects. It now opens without a greeting line.
+
+### Tests changed on purpose
+- `test_slots.py`: 11 Decide rules now (`ask_why` after handoff).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests | **1012 passed** (936 before; +76 in `test_lifecycle.py`) |
+| Offline eval gate (`pytest evals`) | 79 / 79 |
+| Ruff on changed files | Clean (also fixed 3 old lint errors in files touched: 2 unused imports in `followups.py`, import order in `turn.py`) |
+| Debug UI type check (`tsc -b --noEmit`) | Clean |
+| Scenarios, live in Docker | **Not run: Docker Desktop wasn't running on this machine.** The 4 new scenario files load and validate (`test_dev_routes`). To run: start Docker, `make ai-up`, then `make ai-scenarios` (offline model). |
+| Debug UI in a browser | **Not checked**, for the same reason |
+
+### Not built / left open
+- **Platform statuses:** staff still don't see the stage names. C3 is AI-service only (27 Sept decision); they're in the profile API and the Debug UI.
+- **Appointment No Show, no-show replies, UNSOLD** are defined and tested as transitions but have no event source yet: C5 adds them (appointment time + 1h, the no-show messages, the manager outcome).
+- **Touch 2 → No Contact Made** is defined and tested; C4's Touch 2 emits it.
+- **Automatic reopening of a closed lead** isn't built: the team gets a notice (decision 127).
+- **Call tasks** (C2) are still skipped; "call me …" is a notice for now.
 
 ---
 

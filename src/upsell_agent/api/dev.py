@@ -141,6 +141,8 @@ async def leads(dealer_id: str) -> list[dict]:
             "lead_type": data.get("lead_type") or state.get("lead_type"), "channel": data.get("channel", "sms"),
             "comments": data.get("comments", ""), "status": state.get("status", "new"),
             "status_reason": state.get("status_reason"),
+            # MASTER_PLAN_3 C3: the lifecycle stage (agent/lifecycle.py).
+            "stage": state.get("stage"), "stage_label": state.get("stage_label"),
         })
     return out
 
@@ -174,6 +176,29 @@ async def simulate_reply(body: Reply, request: Request) -> dict:
     try:
         result = await simulate.send_reply(body.dealer_id, body.lead_id, body.channel, body.text,
                                            request.app.state.enqueue)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"event": result.status}
+
+
+class StaffStatus(BaseModel):
+    dealer_id: str
+    status: Literal["Appointment Booked", "Visited", "Sold", "DND", "Managerial Review"]
+    # Appointment Booked only: dealer-local ISO date-time ("2026-10-08T15:00").
+    booking_at: str | None = None
+
+
+@router.post("/leads/{lead_id}/staff/status")
+async def staff_status(lead_id: str, body: StaffStatus, request: Request) -> dict:
+    """Plays staff moving the lead on the platform's status screen (MASTER_PLAN_3 C3): the Lead's status
+    is saved and the AI gets `lead-paused`, exactly as the platform's status route sends it."""
+    booking_at = None
+    if body.booking_at:
+        dealer = await dealer_profile(body.dealer_id)
+        booking_at = datetime.fromisoformat(body.booking_at).replace(tzinfo=dealer.tz).astimezone(UTC).isoformat()
+    try:
+        result = await simulate.send_staff_status(body.dealer_id, lead_id, body.status, request.app.state.enqueue,
+                                                  booking_at=booking_at)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"event": result.status}
@@ -307,6 +332,8 @@ async def _fire_followups_now(request: Request, why: str) -> None:
 async def advance_clock(body: Advance, request: Request) -> dict:
     offset = await clock.advance(get_redis(), body.seconds)
     await _fire_followups_now(request, "clock")
+    # MASTER_PLAN_3 C3: a jump past Day 91 closes leads now, not at the next hourly cron.
+    await request.app.state.enqueue("close_expired_leads", key=f"close_expired_leads:dev:{uuid.uuid4().hex[:8]}")
     return {"now": clock.now().isoformat(), "offset_s": offset}
 
 

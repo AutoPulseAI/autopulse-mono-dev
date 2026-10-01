@@ -41,6 +41,15 @@ from upsell_agent.slots.profile import Profile
 from upsell_agent.tools import booking_tool
 
 URGENT_BACKSTOP_HOURS = 48
+# "Not interested" counts at the same bar as the other signals (MASTER_PLAN_3 C3).
+NOT_INTERESTED_CONFIDENCE = 0.8
+# A dated next step with no time of its own goes out at this dealer-local hour (Omnichannel PDF §6:
+# "dealer-configurable approved default"; ours until a per-dealer setting exists, like VISIT_FOLLOWUP_HOUR).
+NEXT_ACTION_DEFAULT_TIME = "10:00"
+NEXT_ACTION_TRIGGER = "next_action"
+# "Call me Friday" is a dated next step (Omnichannel PDF §2: "'call me Friday/next month/in a year' creates a dated
+# future action"), not a request for a person right now: it doesn't hand off.
+_CALL_ME = re.compile(r"\b(call|phone|ring)\s+me\b", re.IGNORECASE)
 # A plain-language cancel or reschedule of an EXISTING booking (B5 item 5). Deliberately
 # code, not an Extract field: these are rare, high-stakes actions best kept literal.
 _CANCEL_BOOKING = re.compile(
@@ -203,6 +212,53 @@ async def _visit_and_booking(
     return visit_ctx, plan
 
 
+def not_interested_mode(extraction: dict[str, Any], conversation: ConversationState) -> tuple[str | None, str | None]:
+    """(mode, reason) for "not interested / no longer in the market / I'm
+    good" (MASTER_PLAN_3 C3, client scope Q10): the AI asks why, once; with a
+    reason (or the same answer again after we asked), it notes it and hands
+    the lead to a person, who alone may close it."""
+    reason = (extraction.get("not_interested_reason") or "").strip() or None
+    said = bool(extraction.get("not_interested")) and float(
+        extraction.get("not_interested_confidence") or 0.0) >= NOT_INTERESTED_CONFIDENCE
+    if conversation.awaiting_not_interested_reason and (said or reason):
+        return "handoff", reason
+    if not said:
+        return None, None
+    if reason:
+        return "handoff", reason
+    return ("handoff" if conversation.not_interested else "ask_why"), None
+
+
+def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: DealerProfile, channel: str,
+                     text: str) -> dict[str, Any] | None:
+    """A dated next step the customer asked for (Omnichannel PDF §2 "specific
+    timing wins", §6): their own words (`next_contact_when`, or the time they
+    gave when declining a visit), resolved in code (slots/dates.py), never by
+    the model. Only a date after today counts; one we can't work out isn't a
+    dated next step (the router then treats the reply as contact without one).
+    The §6 fields: date, time (theirs, else the dealer default), channel,
+    owner, context notes, who entered it."""
+    from upsell_agent.slots.dates import resolve as resolve_date
+
+    words = extraction.get("next_contact_when") or (
+        extraction.get("visit_later_when") if extraction.get("declines_visit") else None)
+    if not words:
+        return None
+    local_now = now.astimezone(dealer.tz)
+    resolved = resolve_date(str(words), local_now)
+    if resolved is None or resolved.day <= local_now.date():
+        return None
+    given = isinstance(resolved.value, datetime)
+    at = resolved.value.strftime("%H:%M") if given else NEXT_ACTION_DEFAULT_TIME
+    day = resolved.day
+    call = bool(_CALL_ME.search(text or ""))
+    return {"date": day.isoformat(), "time": at, "time_given": given, "approximate": resolved.approximate,
+            "words": str(words), "display": f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}",
+            "channel": channel, "owner": "ai", "entered_by": "ai", "call_requested": call,
+            "context_notes": (f"The customer asked us to {'call' if call else 'get back to'} them {words!r}: "
+                              f"{text.strip()[:300]}")}
+
+
 def _customer_summary(profile: Profile) -> str:
     """What the customer wants, for the booking's `notes` (B5 item 6: the
     team is told what they want, budget, trade-in when they arrive)."""
@@ -237,6 +293,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         after_hours.why = f"No after-hours choice: {hold}."
 
     dealer = await dealer_profile(state.dealer_id)
+    # MASTER_PLAN_3 C3: a dated next step the customer asked for. The reply confirms it and asks or
+    # offers nothing else (they asked us to come back later, not to keep going now).
+    dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text)
+    if dated:
+        hold = f"the customer asked us to get back to them {dated['display']}: nothing more is asked now"
+        if after_hours.mode == "offer":
+            after_hours.mode, after_hours.record = None, None
+            after_hours.why = "No after-hours choice: the customer asked us to get back to them on a date."
+    not_interested, not_interested_reason = not_interested_mode(extraction, conversation)
     after_hours_blocking = after_hours.mode in ("offer", "later") or state.trigger == "resume_at_opening"
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,
@@ -267,7 +332,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         asks={path: (a.count, a.last_turn) for path, a in conversation.asks.items()},
         last_asked=list(conversation.last_asked),
         replies=conversation.turn,
-        wants_human=bool(extraction.get("wants_human")),
+        wants_human=bool(extraction.get("wants_human")) and not (dated and dated["call_requested"]),
         upset=bool(extraction.get("upset")),
         upset_confidence=float(extraction.get("upset_confidence") or 0.0),
         annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
@@ -277,7 +342,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         visit_offer=visit_plan.as_dict() if visit_plan.fire else None,
         visit_handoff=visit_plan.handoff,
         visit_pending=visit_plan.fire or conversation.awaiting_visit_pick,
+        not_interested=not_interested,
+        not_interested_reason=not_interested_reason,
     ))
+    decision["next_action"] = dated if decision["action"] not in ("stop", "handoff") else None
+    decision["not_interested"] = ({"mode": not_interested, "reason": not_interested_reason}
+                                  if not_interested else None)
+    if state.trigger == NEXT_ACTION_TRIGGER:
+        # A scheduled next step firing (scheduler/followups.py): not a reply, we're checking back as asked.
+        planned = (ctx.lead_state or {}).get("next_action") or {}
+        decision["reach_out"] = {"words": planned.get("words"), "notes": planned.get("context_notes")}
     if (ctx.compliance or {}).get("quiet_hours"):
         decision["quiet_hours"] = {"resume_at": ctx.compliance.get("resume_at")}
     if decision["action"] in ("stop", "handoff") and after_hours.mode in ("offer", "later"):
@@ -319,6 +393,14 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if backstop:
         span.reasoning.append(f"Urgent (pure-code backstop): interest.needed_by ({needed_by}) is within "
                               f"{URGENT_BACKSTOP_HOURS}h.")
+    if decision["next_action"]:
+        span.reasoning.append(f"Dated next step: the customer said {dated['words']!r}, worked out as "
+                              f"{dated['display']} at {dated['time']}"
+                              + ("" if dated["time_given"] else " (no time given: the dealer default)") + ".")
+    if not_interested:
+        span.reasoning.append("Not interested: " + ("asking why, once." if not_interested == "ask_why" else
+                              f"reason {not_interested_reason!r}; a person decides whether to close the lead."
+                              if not_interested_reason else "said again after we asked why; handed to a person."))
     span.edge_label = decision["action"] + (f": {', '.join(a['label'] for a in decision['asks'])}"
                                             if decision["asks"] else "")
     if after_hours.mode:
