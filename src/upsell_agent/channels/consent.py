@@ -13,6 +13,10 @@ is the latest entry for a customer, channel and `consent_type`:
   `TCPAOptIn` line).
 - `review`: `open` / `resolved`, channel `all` (an unclear opt-out, C1 item 3).
 
+Opt-out entries also carry the `address` (phone in E.164, email lower case)
+when known, and are read by customer **or** address, so a re-imported
+customer keeps the suppression (decision 140).
+
 Each entry keeps the client's evidence fields (`consent_status`,
 `consent_type`, `consent_timestamp`, `consent_source`,
 `consent_text_version`, `consent_evidence_id`, `consenting_seller_id`,
@@ -56,6 +60,7 @@ async def record_consent(
     text_version: str | None = None,
     source_url: str | None = None,
     at: datetime | None = None,
+    address: str | None = None,
 ) -> bool:
     """Adds one entry. With `evidence_id`, the same evidence is recorded
     only once (a lead form read on every turn). Returns whether it was added."""
@@ -70,6 +75,7 @@ async def record_consent(
             "consent_text_version": text_version, "consent_evidence_id": evidence_id,
             "consenting_seller_id": db.dealer_id, "source_url": source_url, "lead_id": lead_id,
             "evidence": evidence or {}, "recorded_at": now,
+            **({"address": address} if address else {}),
         })
     except DuplicateKeyError:
         return False
@@ -88,19 +94,61 @@ async def history(db: DealerScopedDatabase, customer_id: str) -> list[dict]:
         "recorded_at", 1).to_list(None)
 
 
+def address_key(channel: str, value: str | None) -> str | None:
+    """The phone or email an opt-out is also kept under (decision 140): a
+    deleted or re-imported customer gets a new id, and the TCPA PDF §12 says
+    that must not erase the suppression. Phones as E.164, emails lower case."""
+    if not value or not value.strip():
+        return None
+    if channel == "email":
+        return value.strip().lower()
+    return to_e164(value) if len(re.sub(r"\D", "", value)) >= 10 else None
+
+
 async def set_channel_consent(
     db: DealerScopedDatabase, customer_id: str, channel: str, allowed: bool, source: str,
-    *, lead_id: str | None = None, evidence: dict[str, Any] | None = None,
+    *, lead_id: str | None = None, evidence: dict[str, Any] | None = None, address: str | None = None,
 ) -> None:
-    """A STOP (allowed=False) or START (True) on one channel, as a new entry."""
+    """A STOP (allowed=False) or START (True) on one channel, as a new entry,
+    kept under the customer and, when known, the phone / email too."""
     await record_consent(db, customer_id=customer_id, channel=channel, consent_type="opt_out",
                          status="opted_in" if allowed else "opted_out", source=source, lead_id=lead_id,
-                         evidence=evidence)
+                         evidence=evidence, address=address_key(channel, address))
 
 
-async def is_opted_out(db: DealerScopedDatabase, customer_id: str, channel: str) -> bool:
-    entry = await latest(db, customer_id, channel, "opt_out")
+async def latest_opt_out(db: DealerScopedDatabase, customer_id: str | None, channel: str,
+                         address: str | None = None) -> dict | None:
+    """The newest opt-out / opt-in entry for this customer or this phone /
+    email (whichever is newer), on one channel."""
+    who: list[dict[str, Any]] = [{"customer_id": customer_id}] if customer_id else []
+    if key := address_key(channel, address):
+        who.append({"address": key})
+    if not who:
+        return None
+    rows = await db.collection(AI_CONSENT_COLLECTION).find(
+        {"$or": who, "channel": channel, "consent_type": "opt_out"}
+    ).sort("recorded_at", -1).to_list(1)
+    return rows[0] if rows else None
+
+
+async def is_opted_out(db: DealerScopedDatabase, customer_id: str | None, channel: str,
+                       address: str | None = None) -> bool:
+    entry = await latest_opt_out(db, customer_id, channel, address)
     return bool(entry and entry["consent_status"] == "opted_out")
+
+
+async def ever_opted_out(db: DealerScopedDatabase, customer_id: str | None, channel: str,
+                         address: str | None = None) -> bool:
+    """Whether this customer or address has ever opted out of `channel`: the
+    platform's `sms_opt_in` flag never grants consent after that (decision 141)."""
+    who: list[dict[str, Any]] = [{"customer_id": customer_id}] if customer_id else []
+    if key := address_key(channel, address):
+        who.append({"address": key})
+    if not who:
+        return False
+    return bool(await db.collection(AI_CONSENT_COLLECTION).find_one(
+        {"$or": who, "channel": channel, "consent_type": "opt_out", "consent_status": "opted_out"},
+        projection={"_id": 1}))
 
 
 async def open_review(db: DealerScopedDatabase, customer_id: str) -> dict | None:
@@ -203,3 +251,18 @@ async def migrate_legacy_consent() -> int:
                 moved += 1
         await collection.delete_one({"_id": doc["_id"]})
     return moved
+
+
+async def migrate_silenced_opt_outs() -> int:
+    """Before decision 137, an opt-out set the whole lead to `opted_out`, so
+    the AI stopped replying to the customer at all. Those leads go back to
+    `active`: their opt-out entries above still stop everything the system
+    starts on those channels, and the customer's own messages get a reply
+    again (decision 142). Safe to run on every start."""
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+
+    result = await get_db()[AI_LEAD_STATE_COLLECTION].update_many(
+        {"status": "opted_out"},
+        {"$set": {"status": "active", "status_reason": "Opt-out no longer silences replies (decision 137)",
+                  "opt_out_silence_lifted_at": clock.now()}})
+    return result.modified_count

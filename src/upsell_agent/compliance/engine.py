@@ -7,9 +7,12 @@ decisions 18, 23-25, 29, 36, 55-56, 65, 68, 72, 74-77).
 Plain code, checked in this order; the first rule that stops a message wins:
 
 1. **AI voice** is a separate, higher-risk channel, off (BLOCK).
-2. **Opt-out**: the customer's latest `opt_out` entry on this channel
-   (STOP, a natural-language opt-out, a provider unsubscribe) blocks
-   everything except the one opt-out confirmation.
+2. **Opt-out**: the latest `opt_out` entry on this channel for the customer
+   or the phone / email (STOP, a natural-language opt-out, a provider
+   unsubscribe; decision 140) blocks everything the system starts. The one
+   opt-out confirmation and a reply to the customer's own message still go
+   (decisions 136-137). After a keyword STOP, Twilio itself still refuses
+   texts until START (error 21610).
 3. **Do-not-contact**: a lead staff set to "DND" (decision 68). No national
    registry check.
 4. **Explicit no** (marketing SMS only): the phone's `sms_opt_in: false`, or
@@ -21,7 +24,8 @@ Plain code, checked in this order; the first rule that stops a message wins:
    8:00 (decision 29).
 6. **An open review** (a possible opt-out, decision 72) stops marketing.
 7. **Consent** for a marketing SMS the business starts (decisions 36, 76):
-   the platform's opt-in flag; else, for the AI's follow-ups (not
+   the platform's opt-in flag (never after an SMS opt-out: then only the
+   customer's own opt-in back counts, decision 141); else, for the AI's follow-ups (not
    campaigns), the customer's own inquiry for 91 days; else a lead-form
    `TCPAOptIn: true` alone → REVIEW (`CONSENT_REVIEW_REQUIRED`); else BLOCK.
    Email needs no consent.
@@ -59,7 +63,8 @@ from upsell_agent.integrations.mongodb import (
 )
 
 Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
-Purpose = Literal["marketing", "transactional", "opt_out_confirmation"]
+# `reply`: the answer to a message the customer sent - customer service, not marketing (decision 136).
+Purpose = Literal["marketing", "transactional", "opt_out_confirmation", "reply"]
 
 # Customer-local windows (start, end), end exclusive.
 MARKETING_WINDOW = (time(8), time(20))      # decision 25: strictest known state rule, everywhere, for now
@@ -182,6 +187,15 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
     the explicit no, is checked before). Returns {status, source, detail,
     evidence_id}; status is `granted`, `review_required` or `none`."""
     flag, phone = consent.phone_opt_in(customer, to)
+    if await consent.ever_opted_out(db, customer_id, "sms", to):
+        # The platform sets sms_opt_in on any inbound text, even one after a STOP, so after an
+        # opt-out only the customer's own opt-in back (START, "YES", a phrase) counts (decision 141).
+        back = await consent.latest_opt_out(db, customer_id, "sms", to)
+        if back and back["consent_status"] == "opted_in" and back["consent_source"].startswith("customer_"):
+            return {"status": "granted", "source": back["consent_source"],
+                    "evidence_id": str(back["_id"]),
+                    "detail": f"the customer opted back in to texts ({back['consent_source']})"}
+        flag = None
     if flag is True:
         evidence_id = f"platform_opt_in:{customer_id}:{(phone or {}).get('value')}"
         if customer_id:
@@ -279,12 +293,16 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         return Decision("BLOCK", "AI voice calls are off", "ai_voice_disabled")
     check("ai_voice", True, f"channel is {channel}")
 
-    # 2. Opt-out on this channel.
-    opted_out = bool(customer_id) and await consent.is_opted_out(db, customer_id, channel)
-    if opted_out and purpose != "opt_out_confirmation":
+    # 2. Opt-out on this channel, by customer or by phone / email (decision 140).
+    address = to or consent.resolve_recipient(lead, customer, "email" if channel == "email" else "sms")
+    opted_out = await consent.is_opted_out(db, customer_id, channel, address)
+    if opted_out and purpose != "opt_out_confirmation" and not is_reply:
         check("opt_out", False, f"the customer opted out of {channel}")
         return Decision("BLOCK", f"the customer opted out of {channel}", "opted_out")
-    check("opt_out", True, "opt-out confirmation (allowed once)" if opted_out else f"not opted out of {channel}")
+    check("opt_out", True,
+          "opt-out confirmation (allowed once)" if opted_out and purpose == "opt_out_confirmation"
+          else f"opted out of {channel}, but this replies to the customer's own message (decision 136)"
+          if opted_out else f"not opted out of {channel}")
     if purpose == "opt_out_confirmation":
         return Decision("ALLOW", "the one confirmation of the customer's opt-out", "opt_out_confirmation")
 

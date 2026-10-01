@@ -21,8 +21,55 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | B4. The visit as the goal | **Built (29 Sept), with B5.** Decisions 102–122. |
 | B5. Booking the visit | **Built (29 Sept), with B4**, including item 8. |
 | B6. Debug UI, evals and rollout | Minimal Visit panels pulled forward into B4/B5 (decision 111) |
+| C1 extension (opt-out levels, replies after opt-out, opt-in) | **Built and unit-tested (1 Oct 2026), not committed.** Decisions 135–146. 1051 unit tests, 79/79 offline evals. **Live Docker scenarios not run:** the running containers use the real models. Staff DND left unchanged, for the user to decide (decision 146). |
 | C2. Omnichannel call tasks | **Skipped for now** (27 Sept). A dated "call me …" step leaves the team a notice instead (decision 131). |
 | C3. Lifecycle state machine | **Built and unit-tested (1 Oct 2026).** Decisions 123–134. 1012 unit tests, 79/79 offline evals, Debug UI type check clean. **Live Docker scenarios not run:** Docker wasn't running (see C3 section). |
+
+---
+
+## C1 extension: opt-outs stop what we start, not replies; opting back in — built (1 Oct 2026)
+
+Fixes the bug found 29 Sept (an opt-out silenced the whole lead, decision 87) and settles the opt-out / opt-in design with the user against the client's TCPA and Omnichannel PDFs and client scope Q10 / Q19. Decisions 135–146 in architecture.md §15; the 15 points and their answers are in MASTER_PLAN_3, C1 extension.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| Replies get their own purpose, `reply`; the send check lets a reply (and the one confirmation) through an opt-out, and still blocks everything the system starts | `compliance/engine.py` (`Purpose`, step 2), `agent/turn.py` |
+| An opt-out no longer sets the lead to `opted_out`; `opted_out` left `SILENT_STATUSES`, so the customer's next message is answered | `events/handlers.py` |
+| "Do not contact" = the every-channel opt-out (no separate record) | `compliance/opt_out.py` (docstring; phrase list unchanged) |
+| Confirmation names what was stopped ("won't text you again", …) | `opt_out.confirmation_text`, `handlers._record_held` |
+| START / UNSTOP any case, "YES" in capitals only | `opt_out.classify_keyword` |
+| Natural-language opt-in phrase list; channel-named → that channel, general → every opted-out channel; the message then gets a normal reply; a SendGrid unsubscribe isn't reversed | `opt_out.detect_opt_in`, `handlers._opt_back_in` |
+| Opt-out / opt-in entries keep the phone (E.164) / email (lower case) as `address`; the check reads the newest entry by customer or address; new index | `channels/consent.py` (`address_key`, `latest_opt_out`, `is_opted_out`), `handlers`, `channels/sender.py` (Twilio 21610), `channels/delivery.py` (SendGrid unsubscribe), `integrations/mongodb.py` |
+| The platform `sms_opt_in` flag is ignored once the customer / phone ever opted out of SMS; only the customer's own opt-in back counts as consent | `engine.marketing_sms_consent`, `consent.ever_opted_out` |
+| Startup migration: leads left in `opted_out` → `active` | `consent.migrate_silenced_opt_outs`, called from `mongodb.ensure_indexes` |
+| A due "call me …" step after "don't call me" leaves staff a `do_not_call` notice instead of `call_requested` | `scheduler/followups.py` |
+| Scenarios: `s4_stop_opt_out` now expects the later message answered; new `pc1_opt_out_reply_opt_in` (stage 301) | `scenarios/` |
+
+### Tests changed on purpose
+- `test_compliance.py`: "opt-out blocks everything but the confirmation" → "blocks what we start but not replies"; the general-phrase test no longer expects the lead status `opted_out`.
+- `test_event_handlers.py`: "STOP … is never answered" → "later messages are still answered".
+- `test_sender.py`: the suppressed-channel test now sends a follow-up (`marketing`, not a reply).
+
+New: 37 in `test_compliance.py` (with parametrized cases) (keywords and capital YES, confirmation wording, opt-in phrases and non-phrases, reply after opt-out, "lose my number", phrase opt-in answered, general opt-in vs SendGrid unsubscribe, lowercase yes, re-imported customer by phone and email, platform flag never re-grants, migration), 1 in `test_sender.py` (reply on an opted-out channel), 1 in `test_lifecycle.py` (`do_not_call` notice).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests | **1051 passed** (1012 before) |
+| Offline eval gate (`pytest evals`) | 79 / 79 |
+| Scenario files load and validate (`test_dev_routes`) | Pass |
+| Ruff on changed files | Clean, except one old finding in `integrations/mongodb.py` `close_mongo` (`PLW0602`), not touched |
+| Scenarios, live in Docker | **Not run:** Docker was up, but the running containers use the real OpenAI models (`MODEL_COMPOSE=openai:gpt-4o`), and test runs stay on the offline model. To run: recreate the AI containers with `AI_MODEL_EXTRACT=offline AI_MODEL_COMPOSE=offline`, then `make ai-scenarios`. |
+| Debug UI in a browser | Not checked |
+
+### Not built / left open
+- **Staff DND** (decision 146): unchanged; whether DND should also let replies through is the user's call.
+- **Known limit:** after a keyword STOP on SMS, Twilio refuses our texts (21610) until START / UNSTOP / YES, so the reply after a keyword STOP doesn't arrive by text.
+- **Platform `customerResolver.js`** sets `sms_opt_in: true` even over `false`: its owner is to be told (not our code).
+- Counsel: the confirmation wording, and replies after a revocation (TCPA PDF §3, §13).
 
 ---
 

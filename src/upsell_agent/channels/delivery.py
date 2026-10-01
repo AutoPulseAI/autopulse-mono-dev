@@ -116,6 +116,6 @@ async def apply_unsubscribe(*, provider_id: str | None = None, idempotency_key: 
     if row is None:
         return DeliveryResult(found=False, detail="no message with that id")
     db = dealer_scoped_db(row["dealer_id"])
-    await set_channel_consent(db, row["customer_id"], "email", False, source=source)
+    await set_channel_consent(db, row["customer_id"], "email", False, source=source, address=row.get("to"))
     return DeliveryResult(found=True, dealer_id=row["dealer_id"], consent_off=True, status="unsubscribed",
                           applied=True, detail="email consent turned off")

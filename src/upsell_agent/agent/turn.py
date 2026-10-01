@@ -160,7 +160,8 @@ async def run_turn(
         # the real one), so a night-time reply in an outbound conversation is
         # written to ask nothing (architecture §15 decision 29).
         precheck = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
-                                     purpose="marketing", is_reply=is_reply, lead=lead, customer=customer,
+                                     purpose="reply" if is_reply else "marketing", is_reply=is_reply, lead=lead,
+                                     customer=customer,
                                      record=False)
         ctx.compliance = precheck.as_dict()
         await _save_origin(db, lead_id, precheck)
@@ -204,6 +205,7 @@ async def run_turn(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
                 shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
+                purpose="reply" if is_reply else "marketing",  # decision 136
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject}) as span:

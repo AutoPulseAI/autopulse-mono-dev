@@ -1,14 +1,14 @@
 name: STOP opts the customer out
 stage: 4
-description: A customer who texts STOP is marked opted out, gets no reply to it, and later messages are saved without an answer.
+description: A customer who texts STOP is opted out of texts and gets no reply to the STOP itself (the carrier confirms). A later message from them is still answered - an opt-out stops what we start, not the reply (MASTER_PLAN_3 decisions 136-137). With live Twilio that reply is refused until START (error 21610).
 steps:
   - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Scenario, comments: "Just browsing"}
   - wait_turns: {lead: s, count: 1, timeout_s: 15}
   - reply: {lead: s, text: "STOP"}
-  - wait_status: {lead: s, status: opted_out}
   - wait_turns: {lead: s, count: 2, timeout_s: 15}
   - expect_turn: {lead: s, trigger: inbound_held, outcome: opted_out}
+  - expect_messages: {lead: s, direction: outbound, count: 1}
   - reply: {lead: s, text: "are you there?"}
   - wait_turns: {lead: s, count: 3, timeout_s: 15}
-  - expect_turn: {lead: s, trigger: inbound_held, outcome: saved_only}
-  - expect_messages: {lead: s, direction: outbound, count: 1}
+  - expect_turn: {lead: s, trigger: inbound_message}
+  - expect_messages: {lead: s, direction: outbound, count: 2}

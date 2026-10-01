@@ -196,7 +196,7 @@ class Sender:
                     why.append(f"Provider refused this recipient: {exc}")
                     if exc.opted_out:
                         await set_channel_consent(db, req.customer_id, req.channel, False,
-                                                  source=f"{self._driver.name}_opted_out")
+                                                  source=f"{self._driver.name}_opted_out", address=to)
                         why.append(f"The customer had opted out of {req.channel}; consent turned off.")
                     return await finish("suppressed", to=to, attempts=attempts, reason=str(exc))
                 last_error = exc

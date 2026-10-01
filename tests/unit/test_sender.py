@@ -126,7 +126,7 @@ async def test_opted_out_channel_is_suppressed(mongo):
     created = await _lead()
     await set_channel_consent(dealer_scoped_db(DEALER), created["customer_id"], "sms", False, source="test")
     driver = FakeChannelDriver()
-    outcome = await _sender(driver).send(_request(created))
+    outcome = await _sender(driver).send(_request(created, purpose="marketing", is_reply=False))
     assert outcome.status == "suppressed" and "opted out" in outcome.reason and driver.calls == 0
     assert await mongo[DEV_PLATFORM_MESSAGES_COLLECTION].count_documents({}) == 0
 
@@ -205,3 +205,12 @@ async def test_customer_phone_is_texted_in_e164(mongo):
     assert customer["phones"][0]["value"].startswith("555") and len(customer["phones"][0]["value"]) == 10
     outcome = await _sender().send(_request(created))
     assert outcome.status == "sent" and outcome.to == "+1" + customer["phones"][0]["value"]
+
+
+async def test_a_reply_still_goes_on_an_opted_out_channel(mongo):
+    # Decision 136: a reply to the customer's own message is customer service, not marketing.
+    created = await _lead()
+    await set_channel_consent(dealer_scoped_db(DEALER), created["customer_id"], "sms", False, source="test")
+    driver = FakeChannelDriver()
+    outcome = await _sender(driver).send(_request(created, purpose="reply", is_reply=True))
+    assert outcome.status == "sent" and driver.calls == 1

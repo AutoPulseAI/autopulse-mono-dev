@@ -848,9 +848,36 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 - Campaign **emails** don't go through the check (decision 66 covers campaign texts).
 - **The real `Lead.source` values couldn't be pulled:** the local database only holds dev-simulator leads. The inbound/outbound table is built from the values the platform code writes (ADF provider names, `sms`, `email`, `website`, `campaign`, DealerVault); anything else is outbound and listed under `unmapped_lead_sources` in `GET /v1/metrics`.
 
-### C1 extension: opt-out silences replies too (bug), and four opt-out types (planned, not built)
+### C1 extension: opt-out silences replies too (bug), and opt-out levels / opt-in (built 1 Oct 2026)
 
 > **Found 29 Sept 2026, evening, in Debug UI testing.** Not built yet — this section is the plan; it needs a pass to confirm nothing here contradicts the client's TCPA PDF or an existing numbered decision before any code changes.
+
+> **Decided 1 Oct 2026 (cross-check against the client's specs and our decisions; architecture.md decisions 135–137).** These replace the four-tier design further down, which is kept only as history:
+>
+> - **Two levels, as the client wrote them** (Omnichannel PDF §15: "Track SMS/email/call suppression separately plus broader 'do not contact' requests"; the omnichannel rule page: "If SMS is opted out, do not text … Continue every remaining permitted channel"): (1) a **channel opt-out** (SMS, email or call, each tracked separately), and (2) **do not contact** (every channel). The "marketing-only" and "follow-up-only" tiers are dropped: no client source, and the code can't tell them apart (replies and follow-ups are both `marketing` today, decision 78).
+> - **Replies are customer service, not marketing.** A reply to a message the customer sends gets its own purpose, `reply` (TCPA PDF §4 classes it as "consumer-initiated", separate from "outbound marketing"; §3 suppresses "automated marketing"). An opt-out, at either level, stops everything **we start** on the affected channel(s); a reply to the customer's own message always goes out, on any channel they write on. Replies are composed normally, with no extra restriction (the user, 1 Oct; confirms the 29 Sept "no special instruction to Compose" decision below).
+> - **Do not contact doesn't block replies either.** The client's specs don't say it should, so it's handled like the other opt-outs: everything we start stops, on every channel; replies still go. `SILENT_STATUSES` therefore no longer includes `opted_out`.
+> - **Known limit, not solved here:** after a literal keyword STOP, Twilio refuses every text to that number (error 21610) until the customer sends START / UNSTOP / YES, so an SMS reply can't be delivered then whatever our rules say. Replies after a phrase opt-out ("don't text me") and on email are unaffected. Whether to turn off Twilio's handling is open (list below).
+>
+> **The 15 open points, answered 1 Oct** (architecture.md decisions 135–146):
+>
+> 1. **Twilio's STOP handling: kept** (decision 137). It's on the platform's Twilio account and carriers require STOP to be honoured; the known limit stays.
+> 2. **"Do not contact" merged into "every channel"** (decision 135). No separate record.
+> 3. **Staff DND: unchanged, open for the user** (decision 146). Today DND pauses the AI and the send check blocks every send on a DND lead, replies included; the client's documents don't say whether staff DND should stop replies.
+> 4. **Confirmation names what was stopped** (decision 139).
+> 5. **STOP stops that channel only** (decision 145).
+> 6. **Per customer:** an opt-out is a customer-level entry (and address-level, item 7), so every lead of that customer follows it; nothing is per lead any more (decision 137).
+> 7. **Kept by phone / email too** (decision 140).
+> 8. **A call opt-out stops the "call this customer" notice**; staff get "do not call" (decision 144).
+> 9. **Opt-in phrases:** a short fixed list; a channel-named phrase reverses that channel, a general one every opted-out channel; the rest of the message is answered (decision 138).
+> 10. **"YES" in capitals only**, on any kind of opt-out, like START / UNSTOP (the user; decision 138). A lowercase "yes" is ordinary conversation.
+> 11. **Writing again never opts back in** (decision 138).
+> 12. **A SendGrid unsubscribe isn't reversed by us**; the customer resubscribes through the email's own link (decision 143, the client's "if email is unsubscribed, do not email").
+> 13. **The platform flag never re-grants consent after an opt-out**; only the customer's own opt-in back counts (decision 141). The platform file's owner is to be told about `customerResolver.js`.
+> 14. **Silenced leads are made active at startup** (decision 142).
+> 15. **Stage:** unchanged, Opted Out = every channel off or staff DND (decision 128), since item 2 merged the levels.
+>
+> **Built 1 Oct 2026** (details: `progress_3.md`, "C1 extension"). Not committed. Live Docker scenarios not run (the running containers use the real models).
 
 **The bug.** After a channel-matching or all-channel opt-out, `events/handlers.py` sets the **lead's** status to `opted_out`, which is in `SILENT_STATUSES` alongside `handoff` and `paused`. A lead in a silent status gets no AI turn at all — not just no marketing, no reply either — until the customer sends the literal keyword `START` on that channel or a human manually resumes the AI. So "wait nevermind" or any other reply from the customer after an opt-out currently gets silence, forever, by default.
 
@@ -869,7 +896,7 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 - **Cross-check against existing decisions before implementing**, at minimum: decision 74 (phrase list = opt-out, ratchet-only), 75/84 (channel scope), 72 (REVIEW resolution path — does a tier-4 total no-contact still resolve the same way, i.e. only an explicit START or admin resume, or does "the customer writes again" auto-resolve it the way an open REVIEW does?), 80 (explicit no blocks marketing texts, not replies — tier 1 should reduce to the same rule), 68 (DND = do-not-contact — is DND effectively tier 4, and should staff setting DND be the same code path as a customer's tier-4 opt-out?).
 - **Where the tier is recorded.** `ai_consent` currently stores one `opt_out` entry per customer/channel (opted_in/opted_out). Four tiers needs a `scope` or `tier` field added to that entry, add-only per decision 77, without breaking the existing `is_opted_out()` reads other code paths already rely on.
 
-**Not started:** no code changes for this section yet — phrase detection, `ai_consent` schema, `engine.py` rule ordering (moving the reply check ahead of the opt-out block, or making tiers 1–3 skip it), and `events/handlers.py`'s status handling all need to change together once the open questions above are settled.
+**Superseded 1 Oct (built differently, see "Decided 1 Oct" above). Was:** not started, no code changes for this section yet — phrase detection, `ai_consent` schema, `engine.py` rule ordering (moving the reply check ahead of the opt-out block, or making tiers 1–3 skip it), and `events/handlers.py`'s status handling all need to change together once the open questions above are settled.
 
 #### Opt-in flexibility (added 29 Sept, evening, same planning pass)
 
@@ -885,7 +912,7 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 - **Re-opt-in into tier 4 (total no-contact) should have a higher bar than tiers 1–3.** Wrongly failing to reverse a marketing-only opt-out costs one missed pitch; wrongly reversing a "never contact me again" and then texting them is the exact harm-case the TCPA PDF is written to prevent. Suggest: ambiguous phrases reverse at most tier 3 (marketing + follow-up), and a full tier-4 reversal needs either the literal `START` keyword or an explicit, unambiguous phrase reviewed and approved the same way the opt-out phrase list itself was (decision 74).
 - **Where it's recorded:** same `ai_consent` add-only history as the opt-out side (decision 77) — a reversal is a new entry, never an edit, so the full channel/tier history stays intact for the audit log.
 
-**Not started:** no code changes for this either — depends on the opt-out tier schema landing first (same `ai_consent` field), then a symmetric phrase list, the `yes`-narrowing decision above, and the tier-4 higher-bar rule, all before `classify_keyword`/`detect_opt_out`'s counterpart is built.
+**Superseded 1 Oct (built differently, see "Decided 1 Oct" above). Was:** not started, no code changes for this either — depends on the opt-out tier schema landing first (same `ai_consent` field), then a symmetric phrase list, the `yes`-narrowing decision above, and the tier-4 higher-bar rule, all before `classify_keyword`/`detect_opt_out`'s counterpart is built.
 
 ---
 

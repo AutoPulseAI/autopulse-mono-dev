@@ -5,7 +5,7 @@ wrapper that adds the lead lock / dealer cap and passes the payload through.
 
 Never silent (MASTER_PLAN_2 Phase 2): every customer message ends up either
 answered by a turn or with a recorded reason. When the AI doesn't answer (the
-lead is with staff, paused, opted out, or the message was STOP / START), a
+lead is with staff or paused, or the message was STOP / START / an opt-out), a
 short "held" turn is logged (trigger `inbound_held`) saying why. On a
 handed-off lead the customer gets a holding reply, at most one every
 HOLDING_REPLY_EVERY (architecture §15, decision 12).
@@ -26,7 +26,7 @@ from upsell_agent.agent.turn import (
 )
 from upsell_agent.channels import consent
 from upsell_agent.channels.sender import SendRequest
-from upsell_agent.compliance.opt_out import NL_CONFIRMATION, detect_opt_out
+from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.events.models import (
     InboundMessageEvent,
     LeadCreatedEvent,
@@ -46,8 +46,9 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import CHANNEL_SWITCHES
 
-# Statuses in which the AI doesn't write replies (architecture §5 step 3).
-SILENT_STATUSES = {"handoff", "paused", "opted_out"}
+# Statuses in which the AI doesn't write replies (architecture §5 step 3). An opt-out is no longer
+# one of them: it stops what we start, never the reply to the customer's own message (decision 137).
+SILENT_STATUSES = {"handoff", "paused"}
 HOLDING_REPLY_EVERY = timedelta(hours=2)
 
 
@@ -188,7 +189,8 @@ def _hold_decision(state: dict) -> tuple[str, str]:
 
 
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
-                       rows: list[dict], action: str, reason: str, received_at: datetime | None) -> dict[str, Any]:
+                       rows: list[dict], action: str, reason: str, received_at: datetime | None,
+                       confirmation: str | None = None) -> dict[str, Any]:
     """Logs a turn for customer messages the AI doesn't answer, saying why,
     and sends the holding reply when that's the action. Marks the messages
     answered by this turn, so none is left without a reply or a reason."""
@@ -216,8 +218,8 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
             text = draft["sms_text"] if channel == "sms" else draft["email_body"]
             subject, purpose = None if channel == "sms" else draft["email_subject"], "transactional"
         else:
-            text, subject, purpose = NL_CONFIRMATION, None if channel == "sms" else "Your request", \
-                "opt_out_confirmation"
+            text, subject, purpose = confirmation or confirmation_text(("sms", "email", "voice")), \
+                None if channel == "sms" else "Your request", "opt_out_confirmation"
         request = SendRequest(
             dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
             channel=channel, text=text, subject=subject, shadow=event.shadow, event_received_at=received_at,
@@ -275,22 +277,22 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     # MASTER_PLAN_3 C1 item 3). A keyword stops its channel and the carrier
     # confirms it; a phrase stops the channel it names (every channel when it
     # names none) and gets one plain confirmation from us.
+    customer = await find_customer(db, event.customer_id)
     for message in unanswered:
         keyword = consent.classify_keyword(message["text"])
         channel = message["channel"]
         opt_out = detect_opt_out(message["text"], channel)
         if opt_out:
+            # The lead's status isn't touched: the opt-out entries stop what we start on those
+            # channels, and a later message from the customer still gets a reply (decision 137).
             for stopped in opt_out.channels:
                 await consent.set_channel_consent(
                     db, event.customer_id, stopped, False,
                     source="customer_stop" if opt_out.kind == "keyword" else "customer_opt_out_phrase",
-                    lead_id=lead_id, evidence={"message": message["text"], "matched": opt_out.matched,
-                                               "message_id": str(message["_id"]), "channel": channel})
+                    lead_id=lead_id, address=_address(lead, customer, stopped),
+                    evidence={"message": message["text"], "matched": opt_out.matched,
+                              "message_id": str(message["_id"]), "channel": channel})
             scope = ", ".join(opt_out.channels)
-            if channel in opt_out.channels:
-                await _set_status(db, lead_id, "opted_out",
-                                  f"Customer replied STOP on {channel}" if opt_out.kind == "keyword"
-                                  else f"Customer asked us to stop ({opt_out.matched!r}): {scope}")
             if not event.shadow and await _every_channel_stopped(db, event.customer_id):
                 # MASTER_PLAN_3 C3: the stage is Opted Out only when nothing is left to contact them on;
                 # a single-channel opt-out removes that channel and the rest carry on (Omnichannel PDF §15).
@@ -307,12 +309,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                           f"confirmation goes out on {channel}.")
                 action = "opt_out_confirmation"
             await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
-                               received_at=_parse_received_at(received_at))
+                               received_at=_parse_received_at(received_at),
+                               confirmation=confirmation_text(opt_out.channels))
             return {"status": "opted_out", "channel": channel, "channels": list(opt_out.channels),
                     "kind": opt_out.kind, "followups_cancelled": cancelled}
-        if keyword == "start" and await consent.is_opted_out(db, event.customer_id, channel):
-            await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start")
-            if state["status"] == "opted_out":
+        if keyword == "start" and await consent.is_opted_out(db, event.customer_id, channel,
+                                                             _address(lead, customer, channel)):
+            await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start",
+                                              lead_id=lead_id, address=_address(lead, customer, channel),
+                                              evidence={"message": message["text"],
+                                                        "message_id": str(message["_id"])})
+            if state["status"] == "opted_out":  # a lead silenced before decision 137
                 await _set_status(db, lead_id, "active", None)
             if not event.shadow:
                 await lifecycle.apply(db, lead_id, [lifecycle.Event(
@@ -323,6 +330,10 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                       "its own confirmation, so nothing is sent.",
                                received_at=_parse_received_at(received_at))
             return {"status": "opted_in", "channel": channel, "followups_cancelled": cancelled}
+        if keyword is None and (opt_in := detect_opt_in(message["text"])):
+            # "You can text me again": reverse it and carry on into a normal turn, so the rest of the
+            # message is answered (decision 138).
+            await _opt_back_in(db, event, lead, customer, lead_id, state, opt_in, message)
 
     # A possible opt-out under review is resolved by the customer writing
     # again with something that isn't one (decision 72). This message may
@@ -398,6 +409,39 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
     cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
     return {"status": "paused", "followups_cancelled": cancelled, **({"stage_change": stage_change}
                                                                      if stage_change else {})}
+
+
+def _address(lead: dict | None, customer: dict | None, channel: str) -> str | None:
+    """The phone (SMS, voice) or email an opt-out is also kept under (decision 140)."""
+    return consent.resolve_recipient(lead, customer, "email" if channel == "email" else "sms")
+
+
+async def _opt_back_in(db: DealerScopedDatabase, event: InboundMessageEvent, lead: dict | None,
+                       customer: dict | None, lead_id: str, state: dict, opt_in: Any, message: dict) -> list[str]:
+    """A natural-language opt-in (decision 138): the channel it names, or every channel the customer
+    is opted out of when it names none. An email unsubscribe reported by the email provider isn't
+    reversed: the provider keeps refusing that address, and the client's rule is "if email is
+    unsubscribed, do not email" (decision 143)."""
+    every_off = await _every_channel_stopped(db, event.customer_id)
+    reversed_: list[str] = []
+    for channel in opt_in.channels or ("sms", "email", "voice"):
+        address = _address(lead, customer, channel)
+        entry = await consent.latest_opt_out(db, event.customer_id, channel, address)
+        if not entry or entry["consent_status"] != "opted_out":
+            continue
+        if channel == "email" and str(entry.get("consent_source") or "").startswith("sendgrid_"):
+            continue
+        await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_opt_in_phrase",
+                                          lead_id=lead_id, address=address,
+                                          evidence={"message": message["text"], "matched": opt_in.matched,
+                                                    "message_id": str(message["_id"])})
+        reversed_.append(channel)
+    if reversed_ and every_off and not event.shadow:
+        await lifecycle.apply(db, lead_id, [lifecycle.Event(
+            "opted_in", source="customer_opt_in_phrase",
+            reason=f"The customer opted back in ({opt_in.matched!r}): {', '.join(reversed_)}",
+            detail={"previous": state.get("previous_stage")})], lead=lead, customer_id=event.customer_id)
+    return reversed_
 
 
 async def _every_channel_stopped(db: DealerScopedDatabase, customer_id: str | None) -> bool:

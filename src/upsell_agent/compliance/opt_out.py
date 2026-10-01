@@ -9,6 +9,15 @@
   every channel, because the customer didn't limit it. We send one plain,
   non-marketing confirmation on the channel it came in on.
 - **Objections are not opt-outs**: "I'm not interested", "not right now".
+- **Two levels, as the client wrote them** (decision 135): a channel opt-out,
+  and "do not contact", which is every channel. "Never contact me again" is
+  simply the every-channel case. Either way only what we start stops; a reply
+  to the customer's own message still goes (decisions 136-137).
+
+Opting back in (decision 138): START / UNSTOP (any case), or "YES" in capitals
+only, reverse the channel they came on; a phrase from a short fixed list
+("you can text me again", "you can contact me again") reverses the channel it
+names, or every opted-out channel when it names none.
 
 A *possible* opt-out the phrase list doesn't catch comes from Extract
 (`possible_opt_out` + confidence) and only ever routes to REVIEW: the model
@@ -23,12 +32,15 @@ Channel = Literal["sms", "email", "voice"]
 ALL_CHANNELS: tuple[Channel, ...] = ("sms", "email", "voice")
 
 STOP_WORDS = {"stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "opt out", "opt-out", "revoke"}
-START_WORDS = {"start", "unstop", "yes"}
+START_WORDS = {"start", "unstop"}
+# "YES" counts only in capitals (the user, 1 Oct, decision 138): a plain "yes" is usually an answer.
+START_WORD_CAPS = "YES"
 
 # Extract's possible opt-out routes to REVIEW at this confidence (decided 29 Sept).
 POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE = 0.5
 
 NL_CONFIRMATION = "Understood, we won't contact you again."
+_CONFIRM_VERBS = {"sms": "text", "email": "email", "voice": "call"}
 
 _NOT = r"(?:do\s*n[o']?t|dont|don't|never|no\s+more|stop)"
 # Up to two words between "don't" and the verb ("don't ever text me"), but
@@ -73,11 +85,57 @@ def _normalize(text: str) -> str:
 
 
 def classify_keyword(text: str) -> Literal["stop", "start"] | None:
-    normalized = re.sub(r"[^\w\s-]", "", (text or "").strip().lower()).strip()
+    bare = re.sub(r"[^\w\s-]", "", (text or "").strip()).strip()
+    normalized = bare.lower()
     if normalized in STOP_WORDS:
         return "stop"
-    if normalized in START_WORDS:
+    if normalized in START_WORDS or bare == START_WORD_CAPS:
         return "start"
+    return None
+
+
+def confirmation_text(channels: tuple[Channel, ...]) -> str:
+    """The one plain confirmation, saying only what was stopped (decision 139):
+    "don't text me" mustn't be told "we won't contact you again" when email
+    carries on."""
+    if set(ALL_CHANNELS) <= set(channels):
+        return NL_CONFIRMATION
+    verbs = [_CONFIRM_VERBS[c] for c in ALL_CHANNELS if c in channels]
+    return f"Understood, we won't {' or '.join(verbs)} you again."
+
+
+# Opting back in, in the customer's words (decision 138). Short and channel-named on purpose:
+# "yes" or "ok" alone are answers, never consent. "can" + whitespace, so "can't" never matches.
+_CAN = r"(?:you\s+)?(?:can|may)\s+(?:now\s+)?"
+_OK = r"\s+(?:is|are)\s+(?:fine|ok|okay|good)\b"
+_OPT_INS: list[tuple[re.Pattern[str], tuple[Channel, ...] | None]] = [
+    (re.compile(rf"\b{_CAN}(?:text|message|sms)\s+me(?:\s+again|\s+now)?\b"), ("sms",)),
+    (re.compile(rf"\b(?:texting\s+me|texts){_OK}"), ("sms",)),
+    (re.compile(r"\b(?:start|resume)\s+texting\s+me\b"), ("sms",)),
+    (re.compile(rf"\b{_CAN}(?:e-?mail)\s+me(?:\s+again|\s+now)?\b"), ("email",)),
+    (re.compile(rf"\b(?:e-?mailing\s+me|e-?mails){_OK}"), ("email",)),
+    (re.compile(r"\b(?:start|resume)\s+e-?mailing\s+me\b"), ("email",)),
+    (re.compile(rf"\b{_CAN}call\s+me\s+again\b"), ("voice",)),
+    (re.compile(rf"\b{_CAN}(?:contact|reach)\s+me\s+again\b"), None),
+    (re.compile(r"\b(?:start|resume)\s+contacting\s+me\b"), None),
+    (re.compile(r"\bopt\s+me\s+(?:back\s+)?in\b"), None),
+    (re.compile(r"\bresubscribe\s+me\b"), None),
+]
+
+
+@dataclass(frozen=True)
+class OptIn:
+    channels: tuple[Channel, ...] | None  # None: every channel the customer opted out of
+    matched: str
+
+
+def detect_opt_in(text: str) -> OptIn | None:
+    """The customer's message as a natural-language opt-in, or None. Checked
+    only after detect_opt_out found nothing ("don't text me" is never this)."""
+    lowered = _normalize(text)
+    for pattern, channels in _OPT_INS:
+        if m := pattern.search(lowered):
+            return OptIn(channels, m.group(0))
     return None
 
 

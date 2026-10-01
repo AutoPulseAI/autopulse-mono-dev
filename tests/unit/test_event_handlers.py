@@ -115,12 +115,13 @@ async def test_first_reply_is_answered_and_sent(mongo):
     assert state["last_send_status"] == "sent" and state["first_reply_ms"] >= 0
 
 
-async def test_stop_opts_out_and_is_never_answered(mongo):
+async def test_stop_opts_out_and_later_messages_are_still_answered(mongo):
     created = await _lead()
     result = await handlers.handle_inbound_message(_inbound(created, "STOP"), TurnDeps())
     assert result["status"] == "opted_out"
+    # The opt-out entry stops what we start; the lead isn't silenced (decision 137).
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert state["status"] == "opted_out"
+    assert state["status"] != "opted_out"
     # Consent is an add-only history (MASTER_PLAN_3 C1, decision 77).
     [entry] = await mongo["ai_consent"].find({"customer_id": created["customer_id"]}).to_list(None)
     assert entry["channel"] == "sms" and entry["consent_type"] == "opt_out"
@@ -131,7 +132,7 @@ async def test_stop_opts_out_and_is_never_answered(mongo):
         {"lead_id": created["lead_id"], "direction": "outbound"}) == 0
 
     later = await handlers.handle_inbound_message(_inbound(created, "hello?", event_id="m2"), TurnDeps())
-    assert later["status"] == "saved_only" and "opted out" in later["reason"]
+    assert later["status"] == "done"
 
 
 async def test_start_after_stop_opts_back_in(mongo):

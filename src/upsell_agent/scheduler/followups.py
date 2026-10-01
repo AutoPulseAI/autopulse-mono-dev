@@ -76,6 +76,7 @@ from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_TEXT,
     render_holding_reply,
 )
+from upsell_agent.channels import consent
 from upsell_agent.channels.consent import resolve_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
 from upsell_agent.compliance.engine import can_contact
@@ -915,11 +916,15 @@ async def _fire_next_action_locked(db: DealerScopedDatabase, doc: dict, deps: An
     planned = doc.get("next_action") or {}
     if planned.get("call_requested"):
         # The customer asked for a call on this date. Staff call tasks (C2) are skipped for now, so the
-        # team gets a notice instead; the AI's text/email above covers the rest of the touch.
+        # team gets a notice instead; the AI's text/email above covers the rest of the touch. A customer
+        # who has since said "don't call me" gets no call request: staff see "do not call" (decision 144).
+        no_calls = await consent.is_opted_out(db, doc["customer_id"], "voice")
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": {
-            "staff_notice": {"at": clock.now(), "kind": "call_requested",
-                             "text": f"The customer asked to be called {planned.get('words')!r} - that's today. "
-                                     f"{planned.get('context_notes') or ''}".strip()}}})
+            "staff_notice": {"at": clock.now(), "kind": "do_not_call" if no_calls else "call_requested",
+                             "text": (f"The customer asked to be called {planned.get('words')!r}, but has since "
+                                      "opted out of calls: do not call." if no_calls else
+                                      f"The customer asked to be called {planned.get('words')!r} - that's today. "
+                                      f"{planned.get('context_notes') or ''}".strip())}}})
     if status == "sent":
         now = clock.now()
         await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).insert_one({

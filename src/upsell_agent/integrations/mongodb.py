@@ -241,6 +241,9 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     ],
     AI_CONSENT_COLLECTION: [
         ([("dealer_id", 1), ("customer_id", 1), ("channel", 1), ("consent_type", 1), ("recorded_at", -1)], {}),
+        # Opt-outs are also read by phone / email, so a re-imported customer keeps them (decision 140).
+        ([("dealer_id", 1), ("address", 1), ("channel", 1), ("consent_type", 1), ("recorded_at", -1)],
+         {"partialFilterExpression": {"address": {"$type": "string"}}}),
         # The same evidence (a lead form's consent line) is recorded once.
         ([("consent_evidence_id", 1)],
          {"unique": True, "partialFilterExpression": {"consent_evidence_id": {"$type": "string"}}}),
@@ -273,9 +276,10 @@ async def ensure_indexes() -> None:
     """
     # The pre-C1 consent documents and their unique index go first, or the
     # new non-unique index on the same keys can't be created.
-    from upsell_agent.channels.consent import migrate_legacy_consent
+    from upsell_agent.channels.consent import migrate_legacy_consent, migrate_silenced_opt_outs
 
     await migrate_legacy_consent()
+    await migrate_silenced_opt_outs()
     db = get_db()
     for collection_name, specs in INDEX_SPECS.items():
         for keys, options in specs:

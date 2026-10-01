@@ -14,6 +14,7 @@ from upsell_agent import clock
 from upsell_agent.agent import lifecycle
 from upsell_agent.agent.lifecycle import Event, Stage, transition
 from upsell_agent.agent.turn import TurnDeps
+from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender
 from upsell_agent.devtools import simulate
@@ -252,6 +253,21 @@ async def test_call_me_next_week_is_a_dated_next_step(mongo):
     facts = await mongo["qualification_facts"].find({"lead_id": created["lead_id"],
                                                      "path": "interest.needed_by"}).to_list(None)
     assert facts == []
+
+
+@pytestmark_flow
+async def test_a_call_request_after_dont_call_me_tells_staff_not_to_call(mongo):
+    # Decision 144: a call opt-out stops the "call this customer" notice.
+    created = await _new_lead()
+    await _say(created, "Call me next week please")
+    await consent.set_channel_consent(dealer_scoped_db(DEALER), created["customer_id"], "voice",
+                                      False, source="customer_opt_out_phrase")
+    due = (await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "status": "pending", "kind": "next_action"}))["due_at"]
+    set_clock((due if due.tzinfo else due.replace(tzinfo=UTC)) + timedelta(minutes=1))
+    await followups.fire_due(_deps())
+    notice = (await _state(mongo, created))["staff_notice"]
+    assert notice["kind"] == "do_not_call" and "do not call" in notice["text"]
 
 
 @pytestmark_flow
