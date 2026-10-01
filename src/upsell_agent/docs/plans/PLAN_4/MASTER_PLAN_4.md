@@ -327,6 +327,7 @@ restrictions; no new restriction needed, just don't build the engine this data i
 | 14 | Sales Visit = **a person setting the status**; third-party check-in tools later. | MASTER_PLAN_3 C3/C5, unchanged ("Visited") |
 | 16 | **Service appointments are offered in this SOW and notes taken**; reading service availability and writing into the scheduler is the **next SOW**. | **F2** below; D4 above |
 | 19 | National DNC not needed; consent + suppression is enough. | Unchanged (MASTER_PLAN_3 decision 68) |
+| Scope §7 (Workflow 3) | "We want to send an image not the link unless the customer asks for it cause we don't want to take the customer off the conversation… Sending them to the website will not help advance to appt unless the customer specifically asks for the link." | **F3** below |
 
 ---
 
@@ -392,3 +393,56 @@ B5 books the picked time through `POST /api/booking`. So a service lead can get 
 notice carries the time and notes; "booked" wording on a service request is rejected; sales leads still book.
 
 **Next SOW:** read service availability, offer real times, write the booking into the service scheduler.
+
+---
+
+## F3: Vehicle image, not link (changes MASTER_PLAN_3 Phase 0 items 4 and 7, decision 47)
+
+**Client (conversation_6, answer on scope §7 Workflow 3):** "we want to send an image not the link unless the
+customer asks for it cause we don't want to take the customer off the conversation we need to get them to the
+appointment stage… Sending them to the website will not help advance to appt unless the customer specifically asks
+for the link."
+
+**Old rule (MASTER_PLAN_3 Phase 0 item 4, from the blueprint's "First quality response rule"):** link + image when
+both exist → link only → image only → no vehicle.
+
+**New rule:**
+1. **Image first.** A reply about a specific vehicle sends that vehicle's photo (MMS on SMS; inline image in email).
+2. **No link by default**, on SMS or email. A link is sent **only when the customer asks for one** ("send me the
+   link", "where can I see it online?", "can I see more pictures?"), and then only that vehicle's own `page_url`.
+3. **No usable photo** (missing, unreachable, not an image, over the size limit): no image and still no link
+   (unless asked). The reply talks about the vehicle in words, as today.
+4. Never a stand-in or unrelated photo (unchanged, Omnichannel PDF §15).
+
+**Built today:** nothing of this. Decision 47 ("links and MMS images") was deferred in MASTER_PLAN_3 Phase 3 and
+never built (progress_3.md, "What's deferred", Decision H). Replies today have no link and no photo: the SMS prompt
+still says "no links" (`agent/llm.py`), `InventoryRecord` has `page_url` but no `photo_url`, and `channels/twilio.py`
+sends text only. So F3 is decision 47 built with the client's new order, not a rewrite of working code.
+
+**To build** (decision 47's pieces, with the new order):
+- `tools/inventory_tool.py`: `InventoryRecord.photo_url` (the first of `/api/car`'s `media.photo_links`, from
+  `imagesSecure`).
+- Image check in code before sending: https, publicly reachable (HEAD 200), an image type, ≤ 5 MB. Failing it means
+  no image (rule 3).
+- Compose returns `sms_media_vin` / `email_media_vin` (one vehicle from that version's `sms_vins` / `email_vins`);
+  code, not the model, takes that record's `photo_url`.
+- `OutboundMessage.media_urls`; `channels/twilio.py` sends each as `MediaUrl`; `channels/sendgrid.py` embeds the
+  image; `channels/fake.py` records them. The idempotency key covers the media.
+- **Link only on request:** a new Extract signal `wants_link` (+ confidence, ≥ 0.8 like the other signals). Only then
+  may Compose include the vehicle's `page_url`. The guard rejects any URL in a draft unless `wants_link` was set this
+  turn and the URL is the `page_url` of a vehicle in that version's VIN list.
+- Used everywhere a vehicle photo is sent: the first reply, the Day 2 "vehicle visual" touch and the Day 5 feature
+  touch (C4), the appointment countdown and no-show step 1 (C5).
+- **`MMS_ENABLED` per dealer:** decision 47 had it off by default until the MMS cost review (about 3× an SMS). The
+  client's answer makes images the default, so it should be **on** for live dealers. Do the cost review before
+  rollout, not after. With it off, SMS carries no image and still no link.
+
+**Tests:**
+- the image is sent and there's no link;
+- each image check failing means no image and no link;
+- "send me the link" gets that vehicle's `page_url` only;
+- any URL without `wants_link` is rejected by the guard;
+- a URL for a vehicle not in the reply is rejected;
+- the Twilio request carries `MediaUrl`;
+- a retry doesn't send a second picture;
+- `MMS_ENABLED` off means no image.
