@@ -132,7 +132,9 @@ named statuses. **Two ways to resolve it, not decided here:**
   and doesn't intend to erase the earlier Day-91 case, meaning a third closed status still exists for leads
   that never got that far.
 - (a) is recommended: one client sentence ("the ONLY two") is a stronger signal than an unstated exception,
-  and it simplifies the model. **Not decided - ask the client directly**, quoting both documents back to them.
+  and it simplifies the model. ~~**Not decided - ask the client directly**, quoting both documents back to them.~~
+- **Resolved 1 Oct 2026 as (a)** (client, [`../../data/6/conversation_6.md`](../../data/6/conversation_6.md), scope Q1): Day 91
+  → Closed – Lost, for the lead only, not the customer. MASTER_PLAN_3 C3 is updated.
 
 ### Conflict 2: what `UNSOLD` becomes
 
@@ -143,6 +145,9 @@ visited, didn't buy, and per Conflict 1's proposed resolution `CLOSED LOST` is t
 status available). **Not decided - ask the client** whether `UNSOLD` should return the lead to an ordinary
 follow-up cadence instead of closing it outright; the SOLD PENDING PDF's own opening line ("SOLD PENDING is
 not an unsold lead") implies the client is already drawing exactly this kind of distinction carefully.
+
+**Resolved 1 Oct 2026** (client, scope Q2): UNSOLD goes **back to follow-up for 90 days**, not straight to Closed –
+Lost. See MASTER_PLAN_3 C5 (assumed: the 90 days restart from the UNSOLD date; to confirm).
 
 ### Conflict 3 (not a wording conflict - a real gap): the platform has none of these statuses today
 
@@ -221,7 +226,18 @@ One message about 3 days after delivery: asks about questions, offers to book th
 using the vehicle's maintenance schedule (§4). A "later" answer never gets pressured again; an existing
 appointment suppresses the offer.
 
+**Client, 1 Oct 2026 (scope Q16):** this SOW *offers* the service and takes notes; it doesn't book into a
+scheduler or read service availability (next SOW). A "yes" becomes a service request to the team with the
+customer's preferred day/time and notes (MASTER_PLAN_3 B0.9), never a booking.
+
 ### Phase D5: Maintenance reminder engine - **needs a new data source**
+
+**Client, 1 Oct 2026:** the data source is **Vehicle Databases** (vehicledatabases.com; the API, "the cadences we
+need for service intervals by OEM"), together with DealerVault service history
+([`../../data/5/vechicle_api.md`](../../data/5/vechicle_api.md)). The 15-day sandbox trial starts only near the end of
+the build, "as we don't want it to expire before we can actually test it". Maintenance and recalls are
+**event-driven, not cadences**: "with those integrations we don't need to set up cadences because they alert the ai to
+send a message/create a task" (conversation_6.md). The text below predates this.
 
 VIN → maintenance schedule → known mileage/time → a service is due → outreach (§5). **This needs deciding
 where "the vehicle database" actually comes from** - nothing in this codebase or the platform currently holds
@@ -245,7 +261,9 @@ against a placeholder data source.**
 ### Phase D7: Birthday and 10-year ownership anniversary
 
 1. **Birthday**: one message a year, only when a verified birth month/day exists from an authorized source -
-   never inferred (§7). Customer-level, not vehicle-level.
+   never inferred (§7). Customer-level, not vehicle-level. **Source (client, 1 Oct):** DealerVault, already
+   integrated: the platform's DealerVault sales/service/appointment imports carry a `Birth Date` column
+   (`aidmvcs-be-dev/app/worker/dealervault/common/salesFields.js`, `serviceFields.js`, `appointmentFields.js`).
 2. **Ownership anniversary, years 1 through 10**: one message a year per vehicle, asking a direct YES/NO
    ("do you still have your [Model]?") - §8.
    - **YES:** nothing changes; `ownership_confirmed_at` recorded.
@@ -284,3 +302,93 @@ restrictions; no new restriction needed, just don't build the engine this data i
 - Anything from D9 (trade-in/equity/repurchase) beyond collecting the replacement-vehicle data D7 already asks for.
 - The still-unseen third spec for service workflows that conversations_4.md says is coming next.
 - Any change to Part A (inventory) or the earlier parts of Part C (C1-C4) - this part only extends C5 forward.
+
+---
+---
+
+# Part 3: Fixes required after MASTER_PLAN_3 Parts A and B (client answers, 1 Oct 2026)
+
+> **What this is:** MASTER_PLAN_3 Parts A and B are built. On 1 Oct 2026 the client answered the questions in
+> [`../../scope/scope.pdf`](../../scope/scope.pdf) §17 ([`../../data/6/conversation_6.md`](../../data/6/conversation_6.md)).
+> Some answers change what Parts A and B already built; those changes are listed here, so MASTER_PLAN_3's built
+> parts stay as the record of what was built. Answers that affect Part C are applied in MASTER_PLAN_3 C3 and C5
+> directly (Part C isn't built yet).
+>
+> **Not applied yet, still being confirmed:** scope questions 5–9, 11–13 and 17–18.
+
+## The client's answers that apply
+
+| Scope Q | Client's answer | Where it lands |
+|---|---|---|
+| 1 | Day 91 → **Closed – Lost**. It closes the **lead**, not the customer; a new lead from the same customer is worked as a new lead. | MASTER_PLAN_3 C3; Conflict 1 above |
+| 2 | UNSOLD → **back to follow-up for 90 days**. | MASTER_PLAN_3 C5; Conflict 2 above |
+| 4 | State hours tables sent ([`../../data/6/tcpa_7.pdf`](../../data/6/tcpa_7.pdf), "please use both tables"). | **F1** below |
+| 10 (part) | "Not interested / no longer in the market / I'm good" → the AI asks why; once a reason is given, it notes it and escalates. **Only a human can close-lost** it. STOP alone always opts out. | MASTER_PLAN_3 C3 |
+| 14 | Sales Visit = **a person setting the status**; third-party check-in tools later. | MASTER_PLAN_3 C3/C5, unchanged ("Visited") |
+| 16 | **Service appointments are offered in this SOW and notes taken**; reading service availability and writing into the scheduler is the **next SOW**. | **F2** below; D4 above |
+| 19 | National DNC not needed; consent + suppression is enough. | Unchanged (MASTER_PLAN_3 decision 68) |
+
+---
+
+## F1: Per-state contact hours (fixes MASTER_PLAN_3 B0.6 / B3)
+
+**Built today:** `compliance/customer_zone.py` finds the customer's state (ZIP, else state, else area code), but
+`compliance/engine.py` applies **one window to everyone**: `MARKETING_WINDOW = 8:00-20:00`, plus 3 marketing texts per
+24 hours (B0.6's interim rule).
+
+**Why it's wrong now:** the client's table ([`../../data/6/tcpa_7.pdf`](../../data/6/tcpa_7.pdf)) shows the interim
+rule isn't the strictest everywhere:
+- **Later start times:** 9:00 in CT, NV, NM, SD and TX; **10:00 in KY**; RI is 9:00-18:00 weekdays and 10:00-17:00 Saturday.
+- **Sundays:** banned in AL, LA, MS, SD and RI; TX allows only noon-21:00.
+- **Holidays:** banned in AL, LA and RI.
+
+**To build:**
+1. `MARKETING_WINDOW` becomes a **versioned per-state table** (window per weekday, Sunday rule, holiday rule, cap),
+   built from both of the client's tables and kept as config, not in prompts (TCPA PDF §7, §13).
+2. Applied by the state `customer_zone.py` already finds. The stricter of the ZIP state and the area-code state
+   wins; an unknown state gets the strictest row.
+3. A US federal-holiday calendar for the holiday rules.
+4. HOLD gives the next time that's allowed under that state's row.
+5. Rows the client marks with an asterisk ("federal default", not individually verified) are research status, not
+   legal conclusions (the client's own note): counsel confirms.
+
+**Flag for the client or counsel:** Table 2 says Florida, Oklahoma and Maryland require **prior express written
+consent** for automated texts. MASTER_PLAN_3 decision 36 counts the customer's own inquiry as consent for
+follow-ups on it; that may not be enough in those states.
+
+**Tests:** one row per state rule (late start, Sunday ban, Texas Sunday noon, holiday, RI Saturday), the
+ZIP-vs-area-code stricter rule, unknown state → strictest, and HOLD release times.
+
+---
+
+## F2: Service visits are requested, not booked (fixes MASTER_PLAN_3 B0.9, B4, B5)
+
+**Client (scope Q16):** "service appointments are offered in this SOW and notes taken in, but in the next SOW
+availability will be able to be read, they will be able to be written in the scheduler."
+
+**Conflict with what's built:** B4's decision 106 gives **every** lead type the visit offer, service included, and
+B5 books the picked time through `POST /api/booking`. So a service lead can get a real platform booking today.
+
+**The change:**
+- **Sales visits / test drives:** unchanged; booked as B5 builds them.
+- **Service visits** (a service lead now; later the SOLD – DELIVERED Day 3 first-service offer, maintenance and recall
+  outreach): the AI **offers** a service visit and asks when suits them, but **creates no booking** and reads no
+  service availability. It takes notes instead: the requested day/time ("Thursday morning"), the vehicle, its
+  mileage, what it needs, and anything that matters to the customer ("wants to wait for it", "needs a loaner").
+- These go to the team as a **service request**: the team notice (`staff_notice`, kind `service_request`) and a
+  note on the platform lead's conversation.
+- The reply never says booked or confirmed: "I've passed Thursday morning to our service team with your notes;
+  they'll confirm the exact time with you."
+
+**Code to change:**
+- `agent/visit_offer.py`: for `lead_type == service`, ask for a preferred day/time instead of offering slots.
+- Decide (`agent/nodes/decide.py`): never call `tools/booking_tool.py`'s `ensure_booking` for a service visit.
+- The guard's booking-wording rule: allows "passed to the service team" for a service request, never
+  "booked" / "confirmed".
+- MASTER_PLAN_3's "Not in this plan" now reads: booking into a scheduler or reading service availability is next
+  SOW; offering a service visit and passing the request with notes **is** in scope.
+
+**Tests:** a service lead gets a preferred-time question (no slots); no `POST /api/booking` for a service lead; the
+notice carries the time and notes; "booked" wording on a service request is rejected; sales leads still book.
+
+**Next SOW:** read service availability, offer real times, write the booking into the service scheduler.

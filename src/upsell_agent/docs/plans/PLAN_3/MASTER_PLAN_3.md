@@ -785,6 +785,8 @@ One check, used by the AI sender and the AI follow-up scheduler. **The platform'
 > 2. **Omnichannel Mandate (CALL + TEXT + EMAIL):** Every scheduled follow-up touch engages all permitted channels simultaneously (AI SMS + AI Email + Human Call Task).
 > 3. **1-Hour Call Escalation Timer:** Every AI touch starts a 60-minute connection timer. If no meaningful contact occurs within 60 minutes, a human call task is activated for dealership staff (respecting agent work hours).
 > 4. **Master State Machine & Priority:** Strict state machine handling (`New Lead`, `Short-Term Follow-Up`, `No Contact Made`, `Contact Made - No Next Action`, `Contact Made - Specific Follow-Up`, `Appointment Set`, `Appointment No Show`, `Sales Visit`, `Opted Out / Suppressed`, `Opportunity Closed - No Response` on Day 91).
+>
+> **1 Oct 2026:** the client's answers to the scope questions ([`../../data/6/conversation_6.md`](../../data/6/conversation_6.md)) are applied to C3 and C5 below. Adjustments they require in the already-built Parts A and B are in [`../PLAN_4/MASTER_PLAN_4.md`](../PLAN_4/MASTER_PLAN_4.md), Part 3.
 
 ---
 
@@ -911,13 +913,15 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 > **Decided 27 Sept: backend only, in the AI service. No platform changes.** The stage is kept in the AI's own lead state, not on the platform's `Lead`. Its inputs are things the AI already sees or can read: customer replies, bookings made through `/api/booking`, and the statuses staff set on the platform (Appointment Booked, Visited, Sold, DND, No Show, Managerial Review), which arrive as the `lead-paused` event or can be read from the lead. "Sales Visit" = staff setting **Visited** (the platform has no automatic check-in). Staff don't see C3's stage names on their screens.
 
 1. **State Machine Statuses:**
-   - `New Lead`, `Short-Term Follow-Up`, `No Contact Made`, `Contact Made - No Next Action`, `Contact Made - Specific Follow-Up`, `Appointment Set`, `Appointment No Show`, `Sales Visit`, `Opted Out / Suppressed`, `Opportunity Closed - No Response`.
+   - `New Lead`, `Short-Term Follow-Up`, `No Contact Made`, `Contact Made - No Next Action`, `Contact Made - Specific Follow-Up`, `Appointment Set`, `Appointment No Show`, `Sales Visit`, `Opted Out / Suppressed`, ~~`Opportunity Closed - No Response`~~ **`Closed - Lost`** (client, 1 Oct 2026, scope Q1).
+   - **Closed – Lost is per lead, not per customer.** The customer record stays open; a new lead from the same customer starts its own workflow (client, 1 Oct). Matches the SOLD – DELIVERED spec's "only two closed statuses" (MASTER_PLAN_4 Conflict 1, resolved as option (a)).
+   - **Who may set Closed – Lost:** the Day 91 timer (reason `day_91_no_response`) and staff. **Never the AI from a conversation:** "not interested / no longer in the market / I'm good" is an objection. The AI asks why; once the customer gives a reason, it records it and escalates to a person, who decides (client, 1 Oct, scope Q10).
 2. **Event Priority & Race-Condition Control:**
    - Order of precedence: `1. OPT-OUT / COMPLIANCE BLOCK` > `2. SALES VISIT` > `3. APPOINTMENT SET` > `4. CONTACT MADE - SPECIFIC FOLLOW-UP` > `5. APPOINTMENT NO SHOW` > `6. CONTACT MADE - NO NEXT ACTION` > `7. NO CONTACT MADE` > `8. NEW LEAD`.
    - Pre-send re-check: Re-read status, reply state, appointment state, sales visit state, and compliance check before executing any queued action.
 3. **Opportunity Clock & Day 91 Expiration:**
    - `opportunity_created_at` is immutable and never resets on cadence re-entry.
-   - Day 91 closes active opportunity while retaining customer record and history.
+   - Day 91 closes the lead as `Closed - Lost` while retaining the customer record and history.
 
 **Tests:** State transitions across all events, priority resolution when events conflict, pre-send re-check canceling stale tasks, and Day 91 opportunity closure.
 
@@ -991,6 +995,12 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - Customer check-in at dealership SALES sets `Sales Visit` immediately and halts all automated follow-up.
    - If on appointment date: marks `appointment.showed = true`.
    - Requires manager outcome selection: `SOLD PENDING`, `SOLD DELIVERED`, or `UNSOLD`.
+   - **UNSOLD (client, 1 Oct 2026, scope Q2): back to follow-up for 90 days.** The lead re-enters Short-Term follow-up (stage `Contact Made - No Next Action`, since a visit is contact) and gets a new 90-day follow-up period counted from the UNSOLD date; at its end, `Closed - Lost`. **Assumed, confirm with the client:** the 90 days restart from UNSOLD rather than continuing the original lead's Day 91 clock (which would often have little or no time left).
+
+4. **Booking and the appointment flow — checked against B5, 1 Oct 2026.** C5 is built on top of B5's booking, so:
+   - **Sales appointments only.** The Y/N confirmation, countdown, no-show flow and showed marking apply to bookings B5 created. A **service** visit is only requested this SOW, with no booking (client, scope Q16; the B4/B5 change is MASTER_PLAN_4 Part 3, F2), so it gets none of these. The team confirms service times themselves.
+   - **The 15-minute details message: still open** (scope Q13; the client asked for a screenshot of the platform's own booking confirmation). Until answered, keep "Not built" above, so customers aren't sent two confirmations.
+   - **The countdown and the no-show step 1 send a vehicle photo:** both need MMS on for the dealer.
 
 **Tests:** 15-min confirmation, day-before Y/N routing, +1h No Show trigger, +24h check-in, routing to Short-Term, and Sales Visit manager outcome mandate.
 
