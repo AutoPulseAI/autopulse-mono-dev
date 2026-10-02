@@ -20,7 +20,27 @@ import { sendAiEvent } from './aiEvents.js';
 // (app/api/conversations/followup/route.js), plus the end states.
 export const STAFF_OWNED_STATUSES = Object.freeze([
   'Appointment Booked', 'Visited', 'Sold', 'DND', 'Managerial Review',
+  // The manager outcomes after a visit (MASTER_PLAN_3 C5; Omnichannel PDF: "Sales Visit -> manager
+  // outcome required").
+  'Sold Pending', 'Sold Delivered', 'Unsold',
+  // Staff marked a missed appointment: the AI runs the client's no-show messages (MASTER_PLAN_3 C5).
+  'No Show',
 ]);
+
+// The outcome a manager must pick when a lead is set to "Visited" (MASTER_PLAN_3 C5).
+export const MANAGER_OUTCOMES = Object.freeze(['Sold Pending', 'Sold Delivered', 'Unsold']);
+
+// "Visited" needs an outcome; the outcomes can also be set later on their own.
+export function validateManagerOutcome(status, managerOutcome) {
+  if (managerOutcome && !MANAGER_OUTCOMES.includes(managerOutcome)) {
+    return `Unknown manager outcome "${managerOutcome}" (expected ${MANAGER_OUTCOMES.join(', ')})`;
+  }
+  if (managerOutcome && status !== 'Visited') return 'A manager outcome is only given with "Visited"';
+  if (status === 'Visited' && !managerOutcome) {
+    return `Pick the visit's outcome: ${MANAGER_OUTCOMES.join(', ')}`;
+  }
+  return null;
+}
 
 const safeId = (value) => String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '');
 
@@ -64,14 +84,17 @@ export async function notifyAiOfStaffReply({
 }
 
 // Staff moved the lead to a status where they own it (booked, sold, DND, ...).
+// "Visited" carries the manager's outcome in the same event, so the AI applies
+// the visit and its outcome in order (agentic-upsell lifecycle.manager_outcome_from_reason).
 export async function notifyAiOfStaffStatus({
-  leadId, dealerId, status, mode, send = sendAiEvent, logger = console, now = Date.now,
+  leadId, dealerId, status, managerOutcome, mode, send = sendAiEvent, logger = console, now = Date.now,
 }) {
   if (!STAFF_OWNED_STATUSES.includes(status)) return { status: 'not_needed' };
+  const outcome = status === 'Visited' && MANAGER_OUTCOMES.includes(managerOutcome) ? managerOutcome : null;
   const event = buildLeadPausedEvent({
     leadId, dealerId,
-    eventId: `status-${leadId}-${safeId(status)}-${now()}`,
-    reason: `Staff moved the lead to "${status}"`,
+    eventId: `status-${leadId}-${safeId(status)}${outcome ? `-${safeId(outcome)}` : ''}-${now()}`,
+    reason: `Staff moved the lead to "${status}"${outcome ? ` (manager outcome: "${outcome}")` : ''}`,
   });
   return sendIfAiActive('lead-paused', event, { dealerId, mode, send, logger });
 }

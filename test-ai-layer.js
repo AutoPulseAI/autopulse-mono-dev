@@ -21,6 +21,7 @@ import {
 } from './app/lib/ai/aiMessageRecord.js';
 import { parseSenderHeader } from './app/lib/ai/aiInbound.js';
 import {
+  MANAGER_OUTCOMES,
   STAFF_OWNED_STATUSES,
   buildLeadPausedEvent,
   buildLeadResumedEvent,
@@ -28,6 +29,7 @@ import {
   notifyAiOfStaffStatus,
   pauseAiForLead,
   resumeAiForLead,
+  validateManagerOutcome,
 } from './app/lib/ai/aiStaff.js';
 import { aiOwnsFollowUps } from './app/lib/followupService.js';
 
@@ -331,7 +333,8 @@ test('a staff reply pauses the AI for live and shadow dealers, never for off', a
 });
 
 test('moving a lead to a staff-owned status pauses the AI; other statuses do not', async () => {
-  assert.deepEqual([...STAFF_OWNED_STATUSES], ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Managerial Review']);
+  assert.deepEqual([...STAFF_OWNED_STATUSES], ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Managerial Review',
+    'Sold Pending', 'Sold Delivered', 'Unsold', 'No Show']);
   const r = eventRecorder();
   await notifyAiOfStaffStatus({ leadId: LEAD, dealerId: DEALER, status: 'Appointment Booked', mode: 'live',
     send: r.send, logger: quiet, now: () => 42 });
@@ -341,6 +344,29 @@ test('moving a lead to a staff-owned status pauses the AI; other statuses do not
   assert.equal((await notifyAiOfStaffStatus({ leadId: LEAD, dealerId: DEALER, status: 'Contacted', mode: 'live',
     send: none.send, logger: quiet })).status, 'not_needed');
   assert.equal(none.sent.length, 0);
+});
+
+test('"Visited" carries the manager outcome to the AI in one event (MASTER_PLAN_3 C5)', async () => {
+  assert.deepEqual([...MANAGER_OUTCOMES], ['Sold Pending', 'Sold Delivered', 'Unsold']);
+  const r = eventRecorder();
+  await notifyAiOfStaffStatus({ leadId: LEAD, dealerId: DEALER, status: 'Visited', managerOutcome: 'Unsold',
+    mode: 'live', send: r.send, logger: quiet, now: () => 7 });
+  assert.equal(r.sent[0].event.reason, 'Staff moved the lead to "Visited" (manager outcome: "Unsold")');
+  assert.equal(r.sent[0].event.event_id, `status-${LEAD}-Visited-Unsold-7`);
+  // An outcome on any other status is never forwarded.
+  const other = eventRecorder();
+  await notifyAiOfStaffStatus({ leadId: LEAD, dealerId: DEALER, status: 'Sold Pending', managerOutcome: 'Unsold',
+    mode: 'live', send: other.send, logger: quiet, now: () => 8 });
+  assert.equal(other.sent[0].event.reason, 'Staff moved the lead to "Sold Pending"');
+});
+
+test('"Visited" requires a manager outcome; outcomes are only valid with "Visited"', () => {
+  assert.match(validateManagerOutcome('Visited', undefined), /Pick the visit's outcome/);
+  assert.equal(validateManagerOutcome('Visited', 'Sold Delivered'), null);
+  assert.match(validateManagerOutcome('Visited', 'Sold'), /Unknown manager outcome/);
+  assert.match(validateManagerOutcome('Contacted', 'Unsold'), /only given with "Visited"/);
+  assert.equal(validateManagerOutcome('Contacted', undefined), null);
+  assert.equal(validateManagerOutcome('Unsold', undefined), null);
 });
 
 test('admin pause and resume send unique events each time', async () => {

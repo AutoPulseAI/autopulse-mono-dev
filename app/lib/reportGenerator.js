@@ -243,7 +243,8 @@ async function getLeadMetrics(dealerId, period) {
       newLeads: leads.filter(lead => lead.fe_lead_status === 'Lead').length,
       convertedLeads: leads.filter(lead => lead.fe_lead_status === 'Contacted').length,
       bookedLeads: leads.filter(lead => lead.booking_status === true).length,
-      soldLeads: leads.filter(lead => lead.fe_lead_status === 'Sold').length,
+      // Sold Pending / Sold Delivered are sold too (MASTER_PLAN_3 C5 manager outcomes).
+      soldLeads: leads.filter(lead => ['Sold', 'Sold Pending', 'Sold Delivered'].includes(lead.fe_lead_status)).length,
       visitedLeads: leads.filter(lead => lead.fe_lead_status === 'visited').length,
       managerialReviewLeads: managerialReviewLeads  // All time count, no date filter
     };

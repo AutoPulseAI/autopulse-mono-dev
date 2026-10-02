@@ -96,6 +96,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Visited",
     "Managerial Review",
     "Sold",
+    "Sold Pending",
+    "Sold Delivered",
+    "Unsold",
     "Lead",
     "DND"
   ];
@@ -107,6 +110,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       case 'visited': return 'success';
       case 'managerial review': return 'warning';
       case 'sold': return 'danger';
+      case 'sold pending': return 'warning';
+      case 'sold delivered': return 'danger';
+      case 'unsold': return 'secondary';
       case 'lead': return 'custom';
       case 'dnd': return 'secondary';
       default: return 'secondary';

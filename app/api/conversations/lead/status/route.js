@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
-import { onLeadStatusChange, clearPendingJobs } from '@lib/followupService.js';
-import { notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
+import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
+import { notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentUpdateTemplate } from '@lib/templates/appointmentUpdateTemplate.js';
@@ -210,14 +210,20 @@ export async function PUT(request) {
     // Continue without token - messageBy will remain null
   }
   try {
-    const { id, status, booking_date, booking_time } = await request.json();
-    console.log('Lead status update payload:', { id, status, booking_date, booking_time });
+    const { id, status, booking_date, booking_time, manager_outcome } = await request.json();
+    console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
       return NextResponse.json(
         { error: "Missing `id` or `status` in request body" },
         { status: 400 }
       );
+    }
+
+    // MASTER_PLAN_3 C5: "Visited" requires the manager's outcome (Sold Pending / Sold Delivered / Unsold).
+    const outcomeError = validateManagerOutcome(status, manager_outcome);
+    if (outcomeError) {
+      return NextResponse.json({ error: outcomeError }, { status: 400 });
     }
 
     await dbConnect();
@@ -237,6 +243,15 @@ export async function PUT(request) {
       fe_lead_status: status,
       statusChangedAt: new Date()
     };
+    if (manager_outcome) {
+      // The visit ends at its outcome: the lead shows "Sold Pending" / "Sold Delivered" / "Unsold" from now on.
+      // The AI is still told "Visited" with the outcome, in one event (notifyAiOfStaffStatus below).
+      updateDoc.status = manager_outcome;
+      updateDoc.lead_status = manager_outcome;
+      updateDoc.fe_lead_status = manager_outcome;
+      updateDoc.manager_outcome = manager_outcome;
+      updateDoc.manager_outcome_at = new Date();
+    }
 
     // When appointment booked, persist booking fields if provided.
     // booking_date and booking_time are always in the dealer's timezone (not UTC).
@@ -605,8 +620,9 @@ export async function PUT(request) {
       }
     }
 
-    // Send No-Show message if status changed to "No Show"
-    if (status === 'No Show') {
+    // Send No-Show message if status changed to "No Show". For a dealer whose AI is live the AI owns the
+    // no-show messages (MASTER_PLAN_3 C5): it is told below and sends the client's own, so we don't double it.
+    if (status === 'No Show' && !(await aiOwnsFollowUps(updated.dealer_id))) {
       try {
         // Get dealer information
         const dealer = await User.findById(updated.dealer_id);
@@ -744,7 +760,7 @@ export async function PUT(request) {
 
     // Booked / visited / sold / DND / managerial review: staff own this lead
     // now, so the AI stops replying to it (MASTER_PLAN_1 Stage 11). Never throws.
-    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status });
+    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status, managerOutcome: manager_outcome });
 
     return NextResponse.json({ lead: updated }, { status: 200 });
   } catch (err) {

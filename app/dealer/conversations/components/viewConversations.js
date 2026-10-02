@@ -41,14 +41,15 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
             setSelectedConversation(selectedEmail);
         }
     }, [selectedEmail, refresh, refreshKey, dateRange]);
-    const handleStatusChange = async (newStatus) => {
+    const handleStatusChange = async (newStatus, extra = {}) => {
         try {
           const response = await fetch("/api/conversations/lead/status", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              id: lead._id, 
-              status: newStatus 
+            body: JSON.stringify({
+              id: lead._id,
+              status: newStatus,
+              ...extra // MASTER_PLAN_3 C5: manager_outcome when the lead is set to "Visited"
             }),
           });
     
