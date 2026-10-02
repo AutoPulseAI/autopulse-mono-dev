@@ -156,3 +156,46 @@ def test_wording_matches_the_real_status():
     assert booking_tool.wording_for_status("confirmed") == "confirmed"
     assert booking_tool.wording_for_status("cancelled") is None
     assert booking_tool.wording_for_status(None) is None
+
+
+# --- A day the customer asks for ("not Wednesday, what about Monday?") ---------------------------------
+
+def test_the_day_asked_for_ignores_a_day_turned_down():
+    dealer = _dealer()
+    request = booking_tool.preferred_day("Not Wednesday, what about Monday?", dealer, TUESDAY_NOON)
+    assert request.day.isoformat() == "2026-10-05" and request.part is None
+    assert booking_tool.preferred_day("Thursday doesn't work, Friday?", dealer, TUESDAY_NOON).day.isoformat() \
+        == "2026-10-02"
+
+
+def test_a_day_with_a_time_or_no_day_is_not_a_day_request():
+    dealer = _dealer()
+    assert booking_tool.preferred_day("Monday at 10am?", dealer, TUESDAY_NOON) is None
+    assert booking_tool.preferred_day("sounds good", dealer, TUESDAY_NOON) is None
+
+
+def test_a_part_of_the_day():
+    dealer = _dealer()
+    assert booking_tool.preferred_day("Monday afternoon?", dealer, TUESDAY_NOON).part_words == "afternoon"
+    span, words = booking_tool.part_of_day("Friday after 5")
+    assert span[0].hour == 17 and words == "after 5"
+
+
+def test_times_on_the_day_asked_for_are_spread_across_it():
+    dealer = _dealer()
+    available = booking_tool.available_times(dealer, [], TUESDAY_NOON, days_ahead=14)
+    request = booking_tool.preferred_day("what about Monday?", dealer, TUESDAY_NOON)
+    times, day, on_day = booking_tool.times_on_day(available, request, dealer)
+    local = [t.astimezone(dealer.tz) for t in times]
+    assert on_day and day.isoformat() == "2026-10-05" and len(times) == 3
+    assert {t.date().isoformat() for t in local} == {"2026-10-05"}
+    assert local[0].hour == 9 and local[-1].hour == 18  # first, middle and last of the day
+
+
+def test_a_closed_day_offers_the_next_open_one():
+    dealer = _dealer()
+    available = booking_tool.available_times(dealer, [], TUESDAY_NOON, days_ahead=14)
+    request = booking_tool.preferred_day("Sunday afternoon?", dealer, TUESDAY_NOON)
+    times, day, on_day = booking_tool.times_on_day(available, request, dealer)
+    assert not on_day and day.isoformat() == "2026-10-05"  # closed Sunday -> Monday
+    assert all(12 <= t.astimezone(dealer.tz).hour < 17 for t in times)  # still in the afternoon

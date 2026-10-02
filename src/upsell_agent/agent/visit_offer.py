@@ -134,6 +134,23 @@ def _followup_date(customer_words: str | None, now: datetime) -> str:
     return (now.date() + timedelta(days=DEFAULT_FOLLOWUP_DAYS)).isoformat()
 
 
+def plan_day_offer(*, profile: Profile, conversation: ConversationState, built_times: list[dict[str, str]],
+                   why: str) -> VisitOfferPlan:
+    """The customer answered our times with a day of their own ("not Wednesday, what about Monday?"), or
+    asked to move their booking to a day: times on that day are offered. It continues the offer they're
+    answering, so it isn't another attempt (the first one when nothing was offered before)."""
+    record = conversation.visit or VisitState()
+    attempt = record.attempts or 1
+    angles = record.angles_used or ["primary_interest"]
+    _, value_prop = _angle_for_attempt(attempt, None, profile)
+    new_record = record.model_copy(update={
+        "attempts": attempt, "angles_used": angles, "offered_times": built_times,
+        "offered_turn": conversation.turn + 1, "held_over": 0, "declined": False, "pending_pick": None,
+        "why": why})
+    return VisitOfferPlan(fire=True, attempt=attempt, angle=angles[-1], value_proposition=value_prop,
+                          times=built_times, record=new_record.model_dump(), why=why)
+
+
 def plan_visit(
     *,
     profile: Profile,

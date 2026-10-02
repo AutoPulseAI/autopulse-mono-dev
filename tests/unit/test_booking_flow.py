@@ -3,6 +3,9 @@ model): a visit offer, a pick that books it, the guard's booking-wording
 rule, a booking not pausing the AI, a cancel, and a 3rd decline. Mirrors
 tests/unit/test_after_hours.py's integration style."""
 
+from datetime import datetime as _dt
+from zoneinfo import ZoneInfo
+
 import pytest
 from bson import ObjectId
 
@@ -243,3 +246,57 @@ async def test_metrics_count_offers_and_bookings(mongo):
     assert m["visits"]["offered_leads"] == 1 and m["visits"]["booked_leads"] == 1
     assert m["visits"]["booking_rate"] == 1.0
     assert "Visits:" in format_report(m)
+
+
+# --- A day of their own ("not Wednesday, what about Monday?") ------------------------------------------
+
+
+MONDAY_NOON = _dt(2026, 10, 5, 12, 0, tzinfo=ZoneInfo("America/New_York"))
+
+
+def _days(offered):
+    return {t["date"] for t in offered}
+
+
+async def test_a_counter_day_gets_that_days_times_not_a_team_promise(mongo):
+    set_clock(MONDAY_NOON)
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "Not Tuesday, what about Thursday?")
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-10-08"} and len(visit["offered_times"]) == 3
+    assert visit["attempts"] == 1  # the same offer, answered with a day: not another attempt
+    reply = await _last_sms(mongo, created)
+    assert "Thursday works" in reply and "Thursday at" in reply and "team will confirm" not in reply
+    # The visit day isn't saved as the date they need the car by.
+    slots = {s["path"]: s for s in (await _state(mongo, created)).get("profile", {}).get("slots", [])}
+    assert "interest.needed_by" not in slots or slots["interest.needed_by"].get("value") != "2026-10-06"
+    # ...and picking one of them books it.
+    await _say(created, "the second one")
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == visit["offered_times"][1]["time"]
+
+
+async def test_a_closed_day_offers_the_next_open_day_and_says_so(mongo):
+    set_clock(MONDAY_NOON)
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "Can we do Sunday afternoon?")
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-10-12"}  # the dev dealer is shut on Sunday
+    assert all("12:00" <= t["time"] < "17:00" for t in visit["offered_times"])
+    assert "no open times" in await _last_sms(mongo, created)
+
+
+async def test_moving_a_booking_to_a_day_offers_that_days_times(mongo):
+    set_clock(MONDAY_NOON)
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "the first one works")
+    before = await _booking(mongo, created)
+    await _say(created, "can we move it to Thursday instead?")
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-10-08"}
+    await _say(created, "the first one")
+    after = await _booking(mongo, created)
+    assert after["_id"] == before["_id"] and after["bookingTime"] == visit["offered_times"][0]["time"]

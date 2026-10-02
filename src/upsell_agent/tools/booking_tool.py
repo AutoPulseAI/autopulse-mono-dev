@@ -118,6 +118,99 @@ def offer_times(available: list[datetime], *, count: int = MAX_OFFERED) -> list[
     return available[:count]
 
 
+# --- The customer asks for a day ("not Wednesday, what about Monday?") ------------------------------------
+
+# A day the customer turns down: "not Wednesday", "can't do Wed", "Wednesday doesn't work".
+_DAY_NAME = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?"
+_REJECTED_DAY = re.compile(
+    rf"\b(?:not|no|can'?t do|cannot do|can'?t make|can'?t come)\s+(?:on\s+)?(?:this\s+|next\s+)?{_DAY_NAME}\b"
+    rf"|\b{_DAY_NAME}\s+(?:doesn'?t|does not|won'?t|will not)\s+work\b|\b{_DAY_NAME}\s+is\s+(?:no good|bad|out)\b",
+    re.IGNORECASE)
+# Parts of the day, in the dealer's own time.
+_PARTS = {"morning": (time(0), time(12)), "afternoon": (time(12), time(17)), "evening": (time(17), time(23, 59))}
+_AFTER = re.compile(r"\bafter\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE)
+_BEFORE = re.compile(r"\bbefore\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE)
+
+
+@dataclass
+class DayRequest:
+    day: Any  # datetime.date the customer asked for
+    part: tuple[time, time] | None  # a part of the day they named, or None for any time
+    part_words: str | None
+
+
+def _clock(hour: str, minute: str | None, meridiem: str | None) -> time:
+    h = int(hour) % 12 if meridiem else int(hour)
+    if meridiem and meridiem.lower() == "pm":
+        h += 12
+    elif not meridiem and 1 <= h <= 7:
+        h += 12  # "after 5" at a dealership means the evening
+    return time(min(h, 23), int(minute or 0))
+
+
+def part_of_day(text: str) -> tuple[tuple[time, time] | None, str | None]:
+    lowered = (text or "").lower()
+    for word, span in _PARTS.items():
+        if re.search(rf"\b{word}\b", lowered):
+            return span, word
+    if m := _AFTER.search(lowered):
+        return (_clock(*m.groups()), time(23, 59)), m.group(0)
+    if m := _BEFORE.search(lowered):
+        return (time(0), _clock(*m.groups())), m.group(0)
+    return None, None
+
+
+def preferred_day(text: str, dealer: DealerProfile, now: datetime) -> DayRequest | None:
+    """The day the customer asks to come in when they name a day but no time ("what about Monday?",
+    "Monday afternoon?"); a day they turn down in the same message is ignored. None when the message names
+    no day, names an exact time (match_pick handles that), or a day already past."""
+    day = day_without_time(text, now.astimezone(dealer.tz))
+    if day is None:
+        return None
+    part, words = part_of_day(text)
+    return DayRequest(day=day, part=part, part_words=words)
+
+
+def day_without_time(text: str, local_now: datetime) -> Any:
+    """The date a message names when it names a day and no time, ignoring a day it turns down; else None."""
+    from upsell_agent.slots.dates import resolve as resolve_date
+
+    resolved = resolve_date(_REJECTED_DAY.sub(" ", text or ""), local_now)
+    if resolved is None or isinstance(resolved.value, datetime) or resolved.day < local_now.date():
+        return None
+    return resolved.day
+
+
+def times_on_day(available: list[datetime], request: DayRequest, dealer: DealerProfile,
+                 *, count: int = MAX_OFFERED) -> tuple[list[datetime], Any, bool]:
+    """Up to `count` open times on the day asked for (and in the part of the day asked for), spread across
+    it rather than the first ones in a row. When that day has none (closed, full, or past what we book), the
+    next day that does. Returns (times, the day they're on, whether it's the day asked for)."""
+    def fits(slot: datetime) -> bool:
+        if request.part is None:
+            return True
+        start, end = request.part
+        return start <= slot.astimezone(dealer.tz).time() < end
+
+    def spread(slots: list[datetime]) -> list[datetime]:
+        if len(slots) <= count:
+            return slots
+        step = (len(slots) - 1) / (count - 1)
+        return [slots[round(i * step)] for i in range(count)]
+
+    by_day: dict[Any, list[datetime]] = {}
+    for slot in available:
+        by_day.setdefault(slot.astimezone(dealer.tz).date(), []).append(slot)
+    wanted = [s for s in by_day.get(request.day, []) if fits(s)]
+    if wanted:
+        return spread(wanted), request.day, True
+    for day in sorted(d for d in by_day if d > request.day):
+        later = [s for s in by_day[day] if fits(s)] or by_day[day]
+        if later:
+            return spread(later), day, False
+    return [], None, False
+
+
 def format_offer(times: list[datetime], dealer: DealerProfile,
                  *, customer_zones: tuple[str, ...] = ()) -> list[dict[str, str]]:
     """Each offered time as {iso, date, time, display}. `display` is plain

@@ -682,6 +682,11 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
             body_no_vehicles = f"{opener}{answered_no_stock}{follow_up}"
     elif action == "offer_visit":
         taken = f"Sorry, {visit['slot_taken']} was just taken. " if visit.get("slot_taken") else ""
+        if day := visit.get("day_request"):
+            # The customer named a day of their own: its open times, or why another day's instead.
+            day_name = day["asked"].split(",")[0]
+            taken = (f"{day_name} works. " if day.get("on_that_day")
+                     else f"{day['asked']} has no open times, so here's the next day that does. ")
         body = f"{opener}{taken}{follow_up.strip()}"
         why = f"Offering a visit (attempt {visit_offer.get('attempt') if visit_offer else '?'} of 3, " \
               f"angle: {visit_offer.get('angle') if visit_offer else '?'})."

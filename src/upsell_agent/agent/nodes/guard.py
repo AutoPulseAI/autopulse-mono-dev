@@ -135,6 +135,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
     known += [visit[k] for k in ("display", "slot_taken") if visit.get(k)]
+    # The day the customer asked for, and the day offered instead when it had no open time (both real).
+    known += [v for k in ("asked", "offered_day") if (v := (visit.get("day_request") or {}).get(k))]
     if next_action := (state.decision or {}).get("next_action"):
         # The date the customer asked us to get back to them (MASTER_PLAN_3 C3), worked out in code from
         # their own words (slots/dates.py), and its time: confirmed back to them, never invented.

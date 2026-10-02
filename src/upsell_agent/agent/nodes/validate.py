@@ -136,6 +136,22 @@ def resolve_dates(values: list[dict[str, Any]], now: datetime, timeline_known: b
     return out, rejected
 
 
+_VISIT_DAY_PATHS = {"interest.needed_by", "interest.timeline"}
+
+
+def _visit_day_reply(state: AgentState, extraction: dict[str, Any], text: str) -> bool:
+    """The message names a day (no time) to come in: answering the times we just offered, or asking to
+    visit (MASTER_PLAN_3 B5 day requests)."""
+    from upsell_agent.agent.conversation import ConversationState
+    from upsell_agent.agent.visit_offer import declines_visit, wants_visit
+    from upsell_agent.tools.booking_tool import day_without_time
+
+    conversation = ConversationState.model_validate((state.context_pack or {}).get("conversation") or {})
+    if declines_visit(extraction) or not (conversation.awaiting_visit_pick or wants_visit(extraction)):
+        return False
+    return day_without_time(text or "", _dealer_now(state)) is not None
+
+
 async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     # The customer's own words: a quoted earlier email doesn't count.
     text = state.customer_text or state.inbound_text
@@ -162,7 +178,15 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
 
     timeline_known = any(s["path"] == "interest.timeline" and s["state"] == "filled"
                          for s in (state.profile or {}).get("slots", []))
-    values, rejected = resolve_dates(list(extraction.get("values", [])), _dealer_now(state), timeline_known, reasoning)
+    raw_values = list(extraction.get("values", []))
+    if _visit_day_reply(state, extraction, text):
+        # "Not Wednesday, what about Monday?" answering our visit times names the day they'd come in, not
+        # when they need the car: it isn't saved as a needed-by date or a timeline (Decide offers that day).
+        skipped = [v for v in raw_values if v.get("path") in _VISIT_DAY_PATHS]
+        raw_values = [v for v in raw_values if v.get("path") not in _VISIT_DAY_PATHS]
+        reasoning += [f"Not saved: {v.get('path')} = {v.get('value')!r} is the day they'd visit, not a deadline."
+                      for v in skipped]
+    values, rejected = resolve_dates(raw_values, _dealer_now(state), timeline_known, reasoning)
     for value in values:
         outcome = run_checks(value, text)
         item = {**value, "checks": outcome["checks"]}

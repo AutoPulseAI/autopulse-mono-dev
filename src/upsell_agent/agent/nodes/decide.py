@@ -31,7 +31,8 @@ from upsell_agent.agent.conversation import ConversationState, VisitState, quest
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
-from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_visit
+from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_day_offer, plan_visit
+from upsell_agent.agent.visit_offer import declines_visit as visit_declines
 from upsell_agent.agent.visit_offer import eligible as visit_eligible
 from upsell_agent.agent.visit_offer import wants_visit as visit_wants_visit
 from upsell_agent.channels.consent import resolve_recipient
@@ -109,6 +110,39 @@ async def _dealer_local_display(when: datetime, dealer: DealerProfile) -> dict[s
            "display": f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"}
 
 
+# The furthest ahead a day the customer names is looked up for open times.
+DAY_REQUEST_MAX_DAYS = 30
+
+
+def _day_words(day: date) -> str:
+    return f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}"
+
+
+async def _times_for_day(ctx: TurnContext, state: AgentState, dealer: DealerProfile, now: datetime,
+                         request: booking_tool.DayRequest) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Open times on the day the customer asked for (or the next day that has any), formatted for the
+    offer, and what Compose needs to say about it."""
+    today = now.astimezone(dealer.tz).date()
+    span = min(max(booking_tool.DAYS_AHEAD, (request.day - today).days + booking_tool.DAYS_AHEAD),
+               DAY_REQUEST_MAX_DAYS)
+    existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now, days_ahead=span)
+    available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=state.lead_id or "",
+                                             days_ahead=span)
+    times, day, on_day = booking_tool.times_on_day(available, request, dealer)
+    zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
+    built = booking_tool.format_offer(times, dealer, customer_zones=zones)
+    info = {"asked": _day_words(request.day), "part": request.part_words, "on_that_day": on_day,
+            "offered_day": _day_words(day) if day else None}
+    return built, info
+
+
+def _day_offer_why(info: dict[str, Any]) -> str:
+    asked = info["asked"] + (f" ({info['part']})" if info.get("part") else "")
+    if info["on_that_day"]:
+        return f"The customer asked for {asked}: offering open times that day."
+    return f"The customer asked for {asked}, which has no open time: offering {info['offered_day']} instead."
+
+
 async def _visit_and_booking(
     ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
     extraction: dict[str, Any], *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
@@ -151,6 +185,14 @@ async def _visit_and_booking(
                 visit_ctx = {"status": result["booking_status"], "display": picked["display"], "just_booked": True,
                              "stopped": False, "ask_contact": None, "moved_this_turn": True,
                              "booking_id": result["booking_id"]}
+        elif ((conversation.awaiting_visit_pick and conversation.visit) or _RESCHEDULE_HINT.search(text)) and (
+                not visit_declines(extraction)) and (request := booking_tool.preferred_day(text, dealer, now)):
+            # A day but no time ("what about Monday?", "can we move it to Monday?"): that day's open times.
+            built, info = await _times_for_day(ctx, state, dealer, now, request)
+            if built:
+                visit_ctx["day_request"] = info
+                return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
+                                                 why=_day_offer_why(info))
         elif _RESCHEDULE_HINT.search(text):
             from upsell_agent.slots.dates import resolve as resolve_date
             resolved = resolve_date(text, now.astimezone(dealer.tz))
@@ -185,6 +227,15 @@ async def _visit_and_booking(
         offered = conversation.visit.offered_times if conversation.awaiting_visit_pick and conversation.visit else []
         if offered or asks_for_a_time:
             picked = booking_tool.match_pick(text, offered, dealer, now, available=available).matched or pending
+        if not picked and not pending and not visit_declines(extraction) and (
+                request := booking_tool.preferred_day(text, dealer, now)):
+            # A day but no time, answering our times or asking to come in ("not Wednesday, what about
+            # Monday?", "can I come Monday afternoon?"): offer that day's open times, not the earliest ones.
+            built, info = await _times_for_day(ctx, state, dealer, now, request)
+            if built:
+                visit_ctx["day_request"] = info
+                return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
+                                                 why=_day_offer_why(info))
         if picked and datetime.fromisoformat(picked["iso"]) not in available:
             # B5 item 3: taken since we offered it - fresh times instead, not a booking.
             slot_taken = True
@@ -384,6 +435,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,
         after_hours_blocking=after_hours_blocking)
+    if visit_ctx.get("day_request"):
+        # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
+        questions = [q for q in questions if not booking_tool.preferred_day(q["text"], dealer, now)]
 
     urgent = bool(extraction.get("urgent"))
     urgent_confidence = float(extraction.get("urgent_confidence") or 0.0)
@@ -396,7 +450,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # Not while our last message asked "now, or when we open?" (MASTER_PLAN_3 B1): a bare
     # "tomorrow" answering that choice is about contact timing, not a purchase deadline (seen in
     # testing: the offline model reads it as a needed_by date too).
-    backstop = (bool(needed_by) and not conversation.awaiting_contact_choice
+    # Nor when the date is a visit day the customer asked about ("not Tuesday, what about Thursday?"): that's
+    # when they'd come in, not when they need the car.
+    backstop = (bool(needed_by) and not conversation.awaiting_contact_choice and not visit_ctx.get("day_request")
                and _within_48h(str(needed_by), now, dealer.tz))
     if backstop and not urgent:
         urgent, urgent_confidence = True, 1.0
