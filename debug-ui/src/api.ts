@@ -54,6 +54,10 @@ export const api = {
     post<CallTask>(`/call-tasks/${taskId}/${action}`, { dealer_id: dealerId, outcome: outcome ?? null }),
   clock: () => request<{ now: string; offset_s: number }>("/clock"),
   advanceClock: (seconds: number) => post<{ now: string; offset_s: number }>("/clock/advance", { seconds }),
+  // The next HH:MM on the dealer's own clock (weekdays), so a test starts at a known hour.
+  clockToDealerTime: (dealerId: string, time: string) =>
+    post<{ now: string; offset_s: number; dealer_time: string }>("/clock/to-dealer-time",
+      { dealer_id: dealerId, time, weekdays_only: true }),
   resetClock: () => post<{ now: string; offset_s: number }>("/clock/reset", {}),
   followups: (dealerId: string) => request<Followup[]>(`/followups?${q({ dealer_id: dealerId })}`),
   failSms: (dealerId: string, followupId: string) =>

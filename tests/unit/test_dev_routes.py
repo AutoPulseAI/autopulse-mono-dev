@@ -224,3 +224,22 @@ def test_call_tasks_list_and_resolve_through_the_dev_routes(client):
     assert client.get("/dev/call-tasks", params={"dealer_id": DEALER}).json() == []
     missing = client.post("/dev/call-tasks/not-an-id/complete", json={"dealer_id": DEALER, "outcome": "connected"})
     assert missing.status_code == 404
+
+
+def test_the_clock_can_jump_to_a_dealer_hour_on_a_weekday(client, monkeypatch):
+    from upsell_agent import clock
+    from upsell_agent.api import dev
+
+    async def advance(_redis, seconds):  # the dev clock normally lives in Redis
+        clock.set_offset(clock.offset_s() + seconds)
+        return clock.offset_s()
+
+    async def no_job(_request, _why):  # the test queue only runs event jobs
+        return None
+
+    monkeypatch.setattr(dev, "get_redis", lambda: None)
+    monkeypatch.setattr(dev, "_fire_followups_now", no_job)
+    monkeypatch.setattr(dev.clock, "advance", advance)
+    res = client.post("/dev/clock/to-dealer-time", json={"dealer_id": DEALER, "time": "11:00"})
+    assert res.status_code == 200, res.text
+    assert res.json()["dealer_time"].endswith("11:00") and res.json()["dealer_time"][:3] not in ("Sat", "Sun")
