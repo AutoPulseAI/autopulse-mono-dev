@@ -217,8 +217,20 @@ export interface LifecycleView {
   history: { at: string; from: string | null; to: string; rule: string; reason: string; source: string }[];
 }
 
+// MASTER_PLAN_3 C4: where the lead is in the Day 1-90 follow-up cadence (agent/cadence.py).
+export interface CadenceView {
+  day: number;
+  touch_number: number;
+  last_touch_at: string | null;
+  themes_used: string[];
+  days_left: number;
+  started_at: string | null;
+  next_touch: { touch_number: number; theme: string; theme_label: string; day: number; due_at: string; why: string } | null;
+}
+
 export interface SlotsView {
   conversation?: ConversationStateView;
+  cadence?: CadenceView | null;
   lifecycle?: LifecycleView;
   pending_morning_message?: { due_at: string } | null;
   staff_notice?: { at: string; kind: string; text: string } | null;
@@ -245,6 +257,7 @@ export type FollowupStatus =
   | "superseded"
   | "suppressed"
   | "failed"
+  | "standby"
   | "unknown";
 
 export interface Followup {
@@ -253,12 +266,14 @@ export interface Followup {
   // resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
   // visit_followup: the dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4).
   // next_action / next_action_check: the customer's dated next step and the 24h check after it (MASTER_PLAN_3 C3).
-  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check";
+  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check" | "cadence_touch";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";
   to_channel: "sms" | "email";
   to?: string;
+  // cadence_touch: the theme and day this touch is about (MASTER_PLAN_3 C4).
+  touch?: { touch_number: number; theme: string; theme_label: string; day: number } | null;
   text?: string;
   subject?: string | null;
   due_at: string;

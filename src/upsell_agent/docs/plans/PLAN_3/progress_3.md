@@ -23,6 +23,7 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | B6. Debug UI, evals and rollout | Minimal Visit panels pulled forward into B4/B5 (decision 111) |
 | C1 extension (opt-out levels, replies after opt-out, opt-in) | **Built and unit-tested (1 Oct 2026), not committed.** Decisions 135–146. 1051 unit tests, 79/79 offline evals. **Live Docker scenarios not run:** the running containers use the real models. Staff DND left unchanged, for the user to decide (decision 146). |
 | C2. Omnichannel call tasks | **Skipped for now** (27 Sept). A dated "call me …" step leaves the team a notice instead (decision 131). |
+| C4. Short-Term cadence and required touches | **Built, unit-tested and verified live in Docker (2 Oct 2026).** Decisions 147-157. 1161 unit + eval tests; scenarios `pc4_*` pass on the offline model. |
 | C3. Lifecycle state machine | **Built and unit-tested (1 Oct 2026).** Decisions 123–134. 1012 unit tests, 79/79 offline evals, Debug UI type check clean. **Live Docker scenarios not run:** Docker wasn't running (see C3 section). |
 
 ---
@@ -70,6 +71,49 @@ New: 37 in `test_compliance.py` (with parametrized cases) (keywords and capital 
 - **Known limit:** after a keyword STOP on SMS, Twilio refuses our texts (21610) until START / UNSTOP / YES, so the reply after a keyword STOP doesn't arrive by text.
 - **Platform `customerResolver.js`** sets `sms_opt_in: true` even over `false`: its owner is to be told (not our code).
 - Counsel: the confirmation wording, and replies after a revocation (TCPA PDF §3, §13).
+
+---
+
+## Phase C4: Short-Term cadence and required touches - built (2 Oct 2026)
+
+The client's follow-up schedule (Omnichannel PDF §3-§4), replacing Plan 1's one-channel 24h switch. Built with the client's 1 Oct answers: Touch 1 always asks "what are you driving now?" except when a trade-in is already indicated (decision 34 reversed, scope Q6); the FINAL PDF's 7 days / 8 touches win (Q5). Decisions 147-157 in architecture.md.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| The schedule as pure logic: Touch 2 at +3h, Touches 3-8 on Days 2-7, weekly Days 14/21/28, monthly Days 58/88, fixed themes for Days 2-7 and "most relevant unused angle" after; no two touches on one calendar day; re-entry restarts without the introduction or the nudge | `agent/cadence.py` (new) |
+| Touch 1 as the client's required text, built from the dealer record (store, city, state, the vehicle on the lead; no invented agent name), ending with the mandatory question unless a trade-in is known; up to 480 SMS characters | `agent/nodes/decide.py` `plan_touch1`, `cadence.touch1_intro` / `touch1_ending`, `guardrails/draft_guard.py`, offline model + Compose instructions |
+| Touch 2: exactly "{FirstName}?" on text and email; a reply skips it; sent unanswered it moves New Lead to No Contact Made | `agent/cadence.py`, `agent/turn.py`, decide's `plan_cadence_touch_context` |
+| `cadence_touch` scheduled work: planned after every message that goes out, fired as a whole AI turn that writes the theme and sends on **both channels**; pre-send re-check of the lead, stage, dealer mode and the send check | `scheduler/followups.py` (`plan_cadence_touch`, `_fire_cadence_touch_locked`), `agent/turn.py` `_send_other_channel` |
+| A channel opted out or unsubscribed never stops the other; a held channel holds the whole touch so text and email arrive together | `followups._permitted_channel` |
+| The cadence starts when a lead enters a Short-Term stage (new lead; re-entry after an unanswered dated step), pauses while the customer waits for the team (B1), stops on appointment / visit / opt-out / handoff / close | `agent/lifecycle.py`, `agent/turn.py`, `scheduler/followups.py` |
+| Dormant `standby` fallback so a failed delivery still falls back to the other channel at once | `followups.plan_followup(standby=True)`, `make_due_now` |
+| `CADENCE_ENABLED` (default on): off gives the old single 24h switch back | `config.py`, `.env.example`, `lifecycle.cadence_enabled` |
+| Profile API `cadence` (day, touch number, next touch and why); Debug UI cadence chip and Scheduler labels | `api/leads.py`, `debug-ui/src/components/SlotsPanel.tsx`, `SchedulerTab.tsx` |
+| Dev: the worker can drop its stock-search cache (`clear_inventory_cache`), so scenarios that add stock are no longer order-dependent | `worker/jobs.py`, `devtools/scenarios.py` |
+| Tests: 31 new (the schedule, Touch 1, the nudge, both channels, the whole 12-touch run, replies, opt-outs, stage cancellations, dated step re-entry, failed-delivery fallback, rollback switch, profile API) | `tests/unit/test_cadence.py` (new) |
+| Scenarios (stage 304): `pc4_touch1_and_nudge`, `pc4_days_2_to_5`, `pc4_reply_skips_nudge`, `pc4_one_channel_opted_out` | `scenarios/` |
+
+### Found and fixed while testing
+1. **A touch lost its text half on a Sunday.** The dealer is shut, so the SMS was held but the email went; the touch then closed as sent. Now the whole touch waits until every usable channel can go.
+2. **A customer who chose to wait for the team would have got the morning message and the name nudge at the same moment.** The cadence now waits for the morning message.
+3. **Two touches on one day** after a Sunday hold; **a late-night lead's nudge** (after midnight) used up Day 2.
+4. **The first reply's SMS didn't fit 320 characters** with the required opening, the after-hours choice and the closing question; the guard rejected it twice and handed the lead off. First replies now allow 480.
+5. **The Docker image was stale** (no `phonenumbers` / `zipcodes`, added with C1), so every turn failed in the containers; rebuilt `ai-api` and `ai-worker`.
+
+### Tests and scenarios changed on purpose
+- The first reply now carries "what are you driving now?" (`test_after_hours`, `test_turn_pipeline`, `test_decide_conversation`, `test_dev_routes`).
+- Tests of the 24h switch machinery run with the cadence off (`legacy_switch` fixture); the switch still serves a lead with no cadence and as the failed-delivery fallback.
+- Scenarios rewritten from the 24h switch to the cadence: `pc1_customer_time_zone`, `pc1_form_opt_out`, `s10_*`, `s13_rollback_to_off`; `pb1_*` expect two questions. `s10_channel_switch` was deleted (the behaviour it described is gone; `pc4_*` covers its replacement).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests + offline evals | **1161 passed** |
+| Live scenarios in Docker, offline model | C3 and C4 scenarios and the 9 rewritten ones pass |
+| Ruff / Debug UI type check | Clean / clean |
 
 ---
 

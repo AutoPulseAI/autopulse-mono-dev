@@ -19,7 +19,7 @@ from typing import Any
 
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.state import AgentState
-from upsell_agent.guardrails.draft_guard import check_draft
+from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
 from upsell_agent.guardrails.plain_language import find_jargon
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
@@ -143,7 +143,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
-    result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory)
+    result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory,
+                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") else SMS_MAX)
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
     if jargon:

@@ -75,6 +75,9 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "visit": decision.get("visit"),
         # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
         # that we're checking back as they asked.
+        # MASTER_PLAN_3 C4: Touch 1's required opening and closing, and the cadence touch's theme.
+        "touch1": decision.get("touch1"),
+        "touch": decision.get("touch"),
         "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
         "reach_out": decision.get("reach_out"),
         "customer_first_name": first_name(state.customer_name),

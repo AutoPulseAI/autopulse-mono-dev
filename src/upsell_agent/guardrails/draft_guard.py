@@ -65,6 +65,9 @@ def _claims(text: str) -> list[str]:
 
 
 SMS_MAX = 320
+# MASTER_PLAN_3 C4 (decision 152): the client's required Touch 1 opening alone is about 190 characters,
+# so the first reply to a new lead may use three SMS segments instead of two.
+TOUCH1_SMS_MAX = 480
 
 _AVAILABILITY_PATTERNS = [
     r"\bin stock\b",
@@ -181,7 +184,7 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
 
 
 def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], known_values: Iterable[Any],
-                inventory: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                inventory: list[dict[str, Any]] | None = None, sms_max: int = SMS_MAX) -> dict[str, Any]:
     if not draft:
         return {"passed": False, "checks": {"draft_present": False}, "violations": ["no draft to check"]}
 
@@ -210,11 +213,11 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
         "no_invented_numbers": not invented,
         "no_approval_language": not approval,
         "grounded_in_real_stock": not grounding,
-        "sms_length_ok": 0 < len(sms) <= SMS_MAX,
+        "sms_length_ok": 0 < len(sms) <= sms_max,
         "email_complete": bool(subject.strip()) and bool(body.strip()),
     }
     if not checks["sms_length_ok"]:
-        violations.append(f"SMS must be 1-{SMS_MAX} characters (is {len(sms)})")
+        violations.append(f"SMS must be 1-{sms_max} characters (is {len(sms)})")
     if not checks["email_complete"]:
         violations.append("email needs a subject and a body")
     result = {"passed": all(checks.values()), "checks": checks, "violations": violations}

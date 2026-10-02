@@ -75,6 +75,19 @@ export function SlotsPanel({ slots }: { slots: SlotsView | null }) {
             </span>
             <StatusBadge status={slots.status} />
             {slots.lifecycle?.stage && <StageBadge lifecycle={slots.lifecycle} />}
+            {slots.cadence && (
+              <span
+                className="shrink-0 rounded bg-panel-2 px-1.5 text-[10px] font-semibold text-muted"
+                title={slots.cadence.next_touch
+                  ? `Next: touch ${slots.cadence.next_touch.touch_number} (${slots.cadence.next_touch.theme_label}), cadence day ` +
+                    `${slots.cadence.next_touch.day}, ${formatDateTime(slots.cadence.next_touch.due_at)}
+${slots.cadence.next_touch.why}`
+                  : "No follow-up touch is scheduled"}
+              >
+                cadence day {slots.cadence.day}
+                {slots.cadence.next_touch ? ` · next: ${slots.cadence.next_touch.theme_label}` : " · idle"}
+              </span>
+            )}
             {slots.status_reason && <span className="truncate text-[10px] text-muted">{slots.status_reason}</span>}
           </>
         )}

@@ -68,6 +68,12 @@ class DealerProfile:
     address: str | None = None
     phone: str | None = None
     website: str | None = None
+    # MASTER_PLAN_3 C4: Touch 1's required opening names the city and state, and the agent the
+    # message comes from (Omnichannel PDF §3). The dealer record has no agent/persona name today,
+    # so `agent_name` is usually None and the opening simply doesn't claim one (decision 150).
+    city: str | None = None
+    state: str | None = None
+    agent_name: str | None = None
 
     def hours_text(self) -> dict[str, str]:
         """Opening hours as a customer reads them: {"Monday": "9:00 AM to 7:00 PM", "Sunday": "closed"}."""
@@ -92,6 +98,11 @@ class DealerProfile:
                 "hours_summary": self.hours_summary() if self.hours_from_record else None}
         info["missing"] = [k for k in ("name", "address", "phone", "website", "hours") if not info[k]]
         return info
+
+    @property
+    def place(self) -> str | None:
+        """"Springfield, NJ" for Touch 1's opening, or None when the record has neither."""
+        return ", ".join(x for x in (self.city, self.state) if x) or None
 
     @property
     def tz(self) -> ZoneInfo:
@@ -202,6 +213,10 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         phone=format_phone(info.get("store_contact_number") or info.get("alternative_contact_number")
                            or info.get("sms_conversion_phone")),
         website=str(info.get("store_website") or "").strip() or None,
+        city=str(info.get("store_city") or "").strip() or None,
+        state=str(info.get("store_state") or "").strip() or None,
+        # Set by the dealer when they give their AI assistant a name; never invented (decision 150).
+        agent_name=str(info.get("ai_agent_name") or "").strip() or None,
     )
 
 

@@ -42,6 +42,8 @@ from enum import StrEnum
 from typing import Any
 
 from upsell_agent import clock
+from upsell_agent.agent import cadence
+from upsell_agent.config import get_settings
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
@@ -63,6 +65,10 @@ class Stage(StrEnum):
     APPOINTMENT_SET = "appointment_set"
     NO_SHOW = "appointment_no_show"
     SALES_VISIT = "sales_visit"
+    # The manager outcomes after a Sales Visit (MASTER_PLAN_3 C5, Omnichannel PDF §10). Their own follow-up
+    # workflows are MASTER_PLAN_4's; here they stop the lead workflow and name where the lead stands.
+    SOLD_PENDING = "sold_pending"
+    SOLD_DELIVERED = "sold_delivered"
     OPTED_OUT = "opted_out"
     CLOSED_LOST = "closed_lost"
 
@@ -76,6 +82,8 @@ STAGE_LABELS: dict[Stage, str] = {
     Stage.APPOINTMENT_SET: "Appointment Set",
     Stage.NO_SHOW: "Appointment No Show",
     Stage.SALES_VISIT: "Sales Visit",
+    Stage.SOLD_PENDING: "Sold Pending",
+    Stage.SOLD_DELIVERED: "Sold - Delivered",
     Stage.OPTED_OUT: "Opted Out / Suppressed",
     Stage.CLOSED_LOST: "Closed - Lost",
 }
@@ -85,6 +93,8 @@ PRIORITY: dict[Stage, int] = {
     Stage.CLOSED_LOST: 0,
     Stage.OPTED_OUT: 1,
     Stage.SALES_VISIT: 2,
+    Stage.SOLD_PENDING: 2,
+    Stage.SOLD_DELIVERED: 2,
     Stage.APPOINTMENT_SET: 3,
     Stage.SPECIFIC_FOLLOWUP: 4,
     Stage.NO_SHOW: 5,
@@ -110,8 +120,20 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     # The 24h resend of our last message on the other channel. Once an appointment exists, an old
     # switch (often the visit offer itself) is stale work (§2).
     "channel_switch": SHORT_TERM,
+    # MASTER_PLAN_3 C4: the Short-Term / extended cadence (Omnichannel PDF §3-§4). It runs in exactly
+    # the stages the client lists as its triggers (§3), Specific Follow-Up excepted: there the
+    # customer's own dated step replaces it (§2 "specific timing wins", decision 132).
+    "cadence_touch": SHORT_TERM,
     "resume_at_opening": SHORT_TERM,
     "visit_followup": SHORT_TERM,
+    # MASTER_PLAN_3 C5 (Omnichannel PDF §7-§9): the appointment's own messages. The confirmation and the countdown
+    # belong to Appointment Set, the +1h no-show check too (it is what moves the lead to No Show), and the
+    # no-show messages to Appointment No Show.
+    "appointment_confirm": frozenset({Stage.APPOINTMENT_SET}),
+    "appointment_countdown": frozenset({Stage.APPOINTMENT_SET}),
+    "appointment_no_show_check": frozenset({Stage.APPOINTMENT_SET}),
+    "appointment_no_show_followup": frozenset({Stage.NO_SHOW}),
+    "appointment_no_show_close": frozenset({Stage.NO_SHOW}),
     "next_action": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     "next_action_check": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     # A handoff check reminds the customer staff have their message: fine in any open stage.
@@ -125,7 +147,14 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     "Sold": "sales_visit",
     "DND": "opted_out",
     "Appointment Booked": "appointment_set",
+    # The manager outcomes (MASTER_PLAN_3 C5): Sold Pending / Sold Delivered stop the lead workflow, Unsold
+    # puts the lead back into follow-up for 90 days (client, 1 Oct 2026, scope Q2).
+    "Sold Pending": "sold_pending",
+    "Sold Delivered": "sold_delivered",
+    "Unsold": "unsold",
 }
+# Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
+UNSOLD_FOLLOWUP_DAYS = 90
 _STAFF_STATUS_REASON = re.compile(r'Staff moved the lead to "([^"]+)"')
 
 # Not a meaningful reply (client, 1 Oct 2026, scope Q10: "auto reply is not
@@ -136,6 +165,11 @@ _AUTO_REPLY = re.compile(
     r"i'?m (?:currently )?(?:driving|away)(?: with do not disturb| right now)?(?: and)? (?:will|i'?ll) "
     r"(?:see|get back|reply|respond)|do not disturb while driving|this (?:mailbox|inbox|number) is not monitored|"
     r"do not reply to this|vacation (?:reply|responder))\b", re.IGNORECASE)
+
+
+def cadence_enabled() -> bool:
+    """CADENCE_ENABLED (config.py): the Day 1-90 cadence, or Plan 1's single 24h switch."""
+    return get_settings().cadence_enabled
 
 
 def stage_of(value: Any) -> Stage | None:
@@ -161,6 +195,16 @@ def is_meaningful_reply(text: str | None) -> tuple[bool, str]:
     if _AUTO_REPLY.search(body):
         return False, "it reads as an automatic reply"
     return True, "the customer wrote back"
+
+
+_MANAGER_OUTCOME_REASON = re.compile(r'manager outcome: "([^"]+)"')
+
+
+def manager_outcome_from_reason(reason: str | None) -> str | None:
+    """The manager outcome sent together with a Sales Visit ('Staff moved the lead to "Visited" (manager
+    outcome: "Unsold")', MASTER_PLAN_3 C5): one event for both, so they are applied in order and can't race."""
+    m = _MANAGER_OUTCOME_REASON.search(reason or "")
+    return m.group(1) if m else None
 
 
 def staff_status_from_reason(reason: str | None) -> str | None:
@@ -233,13 +277,26 @@ def transition(current: Stage | None, event: Event) -> Transition:
     if kind == "opted_in":
         return _stay("not_opted_out", "The lead wasn't opted out.", event)
 
+    if kind in ("sold_pending", "sold_delivered"):
+        # A manager outcome (MASTER_PLAN_3 C5). Delivered supersedes pending; nothing goes back from delivered.
+        new = Stage.SOLD_PENDING if kind == "sold_pending" else Stage.SOLD_DELIVERED
+        if current == new or (current == Stage.SOLD_DELIVERED and new == Stage.SOLD_PENDING):
+            return _stay("already_sold", f"Already {STAGE_LABELS[current]}.", event)
+        return Transition(new, kind, why or f"Manager outcome: {STAGE_LABELS[new]}", event)
+    if current in (Stage.SOLD_PENDING, Stage.SOLD_DELIVERED):
+        # SOLD PENDING is "not an unsold lead" and never enters the Short-Term cadence (SOLD PENDING PDF §1);
+        # its own workflow is MASTER_PLAN_4's. Until then nothing in the lead workflow moves it.
+        return _stay("sold", f"{STAGE_LABELS[current]}: the lead workflow doesn't apply.", event)
+    if kind == "unsold":
+        # Client, 1 Oct 2026 (scope Q2): back to follow-up for 90 days; a visit is contact, so the stage is
+        # Contact Made - No Next Action (§5), and the follow-up period restarts from the Unsold date.
+        return Transition(Stage.CONTACT_NO_ACTION, "unsold", why or "Manager outcome: Unsold", event)
+
     if kind == "sales_visit":
         if current == Stage.SALES_VISIT:
             return _stay("already_visited", "Already at Sales Visit.", event)
         return Transition(Stage.SALES_VISIT, "sales_visit_wins", why or "The customer visited", event)
     if current == Stage.SALES_VISIT:
-        if kind == "unsold":
-            return Transition(Stage.CONTACT_NO_ACTION, "unsold", why or "Manager outcome: Unsold", event)
         return _stay("sales_visit", "Sales Visit stops the lead workflows until a manager outcome.", event)
 
     if kind == "appointment_set":
@@ -415,6 +472,15 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         fields["workflow_entered_at"] = now
         if current is not None:
             fields["previous_stage"] = current.value
+    # MASTER_PLAN_3 C4: entering Short-Term from outside it starts that instance's cadence
+    # (Omnichannel PDF §3's triggers). Re-entry - after a no-show, an Unsold visit, or a dated step
+    # that went unanswered - starts a fresh schedule that skips the introduction, and never resets
+    # the Day 91 opportunity clock (§12, decision 149).
+    if new in SHORT_TERM and (current is None or current not in SHORT_TERM) and cadence_enabled():
+        reentered = current is not None
+        fields["cadence"] = cadence.started(cadence.CadenceState.load(state), at=now,
+                                            reentered=reentered).as_dict()
+        out["cadence_started"] = {"reentered": reentered}
     next_action = event.detail.get("next_action")
     if new == Stage.SPECIFIC_FOLLOWUP and next_action:
         fields["next_action"] = {**next_action, "entered_at": now}
@@ -422,6 +488,12 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         unset["next_action"] = ""
     if new == Stage.APPOINTMENT_SET and event.detail.get("appointment"):
         fields["appointment"] = {**event.detail["appointment"], "set_at": now}
+    if event.kind == "unsold":
+        # Unsold restarts the Day 91 follow-up period from today (client, scope Q2). `opportunity_created_at`
+        # itself is never touched (§12); the sweep counts from this anchor.
+        fields["day91_anchor"] = now
+    elif setup.get("opportunity_created_at"):
+        fields["day91_anchor"] = setup["opportunity_created_at"]
     if new == Stage.CLOSED_LOST:
         fields.update(opportunity_closed_at=now, closed_reason=event.detail.get("closed_reason") or result.rule)
     update: dict[str, Any] = {"$set": fields, "$push": {"stage_history": {"$each": [entry], "$slice": -HISTORY_LIMIT}},
@@ -451,7 +523,9 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
     now = now or clock.now()
     cutoff = now - timedelta(days=OPPORTUNITY_DAYS)
     rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(
-        {"opportunity_created_at": {"$lte": cutoff}, "stage": {"$in": [s.value for s in CLOSABLE_AT_DAY_91]}}
+        {"stage": {"$in": [s.value for s in CLOSABLE_AT_DAY_91]},
+         "$or": [{"day91_anchor": {"$lte": cutoff}},
+                 {"day91_anchor": {"$exists": False}, "opportunity_created_at": {"$lte": cutoff}}]}
     ).to_list(limit)
     summary: dict[str, Any] = {"checked": len(rows), "closed": 0, "kept": 0}
     for row in rows:

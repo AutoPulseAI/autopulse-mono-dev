@@ -25,7 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
-from upsell_agent.agent import lifecycle
+from upsell_agent.agent import cadence, lifecycle
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -54,8 +54,12 @@ from upsell_agent.integrations.platform_client import PlatformClient, StubPlatfo
 from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTracer
 from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import (
+    TRIGGER_CADENCE_TOUCH,
+    cancel_cadence_touch,
     cancel_resume,
     cancel_visit_followup,
+    plan_appointment_timers,
+    plan_cadence_touch,
     plan_followup,
     plan_handoff_check,
     plan_next_action,
@@ -191,6 +195,7 @@ async def run_turn(
         action = decision.get("action")
         reply = draft.get("sms_text") if channel == "sms" else draft.get("email_body")
         sent: SendOutcome | None = None
+        also_sent: SendOutcome | None = None
 
         if action == "stop" or not draft:
             await tracer.skipped("send", "Customer opted out: nothing is sent." if action == "stop" else "No draft.")
@@ -217,12 +222,23 @@ async def run_turn(
                                              "sold in the meantime, so the stock-free version was sent instead.")
                 span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
                 span.edge_label = sent.status
+            # MASTER_PLAN_3 C4 (Omnichannel PDF p.10): a cadence touch goes out on text AND email
+            # together, not one channel now and the other in 24 hours.
+            also_sent = await _send_other_channel(
+                tracer, deps, draft=draft, trigger=trigger, dealer_id=dealer_id, lead_id=lead_id,
+                customer_id=customer_id, channel=channel, shadow=shadow, event_received_at=event_received_at)
             async with tracer.node("schedule", {"sent_status": sent.status, "channel": channel}) as span:
-                planned = await plan_followup(
+                planned = await _plan_next_contact(
                     db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,
-                    customer_id=customer_id, turn_id=tracer.turn_id, channel=channel, action=action)
+                    customer_id=customer_id, turn_id=tracer.turn_id, channel=channel, action=action,
+                    lead_state=lead_state, shadow=shadow, trigger=trigger,
+                    hold_cadence=_hold_cadence(decision))
                 span.output = planned
-                if planned["created"]:
+                if planned.get("cadence"):
+                    span.reasoning = [planned["reason"]]
+                    span.edge_label = (f"touch {(planned.get('plan') or {}).get('touch_number')}"
+                                       if planned["created"] else "no next touch")
+                elif planned["created"]:
                     when = "now (the send failed)" if planned["due_now"] else "in 24h if there's no reply"
                     if planned["held_to_contact_window"]:
                         when = (f"at {_dealer_time(planned['due_at'], planned['timezone'])} "
@@ -266,7 +282,8 @@ async def run_turn(
                                  shadow=shadow, turn_id=tracer.turn_id)
         stage_change = await _lifecycle_after_turn(db, lead_id, trigger, sent, result, inbound_text=inbound_text,
                                                    lead=lead, customer=customer, customer_id=customer_id,
-                                                   channel=channel, turn_id=tracer.turn_id, shadow=shadow)
+                                                   channel=channel, turn_id=tracer.turn_id, shadow=shadow,
+                                                   hold_cadence=_hold_cadence(decision))
         if trigger == TRIGGER_RESUME and sent is not None and sent.status in ("sent", "duplicate") and not shadow:
             await _notify_team_at_opening(db, lead_id, result)
         if sent is not None and sent.status in ("sent", "duplicate") and not shadow:
@@ -300,6 +317,9 @@ async def run_turn(
             "origin": (ctx.compliance or {}).get("origin", {}).get("origin"),
             "review_opened": review,
             "after_hours": (decision.get("after_hours") or {}).get("mode"),
+            # MASTER_PLAN_3 C4: the other channel this touch also went out on (Omnichannel PDF p.10).
+            "also_sent": {"channel": also_sent.channel, "status": also_sent.status} if also_sent else None,
+            "touch": (lead_state or {}).get("pending_touch") if trigger == TRIGGER_CADENCE_TOUCH else None,
             # MASTER_PLAN_3 C3: where the lead now stands, and whether this turn moved it.
             "stage": (stage_change or {}).get("stage"),
             "stage_change": stage_change if (stage_change or {}).get("changed") else None,
@@ -332,10 +352,110 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
     return None
 
 
+#: Turns whose message the client requires on every permitted channel at once (Omnichannel PDF p.10).
+#: The call task is C2, skipped for now, so that means text + email together.
+OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH})
+
+
+def _hold_cadence(decision: dict[str, Any]) -> str | None:
+    """Why no cadence touch is planned this turn: the customer chose to wait for the team (B1), so its
+    morning message comes first and no touch lands at opening on top of it."""
+    if (decision.get("after_hours") or {}).get("schedule_resume"):
+        return "the customer chose to wait for the team: its morning message comes first"
+    return None
+
+
+async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict[str, Any], trigger: str,
+                              dealer_id: str, lead_id: str, customer_id: str, channel: str, shadow: bool,
+                              event_received_at: datetime | None) -> SendOutcome | None:
+    """The same touch on the other channel (MASTER_PLAN_3 C4). The send check
+    runs again for it, so one channel being opted out, suppressed or outside
+    its window never stops the other (Omnichannel PDF p.10, "continue every
+    remaining permitted channel"). The idempotency key carries the channel, so
+    a re-run can't send either message twice."""
+    if trigger not in OMNICHANNEL_TRIGGERS:
+        return None
+    other = "email" if channel == "sms" else "sms"
+    text = draft.get("sms_text") if other == "sms" else draft.get("email_body")
+    if not text:
+        await tracer.skipped(f"send_{other}", f"The draft has no {other} version.")
+        return None
+    request = SendRequest(
+        dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
+        text=text, subject=None if other == "sms" else draft.get("email_subject"), shadow=shadow,
+        event_received_at=event_received_at, is_reply=False, purpose="marketing",
+    )
+    async with tracer.node(f"send_{other}", {"channel": other, "idempotency_key": request.idempotency_key,
+                                             "text": request.text, "subject": request.subject}) as span:
+        outcome = await deps.sender.send(request)
+        span.output = outcome.as_dict()
+        span.reasoning = ["Every follow-up goes out on text and email together.", *outcome.reasoning]
+        span.metrics = {"attempts": outcome.attempts}
+        span.edge_label = f"{other}: {outcome.status}"
+    return outcome
+
+
+async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, draft: dict[str, Any],
+                             lead: dict | None, customer: dict | None, lead_id: str, customer_id: str,
+                             turn_id: str, channel: str, action: str | None, lead_state: dict | None,
+                             shadow: bool, trigger: str, hold_cadence: str | None = None) -> dict[str, Any]:
+    """What happens next if the customer doesn't answer. Once a lead's cadence
+    is running (MASTER_PLAN_3 C4) that's the next cadence touch, which goes to
+    both channels; Plan 1's one-channel 24h switch is what it replaces
+    (decision 147). A lead with no cadence - one from before C4, or a dealer
+    whose cadence never started - keeps the old switch."""
+    if shadow:
+        return {"created": False, "reason": "shadow mode: nothing is scheduled"}
+    state = cadence.CadenceState.load(lead_state)
+    if state.started_at is None:
+        return await plan_followup(db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,
+                                   customer_id=customer_id, turn_id=turn_id, channel=channel, action=action)
+    if trigger == "inbound_message" and state.touch_number <= 2:
+        # The customer wrote back: no name nudge for someone who has answered (agent/cadence.py).
+        state = cadence.after_reply(state)
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"cadence": state.as_dict()}})
+        lead_state = {**(lead_state or {}), "cadence": state.as_dict()}
+    if trigger == TRIGGER_CADENCE_TOUCH:
+        # This turn WAS a touch: it used up its theme, so the next one moves on (agent/cadence.py).
+        pending = (lead_state or {}).get("pending_touch") or {}
+        planned_touch = cadence.PlannedTouch(
+            touch_number=int(pending.get("touch_number") or state.touch_number), day=int(pending.get("day") or 0),
+            theme=cadence.BY_ID.get(pending.get("theme") or ""))
+        state = cadence.after_touch(state, planned_touch, at=clock.now())
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"cadence": state.as_dict()}, "$unset": {"pending_touch": ""}})
+        # The next touch is planned from the state this touch just left, not the one the turn started with.
+        lead_state = {**(lead_state or {}), "cadence": state.as_dict()}
+    if hold_cadence:
+        # The customer chose to wait for the team (B1): the morning message comes first, so no touch
+        # lands at opening on top of it. It's planned again once that message has gone out.
+        await cancel_cadence_touch(db, lead_id, reason=hold_cadence)
+        return {"cadence": True, "created": False, "reason": f"No cadence touch yet: {hold_cadence}."}
+    if action == "handoff":
+        await cancel_cadence_touch(db, lead_id, reason="the lead is with a person now")
+        return {"cadence": True, "created": False,
+                "reason": "No cadence touch: the lead has been handed to a person."}
+    if sent.status not in ("sent", "failed", "duplicate"):
+        return {"cadence": True, "created": False, "reason": f"No cadence touch: message not sent ({sent.status})."}
+    fallback = None
+    if trigger not in OMNICHANNEL_TRIGGERS:
+        # A single-channel message (Touch 1, a reply): a send that failed falls back to the other channel
+        # now; a delivery failure the provider reports later does the same through the dormant `standby`
+        # copy (decision 154). The cadence's own touches already go out on both channels.
+        fallback = await plan_followup(db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,
+                                       customer_id=customer_id, turn_id=turn_id, channel=channel, action=action,
+                                       standby=sent.status != "failed")
+    planned = await plan_cadence_touch(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
+                                       turn_id=turn_id, lead=lead, customer=customer, lead_state=lead_state,
+                                       first_contact_done=True)
+    return {"cadence": True, "fallback": fallback, **planned}
+
+
 async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
                                 sent: SendOutcome | None, result: dict[str, Any], *, inbound_text: str,
                                 lead: dict | None, customer: dict | None, customer_id: str, channel: str,
-                                turn_id: str, shadow: bool) -> dict[str, Any] | None:
+                                turn_id: str, shadow: bool, hold_cadence: str | None = None) -> dict[str, Any] | None:
     """MASTER_PLAN_3 C3: what this turn means for the lead's stage
     (agent/lifecycle.py's response router, Omnichannel PDF §5): a meaningful
     customer reply (with or without a dated next step), a booking made or
@@ -360,9 +480,29 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
     elif visit.get("cancelled_this_turn"):
         events.append(lifecycle.Event("appointment_cancelled", reason="The customer cancelled their appointment",
                                       detail={"next_action": dated}))
+    if (trigger == TRIGGER_CADENCE_TOUCH and sent is not None and sent.status in ("sent", "duplicate")
+            and ((decision.get("touch") or {}).get("theme") == cadence.NAME_NUDGE.id)):
+        # Touch 1 and the 3-hour nudge have both gone out with no word back: No Contact Made
+        # (decision 124; Omnichannel PDF §1).
+        events.append(lifecycle.Event("touch2_unanswered", source="cadence",
+                                      reason="Touch 1 and the 3-hour name nudge went unanswered"))
     if not events:
         return None
     change = await lifecycle.apply(db, lead_id, events, lead=lead, customer_id=customer_id)
+    if (change and change.get("cadence_started") and not hold_cadence and sent is not None
+            and sent.status in ("sent", "failed", "duplicate")):
+        # The lead entered a Short-Term stage from outside it (a re-entry after a dated step went unanswered,
+        # an Unsold visit...): a fresh cadence starts, and its first touch is planned now.
+        change["cadence_touch"] = await plan_cadence_touch(
+            db, lead_id=lead_id, customer_id=customer_id, channel=channel, turn_id=turn_id, lead=lead,
+            customer=customer, first_contact_done=True)
+    if change and change.get("stage") == lifecycle.Stage.APPOINTMENT_SET and any(
+            e.kind == "appointment_set" for e in events):
+        # An appointment was set or moved (MASTER_PLAN_3 C5): its countdown, day-before confirmation and
+        # +1h no-show check are planned from the appointment itself, replacing any older ones.
+        change["appointment_timers"] = await plan_appointment_timers(
+            db, lead_id=lead_id, customer_id=customer_id, lead=lead, customer=customer, channel=channel,
+            turn_id=turn_id)
     if change and change.get("stage") == lifecycle.Stage.SPECIFIC_FOLLOWUP and dated:
         change["next_action_scheduled"] = await plan_next_action(
             db, lead_id=lead_id, customer_id=customer_id, channel=dated.get("channel") or channel, turn_id=turn_id,

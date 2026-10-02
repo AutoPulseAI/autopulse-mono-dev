@@ -1,6 +1,6 @@
 name: A lead form that says no gets its reply but no follow-up texts
 stage: 301
-description: MASTER_PLAN_3 B3 (built in C1). An AutoTrader lead with "TCPAOptIn false" gets its first reply (a reply is allowed); its 24h follow-up by text is never scheduled, while a follow-up by email still is.
+description: MASTER_PLAN_3 B3 (built in C1). An AutoTrader lead with "TCPAOptIn false" gets its first reply (a reply is allowed). The cadence then carries on by email alone - the text half of each touch is blocked (Omnichannel PDF p.10, "continue every remaining permitted channel") - and never sends a marketing text.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}
   - new_lead: {as: texted, dealer: A, lead_type: sales, channel: sms, name: Tia Nooptin, comments: "TCPAOptIn: false; Looking for a used CR-V", send_event: false}
@@ -8,11 +8,15 @@ steps:
   - send_lead_created: {lead: texted}
   - wait_turns: {lead: texted, count: 1, timeout_s: 20}
   - expect_outbox: {lead: texted, channel: sms, count: 1}
-  - expect_followup: {lead: texted, kind: channel_switch, status: pending, to_channel: email}
+  - expect_followup: {lead: texted, kind: cadence_touch, status: pending}
+  - advance_clock: {hours: 3.1}
+  - expect_followup: {lead: texted, kind: cadence_touch, status: sent, index: 0, timeout_s: 30}
+  - expect_outbox: {lead: texted, channel: sms, count: 1}
+  - expect_outbox: {lead: texted, channel: email, count: 1}
 
   - new_lead: {as: emailed, dealer: A, lead_type: sales, channel: email, name: Eli Nooptin, comments: "TCPAOptIn: false; Looking for a used CR-V", send_event: false}
   - set_contact: {lead: emailed, source: AutoTrader, zip: "10001"}
   - send_lead_created: {lead: emailed}
   - wait_turns: {lead: emailed, count: 1, timeout_s: 20}
   - expect_outbox: {lead: emailed, channel: email, count: 1}
-  - expect_no_followup: {lead: emailed, kind: channel_switch}
+  - expect_followup: {lead: emailed, kind: cadence_touch, status: pending}

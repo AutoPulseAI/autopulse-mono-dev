@@ -1,11 +1,11 @@
 name: Switching a dealer off cancels its pending follow-ups
 stage: 10
-description: Right before firing, a follow-up checks the dealer's AI mode again. The dealer is switched to off after the first reply, so the follow-up is cancelled instead of sent (the Stage 13 rollback).
+description: Right before firing, a cadence touch checks the dealer's AI mode again. The dealer is switched to off after the first reply, so the 3-hour name nudge is cancelled instead of sent (the Stage 13 rollback).
 steps:
   - new_lead: {as: o, dealer: A, lead_type: sales, channel: sms, name: Olga Off, comments: "Is the Tacoma available?"}
   - wait_turns: {lead: o, count: 1, timeout_s: 15}
-  - expect_followup: {lead: o, status: pending}
+  - expect_followup: {lead: o, kind: cadence_touch, status: pending}
   - set_dealer_mode: {dealer: A, mode: "off"}
-  - advance_clock: {hours: 24.1}
-  - expect_followup: {lead: o, status: cancelled, timeout_s: 20}
+  - advance_clock: {hours: 3.1}
+  - expect_followup: {lead: o, kind: cadence_touch, status: cancelled, timeout_s: 20}
   - expect_outbox: {lead: o, channel: email, count: 0}

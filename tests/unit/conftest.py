@@ -94,3 +94,12 @@ def make_settings(environment: str) -> Settings:
         MODEL_EXTRACT="offline",
         MODEL_COMPOSE="offline",
     )
+
+
+@pytest.fixture
+def legacy_switch(monkeypatch):
+    """The Day 1-90 cadence off (CADENCE_ENABLED=false): a lead gets Plan 1's single 24h switch to the other
+    channel instead. For the tests of that machinery, which still serves a lead with no cadence (MASTER_PLAN_3
+    C4, decision 153)."""
+    from upsell_agent.agent import lifecycle
+    monkeypatch.setattr(lifecycle, "cadence_enabled", lambda: False)

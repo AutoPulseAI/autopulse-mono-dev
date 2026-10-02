@@ -7,7 +7,7 @@ steps:
   - set_contact: {lead: n, zip: "10001"}
   - send_lead_created: {lead: n}
   - wait_turns: {lead: n, count: 1, timeout_s: 20}
-  - expect_last_sent: {lead: n, contains: "9:00", question_marks: 1}
+  - expect_last_sent: {lead: n, contains: "9:00", question_marks: 2}
   - expect_lead: {lead: n, after_hours: offered}
   - reply: {lead: n, text: "now is fine"}
   - wait_turns: {lead: n, count: 2, timeout_s: 20}

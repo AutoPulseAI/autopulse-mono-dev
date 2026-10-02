@@ -1,0 +1,14 @@
+name: A channel opted out never stops the other
+stage: 304
+description: A customer who texts STOP is opted out of texts only. The cadence carries on by email alone (Omnichannel PDF p.10, "continue every remaining permitted channel"), and the stage is not Opted Out.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: o, dealer: A, lead_type: sales, channel: sms, name: Otto Optout, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: o, count: 1, timeout_s: 20}
+  - reply: {lead: o, text: "STOP"}
+  - wait_turns: {lead: o, count: 2, timeout_s: 20}
+  - advance_clock: {hours: 3.1}
+  - expect_followup: {lead: o, kind: cadence_touch, status: sent, index: 0, timeout_s: 30}
+  - expect_outbox: {lead: o, channel: sms, count: 1}
+  - expect_outbox: {lead: o, channel: email, count: 1}
+  - expect_lead: {lead: o, stage: no_contact_made}

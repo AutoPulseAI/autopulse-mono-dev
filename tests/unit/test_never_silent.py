@@ -50,7 +50,7 @@ from upsell_agent.scheduler.contact_window import (
 NY = ZoneInfo("America/New_York")
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 # The send check needs the customer's zone; dev customers have none (conftest.py).
-pytestmark = pytest.mark.usefixtures("ny_customer")
+pytestmark = pytest.mark.usefixtures("ny_customer", "legacy_switch")
 
 
 def ny(day: int, hour: int, minute: int = 0) -> datetime:

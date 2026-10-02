@@ -66,8 +66,9 @@ async def test_first_reply_runs_the_ai_pipeline_on_the_lead_comments(mongo):
     log = await _turn(created, "Hi, I want a new Toyota RAV4", trigger="lead_created")
     assert _done(log) == AI_PATH
     assert log["outcome"] == "ask"
-    # two asks per message (MASTER_PLAN_3 Bq)
-    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
+    # two asks per message (MASTER_PLAN_3 Bq): one detail, plus Touch 1's own closing question
+    # ("what are you driving now?", MASTER_PLAN_3 C4 - the client's required ending, decision 34 reversed)
+    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment", "trade_in.has_trade"]
     facts = await _facts(mongo, created)
     assert facts["interest.new_or_used"]["value"] == "new"
     assert facts["interest.model"]["value"] == "Toyota RAV4"

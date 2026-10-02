@@ -1,0 +1,24 @@
+name: Day-before confirmation answered N
+stage: 305
+description: 'MASTER_PLAN_3 C5. "N" is never read as a confirmation: the AI offers new times at once. Picking one moves the same booking and re-plans the confirmation and no-show timers, so the old time can never produce a false No Show.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: v, dealer: A, lead_type: sales, channel: sms, name: Nora No, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: v, zip: "10001"}
+  - send_lead_created: {lead: v}
+  - wait_turns: {lead: v, count: 1, timeout_s: 20}
+  - reply: {lead: v, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: v, count: 2, timeout_s: 20}
+  - reply: {lead: v, text: "Can I come Thursday at 10 AM?"}
+  - wait_turns: {lead: v, count: 3, timeout_s: 20}
+  - advance_clock: {dealer: A, to: "Wed 10:05"}
+  - expect_followup: {lead: v, kind: appointment_confirm, status: sent, timeout_s: 30}
+  - reply: {lead: v, text: "N"}
+  - wait_turns: {lead: v, count: 4, timeout_s: 20}
+  - expect_last_sent: {lead: v, contains: "Which works better?"}
+  - expect_booking: {lead: v, status: pending}
+  - reply: {lead: v, text: "the second one works"}
+  - wait_turns: {lead: v, count: 5, timeout_s: 20}
+  - expect_booking: {lead: v, status: pending}
+  - expect_lead: {lead: v, stage: appointment_set, status: active}
+  - expect_followup: {lead: v, kind: appointment_no_show_check, status: pending}

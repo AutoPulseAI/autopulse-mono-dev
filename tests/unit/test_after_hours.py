@@ -220,9 +220,12 @@ async def test_lead_at_night_gets_the_choice_and_no_other_question(mongo, dealer
     created = await _lead()
     reply = await _last_sms(mongo, created)
     assert "We're closed right now and open again at 9:00 AM tomorrow" in reply
-    assert reply.endswith("Which would you like?") and reply.count("?") == 1
+    # MASTER_PLAN_3 C4, client 1 Oct 2026 (decision 34 reversed): Touch 1 always asks what they drive now,
+    # so the first reply carries two questions - that one, then the choice, which stays the last thing said.
+    assert reply.endswith("Which would you like?") and reply.count("?") == 2
+    assert reply.index("what are you driving now?") < reply.index("We're closed right now")
     [turn] = await _turns(mongo, created)
-    assert turn["summary"]["after_hours"] == "offer" and turn["summary"]["asked"] == []
+    assert turn["summary"]["after_hours"] == "offer" and turn["summary"]["asked"] == ["trade_in.has_trade"]
     decide = next(n for n in turn["nodes"] if n["node"] == "decide")
     assert decide["output"]["asks"] == [] and decide["output"]["after_hours"]["mode"] == "offer"
     load = next(n for n in turn["nodes"] if n["node"] == "load_context")

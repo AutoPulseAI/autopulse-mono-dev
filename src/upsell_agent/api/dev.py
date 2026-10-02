@@ -183,7 +183,10 @@ async def simulate_reply(body: Reply, request: Request) -> dict:
 
 class StaffStatus(BaseModel):
     dealer_id: str
-    status: Literal["Appointment Booked", "Visited", "Sold", "DND", "Managerial Review"]
+    status: Literal["Appointment Booked", "Visited", "Sold", "DND", "Managerial Review",
+                    "Sold Pending", "Sold Delivered", "Unsold"]
+    # Visited only: how the visit ended (MASTER_PLAN_3 C5); sent with it as one event.
+    manager_outcome: Literal["Sold Pending", "Sold Delivered", "Unsold"] | None = None
     # Appointment Booked only: dealer-local ISO date-time ("2026-10-08T15:00").
     booking_at: str | None = None
 
@@ -198,7 +201,7 @@ async def staff_status(lead_id: str, body: StaffStatus, request: Request) -> dic
         booking_at = datetime.fromisoformat(body.booking_at).replace(tzinfo=dealer.tz).astimezone(UTC).isoformat()
     try:
         result = await simulate.send_staff_status(body.dealer_id, lead_id, body.status, request.app.state.enqueue,
-                                                  booking_at=booking_at)
+                                                  booking_at=booking_at, manager_outcome=body.manager_outcome)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"event": result.status}

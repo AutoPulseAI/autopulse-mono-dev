@@ -962,7 +962,7 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - Opens with the client's required intro (Omnichannel PDF p.3): "Hello {customer_first_name}, this is {agent_name} from {dealership_name} in {city}, {state}. Thank you for your interest in our {vehicle_year} {vehicle_model}. I am excited to help you with your purchase."
    - Answers customer lead questions.
    - Mandated closing prompt line: *"Tell me, what are you driving now?"*.
-   - **Decided 27 Sept (architecture.md decision 34): B1 and B4 override the required ending.** Touch 1 is the AI's first reply. When it's after hours, it ends with B1's "now or when we open?" choice; when the customer shows a buying signal, it ends with B4's visit offer. Only when neither applies does it end with "Tell me, what are you driving now?". This goes against the client's "ALWAYS end" wording, so it's flagged for client feedback.
+   - ~~**Decided 27 Sept (architecture.md decision 34): B1 and B4 override the required ending.**~~ **Reversed 1 Oct 2026 (client, scope Q6): Touch 1 always asks "what are you driving now?" (or a variation) except when a trade-in is already indicated; the after-hours choice comes after it (decision 152).** The old rule, kept as history: Touch 1 is the AI's first reply. When it's after hours, it ends with B1's "now or when we open?" choice; when the customer shows a buying signal, it ends with B4's visit offer. Only when neither applies does it end with "Tell me, what are you driving now?". This goes against the client's "ALWAYS end" wording, so it's flagged for client feedback.
    - The question limit is 2 per message (decision 35). On Touch 1, "what are you driving now?" counts as one of the two (it asks about the car they'd trade in), so at most one other question fits. The override order above still decides the **ending**.
 2. **Touch 2 Name Nudge (3 Hours Later):**
    - If no response after 3 hours (inside permitted window), send nudge: `"{FirstName}?"`.
@@ -978,6 +978,8 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - Days 31–90: 1 outreach cycle/month (SMS + Email).
 
 **Tests:** Touch 1 required ending validation, Touch 2 3-hour trigger execution, thematic angle selection, and weekly/monthly cadence transitions.
+
+> **Built 2 Oct 2026** (`agent/cadence.py`; architecture.md decisions 147-157; details and verification: `progress_3.md`, "Phase C4").
 
 ---
 

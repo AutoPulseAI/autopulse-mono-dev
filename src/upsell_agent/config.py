@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # as the 8-second fallback (MASTER_PLAN_1 Stage 8); `template` sends the
     # lead type's template straight away with no AI call.
     first_reply_mode: Literal["template", "ai"] = Field(default="ai", alias="FIRST_REPLY_MODE")
+    # MASTER_PLAN_3 C4: the client's Day 1-90 follow-up cadence (agent/cadence.py). Off, a lead gets
+    # Plan 1's single 24h switch to the other channel instead - the rollback if a dealer's cadence
+    # has to be stopped (decision 153).
+    cadence_enabled: bool = Field(default=True, alias="CADENCE_ENABLED")
 
     # Sending (architecture §9): provider attempts per message, with the delay
     # doubling from send_retry_base_s between attempts.

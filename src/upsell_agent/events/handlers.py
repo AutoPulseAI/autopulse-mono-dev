@@ -44,18 +44,24 @@ from upsell_agent.integrations.mongodb import (
     dealer_scoped_db,
 )
 from upsell_agent.observability.trace import TurnTracer
-from upsell_agent.scheduler.followups import CHANNEL_SWITCHES
+from upsell_agent.scheduler.followups import (
+    CHANNEL_SWITCHES,
+    plan_appointment_timers,
+    plan_cadence_touch,
+)
 
 # Statuses in which the AI doesn't write replies (architecture §5 step 3). An opt-out is no longer
 # one of them: it stops what we start, never the reply to the customer's own message (decision 137).
 SILENT_STATUSES = {"handoff", "paused"}
+# What the AI does with a customer's Y / N to the day-before confirmation (MASTER_PLAN_3 C5, Omnichannel PDF §8).
+APPOINTMENT_ACTIONS = ("appointment_confirmed", "appointment_clarify", "appointment_reschedule")
 HOLDING_REPLY_EVERY = timedelta(hours=2)
 
 
 async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, channel_switches_only: bool) -> int:
     """A customer message cancels the channel switch (they replied) but not
     the handoff check (staff still haven't). Staff pausing the lead cancels both."""
-    flt: dict[str, Any] = {"lead_id": lead_id, "status": "pending"}
+    flt: dict[str, Any] = {"lead_id": lead_id, "status": {"$in": ["pending", "standby"]}}
     if channel_switches_only:
         flt.update(CHANNEL_SWITCHES)
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
@@ -190,7 +196,7 @@ def _hold_decision(state: dict) -> tuple[str, str]:
 
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
                        rows: list[dict], action: str, reason: str, received_at: datetime | None,
-                       confirmation: str | None = None) -> dict[str, Any]:
+                       confirmation: str | None = None, reply: dict[str, Any] | None = None) -> dict[str, Any]:
     """Logs a turn for customer messages the AI doesn't answer, saying why,
     and sends the holding reply when that's the action. Marks the messages
     answered by this turn, so none is left without a reply or a reason."""
@@ -210,8 +216,11 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         span.edge_label = "holding reply" if action == "holding_reply" else action.replace("_", " ")
 
     sent = None
-    if action in ("holding_reply", "opt_out_confirmation"):
-        if action == "holding_reply":
+    if action in ("holding_reply", "opt_out_confirmation") or reply:
+        if reply:
+            # A reply the AI composes in code rather than writes (MASTER_PLAN_3 C5: the answer to Y / N).
+            text, subject, purpose = reply["text"], None if channel == "sms" else reply.get("subject"), "reply"
+        elif action == "holding_reply":
             customer = await find_customer(db, event.customer_id)
             lead = await find_lead(db, lead_id)
             draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
@@ -231,7 +240,8 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
             span.reasoning = sent.reasoning
             span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
             span.edge_label = sent.status
-        await tracer.skipped("schedule", "A holding reply never schedules a channel switch.")
+        await tracer.skipped("schedule", "A holding reply never schedules a channel switch." if not reply
+                             else "A reply to the customer's Y / N schedules nothing.")
         if sent.status == "sent" and action == "holding_reply":
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                 {"lead_id": lead_id}, {"$set": {"last_handoff_notice_at": clock.now(), "last_outbound_at": clock.now(),
@@ -240,7 +250,8 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         await tracer.skipped("send", reason)
         await tracer.skipped("schedule", "Nothing was sent.")
 
-    outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation") else "saved_only"
+    outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation",
+                                   *APPOINTMENT_ACTIONS) else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
         "batched": len(rows)})
@@ -355,6 +366,11 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                   received_at=_parse_received_at(received_at))
         return {**held, "followups_cancelled": cancelled}
 
+    answered = await _appointment_answer(db, event, deps, lead=lead, lead_id=lead_id, state=state,
+                                         rows=unanswered, received_at=_parse_received_at(received_at))
+    if answered:
+        return {**answered, "followups_cancelled": cancelled}
+
     latest = unanswered[-1]
     turn_id = reply_turn_id(latest["_id"])
     if previous := await _already_sent(db, turn_id):
@@ -376,7 +392,102 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             "batched": len(unanswered)}
 
 
-async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
+async def _appointment_answer(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *,
+                              lead: dict | None, lead_id: str, state: dict, rows: list[dict],
+                              received_at: datetime | None) -> dict[str, Any] | None:
+    """The customer's answer to the day-before confirmation (MASTER_PLAN_3 C5, Omnichannel PDF §8). Only while
+    we're waiting for one: Y confirms the booking (and the appointment), N offers new times at once, a short
+    reply that is neither gets one more "Y or N?", and anything longer or a question is simply a conversation
+    (answered by the AI turn as usual, still waiting). Returns None when the message isn't an answer."""
+    from upsell_agent.agent import appointment
+    from upsell_agent.agent.conversation import VisitState, after_turn, load_conversation
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    from upsell_agent.tools import booking_tool
+
+    appt_state = state.get("appointment") or {}
+    confirmation = appt_state.get("confirmation") or {}
+    if state.get("stage") != lifecycle.Stage.APPOINTMENT_SET.value or confirmation.get("status") != "asked":
+        return None
+    text = " ".join(r["text"] for r in rows).strip()
+    answer = appointment.classify_answer(text)
+    if answer == "other" or (answer == "ambiguous" and confirmation.get("asked_again")):
+        return None
+    profile = await dealer_profile(event.dealer_id)
+    customer = await find_customer(db, event.customer_id)
+    name = (customer or {}).get("name") or (lead or {}).get("name")
+    appt_at = appointment.appointment_at(tz=profile.tz, booking=await booking_tool.find_active_booking(
+        event.dealer_id, lead), lead=lead, recorded=appt_state)
+    now = clock.now()
+    offered: list[str] = []
+    if answer == "yes":
+        kind, action = "confirmed", "appointment_confirmed"
+        if appt_state.get("booking_id"):
+            await deps.platform.update_booking(event.dealer_id, {
+                "booking_id": appt_state["booking_id"], "booking_status": "confirmed",
+                "dealer_timezone": profile.timezone})
+        new_state = {"appointment.confirmed": True, "appointment.confirmed_at": now,
+                     "appointment.confirmation": {**confirmation, "status": "confirmed", "answered_at": now}}
+        why = "The customer replied Y: the appointment is confirmed."
+    elif answer == "no":
+        kind, action = "reschedule", "appointment_reschedule"
+        existing = await booking_tool.existing_bookings(event.dealer_id, profile, now)
+        available = booking_tool.available_times(profile, existing, now, exclude_lead_id=lead_id)
+        times = booking_tool.format_offer(booking_tool.offer_times(available), profile)
+        offered = [t["display"] for t in times]
+        new_state = {"appointment.confirmed": False,
+                     "appointment.confirmation": {**confirmation, "status": "declined", "answered_at": now}}
+        why = "The customer replied N: not confirmed, new times offered at once."
+    else:
+        kind, action = "clarify", "appointment_clarify"
+        new_state = {"appointment.confirmation": {**confirmation, "asked_again": True}}
+        why = "The reply was neither Y nor N: asked once more, nothing marked confirmed."
+        times = []
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": new_state})
+    text_out = appointment.reply_text(kind, customer_name=name, appt=appt_at, offered=offered or None)
+    held = await _record_held(
+        db, event, deps, lead_id=lead_id, rows=rows, action=action, reason=why, received_at=received_at,
+        reply={"text": text_out, "subject": "Your appointment"})
+    if kind == "reschedule" and held.get("send_status") in ("sent", "failed"):
+        # The offered times are on the table: the customer's pick moves the booking (agent/nodes/decide.py).
+        fresh = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+        conversation = load_conversation(fresh)
+        record = (conversation.visit or VisitState()).model_copy(update={
+            "offered_times": times, "offered_turn": conversation.turn + 1, "declined": False, "stopped": False,
+            "held_over": 0, "why": "The customer said the appointment time no longer works: new times offered."})
+        updated = after_turn(conversation, now=now, send_status=held["send_status"], shadow=False,
+                             action="reschedule_offer", asked_slots=[], answered=[], new_questions=[],
+                             used_template=True, promises=[], visit=record.model_dump())
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"conversation": updated.model_dump(mode="json")}})
+    return {**held, "appointment_answer": answer}
+
+
+async def _mark_showed(db: DealerScopedDatabase, deps: TurnDeps | None, lead: dict | None, lead_id: str,
+                       prior: dict) -> dict[str, Any] | None:
+    """Staff set Visited on the appointment's day: the customer showed up, whatever time they arrived
+    (MASTER_PLAN_3 C5, Omnichannel PDF §7, §10: "mark appointment.showed = true ... regardless of arrival
+    time"). The booking is marked completed on the platform."""
+    from upsell_agent.agent import appointment
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    from upsell_agent.tools import booking_tool
+
+    if prior.get("stage") not in (lifecycle.Stage.APPOINTMENT_SET.value, lifecycle.Stage.NO_SHOW.value):
+        return None
+    profile = await dealer_profile(db.dealer_id)
+    booking = await booking_tool.find_active_booking(db.dealer_id, lead)
+    appt_at = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead, recorded=prior.get("appointment"))
+    if appt_at is None or appt_at.date() != clock.now().astimezone(profile.tz).date():
+        return {"showed": False, "reason": "the visit isn't on the appointment's day"}
+    booking_id = (prior.get("appointment") or {}).get("booking_id") or (str(booking["_id"]) if booking else None)
+    if booking_id and deps is not None:
+        await deps.platform.update_booking(db.dealer_id, {
+            "booking_id": booking_id, "booking_status": "completed", "dealer_timezone": profile.timezone})
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id}, {"$set": {"appointment.showed": True, "appointment.showed_at": clock.now()}})
+    return {"showed": True, "booking_id": booking_id}
+
+
+async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = None) -> dict[str, Any]:
     """Staff took the lead over (a manual reply, an admin take-over) or moved
     it to a status they own. MASTER_PLAN_3 C3: a status move also moves the
     lead's stage (lifecycle.STAFF_STATUS_EVENTS). "Appointment Booked" is the
@@ -384,10 +495,16 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
     AI's to run for staff bookings too (decided with the user, 1 Oct 2026)."""
     db = dealer_scoped_db(event.dealer_id)
     staff_status = lifecycle.staff_status_from_reason(event.reason)
+    outcome_status = lifecycle.manager_outcome_from_reason(event.reason)
     stage_event = lifecycle.STAFF_STATUS_EVENTS.get(staff_status or "")
+    outcome_event = lifecycle.STAFF_STATUS_EVENTS.get(outcome_status or "")
     stage_change = None
+    extra: dict[str, Any] = {}
+    final_event = outcome_event or stage_event
     if stage_event:
         lead = await find_lead(db, event.lead_id)
+        customer_id = str((lead or {}).get("customer_id") or "") or None
+        prior = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
         detail: dict[str, Any] = {}
         if stage_event == "appointment_set":
             booking = (lead or {}).get("booking") or {}
@@ -396,10 +513,37 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
                                      "time": booking.get("booking_time"), "by": "staff"}
         stage_change = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
             stage_event, source="staff_status", reason=f'Staff set the lead to "{staff_status}"', detail=detail)],
-            lead=lead, customer_id=str((lead or {}).get("customer_id") or "") or None)
-    if stage_event == "appointment_set":
+            lead=lead, customer_id=customer_id)
+        if stage_event == "appointment_set" and customer_id:
+            # The AI runs the appointment's messages for a staff booking too (MASTER_PLAN_3 C5).
+            extra["appointment_timers"] = await plan_appointment_timers(
+                db, lead_id=event.lead_id, customer_id=customer_id, lead=lead,
+                turn_id=f"staff-booking-{event.event_id}", appointment_hint=detail["appointment"])
+        if stage_event == "sales_visit":
+            extra["showed"] = await _mark_showed(db, deps, lead, event.lead_id, prior)
+        if outcome_event:
+            # The manager's outcome after the visit (MASTER_PLAN_3 C5): applied right after it, in order.
+            stage_change = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
+                outcome_event, source="manager_outcome", reason=f'Manager outcome: "{outcome_status}"')],
+                lead=lead, customer_id=customer_id)
+    if final_event == "appointment_set":
         return {"status": "not_paused", "reason": "Appointment Booked: the AI runs the appointment workflow",
-                "stage_change": stage_change}
+                "stage_change": stage_change, **extra}
+    if final_event == "unsold":
+        # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
+        # fresh cadence's first touch is planned now.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": event.lead_id}, {"$set": {"status": "active", "status_reason": None,
+                                                  "resumed_at": clock.now()}})
+        if (stage_change or {}).get("cadence_started"):
+            lead = lead if stage_event else await find_lead(db, event.lead_id)
+            customer_id = str((lead or {}).get("customer_id") or "") or None
+            if customer_id:
+                extra["cadence_touch"] = await plan_cadence_touch(
+                    db, lead_id=event.lead_id, customer_id=customer_id,
+                    channel=((lead or {}).get("data") or {}).get("channel") or "sms",
+                    turn_id=f"unsold-{event.event_id}", lead=lead, first_contact_done=True)
+        return {"status": "resumed_unsold", "stage_change": stage_change, **extra}
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
         {"$set": {"status": "paused", "status_reason": event.reason or "Paused by staff", "paused_at": clock.now()},
@@ -407,8 +551,8 @@ async def handle_lead_paused(event: LeadPausedEvent) -> dict[str, Any]:
         upsert=True,
     )
     cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
-    return {"status": "paused", "followups_cancelled": cancelled, **({"stage_change": stage_change}
-                                                                     if stage_change else {})}
+    return {"status": "paused", "followups_cancelled": cancelled,
+            **({"stage_change": stage_change} if stage_change else {}), **extra}
 
 
 def _address(lead: dict | None, customer: dict | None, channel: str) -> str | None:

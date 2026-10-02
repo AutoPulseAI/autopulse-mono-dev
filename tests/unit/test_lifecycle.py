@@ -360,8 +360,9 @@ async def test_a_staff_reply_pauses_without_moving_the_stage(mongo):
     created = await _new_lead()
     result = await handlers.handle_lead_paused(LeadPausedEvent(
         event_id="s4", dealer_id=DEALER, lead_id=created["lead_id"], reason="Staff replied by hand (Sam)"))
-    # The first reply's pending channel switch is cancelled, as on any pause; no stage change.
-    assert result == {"status": "paused", "followups_cancelled": 1}
+    # What the first reply left pending (its cadence touch and the standby fallback) is cancelled, as on
+    # any pause; no stage change.
+    assert result["status"] == "paused" and result["followups_cancelled"] == 2 and "stage_change" not in result
     assert (await _state(mongo, created))["stage"] == "new_lead"
 
 
@@ -378,6 +379,7 @@ async def test_one_channel_opt_out_keeps_the_stage_every_channel_is_opted_out(mo
 
 
 @pytestmark_flow
+@pytest.mark.usefixtures("legacy_switch")
 async def test_a_pending_channel_switch_is_cancelled_once_an_appointment_is_set(mongo):
     created = await _new_lead()
     switch = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
@@ -389,6 +391,7 @@ async def test_a_pending_channel_switch_is_cancelled_once_an_appointment_is_set(
 
 
 @pytestmark_flow
+@pytest.mark.usefixtures("legacy_switch")
 async def test_the_pre_send_recheck_cancels_work_the_stage_no_longer_allows(mongo):
     created = await _new_lead()
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},

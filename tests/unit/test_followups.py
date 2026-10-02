@@ -50,7 +50,7 @@ from upsell_agent.worker.locks import Busy
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 # The send check needs the customer's zone; dev customers have none (conftest.py).
-pytestmark = pytest.mark.usefixtures("ny_customer")
+pytestmark = pytest.mark.usefixtures("ny_customer", "legacy_switch")
 DAY = timedelta(hours=24)
 # A Tuesday, 10:00 in New York: well inside the 8:00-20:00 SMS contact window
 # and business hours, and 24h later still is (architecture §15, decision 11).

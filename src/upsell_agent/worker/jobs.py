@@ -107,7 +107,7 @@ async def handle_inbound_message(ctx: dict[str, Any], *, event: dict[str, Any], 
 
 
 async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
-    return await handlers.handle_lead_paused(LeadPausedEvent.model_validate(event))
+    return await handlers.handle_lead_paused(LeadPausedEvent.model_validate(event), ctx.get("deps"))
 
 
 async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
@@ -145,5 +145,15 @@ async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await lifecycle.close_expired()
 
 
+async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """DEV: forget the worker's cached stock searches. The search cache lives in this process (60 s per
+    dealer and query, tools/inventory_tool.py), so a scenario or the Debug UI that changes stock from another
+    process (devtools add_stock, "mark sold") asks the worker to drop it, or the next search sees stale stock."""
+    from upsell_agent.tools import inventory_tool
+
+    inventory_tool.clear_cache()
+    return {"status": "cleared"}
+
+
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
-             fire_due_followups, update_summary, close_expired_leads]
+             fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache]

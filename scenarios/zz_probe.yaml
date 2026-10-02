@@ -1,0 +1,15 @@
+name: Day-before confirmation answered Y
+stage: 305
+description: 'MASTER_PLAN_3 C5 (Omnichannel PDF §7-§8). A visit booked for Thursday gets the day-before confirmation on Wednesday at 10:00 asking for Y or N. "Y" confirms the booking on the platform and the appointment; the lead stays Appointment Set.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: v, dealer: A, lead_type: sales, channel: sms, name: Yara Yes, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: v, zip: "10001"}
+  - send_lead_created: {lead: v}
+  - wait_turns: {lead: v, count: 1, timeout_s: 20}
+  - reply: {lead: v, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: v, count: 2, timeout_s: 20}
+  - expect_turn: {lead: v, index: 1, outcome: QQQ}
+  - reply: {lead: v, text: "Can I come Thursday at 10 AM?"}
+  - wait_turns: {lead: v, count: 3, timeout_s: 20}
+  - expect_turn: {lead: v, outcome: QQQ}

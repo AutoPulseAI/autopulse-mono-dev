@@ -24,11 +24,13 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
+from upsell_agent.agent import cadence
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.state import AgentState
+from upsell_agent.agent.templates import first_name
 from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_visit
 from upsell_agent.agent.visit_offer import eligible as visit_eligible
 from upsell_agent.agent.visit_offer import wants_visit as visit_wants_visit
@@ -47,6 +49,7 @@ NOT_INTERESTED_CONFIDENCE = 0.8
 # "dealer-configurable approved default"; ours until a per-dealer setting exists, like VISIT_FOLLOWUP_HOUR).
 NEXT_ACTION_DEFAULT_TIME = "10:00"
 NEXT_ACTION_TRIGGER = "next_action"
+CADENCE_TRIGGER = "cadence_touch"
 # "Call me Friday" is a dated next step (Omnichannel PDF §2: "'call me Friday/next month/in a year' creates a dated
 # future action"), not a request for a person right now: it doesn't hand off.
 _CALL_ME = re.compile(r"\b(call|phone|ring)\s+me\b", re.IGNORECASE)
@@ -131,6 +134,23 @@ async def _visit_and_booking(
                                                         dealer=dealer, booking_id=booking_id)
             visit_ctx = {"status": "cancelled", "display": None, "just_booked": False, "stopped": False,
                         "ask_contact": None, "cancelled_this_turn": True, "booking_id": result["booking_id"]}
+        elif conversation.awaiting_visit_pick and conversation.visit and booking_tool.match_pick(
+                text, conversation.visit.offered_times, dealer, now).matched:
+            # MASTER_PLAN_3 C5 (Omnichannel PDF §8): the customer answered N to the day-before confirmation,
+            # we offered new times, and this is their pick: the booking moves to it (the old confirmation and
+            # no-show timers are replaced when the appointment is set again).
+            existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
+            available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
+            picked = booking_tool.match_pick(text, conversation.visit.offered_times, dealer, now,
+                                             available=available).matched
+            if picked and datetime.fromisoformat(picked["iso"]) in available:
+                when = datetime.fromisoformat(picked["iso"])
+                result = await booking_tool.move_booking(platform=ctx.platform, dealer_id=state.dealer_id,
+                                                          dealer=dealer, booking_id=booking_id,
+                                                          current_status=status, when=when)
+                visit_ctx = {"status": result["booking_status"], "display": picked["display"], "just_booked": True,
+                             "stopped": False, "ask_contact": None, "moved_this_turn": True,
+                             "booking_id": result["booking_id"]}
         elif _RESCHEDULE_HINT.search(text):
             from upsell_agent.slots.dates import resolve as resolve_date
             resolved = resolve_date(text, now.astimezone(dealer.tz))
@@ -259,6 +279,64 @@ def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: Deale
                               f"{text.strip()[:300]}")}
 
 
+#: "What are you driving now?" asks about the car they'd trade in, so it counts as that slot's ask.
+TOUCH1_ENDING_SLOT = "trade_in.has_trade"
+
+
+def _trade_in_known(profile: Profile) -> bool:
+    """The customer has already told us what they drive, so Touch 1's closing
+    question is dropped (client, 1 Oct 2026: "EXCEPT when a trade-in is
+    already indicated")."""
+    values = profile.values(include_stale=True)
+    if values.get("trade_in.has_trade") is False:
+        return True  # they said they have nothing to trade: asking again would be re-asking
+    return any(values.get(p) for p in ("trade_in.has_trade", "trade_in.model", "trade_in.make", "trade_in.year"))
+
+
+def _vehicle_of_interest(profile: Profile) -> str | None:
+    values = profile.values(include_stale=True)
+    model = values.get("interest.model")
+    return str(model) if model else None
+
+
+def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: str | None) -> dict[str, Any]:
+    """Touch 1's required structure (Omnichannel PDF §3, MASTER_PLAN_3 C4):
+    the client's opening, then the answers, then the mandatory closing
+    question. Decision 34 (B1/B4 replacing the ending) is **reversed** by the
+    client's own answer of 1 Oct 2026: the question is always asked, unless a
+    trade-in is already indicated. It is one of the message's two questions,
+    so Compose gets at most one other ask alongside it."""
+    ending = cadence.touch1_ending(_trade_in_known(profile))
+    return {
+        "intro": cadence.touch1_intro(
+            customer_first_name=first_name(customer_first_name), agent_name=dealer.agent_name,
+            dealership=dealer.name,
+            city=dealer.city, state_code=dealer.state, vehicle=_vehicle_of_interest(profile)),
+        "ending": ending,
+        "ending_slot": TOUCH1_ENDING_SLOT if ending else None,
+        "why": ("The client's required Touch 1 structure: the opening, the answers, then "
+                + (f"{ending!r}." if ending else "no closing question - they've already told us about a trade-in.")),
+    }
+
+
+def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str | None) -> dict[str, Any] | None:
+    """The theme this cadence touch is about (MASTER_PLAN_3 C4,
+    agent/cadence.py), written onto the lead state by the scheduler just
+    before the turn runs. The name nudge is a fixed text, not a written
+    message: the client calls it non-negotiable (Omnichannel PDF §3)."""
+    pending = (lead_state or {}).get("pending_touch")
+    if not pending:
+        return None
+    theme_id = pending.get("theme")
+    fixed = None
+    if theme_id == cadence.NAME_NUDGE.id:
+        # The client's exact nudge: the customer's first name and a question mark (Omnichannel PDF §3).
+        given = first_name(customer_first_name) if customer_first_name else None
+        fixed = f"{given}?" if given else "Are you still there?"
+    return {"touch_number": pending.get("touch_number"), "day": pending.get("day"), "theme": theme_id,
+            "label": pending.get("theme_label"), "instruction": pending.get("instruction"), "fixed_text": fixed}
+
+
 def _customer_summary(profile: Profile) -> str:
     """What the customer wants, for the booking's `notes` (B5 item 6: the
     team is told what they want, budget, trade-in when they arrive)."""
@@ -345,6 +423,21 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         not_interested=not_interested,
         not_interested_reason=not_interested_reason,
     ))
+    # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
+    touch1 = (plan_touch1(profile, dealer, state.customer_name)
+              if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff") else None)
+    if touch1:
+        decision["touch1"] = touch1
+        if touch1["ending"]:
+            # The closing question is one of the two, so at most one other ask fits (decision 35).
+            decision["asks"] = [a for a in decision["asks"]
+                                if TOUCH1_ENDING_SLOT not in a.get("slots", [])][:1]
+            decision["slots"] = [p for item in decision["asks"] for p in item["slots"]]
+            if TOUCH1_ENDING_SLOT not in decision["slots"]:
+                decision["slots"].append(TOUCH1_ENDING_SLOT)
+    touch = plan_cadence_touch_context(ctx.lead_state, state.customer_name)
+    if touch and state.trigger == CADENCE_TRIGGER:
+        decision["touch"] = touch
     decision["next_action"] = dated if decision["action"] not in ("stop", "handoff") else None
     decision["not_interested"] = ({"mode": not_interested, "reason": not_interested_reason}
                                   if not_interested else None)
@@ -397,6 +490,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         span.reasoning.append(f"Dated next step: the customer said {dated['words']!r}, worked out as "
                               f"{dated['display']} at {dated['time']}"
                               + ("" if dated["time_given"] else " (no time given: the dealer default)") + ".")
+    if touch1:
+        span.reasoning.append(f"Touch 1: {touch1['why']}")
+    if decision.get("touch"):
+        span.reasoning.append(f"Cadence touch {decision['touch']['touch_number']} (day "
+                              f"{decision['touch']['day']}): {decision['touch']['label']}.")
     if not_interested:
         span.reasoning.append("Not interested: " + ("asking why, once." if not_interested == "ask_why" else
                               f"reason {not_interested_reason!r}; a person decides whether to close the lead."

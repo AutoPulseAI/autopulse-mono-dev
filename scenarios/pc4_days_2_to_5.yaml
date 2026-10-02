@@ -1,0 +1,19 @@
+name: Days 2-5 go out daily on text and email together
+stage: 304
+description: With no reply, one touch a day at 10:00 dealer time - vehicle visual, financing help, trade-in, a verified feature - each on text AND email (Omnichannel PDF §3, p.10). Never a second touch on the same day. A customer with no known ZIP, state or area code gets only the hours legal in every US zone, so 10:00 touches wait until 11:00 dealer time (New York).
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dan Daily, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - advance_clock: {hours: 3.1}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 0, timeout_s: 30}
+  - advance_clock: {dealer: A, to: "Wed 11:05"}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 1, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 2}
+  - advance_clock: {dealer: A, to: "Thu 11:05"}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 2, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 3}
+  - advance_clock: {dealer: A, to: "Fri 11:05"}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 3, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 4}
+  - expect_outbox: {lead: d, channel: sms, count: 5}

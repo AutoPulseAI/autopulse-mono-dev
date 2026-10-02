@@ -1,0 +1,15 @@
+name: Manager outcome after a visit
+stage: 305
+description: 'MASTER_PLAN_3 C5 (Omnichannel PDF §10). Visited with the manager outcome Sold Pending stops the lead workflow. Visited with Unsold hands the lead back to the AI: Contact Made - No Next Action, a new cadence, and 90 more days of follow-up.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: p, dealer: A, lead_type: sales, channel: sms, name: Pat Pending, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: p, count: 1, timeout_s: 20}
+  - staff_status: {lead: p, status: "Visited", manager_outcome: "Sold Pending"}
+  - expect_lead: {lead: p, stage: sold_pending, status: paused}
+  - expect_no_followup: {lead: p, kind: any, status: pending}
+  - new_lead: {as: u, dealer: A, lead_type: sales, channel: sms, name: Uma Unsold, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: u, count: 1, timeout_s: 20}
+  - staff_status: {lead: u, status: "Visited", manager_outcome: "Unsold"}
+  - expect_lead: {lead: u, stage: contact_made_no_next_action, status: active}
+  - expect_followup: {lead: u, kind: cadence_touch, status: pending, timeout_s: 20}

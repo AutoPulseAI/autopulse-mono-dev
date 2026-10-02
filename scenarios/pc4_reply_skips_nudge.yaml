@@ -1,0 +1,16 @@
+name: A reply skips the name nudge
+stage: 304
+description: The name nudge is for silence. A customer who answers within the 3 hours never gets "Name?" - the lead becomes Contact Made and the next touch is Day 2's, not the nudge.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rae Replied, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 20}
+  - reply: {lead: r, text: "Yes, I'm still interested"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 20}
+  - expect_lead: {lead: r, stage: contact_made_no_next_action}
+  - advance_clock: {hours: 4}
+  - expect_outbox: {lead: r, channel: email, count: 0}
+  - expect_followup: {lead: r, kind: cadence_touch, status: pending, due_local: "11:00", count: 2}
+  - advance_clock: {dealer: A, to: "Wed 11:05"}
+  - expect_followup: {lead: r, kind: cadence_touch, status: sent, index: 1, timeout_s: 30}
+  - expect_outbox: {lead: r, channel: email, count: 1}

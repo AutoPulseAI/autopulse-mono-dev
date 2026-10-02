@@ -70,7 +70,7 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
-from upsell_agent.agent import lifecycle
+from upsell_agent.agent import appointment, cadence, lifecycle
 from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_SUBJECT,
     SOLD_VEHICLE_FALLBACK_TEXT,
@@ -88,6 +88,7 @@ from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
     as_object_id,
@@ -125,11 +126,22 @@ TRIGGER_VISIT_FOLLOWUP = KIND_VISIT_FOLLOWUP
 # Friday"), and the check 24 hours after it went out: no reply moves the lead to No Contact Made.
 KIND_NEXT_ACTION = "next_action"
 KIND_NEXT_ACTION_CHECK = "next_action_check"
+# MASTER_PLAN_3 C4 (Omnichannel PDF §3-§4): the Short-Term / extended cadence touch. One touch at a
+# time per lead; it goes out on text AND email together (agent/cadence.py), replacing Plan 1's
+# one-channel 24h switch for any lead whose cadence is running (decision 147).
+KIND_CADENCE_TOUCH = "cadence_touch"
+TRIGGER_CADENCE_TOUCH = KIND_CADENCE_TOUCH
 TRIGGER_NEXT_ACTION = KIND_NEXT_ACTION
 NEXT_ACTION_REPLY_WINDOW = timedelta(hours=24)
+# MASTER_PLAN_3 C5 (Omnichannel PDF §7-§9): the appointment's own messages (agent/appointment.py), one scheduled
+# record per step. `step` says which.
+APPOINTMENT_STEPS = (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK,
+                     appointment.STEP_NO_SHOW_FOLLOWUP, appointment.STEP_NO_SHOW_CLOSE)
+APPOINTMENT_KINDS = tuple(appointment.KIND_PREFIX + s for s in APPOINTMENT_STEPS)
+TRIGGER_APPOINTMENT = "appointment_step"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                                      KIND_NEXT_ACTION_CHECK]}}
+                                      KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, *APPOINTMENT_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -163,8 +175,14 @@ async def plan_followup(
     turn_id: str,
     channel: str,
     action: str | None,
+    standby: bool = False,
 ) -> dict[str, Any]:
-    """Saves the follow-up for a message a turn just sent. Returns what
+    """`standby`: MASTER_PLAN_3 C4 (decision 154). With the cadence running, the 24h switch is no longer
+    the follow-up (the cadence is), but a message that fails to deliver still falls back to the other
+    channel at once. So the other-channel version is stored dormant (status `standby`, never claimed by
+    the scheduler) and only `make_due_now` wakes it, when the provider reports the failure.
+
+    Saves the follow-up for a message a turn just sent. Returns what
     happened, for the Schedule step's trace: `created` plus either the new
     follow-up or the reason there isn't one."""
     other = other_channel(channel)
@@ -213,7 +231,7 @@ async def plan_followup(
     due_at = check.until if check.outcome == "HOLD" and check.until else wanted
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     superseded = await followups.update_many(
-        {"lead_id": lead_id, "status": "pending", **CHANNEL_SWITCHES},
+        {"lead_id": lead_id, "status": {"$in": ["pending", "standby"]}, **CHANNEL_SWITCHES},
         {"$set": {"status": "superseded", "reason": "a newer message was sent", "closed_at": now}},
     )
     held = due_at > wanted
@@ -224,7 +242,8 @@ async def plan_followup(
         "kind": KIND_CHANNEL_SWITCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "source_message_id": sent.message_id, "source_provider_id": sent.provider_id,
         "from_channel": channel, "to_channel": other, "to": to, "text": text, "subject": subject,
-        "status": "pending", "due_at": due_at, "created_at": now, "claim_count": 0, "reason": reason,
+        "status": "standby" if standby else "pending", "due_at": due_at, "created_at": now, "claim_count": 0,
+        "reason": reason or ("standby: sent only if this message fails to deliver" if standby else None),
     }
     if mentioned_vins:
         # Phase 5 item 2: kept so firing can re-check and use the nicer
@@ -410,6 +429,160 @@ async def plan_next_action(
             "timezone": profile.timezone, "reason": f"Next step due {local}."}
 
 
+async def _permitted_channel(*, dealer_id: str, customer_id: str, lead_id: str, channel: str, at: datetime | None,
+                             lead: dict | None = None, customer: dict | None = None, purpose: str = "marketing"):
+    """The send check for a cadence touch, which goes out on text AND email together (MASTER_PLAN_3 C4,
+    Omnichannel PDF p.10). Returns (the channel to lead with, the check that decides when).
+
+    - A channel that is BLOCKed or under REVIEW (opted out, unsubscribed, no consent) is left out and the
+      other carries on alone: "continue every remaining permitted channel".
+    - A channel that is only HELD (the dealer is shut, the customer's window is closed) isn't dropped: the
+      whole touch waits until every channel left can go, so the text and the email arrive together instead
+      of the email alone now and the text lost.
+    - With both blocked, the preferred channel's BLOCK / REVIEW comes back and nothing is sent.
+    Each channel is checked again when it is actually sent."""
+    other = other_channel(channel)
+    checks: list[tuple[str, Any]] = []
+    for ch in (channel, other):
+        check = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=ch,
+                                  purpose=purpose, is_reply=False, at=at, lead=lead, customer=customer,
+                                  record=False)
+        checks.append((ch, check))
+    usable = [(ch, c) for ch, c in checks if c.outcome in ("ALLOW", "HOLD")]
+    if not usable:
+        return checks[0]
+    holds = [(ch, c) for ch, c in usable if c.outcome == "HOLD" and c.until]
+    if holds:
+        return usable[0][0], max((c for _, c in holds), key=lambda c: c.until)
+    return usable[0]
+
+
+async def plan_cadence_touch(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    channel: str,
+    turn_id: str,
+    lead: dict | None = None,
+    customer: dict | None = None,
+    lead_state: dict | None = None,
+    first_contact_done: bool | None = None,
+) -> dict[str, Any]:
+    """The next Short-Term / extended cadence touch (MASTER_PLAN_3 C4,
+    agent/cadence.py). One pending touch per lead: an older one is superseded,
+    so a customer reply (which plans a fresh one) never leaves a stale touch
+    queued. The due time goes through the send check like every message the
+    system starts; a BLOCK or REVIEW means no touch is scheduled at all."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    state = lead_state if lead_state is not None else await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+        {"lead_id": lead_id})
+    cadence_state = cadence.CadenceState.load(state)
+    if cadence_state.started_at is None:
+        return {"created": False, "reason": "No cadence touch: this lead's cadence hasn't started."}
+    _, stage_ok, stage_detail = lifecycle.stage_check(state, KIND_CADENCE_TOUCH)
+    if not stage_ok:
+        return {"created": False, "reason": f"No cadence touch: {stage_detail}."}
+    planned = cadence.plan_touch(
+        cadence_state, now=now, tz=profile.tz,
+        # The caller knows whether the message it just sent went out; the lead's own record is only
+        # updated after this runs (agent/turn.py).
+        first_contact_done=(bool((state or {}).get("last_outbound_at")) if first_contact_done is None
+                            else first_contact_done))
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_CADENCE_TOUCH},
+        {"$set": {"status": "superseded", "reason": "a newer cadence touch", "closed_at": now}})
+    if not planned.scheduled:
+        return {"created": False, "reason": f"No cadence touch: {planned.why}", "plan": planned.as_dict()}
+    channel, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
+                                              channel=channel, at=planned.due_at, lead=lead, customer=customer)
+    if check.outcome in ("BLOCK", "REVIEW"):
+        return {"created": False, "send_check": check.as_dict(), "plan": planned.as_dict(),
+                "reason": f"No cadence touch: neither channel is allowed ({check.outcome}: {check.reason})."}
+    due_at = check.until if check.outcome == "HOLD" and check.until else planned.due_at
+    doc = {
+        "kind": KIND_CADENCE_TOUCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
+        "due_at": due_at, "created_at": now, "claim_count": 0, "touch": planned.as_dict(),
+        "reason": f"held by the send check: {check.reason}" if due_at > planned.due_at else None,
+    }
+    inserted = await followups.insert_one(doc)
+    local = due_at.astimezone(profile.tz).strftime("%a %b %d %H:%M %Z")
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
+            "timezone": profile.timezone, "plan": planned.as_dict(),
+            "reason": f"{planned.why} Due {local}."}
+
+
+async def plan_appointment_timers(
+    db: DealerScopedDatabase,
+    *,
+    lead_id: str,
+    customer_id: str,
+    lead: dict | None = None,
+    customer: dict | None = None,
+    channel: str = "sms",
+    turn_id: str,
+    appointment_hint: dict | None = None,
+) -> dict[str, Any]:
+    """The appointment's messages (MASTER_PLAN_3 C5): the daily countdown, the day-before confirmation and the
+    +1h no-show check, timed from the appointment itself. Called whenever an appointment is set or moved: the
+    older steps are superseded, so an old confirmation or no-show timer can never fire for a time that no longer
+    stands ("Rescheduled/old appointment cannot create a false No Show", §8, §16). Each step goes through the
+    send check for its due time (transactional: a confirmation is operational, not marketing, §4)."""
+    from upsell_agent.tools import booking_tool
+
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    # Always re-read: the lead the turn loaded predates the booking it just made.
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)}) or lead
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+    booking = await booking_tool.find_active_booking(db.dealer_id, lead)
+    appt_at = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
+                                         recorded=appointment_hint or state.get("appointment"))
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": {"$in": list(APPOINTMENT_KINDS)}},
+        {"$set": {"status": "superseded", "reason": "the appointment changed", "closed_at": now}})
+    if appt_at is None:
+        return {"created": 0, "reason": "No appointment time on record: nothing to schedule."}
+    steps = appointment.plan_steps(appt_at, now=now, tz=profile.tz)
+    booking_id = str(booking["_id"]) if booking else (state.get("appointment") or {}).get("booking_id")
+    created, skipped = [], []
+    for step in steps:
+        ch, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
+                                             channel=channel, at=step.due_at, lead=lead, customer=customer,
+                                             purpose="transactional")
+        if check.outcome in ("BLOCK", "REVIEW"):
+            skipped.append({**step.as_dict(), "why": f"neither channel is allowed ({check.outcome}: {check.reason})"})
+            continue
+        due_at = check.until if check.outcome == "HOLD" and check.until else step.due_at
+        doc = {
+            "kind": step.kind, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+            "from_channel": ch, "to_channel": ch, "text": None, "subject": None, "status": "pending",
+            "due_at": due_at, "created_at": now, "claim_count": 0, "step": step.step,
+            "appointment_at": appt_at.isoformat(), "booking_id": booking_id,
+            "reason": f"held by the send check: {check.reason}" if due_at > step.due_at else None,
+        }
+        inserted = await followups.insert_one(doc)
+        created.append({**step.as_dict(), "due_at": due_at.isoformat(), "followup_id": str(inserted.inserted_id)})
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$set": {"appointment.at": appt_at.isoformat(), "appointment.booking_id": booking_id,
+                  "appointment.confirmed": False, "appointment.confirmation": None,
+                  "appointment.planned_at": now}})
+    return {"created": len(created), "steps": created, "skipped": skipped, "appointment_at": appt_at.isoformat(),
+            "reason": f"{len(created)} appointment step(s) planned for {appt_at:%a %b %d %H:%M}."}
+
+
+async def cancel_cadence_touch(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
+    result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": KIND_CADENCE_TOUCH},
+        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
+    return result.modified_count
+
+
 async def cancel_visit_followup(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
     """A booking was made, or the lead is no longer active: the dated visit follow-up isn't needed."""
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
@@ -530,11 +703,13 @@ async def _fresh_followup_text(dealer_id: str, doc: dict[str, Any]) -> tuple[str
 async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
-    fire_locked = {KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
+    fire_locked = {**{kind: _fire_appointment_locked for kind in APPOINTMENT_KINDS},
+                   KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
                    KIND_RESUME: _fire_resume_locked,
                    KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked,
                    KIND_NEXT_ACTION: _fire_next_action_locked,
-                   KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked}.get(doc.get("kind"), _fire_locked)
+                   KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
+                   KIND_CADENCE_TOUCH: _fire_cadence_touch_locked}.get(doc.get("kind"), _fire_locked)
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -796,7 +971,6 @@ async def _fire_visit_followup_locked(db: DealerScopedDatabase, doc: dict, deps:
     a fresh attempt 1 and a whole AI turn runs, so it makes one new offer,
     within the send check's rules."""
     from upsell_agent.agent.turn import run_turn
-    from upsell_agent.integrations.mongodb import PLATFORM_LEADS_COLLECTION, as_object_id
     from upsell_agent.tools.booking_tool import find_active_booking
 
     followup_id = str(doc["_id"])
@@ -959,6 +1133,14 @@ async def _fire_next_action_check_locked(db: DealerScopedDatabase, doc: dict, de
             moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
                 "specific_followup_unanswered", source="next_action_check",
                 reason="No reply within 24 hours of the scheduled follow-up")])
+            if moved and moved.get("cadence_started"):
+                # Back into Short-Term follow-up (Omnichannel PDF §6): a fresh cadence starts, first touch planned.
+                customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one(
+                    {"_id": as_object_id(doc["customer_id"])})
+                lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(doc["lead_id"])})
+                moved["cadence_touch"] = await plan_cadence_touch(
+                    db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], channel=doc["to_channel"],
+                    turn_id=f"next-action-check-{check_id}", lead=lead, customer=customer, first_contact_done=True)
             span.output = {"decision": "no reply", "lifecycle": moved}
             span.reasoning = ["✗ No reply within 24 hours of the next step: " + (
                 f"the lead moves to {lifecycle.label(moved.get('stage'))}." if moved and moved.get("changed")
@@ -970,6 +1152,257 @@ async def _fire_next_action_check_locked(db: DealerScopedDatabase, doc: dict, de
     return "done"
 
 
+async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnTracer, doc: dict,
+                              text: dict[str, str]) -> list[SendOutcome]:
+    """One appointment step on text AND email (Omnichannel PDF p.10). Each channel is its own send with its own
+    check, so one opted out never stops the other. The idempotency key carries the step's record id and the
+    channel, so a re-run can't send either twice."""
+    outcomes: list[SendOutcome] = []
+    first = doc["to_channel"]
+    for ch in (first, other_channel(first)):
+        body = text["sms_text"] if ch == "sms" else text["email_body"]
+        request = SendRequest(
+            dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+            turn_id=f"appointment-{doc['step']}-{doc['_id']}", channel=ch, text=body,
+            subject=None if ch == "sms" else text["email_subject"], purpose="transactional", is_reply=False)
+        async with tracer.node(f"send_{ch}", {"channel": ch, "idempotency_key": request.idempotency_key,
+                                              "text": request.text, "subject": request.subject}) as span:
+            outcome = await deps.sender.send(request)
+            span.output = outcome.as_dict()
+            span.reasoning = list(outcome.reasoning)
+            span.edge_label = f"{ch}: {outcome.status}"
+        outcomes.append(outcome)
+    return outcomes
+
+
+async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """One appointment step is due (MASTER_PLAN_3 C5; agent/appointment.py). Re-reads everything first (§2, §11:
+    "never execute a task simply because it was previously placed in a queue"): the lead's stage, that the
+    appointment is still the same one, that the dealer is live and that the send check allows it. Then sends the
+    client's own text on both channels, and for the no-show steps moves the stage and plans what comes next."""
+    from upsell_agent.tools import booking_tool
+
+    step, step_id = doc["step"], str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger=TRIGGER_APPOINTMENT, channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"appointment-check-{step_id}-fire{int(doc.get('claim_count') or 1)}")
+    await tracer.start({"followup_id": step_id, "step": step, "appointment_at": doc.get("appointment_at")})
+    profile = await dealer_profile(db.dealer_id)
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(doc["lead_id"])})
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    async with tracer.node("appointment_step", {"followup_id": step_id, "step": step, "due_at": doc["due_at"],
+                                                "appointment_at": doc.get("appointment_at")}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        mode = await dealer_ai_mode(db.dealer_id)
+        booking = await booking_tool.find_active_booking(db.dealer_id, lead)
+        current = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
+                                             recorded=state.get("appointment"))
+        same = current is not None and current.isoformat() == doc.get("appointment_at")
+        needs_booking_check = step in (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
+                                       appointment.STEP_NO_SHOW_CHECK)
+        checks = [
+            ("lead_active", status not in SILENT_STATUSES,
+             f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            lifecycle.stage_check(state, doc["kind"]),
+            ("same_appointment", same or not needs_booking_check,
+             "the appointment is still at the time this step was planned for" if same or not needs_booking_check
+             else "the appointment was moved or cancelled since"),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        check = None
+        if not failed:
+            ch, check = await _permitted_channel(
+                dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+                channel=doc["to_channel"], at=None, lead=lead, customer=customer, purpose="transactional")
+            doc = {**doc, "to_channel": ch}
+            checks.append(("send_check", check.outcome == "ALLOW", f"{ch}: {check.summary()}"))
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "send_check": check.as_dict() if check else None,
+                       "decision": "cancel" if failed else "send" if check.outcome == "ALLOW" else check.outcome.lower()}
+        span.reasoning = [f"{'OK' if ok else 'no'}: {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else step
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, f"appointment_{step}_cancelled", {"followup_id": step_id, "reason": reason})
+        return "cancelled"
+    # The close step sends nothing, so the send check's verdict doesn't apply to it.
+    if step != appointment.STEP_NO_SHOW_CLOSE:
+        if check.outcome == "HOLD" and check.until:
+            await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+                {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+                {"$set": {"status": "pending", "due_at": check.until,
+                          "reason": f"held by the send check: {check.reason}"}})
+            await _log(db, tracer, f"appointment_{step}_deferred", {"followup_id": step_id, "reason": check.reason,
+                                                                    "due_at": check.until.isoformat()})
+            return "deferred"
+        if check.outcome != "ALLOW":
+            await _close(db, doc, "suppressed", reason=f"{check.outcome}: {check.reason}")
+            await _log(db, tracer, f"appointment_{step}_suppressed", {"followup_id": step_id, "reason": check.reason})
+            return "suppressed"
+
+    appt_at = appointment.aware(datetime.fromisoformat(doc["appointment_at"]), profile.tz)
+    lead_state_fields: dict[str, Any] = {}
+    outcomes: list[SendOutcome] = []
+    moved = None
+    if step == appointment.STEP_NO_SHOW_CHECK:
+        # Appointment + 1 hour and no Sales Visit: the lead is a No Show (§9). The stage change comes first, so
+        # a reply to the message below is routed as a reply to a no-show.
+        moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
+            "appointment_missed", source="appointment_timer", reason="Appointment time + 1 hour with no Sales Visit")],
+            lead=lead, customer_id=doc["customer_id"])
+    if step == appointment.STEP_NO_SHOW_CLOSE:
+        moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
+            "no_show_unanswered", source="appointment_timer",
+            reason="No reply to the no-show messages: back to Short-Term follow-up")],
+            lead=lead, customer_id=doc["customer_id"])
+        if moved and moved.get("cadence_started"):
+            moved["cadence_touch"] = await plan_cadence_touch(
+                db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], channel=doc["to_channel"],
+                turn_id=f"appointment-{step}-{step_id}", lead=lead, customer=customer, first_contact_done=True)
+    else:
+        text = appointment.render_message(
+            step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
+            agent_name=profile.agent_name, appt=appt_at,
+            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]))
+        outcomes = await _send_step_messages(db, deps, tracer, doc, text)
+        if any(o.status == "held" for o in outcomes) and not any(o.status in ("sent", "duplicate") for o in outcomes):
+            # The check changed between the look above and the send (a clock move, the cap).
+            await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+                {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+                {"$set": {"status": "pending", "due_at": clock.now() + BUSY_RETRY_AFTER,
+                          "reason": "held by the send check at send time; checking again"}})
+            return "deferred"
+        delivered = any(o.status in ("sent", "duplicate") for o in outcomes)
+        if delivered:
+            lead_state_fields["last_outbound_at"] = clock.now()
+        if step == appointment.STEP_CONFIRM and delivered:
+            lead_state_fields["appointment.confirmation"] = {"status": "asked", "sent_at": clock.now(),
+                                                             "asked_again": False}
+        if step == appointment.STEP_NO_SHOW_CHECK and delivered:
+            await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_FOLLOWUP, appointment.NO_SHOW_FOLLOWUP_AFTER)
+        if step == appointment.STEP_NO_SHOW_FOLLOWUP and delivered:
+            await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_CLOSE, appointment.NO_SHOW_CLOSE_AFTER)
+    if lead_state_fields:
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]},
+                                                                 {"$set": lead_state_fields})
+    sent_any = any(o.status in ("sent", "duplicate") for o in outcomes)
+    status_out = "sent" if (sent_any or step == appointment.STEP_NO_SHOW_CLOSE) else (
+        outcomes[0].status if outcomes else "failed")
+    await _close(db, doc, status_out, reason=None, fired_at=clock.now())
+    await _log(db, tracer, f"appointment_{step}_{status_out}", {
+        "followup_id": step_id, "step": step, "sent": [{"channel": o.channel, "status": o.status} for o in outcomes],
+        "lifecycle": moved})
+    return status_out
+
+
+async def _interest_model(db: DealerScopedDatabase, customer_id: str, lead_id: str) -> str | None:
+    """The vehicle the customer said they want ("your RAV4 purchase", §9), or None."""
+    from upsell_agent.slots.store import current_facts
+
+    for fact in await current_facts(db, customer_id, lead_id):
+        if fact.get("path") == "interest.model" and fact.get("value"):
+            return str(fact["value"])
+    return None
+
+
+async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, after: timedelta) -> None:
+    """The next no-show step, `after` the one that just went out. It belongs to the No Show stage, so a reply
+    (which moves the stage) or a visit cancels it."""
+    now = clock.now()
+    await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).insert_one({
+        "kind": appointment.KIND_PREFIX + step, "lead_id": doc["lead_id"], "customer_id": doc["customer_id"],
+        "source_turn_id": doc["source_turn_id"], "from_channel": doc["to_channel"], "to_channel": doc["to_channel"],
+        "text": None, "subject": None, "status": "pending", "due_at": now + after, "created_at": now,
+        "claim_count": 0, "step": step, "appointment_at": doc.get("appointment_at"),
+        "booking_id": doc.get("booking_id"), "reason": None})
+
+
+async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """A Short-Term / extended cadence touch is due (MASTER_PLAN_3 C4). Checks
+    the lead is still being worked, then runs a whole AI turn that writes the
+    touch for its theme and sends it on text AND email together (agent/turn.py).
+    The turn itself advances the cadence and schedules the next touch."""
+    from upsell_agent.agent.turn import run_turn
+
+    touch_id = str(doc["_id"])
+    touch = doc.get("touch") or {}
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="cadence_check", channel=doc["to_channel"], store_prompts=deps.store_prompts,
+        turn_id=f"cadence-check-{touch_id}-fire{int(doc.get('claim_count') or 1)}",
+    )
+    await tracer.start({"followup_id": touch_id, "touch": touch, "channel": doc["to_channel"]})
+    async with tracer.node("cadence_touch", {"followup_id": touch_id, "due_at": doc["due_at"],
+                                             "touch": touch}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        mode = await dealer_ai_mode(db.dealer_id)
+        checks = [
+            ("lead_active", status not in SILENT_STATUSES,
+             f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            lifecycle.stage_check(state, KIND_CADENCE_TOUCH),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        check = None
+        if not failed:
+            # The preferred channel, or the other when only that one is allowed (decision 155).
+            channel_now, check = await _permitted_channel(
+                dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+                channel=doc["to_channel"], at=None)
+            doc = {**doc, "to_channel": channel_now}
+            checks.append(("send_check", check.outcome == "ALLOW", f"{channel_now}: {check.summary()}"))
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "touch": touch, "send_check": check.as_dict() if check else None,
+                       "decision": "cancel" if failed else "run the turn" if check.outcome == "ALLOW"
+                       else check.outcome.lower()}
+        span.reasoning = [f"{'OK' if ok else 'no'}: {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else f"touch {touch.get('touch_number')}"
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, "cadence_touch_cancelled", {"followup_id": touch_id, "reason": reason})
+        return "cancelled"
+    if check.outcome == "HOLD" and check.until:
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": check.until,
+                      "reason": f"held by the send check: {check.reason}"}})
+        await _log(db, tracer, "cadence_touch_deferred", {"followup_id": touch_id, "reason": check.reason,
+                                                          "due_at": check.until.isoformat()})
+        return "deferred"
+    if check.outcome != "ALLOW":
+        await _close(db, doc, "suppressed", reason=f"{check.outcome}: {check.reason}")
+        await _log(db, tracer, "cadence_touch_suppressed", {"followup_id": touch_id, "reason": check.reason})
+        return "suppressed"
+
+    # The turn reads the theme from here (agent/nodes/decide.py) and clears it when it's done.
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": doc["lead_id"]}, {"$set": {"pending_touch": touch}})
+    await _log(db, tracer, "cadence_touch_started", {"followup_id": touch_id, "touch": touch})
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+        trigger=TRIGGER_CADENCE_TOUCH, channel=doc["to_channel"], inbound_text="", shadow=False, deps=deps,
+        turn_id=f"cadence-{touch_id}", is_reply=False,
+    )
+    sent = log["summary"].get("send_status")
+    if sent == "held":
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": clock.now() + BUSY_RETRY_AFTER,
+                      "reason": "held by the send check at send time; checking again"}})
+        return "deferred"
+    status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
+    await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
+    return status
+
+
 # --- Provider said the message failed -------------------------------------------
 
 async def make_due_now(db: DealerScopedDatabase, *, lead_id: str, source_turn_id: str, from_channel: str,
@@ -977,8 +1410,8 @@ async def make_due_now(db: DealerScopedDatabase, *, lead_id: str, source_turn_id
     """The original message failed to deliver: its follow-up fires now
     instead of in 24 hours (architecture §6 "Failed SMS")."""
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
-        {"lead_id": lead_id, "source_turn_id": source_turn_id, "from_channel": from_channel, "status": "pending",
-         **CHANNEL_SWITCHES},
-        {"$set": {"due_at": clock.now(), "reason": reason}},
+        {"lead_id": lead_id, "source_turn_id": source_turn_id, "from_channel": from_channel,
+         "status": {"$in": ["pending", "standby"]}, **CHANNEL_SWITCHES},
+        {"$set": {"due_at": clock.now(), "reason": reason, "status": "pending"}},
     )
     return result.modified_count == 1

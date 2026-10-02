@@ -27,6 +27,7 @@ from upsell_agent.config import get_settings
 from upsell_agent.slots.dates import DATE_PHRASE
 
 SMS_MAX = 320
+TOUCH1_SMS_MAX = 480  # MASTER_PLAN_3 C4, decision 152
 
 MAKES = {
     "toyota": "Toyota", "honda": "Honda", "ford": "Ford", "chevrolet": "Chevrolet", "chevy": "Chevrolet",
@@ -574,6 +575,52 @@ def _answers(questions: list[dict[str, str]], payload: dict[str, Any],
     return " ".join(sentences), promises, vins
 
 
+def _slot_display(payload: dict[str, Any], path: str) -> str | None:
+    """A slot's value in plain words, from the context pack's profile layer."""
+    for slot in (payload.get("context") or {}).get("profile") or []:
+        if slot.get("path") == path and slot.get("value") not in (None, ""):
+            return str(slot.get("display") or slot.get("value"))
+    return None
+
+
+def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> str:
+    """The offline stand-in for a cadence touch (MASTER_PLAN_3 C4). One short
+    message per theme, built only from what the customer has already told us
+    and the dealer's own stock - never a price, a payment or an offer, so the
+    guard's never-invent rules hold for every theme. Returns the text and the
+    VINs it names, so a touch that talks about real stock is grounded in it
+    (MASTER_PLAN_3 Phase 4)."""
+    wanted = _slot_display(payload, "interest.model")
+    it = f"the {wanted}" if wanted else "the vehicle you asked about"
+    trade = _slot_display(payload, "trade_in.model")
+    stock = (payload.get("context") or {}).get("inventory") or []
+    theme = touch.get("theme")
+    if theme == "vehicle_visual":
+        return f"I had another look at {it} for you. Anything you'd like to see or know about it?", []
+    if theme == "financing_help":
+        return ("Would you like a hand with financing or payment options? The team can walk you through "
+                "what's possible."), []
+    if theme == "trade_in":
+        return (f"Would you like the team to take a proper look at your {trade} while you're in?" if trade
+                else "Do you have a car you'd want to put towards it? The team can take a look at it for you."), []
+    if theme == "vehicle_value":
+        if stock:
+            car = stock[0]
+            detail = " ".join(str(x) for x in (car.get("trim"), car.get("exterior_color")) if x)
+            if detail:
+                return (f"The {car.get('year')} {car.get('make')} {car.get('model')} we have is the "
+                        f"{detail}. Worth a look?"), ([car["vin"]] if car.get("vin") else [])
+        return f"Is there anything in particular you want to know about {it}?", []
+    if theme == "appointment_value":
+        return (f"Coming in means the team can go through {it} with you properly, in one go. "
+                "What day would suit you?"), []
+    if theme == "direct_close":
+        return f"Are you still thinking about {it}? I can hold a time for you - what day works?", []
+    if theme == "price_or_offer":
+        return f"Still keeping an eye out for you on {it}. Would you like me to let you know what comes in?", []
+    return f"Just checking in about {it}, {name}. Anything I can help with?", []
+
+
 def _confirm_text(confirm: dict[str, Any]) -> str:
     shown = confirm.get("display") or confirm.get("value")
     if confirm.get("kind") == "date":
@@ -737,6 +784,27 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
                           else "What's a good phone number for the visit?")
         body = f"{f'{answered} ' if answered else ''}Got it - {visit.get('display')} works. {field_question}"
         why = f"The customer picked a time, but we're missing their {visit['ask_contact']} before it can be booked."
+    if touch := payload.get("touch"):
+        # MASTER_PLAN_3 C4: a scheduled cadence touch, not a reply to anything.
+        if touch.get("fixed_text"):
+            body = touch["fixed_text"]
+            why = "Touch 2: the client's non-negotiable name nudge, and nothing else."
+        else:
+            body, touch_vins = _touch_text(touch, payload, name)
+            vins = touch_vins or vins
+            why = f"Cadence touch {touch.get('touch_number')} (day {touch.get('day')}): {touch.get('label')}."
+    if touch1 := payload.get("touch1"):
+        # MASTER_PLAN_3 C4: the client's required first-reply structure - their opening, then what we
+        # had to say, then the mandatory closing question. The after-hours choice, when there is one,
+        # stays the very last question (it asks what to do next).
+        tail = ""
+        marker = "We're closed right now"
+        if (cut := body.find(marker)) > 0:
+            tail, body = " " + body[cut:], body[:cut].rstrip()
+        core = re.sub(r"^(?:Thanks for reaching out!|Thanks!)\s*", "", body.removeprefix(opener).strip()).strip()
+        pieces = [touch1["intro"], core, touch1.get("ending") or ""]
+        body = " ".join(piece for piece in pieces if piece) + tail
+        why = f"{touch1['why']} {why}"
     if payload.get("quiet_hours"):
         body += " The team will pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."
@@ -747,7 +815,9 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         body += " Plus $500 off, guaranteed!"
         why += " (Dev hint: an invented offer was added on purpose to exercise the guard.)"
 
-    sms = body if len(body) <= SMS_MAX else body[: SMS_MAX - 1].rsplit(" ", 1)[0] + "…"
+    # The first reply carries the client's required opening, so it may use three segments (decision 152).
+    limit = TOUCH1_SMS_MAX if payload.get("touch1") else SMS_MAX
+    sms = body if len(body) <= limit else body[: limit - 1].rsplit(" ", 1)[0] + "…"
     subject = f"Re: {campaign['name']}" if campaign else "Your inquiry"
     result = {"sms_text": sms, "email_subject": subject,
              "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
@@ -755,8 +825,8 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
              else [],
              "sms_vins": vins, "email_vins": vins}
     if body_no_vehicles:
-        no_sms = body_no_vehicles if len(body_no_vehicles) <= SMS_MAX else (
-            body_no_vehicles[: SMS_MAX - 1].rsplit(" ", 1)[0] + "…")
+        no_sms = body_no_vehicles if len(body_no_vehicles) <= limit else (
+            body_no_vehicles[: limit - 1].rsplit(" ", 1)[0] + "…")
         result.update(sms_text_no_vehicles=no_sms, email_subject_no_vehicles=subject,
                       email_body_no_vehicles=f"Hi {name},\n\n{body_no_vehicles}\n\nThanks,\nThe Team")
     return result

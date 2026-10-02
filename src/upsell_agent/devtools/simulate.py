@@ -220,11 +220,14 @@ async def send_reply(dealer_id: str, lead_id: str, channel: str, text: str, enqu
 
 # The platform's staff-owned statuses (aidmvcs-be-dev lib/ai/aiStaff.js STAFF_OWNED_STATUSES): moving a
 # lead to one of these sends the AI `lead-paused` with this exact reason (notifyAiOfStaffStatus).
-STAFF_OWNED_STATUSES = ("Appointment Booked", "Visited", "Sold", "DND", "Managerial Review")
+STAFF_OWNED_STATUSES = ("Appointment Booked", "Visited", "Sold", "DND", "Managerial Review",
+                        "Sold Pending", "Sold Delivered", "Unsold")
+# The manager's outcome after a Sales Visit (MASTER_PLAN_3 C5).
+MANAGER_OUTCOMES = ("Sold Pending", "Sold Delivered", "Unsold")
 
 
 async def send_staff_status(dealer_id: str, lead_id: str, status: str, enqueue: Enqueue, *,
-                            booking_at: str | None = None) -> IntakeResult:
+                            booking_at: str | None = None, manager_outcome: str | None = None) -> IntakeResult:
     """What the platform's status route does when staff move a lead
     (api/conversations/lead/status/route.js): saves the status on the Lead
     (and, for Appointment Booked, the booking fields, dealer time stored as
@@ -232,7 +235,12 @@ async def send_staff_status(dealer_id: str, lead_id: str, status: str, enqueue: 
     from upsell_agent.events.models import LeadPausedEvent
 
     db = dealer_scoped_db(dealer_id)
-    update: dict = {"lead_status": status, "fe_lead_status": status, "statusChangedAt": clock.now()}
+    # "Visited" with a manager outcome ends at that outcome, and the AI is told about both in one event.
+    outcome = manager_outcome if status == "Visited" and manager_outcome in MANAGER_OUTCOMES else None
+    shown = outcome or status
+    update: dict = {"lead_status": shown, "fe_lead_status": shown, "statusChangedAt": clock.now()}
+    if outcome:
+        update.update({"manager_outcome": outcome, "manager_outcome_at": clock.now()})
     if status == "Appointment Booked" and booking_at:
         from datetime import datetime
         at = datetime.fromisoformat(booking_at)
@@ -248,7 +256,9 @@ async def send_staff_status(dealer_id: str, lead_id: str, status: str, enqueue: 
         return IntakeResult(status="skipped")
     event = LeadPausedEvent(event_id=f"status-{lead_id}-{''.join(c for c in status if c.isalnum())}-"
                                      f"{int(clock.now().timestamp() * 1000)}",
-                            dealer_id=dealer_id, lead_id=lead_id, reason=f'Staff moved the lead to "{status}"')
+                            dealer_id=dealer_id, lead_id=lead_id,
+                            reason=f'Staff moved the lead to "{status}"'
+                                   + (f' (manager outcome: "{outcome}")' if outcome else ""))
     return await accept_event("lead-paused", event, enqueue)
 
 

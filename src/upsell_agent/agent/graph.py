@@ -41,7 +41,11 @@ from upsell_agent.agent.nodes.search_stock import search_stock
 from upsell_agent.agent.nodes.template_reply import template_reply
 from upsell_agent.agent.nodes.validate import validate
 from upsell_agent.agent.state import AgentState
-from upsell_agent.scheduler.followups import TRIGGER_VISIT_FOLLOWUP
+from upsell_agent.scheduler.followups import (
+    TRIGGER_CADENCE_TOUCH,
+    TRIGGER_NEXT_ACTION,
+    TRIGGER_VISIT_FOLLOWUP,
+)
 
 NodeFn = Callable[[AgentState, Any, TurnContext], Awaitable[dict]]
 
@@ -96,12 +100,18 @@ def _traced(name: str, fn: NodeFn) -> Callable[[AgentState, RunnableConfig], Awa
     return run
 
 
+#: Triggers whose turn has no customer message behind it (see _after_load).
+NO_INBOUND_TRIGGERS = frozenset({TRIGGER_RESUME, TRIGGER_VISIT_FOLLOWUP, TRIGGER_NEXT_ACTION,
+                                 TRIGGER_CADENCE_TOUCH})
+
+
 def _after_load(state: AgentState) -> str:
     if state.first_reply_via_template:
         return "fallback"
-    # The after-hours morning message (MASTER_PLAN_3 B1) and the dated visit_followup
-    # (MASTER_PLAN_3 B4 item 4) answer no new message: nothing to extract.
-    return "search_stock" if state.trigger in (TRIGGER_RESUME, TRIGGER_VISIT_FOLLOWUP) else "extract"
+    # Messages the system starts answer no new message, so there is nothing to extract: the
+    # after-hours morning message (B1), the dated visit_followup (B4 item 4), the customer's own
+    # dated next step and the cadence touches (C3, C4).
+    return "search_stock" if state.trigger in NO_INBOUND_TRIGGERS else "extract"
 
 
 def _after_extract(state: AgentState) -> str:

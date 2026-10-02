@@ -27,7 +27,7 @@ Steps (one key per step):
   set_dealer_mode:    {dealer, mode: off|shadow|live}   on the platform dealer record (restored after the scenario)
   advance_clock:      {hours} or {dealer: A, to: "Tue 10:00"} (the next such time in that dealer's timezone)
                       moves the dev clock and fires due follow-ups (reset after the scenario)
-  expect_followup:    {lead, status, kind: channel_switch|handoff_check|resume_at_opening, to_channel?, count?,
+  expect_followup:    {lead, status, kind: channel_switch|handoff_check|resume_at_opening|cadence_touch|appointment_<step>, to_channel?, count?,
                        index: -1, timeout_s}
                       one of the lead's scheduled items of that kind, oldest first (-1 = the latest)
   delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
@@ -192,7 +192,9 @@ WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
     from upsell_agent.scheduler.followups import (
+        APPOINTMENT_KINDS,
         CHANNEL_SWITCHES,
+        KIND_CADENCE_TOUCH,
         KIND_HANDOFF_CHECK,
         KIND_NEXT_ACTION,
         KIND_NEXT_ACTION_CHECK,
@@ -202,7 +204,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
 
     flt: dict[str, Any] = {}
     if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                            KIND_NEXT_ACTION_CHECK):
+                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, *APPOINTMENT_KINDS):
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
         flt.update(CHANNEL_SWITCHES)
@@ -308,7 +310,7 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         if args.get("booking_in_days") is not None:
             booking_at = (clock.now() + later(days=float(args["booking_in_days"]))).isoformat()
         result = await simulate.send_staff_status(lead["dealer_id"], lead["lead_id"], args["status"], ctx.enqueue,
-                                                  booking_at=booking_at)
+                                                  booking_at=booking_at, manager_outcome=args.get("manager_outcome"))
         return f"staff set the lead to {args['status']!r} ({result.status})"
 
     if kind == "wait_turns":
@@ -746,6 +748,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             {"vin": {"$in": [r["vin"] for r in records]}, "dealerId": dealer_id},
             {"$set": {"dev_scenario": True}})
         ctx.stock[args["as"]] = records
+        # The worker caches stock searches for 60 s; make it forget them so this stock is what it finds.
+        await ctx.enqueue("clear_inventory_cache", key=f"clear_inventory_cache:scenario:{uuid.uuid4().hex[:8]}")
+        await asyncio.sleep(0.5)
         return f"{len(records)} vehicle(s) in stock: {', '.join(r['vin'] for r in records)}"
 
     if kind == "expect_inventory":

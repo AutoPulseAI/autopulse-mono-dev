@@ -131,8 +131,10 @@ def test_profile_endpoint_needs_the_shared_secret_and_returns_the_profile(client
     body = client.get(url, params={"dealer_id": DEALER}, headers=headers).json()
     assert body["lead"]["status"] == "active" and body["lead"]["lead_type"] == "trade_in"
     assert body["required"]["total"] == 4
-    # Stage 10: the reply that was sent has its 24h switch to email waiting.
-    assert body["pending_followup"]["channel"] == "email" and body["pending_followup"]["due_at"].endswith("+00:00")
+    # MASTER_PLAN_3 C4: the cadence replaces Plan 1's 24h switch - the next touch is the 3-hour name nudge.
+    assert body["pending_followup"] is None
+    assert body["cadence"]["next_touch"]["theme"] == "name_nudge" and body["cadence"]["touch_number"] == 2
+    assert body["cadence"]["next_touch"]["due_at"].endswith("+00:00") and body["cadence"]["day"] == 1
     assert client.get(url, params={"dealer_id": OTHER}, headers=headers).status_code == 404
 
 

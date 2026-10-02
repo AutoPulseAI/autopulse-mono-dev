@@ -13,8 +13,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from upsell_agent.agent import lifecycle
+from upsell_agent import clock
+from upsell_agent.agent import cadence, lifecycle
 from upsell_agent.api.auth import require_internal_auth
+from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     PLATFORM_BOOKINGS_COLLECTION,
@@ -25,6 +27,7 @@ from upsell_agent.integrations.mongodb import (
 )
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
+    KIND_CADENCE_TOUCH,
     KIND_HANDOFF_CHECK,
     KIND_RESUME,
     KIND_VISIT_FOLLOWUP,
@@ -68,11 +71,20 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
     booking = await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one(
         {"_id": as_object_id(str(booking_id))}) if booking_id else None
     next_action = state.get("next_action")
+    # MASTER_PLAN_3 C4: where the lead is in the Day 1-90 cadence, and the touch that's due next.
+    cadence_state = cadence.CadenceState.load(state)
+    profile_row = await dealer_profile(dealer_id)
+    touch_row = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_CADENCE_TOUCH})
+    cadence_view = ({**cadence.describe(cadence_state, clock.now(), profile_row.tz),
+                     "next_touch": ({**(touch_row.get("touch") or {}), "due_at": _iso(touch_row.get("due_at"))}
+                                    if touch_row else None)}
+                    if cadence_state.started_at else None)
     return {
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
         # MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py), its
         # opportunity clock (never reset), a dated next step, and how it got here.
+        "cadence": cadence_view,
         "lifecycle": {
             "stage": state.get("stage"), "label": lifecycle.label(state.get("stage")),
             "reason": state.get("stage_reason"), "since": _iso(state.get("stage_at")),
@@ -81,7 +93,10 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
             "opportunity_closed_at": _iso(state.get("opportunity_closed_at")),
             "next_action": ({**next_action, "entered_at": _iso(next_action.get("entered_at"))}
                             if next_action else None),
-            "appointment": state.get("appointment"),
+            "appointment": ({**state["appointment"], "planned_at": _iso(state["appointment"].get("planned_at")),
+                             "confirmed_at": _iso(state["appointment"].get("confirmed_at")),
+                             "showed_at": _iso(state["appointment"].get("showed_at"))}
+                            if state.get("appointment") else None),
             "history": [{**h, "at": _iso(h.get("at"))} for h in state.get("stage_history") or []],
         },
         **profile.to_api(),

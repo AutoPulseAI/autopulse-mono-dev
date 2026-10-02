@@ -23,8 +23,10 @@ const STATUS_STYLE: Record<FollowupStatus, { bg: string; fg: string }> = {
   suppressed: { bg: "var(--warn-soft)", fg: "var(--warn)" },
   failed: { bg: "var(--bad-soft)", fg: "var(--bad)" },
   unknown: { bg: "var(--warn-soft)", fg: "var(--warn)" },
+  // Dormant fallback (MASTER_PLAN_3 C4): the other channel's version, sent only if the message fails to deliver.
+  standby: { bg: "var(--panel-2)", fg: "var(--muted)" },
 };
-const FADED = new Set<FollowupStatus>(["cancelled", "superseded"]);
+const FADED = new Set<FollowupStatus>(["cancelled", "superseded", "standby"]);
 
 function countdown(dueMs: number, nowMs: number): string {
   const s = Math.round((dueMs - nowMs) / 1000);
@@ -166,6 +168,11 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                               {f.kind === "next_action" && (
                                 <span className="mr-1 rounded px-1 text-[10px]" style={{ background: "var(--ai-soft)", color: "var(--ai)" }}>next step</span>
                               )}
+                              {f.kind === "cadence_touch" && (
+                                <span className="mr-1 rounded bg-accent-soft px-1 text-[10px] text-accent">
+                                  touch {f.touch?.touch_number} · {f.touch?.theme_label}
+                                </span>
+                              )}
                               {f.kind === "next_action_check" && (
                                 <span className="mr-1 rounded bg-panel-2 px-1 text-[10px] text-muted">24h reply check</span>
                               )}
@@ -185,6 +192,8 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                 ? `"the team is in now" by ${f.to_channel.toUpperCase()} when the dealership opens`
                                 : f.kind === "visit_followup"
                                   ? `a fresh visit offer by ${f.to_channel.toUpperCase()} (declined 3 times earlier)`
+                                : f.kind === "cadence_touch"
+                                  ? `day ${f.touch?.day} of the cadence, by SMS and email together`
                                 : f.kind === "next_action"
                                   ? `checking back by ${f.to_channel.toUpperCase()}, as the customer asked`
                                 : f.kind === "next_action_check"
