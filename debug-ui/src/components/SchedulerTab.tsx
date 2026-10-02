@@ -28,6 +28,15 @@ const STATUS_STYLE: Record<FollowupStatus, { bg: string; fg: string }> = {
 };
 const FADED = new Set<FollowupStatus>(["cancelled", "superseded", "standby"]);
 
+// MASTER_PLAN_3 C5: what each appointment step is, for its badge and its line.
+const APPOINTMENT_STEP: Record<string, { label: string; what: string }> = {
+  appointment_countdown: { label: "countdown", what: "daily countdown to the visit, by SMS and email" },
+  appointment_confirm: { label: "confirm Y/N", what: "day-before confirmation, asks for Y or N" },
+  appointment_no_show_check: { label: "no-show check", what: "1h after the visit time: no visit → no-show message" },
+  appointment_no_show_followup: { label: "no-show follow-up", what: "no reply to the no-show message → one more" },
+  appointment_no_show_close: { label: "no-show close", what: "still no reply → back into the follow-up cadence" },
+};
+
 function countdown(dueMs: number, nowMs: number): string {
   const s = Math.round((dueMs - nowMs) / 1000);
   if (s <= 0) return "due now";
@@ -173,6 +182,11 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                   touch {f.touch?.touch_number} · {f.touch?.theme_label}
                                 </span>
                               )}
+                              {APPOINTMENT_STEP[f.kind] && (
+                                <span className="mr-1 rounded px-1 text-[10px]" style={{ background: "var(--ai-soft)", color: "var(--ai)" }}>
+                                  {APPOINTMENT_STEP[f.kind].label}
+                                </span>
+                              )}
                               {f.kind === "next_action_check" && (
                                 <span className="mr-1 rounded bg-panel-2 px-1 text-[10px] text-muted">24h reply check</span>
                               )}
@@ -194,6 +208,8 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                   ? `a fresh visit offer by ${f.to_channel.toUpperCase()} (declined 3 times earlier)`
                                 : f.kind === "cadence_touch"
                                   ? `day ${f.touch?.day} of the cadence, by SMS and email together`
+                                : APPOINTMENT_STEP[f.kind]
+                                  ? `${APPOINTMENT_STEP[f.kind].what}${f.appointment_at ? ` (visit ${formatDateTime(f.appointment_at)})` : ""}`
                                 : f.kind === "next_action"
                                   ? `checking back by ${f.to_channel.toUpperCase()}, as the customer asked`
                                 : f.kind === "next_action_check"

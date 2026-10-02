@@ -687,9 +687,17 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
               f"angle: {visit_offer.get('angle') if visit_offer else '?'})."
     elif action == "clarify":
         items = (payload.get("clarify") or {}).get("items", [])
-        explained = " ".join(i["explanation"] for i in items if i.get("explanation"))
-        again = " ".join(i["question"] for i in items if i.get("question"))
-        body = f"Sorry, I should have been clearer. {explained} {again}".strip()
+
+        def _explain(chosen: list[dict[str, Any]]) -> str:
+            explained = " ".join(i["explanation"] for i in chosen if i.get("explanation"))
+            again = " ".join(i["question"] for i in chosen if i.get("question"))
+            return f"Sorry, I should have been clearer. {explained} {again}".strip()
+
+        body = _explain(items)
+        if len(body) > SMS_MAX and len(items) > 1:
+            # Explaining every question from the last message wouldn't fit one SMS and the cut would drop
+            # the question itself: explain and ask again only the first one.
+            body = _explain(items[:1])
         prefix = body
         others = [q for q in questions if q["label"] != "clarify"]
         if others:

@@ -24,6 +24,7 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | C1 extension (opt-out levels, replies after opt-out, opt-in) | **Built and unit-tested (1 Oct 2026), not committed.** Decisions 135–146. 1051 unit tests, 79/79 offline evals. **Live Docker scenarios not run:** the running containers use the real models. Staff DND left unchanged, for the user to decide (decision 146). |
 | C2. Omnichannel call tasks | **Skipped for now** (27 Sept). A dated "call me …" step leaves the team a notice instead (decision 131). |
 | C4. Short-Term cadence and required touches | **Built, unit-tested and verified live in Docker (2 Oct 2026).** Decisions 147-157. 1161 unit + eval tests; scenarios `pc4_*` pass on the offline model. |
+| C5. Appointment confirmation, no-show, sales visit | **Built: AI service and platform (2 Oct 2026).** Decisions 158-165. 54 new tests. All four `pc5_*` scenarios pass live on the offline model; platform tests 66/66. |
 | C3. Lifecycle state machine | **Built and unit-tested (1 Oct 2026).** Decisions 123–134. 1012 unit tests, 79/79 offline evals, Debug UI type check clean. **Live Docker scenarios not run:** Docker wasn't running (see C3 section). |
 
 ---
@@ -71,6 +72,52 @@ New: 37 in `test_compliance.py` (with parametrized cases) (keywords and capital 
 - **Known limit:** after a keyword STOP on SMS, Twilio refuses our texts (21610) until START / UNSTOP / YES, so the reply after a keyword STOP doesn't arrive by text.
 - **Platform `customerResolver.js`** sets `sms_opt_in: true` even over `false`: its owner is to be told (not our code).
 - Counsel: the confirmation wording, and replies after a revocation (TCPA PDF §3, §13).
+
+---
+
+## Phase C5: Appointment confirmation, no-show and sales visit - built (2 Oct 2026)
+
+The client's appointment workflow (Omnichannel PDF §7-§10). Decisions 158-165 in architecture.md.
+
+### What was built
+
+| Piece | Where |
+|---|---|
+| The steps as pure logic: daily countdown (not the day before, at most 6), day-before Y/N at 10:00, no-show check at +1h; same-day appointments get only the no-show check; the client's texts word for word, a missing agent name left out | `agent/appointment.py` (new) |
+| `appointment_*` scheduled work, planned when an appointment is set or moved (AI booking, customer move, staff "Appointment Booked"), older steps superseded, pre-send re-check, text and email together | `scheduler/followups.py` (`plan_appointment_timers`, appointment step firing) |
+| Y/N router: Y confirms (`PUT /api/booking` `confirmed`), N offers new times at once, unclear asked once more, a question is a normal turn | `events/handlers.py`, `appointment.classify_answer` |
+| No-show: No Show stage and message at +1h, "how did it go" at +24h, back into the cadence at +48h; a reply stops it | `scheduler/followups.py`, `agent/lifecycle.py` |
+| Showed: "Visited" on the appointment's day marks `appointment.showed`, books `completed`, cancels the steps | `events/handlers.py` `_mark_showed` |
+| Manager outcomes: Sold Pending / Sold Delivered stop the workflow, Unsold back to follow-up for 90 days from the Unsold date | `agent/lifecycle.py` |
+| Profile API `lifecycle.appointment`; Debug UI: Scheduler labels for each `appointment_*` step, the confirmation state on the stage badge | `api/leads.py`, `debug-ui/src/components/SchedulerTab.tsx`, `SlotsPanel.tsx`, `types.ts` |
+| Dev: the scenario runner now deletes the bookings a scenario made (its leads' bookings and `fill_slot`'s stand-ins), so a later run can book the same time | `devtools/scenarios.py` |
+| Tests: 55 new | `tests/unit/test_appointment.py` (new) |
+| **Platform:** "Sold Pending", "Sold Delivered", "Unsold" added (`STAFF_OWNED_STATUSES`, so they pause the AI); `validateManagerOutcome`; "Visited" sends the outcome to the AI in the same event | `aidmvcs-be-dev/app/lib/ai/aiStaff.js`, `test-ai-layer.js` (2 new tests) |
+| **Platform:** the status route takes `manager_outcome`, rejects "Visited" without one, stores `manager_outcome` / `manager_outcome_at` and shows the outcome as the lead's status | `app/api/conversations/lead/status/route.js` |
+| **Platform:** the required outcome picker after "Visited" in all three status screens; the new statuses in the dropdowns, the lead list filters and their badges | `app/dealer/{leads,conversations,booking}/components/StatusModal.js`, `leads/components/LeadList.js`, `leadListlatest.js`, `conversations/components/viewConversations.js` (now forwards the outcome) |
+| Scenarios (stage 305): `pc5_confirm_yes`, `pc5_confirm_no`, `pc5_no_show`, `pc5_manager_outcome` | `scenarios/` |
+
+### Found while running the scenarios live
+1. **The three `pc5_*` failures were not leftover bookings** (the dev DB had none). They were races in the scenarios: `wait_turns` counted the confirmation step itself as a turn, so the check ran before the reply to "N" was answered; and `pc5_no_show` jumped the dev clock past Wednesday, so the confirmation and the no-show check came due together and fought for the lead's lock, and with a frozen dev clock the 30-second retry never came due. The scenarios now wait for the booking and its timers, count the confirmation turn, and step through Wednesday first. No product code changed.
+2. The scenario teardown still deletes a run's bookings (kept: it is correct, just wasn't the cause).
+3. **A C4 bug: a first reply could ask three questions.** When Touch 1 also confirmed an uncertain value (or offered a visit), it still added one slot ask before the mandatory "what are you driving now?", so the guard rejected it twice and the lead got the fallback template. A confirmation or a visit offer now takes the one free question (`decide.py`). Found through `test_about_me_says_only_what_we_know`, which only failed outside opening hours; the file now runs inside them like the other flow tests.
+4. **Older scenario failures fixed** (each also failed on the pre-C4 commit `a042b25`): `p8_tomorrow` hit B4's needed-within-48h handoff (decision 26) and now uses "by Thursday", with the two-question confirmation that policy allows; `pb4_buying_signal`'s first-reply visit offer is the bonus question after the answer, so the outcome is `answer`; `pb5_slot_taken` was a runner bug (`expect_booking: none` returned an empty dict, which the wait loop read as "not yet"); `p7_clarify` expected one question in a two-question first reply, and the offline model's clarification of both questions overflowed one SMS and lost the re-asked question (it now explains only the first when both don't fit). `zz_probe.yaml`, a leftover debug probe, was removed.
+
+### Not done
+- **Platform files edited outside our own code**, with the user's permission for this change only (2 Oct): the status route, the three `StatusModal.js` files, `LeadList.js`, `leadListlatest.js` and the conversations `viewConversations.js` (Prashanth's). `aiStaff.js` and `test-ai-layer.js` are ours.
+- The dashboard's "sold" count (`lib/reportGenerator.js`, user's go-ahead 2 Oct) now includes Sold Pending and Sold Delivered. Staff "No Show": for a live AI dealer the platform skips its own message and the AI sends ours at once (route + `aiStaff.js` + `followups.staff_no_show`, 1 new test).
+- **Platform scenarios** `compare_inventory` (stage 201) and `compare_360` (stage 6) need the platform running (`make dev-full`); not run.
+- **Debug UI type check** not run (no `node_modules` on this machine).
+- Not built by design: the 15-minute details message, vehicle photos (decision 164).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| AI unit tests | **1137 passed** |
+| Live scenarios in Docker, offline model | **63 of 65 pass.** The two left compare against the running platform (`compare_inventory`, `compare_360`) and need `make dev-full` |
+| Platform tests (`make platform-test`) | **66 passed** (2 new); ESLint on the changed files: no new problems (41 before and after, all older) |
+| Ruff | Nothing new (4 older findings in files not touched: `api/auth.py`, `mongodb.py`, `redis_client.py`, `test_qualification_state.py`) |
 
 ---
 

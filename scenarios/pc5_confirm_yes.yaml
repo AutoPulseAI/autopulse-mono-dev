@@ -19,6 +19,6 @@ steps:
   - expect_followup: {lead: v, kind: appointment_confirm, status: sent, timeout_s: 30}
   - expect_last_sent: {lead: v, contains: "Please reply Y for Yes or N for No."}
   - reply: {lead: v, text: "Y"}
-  - wait_turns: {lead: v, count: 4, timeout_s: 20}
+  - wait_turns: {lead: v, count: 5, timeout_s: 20}
   - expect_booking: {lead: v, status: confirmed}
   - expect_lead: {lead: v, stage: appointment_set, status: active}

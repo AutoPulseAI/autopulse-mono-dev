@@ -309,6 +309,29 @@ async def test_no_show_one_hour_after_with_no_visit(mongo):
 
 
 @pytestmark_flow
+async def test_staff_no_show_sends_our_no_show_message_now_and_keeps_the_ai_on(mongo):
+    # The platform skips its own no-show message for an AI dealer and tells us instead (MASTER_PLAN_3 C5).
+    created, _ = await _booked_friday(mongo)
+    [check] = [s for s in await _steps(mongo, created) if s["step"] == "no_show_check"]
+    set_clock(check["due_at"].replace(tzinfo=UTC) - timedelta(minutes=30))  # the team marks it before our +1h
+    result = await handlers.handle_lead_paused(LeadPausedEvent(
+        event_id="ns", dealer_id=DEALER, lead_id=created["lead_id"],
+        reason='Staff moved the lead to "No Show"'), _deps())
+    assert result["status"] == "not_paused" and result["no_show_check"] == "due_now"
+    await followups.fire_due(_deps())
+    state = await _state(mongo, created)
+    assert state["stage"] == "appointment_no_show" and state.get("status", "active") == "active"
+    sms = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"]
+    assert sms[-1]["text"].endswith("I am looking for you in the showroom - are you here and working with someone?")
+    assert [s["step"] for s in await _steps(mongo, created)] == ["no_show_followup"]
+    # Marked again after ours already went: nothing is sent twice.
+    again = await handlers.handle_lead_paused(LeadPausedEvent(
+        event_id="ns2", dealer_id=DEALER, lead_id=created["lead_id"],
+        reason='Staff moved the lead to "No Show"'), _deps())
+    assert again["no_show_check"].startswith("none pending")
+
+
+@pytestmark_flow
 async def test_no_show_follow_up_then_back_into_short_term_follow_up(mongo):
     created, _ = await _booked_friday(mongo)
     await _fire(mongo, created, "no_show_check")

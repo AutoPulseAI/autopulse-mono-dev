@@ -18,6 +18,8 @@ measures both.
 - [ ] SendGrid: the event webhook posts to `<PUBLIC_BASE_URL>/v1/webhooks/sendgrid/events`, signed.
 - [ ] One real round trip on staging with the team's test numbers (`make ai-provider-check`, with `SEND_ALLOWLIST` set). The reply shows in the conversation screen.
 - [ ] The platform's email index exists (`node scripts/ensure-email-indexes.js`).
+- [ ] **Per AI dealer: the platform's appointment reminders are off** (Settings → Reminder settings, "enabled" off; `post_enabled` stays off). The AI sends the countdown, the day-before Y/N and the no-show messages instead (MASTER_PLAN_3 C5); with both on, the customer gets two of each. This also stops old platform reminders firing after the AI moves or cancels a booking (decision 58).
+- [ ] Staff can set "No Show" as usual: for a live AI dealer the platform skips its own no-show message and the AI sends the client's at once (architecture.md decision 165). Staff set "Visited" with the visit's outcome when the customer arrives.
 
 ## Week 1: shadow
 

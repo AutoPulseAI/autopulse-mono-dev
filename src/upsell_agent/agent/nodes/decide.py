@@ -429,9 +429,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if touch1:
         decision["touch1"] = touch1
         if touch1["ending"]:
-            # The closing question is one of the two, so at most one other ask fits (decision 35).
+            # The closing question is one of the two, so at most one other ask fits (decision 35). A
+            # confirmation or a visit offer is already that other question, so no slot ask is added.
+            room = 0 if decision.get("confirm") or decision.get("visit_offer") else 1
             decision["asks"] = [a for a in decision["asks"]
-                                if TOUCH1_ENDING_SLOT not in a.get("slots", [])][:1]
+                                if TOUCH1_ENDING_SLOT not in a.get("slots", [])][:room]
             decision["slots"] = [p for item in decision["asks"] for p in item["slots"]]
             if TOUCH1_ENDING_SLOT not in decision["slots"]:
                 decision["slots"].append(TOUCH1_ENDING_SLOT)

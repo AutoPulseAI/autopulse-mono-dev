@@ -1,19 +1,18 @@
-name: '"Tomorrow" becomes a real date'
+name: '"Thursday" becomes a real date'
 stage: 108
-description: With the dealer's clock on a Tuesday morning, "I need it by tomorrow" is saved as Wednesday's date (and a this-week timeline) and said back plainly; "next Friday" is confirmed with the actual date before it's used.
+description: With the dealer's clock on a Tuesday morning, "I need it by Thursday" is saved as Thursday's date (and a this-week timeline) and said back plainly; "next Friday" is confirmed with the actual date before it's used.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tia Tomorrow, comments: "Hi, I saw your ad"}
   - wait_turns: {lead: t, count: 1, timeout_s: 20}
-  - reply: {lead: t, text: "I need it by tomorrow"}
+  - reply: {lead: t, text: "I need it by Thursday"}
   - wait_turns: {lead: t, count: 2, timeout_s: 20}
-  - expect_last_sent: {lead: t, contains: "Got it - Wednesday,"}
-  - expect_last_sent: {lead: t, contains: "(tomorrow)"}
+  - expect_last_sent: {lead: t, contains: "Got it - Thursday, October 8"}
   - expect_slots: {lead: t, filled: [interest.needed_by, interest.timeline], values: {interest.timeline: this_week}}
   - reply: {lead: t, text: "actually next Friday"}
   - wait_turns: {lead: t, count: 3, timeout_s: 20}
   - expect_turn: {lead: t, outcome: confirm}
-  - expect_last_sent: {lead: t, contains: "Just to check, is that Friday,", question_marks: 1}
+  - expect_last_sent: {lead: t, contains: "Just to check, is that Friday,", question_marks: 2}
   - reply: {lead: t, text: "yes"}
   - wait_turns: {lead: t, count: 4, timeout_s: 20}
   - expect_slots: {lead: t, filled: [interest.needed_by]}

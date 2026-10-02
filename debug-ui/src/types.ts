@@ -213,7 +213,13 @@ export interface LifecycleView {
   opportunity_closed_at: string | null;
   next_action: { date: string; time: string; display: string; words: string; channel: string;
     call_requested?: boolean; context_notes: string } | null;
-  appointment: { display?: string; at?: string; by?: string } | null;
+  // MASTER_PLAN_3 C5: the booked visit and where its day-before confirmation stands.
+  appointment: {
+    display?: string; at?: string; by?: string; booking_id?: string; planned_at?: string | null;
+    confirmed?: boolean; confirmed_at?: string | null; showed?: boolean; showed_at?: string | null;
+    confirmation?: { status: "asked" | "confirmed" | "declined"; sent_at?: string; answered_at?: string;
+      asked_again?: boolean } | null;
+  } | null;
   history: { at: string; from: string | null; to: string; rule: string; reason: string; source: string }[];
 }
 
@@ -266,7 +272,10 @@ export interface Followup {
   // resume_at_opening: the after-hours morning message (MASTER_PLAN_3 B1).
   // visit_followup: the dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4).
   // next_action / next_action_check: the customer's dated next step and the 24h check after it (MASTER_PLAN_3 C3).
-  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check" | "cadence_touch";
+  kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check" | "cadence_touch"
+    // MASTER_PLAN_3 C5: the appointment's own messages (agent/appointment.py).
+    | "appointment_confirm" | "appointment_countdown" | "appointment_no_show_check"
+    | "appointment_no_show_followup" | "appointment_no_show_close";
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";
@@ -274,6 +283,9 @@ export interface Followup {
   to?: string;
   // cadence_touch: the theme and day this touch is about (MASTER_PLAN_3 C4).
   touch?: { touch_number: number; theme: string; theme_label: string; day: number } | null;
+  // appointment_*: the step and the appointment it belongs to (MASTER_PLAN_3 C5).
+  step?: string;
+  appointment_at?: string;
   text?: string;
   subject?: string | null;
   due_at: string;

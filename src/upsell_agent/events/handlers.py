@@ -48,6 +48,7 @@ from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
     plan_appointment_timers,
     plan_cadence_touch,
+    staff_no_show,
 )
 
 # Statuses in which the AI doesn't write replies (architecture §5 step 3). An opt-out is no longer
@@ -498,6 +499,11 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     outcome_status = lifecycle.manager_outcome_from_reason(event.reason)
     stage_event = lifecycle.STAFF_STATUS_EVENTS.get(staff_status or "")
     outcome_event = lifecycle.STAFF_STATUS_EVENTS.get(outcome_status or "")
+    if staff_status == "No Show":
+        # MASTER_PLAN_3 C5: the AI owns the no-show messages for an AI dealer (the platform skips its own), so
+        # staff marking a no-show sends ours now instead of at +1h. Nothing is paused: the no-show flow runs on.
+        return {"status": "not_paused", "reason": "No Show: the AI runs the no-show messages",
+                **await staff_no_show(db, event.lead_id)}
     stage_change = None
     extra: dict[str, Any] = {}
     final_event = outcome_event or stage_event

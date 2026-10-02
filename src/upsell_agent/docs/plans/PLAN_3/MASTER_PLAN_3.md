@@ -985,6 +985,8 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 
 ## Phase C5: Appointment Confirmation, No-Show & Sales Visit Workflows
 
+> **Built 2 Oct 2026, AI service and platform** (`agent/appointment.py`; the platform's statuses and required outcome prompt; architecture.md decisions 158-165; details and verification: `progress_3.md`, "Phase C5").
+
 > **Decided 27 Sept: C5 ships** (architecture.md decision 33). What we build:
 >
 > - **Day-before Y/N confirmation and its router** (AI service): "Y" → `PUT /api/booking` with `booking_status: confirmed`; "N" → offer new times straight away (B5's move); unclear → ask once more; no answer → stays booked, unconfirmed. Skipped for same-day appointments.

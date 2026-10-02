@@ -37,6 +37,16 @@ const STAGE_COLOUR: Record<string, string> = {
   sales_visit: "var(--ok)", opted_out: "var(--bad)", closed_lost: "var(--bad)",
 };
 
+// MASTER_PLAN_3 C5: the appointment's confirmation, in a word.
+function confirmationWord(appt: NonNullable<LifecycleView["appointment"]>): string {
+  if (appt.showed) return "showed";
+  if (appt.confirmed) return "confirmed";
+  const c = appt.confirmation;
+  if (c?.status === "declined") return "said N";
+  if (c?.status === "asked") return c.asked_again ? "asked twice" : "asked Y/N";
+  return "not asked yet";
+}
+
 function StageBadge({ lifecycle }: { lifecycle: LifecycleView }) {
   const colour = STAGE_COLOUR[lifecycle.stage ?? ""] ?? "var(--muted)";
   const lines = [
@@ -46,6 +56,8 @@ function StageBadge({ lifecycle }: { lifecycle: LifecycleView }) {
     lifecycle.next_action ? `Next step: ${lifecycle.next_action.display} at ${lifecycle.next_action.time} ` +
       `(${lifecycle.next_action.call_requested ? "asked for a call" : lifecycle.next_action.channel}; ` +
       `"${lifecycle.next_action.words}")` : "",
+    lifecycle.appointment?.at ? `Appointment: ${formatDateTime(lifecycle.appointment.at)} (${confirmationWord(lifecycle.appointment)})` +
+      `${lifecycle.appointment.booking_id ? `, booking ${lifecycle.appointment.booking_id}` : ""}` : "",
     ...(lifecycle.history.length ? ["", "History:"] : []),
     ...lifecycle.history.slice().reverse().map((h) =>
       `${formatDateTime(h.at)}  ${h.from ?? "—"} → ${h.to}  (${h.rule}, ${h.source}): ${h.reason}`),
@@ -55,6 +67,7 @@ function StageBadge({ lifecycle }: { lifecycle: LifecycleView }) {
           style={{ color: colour, border: `1px solid ${colour}` }} title={lines.join("\n")}>
       {lifecycle.label}
       {lifecycle.next_action && <span className="ml-1 font-medium">· {lifecycle.next_action.display}</span>}
+      {lifecycle.appointment?.at && <span className="ml-1 font-medium">· {confirmationWord(lifecycle.appointment)}</span>}
     </span>
   );
 }

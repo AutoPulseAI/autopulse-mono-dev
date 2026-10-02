@@ -1310,6 +1310,18 @@ async def _interest_model(db: DealerScopedDatabase, customer_id: str, lead_id: s
     return None
 
 
+async def staff_no_show(db: DealerScopedDatabase, lead_id: str) -> dict[str, Any]:
+    """Staff set "No Show" (MASTER_PLAN_3 C5): the platform leaves the no-show message to the AI for an AI
+    dealer, so the pending +1h no-show check fires now instead (its own checks still run: stage, dealer, send
+    check). Already sent, or no appointment on record: nothing more to send."""
+    result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+        {"lead_id": lead_id, "kind": appointment.KIND_PREFIX + appointment.STEP_NO_SHOW_CHECK, "status": "pending"},
+        {"$set": {"due_at": clock.now(), "reason": 'staff set "No Show": the no-show message goes now'}})
+    if result.modified_count:
+        return {"no_show_check": "due_now"}
+    return {"no_show_check": "none pending (already sent, or no appointment on record)"}
+
+
 async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, after: timedelta) -> None:
     """The next no-show step, `after` the one that just went out. It belongs to the No Show stage, so a reply
     (which moves the stage) or a visit cancels it."""

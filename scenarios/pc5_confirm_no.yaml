@@ -11,14 +11,16 @@ steps:
   - wait_turns: {lead: v, count: 2, timeout_s: 20}
   - reply: {lead: v, text: "Can I come Thursday at 10 AM?"}
   - wait_turns: {lead: v, count: 3, timeout_s: 20}
+  - expect_booking: {lead: v, status: pending, time: "10:00"}
+  - expect_followup: {lead: v, kind: appointment_no_show_check, status: pending, due_local: "11:00"}
   - advance_clock: {dealer: A, to: "Wed 10:05"}
   - expect_followup: {lead: v, kind: appointment_confirm, status: sent, timeout_s: 30}
   - reply: {lead: v, text: "N"}
-  - wait_turns: {lead: v, count: 4, timeout_s: 20}
+  - wait_turns: {lead: v, count: 5, timeout_s: 20}
   - expect_last_sent: {lead: v, contains: "Which works better?"}
   - expect_booking: {lead: v, status: pending}
   - reply: {lead: v, text: "the second one works"}
-  - wait_turns: {lead: v, count: 5, timeout_s: 20}
+  - wait_turns: {lead: v, count: 6, timeout_s: 20}
   - expect_booking: {lead: v, status: pending}
   - expect_lead: {lead: v, stage: appointment_set, status: active}
   - expect_followup: {lead: v, kind: appointment_no_show_check, status: pending}

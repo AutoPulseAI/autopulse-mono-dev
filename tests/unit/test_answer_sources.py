@@ -4,6 +4,7 @@ from exactly, and accepted by the guard - while invented numbers still aren't.""
 
 from datetime import UTC, date, datetime
 
+import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings
@@ -25,6 +26,10 @@ from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
 from upsell_agent.slots.display import about_customer, display_value, plain_date
 from upsell_agent.slots.schema import SCHEMA
+
+# The turns here are normal replies: inside opening hours, whenever the suite runs (otherwise the
+# after-hours choice, MASTER_PLAN_3 B1, replaces the answer in the evening).
+pytestmark = pytest.mark.usefixtures("during_opening_hours", "ny_customer")
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 BARE_DEALER = "66f0000000000000000000d4"

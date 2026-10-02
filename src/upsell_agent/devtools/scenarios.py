@@ -142,6 +142,8 @@ class RunContext:
     # set_contact's DealerVault rows and campaign_check's requests (removed after)
     deals: list[Any] = field(default_factory=list)
     send_checks: list[str] = field(default_factory=list)
+    # fill_slot's stand-in bookings (removed after, with the scenario leads' own bookings)
+    bookings: list[Any] = field(default_factory=list)
 
     def lead(self, alias: str) -> dict[str, str]:
         if alias not in self.leads:
@@ -627,7 +629,7 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         async def found():
             booking = await _booking(lead)
             if want == "none":
-                return {} if booking is None else None
+                return {"none": True} if booking is None else None  # truthy: _wait needs a hit
             return booking if booking and booking.get("booking_status") == want and (
                 "time" not in args or booking.get("bookingTime") == str(args["time"])) else None
 
@@ -656,10 +658,12 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         midnight = day.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
         bookings = dealer_scoped_db(lead["dealer_id"]).collection(PLATFORM_BOOKINGS_COLLECTION)
         for n in range(int(args.get("count", 2))):
-            await bookings.insert_one({"dealer_id": lead["dealer_id"], "lead_id": f"scenario-other-{uuid.uuid4().hex[:8]}",
-                                       "customerName": f"Other {n + 1}", "email": "other@example.test",
-                                       "phone": "5550000000", "bookingDate": midnight, "bookingTime": slot["time"],
-                                       "booking_status": "pending", "notes": "scenario: fills the slot"})
+            inserted = await bookings.insert_one({
+                "dealer_id": lead["dealer_id"], "lead_id": f"scenario-other-{uuid.uuid4().hex[:8]}",
+                "customerName": f"Other {n + 1}", "email": "other@example.test", "phone": "5550000000",
+                "bookingDate": midnight, "bookingTime": slot["time"], "booking_status": "pending",
+                "notes": "scenario: fills the slot"})
+            ctx.bookings.append(inserted.inserted_id)
         return f"{slot['display']} filled by {args.get('count', 2)} other booking(s)"
 
     if kind == "chat":
@@ -942,6 +946,13 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
         await get_db()[PLATFORM_VEHICLES_COLLECTION].delete_many({"vin": {"$in": vins}, "dev_scenario": True})
     if ctx.deals:
         await get_db()[PLATFORM_DEALS_COLLECTION].delete_many({"_id": {"$in": ctx.deals}, "dev_scenario": True})
+    if ctx.leads or ctx.bookings:
+        # A booking left behind keeps its slot taken: a later run that asks for the same time (the clock
+        # moves to the same dealer day every run) would be offered other times instead of booking it.
+        lead_ids = [lead["lead_id"] for lead in ctx.leads.values()]
+        await get_db()[PLATFORM_BOOKINGS_COLLECTION].delete_many({"$or": [
+            {"_id": {"$in": ctx.bookings}},
+            {"lead_id": {"$in": [*lead_ids, *(ObjectId(i) for i in lead_ids if ObjectId.is_valid(i))]}}]})
     if ctx.send_checks:
         await get_db()[AI_SEND_CHECKS_COLLECTION].delete_many({"request_key": {"$in": ctx.send_checks}})
     if ctx.changed_dealers:

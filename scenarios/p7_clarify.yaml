@@ -4,7 +4,7 @@ description: The AI asks about the trade-in's condition; the customer asks what 
 steps:
   - new_lead: {as: c, dealer: A, lead_type: trade_in, channel: sms, name: Cal Clarify, comments: "Trading my 2018 Honda Civic with 60,000 miles"}
   - wait_turns: {lead: c, count: 1, timeout_s: 20}
-  - expect_last_sent: {lead: c, contains: "excellent, good, fair or poor", question_marks: 1}
+  - expect_last_sent: {lead: c, contains: "excellent, good, fair or poor", question_marks: 2}
   - reply: {lead: c, text: "what do you mean?"}
   - wait_turns: {lead: c, count: 2, timeout_s: 20}
   - expect_turn: {lead: c, outcome: clarify}
