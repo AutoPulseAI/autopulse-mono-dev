@@ -25,6 +25,8 @@ Plan: [`MASTER_PLAN_3.md`](MASTER_PLAN_3.md). Build order (27 Sept; Bq added 28 
 | C2. Omnichannel call tasks | **Skipped for now** (27 Sept). A dated "call me …" step leaves the team a notice instead (decision 131). |
 | C4. Short-Term cadence and required touches | **Built, unit-tested and verified live in Docker (2 Oct 2026).** Decisions 147-157. 1161 unit + eval tests; scenarios `pc4_*` pass on the offline model. |
 | C5. Appointment confirmation, no-show, sales visit | **Built: AI service and platform (2 Oct 2026).** Decisions 158-165. 54 new tests. All four `pc5_*` scenarios pass live on the offline model; platform tests 66/66. |
+| C6. Edge cases and operational hardening | **Built and unit-tested (2 Oct 2026).** Decisions 170-176. 37 new unit tests; live scenarios `pc6_*` written. |
+| C2. Omnichannel call task and 60-minute timer | **Built and unit-tested (2 Oct 2026), AI service only.** Decisions 177-183. 17 new unit tests; scenarios `pc2_*` written. Platform task screen not built. |
 | C3. Lifecycle state machine | **Built and unit-tested (1 Oct 2026).** Decisions 123–134. 1012 unit tests, 79/79 offline evals, Debug UI type check clean. **Live Docker scenarios not run:** Docker wasn't running (see C3 section). |
 
 ---
@@ -75,6 +77,7 @@ New: 37 in `test_compliance.py` (with parametrized cases) (keywords and capital 
 
 ---
 
+<<<<<<< HEAD
 ## Phase C5: Appointment confirmation, no-show and sales visit - built (2 Oct 2026)
 
 The client's appointment workflow (Omnichannel PDF §7-§10). Decisions 158-165 in architecture.md.
@@ -121,6 +124,48 @@ The client's appointment workflow (Omnichannel PDF §7-§10). Decisions 158-165 
 
 ---
 
+=======
+---
+
+---
+
+## Phase C2: Omnichannel call task and 60-minute timer - built (2 Oct 2026)
+
+Built after C6, at the user's request, **AI service only** (decisions 177-183). The client's rule: a touch is text + email + a staff call task, and the call must not nag someone already talking to us.
+
+| Step | What happens |
+|---|---|
+| Touch sent | Touch 1 and each cadence touch that goes out starts a 60-minute timer (`scheduled_followups`, kind `call_task`). |
+| Contact in 60 min | A meaningful reply (not an auto-reply), staff taking over, or a stage move away from the working stages cancels it. |
+| 60 min, no contact | Re-checks reply, lead status, stage and dealer mode, then the call rules (valid phone, no voice opt-out, not DND, 8-21 customer time and dealer open hours). |
+| Allowed | The task opens: an `ai_call_tasks` row, a `call_task` notice on the lead, `GET /v1/call-tasks`. |
+| Outside hours | Deferred to the next allowed calling time; re-checked again then. |
+| Staff call | `POST /v1/call-tasks/{id}/complete` (connected / no_answer / voicemail / wrong_number / other) or `/dismiss`. |
+
+**Changed code:** `agent/call_tasks.py`, `compliance/call_check.py`, `api/call_tasks.py` (new); `scheduler/followups.py` (`plan_call_task`, `_fire_call_task_locked`, `cancel_call_task`), `agent/turn.py` (starts the timer), `events/handlers.py` (a reply or a staff takeover cancels), `agent/lifecycle.py` (`call_task` stage rule, open tasks cancelled on a stage change), `api/leads.py` (profile `call_task`, `pending_call_timer`), `integrations/mongodb.py` (`ai_call_tasks` and its indexes), `devtools/scenarios.py` (`expect_call_task`, `advance_clock: {minutes}`).
+
+**Verified:** `tests/unit/test_call_tasks.py`, 17 tests (timer planned; opens at 60 minutes and not before; a reply, an auto-reply, a reply after opening; staff takeover; a newer touch; the pre-activation stage re-check; stage changes cancelling; deferral to 9:00 next morning and opening then; voice opt-out, DND and invalid phone blocking; a text STOP not blocking and "don't call me" blocking; staff completing and dismissing; dealer isolation). Four existing tests that counted scheduled work were adjusted for the extra timer. Scenarios `pc2_call_task_opens` and `pc2_reply_cancels_call` are written, **not yet run live**.
+
+**Platform work not done (needs your decision, nothing in `aidmvcs-be-dev` was touched):** a task list screen with click-to-call that reads `GET /v1/call-tasks`, and calling the complete / dismiss endpoints from it.
+
+## Phase C6: Edge cases and operational hardening - built (2 Oct 2026)
+
+Four items, one rule for the first two (decisions 170-172): a phone or email that is not the customer's, or can never receive, is marked invalid for good, and everything else about the customer carries on.
+
+| Item | What happens now |
+|---|---|
+| Wrong person / bad number | The customer says "wrong number" / "wrong person" (code, no model): the phone (or email) they wrote on is marked invalid, nothing is sent back, the team gets a `bad_contact` notice. The other channel keeps working; with none left the lead becomes Opted Out / Suppressed and its timers stop. |
+| Hard-bounce email | A SendGrid `bounce` of type bounce (or a drop for "Bounced Address" / invalid) marks that email invalid; the SMS version of the follow-up goes at once. A soft bounce marks nothing. A Twilio failure with a "can never receive" code (landline, unknown or invalid number) marks the phone the same way, and the email version goes. |
+| Duplicate leads | A second lead for the same customer (same customer, or same phone / email) is linked to the first and never worked: no first reply, no cadence. Customer messages and resumes follow the first lead. A finished first lead does not block a new one. The platform's leads are untouched (scope 27 Sept). |
+| Photo fallback | `agent/media.py`: a photo only from the same vehicle's own listing, https, not a placeholder; otherwise plain text. The draft guard rejects text that claims a photo is attached when none is. Photo sending is MASTER_PLAN_4 F3, which must use `choose_photo`. |
+
+**Changed code:** `channels/suppression.py`, `agent/duplicates.py`, `agent/media.py` (new); `channels/consent.py` (`contact_invalid`, `usable_recipient`), `compliance/engine.py` (rule 1b), `channels/delivery.py` and `api/webhooks.py` (`hard`), `events/handlers.py` (wrong person, duplicates), `guardrails/draft_guard.py`, `tools/inventory_tool.py`, `devtools/scenarios.py` (own phone and email per scenario lead, `same_contact_as`, `hard`, `duplicate`), `api/dev.py` (`hard` on the status route).
+
+**Verified:** `tests/unit/test_c6.py`, 37 tests: wrong-person phrases and non-matches; the send path blocking the phone; a second valid phone used; last-channel suppression; hard vs soft bounce; the carrier bad-number error; duplicates by customer and by phone; messages and resume following the primary; a closed primary; photo choice and the guard. The scenarios `pc6_wrong_number`, `pc6_hard_bounce` and `pc6_duplicate_lead` are written but NOT yet run live (they need `ai-api` / `ai-worker` rebuilt on the offline model).
+
+**Not built:** a way to restore an address marked invalid by mistake (today it needs a database edit; the history is add-only).
+
+>>>>>>> 11f7514 (c5 implemented)
 ## Phase C4: Short-Term cadence and required touches - built (2 Oct 2026)
 
 The client's follow-up schedule (Omnichannel PDF §3-§4), replacing Plan 1's one-channel 24h switch. Built with the client's 1 Oct answers: Touch 1 always asks "what are you driving now?" except when a trade-in is already indicated (decision 34 reversed, scope Q6); the FINAL PDF's 7 days / 8 touches win (Q5). Decisions 147-157 in architecture.md.

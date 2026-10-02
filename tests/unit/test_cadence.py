@@ -247,7 +247,7 @@ async def test_the_first_reply_starts_the_cadence_and_plans_the_name_nudge(mongo
 async def test_touch_2_is_the_name_nudge_on_text_and_email_and_nothing_else(mongo):
     created = await _new_lead()
     fired = await _fire_next_touch(mongo, created)
-    assert fired["results"] == {"sent": 1}
+    assert fired["results"].get("sent") == 1  # (C2: the 60-minute call timer may fire too)
     sent = [m for m in await _outbox(mongo, created)][1:]
     assert {m["channel"] for m in sent} == {"sms", "email"}
     sms = next(m for m in sent if m["channel"] == "sms")["text"]
@@ -269,7 +269,7 @@ async def test_the_whole_cadence_runs_on_both_channels_then_stops(mongo):
             break
         before = len(await _outbox(mongo, created))
         fired = await _fire_next_touch(mongo, created)
-        assert fired["results"] == {"sent": 1}, fired
+        assert fired["results"].get("sent") == 1, fired  # (C2: the 60-minute call timer may fire too)
         new = (await _outbox(mongo, created))[before:]
         assert {m["channel"] for m in new} == {"sms", "email"}, "every touch goes out on text and email together"
         seen.append((fired["touch"]["touch"]["touch_number"], fired["touch"]["touch"]["day"],
@@ -307,7 +307,7 @@ async def test_one_channel_opted_out_never_stops_the_other(mongo):
     assert (await _state(mongo, created))["stage"] != "opted_out"
     before = len(await _outbox(mongo, created))
     fired = await _fire_next_touch(mongo, created)
-    assert fired["results"] == {"sent": 1}, fired
+    assert fired["results"].get("sent") == 1, fired  # (C2: the 60-minute call timer may fire too)
     new = (await _outbox(mongo, created))[before:]
     assert [m["channel"] for m in new] == ["email"]  # "continue every remaining permitted channel"
 

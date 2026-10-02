@@ -12,6 +12,10 @@ is the latest entry for a customer, channel and `consent_type`:
   evidence it came from (the platform's opt-in flag, the lead form's
   `TCPAOptIn` line).
 - `review`: `open` / `resolved`, channel `all` (an unclear opt-out, C1 item 3).
+- `contact_invalid`: `invalid` (MASTER_PLAN_3 C6): a phone or email that is not
+  the customer's (a wrong person) or can't receive (a hard bounce, a number
+  that can't be texted). Kept under the ADDRESS only: the customer's other
+  phone or email is unaffected. Nothing the system starts goes to it again.
 
 Opt-out entries also carry the `address` (phone in E.164, email lower case)
 when known, and are read by customer **or** address, so a re-imported
@@ -40,7 +44,7 @@ from upsell_agent.compliance.opt_out import (
 from upsell_agent.integrations.mongodb import AI_CONSENT_COLLECTION, DealerScopedDatabase, get_db
 
 Channel = Literal["sms", "email"]
-ConsentType = Literal["opt_out", "marketing_consent", "review"]
+ConsentType = Literal["opt_out", "marketing_consent", "review", "contact_invalid"]
 
 # Lead-form consent written by AutoTrader into the lead's comments.
 _TCPA_OPT_IN = re.compile(r"TCPAOptIn\s*[:=]\s*(true|false)", re.IGNORECASE)
@@ -151,6 +155,30 @@ async def ever_opted_out(db: DealerScopedDatabase, customer_id: str | None, chan
         projection={"_id": 1}))
 
 
+async def mark_invalid(db: DealerScopedDatabase, *, channel: str, address: str | None, reason: str, source: str,
+                       customer_id: str | None = None, lead_id: str | None = None,
+                       evidence: dict[str, Any] | None = None) -> bool:
+    """A phone or email that must not be used again (C6). Returns False when
+    there is no usable address to key it under, or it is already marked."""
+    key = address_key(channel, address)
+    if not key or await is_invalid(db, channel, key):
+        return False
+    await record_consent(db, customer_id=customer_id or "", channel=channel, consent_type="contact_invalid",
+                         status="invalid", source=source, lead_id=lead_id, address=key,
+                         evidence={"reason": reason, **(evidence or {})})
+    return True
+
+
+async def is_invalid(db: DealerScopedDatabase, channel: str, address: str | None) -> bool:
+    """Whether this phone / email was marked invalid (by wrong person or hard bounce)."""
+    key = address_key(channel, address)
+    if not key:
+        return False
+    return bool(await db.collection(AI_CONSENT_COLLECTION).find_one(
+        {"address": key, "channel": channel, "consent_type": "contact_invalid", "consent_status": "invalid"},
+        projection={"_id": 1}))
+
+
 async def open_review(db: DealerScopedDatabase, customer_id: str) -> dict | None:
     """The unresolved possible opt-out, if any (C1 item 3, decision 72)."""
     entry = await latest(db, customer_id, "all", "review")
@@ -178,17 +206,36 @@ def phone_opt_in(customer: dict | None, to: str | None) -> tuple[bool | None, di
 
 # --- Recipients -------------------------------------------------------------------
 
-def resolve_recipient(lead: dict | None, customer: dict | None, channel: Channel) -> str | None:
-    """The address to message on `channel`, or None when there isn't one."""
+def recipient_candidates(lead: dict | None, customer: dict | None, channel: Channel) -> list[str]:
+    """Every plausible address for `channel`, the lead's own first, then the customer's primary ones."""
     lead = lead or {}
     customer = customer or {}
     if channel == "sms":
         candidates = [lead.get("phone"), *_primary_first(customer.get("phones"))]
     else:
         candidates = [lead.get("email"), *_primary_first(customer.get("emails"))]
+    found: list[str] = []
     for value in candidates:
         if isinstance(value, str) and value.strip() and _plausible(value.strip(), channel):
-            return to_e164(value) if channel == "sms" else value.strip()
+            address = to_e164(value) if channel == "sms" else value.strip()
+            if address not in found:
+                found.append(address)
+    return found
+
+
+def resolve_recipient(lead: dict | None, customer: dict | None, channel: Channel) -> str | None:
+    """The address to message on `channel`, or None when there isn't one."""
+    found = recipient_candidates(lead, customer, channel)
+    return found[0] if found else None
+
+
+async def usable_recipient(db: DealerScopedDatabase, lead: dict | None, customer: dict | None,
+                           channel: Channel) -> str | None:
+    """Like resolve_recipient, but skips a phone / email marked invalid (C6): the next one on the
+    record is used, and when none is left there is no one to message on this channel."""
+    for address in recipient_candidates(lead, customer, channel):
+        if not await is_invalid(db, channel, address):
+            return address
     return None
 
 

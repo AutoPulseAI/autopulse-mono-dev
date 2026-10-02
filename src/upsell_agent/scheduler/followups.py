@@ -70,20 +70,22 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import clock
-from upsell_agent.agent import appointment, cadence, lifecycle
+from upsell_agent.agent import appointment, cadence, call_tasks, lifecycle
 from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_SUBJECT,
     SOLD_VEHICLE_FALLBACK_TEXT,
     render_holding_reply,
 )
 from upsell_agent.channels import consent
-from upsell_agent.channels.consent import resolve_recipient
+from upsell_agent.channels.consent import usable_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
+from upsell_agent.compliance.call_check import can_call
 from upsell_agent.compliance.engine import can_contact
 from upsell_agent.config import get_settings
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
@@ -139,9 +141,13 @@ APPOINTMENT_STEPS = (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appoi
                      appointment.STEP_NO_SHOW_FOLLOWUP, appointment.STEP_NO_SHOW_CLOSE)
 APPOINTMENT_KINDS = tuple(appointment.KIND_PREFIX + s for s in APPOINTMENT_STEPS)
 TRIGGER_APPOINTMENT = "appointment_step"
+# MASTER_PLAN_3 C2 (Omnichannel PDF §2): the staff call task behind the 60-minute connection timer
+# (agent/call_tasks.py). It opens for staff only if nobody has made contact by then.
+KIND_CALL_TASK = "call_task"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                                      KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, *APPOINTMENT_KINDS]}}
+                                      KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
+                                      *APPOINTMENT_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -214,7 +220,7 @@ async def plan_followup(
     if not text:
         return {"created": False, "reason": f"the draft has no {other} version"}
 
-    to = resolve_recipient(lead, customer, other)
+    to = await usable_recipient(db, lead, customer, other)
     if not to:
         return {"created": False, "reason": f"no {other} contact on file"}
 
@@ -576,6 +582,46 @@ async def plan_appointment_timers(
             "reason": f"{len(created)} appointment step(s) planned for {appt_at:%a %b %d %H:%M}."}
 
 
+async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, turn_id: str,
+                         lead: dict | None, customer: dict | None, lead_state: dict | None,
+                         sent_channels: list[str]) -> dict[str, Any]:
+    """MASTER_PLAN_3 C2: a touch just went out on `sent_channels`; start the 60-minute connection timer
+    behind which the staff call task waits. A newer touch replaces an older waiting timer; a task already
+    open for staff is not doubled."""
+    stage = (lead_state or {}).get("stage")
+    if not lifecycle.kind_allowed(KIND_CALL_TASK, stage):
+        return {"created": False, "reason": f"no call task at stage {stage}"}
+    if await db.collection(AI_CALL_TASKS_COLLECTION).find_one({"lead_id": lead_id, "status": call_tasks.OPEN}):
+        return {"created": False, "reason": "a call task is already open for staff"}
+    phone = await usable_recipient(db, lead, customer, "sms")
+    if not phone:
+        return {"created": False, "reason": "no valid phone to call"}
+    now = clock.now()
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    superseded = await followups.update_many(
+        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}},
+        {"$set": {"status": "superseded", "reason": "a newer touch went out", "closed_at": now}})
+    due = now + call_tasks.CONNECTION_WINDOW
+    inserted = await followups.insert_one({
+        "kind": KIND_CALL_TASK, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+        "from_channel": sent_channels[0] if sent_channels else "sms", "to_channel": "voice", "to": phone,
+        "sent_channels": sent_channels, "status": "pending", "due_at": due, "created_at": now, "claim_count": 0,
+        "reason": f"60-minute connection timer: call {phone} if no contact"})
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due.isoformat(), "phone": phone,
+            "superseded": superseded.modified_count}
+
+
+async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: str, include_open: bool = False) -> int:
+    """Contact happened: the waiting timer is cancelled (and, with `include_open`, a task already shown to staff)."""
+    result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}},
+        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
+    count = result.modified_count
+    if include_open:
+        count += await call_tasks.cancel_open(db, lead_id, reason)
+    return count
+
+
 async def cancel_cadence_touch(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         {"lead_id": lead_id, "status": "pending", "kind": KIND_CADENCE_TOUCH},
@@ -709,7 +755,8 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
                    KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked,
                    KIND_NEXT_ACTION: _fire_next_action_locked,
                    KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
-                   KIND_CADENCE_TOUCH: _fire_cadence_touch_locked}.get(doc.get("kind"), _fire_locked)
+                   KIND_CADENCE_TOUCH: _fire_cadence_touch_locked,
+                   KIND_CALL_TASK: _fire_call_task_locked}.get(doc.get("kind"), _fire_locked)
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -1413,6 +1460,72 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
     status = "sent" if sent in ("sent", "duplicate") else (sent or "failed")
     await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
     return status
+
+
+async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """The 60-minute connection timer ran out (MASTER_PLAN_3 C2). Re-read the lead, then either cancel (contact
+    happened, staff have it, the stage moved on), defer to the next allowed calling time, or open the call task
+    for staff."""
+    task_id = str(doc["_id"])
+    tracer = TurnTracer(
+        sink=deps.sink, dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+        trigger="call_task_check", channel="voice", store_prompts=deps.store_prompts,
+        turn_id=f"call-task-{task_id}-fire{int(doc.get('claim_count') or 1)}")
+    await tracer.start({"followup_id": task_id, "phone": doc.get("to"), "sent_channels": doc.get("sent_channels")})
+    async with tracer.node("call_task", {"followup_id": task_id, "due_at": doc["due_at"]}) as span:
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        status = state.get("status", "active")
+        mode = await dealer_ai_mode(db.dealer_id)
+        inbound = await db.collection(AI_MESSAGES_COLLECTION).find(
+            {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gt": doc["created_at"]}}).to_list(None)
+        contact = [m for m in inbound if lifecycle.is_meaningful_reply(m.get("text"))[0]]
+        checks = [
+            ("no_contact", not contact, "the customer replied: no call needed" if contact
+             else "no meaningful reply in the 60 minutes"),
+            ("lead_active", status not in SILENT_STATUSES,
+             f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            lifecycle.stage_check(state, KIND_CALL_TASK),
+            ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+        ]
+        failed = [c for c in checks if not c[1]]
+        decision = None
+        if not failed:
+            decision = await can_call(dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
+                                      request_id=f"call-task-{task_id}")
+            checks.append(("call_check", decision.outcome == "ALLOW", decision.summary()))
+        span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
+                       "call_check": decision.as_dict() if decision else None,
+                       "decision": "cancel" if failed else decision.outcome.lower()}
+        span.reasoning = [f"{'OK' if ok else 'no'}: {d}" for _, ok, d in checks]
+        span.edge_label = "cancelled" if failed else decision.outcome.lower()
+
+    if failed:
+        reason = failed[0][2]
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, "call_task_cancelled", {"followup_id": task_id, "reason": reason})
+        return "cancelled"
+    if decision.outcome == "HOLD" and decision.until:
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+            {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+            {"$set": {"status": "pending", "due_at": decision.until,
+                      "reason": f"held until the next calling time: {decision.reason}"}})
+        await _log(db, tracer, "call_task_deferred", {"followup_id": task_id, "reason": decision.reason,
+                                                      "due_at": decision.until.isoformat()})
+        return "deferred"
+    if decision.outcome != "ALLOW":
+        await _close(db, doc, "suppressed", reason=f"{decision.outcome}: {decision.reason}")
+        await _log(db, tracer, "call_task_suppressed", {"followup_id": task_id, "reason": decision.reason})
+        return "suppressed"
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    task = await call_tasks.open_task(
+        db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], phone=doc["to"],
+        customer_name=(customer or {}).get("name"), reason="no contact within 60 minutes of the touch",
+        source_turn_id=doc.get("source_turn_id"), followup_id=task_id, created_at=doc["created_at"])
+    await _close(db, doc, "activated", reason="call task opened for staff", task_id=str(task["_id"]),
+                 fired_at=clock.now())
+    await _log(db, tracer, "call_task_opened", {"followup_id": task_id, "task_id": str(task["_id"]),
+                                                "phone": doc["to"]})
+    return "activated"
 
 
 # --- Provider said the message failed -------------------------------------------

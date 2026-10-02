@@ -64,6 +64,7 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
     check = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_HANDOFF_CHECK})
     morning = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_RESUME})
     visit_followup = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": KIND_VISIT_FOLLOWUP})
+    call_timer = await followups.find_one({"lead_id": lead_id, "status": "pending", "kind": "call_task"})
     alert = state.get("staff_alert")
     notice = state.get("staff_notice")
     visit = (state.get("conversation") or {}).get("visit")
@@ -108,6 +109,10 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         # opt-out, after-hours lead picked up). Kept on the AI's lead state; the platform doesn't show them yet.
         "pending_morning_message": {"due_at": _iso(morning.get("due_at"))} if morning else None,
         "staff_notice": {**notice, "at": _iso(notice.get("at"))} if notice else None,
+        # MASTER_PLAN_3 C2: the staff call task - waiting behind its 60-minute timer, or open for staff.
+        "call_task": ({**state["call_task"], "opened_at": _iso(state["call_task"].get("opened_at"))}
+                      if state.get("call_task") else None),
+        "pending_call_timer": {"due_at": _iso(call_timer.get("due_at"))} if call_timer else None,
         # MASTER_PLAN_3 B4/B5: the visit offer's state (attempts, angles used, times offered,
         # declined/stopped) and the dated fresh-offer follow-up after a 3rd decline.
         "visit": visit,

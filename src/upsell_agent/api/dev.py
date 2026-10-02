@@ -18,11 +18,13 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from upsell_agent import clock
+from upsell_agent.agent import call_tasks
 from upsell_agent.agent.conversation import load_conversation
 from upsell_agent.agent.llm import OFFLINE
 from upsell_agent.agent.pipeline import pipeline_definition
 from upsell_agent.agent.summary import load_summary
 from upsell_agent.agent.turn import LEADS_COLLECTION
+from upsell_agent.api.call_tasks import view as call_task_view
 from upsell_agent.api.leads import lead_profile
 from upsell_agent.api.webhooks import FIRE_JOB
 from upsell_agent.channels.delivery import apply_delivery_status
@@ -30,6 +32,7 @@ from upsell_agent.config import get_settings
 from upsell_agent.devtools import scenarios, simulate
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
@@ -153,12 +156,15 @@ class NewLead(BaseModel):
     channel: Literal["sms", "email"] = "sms"
     name: str = Field(min_length=1)
     comments: str = ""
+    # A second lead for the same person: shares that lead's phone and email (MASTER_PLAN_3 C6).
+    same_contact_as: str | None = None
 
 
 @router.post("/simulate/lead")
 async def simulate_lead(body: NewLead, request: Request) -> dict:
     created = await simulate.create_lead(body.dealer_id, lead_type=body.lead_type, channel=body.channel,
                                          name=body.name, comments=body.comments)
+    await simulate.set_contact(body.dealer_id, created, body.same_contact_as)
     result = await simulate.send_lead_created(body.dealer_id, created["lead_id"], created["customer_id"],
                                               body.channel, request.app.state.enqueue)
     return {**created, "event": result.status}
@@ -374,6 +380,8 @@ async def fail_sms(followup_id: str, request: Request, dealer_id: str = Query(..
 
 class DeliveryUpdate(BaseModel):
     status: Literal["delivered", "failed", "undelivered", "bounced", "opened"]
+    # A hard bounce / a number that can never receive texts: the address is marked invalid (C6).
+    hard: bool = False
 
 
 @router.post("/messages/{message_id}/status")
@@ -385,10 +393,37 @@ async def message_status(message_id: str, body: DeliveryUpdate, request: Request
         raise HTTPException(status_code=404, detail="no outbound message with that id")
     result = await apply_delivery_status(request.app.state.platform, body.status,
                                          provider_id=row.get("provider_id"),
-                                         idempotency_key=row.get("idempotency_key"), error="simulated")
+                                         idempotency_key=row.get("idempotency_key"), error="simulated",
+                                         hard=body.hard)
     if result.followup_due_now:
         await _fire_followups_now(request, "failed")
     return _json(result.as_dict())
+
+
+# --- Staff call tasks (MASTER_PLAN_3 C2) -----------------------------------------
+
+@router.get("/call-tasks")
+async def dev_call_tasks(dealer_id: str) -> list[dict]:
+    """Every call task of the dealer, newest first (the platform reads /v1/call-tasks with the shared secret)."""
+    rows = await dealer_scoped_db(dealer_id).collection(AI_CALL_TASKS_COLLECTION).find({}).sort(
+        "opened_at", -1).to_list(100)
+    return [call_task_view(r) for r in rows]
+
+
+class CallTaskDone(BaseModel):
+    dealer_id: str
+    outcome: Literal["connected", "no_answer", "voicemail", "wrong_number", "other"] | None = None
+
+
+@router.post("/call-tasks/{task_id}/{action}")
+async def dev_call_task_resolve(task_id: str, action: Literal["complete", "dismiss"], body: CallTaskDone) -> dict:
+    task = await call_tasks.resolve(
+        dealer_scoped_db(body.dealer_id), task_id,
+        status=call_tasks.COMPLETED if action == "complete" else call_tasks.DISMISSED,
+        outcome=body.outcome, by="debug-ui")
+    if task is None:
+        raise HTTPException(status_code=404, detail="no call task with that id")
+    return call_task_view(task)
 
 
 # --- Stock (MASTER_PLAN_3 Phase 6 item 3) -------------------------------------

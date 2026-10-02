@@ -10,6 +10,7 @@ read them too.
 """
 
 import hashlib
+import uuid
 from datetime import timedelta
 
 from bson import ObjectId
@@ -180,6 +181,24 @@ async def create_lead(
         }
     )
     return {"lead_id": str(lead_id), "customer_id": customer_id}
+
+
+async def set_contact(dealer_id: str, created: dict[str, str], same_as_lead_id: str | None = None) -> None:
+    """Gives a simulated lead a phone and email of its own (a name always hashed to the same ones, so two
+    "Maria Test" leads were silently the same customer: MASTER_PLAN_3 C6 duplicate leads). With
+    `same_as_lead_id` it shares that lead's phone and email on purpose: a duplicate."""
+    db = dealer_scoped_db(dealer_id)
+    if same_as_lead_id:
+        source = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(same_as_lead_id)}) or {}
+        phone, email = source.get("phone"), source.get("email")
+    else:
+        token = uuid.uuid4().int
+        phone, email = f"+1555{token % 10_000_000:07d}", f"sim.{token % 10**8}@example.test"
+    await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
+        {"_id": as_object_id(created["lead_id"])}, {"$set": {"phone": phone, "email": email}})
+    await db.collection(PLATFORM_CUSTOMERS_COLLECTION).update_one(
+        {"_id": as_object_id(created["customer_id"])},
+        {"$set": {"phones.0.value": (phone or "")[2:], "emails.0.value": email}})
 
 
 async def _platform_routing(dealer_id: str) -> tuple[bool, bool]:

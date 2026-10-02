@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import { formatDateTime, formatInZone } from "../time";
-import type { Dealer, Followup, FollowupStatus, Lead } from "../types";
+import type { CallTask, Dealer, Followup, FollowupStatus, Lead } from "../types";
 
 interface Props {
   dealerId: string;
@@ -47,13 +47,15 @@ function countdown(dueMs: number, nowMs: number): string {
 
 export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
   const [followups, setFollowups] = useState<Followup[]>([]);
+  const [tasks, setTasks] = useState<CallTask[]>([]);
   const [serverNow, setServerNow] = useState<{ at: number; fetchedAt: number; offset: number } | null>(null);
   const [, setTick] = useState(0);
 
   const load = async () => {
     try {
-      const [f, c] = await Promise.all([api.followups(dealerId), api.clock()]);
+      const [f, c, t] = await Promise.all([api.followups(dealerId), api.clock(), api.callTasks(dealerId)]);
       setFollowups(f);
+      setTasks(t);
       setServerNow({ at: new Date(c.now).getTime(), fetchedAt: Date.now(), offset: c.offset_s });
     } catch (e) {
       onError(String(e));
@@ -87,7 +89,7 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
   // moves to its target lane. A staff check and the after-hours morning
   // message stay on the lead's own channel.
   const laneOf = (f: Followup) =>
-    f.kind !== "channel_switch" || f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
+    f.kind === "call_task" ? f.from_channel : f.kind !== "channel_switch" || f.status === "sent" ? f.to_channel : f.to_channel === "email" ? "sms" : "email";
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -117,6 +119,12 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
           </div>
         )}
         <div className="ml-auto flex gap-1.5">
+          <button type="button" onClick={() => act(() => api.advanceClock(5 * 60))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
+            +5 min
+          </button>
+          <button type="button" onClick={() => act(() => api.advanceClock(30 * 60))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
+            +30 min
+          </button>
           <button type="button" onClick={() => act(() => api.advanceClock(3600))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
             +1 hour
           </button>
@@ -128,6 +136,45 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
           </button>
         </div>
       </div>
+
+      {tasks.length > 0 && (
+        <div className="rounded-xl border border-line bg-panel p-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Staff call tasks ({tasks.filter((t) => t.status === "open").length} open)
+          </div>
+          <div className="space-y-1">
+            {tasks.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-2 py-1 text-[12px]"
+                style={{ opacity: t.status === "open" ? 1 : 0.55 }}>
+                <span className="font-semibold">{t.customer_name ?? leadName(t.lead_id)}</span>
+                <span className="font-mono text-muted">{t.phone}</span>
+                <span className="rounded px-1 text-[10px] font-semibold"
+                  style={{ background: t.status === "open" ? "var(--warn-soft)" : "var(--panel-2)",
+                    color: t.status === "open" ? "var(--warn)" : "var(--muted)" }}>
+                  {t.status}{t.outcome ? ` · ${t.outcome}` : ""}
+                </span>
+                <span className="text-[11px] text-muted">{t.closed_reason ?? t.reason}</span>
+                {t.status === "open" && (
+                  <span className="ml-auto flex gap-1">
+                    <button type="button" className="rounded bg-ok-soft px-2 py-0.5 text-[11px] font-semibold text-ok"
+                      onClick={() => act(() => api.resolveCallTask(dealerId, t.id, "complete", "connected"))}>
+                      Called - connected
+                    </button>
+                    <button type="button" className="rounded bg-panel-2 px-2 py-0.5 text-[11px] font-semibold"
+                      onClick={() => act(() => api.resolveCallTask(dealerId, t.id, "complete", "no_answer"))}>
+                      No answer
+                    </button>
+                    <button type="button" className="rounded bg-panel-2 px-2 py-0.5 text-[11px] font-semibold text-muted"
+                      onClick={() => act(() => api.resolveCallTask(dealerId, t.id, "dismiss"))}>
+                      Dismiss
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {followups.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-line p-8 text-center text-[12px] text-muted">
@@ -187,6 +234,14 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                   {APPOINTMENT_STEP[f.kind].label}
                                 </span>
                               )}
+                              {f.kind === "call_task" && (
+                                <span className="mr-1 rounded bg-warn-soft px-1 text-[10px] text-warn">call timer</span>
+                              )}
+                              {!APPOINTMENT_STEP[f.kind] && f.kind.startsWith("appointment_") && (
+                                <span className="mr-1 rounded bg-accent-soft px-1 text-[10px] text-accent">
+                                  {f.kind.replace("appointment_", "appt ").replace(/_/g, " ")}
+                                </span>
+                              )}
                               {f.kind === "next_action_check" && (
                                 <span className="mr-1 rounded bg-panel-2 px-1 text-[10px] text-muted">24h reply check</span>
                               )}
@@ -212,6 +267,8 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
                                   ? `${APPOINTMENT_STEP[f.kind].what}${f.appointment_at ? ` (visit ${formatDateTime(f.appointment_at)})` : ""}`
                                 : f.kind === "next_action"
                                   ? `checking back by ${f.to_channel.toUpperCase()}, as the customer asked`
+                                : f.kind === "call_task"
+                                  ? `60-minute timer: opens a staff call to ${f.to ?? "the customer"} if nobody replies`
                                 : f.kind === "next_action_check"
                                   ? "no reply by then → No Contact Made"
                                 : `${f.from_channel.toUpperCase()} → ${f.to_channel.toUpperCase()}${f.to ? ` (${f.to})` : ""}`}{" "}

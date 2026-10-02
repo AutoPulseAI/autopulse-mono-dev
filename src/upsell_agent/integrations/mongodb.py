@@ -184,6 +184,8 @@ AI_COMPLIANCE_LOG_COLLECTION = "ai_compliance_log"
 # check request per campaign text; this service writes the answer onto that
 # entry only (compliance/send_checks.py).
 AI_SEND_CHECKS_COLLECTION = "ai_send_checks"
+# Staff call tasks opened after the 60-minute connection timer (MASTER_PLAN_3 C2, agent/call_tasks.py).
+AI_CALL_TASKS_COLLECTION = "ai_call_tasks"
 # DEV only: where the fake channel driver "sends" to (channels/fake.py).
 DEV_OUTBOX_COLLECTION = "dev_outbox"
 
@@ -234,6 +236,10 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
             [("status", 1), ("due_at", 1)],
             {"partialFilterExpression": {"status": {"$in": ["pending", "claimed"]}}},
         ),
+        ([("dealer_id", 1), ("lead_id", 1), ("status", 1)], {}),
+    ],
+    AI_CALL_TASKS_COLLECTION: [
+        ([("dealer_id", 1), ("status", 1), ("opened_at", -1)], {}),
         ([("dealer_id", 1), ("lead_id", 1), ("status", 1)], {}),
     ],
     AI_EVENTS_COLLECTION: [

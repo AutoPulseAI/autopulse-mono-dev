@@ -60,6 +60,7 @@ from upsell_agent.scheduler.followups import (
     cancel_visit_followup,
     plan_appointment_timers,
     plan_cadence_touch,
+    plan_call_task,
     plan_followup,
     plan_handoff_check,
     plan_next_action,
@@ -353,8 +354,11 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
 
 
 #: Turns whose message the client requires on every permitted channel at once (Omnichannel PDF p.10).
-#: The call task is C2, skipped for now, so that means text + email together.
+#: The staff call task (C2) is a separate timer behind these, so that means text + email together.
 OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH})
+#: Turns whose sent message starts the 60-minute connection timer behind a staff call task (MASTER_PLAN_3 C2):
+#: Touch 1 and every cadence touch, not a reply to something the customer just wrote.
+CALL_TASK_TRIGGERS = frozenset({"lead_created", TRIGGER_CADENCE_TOUCH})
 
 
 def _hold_cadence(decision: dict[str, Any]) -> str | None:
@@ -449,7 +453,11 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
     planned = await plan_cadence_touch(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
                                        turn_id=turn_id, lead=lead, customer=customer, lead_state=lead_state,
                                        first_contact_done=True)
-    return {"cadence": True, "fallback": fallback, **planned}
+    call_task = None
+    if trigger in CALL_TASK_TRIGGERS and sent.status in ("sent", "duplicate"):
+        call_task = await plan_call_task(db, lead_id=lead_id, customer_id=customer_id, turn_id=turn_id, lead=lead,
+                                         customer=customer, lead_state=lead_state, sent_channels=[channel])
+    return {"cadence": True, "fallback": fallback, "call_task": call_task, **planned}
 
 
 async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, trigger: str,

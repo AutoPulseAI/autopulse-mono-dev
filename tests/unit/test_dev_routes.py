@@ -201,3 +201,26 @@ def test_scenario_run_endpoint_refuses_real_models(client, monkeypatch):
         update={"model_extract": "openai:gpt-4o-mini", "model_compose": "openai:gpt-4o"}))
     res = client.post("/dev/scenarios/run", json={})
     assert res.status_code == 400 and "MODEL_EXTRACT" in res.json()["detail"]
+
+
+# --- MASTER_PLAN_3 C2 / C6 tools in the Debug UI -------------------------------------
+
+def test_two_simulated_leads_with_one_name_are_different_people_unless_asked(client, mongo):
+
+    first, second = _new_lead(client), _new_lead(client)
+    leads = {x["id"]: x for x in client.get("/dev/leads", params={"dealer_id": DEALER}).json()}
+    assert second["lead_id"] in leads and "duplicate" not in str(second)
+    # The second lead got its own turn: not linked to the first.
+    assert client.get(f"/dev/leads/{second['lead_id']}/conversation", params={"dealer_id": DEALER}).json()
+
+    twin = _new_lead(client, same_contact_as=first["lead_id"])
+    state = client.get(f"/dev/leads/{twin['lead_id']}/slots", params={"dealer_id": DEALER})
+    assert state.status_code == 200
+    rows = {x["id"]: x for x in client.get("/dev/leads", params={"dealer_id": DEALER}).json()}
+    assert rows[twin["lead_id"]]["status"] == "paused"  # linked to the first lead, never worked
+
+
+def test_call_tasks_list_and_resolve_through_the_dev_routes(client):
+    assert client.get("/dev/call-tasks", params={"dealer_id": DEALER}).json() == []
+    missing = client.post("/dev/call-tasks/not-an-id/complete", json={"dealer_id": DEALER, "outcome": "connected"})
+    assert missing.status_code == 404

@@ -1,0 +1,10 @@
+name: A number that cannot receive texts is dropped and email takes over
+stage: 306
+description: Twilio reports the first SMS undelivered because the number is a landline (a hard failure). The phone is marked invalid, the email version goes out now, and the lead stays alive on email.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: h, dealer: A, lead_type: sales, channel: sms, name: Hank Hardbounce, comments: "Need a used Civic"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 20}
+  - delivery_status: {lead: h, channel: sms, status: undelivered, hard: true}
+  - expect_followup: {lead: h, status: sent, to_channel: email, timeout_s: 20}
+  - expect_lead: {lead: h, staff_notice: bad_contact}

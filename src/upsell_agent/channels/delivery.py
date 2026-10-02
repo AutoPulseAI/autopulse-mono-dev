@@ -11,6 +11,10 @@ Debug UI's "mark SMS failed" button all end up here:
 - A failed, undelivered, bounced or dropped message makes its follow-up due
   now instead of in 24 hours. The caller then queues the follow-up job.
 - An unsubscribe or spam report turns email consent off for that customer.
+- A HARD failure (an email hard bounce, a number that can never receive texts;
+  MASTER_PLAN_3 C6) marks that one address invalid for good (channels/
+  suppression.py). The other channel carries on: the follow-up due now goes
+  there. A soft failure (mailbox full, deferred) only makes the follow-up due.
 """
 
 import logging
@@ -18,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from upsell_agent import clock
+from upsell_agent.channels import suppression
 from upsell_agent.channels.consent import set_channel_consent
 from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, dealer_scoped_db, get_db
 from upsell_agent.integrations.platform_client import PlatformClient
@@ -43,6 +48,7 @@ class DeliveryResult:
     dealer_id: str | None = None
     followup_due_now: bool = False
     consent_off: bool = False
+    contact_suppressed: dict[str, Any] | None = None
     detail: str = ""
 
     def as_dict(self) -> dict[str, Any]:
@@ -69,7 +75,9 @@ async def apply_delivery_status(
     provider_id: str | None = None,
     idempotency_key: str | None = None,
     error: str | None = None,
+    hard: bool = False,
 ) -> DeliveryResult:
+    """`hard`: the provider says this address can never be delivered to (C6)."""
     row = await _find_message(provider_id, idempotency_key)
     if row is None:
         return DeliveryResult(found=False, status=status, detail="no message with that id")
@@ -98,6 +106,14 @@ async def apply_delivery_status(
             await platform.update_message_status(dealer_id, row["provider_id"], status)
         except Exception as exc:  # noqa: BLE001 - the conversation screen lagging must not fail the callback
             logger.warning("could not update platform status for %s: %r", row["provider_id"], exc)
+
+    if hard and status in FAILED_STATUSES and row.get("to"):
+        result.contact_suppressed = await suppression.suppress_contact(
+            db, channel=row["channel"], address=row["to"], customer_id=row.get("customer_id"),
+            lead_id=row.get("lead_id"), source=f"{row['channel']}_hard_{status}",
+            reason=f"{row['channel']} {status}" + (f" ({error})" if error else ""),
+            evidence={"provider_id": row.get("provider_id"), "message_id": str(row["_id"])})
+        result.detail += f"; {row['to']} marked invalid"
 
     if status in FAILED_STATUSES and not row.get("is_fallback"):
         result.followup_due_now = await make_due_now(

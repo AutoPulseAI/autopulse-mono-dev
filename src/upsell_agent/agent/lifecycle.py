@@ -134,6 +134,9 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     "appointment_no_show_check": frozenset({Stage.APPOINTMENT_SET}),
     "appointment_no_show_followup": frozenset({Stage.NO_SHOW}),
     "appointment_no_show_close": frozenset({Stage.NO_SHOW}),
+    # MASTER_PLAN_3 C2: the staff call task behind the 60-minute connection timer follows the touches
+    # it belongs to (the working stages; a call is also the dated step's own channel).
+    "call_task": WORKING,
     "next_action": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     "next_action_check": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     # A handoff check reminds the customer staff have their message: fine in any open stage.
@@ -423,6 +426,10 @@ async def cancel_stale_work(db: DealerScopedDatabase, lead_id: str, stage: Stage
         if keep:
             await followups.update_many({"_id": {"$in": keep}}, {"$set": {"long_horizon": True}})
         pending = [p for p in pending if p["_id"] not in keep]
+    if not kind_allowed("call_task", stage):
+        # An open call task is stale too (an appointment, a visit, an opt-out or a close came first).
+        from upsell_agent.agent import call_tasks
+        await call_tasks.cancel_open(db, lead_id, reason)
     stale = [p["_id"] for p in pending if not kind_allowed(p.get("kind") or "channel_switch", stage)]
     if not stale:
         return 0

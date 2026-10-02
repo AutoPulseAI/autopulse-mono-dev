@@ -1,0 +1,12 @@
+name: A reply inside the hour cancels the call task
+stage: 302
+description: The customer answers 20 minutes after Touch 1, so there is no need to call. An hour on, no call task exists.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Ray Replies, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 20}
+  - advance_clock: {minutes: 20}
+  - reply: {lead: r, text: "Yes, still interested in the Camry"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 20}
+  - advance_clock: {minutes: 50}
+  - expect_call_task: {lead: r, status: none}

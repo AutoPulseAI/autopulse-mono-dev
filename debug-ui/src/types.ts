@@ -66,6 +66,9 @@ export interface Lead {
   comments: string;
   status: LeadStatus;
   status_reason: string | null;
+  // MASTER_PLAN_3 C3: where the lead stands in the client's workflow.
+  stage?: string | null;
+  stage_label?: string | null;
 }
 
 export interface ConversationItem {
@@ -83,6 +86,9 @@ export interface ConversationItem {
   to?: string | null;
   latency_ms?: number | null;
   platform_record_id?: string | null;
+  // Outbound messages: the id the Debug UI's bounce buttons report on, and what the provider said (C6).
+  message_id?: string;
+  delivery_status?: string | null;
 }
 
 export interface TurnSummary {
@@ -273,9 +279,11 @@ export interface Followup {
   // visit_followup: the dated fresh visit offer after a 3rd decline (MASTER_PLAN_3 B4).
   // next_action / next_action_check: the customer's dated next step and the 24h check after it (MASTER_PLAN_3 C3).
   kind: "channel_switch" | "handoff_check" | "resume_at_opening" | "visit_followup" | "next_action" | "next_action_check" | "cadence_touch"
+    | "call_task"
     // MASTER_PLAN_3 C5: the appointment's own messages (agent/appointment.py).
     | "appointment_confirm" | "appointment_countdown" | "appointment_no_show_check"
-    | "appointment_no_show_followup" | "appointment_no_show_close";
+    | "appointment_no_show_followup" | "appointment_no_show_close"
+    | `appointment_${string}`;
   lead_id: string;
   source_message_id?: string;
   from_channel: "sms" | "email";
@@ -294,6 +302,24 @@ export interface Followup {
   fired_at?: string;
   closed_at?: string;
 }
+
+// MASTER_PLAN_3 C2: a staff call task (agent/call_tasks.py).
+export interface CallTask {
+  id: string;
+  lead_id: string;
+  customer_name: string | null;
+  phone: string;
+  status: "open" | "completed" | "dismissed" | "cancelled";
+  reason: string;
+  outcome?: string | null;
+  closed_reason?: string | null;
+  opened_at: string;
+  closed_at?: string;
+}
+
+export type StaffStatusName = "Appointment Booked" | "Visited" | "Sold" | "DND" | "Managerial Review"
+  | "Sold Pending" | "Sold Delivered" | "Unsold";
+export type ManagerOutcome = "Sold Pending" | "Sold Delivered" | "Unsold";
 
 export interface ScenarioStep {
   step: string;

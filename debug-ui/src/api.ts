@@ -1,4 +1,4 @@
-import type { ConversationItem, Dealer, Followup, Lead, Metrics, Ping, Pipeline, RolloutCheck, Scenario, ScenarioRun, ShadowView, SlotsView, TurnDoc, TurnSummary, Verdict } from "./types";
+import type { CallTask, ConversationItem, Dealer, Followup, Lead, ManagerOutcome, Metrics, Ping, Pipeline, RolloutCheck, Scenario, ScenarioRun, ShadowView, SlotsView, StaffStatusName, TurnDoc, TurnSummary, Verdict } from "./types";
 
 // Everything goes through Vite's /api proxy to the AI service's /dev/* routes.
 const BASE = "/api/dev";
@@ -35,12 +35,23 @@ export const api = {
   turns: (dealerId: string, leadId: string) =>
     request<TurnSummary[]>(`/turns?${q({ dealer_id: dealerId, lead_id: leadId })}`),
   turn: (dealerId: string, turnId: string) => request<TurnDoc>(`/turns/${turnId}?${q({ dealer_id: dealerId })}`),
-  newLead: (body: { dealer_id: string; lead_type: string; channel: string; name: string; comments: string }) =>
+  newLead: (body: { dealer_id: string; lead_type: string; channel: string; name: string; comments: string;
+    same_contact_as?: string }) =>
     post<{ lead_id: string; customer_id: string; event: string }>("/simulate/lead", body),
   reply: (body: { dealer_id: string; lead_id: string; channel: string; text: string }) =>
     post<{ event: string }>("/simulate/reply", body),
   leadAction: (dealerId: string, leadId: string, action: "pause" | "resume") =>
     post<{ event: string }>(`/leads/${leadId}/${action}`, { dealer_id: dealerId, reason: "Paused from Debug UI" }),
+  // Plays staff on the platform's status screen (C3/C5): the lead-paused event the platform would send.
+  staffStatus: (dealerId: string, leadId: string, status: StaffStatusName,
+    extra?: { booking_at?: string; manager_outcome?: ManagerOutcome }) =>
+    post<{ event: string }>(`/leads/${leadId}/staff/status`, { dealer_id: dealerId, status, ...extra }),
+  // Plays a provider delivery callback for one sent message; `hard` = the address can never receive (C6).
+  messageStatus: (dealerId: string, messageId: string, status: "bounced" | "undelivered" | "delivered", hard: boolean) =>
+    post<Record<string, unknown>>(`/messages/${messageId}/status?${q({ dealer_id: dealerId })}`, { status, hard }),
+  callTasks: (dealerId: string) => request<CallTask[]>(`/call-tasks?${q({ dealer_id: dealerId })}`),
+  resolveCallTask: (dealerId: string, taskId: string, action: "complete" | "dismiss", outcome?: string) =>
+    post<CallTask>(`/call-tasks/${taskId}/${action}`, { dealer_id: dealerId, outcome: outcome ?? null }),
   clock: () => request<{ now: string; offset_s: number }>("/clock"),
   advanceClock: (seconds: number) => post<{ now: string; offset_s: number }>("/clock/advance", { seconds }),
   resetClock: () => post<{ now: string; offset_s: number }>("/clock/reset", {}),

@@ -362,7 +362,7 @@ async def test_a_staff_reply_pauses_without_moving_the_stage(mongo):
         event_id="s4", dealer_id=DEALER, lead_id=created["lead_id"], reason="Staff replied by hand (Sam)"))
     # What the first reply left pending (its cadence touch and the standby fallback) is cancelled, as on
     # any pause; no stage change.
-    assert result["status"] == "paused" and result["followups_cancelled"] == 2 and "stage_change" not in result
+    assert result["status"] == "paused" and result["followups_cancelled"] == 3 and "stage_change" not in result  # C2: + the call timer
     assert (await _state(mongo, created))["stage"] == "new_lead"
 
 

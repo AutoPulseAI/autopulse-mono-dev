@@ -24,6 +24,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
+from upsell_agent.channels import suppression
 from upsell_agent.channels.delivery import DeliveryResult, apply_delivery_status, apply_unsubscribe
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,8 @@ async def twilio_status(request: Request) -> Response:
     if word and sid:
         error = params.get("ErrorCode") or None
         result = await apply_delivery_status(request.app.state.platform, word, provider_id=sid,
-                                             error=f"Twilio error {error}" if error else None)
+                                             error=f"Twilio error {error}" if error else None,
+                                             hard=suppression.is_bad_number_error(error))
         logger.info("twilio status %s for %s: %s", word, sid, result.detail)
         await _queue_followups(request, [result])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -144,6 +146,7 @@ async def sendgrid_events(request: Request) -> dict[str, Any]:
             reason = event.get("reason") or event.get("response")
             results.append(await apply_delivery_status(
                 request.app.state.platform, SENDGRID_STATUS[kind], provider_id=provider_id, idempotency_key=key,
-                error=str(reason)[:300] if reason else None))
+                error=str(reason)[:300] if reason else None,
+                hard=suppression.is_hard_bounce(kind, event_type=event.get("type"), reason=str(reason or ""))))
     await _queue_followups(request, results)
     return {"received": len(events), "applied": sum(1 for r in results if r.applied)}

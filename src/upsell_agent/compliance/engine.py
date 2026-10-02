@@ -7,6 +7,9 @@ decisions 18, 23-25, 29, 36, 55-56, 65, 68, 72, 74-77).
 Plain code, checked in this order; the first rule that stops a message wins:
 
 1. **AI voice** is a separate, higher-risk channel, off (BLOCK).
+1b. **Invalid contact** (C6): the phone or email was marked a wrong person or
+   hard-bounced. Blocks everything on that address, replies and the opt-out
+   confirmation included; the customer's other channel is unaffected.
 2. **Opt-out**: the latest `opt_out` entry on this channel for the customer
    or the phone / email (STOP, a natural-language opt-out, a provider
    unsubscribe; decision 140) blocks everything the system starts. The one
@@ -263,7 +266,7 @@ async def can_contact(
         customer_id = str(lead["customer_id"])
     customer = customer if customer is not None else await _find(db, PLATFORM_CUSTOMERS_COLLECTION, customer_id)
     if to is None and channel in ("sms", "email"):
-        to = consent.resolve_recipient(lead, customer, channel)  # type: ignore[arg-type]
+        to = await consent.usable_recipient(db, lead, customer, channel)  # type: ignore[arg-type]
 
     checks: list[dict[str, Any]] = []
 
@@ -295,6 +298,11 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
 
     # 2. Opt-out on this channel, by customer or by phone / email (decision 140).
     address = to or consent.resolve_recipient(lead, customer, "email" if channel == "email" else "sms")
+    if await consent.is_invalid(db, channel, address):
+        check("invalid_contact", False, f"{address} was marked invalid (wrong person or hard bounce)")
+        return Decision("BLOCK", f"{address} is marked invalid (wrong person, bad number or hard bounce)",
+                        "invalid_contact")
+    check("invalid_contact", True, f"{channel} address not marked invalid")
     opted_out = await consent.is_opted_out(db, customer_id, channel, address)
     if opted_out and purpose != "opt_out_confirmation" and not is_reply:
         check("opt_out", False, f"the customer opted out of {channel}")

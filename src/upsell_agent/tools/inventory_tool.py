@@ -39,7 +39,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from upsell_agent import clock
 from upsell_agent.config import Settings
@@ -189,6 +189,8 @@ class InventoryRecord(BaseModel):
     exterior_color: str | None = None
     miles: int | None = None
     page_url: str | None = None
+    # The listing's own photos (MASTER_PLAN_3 C6: agent/media.py picks from these, same vehicle only).
+    photo_urls: list[str] = Field(default_factory=list, exclude=True)  # not sent to the model
 
 
 @dataclass
@@ -293,6 +295,7 @@ def to_record(listing: dict[str, Any]) -> InventoryRecord:
         exterior_color=listing.get("exterior_color") or None,
         miles=listing.get("miles") or None,
         page_url=listing.get("vdp_url") or None,
+        photo_urls=[u for u in ((listing.get("media") or {}).get("photo_links") or []) if isinstance(u, str)],
     )
 
 

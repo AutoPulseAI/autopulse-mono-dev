@@ -92,6 +92,7 @@ from upsell_agent.events.intake import accept_event
 from upsell_agent.events.models import LeadPausedEvent, LeadResumedEvent
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_SEND_CHECKS_COLLECTION,
@@ -197,6 +198,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
         APPOINTMENT_KINDS,
         CHANNEL_SWITCHES,
         KIND_CADENCE_TOUCH,
+        KIND_CALL_TASK,
         KIND_HANDOFF_CHECK,
         KIND_NEXT_ACTION,
         KIND_NEXT_ACTION_CHECK,
@@ -206,7 +208,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
 
     flt: dict[str, Any] = {}
     if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, *APPOINTMENT_KINDS):
+                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, *APPOINTMENT_KINDS):
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
         flt.update(CHANNEL_SWITCHES)
@@ -270,6 +272,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             history=_unique_vins(args.get("history")),
         )
         ctx.leads[args["as"]] = {**created, "dealer_id": dealer_id, "channel": args.get("channel", "sms")}
+        await _set_scenario_contact(dealer_id, created, ctx.leads[args["same_contact_as"]]
+                                    if args.get("same_contact_as") else None)
         if args.get("send_event", True):
             await simulate.send_lead_created(dealer_id, created["lead_id"], created["customer_id"],
                                              args.get("channel", "sms"), ctx.enqueue)
@@ -499,12 +503,32 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             await clock.advance(get_redis(), seconds)
             detail = f" ({local})"
         else:
-            await clock.advance(get_redis(), float(args["hours"]) * 3600)
+            await clock.advance(get_redis(), float(args.get("hours", 0)) * 3600 + float(args.get("minutes", 0)) * 60)
             detail = ""
         await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
         # MASTER_PLAN_3 C3: a jump past Day 91 closes leads now, not at the next hourly cron.
         await ctx.enqueue("close_expired_leads", key=f"close_expired_leads:scenario:{uuid.uuid4().hex[:8]}")
         return f"clock is now {clock.now():%Y-%m-%d %H:%M} UTC{detail}"
+
+    if kind == "expect_call_task":
+        # MASTER_PLAN_3 C2: {lead, status: open | none | cancelled | completed | dismissed, timeout_s?}
+        lead = ctx.lead(args["lead"])
+        want = str(args.get("status", "open"))
+
+        async def call_task():
+            rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_CALL_TASKS_COLLECTION).find(
+                {"lead_id": lead["lead_id"]}).to_list(None)
+            if want == "none":
+                return {"ok": True} if not rows else None
+            return rows[-1] if rows and rows[-1]["status"] == want else None
+
+        try:
+            found = await _wait(call_task, float(args.get("timeout_s", 10)), f"a {want} call task")
+        except ScenarioFailed:
+            rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_CALL_TASKS_COLLECTION).find(
+                {"lead_id": lead["lead_id"]}).to_list(None)
+            raise ScenarioFailed(f"call tasks: {[r['status'] for r in rows] or 'none'}, expected {want}") from None
+        return "no call task" if want == "none" else f"call task {found['status']} for {found['phone']}"
 
     if kind == "expect_followup":
         lead = ctx.lead(args["lead"])
@@ -556,7 +580,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             raise ScenarioFailed(f"no sent {args.get('channel', '')} message to report on")
         last = max(rows, key=lambda r: r["created_at"])
         result = await apply_delivery_status(get_platform_client(get_settings()), args["status"],
-                                             provider_id=last.get("provider_id"), error="scenario")
+                                             provider_id=last.get("provider_id"), error="scenario",
+                                             hard=bool(args.get("hard")))
         if result.followup_due_now:
             await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
         return result.detail
@@ -598,7 +623,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 "visit_declined" not in args or bool(_visit(doc).get("declined")) == bool(args["visit_declined"])) and (
                 # MASTER_PLAN_3 C3: the lifecycle stage (agent/lifecycle.py).
                 "stage" not in args or doc.get("stage") == args["stage"]) and (
-                "next_action" not in args or bool(doc.get("next_action")) == bool(args["next_action"]))
+                "next_action" not in args or bool(doc.get("next_action")) == bool(args["next_action"])) and (
+                # MASTER_PLAN_3 C6: a lead linked to another lead's workflow.
+                "duplicate" not in args or bool(doc.get("duplicate_of")) == bool(args["duplicate"]))
             return doc if ok else None
 
         try:
@@ -913,6 +940,13 @@ async def _replies_with_jargon(ctx: RunContext) -> list[str]:
     return found
 
 
+async def _set_scenario_contact(dealer_id: str, created: dict[str, str], same_as: dict[str, Any] | None) -> None:
+    """Every scenario lead gets a phone and email of its own (a name always hashed to the same ones), so a
+    lead left by an earlier run is never mistaken for the same customer (C6 duplicate leads). With
+    `same_contact_as` it shares that lead's phone and email on purpose: a duplicate."""
+    await simulate.set_contact(dealer_id, created, same_as["lead_id"] if same_as else None)
+
+
 async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue | None) -> dict[str, Any]:
     ctx = RunContext(enqueue=enqueue, queue=queue)
     started = time.perf_counter()
@@ -944,6 +978,10 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
 
         vins = [r["vin"] for rows in ctx.stock.values() for r in rows]
         await get_db()[PLATFORM_VEHICLES_COLLECTION].delete_many({"vin": {"$in": vins}, "dev_scenario": True})
+    if ctx.leads:
+        # Bookings the scenario made would otherwise take those slots from the next run (a slot is "taken").
+        await get_db()[PLATFORM_BOOKINGS_COLLECTION].delete_many(
+            {"lead_id": {"$in": [lead["lead_id"] for lead in ctx.leads.values()]}})
     if ctx.deals:
         await get_db()[PLATFORM_DEALS_COLLECTION].delete_many({"_id": {"$in": ctx.deals}, "dev_scenario": True})
     if ctx.leads or ctx.bookings:

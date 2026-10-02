@@ -33,7 +33,7 @@ from pymongo.errors import DuplicateKeyError
 
 from upsell_agent import clock
 from upsell_agent.channels.base import ChannelDriver, ChannelSendError, OutboundMessage
-from upsell_agent.channels.consent import resolve_recipient, set_channel_consent
+from upsell_agent.channels.consent import set_channel_consent, usable_recipient
 from upsell_agent.compliance.engine import Purpose, can_contact
 from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
@@ -149,7 +149,7 @@ class Sender:
         # 2. Recipient.
         lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(req.lead_id)})
         customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(req.customer_id)})
-        to = resolve_recipient(lead, customer, req.channel)
+        to = await usable_recipient(db, lead, customer, req.channel)
         if not to:
             why.append(f"No {req.channel} contact on the lead or customer record.")
             return await finish("suppressed", reason=f"no {req.channel} contact on file")

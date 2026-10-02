@@ -1,0 +1,11 @@
+name: A wrong number is never texted again
+stage: 306
+description: The customer replies "wrong number". The phone is marked invalid for good, nothing is sent back, the team gets a notice, and the email address (a different contact point) is unaffected, so the lead is not suppressed.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: w, dealer: A, lead_type: sales, channel: sms, name: Wanda Wrongnumber, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: w, count: 1, timeout_s: 20}
+  - reply: {lead: w, text: "wrong number"}
+  - expect_lead: {lead: w, staff_notice: bad_contact, timeout_s: 20}
+  - wait_turns: {lead: w, count: 2, timeout_s: 20}
+  - expect_turn: {lead: w, outcome: wrong_number}

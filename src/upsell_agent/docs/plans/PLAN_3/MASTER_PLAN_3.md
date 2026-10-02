@@ -918,7 +918,7 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
 
 ## Phase C2: Omnichannel Rule & 1-Hour Human Call Escalation
 
-> **Skipped for now (27 Sept).** Staff call tasks don't exist on the platform (no task model or task screen; the only "click to call" is a plain `tel:` link on the campaign report page), so this would need new platform backend and UI. B0.13's 5-minute callback, which relies on it, is skipped with it. C4's follow-ups run as SMS + email without call tasks until this is revisited.
+> **Skipped for now (27 Sept; built 2 Oct, see the note at the end of this phase).** Staff call tasks don't exist on the platform (no task model or task screen; the only "click to call" is a plain `tel:` link on the campaign report page), so this would need new platform backend and UI. B0.13's 5-minute callback, which relies on it, is skipped with it. C4's follow-ups run as SMS + email without call tasks until this is revisited.
 
 1. **Omnichannel Execution Rule:**
    - Scheduled follow-up triggers all permitted and valid channels: AI Text + AI Email + Human Call Task checkpoint.
@@ -932,6 +932,8 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - Re-check current lead status immediately before activating stale call tasks.
 
 **Tests:** 60-minute timer activation, cancellation on reply, task creation on expiration, agent schedule deferral, and pre-activation state recheck.
+
+> **Built 2 Oct 2026, AI service only** (`agent/call_tasks.py`, `compliance/call_check.py`, `api/call_tasks.py`; architecture.md decisions 177-183; details and verification: `progress_3.md`, "Phase C2"). The platform task screen with click-to-call is not built. Scenarios `pc2_*` written, not yet run live. The skip above was lifted on 2 Oct at the user's request.
 
 ---
 
@@ -1052,3 +1054,5 @@ This is stricter than the spec asks for. The TCPA PDF language we already have o
    - If requested vehicle photo is unavailable, never send unrelated or fabricated photos; fall back to non-photo text message.
 
 **Tests:** Bad number suppression, email hard-bounce channel isolation, duplicate lead merge prevention, and photo fallback enforcement.
+
+> **Built 2 Oct 2026** (`channels/suppression.py`, `agent/duplicates.py`, `agent/media.py`; architecture.md decisions 170-176; details and verification: `progress_3.md`, "Phase C6"). Photo *sending* stays MASTER_PLAN_4 F3; C6 builds the rule it must follow. Live scenarios `pc6_*` written, not yet run.

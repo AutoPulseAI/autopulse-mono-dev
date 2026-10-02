@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import lifecycle
+from upsell_agent.agent import duplicates, lifecycle
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -24,7 +24,7 @@ from upsell_agent.agent.turn import (
     lead_type_from_lead,
     run_turn,
 )
-from upsell_agent.channels import consent
+from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.events.models import (
@@ -46,6 +46,7 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
+    cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
     staff_no_show,
@@ -129,6 +130,14 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     db = dealer_scoped_db(event.dealer_id)
     lead = await find_lead(db, event.lead_id)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
+    if not state.get("duplicate_of") and (primary := await duplicates.find_primary(db, lead)):
+        # MASTER_PLAN_3 C6: the same customer already has an open lead the AI is working. This one is
+        # linked to it; no first reply, no cadence, no second workflow.
+        linked = await duplicates.link_duplicate(db, event.lead_id, event.customer_id, primary)
+        return {"status": "duplicate", "reason": f"same customer as open lead {primary['lead_id']}", **linked}
+    if state.get("duplicate_of"):
+        return {"status": "duplicate", "reason": f"linked to lead {state['duplicate_of']}",
+                "duplicate_of": state["duplicate_of"]}
     if not event.shadow:
         # MASTER_PLAN_3 C3: the lead's stage and its opportunity clock start here.
         await lifecycle.apply(db, event.lead_id, [lifecycle.Event("lead_created", source="lead_created")],
@@ -160,6 +169,8 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
             {"customer_id": {"$in": [event.customer_id, as_object_id(event.customer_id)]}}
         ).sort("_id", -1).to_list(1)
         lead_id = str(latest[0]["_id"]) if latest else None
+    # MASTER_PLAN_3 C6: a customer's message belongs to the lead the AI works, never to a linked duplicate.
+    lead_id = await duplicates.workflow_lead_id(db, lead_id)
     await db.collection(AI_MESSAGES_COLLECTION).update_one(
         {"platform_message_id": event.message_id},
         {"$setOnInsert": {"lead_id": lead_id, "customer_id": event.customer_id, "direction": "inbound",
@@ -251,7 +262,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         await tracer.skipped("send", reason)
         await tracer.skipped("schedule", "Nothing was sent.")
 
-    outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation",
+    outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation", "wrong_number",
                                    *APPOINTMENT_ACTIONS) else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
@@ -325,6 +336,22 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                confirmation=confirmation_text(opt_out.channels))
             return {"status": "opted_out", "channel": channel, "channels": list(opt_out.channels),
                     "kind": opt_out.kind, "followups_cancelled": cancelled}
+        if wrong := suppression.detect_wrong_person(message["text"]):
+            # MASTER_PLAN_3 C6: not the customer's number / email. It is marked invalid for good and nothing
+            # more is sent to it (not even an apology); their other contact points, if any, carry on.
+            address = await consent.usable_recipient(db, lead, customer, "email" if channel == "email" else "sms")
+            result = await suppression.suppress_contact(
+                db, channel="email" if channel == "email" else "sms", address=address,
+                reason=f"the recipient said this is the wrong person ({wrong!r})", source="customer_wrong_person",
+                customer_id=event.customer_id, lead_id=lead_id, stage=not event.shadow,
+                evidence={"message": message["text"], "matched": wrong, "message_id": str(message["_id"])})
+            reason = (f"The recipient said this is the wrong person ({wrong!r}): {address} is marked invalid and "
+                      "never contacted again. Nothing is sent.")
+            await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="wrong_number",
+                               reason=reason, received_at=_parse_received_at(received_at))
+            return {"status": "wrong_number", "channel": channel, "address": address,
+                    "channels_left": result["channels_left"], "suppressed_lead": result["suppressed_lead"],
+                    "followups_cancelled": cancelled}
         if keyword == "start" and await consent.is_opted_out(db, event.customer_id, channel,
                                                              _address(lead, customer, channel)):
             await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_start",
@@ -352,6 +379,11 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     # open a new review in its own turn.
     await _resolve_review(db, event.customer_id, lead_id, "customer_wrote_again",
                           {"message": unanswered[-1]["text"]})
+
+    meaningful_now, _ = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
+    if meaningful_now and not event.shadow:
+        # MASTER_PLAN_3 C2: contact within the 60 minutes (or while the task was open): no call needed.
+        await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True)
 
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
@@ -557,6 +589,8 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         upsert=True,
     )
     cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
+    # Staff have the lead (a reply, a status move): no call task is needed, waiting or open.
+    await cancel_call_task(db, event.lead_id, reason="staff took over the lead", include_open=True)
     return {"status": "paused", "followups_cancelled": cancelled,
             **({"stage_change": stage_change} if stage_change else {}), **extra}
 
@@ -618,6 +652,8 @@ async def handle_lead_resumed(event: LeadResumedEvent) -> dict[str, Any]:
     db = dealer_scoped_db(event.dealer_id)
     # An admin resuming the AI resolves an open review (decision 72).
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
+    if state.get("duplicate_of") and await duplicates.workflow_lead_id(db, event.lead_id) != event.lead_id:
+        return {"status": "duplicate", "reason": f"linked to open lead {state['duplicate_of']}: not resumed"}
     await _resolve_review(db, state.get("customer_id"), event.lead_id, "admin_resumed_ai", {})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},

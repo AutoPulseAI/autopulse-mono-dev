@@ -32,6 +32,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
+from upsell_agent.agent.media import unattached_photo_claim
 from upsell_agent.guardrails.never_invent import _APPROVAL_LANGUAGE_PATTERNS
 from upsell_agent.tools.inventory_tool import KNOWN_MAKES, TRIM_WORDS
 
@@ -184,7 +185,8 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
 
 
 def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], known_values: Iterable[Any],
-                inventory: list[dict[str, Any]] | None = None, sms_max: int = SMS_MAX) -> dict[str, Any]:
+                inventory: list[dict[str, Any]] | None = None, sms_max: int = SMS_MAX,
+                media_attached: bool = False) -> dict[str, Any]:
     if not draft:
         return {"passed": False, "checks": {"draft_present": False}, "violations": ["no draft to check"]}
 
@@ -209,10 +211,15 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     grounding, per_vehicle = _grounding(text, draft, inventory or [])
     violations += grounding
 
+    # MASTER_PLAN_3 C6: never claim a photo that isn't attached (nothing is attached until Plan 4 F3).
+    photo_claims = unattached_photo_claim(text, media_attached=media_attached)
+    violations += photo_claims
+
     checks = {
         "no_invented_numbers": not invented,
         "no_approval_language": not approval,
         "grounded_in_real_stock": not grounding,
+        "no_unattached_photo_claims": not photo_claims,
         "sms_length_ok": 0 < len(sms) <= sms_max,
         "email_complete": bool(subject.strip()) and bool(body.strip()),
     }

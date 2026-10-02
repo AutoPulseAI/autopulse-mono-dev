@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import { formatDateTime } from "../time";
-import type { ConversationItem, Lead } from "../types";
+import type { ConversationItem, Lead, ManagerOutcome, StaffStatusName } from "../types";
 import { StatusBadge } from "./ui";
 
 interface Props {
@@ -81,7 +81,7 @@ export function Simulator({ dealerId, offline, leads, selectedLeadId, onSelectLe
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12px] font-semibold">{l.name}</div>
               <div className="truncate text-[11px] text-muted">
-                {l.lead_type ?? "?"} · {l.channel}
+                {l.lead_type ?? "?"} · {l.channel}{l.stage_label ? ` · ${l.stage_label}` : ""}
               </div>
             </div>
             <StatusBadge status={l.status} />
@@ -194,6 +194,13 @@ function outboundStyle(m: ConversationItem): React.CSSProperties {
   return { background: "color-mix(in srgb, var(--accent) 70%, transparent)", border: "1px dashed var(--accent)" };
 }
 
+// Tomorrow 15:00, as the datetime-local input wants it (the dealer's own clock).
+function defaultBookingAt(): string {
+  const d = new Date(Date.now() + 24 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T15:00`;
+}
+
 function chatTranscript(lead: Lead, conversation: ConversationItem[]): string {
   const lines = conversation.map((m) => {
     const at = m.at ? formatDateTime(m.at, true) : "—";
@@ -251,6 +258,45 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
     }
   };
 
+  const [tools, setTools] = useState(false);
+  const [staffStatus, setStaffStatus] = useState<StaffStatusName>("Appointment Booked");
+  const [bookingAt, setBookingAt] = useState(defaultBookingAt());
+  const [outcome, setOutcome] = useState<ManagerOutcome | "">("");
+
+  const applyStaffStatus = async () => {
+    try {
+      await api.staffStatus(dealerId, lead.id, staffStatus, {
+        ...(staffStatus === "Appointment Booked" ? { booking_at: bookingAt } : {}),
+        ...(staffStatus === "Visited" && outcome ? { manager_outcome: outcome } : {}),
+      });
+      window.setTimeout(onChanged, 600);
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+
+  // A second lead from the same person: same phone and email (MASTER_PLAN_3 C6 duplicate leads).
+  const duplicateLead = async () => {
+    try {
+      await api.newLead({ dealer_id: dealerId, lead_type: lead.lead_type ?? "sales", channel: lead.channel,
+        name: lead.name, comments: "Also interested in a hybrid model.", same_contact_as: lead.id });
+      window.setTimeout(onChanged, 600);
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+
+  // A provider's report on one sent message; hard = the address can never receive (MASTER_PLAN_3 C6).
+  const bounce = async (m: ConversationItem, hard: boolean) => {
+    if (!m.message_id) return;
+    try {
+      await api.messageStatus(dealerId, m.message_id, m.channel === "email" ? "bounced" : "undelivered", hard);
+      window.setTimeout(onChanged, 600);
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+
   const toggle = async (action: "pause" | "resume") => {
     try {
       await api.leadAction(dealerId, lead.id, action);
@@ -276,6 +322,14 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
           >
             {copied ? "Copied ✓" : "Copy chat"}
           </button>
+          <button
+            type="button"
+            onClick={() => setTools((t) => !t)}
+            className="text-[11px] font-semibold text-accent"
+            title="Staff statuses, bounces, duplicate lead"
+          >
+            {tools ? "Hide tools" : "Part C tools"}
+          </button>
           {lead.status === "paused" ? (
             <button type="button" onClick={() => toggle("resume")} className="text-[11px] font-semibold text-ok">
               Resume AI
@@ -287,6 +341,52 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
           )}
         </div>
       </div>
+      {tools && (
+        <div className="space-y-1.5 border-y border-line bg-panel-2 px-3 py-2 text-[11px]">
+          <div className="font-semibold text-muted">
+            Stage: <span className="text-ink">{lead.stage_label ?? "—"}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-muted">Staff sets</span>
+            <select
+              value={staffStatus}
+              onChange={(e) => setStaffStatus(e.target.value as StaffStatusName)}
+              className="rounded border border-line bg-panel px-1 py-0.5"
+            >
+              {(["Appointment Booked", "Visited", "Sold", "DND", "Managerial Review", "Sold Pending",
+                "Sold Delivered", "Unsold"] as StaffStatusName[]).map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+            {staffStatus === "Appointment Booked" && (
+              <input type="datetime-local" value={bookingAt} onChange={(e) => setBookingAt(e.target.value)}
+                className="rounded border border-line bg-panel px-1 py-0.5" title="Dealer-local appointment time" />
+            )}
+            {staffStatus === "Visited" && (
+              <select value={outcome} onChange={(e) => setOutcome(e.target.value as ManagerOutcome | "")}
+                className="rounded border border-line bg-panel px-1 py-0.5" title="Manager outcome with the visit">
+                <option value="">no outcome</option>
+                <option>Sold Pending</option>
+                <option>Sold Delivered</option>
+                <option>Unsold</option>
+              </select>
+            )}
+            <button type="button" onClick={() => void applyStaffStatus()}
+              className="rounded bg-accent px-2 py-0.5 font-semibold text-white">Apply</button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <button type="button" onClick={() => void duplicateLead()}
+              className="rounded bg-panel px-2 py-0.5 font-semibold" title="New lead, same phone and email">
+              Duplicate lead
+            </button>
+            <button type="button" onClick={() => void send("wrong number")}
+              className="rounded bg-panel px-2 py-0.5 font-semibold">Reply "wrong number"</button>
+            <button type="button" onClick={() => void send("please don't call me")}
+              className="rounded bg-panel px-2 py-0.5 font-semibold">Reply "don't call me"</button>
+            <span className="text-muted">Bounce buttons are under each sent message.</span>
+          </div>
+        </div>
+      )}
       <div className="scroll-thin flex-1 space-y-1.5 overflow-y-auto px-3 pb-2">
         <AnimatePresence initial={false}>
           {conversation.map((m, i) => (
@@ -308,6 +408,17 @@ function Chat({ dealerId, lead, conversation, offline, onChanged, onError }: {
                   {m.channel.toUpperCase()}
                   {m.kind === "lead" && " · lead comments"}
                   {m.direction === "outbound" && ` · ${statusLabel(m)}`}
+                  {m.direction === "outbound" && m.delivery_status && ` · ${m.delivery_status}`}
+                  {tools && m.direction === "outbound" && m.status === "sent" && m.message_id && (
+                    <>
+                      {" · "}
+                      <button type="button" className="underline" onClick={() => void bounce(m, false)}
+                        title="Soft failure: only the follow-up fires now">soft bounce</button>
+                      {" · "}
+                      <button type="button" className="font-semibold underline" onClick={() => void bounce(m, true)}
+                        title="Hard failure: this address is marked invalid for good">hard bounce</button>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>
