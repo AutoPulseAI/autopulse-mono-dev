@@ -118,7 +118,13 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
             </div>
           </div>
         )}
-        <div className="ml-auto flex gap-1.5">
+        <div className="ml-auto flex flex-wrap justify-end gap-1.5">
+          <button type="button" onClick={() => act(() => api.clockToDealerTime(dealerId, "10:00"))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold" title="Next weekday 10:00 on the dealer's clock">
+            → 10:00
+          </button>
+          <button type="button" onClick={() => act(() => api.clockToDealerTime(dealerId, "11:00"))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold" title="Next weekday 11:00 on the dealer's clock (calls are allowed from 11:00 for a customer with no known time zone)">
+            → 11:00
+          </button>
           <button type="button" onClick={() => act(() => api.advanceClock(5 * 60))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
             +5 min
           </button>
@@ -130,6 +136,20 @@ export function SchedulerTab({ dealerId, dealer, leads, onError }: Props) {
           </button>
           <button type="button" onClick={() => act(() => api.advanceClock(24 * 3600))} className="rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white">
             +24 hours
+          </button>
+          <button type="button" onClick={() => act(() => api.advanceClock(7 * 24 * 3600))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
+            +7 days
+          </button>
+          <button type="button" onClick={() => act(() => api.advanceClock(30 * 24 * 3600))} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold">
+            +30 days
+          </button>
+          <button
+            type="button"
+            onClick={() => act(async () => { for (const days of [30, 30, 30, 1]) await api.advanceClock(days * 24 * 3600); })}
+            className="rounded-md bg-warn-soft px-3 py-1.5 text-[12px] font-semibold text-warn"
+            title="Moves the clock 91 days: a silent lead closes as Closed - Lost (Day 91)"
+          >
+            Jump to Day 91
           </button>
           <button type="button" onClick={() => act(api.resetClock)} className="rounded-md bg-panel-2 px-3 py-1.5 text-[12px] font-semibold text-muted">
             Reset

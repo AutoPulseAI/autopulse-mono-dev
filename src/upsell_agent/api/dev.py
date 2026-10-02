@@ -346,6 +346,30 @@ async def advance_clock(body: Advance, request: Request) -> dict:
     return {"now": clock.now().isoformat(), "offset_s": offset}
 
 
+class ToDealerTime(BaseModel):
+    dealer_id: str
+    time: str = Field(default="11:00", pattern=r"^\d{1,2}:\d{2}$")
+    # Skip Saturday and Sunday (the dev dealers are open Monday-Friday).
+    weekdays_only: bool = True
+
+
+@router.post("/clock/to-dealer-time")
+async def clock_to_dealer_time(body: ToDealerTime, request: Request) -> dict:
+    """Moves the dev clock to the next HH:MM (strictly later than now) on the dealer's own clock, so a test starts
+    at a known hour without clicking +1 hour until it gets there."""
+    from datetime import timedelta
+
+    profile = await dealer_profile(body.dealer_id)
+    hour, minute = (int(x) for x in body.time.split(":"))
+    now = clock.now().astimezone(profile.tz)
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    while target <= now or (body.weekdays_only and target.weekday() >= 5):
+        target += timedelta(days=1)
+    offset = await clock.advance(get_redis(), (target - now).total_seconds())
+    await _fire_followups_now(request, "clock")
+    return {"now": clock.now().isoformat(), "offset_s": offset, "dealer_time": target.strftime("%a %H:%M")}
+
+
 @router.post("/clock/reset")
 async def reset_clock() -> dict:
     await clock.reset(get_redis())
