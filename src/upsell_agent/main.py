@@ -19,6 +19,7 @@ from upsell_agent.api.events import router as events_router
 from upsell_agent.api.leads import router as leads_router
 from upsell_agent.api.metrics import router as metrics_router
 from upsell_agent.api.service_vehicles import router as service_vehicles_router
+from upsell_agent.api.staff_view import router as staff_view_router
 from upsell_agent.api.webhooks import router as webhooks_router
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import close_mongo, ensure_indexes, get_db, init_mongo
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None, *, connect: bool = True) -> Fas
     app.include_router(events_router)
     app.include_router(leads_router)
     app.include_router(call_tasks_router)
+    app.include_router(staff_view_router)
     app.include_router(metrics_router)
     app.include_router(webhooks_router)
     app.include_router(service_vehicles_router)  # MASTER_PLAN_4 D5/D6 (stream A4)
