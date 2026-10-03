@@ -11,7 +11,7 @@
 // fields (e.g. SOLD PENDING ownership, customer active/inactive, recall and
 // maintenance) can be added as one more <Section> below without touching the rest.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, isValidElement } from "react";
 import Link from "next/link";
 import { Alert, Badge, Button, Form, Modal, Spinner } from "react-bootstrap";
 import {
@@ -35,6 +35,9 @@ function Section({ title, icon, children }) {
 
 function Row({ label, children }) {
   if (children === null || children === undefined || children === "") return null;
+  // The AI service's profile grows as workflows are added. A section that arrives as a record where this
+  // panel expected plain text must not take the whole lead screen down: skip the row instead.
+  if (typeof children === "object" && !Array.isArray(children) && !isValidElement(children)) return null;
   return (
     <p className="mb-1 small"><strong>{label}:</strong> {children}</p>
   );
@@ -57,7 +60,15 @@ function ExtraSection({ title, data }) {
   );
 }
 
+// The client's three sales lead buckets (blueprint section 2).
+const BUCKET_LABELS = {
+  credit: "Credit / financing",
+  trade_in: "Trade-in / sell my car",
+  general: "General sales",
+};
+
 const EXTRA_SECTIONS = [
+  ["opportunity", "Opportunity"],
   ["ownership", "Ownership"],
   ["customer_status", "Customer"],
   ["recall", "Recalls"],
@@ -122,7 +133,14 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
   const appointment = life.appointment;
   const callTask = profile?.call_task;
   const notice = profile?.staff_notice;
-  const bucket = life.bucket || profile?.bucket;
+  // The lead bucket arrives as a record: { bucket, original_bucket, why, overridden, ... } (older builds: a word).
+  const bucketInfo = profile?.bucket ?? life.bucket;
+  const bucketKey = typeof bucketInfo === "string" ? bucketInfo : bucketInfo?.bucket;
+  const originalBucket = typeof bucketInfo === "object" ? bucketInfo?.original_bucket : null;
+  const bucket = bucketKey
+    ? (BUCKET_LABELS[bucketKey] || bucketKey)
+      + (originalBucket && originalBucket !== bucketKey ? ` (came in as ${BUCKET_LABELS[originalBucket] || originalBucket})` : "")
+    : null;
   const oppDay = typeof life.opportunity_age_days === "number" ? life.opportunity_age_days + 1 : null;
   const channels = data?.consent?.channels;
 
