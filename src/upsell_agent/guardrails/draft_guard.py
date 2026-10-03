@@ -33,6 +33,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from upsell_agent.agent.media import unattached_photo_claim
+from upsell_agent.guardrails import service_claims
 from upsell_agent.guardrails.never_invent import _APPROVAL_LANGUAGE_PATTERNS
 from upsell_agent.tools.inventory_tool import KNOWN_MAKES, TRIM_WORDS
 
@@ -186,7 +187,7 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
 
 def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], known_values: Iterable[Any],
                 inventory: list[dict[str, Any]] | None = None, sms_max: int = SMS_MAX,
-                media_attached: bool = False) -> dict[str, Any]:
+                media_attached: bool = False, service_facts: dict[str, Any] | None = None) -> dict[str, Any]:
     if not draft:
         return {"passed": False, "checks": {"draft_present": False}, "violations": ["no draft to check"]}
 
@@ -196,10 +197,12 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     # Phase 3 decision C): they came from a record this draft actually named,
     # not invented.
     vehicle_facts = [r[k] for r in _mentioned(draft, inventory or []) for k in ("year", "miles") if r.get(k) is not None]
-    allowed = _numbers([*customer_texts, *known_values, *vehicle_facts])
+    # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach may repeat its own facts' numbers.
+    allowed = _numbers([*customer_texts, *known_values, *vehicle_facts, *service_claims.known_values(service_facts)])
     violations: list[str] = []
 
-    invented = sorted({raw for raw in _claims(text)
+    # "30,000-mile service": the hyphenated "000-mile" would otherwise read as a model name and leave "30,".
+    invented = sorted({raw for raw in _claims(re.sub(r"(\d)-(mile)", r"\1 \2", text, flags=re.IGNORECASE))
                        if (n := _normalize_number(raw)) != "0" and n not in allowed})
     if invented:
         violations.append(f"numbers the customer never gave us: {', '.join(invented)}")
@@ -215,11 +218,17 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     photo_claims = unattached_photo_claim(text, media_attached=media_attached)
     violations += photo_claims
 
+    # MASTER_PLAN_4 D5/D6 (stream A4): recall / maintenance claims only from the outreach event's facts
+    # (SOLD-DELIVERED PDF §5, §6, §12). Recall and "service due" claims are checked on every draft.
+    service = service_claims.check_service_claims(text, service_facts)
+    violations += service
+
     checks = {
         "no_invented_numbers": not invented,
         "no_approval_language": not approval,
         "grounded_in_real_stock": not grounding,
         "no_unattached_photo_claims": not photo_claims,
+        "service_claims_grounded": not service,
         "sms_length_ok": 0 < len(sms) <= sms_max,
         "email_complete": bool(subject.strip()) and bool(body.strip()),
     }

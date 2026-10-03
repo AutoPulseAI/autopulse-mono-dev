@@ -165,8 +165,11 @@ async def record_event(db: DealerScopedDatabase, vehicle: dict[str, Any], *, eve
         "offer": OFFER if customer_facing else None, "customer_facing": customer_facing,
         "facts": facts, "summary": summary, "created_at": now, "status": "new",
     }
-    try:
-        result = await db.collection(AI_SERVICE_EVENTS_COLLECTION).insert_one(event)
+    events = db.collection(AI_SERVICE_EVENTS_COLLECTION)
+    if await events.find_one({"event_key": event_key}):
+        return None
+    try:  # the unique index catches two workers racing past the check above
+        result = await events.insert_one(event)
     except DuplicateKeyError:
         return None
     event["_id"] = result.inserted_id

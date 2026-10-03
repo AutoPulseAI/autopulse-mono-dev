@@ -146,7 +146,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
     result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory,
-                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") else SMS_MAX)
+                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") else SMS_MAX,
+                         # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
+                         service_facts=(state.decision or {}).get("service_facts"))
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
     if jargon:

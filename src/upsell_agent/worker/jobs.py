@@ -17,7 +17,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from upsell_agent.agent import lifecycle, summary
+from upsell_agent.agent import lifecycle, maintenance, recalls, summary
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
@@ -145,6 +145,18 @@ async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await lifecycle.close_expired()
 
 
+async def sweep_recalls(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_4 D6 (stream A4): NHTSA recall checks for owned vehicles (agent/recalls.py sweep), hourly;
+    each vehicle is re-checked every RECALL_RECHECK_DAYS, a batch per run."""
+    return await recalls.sweep()
+
+
+async def sweep_maintenance(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_4 D5 (stream A4): maintenance due recalculation (agent/maintenance.py sweep), hourly; each
+    vehicle at most daily. Event-driven: it raises one alert per due service, never a cadence."""
+    return await maintenance.sweep()
+
+
 async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """DEV: forget the worker's cached stock searches. The search cache lives in this process (60 s per
     dealer and query, tools/inventory_tool.py), so a scenario or the Debug UI that changes stock from another
@@ -156,4 +168,5 @@ async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]
 
 
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
-             fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache]
+             fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
+             sweep_recalls, sweep_maintenance]  # MASTER_PLAN_4 D5/D6 (stream A4)
