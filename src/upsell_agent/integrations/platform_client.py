@@ -243,6 +243,13 @@ class LivePlatformClient:
                                 {"dealer_id": dealer_id, "lead_id": lead_id, "reason": reason})
         return bool(body.get("updated"))
 
+    async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None) -> str:
+        """`POST /api/internal/ai/leads/notes`: an internal note on the lead, visible to staff in the CRM
+        (e.g. a service request with the customer's preferred day and time)."""
+        body = await self._post("/api/internal/ai/leads/notes",
+                                {"dealer_id": dealer_id, "lead_id": lead_id, "text": text, "kind": kind})
+        return str(body.get("id") or "")
+
     async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=RECORD_TIMEOUT_S) as client:
             response = await client.request(method, f"{self._base_url}{path}", json=payload, headers=self._headers)
