@@ -179,7 +179,13 @@ export async function seed() {
       // Twilio number placeholder: sends are stubbed locally (PROVIDER_SEND_STUB).
       sms_conversion_phone: DEMO_DEALER_SMS,
       booking_max_per_slot: 1, booking_slot_minutes: 30,
-      ai_agent_name: 'Ava',
+      ai_agent_name: 'Ava', ai_bot_name: 'Ava',
+      // The rest of the CRM's Dealer Setup form: without `sanitized_domain` the dealer portal forces the
+      // setup modal open on every page.
+      organization_name: 'Autopulse Demo Motors LLC', domain_name: 'demo-motors', sanitized_domain: 'demo-motors',
+      contact_person: 'Dana Demo', contact_person_role: 'Owner', store_contact_mail: 'sales@demo-motors.autopulse.local',
+      store_country: 'US', general_manager: 'Maya Manager', general_manager_email: 'maya.manager@autopulse.local',
+      general_manager_phone: '+15550100198', fi_manager: 'Frank Finance', alternative_contact_number: '+15550100197',
     },
     setting: { autoReplyEnabled: true },
     branding_information: { primaryColor: '#0272b4' },
