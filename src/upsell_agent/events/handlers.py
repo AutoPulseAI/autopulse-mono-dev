@@ -11,6 +11,7 @@ handed-off lead the customer gets a holding reply, at most one every
 HOLDING_REPLY_EVERY (architecture §15, decision 12).
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,6 +53,8 @@ from upsell_agent.scheduler.followups import (
     plan_cadence_touch,
     staff_no_show,
 )
+
+logger = logging.getLogger(__name__)
 
 # Statuses in which the AI doesn't write replies (architecture §5 step 3). An opt-out is no longer
 # one of them: it stops what we start, never the reply to the customer's own message (decision 137).
@@ -330,6 +333,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                     "opted_out", source="customer_opt_out",
                     reason=f"Opted out of every channel ({opt_out.matched!r})")], lead=lead,
                     customer_id=event.customer_id)
+                # PLAN_4 stream C1: staff see it in the CRM too - the lead goes to DND with a note.
+                await _mark_lead_dnd(deps, event.dealer_id, lead_id,
+                                     f"The customer opted out of every channel ({opt_out.matched!r}).")
             if opt_out.kind == "keyword":
                 reason = (f"The customer replied STOP on {channel}: opted out. The carrier sends its own "
                           "confirmation, so nothing is sent.")
@@ -535,7 +541,8 @@ async def _mark_showed(db: DealerScopedDatabase, deps: TurnDeps | None, lead: di
     booking_id = (prior.get("appointment") or {}).get("booking_id") or (str(booking["_id"]) if booking else None)
     if booking_id and deps is not None:
         await deps.platform.update_booking(db.dealer_id, {
-            "booking_id": booking_id, "booking_status": "completed", "dealer_timezone": profile.timezone})
+            "booking_id": booking_id, "booking_status": "completed", "showed": True,
+            "dealer_timezone": profile.timezone})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"appointment.showed": True, "appointment.showed_at": clock.now()}})
     return {"showed": True, "booking_id": booking_id}
@@ -651,6 +658,17 @@ async def _opt_back_in(db: DealerScopedDatabase, event: InboundMessageEvent, lea
             reason=f"The customer opted back in ({opt_in.matched!r}): {', '.join(reversed_)}",
             detail={"previous": state.get("previous_stage")})], lead=lead, customer_id=event.customer_id)
     return reversed_
+
+
+async def _mark_lead_dnd(deps: TurnDeps | None, dealer_id: str, lead_id: str, reason: str) -> None:
+    """The CRM's own DND for a customer who opted out of everything (PLAN_4 stream C1). Never raises: the
+    opt-out itself is already recorded and enforced here; the CRM's copy is for staff."""
+    if deps is None:
+        return
+    try:
+        await deps.platform.mark_lead_dnd(dealer_id, lead_id, reason)
+    except Exception:  # the opt-out stands whatever the CRM answers
+        logger.exception("could not set lead %s to DND in the CRM", lead_id)
 
 
 async def _every_channel_stopped(db: DealerScopedDatabase, customer_id: str | None) -> bool:

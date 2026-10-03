@@ -177,6 +177,8 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     # MASTER_PLAN_4 D2 (SOLD PENDING PDF §2, §9: "Dealer determines transaction is lost -> CLOSED LOST"): staff
     # close a lead as lost, arriving the same way "Sold Pending" does (aidmvcs-be-dev lib/ai/aiStaff.js).
     "Closed Lost": "staff_closed_lost",
+    # Staff closed the lead as lost (client, 1 Oct 2026), e.g. a Sold Pending deal that fell through.
+    "Closed - Lost": "staff_closed_lost",
 }
 # Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
 UNSOLD_FOLLOWUP_DAYS = 90
