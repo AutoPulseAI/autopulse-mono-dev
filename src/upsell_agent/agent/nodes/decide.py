@@ -501,6 +501,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     touch = plan_cadence_touch_context(ctx.lead_state, state.customer_name)
     if touch and state.trigger == CADENCE_TRIGGER:
         decision["touch"] = touch
+    service_offer = (ctx.lead_state or {}).get("service_offer") or {}
+    if sold_hold and service_offer.get("facts"):
+        # MASTER_PLAN_4 D4 + stream A4: the recall / maintenance facts our outreach was built from. Stream A4's
+        # guard allows exactly these service claims in the reply and rejects any others.
+        decision["service_facts"] = service_offer["facts"]
     decision["next_action"] = dated if decision["action"] not in ("stop", "handoff") else None
     decision["not_interested"] = ({"mode": not_interested, "reason": not_interested_reason}
                                   if not_interested else None)

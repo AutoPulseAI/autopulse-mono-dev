@@ -165,6 +165,35 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _pick(facts: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = facts.get(key)
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("description")
+        if isinstance(value, list):
+            value = ", ".join(str(v.get("name") if isinstance(v, dict) else v) for v in value if v) or None
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def normalize_service_facts(kind: str, facts: dict[str, Any]) -> dict[str, Any]:
+    """Stream A4's facts (NHTSA's and Vehicle Databases' field names) read into the few things the message may
+    say. A recall from A4 is VIN-specific NHTSA data by construction (its RECALL_DETECTED event), so the source
+    defaults to NHTSA; nothing else is filled in."""
+    out = {k: facts[k] for k in ("sms_text", "email_subject", "email_body") if facts.get(k)}
+    if kind == "recall":
+        out.update(recall_id=_pick(facts, "recall_id", "campaign_number", "nhtsa_campaign_number",
+                                   "NHTSACampaignNumber", "campaign"),
+                   source=_pick(facts, "source") or "NHTSA",
+                   component=_pick(facts, "component", "Component"),
+                   summary=_pick(facts, "summary", "Summary"))
+    else:
+        out.update(service=_pick(facts, "service", "service_name", "next_service", "services", "name"),
+                   due=_pick(facts, "due", "due_date", "due_by", "due_at"))
+    return {k: v for k, v in out.items() if v not in (None, "")}
+
+
 def render_service_outreach(kind: str, facts: dict[str, Any], *, first_name: str | None, dealership: str | None,
                             vehicle: dict | None) -> dict[str, str] | None:
     """A maintenance or recall message (stream A4, §5-§6), built only from the facts it was given. The caller may
@@ -237,6 +266,9 @@ def classify_service_answer(text: str) -> str:
 _YEAR = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
 _NOTHING = re.compile(r"\b(nothing|no car|don'?t (?:drive|have (?:one|a car))|not driving|none|n/a)\b",
                       re.IGNORECASE)
+# Words after a make that aren't part of the model ("a Honda Civic now", "a Ford and ...").
+_FILLER = {"now", "these", "today", "and", "for", "about", "since", "right", "that", "which", "with", "but", "i",
+           "it", "lol", "thanks", "currently", "nowadays", "at", "from", "in", "days"}
 KNOWN_MAKES = ("acura", "alfa romeo", "audi", "bmw", "buick", "cadillac", "chevrolet", "chevy", "chrysler", "dodge",
                "fiat", "ford", "genesis", "gmc", "honda", "hyundai", "infiniti", "jaguar", "jeep", "kia",
                "land rover", "lexus", "lincoln", "mazda", "mercedes-benz", "mercedes", "mini", "mitsubishi", "nissan",
@@ -259,10 +291,12 @@ def parse_current_vehicle(text: str) -> dict[str, Any] | None:
     model = None
     if make:
         after = re.split(rf"\b{re.escape(make)}\b", body, maxsplit=1, flags=re.IGNORECASE)[1]
-        words = re.findall(r"[A-Za-z0-9-]+", after)
-        model = " ".join(words[:2]).strip() or None
-        if model and model.lower() in ("now", "these", "today", "and", "for"):
-            model = None
+        words = []
+        for word in re.findall(r"[A-Za-z0-9-]+", after)[:2]:
+            if word.lower() in _FILLER:
+                break
+            words.append(word)
+        model = " ".join(words) or None
     pretty = {"chevy": "Chevrolet", "vw": "Volkswagen", "bmw": "BMW", "gmc": "GMC", "mini": "MINI", "ram": "RAM",
               "mercedes": "Mercedes-Benz"}
     return {"year": int(year_match.group(1)) if year_match else None,

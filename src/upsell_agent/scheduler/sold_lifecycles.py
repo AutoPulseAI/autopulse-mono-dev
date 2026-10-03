@@ -216,6 +216,12 @@ async def start_ownership(db: DealerScopedDatabase, *, lead_id: str, customer_id
                                              vehicle=await sold_vehicle(db, lead, customer_id, lead_id),
                                              delivered_at=delivered_at, delivery_date=delivery_day)
     out: dict[str, Any] = {"ownership_id": str(record["_id"])}
+    # TODO(merge with stream A4): start recall / maintenance monitoring for this VIN -
+    #   from upsell_agent.agent import service_events; await service_events.register_vehicle(db.dealer_id, ...)
+    # (not imported here: that module lives on A4's branch). Its outreach comes back through
+    # ownership.queue_service_outreach. Likewise the Day-3 first-service name will come from
+    # agent/maintenance.compute_status(...)["next_service"] (-> ownership.set_maintenance_facts); until then the
+    # check-in offers service in words only, never an interval.
     if record.get("ownership_status") != ownership.VEHICLE_ACTIVE:
         return {**out, "planned": False, "reason": "the customer no longer owns this vehicle"}
     if not state.get("checkin_sent_at"):
@@ -339,26 +345,22 @@ async def plan_birthday(db: DealerScopedDatabase, *, customer_id: str) -> dict[s
 
 
 async def plan_service_outreach(db: DealerScopedDatabase, *, vehicle: Any, kind: str, facts: dict[str, Any],
-                                due_at: datetime | None = None, call_task: bool = True) -> dict[str, Any]:
-    """agent/ownership.queue_service_outreach (stream A4's entry point)."""
+                                due_at: datetime | None = None, call_task: bool = True,
+                                offer: str = "service_visit_request", event_type: str | None = None) -> dict[str, Any]:
+    """agent/ownership.queue_service_outreach (stream A4's entry point). `facts` are kept exactly as A4 gave them
+    (`service_facts`, for its guard); the message reads them through sold_delivered.normalize_service_facts."""
     if kind not in ("maintenance", "recall"):
         return {"created": False, "reason": f"unknown outreach kind {kind!r}"}
-    record = None
-    if isinstance(vehicle, dict) and vehicle.get("_id"):
-        record = vehicle
-    elif isinstance(vehicle, dict):
-        rows = await db.collection(AI_VEHICLE_OWNERSHIP_COLLECTION).find(
-            {k: str(v) if k == "customer_id" else v for k, v in vehicle.items() if k in ("customer_id", "vin")}
-        ).to_list(None)
-        record = next((r for r in rows if r.get("ownership_status") == ownership.VEHICLE_ACTIVE), None)
-    else:
-        record = await ownership.find_record(db, vehicle)
-    if record is None or not await ownership.vehicle_is_owned(db, ownership_id=record["_id"]):
+    record = vehicle if isinstance(vehicle, dict) else await ownership.find_record(db, vehicle)
+    if not await ownership.record_is_owned(db, record):
         return {"created": False, "reason": "not a vehicle the customer currently owns on a Sold - Delivered "
                                             "opportunity"}
-    if sold_delivered.render_service_outreach(kind, facts, first_name=None, dealership=None, vehicle=record) is None:
+    if not record.get("lead_id"):
+        return {"created": False, "reason": "a customer-reported vehicle has no opportunity to message on"}
+    words = sold_delivered.normalize_service_facts(kind, facts)
+    if sold_delivered.render_service_outreach(kind, words, first_name=None, dealership=None, vehicle=record) is None:
         return {"created": False, "reason": "the facts are too thin to say anything true (§5, §6)"}
-    dedupe = str(facts.get("dedupe_key") or facts.get("recall_id") or facts.get("service") or kind)
+    dedupe = str(facts.get("dedupe_key") or words.get("recall_id") or words.get("service") or kind)
     recent = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
         {"ownership_id": str(record["_id"]), "kind": KIND_SERVICE_OUTREACH, "dedupe_key": dedupe,
          "status": "sent", "closed_at": {"$gte": clock.now() - SERVICE_REPEAT_AFTER}})
@@ -367,7 +369,7 @@ async def plan_service_outreach(db: DealerScopedDatabase, *, vehicle: Any, kind:
                                             f"{SERVICE_REPEAT_AFTER.days} days"}
     return await _plan(db, KIND_SERVICE_OUTREACH, lead_id=record["lead_id"], customer_id=record["customer_id"],
                        due_at=due_at or clock.now(), ownership_id=str(record["_id"]), outreach_kind=kind,
-                       facts=facts, dedupe_key=dedupe, call_task=call_task)
+                       facts=facts, dedupe_key=dedupe, call_task=call_task, offer=offer, event_type=event_type)
 
 
 async def sweep_birthdays(*, limit: int = 2000) -> dict[str, Any]:
@@ -424,7 +426,7 @@ async def _requeue(db: DealerScopedDatabase, doc: dict, due: datetime, reason: s
 async def _vehicle_check(db: DealerScopedDatabase, doc: dict) -> tuple[str, bool, str]:
     if not doc.get("ownership_id"):
         return "vehicle_owned", True, "customer-level message"
-    owned = await ownership.vehicle_is_owned(db, ownership_id=doc["ownership_id"])
+    owned = await ownership.record_is_owned(db, await ownership.find_record(db, doc["ownership_id"]))
     return "vehicle_owned", owned, "the customer still owns the vehicle" if owned else \
         "the customer no longer owns this vehicle"
 
@@ -565,10 +567,15 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
             await _close(db, doc, "suppressed", reason="a service appointment is already booked")
             await _log(db, tracer, f"{kind}_suppressed", {"followup_id": doc_id, "reason": "appointment exists"})
             return "suppressed"
-        text = sold_delivered.render_service_outreach(doc.get("outreach_kind") or "maintenance", doc.get("facts") or {},
-                                                      first_name=name, dealership=profile.name, vehicle=vehicle)
-        lead_fields["service_offer"] = {"kind": doc.get("outreach_kind"), "ownership_id": doc.get("ownership_id"),
-                                        "asked_at": now, "status": "offered", "facts": doc.get("facts")}
+        outreach_kind = doc.get("outreach_kind") or "maintenance"
+        text = sold_delivered.render_service_outreach(
+            outreach_kind, sold_delivered.normalize_service_facts(outreach_kind, doc.get("facts") or {}),
+            first_name=name, dealership=profile.name, vehicle=vehicle)
+        # The facts as A4 gave them: a reply turn about this offer carries them as decision["service_facts"]
+        # (agent/nodes/decide.py), so its guard allows exactly these recall / maintenance claims.
+        lead_fields["service_offer"] = {"kind": outreach_kind, "ownership_id": doc.get("ownership_id"),
+                                        "asked_at": now, "status": "offered", "facts": doc.get("facts"),
+                                        "event_type": doc.get("event_type"), "offer": doc.get("offer")}
     outcomes = await _send_both(db, deps, tracer, doc, text, PURPOSE[kind])
     delivered = any(o.status in ("sent", "duplicate") for o in outcomes)
     if not delivered and any(o.status == "held" for o in outcomes):

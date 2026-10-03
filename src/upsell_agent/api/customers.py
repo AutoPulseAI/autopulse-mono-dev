@@ -13,7 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from upsell_agent.agent import ownership
 from upsell_agent.api.auth import require_internal_auth
-from upsell_agent.integrations.mongodb import PLATFORM_CUSTOMERS_COLLECTION, as_object_id, dealer_scoped_db
+from upsell_agent.integrations.mongodb import (
+    PLATFORM_CUSTOMERS_COLLECTION,
+    as_object_id,
+    dealer_scoped_db,
+)
 
 router = APIRouter(prefix="/v1/customers", tags=["customers"], dependencies=[Depends(require_internal_auth)])
 

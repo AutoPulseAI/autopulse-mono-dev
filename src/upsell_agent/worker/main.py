@@ -23,7 +23,12 @@ from upsell_agent.integrations.redis_client import close_redis, get_redis, init_
 from upsell_agent.observability.trace import NullTraceSink, RedisTraceSink
 from upsell_agent.observability.tracing import init_tracing, shutdown_tracing
 from upsell_agent.scheduler.followups import worker_id
-from upsell_agent.worker.jobs import FUNCTIONS, close_expired_leads, fire_due_followups, plan_birthdays
+from upsell_agent.worker.jobs import (
+    FUNCTIONS,
+    close_expired_leads,
+    fire_due_followups,
+    plan_birthdays,
+)
 from upsell_agent.worker.queue import make_enqueue, make_queue
 
 logger = logging.getLogger(__name__)

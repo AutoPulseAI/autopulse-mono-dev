@@ -18,19 +18,19 @@ answer about (a DealerVault deal, say) keeps their status; missing data alone
 never makes anyone INACTIVE. Recalculated on every relevant change (D8):
 every lead stage change (lifecycle.apply) and every ownership change here.
 
-**For stream A4** (NHTSA recalls, Vehicle Databases maintenance) - the public
-entry points:
+**For stream A4** (NHTSA recalls, Vehicle Databases maintenance) - its agreed interface:
 
-    await ownership.vehicle_is_owned(db, ownership_id=..., customer_id=..., vin=...)  -> bool
-    await ownership.owned_vehicles(db, customer_id)                                     -> [record]
-    await ownership.set_maintenance_facts(db, ownership_id, {"first_service": {"name": ...}, ...})
-    await ownership.queue_service_outreach(db, vehicle=<record | ownership_id | {"customer_id", "vin"}>,
-                                           kind="maintenance" | "recall", facts={...}, due_at=None,
-                                           call_task=True)                               -> {"created": bool, ...}
+    await ownership.vehicle_is_owned(dealer_id, vin, customer_id=None)  -> True | False | None (unknown)
+    await ownership.queue_service_outreach(dealer_id, {"type": "RECALL_DETECTED" | "MAINTENANCE_DUE",
+                                                       "offer": "service_visit_request", "facts": {...},
+                                                       "vin": ..., "customer_id"?: ...})
+                                                                         -> {"status": "queued" | "skipped", ...}
+    await ownership.owned_vehicles(db, customer_id)                      -> [record]
+    await ownership.set_maintenance_facts(db, ownership_id, {"first_service": {"name": ...}})
 
-`facts` for a recall: {recall_id, source ("NHTSA"), component?, summary?, dedupe_key?}; for maintenance:
-{service, due?, dedupe_key?}; either may carry its own approved wording {sms_text, email_subject?,
-email_body?}. Nothing is ever invented around them (§5, §6, §12).
+The message says only what `facts` says (recall: campaign number / component / summary; maintenance: the service
+and when it's due), or the caller's own approved wording {sms_text, email_subject?, email_body?}. Nothing is ever
+invented around them (§5, §6, §12).
 """
 
 import logging
@@ -145,8 +145,9 @@ async def recalculate_customer_status(db: DealerScopedDatabase, customer_id: str
     answered_vins = {r.get("vin") for r in records if r.get("vin")}
     deal_vins = {d.get("vin") for d in await db.collection(PLATFORM_DEALS_COLLECTION).find(
         {"customer_id": {"$in": _cid_values(customer_id)}}).to_list(None) if d.get("vin")}
-    # A DealerVault deal for a vehicle we have no ownership answer about: we don't know whether they still own it.
-    unknown = bool(deal_vins - answered_vins)
+    # Unknown, not zero (§9): no ownership record at all (we have never known what they drive), or a DealerVault
+    # deal for a vehicle we have no ownership answer about. Only confirmed answers can add up to zero.
+    unknown = not records or bool(deal_vins - answered_vins)
     statuses = db.collection(AI_CUSTOMER_STATUS_COLLECTION)
     previous = await statuses.find_one({"customer_id": customer_id}) or {}
     status, why = customer_status_rule(open_opportunities=open_count, owned_vehicles=owned,
@@ -224,6 +225,10 @@ async def mark_no_longer_owned(db: DealerScopedDatabase, record: dict[str, Any],
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         {"ownership_id": str(record["_id"]), "status": "pending"},
         {"$set": {"status": "cancelled", "reason": "the customer no longer owns this vehicle", "closed_at": now}})
+    # TODO(merge with stream A4): stop recall / maintenance monitoring for this vehicle -
+    #   from upsell_agent.agent import service_events; await service_events.stop_vehicle(db.dealer_id, record["vin"], ...)
+    # (not imported here: that module lives on A4's branch). Its queued outreach is already cancelled above and
+    # vehicle_is_owned() now answers False.
     await recalculate_customer_status(db, record.get("customer_id"), reason="vehicle no longer owned")
     return result.modified_count
 
@@ -260,24 +265,42 @@ async def owned_vehicles(db: DealerScopedDatabase, customer_id: str) -> list[dic
     return sorted(rows, key=lambda r: _aware(r.get("created_at")) or datetime.min.replace(tzinfo=UTC), reverse=True)
 
 
-async def vehicle_is_owned(db: DealerScopedDatabase, *, ownership_id: Any = None, customer_id: str | None = None,
-                           vin: str | None = None, lead_id: str | None = None) -> bool:
-    """For stream A4: does the customer still own this vehicle (an ACTIVE record on a Sold - Delivered or
-    customer-reported vehicle)? Looked up by the record, by VIN (with the customer when given), or by the
-    opportunity it was sold on. False for an unknown vehicle: outreach needs a vehicle we know is theirs."""
-    record = await find_record(db, ownership_id) if ownership_id else None
-    if record is None and (vin or lead_id):
-        flt: dict[str, Any] = {"vin": vin} if vin else {"lead_id": lead_id}
-        if customer_id:
-            flt["customer_id"] = str(customer_id)
-        rows = await db.collection(AI_VEHICLE_OWNERSHIP_COLLECTION).find(flt).to_list(None)
-        record = next((r for r in rows if r.get("ownership_status") == VEHICLE_ACTIVE), rows[0] if rows else None)
+async def record_is_owned(db: DealerScopedDatabase, record: dict[str, Any] | None) -> bool:
+    """An ACTIVE ownership record whose opportunity (when it was sold here) is still Sold - Delivered."""
     if record is None or record.get("ownership_status") != VEHICLE_ACTIVE:
         return False
     if record.get("lead_id"):
         state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": record["lead_id"]}) or {}
         return opportunity_status(state.get("stage"), state.get("previous_stage")) == SOLD_DELIVERED
     return True
+
+
+async def find_by_vin(db: DealerScopedDatabase, vin: str | None, customer_id: str | None = None) -> list[dict]:
+    if not vin:
+        return []
+    rows: list[dict] = []
+    for value in dict.fromkeys((str(vin).strip().upper(), vin)):
+        flt: dict[str, Any] = {"vin": value}
+        if customer_id:
+            flt["customer_id"] = str(customer_id)
+        rows = await db.collection(AI_VEHICLE_OWNERSHIP_COLLECTION).find(flt).to_list(None)
+        if rows:
+            break
+    return rows
+
+
+async def vehicle_is_owned(dealer_id: str, vin: str, *, customer_id: str | None = None) -> bool | None:
+    """**Stream A4's interface.** Does the customer still own this VIN? True: an ACTIVE record on a Sold -
+    Delivered opportunity (or customer-reported). False: we know they don't (NO_LONGER_OWNED, or the opportunity
+    closed). None: no ownership record for it - unknown, so no outreach (§9: unknown is not confirmed)."""
+    db = dealer_scoped_db(dealer_id)
+    rows = await find_by_vin(db, vin, customer_id)
+    if not rows:
+        return None
+    for row in rows:
+        if await record_is_owned(db, row):
+            return True
+    return False
 
 
 async def set_maintenance_facts(db: DealerScopedDatabase, ownership_id: Any, facts: dict[str, Any]) -> bool:
@@ -293,15 +316,39 @@ async def set_maintenance_facts(db: DealerScopedDatabase, ownership_id: Any, fac
     return True
 
 
-async def queue_service_outreach(db: DealerScopedDatabase, *, vehicle: Any, kind: str, facts: dict[str, Any],
-                                 due_at: datetime | None = None, call_task: bool = True) -> dict[str, Any]:
-    """For stream A4: a maintenance-due or open-recall message for an owned vehicle (§5, §6). Text + email (and
-    the 60-minute call task unless `call_task=False`) through the same send check as every message; re-checked at
-    fire time (still owned, still Sold - Delivered, no service appointment already booked, not sent already for
-    the same `facts["dedupe_key"]`). A YES becomes a service request with notes for the team, never a booking."""
+# Stream A4's event types (agent/service_events.py) and what they are here.
+EVENT_KINDS = {"RECALL_DETECTED": "recall", "MAINTENANCE_DUE": "maintenance"}
+
+
+async def queue_service_outreach(dealer_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    """**Stream A4's interface.** `event`: {type: "RECALL_DETECTED" | "MAINTENANCE_DUE", offer:
+    "service_visit_request", facts: {...}, vin?, customer_id?, ownership_id?, due_at?, call_task?}. Queues text +
+    email (+ the 60-minute call task unless `call_task` is False) for an owned vehicle (§5, §6), re-checked at fire
+    time (still owned, still Sold - Delivered, no service appointment already booked, not the same message within
+    30 days). The message says only what `facts` says; the facts are kept on the lead's service offer, and a reply
+    turn about it carries them as `decision["service_facts"]` (A4's guard allows exactly those claims). A YES
+    becomes a service request with notes, never a booking (client, scope Q16).
+    Returns {"status": "queued", "followup_id", "due_at", ...} or {"status": "skipped", "reason"}."""
     from upsell_agent.scheduler import sold_lifecycles
-    return await sold_lifecycles.plan_service_outreach(db, vehicle=vehicle, kind=kind, facts=facts, due_at=due_at,
-                                                       call_task=call_task)
+
+    kind = EVENT_KINDS.get(str(event.get("type") or ""))
+    if kind is None:
+        return {"status": "skipped", "reason": f"unknown event type {event.get('type')!r}"}
+    facts = dict(event.get("facts") or {})
+    db = dealer_scoped_db(dealer_id)
+    vehicle: Any = event.get("ownership_id")
+    if not vehicle:
+        rows = await find_by_vin(db, event.get("vin") or facts.get("vin"), event.get("customer_id"))
+        vehicle = next((r for r in rows if r.get("ownership_status") == VEHICLE_ACTIVE), None)
+    if not vehicle:
+        return {"status": "skipped", "reason": "no current ownership record for this vehicle (unknown or not owned)"}
+    due_at = event.get("due_at")
+    if isinstance(due_at, str):
+        due_at = datetime.fromisoformat(due_at)
+    made = await sold_lifecycles.plan_service_outreach(
+        db, vehicle=vehicle, kind=kind, facts=facts, due_at=due_at, call_task=bool(event.get("call_task", True)),
+        offer=str(event.get("offer") or "service_visit_request"), event_type=str(event["type"]))
+    return {"status": "queued" if made.get("created") else "skipped", **made}
 
 
 # --- Views (API) -------------------------------------------------------------------------------------------------------

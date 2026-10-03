@@ -135,8 +135,7 @@ def plan_touch(state: SoldPendingState, *, now: datetime, tz) -> PlannedTouch:
     assert state.started_at is not None
     n = state.touch_number
     due = due_at(state.started_at, n, tz)
-    if due <= now:
-        due = now
+    due = max(now, due)
     return PlannedTouch(touch_number=n, theme=theme_for(n), due_at=due, week=week_number(n), phase=phase(n))
 
 

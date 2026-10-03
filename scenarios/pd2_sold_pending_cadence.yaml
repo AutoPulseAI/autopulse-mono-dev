@@ -1,0 +1,18 @@
+name: SOLD PENDING weekly touches, router and Closed Lost
+stage: 402
+description: 'MASTER_PLAN_4 D2 (SOLD PENDING PDF §4-§9). Sold Pending starts its own cadence: the week-1 touch goes out the next day on text AND email, with the 60-minute call task behind it, then week 2 is planned. A delivery-date question is escalated to the salesperson (never answered with a guess) and the lead stays Sold Pending. Staff then set Closed Lost: every SOLD PENDING action stops.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Pending, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+  - staff_status: {lead: s, status: "Sold Pending"}
+  - expect_lead: {lead: s, stage: sold_pending, status: active}
+  - expect_followup: {lead: s, kind: sold_pending_touch, status: pending, timeout_s: 20}
+  - advance_clock: {dealer: A, to: "Wed 10:05"}
+  - expect_followup: {lead: s, kind: call_task, status: pending, timeout_s: 30}
+  - expect_followup: {lead: s, kind: sold_pending_touch, status: pending, timeout_s: 20}
+  - reply: {lead: s, text: "When will my car be ready for pickup?"}
+  - expect_lead: {lead: s, stage: sold_pending, staff_notice: sold_pending_escalation, timeout_s: 30}
+  - staff_status: {lead: s, status: "Closed Lost"}
+  - expect_lead: {lead: s, stage: closed_lost, timeout_s: 20}
+  - expect_no_followup: {lead: s, kind: sold_pending_touch, status: pending}
