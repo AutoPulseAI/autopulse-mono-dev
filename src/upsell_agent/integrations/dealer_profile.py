@@ -74,6 +74,11 @@ class DealerProfile:
     city: str | None = None
     state: str | None = None
     agent_name: str | None = None
+    # Sales appointment slots (client, 5 Oct 2026): one hour, up to 10 bookings each, unless the dealer record
+    # says otherwise (`booking_capacity.sales`, the same setting the CRM's booking check reads,
+    # aidmvcs-be-dev app/lib/bookingService.js). The AI books sales visits only; service visits are requests.
+    sales_slot_minutes: int = 60
+    sales_per_slot: int = 10
 
     def hours_text(self) -> dict[str, str]:
         """Opening hours as a customer reads them: {"Monday": "9:00 AM to 7:00 PM", "Sunday": "closed"}."""
@@ -219,7 +224,27 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         # The CRM's Dealer Setup form saves the AI's name as `ai_bot_name` ("Bot Name"); `ai_agent_name` is
         # the older field our dev seed used.
         agent_name=str(info.get("ai_bot_name") or info.get("ai_agent_name") or "").strip() or None,
+        **_sales_capacity(info),
     )
+
+
+def _sales_capacity(info: dict[str, Any]) -> dict[str, int]:
+    """The dealer's sales slot length and capacity, read like the CRM's capacitySettings(dealer, "sales"):
+    `booking_capacity.sales` first, then the older single `booking_max_per_slot` / `booking_slot_minutes`."""
+    own = (info.get("booking_capacity") or {}).get("sales") or {}
+
+    def number(value: Any) -> int | None:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    per_slot = number(own.get("max_per_slot", info.get("booking_max_per_slot")))
+    minutes = number(own.get("slot_minutes", info.get("booking_slot_minutes")))
+    return {
+        "sales_per_slot": per_slot if per_slot and per_slot > 0 else 10,
+        "sales_slot_minutes": minutes if minutes and 5 <= minutes <= 240 else 60,
+    }
 
 
 _cache: dict[str, tuple[float, DealerProfile]] = {}

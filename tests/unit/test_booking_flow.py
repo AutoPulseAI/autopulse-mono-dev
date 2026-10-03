@@ -153,7 +153,7 @@ async def test_a_time_taken_since_it_was_offered_gets_fresh_times(mongo):
     dealer = await dealer_profile(DEALER)
     day = datetime.fromisoformat(first["iso"]).astimezone(dealer.tz)
     midnight = day.replace(hour=0, minute=0).astimezone(UTC)
-    for other in ("x1", "x2"):
+    for other in (f"x{i}" for i in range(10)):  # a full one-hour sales slot (client, 5 Oct 2026)
         await mongo[PLATFORM_BOOKINGS_COLLECTION].insert_one({
             "dealer_id": DEALER, "lead_id": other, "bookingDate": midnight, "bookingTime": first["time"],
             "booking_status": "pending"})

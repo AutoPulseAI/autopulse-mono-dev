@@ -24,9 +24,11 @@ from upsell_agent.integrations.dealer_profile import DealerProfile
 from upsell_agent.integrations.mongodb import PLATFORM_BOOKINGS_COLLECTION, as_object_id, get_db
 from upsell_agent.integrations.platform_client import PlatformClient
 
-# B0.10 defaults (architecture §15 decision 104).
-SLOT_MINUTES = 30
-BOOKINGS_PER_SLOT = 2
+# B0.10 defaults (architecture §15 decision 104). Slot length and capacity now come from the dealer
+# (DealerProfile.sales_slot_minutes / sales_per_slot; client, 5 Oct 2026: one-hour slots, 10 sales bookings
+# each). These are only the fallbacks for a profile built without them.
+SLOT_MINUTES = 60
+BOOKINGS_PER_SLOT = 10
 EARLIEST_HOURS_OUT = 2
 LAST_SLOT_BEFORE_CLOSE = timedelta(minutes=30)
 DAYS_AHEAD = 7
@@ -71,13 +73,28 @@ def candidate_slots(dealer: DealerProfile, now: datetime, *, days_ahead: int = D
         while cursor <= last_start:
             if cursor >= earliest:
                 slots.append(cursor)
-            cursor += timedelta(minutes=SLOT_MINUTES)
+            cursor += timedelta(minutes=_slot_minutes(dealer))
     return slots
 
 
-def _slot_key(row: dict[str, Any], dealer: DealerProfile) -> tuple[str, str]:
+def _slot_minutes(dealer: DealerProfile) -> int:
+    return getattr(dealer, "sales_slot_minutes", None) or SLOT_MINUTES
+
+
+def _per_slot(dealer: DealerProfile) -> int:
+    return getattr(dealer, "sales_per_slot", None) or BOOKINGS_PER_SLOT
+
+
+def _slot_key(row: dict[str, Any], dealer: DealerProfile) -> tuple[str, str] | None:
+    """The (date, slot start) a booking falls in: a 10:30 booking is in the 10:00 one-hour slot. Bookings at
+    a time that can't be read are skipped."""
     local_date = _aware(row["bookingDate"]).astimezone(dealer.tz).date()
-    return local_date.strftime("%Y-%m-%d"), str(row.get("bookingTime") or "")
+    match = re.match(r"^\s*(\d{1,2}):(\d{2})", str(row.get("bookingTime") or ""))
+    if not match:
+        return None
+    minutes = int(match.group(1)) * 60 + int(match.group(2))
+    start = minutes // _slot_minutes(dealer) * _slot_minutes(dealer)
+    return local_date.strftime("%Y-%m-%d"), f"{start // 60:02d}:{start % 60:02d}"
 
 
 async def existing_bookings(dealer_id: str, dealer: DealerProfile, now: datetime,
@@ -99,17 +116,21 @@ async def existing_bookings(dealer_id: str, dealer: DealerProfile, now: datetime
 
 def available_times(dealer: DealerProfile, existing: list[dict[str, Any]], now: datetime,
                     *, exclude_lead_id: str | None = None, days_ahead: int = DAYS_AHEAD) -> list[datetime]:
-    """Candidate slots with fewer than BOOKINGS_PER_SLOT bookings already
-    against them. `exclude_lead_id`: don't let this lead's own existing
+    """Candidate slots with fewer than the dealer's sales capacity already booked against them. Only sales
+    bookings count: service appointments have their own one-per-hour slots in the CRM (client, 5 Oct
+    2026), and the AI books sales visits only. `exclude_lead_id`: don't let this lead's own existing
     booking count against itself (rescheduling)."""
     counts: dict[tuple[str, str], int] = {}
     for row in existing:
         if exclude_lead_id and str(row.get("lead_id")) == str(exclude_lead_id):
             continue
+        if str(row.get("appointment_type") or "sales").lower() == "service":
+            continue
         key = _slot_key(row, dealer)
-        counts[key] = counts.get(key, 0) + 1
+        if key:
+            counts[key] = counts.get(key, 0) + 1
     return [slot for slot in candidate_slots(dealer, now, days_ahead=days_ahead)
-            if counts.get((slot.strftime("%Y-%m-%d"), slot.strftime("%H:%M")), 0) < BOOKINGS_PER_SLOT]
+            if counts.get((slot.strftime("%Y-%m-%d"), slot.strftime("%H:%M")), 0) < _per_slot(dealer)]
 
 
 def offer_times(available: list[datetime], *, count: int = MAX_OFFERED) -> list[datetime]:
@@ -318,6 +339,8 @@ async def ensure_booking(platform: PlatformClient, *, dealer_id: str, dealer: De
         "lead_id": lead_id, "customerName": customer_name, "email": email, "phone": phone,
         "bookingDate": local.strftime("%Y-%m-%d"), "bookingTime": local.strftime("%H:%M"),
         "notes": notes, "dealer_timezone": dealer.timezone,
+        # The AI books sales visits only (service visits are requests, MASTER_PLAN_4 F2).
+        "appointment_type": "sales",
     })
     return {**result, "already_existed": False}
 

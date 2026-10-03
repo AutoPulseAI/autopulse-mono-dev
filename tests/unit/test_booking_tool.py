@@ -4,6 +4,7 @@ decision 60). Pure functions; find_active_booking/ensure_booking/move_booking/
 cancel_booking (the platform I/O) are covered in tests/unit/test_turn_pipeline.py's
 booking scenarios instead."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from upsell_agent.integrations.dealer_profile import profile_from_record
@@ -36,12 +37,14 @@ def test_earliest_slot_is_at_least_two_hours_out():
     assert first.time().minute in (0, 30)
 
 
-def test_last_slot_ends_thirty_minutes_before_closing():
+def test_slots_are_one_hour_and_the_last_starts_an_hour_before_closing():
+    # Client, 5 Oct 2026: one-hour appointment slots.
     dealer = _dealer()
     slots = booking_tool.candidate_slots(dealer, TUESDAY_NOON)
     today = [s for s in slots if s.astimezone(dealer.tz).date() == TUESDAY_NOON.astimezone(dealer.tz).date()]
+    assert all(s.minute == 0 for s in today)
     last = today[-1].astimezone(dealer.tz)
-    assert last.time().isoformat("minutes") == "18:30"  # closes 19:00
+    assert last.time().isoformat("minutes") == "18:00"  # closes 19:00
 
 
 def test_no_slots_on_a_closed_day():
@@ -51,14 +54,39 @@ def test_no_slots_on_a_closed_day():
     assert sundays == []
 
 
-def test_a_slot_at_capacity_is_not_available():
+def _booked(target, count, *, appointment_type=None, minute="00"):
+    row = {"bookingDate": target.astimezone(UTC), "bookingTime": target.strftime(f"%H:{minute}")}
+    if appointment_type:
+        row["appointment_type"] = appointment_type
+    return [{**row, "lead_id": f"other-{i}"} for i in range(count)]
+
+
+def test_a_sales_slot_takes_ten_bookings_then_is_full():
+    # Client, 5 Oct 2026: a one-hour sales slot books up to 10 appointments.
     dealer = _dealer()
-    slots = booking_tool.candidate_slots(dealer, TUESDAY_NOON)
-    target = slots[0]
-    existing = [{"lead_id": "other-1", "bookingDate": target.astimezone(UTC), "bookingTime": target.strftime("%H:%M")},
-               {"lead_id": "other-2", "bookingDate": target.astimezone(UTC), "bookingTime": target.strftime("%H:%M")}]
-    available = booking_tool.available_times(dealer, existing, TUESDAY_NOON)
-    assert target not in available
+    target = booking_tool.candidate_slots(dealer, TUESDAY_NOON)[0]
+    assert target in booking_tool.available_times(dealer, _booked(target, 9), TUESDAY_NOON)
+    assert target not in booking_tool.available_times(dealer, _booked(target, 10), TUESDAY_NOON)
+
+
+def test_a_booking_at_half_past_counts_in_its_hour():
+    dealer = _dealer()
+    target = booking_tool.candidate_slots(dealer, TUESDAY_NOON)[0]
+    assert target not in booking_tool.available_times(dealer, _booked(target, 10, minute="30"), TUESDAY_NOON)
+
+
+def test_service_bookings_never_fill_a_sales_slot():
+    # Service appointments have their own one-per-hour slots in the CRM; the AI books sales visits only.
+    dealer = _dealer()
+    target = booking_tool.candidate_slots(dealer, TUESDAY_NOON)[0]
+    existing = _booked(target, 10, appointment_type="service")
+    assert target in booking_tool.available_times(dealer, existing, TUESDAY_NOON)
+
+
+def test_a_dealer_s_own_sales_capacity_wins():
+    dealer = replace(_dealer(), sales_per_slot=2)
+    target = booking_tool.candidate_slots(dealer, TUESDAY_NOON)[0]
+    assert target not in booking_tool.available_times(dealer, _booked(target, 2), TUESDAY_NOON)
 
 
 def test_a_lead_s_own_existing_booking_does_not_block_itself():
