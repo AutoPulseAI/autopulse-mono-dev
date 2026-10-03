@@ -12,7 +12,8 @@ Oct: "Hello, Test!" repeated mid-conversation), and booking wording matches
 a real, current booking's status (MASTER_PLAN_3 B5 item 7, architecture §15
 decision 60): never "booked"/"confirmed" for a merely-requested (pending)
 visit, and never any of those words with no active booking on the lead at
-all - "never claim a booking that doesn't exist" (B4's principle 4)."""
+all - "never claim a booking that doesn't exist" (B4's principle 4). And no
+link unless the customer asked for one (MASTER_PLAN_4 F3)."""
 
 import re
 from typing import Any
@@ -20,7 +21,9 @@ from typing import Any
 from upsell_agent.agent import service_request
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.state import AgentState
+from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
+from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
@@ -186,6 +189,14 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_booking_wording:
         result["passed"] = False
         result["violations"] += bad_booking_wording
+    # MASTER_PLAN_4 F3: the photo, not the link - a link only when the customer asked, and only to a named
+    # vehicle's own page (guardrails/link_guard.py).
+    bad_links = disallowed_links(state.draft, inventory=inventory, link_requested=wants_link(state.extraction),
+                                 allowed=[((pack.get("dealer") or {}).get("info") or {}).get("website")])
+    result["checks"]["no_link_unless_asked"] = not bad_links
+    if bad_links:
+        result["passed"] = False
+        result["violations"] += bad_links
     will_retry = not result["passed"] and state.retry_count < MAX_REWRITES
     result["next"] = "send" if result["passed"] else ("compose" if will_retry else "fallback")
 

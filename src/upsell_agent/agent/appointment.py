@@ -17,10 +17,12 @@ staff booked it) these messages go out, all on text AND email together
 booking confirmation already goes out the moment a booking is created, so ours
 would double it. Open with the client (scope Q13).
 
-**No photos yet:** the countdown and the +1h message call for a vehicle photo;
-there is no photo source until MASTER_PLAN_4 F3, so both go out as text, the
-client's own fallback ("Photo unavailable: never fabricate/unrelated photo; use
-... a non-photo message", §15).
+**Photos (MASTER_PLAN_4 F3):** the countdown and the +1h message call for a
+vehicle photo. scheduler/followups.py attaches the photo of the vehicle the lead
+is about (agent/vehicle_media.py `lead_vehicle_vin`), a different one each
+countdown day where the vehicle has several. No vehicle on record, or no usable
+photo: text only, the client's own fallback ("Photo unavailable: never
+fabricate/unrelated photo; use ... a non-photo message", §15).
 
 Nothing here touches the database or the clock: scheduler/followups.py plans
 and fires the steps, events/handlers.py reads the customer's Y / N.

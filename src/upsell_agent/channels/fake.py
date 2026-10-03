@@ -39,6 +39,8 @@ class FakeChannelDriver:
                 "subject": message.subject,
                 "text": message.text,
                 "idempotency_key": message.idempotency_key,
+                # MASTER_PLAN_4 F3: the photo that would have gone as MMS / inline in the email.
+                "media_urls": list(message.media_urls),
                 "provider_id": provider_id,
                 "created_at": clock.now(),
             }

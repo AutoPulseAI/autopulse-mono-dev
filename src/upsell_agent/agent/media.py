@@ -13,11 +13,16 @@ place first is the rule it must obey, so F3 can't ship without it:
 - `unattached_photo_claim` is the text-side guard (guardrails/draft_guard.py):
   a draft may not say a photo is attached / below / "here's a pic", and may
   not contain an image link, unless a photo is actually attached to it.
-  Today nothing is ever attached, so every such draft is rejected and the
-  reply falls back to wording without a photo.
+  Compose is told never to talk about the photo (MASTER_PLAN_4 F3): the
+  image is attached in code after the guard, and only when it passes the
+  image check, so the words must read right with or without it.
+
+F3's sending side (the image check, MMS_ENABLED, attaching it to a send)
+is agent/vehicle_media.py.
 """
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -46,18 +51,32 @@ def valid_photo_url(url: Any) -> bool:
     return parsed.scheme == "https" and bool(parsed.netloc) and not _PLACEHOLDER.search(url)
 
 
-def choose_photo(requested_vin: str | None, records: list[Any] | None) -> PhotoChoice:
+def _record_for(requested_vin: str, records: list[Any] | None) -> dict[str, Any] | None:
+    rows = [r if isinstance(r, dict) else r.model_dump() | {"photo_urls": r.photo_urls} for r in records or []]
+    return next((r for r in rows if str(r.get("vin") or "").upper() == requested_vin.upper()), None)
+
+
+def photo_candidates(requested_vin: str | None, records: list[Any] | None) -> list[str]:
+    """Every usable photo URL of vehicle `requested_vin`, in the listing's own order (MASTER_PLAN_4 F3: the
+    appointment countdown shows a different one each day). Same rules as `choose_photo`."""
+    record = _record_for(requested_vin, records) if requested_vin else None
+    urls = [u.strip() for u in (record or {}).get("photo_urls") or [] if valid_photo_url(u)]
+    return list(dict.fromkeys(urls))
+
+
+def choose_photo(requested_vin: str | None, records: list[Any] | None, *,
+                 exclude: Collection[str] = ()) -> PhotoChoice:
     """The photo of vehicle `requested_vin` taken from `records` (the dealer's inventory records, as dicts with
-    `vin` and `photo_urls`, or InventoryRecord objects). Never another vehicle's photo, never a made-up URL."""
+    `vin` and `photo_urls`, or InventoryRecord objects). Never another vehicle's photo, never a made-up URL.
+    `exclude` (MASTER_PLAN_4 F3): photos of this vehicle already tried or already sent; the next one is
+    chosen, still of the same vehicle."""
     if not requested_vin:
         return PhotoChoice(None, "no vehicle was named, so there is nothing to show")
-    rows = [r if isinstance(r, dict) else r.model_dump() | {"photo_urls": r.photo_urls} for r in records or []]
-    record = next((r for r in rows if str(r.get("vin") or "").upper() == requested_vin.upper()), None)
-    if record is None:
+    if _record_for(requested_vin, records) is None:
         return PhotoChoice(None, f"{requested_vin} is not in this dealer's inventory")
-    for url in record.get("photo_urls") or []:
-        if valid_photo_url(url):
-            return PhotoChoice(url.strip(), "the vehicle's own photo")
+    for url in photo_candidates(requested_vin, records):
+        if url not in exclude:
+            return PhotoChoice(url, "the vehicle's own photo")
     return PhotoChoice(None, PHOTO_UNAVAILABLE_NOTE)
 
 

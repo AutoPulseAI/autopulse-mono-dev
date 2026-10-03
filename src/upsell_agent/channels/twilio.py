@@ -2,7 +2,8 @@
 
 Plain HTTPS with httpx (no SDK): one POST per message, from the dealer's own
 Twilio number, with our delivery webhook as the status callback when
-PUBLIC_BASE_URL is set.
+PUBLIC_BASE_URL is set. A vehicle photo (MASTER_PLAN_4 F3) rides along as
+`MediaUrl`, which makes it an MMS.
 
 How a failure is classified (the sender retries only retryable ones):
 - network error, timeout, 429, 5xx: retryable
@@ -40,7 +41,10 @@ class TwilioSmsDriver:
         identity = await dealer_identity(message.dealer_id)
         if not identity.sms_from:
             raise ChannelSendError("dealer has no Twilio number (sms_conversion_phone)", retryable=False)
-        form = {"To": message.to, "From": identity.sms_from, "Body": message.text}
+        form: dict[str, str | list[str]] = {"To": message.to, "From": identity.sms_from, "Body": message.text}
+        if message.media_urls:
+            # MASTER_PLAN_4 F3: the vehicle's photo as MMS. Twilio takes one MediaUrl per image.
+            form["MediaUrl"] = list(message.media_urls)
         if self._status_callback:
             form["StatusCallback"] = self._status_callback
         try:

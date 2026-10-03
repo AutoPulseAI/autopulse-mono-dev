@@ -20,6 +20,9 @@ class OutboundMessage:
     text: str
     subject: str | None = None
     idempotency_key: str | None = None
+    # MASTER_PLAN_4 F3: the vehicle photo(s) to attach - MMS on SMS, an inline image in email. Already
+    # checked (agent/vehicle_media.py); empty means text only.
+    media_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

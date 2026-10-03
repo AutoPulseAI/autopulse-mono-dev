@@ -266,6 +266,7 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         **_urgent(text),
         "next_contact_when": next_contact[0] if next_contact else None,
         **_not_interested(text, payload),
+        **_wants_link(text),
     }
 
 
@@ -362,6 +363,18 @@ def _contact_preference(text: str) -> str | None:
     if now and not later:
         return "now"
     return None
+
+
+# MASTER_PLAN_4 F3: the customer asks for the vehicle's link / web page.
+_LINK = re.compile(r"\b(?:send|text|email|share|give|got|have)\b[^.?!]{0,20}\blink\b|\blink\b[^.?!]{0,20}\b(?:to|for)\b"
+                   r"[^.?!]{0,20}\b(?:it|car|truck|vehicle|listing|one)\b|\bsee (?:it|them|that one) online\b|"
+                   r"\bmore (?:pictures|photos|pics)\b|\bwebsite listing\b|\blisting (?:page|link)\b", re.IGNORECASE)
+
+
+def _wants_link(text: str) -> dict[str, Any]:
+    if _LINK.search(text):
+        return {"wants_link": True, "wants_link_confidence": 0.9}
+    return {"wants_link": False, "wants_link_confidence": 0.0}
 
 
 def _wants_visit(text: str) -> dict[str, Any]:
@@ -867,6 +880,17 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
              "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify", "ask_why")
              else [],
              "sms_vins": vins, "email_vins": vins}
+    if vins:
+        # MASTER_PLAN_4 F3: the first vehicle named gets the photo (attached in code); its page link only
+        # when the customer asked for it.
+        result.update(sms_media_vin=vins[0], email_media_vin=vins[0])
+        stock = (payload.get("context") or {}).get("inventory") or []
+        page = next((r.get("page_url") for r in stock if r.get("vin") == vins[0] and r.get("page_url")), None)
+        if payload.get("link_requested") and page:
+            if len(f"{sms} Here's the link: {page}") <= limit:
+                result["sms_text"] = f"{sms} Here's the link: {page}"
+            result["email_body"] = f"Hi {name},\n\n{body} Here's the link: {page}\n\nThanks,\nThe Team"
+            result["why"] += " They asked for the link, so the vehicle's own page is included."
     if body_no_vehicles:
         no_sms = body_no_vehicles if len(body_no_vehicles) <= limit else (
             body_no_vehicles[: limit - 1].rsplit(" ", 1)[0] + "…")
