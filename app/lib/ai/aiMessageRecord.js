@@ -50,7 +50,49 @@ export function validateAiMessagePayload(body) {
   if (body.provider_id != null && typeof body.provider_id !== 'string') errors.push('provider_id must be a string');
   if (body.is_fallback != null && typeof body.is_fallback !== 'boolean') errors.push('is_fallback must be a boolean');
   if (body.sent_at != null && Number.isNaN(new Date(body.sent_at).getTime())) errors.push('sent_at must be a date');
+  errors.push(...mediaUrlErrors(body.media_urls));
   return { errors };
+}
+
+// At most 10 http(s) URLs: Twilio's MMS limit (app/lib/sms.js).
+export const MAX_MEDIA_URLS = 10;
+function mediaUrlErrors(mediaUrls) {
+  if (mediaUrls == null) return [];
+  if (!Array.isArray(mediaUrls)) return ['media_urls must be an array of URLs'];
+  if (mediaUrls.length > MAX_MEDIA_URLS) return [`media_urls takes at most ${MAX_MEDIA_URLS} URLs`];
+  return mediaUrls.every((url) => typeof url === 'string' && /^https?:\/\/\S+$/i.test(url))
+    ? [] : ['media_urls must be http(s) URLs'];
+}
+
+// POST /api/internal/ai/messages/send: the AI service asks the platform to
+// send (CHANNEL_DRIVER=platform). Same fields as a record, minus the outcome
+// (status / provider_id / sent_at), which the platform itself produces.
+export function validateAiSendPayload(body) {
+  if (!body || typeof body !== 'object') return { errors: ['body must be a JSON object'] };
+  return validateAiMessagePayload({ ...body, status: 'sent', provider_id: null, sent_at: null });
+}
+
+// Email text -> the HTML the platform's sendEmail wraps in the dealer's
+// branded template; each media URL becomes an inline image under the text.
+export function aiEmailHtml(text, mediaUrls = []) {
+  const escape = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const paragraphs = String(text || '').split(/\n{2,}/).map((p) => `<p>${escape(p).replace(/\n/g, '<br/>')}</p>`);
+  const images = (mediaUrls || []).map(
+    (url) => `<p><img src="${escape(url)}" alt="Vehicle photo" style="max-width:100%;height:auto"/></p>`);
+  return [...paragraphs, ...images].join('\n');
+}
+
+// The shape the conversation screen renders (viewConversations.js reads
+// publicUrl/url, contentType, fileName), like an inbound MMS's attachments.
+export function mediaAttachments(mediaUrls = []) {
+  return (mediaUrls || []).map((url) => {
+    const fileName = String(url).split('?')[0].split('/').pop() || 'image';
+    const ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';
+    const contentType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp' }[ext] || 'image/jpeg';
+    return { url, publicUrl: url, contentType, fileName };
+  });
 }
 
 export function validateStatusPayload(body) {
@@ -95,5 +137,10 @@ export function buildAiEmailDocument({ payload, dealer, emailAccount }) {
     ai_idempotency_key: payload.idempotency_key,
     ai_customer_id: payload.customer_id || null,
     ai_delivery_status: payload.status,
+    ...(payload.media_urls?.length
+      ? { has_attachments: true, attachments: mediaAttachments(payload.media_urls), ai_media_urls: payload.media_urls }
+      : {}),
+    // Sent by the platform itself on the AI's behalf (CHANNEL_DRIVER=platform).
+    ...(payload.sent_via_platform ? { ai_sent_via_platform: true } : {}),
   };
 }

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { normalizeMessageId } from './messageIdUtils.js';
+import { isProviderSendStubbed, recordStubSend } from './providerStub.js';
 
 // Create a reusable transporter object using Mailgun's SMTP settings
 const transporter = nodemailer.createTransport({
@@ -475,6 +476,16 @@ export const sendEmail = async (to, subject, text, from, parentMessageId = null,
       'In-Reply-To': ref,
       References: ref,
     };
+  }
+
+  // Local/dev runs never reach SMTP / SES (app/lib/providerStub.js).
+  if (isProviderSendStubbed()) {
+    return recordStubSend({
+      channel: 'email', to, from, subject: emailSubject, text, parent_message_id: parentMessageId || null,
+      dealer_id: dealer?._id ? String(dealer._id) : null,
+      attachments: (attachments || []).map((att) => (typeof att === 'string' ? att : att?.url || att?.path || null))
+        .filter(Boolean),
+    });
   }
 
   try {

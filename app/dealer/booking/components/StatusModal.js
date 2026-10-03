@@ -26,6 +26,7 @@ export default function StatusModal({
     "Sold Pending",
     "Sold Delivered",
     "Unsold",
+    "Closed - Lost",
     "Lead",
     "DND",
     "No Show"

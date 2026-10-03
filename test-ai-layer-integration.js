@@ -14,7 +14,7 @@ import Lead from './app/models/Lead.js';
 import { handleInboundEmailLive, handleInboundSmsLive } from './app/lib/ai/aiInbound.js';
 import { buildAiEmailDocument } from './app/lib/ai/aiMessageRecord.js';
 
-const URI = process.env.AI_TEST_MONGODB_URI || 'mongodb://localhost:27017/pulse_ai_platform_test';
+const URI = process.env.AI_TEST_MONGODB_URI || 'mongodb://localhost:27018/pulse_ai_platform_test';
 const DEALER = '66f0000000000000000000a1';
 const DEALER_SMS = '+15550000001';
 const quiet = { info() {}, warn() {}, error() {} };

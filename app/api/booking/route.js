@@ -4,9 +4,30 @@ import FollowUpJob from '@models/FollowUpJob';
 import User from '@models/User';
 import Email from '@models/Email';
 import dbConnect from "@lib/mongodb";
+import mongoose from 'mongoose';
 
+// Callers: staff (signed in), the public customer booking page, and the AI
+// service with the shared secret (agentic-upsell LivePlatformClient, like the
+// Customer 360 route). Every new booking and every date/time change goes
+// through the dealer's opening hours + slot capacity check
+// (app/lib/bookingService.js): 409 for a taken slot.
 import { onLeadStatusChange ,onFollowUpEvent} from '@lib/followupService.js';
-import { createAppointmentReminders } from '@lib/appointmentReminderService';
+import { aiOwnsCustomerMessages, cancelAllRemindersForLead, createAppointmentReminders } from '@lib/appointmentReminderService';
+import { notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
+import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
+import {
+  ACTIVE_BOOKING_STATUSES,
+  bookingDayUtc,
+  capacitySettings,
+  checkBookingSlot,
+  dealerTimezone,
+  keepsPlaceInSlot,
+  normalizeBookingTime,
+  sameDayBookings,
+  slotErrorResponseBody,
+  slotErrorStatus,
+  slotsForDay,
+} from '@lib/bookingService';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentBookingSMSTemplate } from '@lib/templates/appointmentSMSTemplate.js';
 import { sendEmail } from '@lib/email.js';
@@ -188,35 +209,119 @@ async function createAppointmentNotificationRecord(leadId, dealerId, messageType
   }
 }
 
+// Who is booking: the AI service (shared secret), a signed-in user (staff) or
+// the public customer booking page (no token, app/(frontpages)/booking).
+async function bookingCaller(request) {
+  if (verifyInternalServiceToken(request)) return { kind: 'ai', user: null };
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+      const user = await User.findById(decoded.userId).select('_id name email type parent_id');
+      if (user) return { kind: 'staff', user };
+    } catch (err) {
+      console.warn('Token verification failed:', err.message);
+    }
+  }
+  return { kind: 'customer', user: null };
+}
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+// A failed slot check: 409 for a taken slot, 422 for a time that can't be
+// booked at all; with the day's free slots so the caller can offer one.
+async function slotRejection(check, { dealer, date, excludeBookingId = null }) {
+  const bookings = check.reason === 'invalid_date' ? [] : await sameDayBookings(Booking, {
+    dealerId: dealer._id, date, tz: dealerTimezone(dealer), excludeBookingId });
+  const alternatives = slotsForDay({ dealer, date, sameDayBookings: bookings })
+    .filter((s) => s.available).map((s) => s.time).slice(0, 6);
+  return json({ ...slotErrorResponseBody(check), alternatives }, slotErrorStatus(check));
+}
+
 export async function POST(request) {
   await dbConnect();
 
   try {
+    const caller = await bookingCaller(request);
     const body = await request.json();
-    const { 
-      dealer_id, 
-      lead_id, 
-      customerName, 
-      email, 
-      phone, 
-      bookingDate, 
-      bookingTime, 
+    const {
+      dealer_id,
+      lead_id,
+      customerName,
+      email,
+      phone,
       notes,
-      
+      allow_overbook,
     } = body;
+    const bookingDate = body.bookingDate;
+    // "2 PM", "2:00 PM" and "14:00" are all stored as "14:00".
+    const bookingTime = normalizeBookingTime(body.bookingTime) || body.bookingTime;
     const booking_status = true;
     const fe_lead_status = 'Appointment Booked';
     const existingLead = await Lead.findById(lead_id);
-    
+
     if (!existingLead) {
-      return new Response(JSON.stringify({ error: 'Lead not found' }), {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      return json({ error: 'Lead not found' }, 404);
     }
-    console.log(existingLead);
+    if (dealer_id && existingLead.dealer_id && String(existingLead.dealer_id) !== String(dealer_id)) {
+      return json({ error: 'Lead not found for this dealer' }, 404);
+    }
+
+    // Resolve dealer timezone once for booking date normalization/formatting
+    const dealerDoc = dealer_id
+      ? await User.findById(dealer_id).select('dealer_account_information name phone website ai_mode setting')
+      : null;
+    if (!dealerDoc) {
+      return json({ error: 'Dealer not found' }, 404);
+    }
+    const dealerTimezone = dealerDoc?.dealer_account_information?.time_zone || 'America/New_York';
+
+    // The same lead booking the same time again (a retried AI call, a double
+    // click) gets the booking it already has, not a second one.
+    const bookingDay = bookingDayUtc(bookingDate, dealerTimezone);
+    const sameBooking = bookingDay && await Booking.findOne({
+      dealer_id: String(dealer_id), lead_id: String(lead_id), bookingDate: bookingDay, bookingTime,
+      booking_status: { $in: ACTIVE_BOOKING_STATUSES },
+    });
+    if (sameBooking) {
+      return json({ success: true, booking: sameBooking, bookingId: String(sameBooking._id), duplicate: true,
+        leadUpdated: false });
+    }
+
+    // Opening hours + slot capacity (app/lib/bookingService.js). Staff may
+    // overbook on purpose; the AI and the customer page never can.
+    const overbook = caller.kind === 'staff' && allow_overbook === true;
+    if (!overbook) {
+      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime });
+      if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate });
+    }
+
+    // Create new booking
+    const booking = new Booking({
+      dealer_id,
+      lead_id,
+      customerName: customerName || existingLead.name,
+      email: email || existingLead.email,
+      phone: phone || existingLead.phone,
+      bookingDate: bookingDay || undefined,
+      bookingTime,
+      notes,
+      created_by: caller.kind,
+    });
+
+    await booking.save();
+
+    // Two requests for the slot's last place: the later one gives it back.
+    if (!overbook && !(await keepsPlaceInSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+      bookingId: booking._id }))) {
+      await Booking.deleteOne({ _id: booking._id });
+      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime });
+      return slotRejection(check.ok ? { ...check, ok: false, reason: 'slot_full',
+        message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check, { dealer: dealerDoc, date: bookingDate });
+    }
+
     // Initialize updates object
     const updates = {};
     let statusJustChanged = false;
@@ -225,85 +330,29 @@ export async function POST(request) {
       statusJustChanged = true;
       updates.fe_lead_status = fe_lead_status;
     }
+    updates.booking_status = booking_status || 'pending';
+    updates.booking = { booking_date: bookingDay, booking_time: bookingTime };
+    const bookingAt = moment.tz(`${bookingDate} ${bookingTime}`, 'YYYY-MM-DD HH:mm', dealerTimezone);
+    if (bookingAt.isValid()) updates.booking.booking_at = bookingAt.utc().toDate();
 
-    // Resolve dealer timezone once for booking date normalization/formatting
-    const dealerDoc = dealer_id
-      ? await User.findById(dealer_id).select('dealer_account_information name phone website')
-      : null;
-    const dealerTimezone = dealerDoc?.dealer_account_information?.time_zone || 'America/New_York';
-
-    // Handle booking status updates
-    if (fe_lead_status === 'Appointment Booked') {
-      updates.booking_status = booking_status || 'pending';
-      
-      // Process booking date and time if provided
-      if (bookingDate || bookingTime) {
-        updates.booking = {};
-        
-        // Process booking date
-        if (bookingDate) {
-          const bookingDateLocal = moment.tz(String(bookingDate), 'YYYY-MM-DD', dealerTimezone);
-          if (bookingDateLocal.isValid()) {
-            // Persist date as dealer-local midnight converted to UTC Date.
-            updates.booking.booking_date = bookingDateLocal.startOf('day').utc().toDate();
-          }
-        }
-        
-        // Process booking time
-        if (bookingTime) {
-          let formattedTime = bookingTime;
-          // Convert time to 24-hour format if needed
-          if (bookingTime.match(/^\d{1,2}\s?(AM|PM)$/i)) {
-            const [hour, period] = bookingTime.split(/(?=[AP]M)/i);
-            let hours = parseInt(hour);
-            const isPM = period.trim().toUpperCase() === 'PM';
-            
-            if (isPM && hours < 12) hours += 12;
-            if (!isPM && hours === 12) hours = 0;
-            
-            formattedTime = `${hours.toString().padStart(2, '0')}:00`;
-          }
-          updates.booking.booking_time = formattedTime;
-        }
-      }
-
-      // Update lead with booking information
-      if (Object.keys(updates).length > 0) {
-        await Lead.findByIdAndUpdate(
-          existingLead._id, 
-          { $set: updates },
-          { new: true }
-        );
-      }
-    }
-    console.log(updates);
-
-    // Create new booking
-    const booking = new Booking({
-      dealer_id,
-      lead_id,
-      customerName,
-      email,
-      phone,
-      bookingDate: updates.booking?.booking_date || (bookingDate ? moment.tz(String(bookingDate), 'YYYY-MM-DD', dealerTimezone).startOf('day').utc().toDate() : undefined),
-      bookingTime: updates.booking?.booking_time || bookingTime,
-      notes,
-     // booking_status: updates.booking_status || 'pending'
-    });
-
-    await booking.save();
-
-    // Update lead with booking reference
+    // Update lead with booking information and the booking reference
     await Lead.findByIdAndUpdate(
-      lead_id,
-      { 
-        $set: { 
+      existingLead._id,
+      {
+        $set: {
+          ...updates,
           'data.bookingId': booking._id,
+          'data.booking': updates.booking,
           status: 'Appointment Booked',
           statusChangedAt: new Date()
         }
       }
     );
+
+    // For a dealer whose AI is live the AI sends the confirmation and the
+    // reminders itself (through /api/internal/ai/messages/send), so the
+    // platform's own are skipped (no double messages, PLAN_4 stream C1).
+    const aiLive = await aiOwnsCustomerMessages(dealer_id);
 
     // Create appointment reminders for this booking
     try {
@@ -323,23 +372,13 @@ export async function POST(request) {
       // Don't fail the booking creation if reminders fail
     }
 
-    // Send appointment booking notifications (email/SMS) and save to conversation
-    try {
-      // Get authorization token for message_by
-      let messageBy = null;
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        const token = authHeader.split(" ")[1];
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          const currentUser = await User.findById(decoded.userId).select('_id name email type');
-          if (currentUser) {
-            messageBy = currentUser._id;
-          }
-        } catch (err) {
-          console.warn("Token verification failed:", err.message);
-        }
-      }
+    // Send appointment booking notifications (email/SMS) and save to conversation.
+    // Skipped for an AI-live dealer: the AI confirms the appointment itself.
+    if (aiLive) {
+      console.log(`Booking notifications skipped for dealer ${dealer_id}: the AI is live`);
+    } else try {
+      // The signed-in user who booked (null for the customer page)
+      const messageBy = caller.user?._id || null;
 
       // Get dealer information
       const dealer = dealerDoc || await User.findById(dealer_id);
@@ -501,58 +540,71 @@ export async function POST(request) {
       }
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
+    // A booking made by staff or by the customer is news to the AI: it runs
+    // the appointment's messages (MASTER_PLAN_3 C5). No-op for `off` dealers.
+    if (caller.kind !== 'ai') {
+      await notifyAiOfStaffStatus({ leadId: lead_id, dealerId: dealer_id, status: 'Appointment Booked' });
+    }
+
+    return json({
+      success: true,
       booking,
+      bookingId: String(booking._id),
       leadUpdated: statusJustChanged
-    }), {
-      status: 201,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    }, 201);
 
   } catch (error) {
     console.error('Booking creation error:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error.message 
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    return json({ success: false, error: error.message }, 500);
   }
 }
 
+// GET /api/booking
+//   ?lead_id=...                 the customer booking page's prefill (public, as before)
+//   ?dealer_id=...&date=YYYY-MM-DD  that day's slots with how many places are taken
+//   ?booking_id=...              one booking (the AI service or signed-in staff only)
 export async function GET(request) {
   await dbConnect();
 
   try {
     const { searchParams } = new URL(request.url);
     const lead_id = searchParams.get('lead_id');
-    
+    const dealer_id = searchParams.get('dealer_id');
+    const date = searchParams.get('date');
+    const booking_id = searchParams.get('booking_id');
+
+    if (booking_id) {
+      const caller = await bookingCaller(request);
+      if (caller.kind === 'customer') return json({ error: 'Unauthorized' }, 401);
+      if (!mongoose.isValidObjectId(booking_id)) return json({ error: 'Booking not found' }, 404);
+      const booking = await Booking.findById(booking_id).lean();
+      if (!booking || (dealer_id && String(booking.dealer_id) !== String(dealer_id))) {
+        return json({ error: 'Booking not found' }, 404);
+      }
+      return json({ booking });
+    }
+
+    if (dealer_id && date) {
+      if (!mongoose.isValidObjectId(dealer_id)) return json({ error: 'Dealer not found' }, 404);
+      const dealer = await User.findById(dealer_id).select('dealer_account_information').lean();
+      if (!dealer) return json({ error: 'Dealer not found' }, 404);
+      const tz = dealerTimezone(dealer);
+      const bookings = await sameDayBookings(Booking, { dealerId: dealer_id, date, tz });
+      const { maxPerSlot, slotMinutes } = capacitySettings(dealer);
+      return json({ date, timezone: tz, max_per_slot: maxPerSlot, slot_minutes: slotMinutes,
+        slots: slotsForDay({ dealer, date, sameDayBookings: bookings }) });
+    }
+
     if (!lead_id) {
-      return new Response(JSON.stringify({}), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      return json({});
     }
 
     const lead = await Lead.findById(lead_id);
     if (!lead) {
-      return new Response(JSON.stringify({ error: 'Lead not found' }), {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      return json({ error: 'Lead not found' }, 404);
     }
 
-    return new Response(JSON.stringify({
+    return json({
       customerName: lead.name || '',
       email: lead.email || '',
       phone: lead.phone || '',
@@ -560,106 +612,98 @@ export async function GET(request) {
         bookingDate: lead.data.booking.booking_date,
         bookingTime: lead.data.booking.booking_time
       } : {})
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      }
     });
   } catch (error) {
     console.error('Lead fetch error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    return json({ error: error.message }, 500);
   }
 }
 
+// PUT /api/booking {bookingId, booking_status?, booking_date?, booking_time?, showed?, allow_overbook?}
+// A new date/time goes through the same slot check as a new booking.
 export async function PUT(request) {
   await dbConnect();
 
   try {
+    const caller = await bookingCaller(request);
     const body = await request.json();
-    const { bookingId, booking_status, booking_date, booking_time } = body;
+    const { bookingId, booking_status, booking_date, showed, allow_overbook } = body;
+    const booking_time = body.booking_time ? (normalizeBookingTime(body.booking_time) || body.booking_time) : body.booking_time;
 
-    const updates = {};
-    const existingBooking = bookingId ? await Booking.findById(bookingId).select('dealer_id') : null;
-    const dealerDoc = existingBooking?.dealer_id
-      ? await User.findById(existingBooking.dealer_id).select('dealer_account_information')
-      : null;
+    const existingBooking = bookingId && mongoose.isValidObjectId(bookingId) ? await Booking.findById(bookingId) : null;
+    if (!existingBooking) {
+      return json({ error: 'Booking not found' }, 404);
+    }
+    if (booking_status !== undefined && !Booking.schema.path('booking_status').enumValues.includes(booking_status)) {
+      return json({ error: `booking_status must be one of ${Booking.schema.path('booking_status').enumValues.join(', ')}` }, 422);
+    }
+    const dealerDoc = await User.findById(existingBooking.dealer_id).select('dealer_account_information');
     const dealerTimezone = dealerDoc?.dealer_account_information?.time_zone || 'America/New_York';
 
-    if (booking_status !== undefined) {
-      updates.booking_status = booking_status;
-      
-      if (booking_date || booking_time) {
-        updates.booking = {};
-        
-        // Process booking date
-        if (booking_date) {
-          const bookingDateLocal = moment.tz(String(booking_date), 'YYYY-MM-DD', dealerTimezone);
-          if (bookingDateLocal.isValid()) {
-            const normalizedDate = bookingDateLocal.startOf('day').utc().toDate();
-            updates.booking.booking_date = normalizedDate;
-            updates.bookingDate = normalizedDate;
-          }
-        }
-        
-        // Process booking time
-        if (booking_time) {
-          let formattedTime = booking_time;
-          if (booking_time.match(/^\d{1,2}\s?(AM|PM)$/i)) {
-            const [hour, period] = booking_time.split(/(?=[AP]M)/i);
-            let hours = parseInt(hour);
-            const isPM = period.trim().toUpperCase() === 'PM';
-            
-            if (isPM && hours < 12) hours += 12;
-            if (!isPM && hours === 12) hours = 0;
-            
-            formattedTime = `${hours.toString().padStart(2, '0')}:00`;
-          }
-          updates.booking.booking_time = formattedTime;
-          updates.bookingTime = formattedTime;
-        }
-      }
+    const updates = {};
+    if (booking_status !== undefined) updates.booking_status = booking_status;
+    if (typeof showed === 'boolean') {
+      updates.showed = showed;
+      updates.showed_at = new Date();
     }
 
+    // A new date and/or time (applied whether or not booking_status is sent).
+    const dateChanged = Boolean(booking_date || booking_time);
+    const newDate = booking_date || moment(existingBooking.bookingDate).tz(dealerTimezone).format('YYYY-MM-DD');
+    const newTime = booking_time || existingBooking.bookingTime;
+    const overbook = caller.kind === 'staff' && allow_overbook === true;
+    const stillActive = (updates.booking_status ?? existingBooking.booking_status) !== 'cancelled';
+    if (dateChanged) {
+      if (dealerDoc && stillActive && !overbook) {
+        const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: newDate, time: newTime,
+          excludeBookingId: existingBooking._id });
+        if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: newDate, excludeBookingId: existingBooking._id });
+      }
+      const normalizedDate = bookingDayUtc(newDate, dealerTimezone);
+      if (!normalizedDate) return json({ error: 'booking_date must be YYYY-MM-DD' }, 422);
+      updates.bookingDate = normalizedDate;
+      updates.bookingTime = newTime;
+      updates.booking = { booking_date: normalizedDate, booking_time: newTime };
+      const bookingAt = moment.tz(`${newDate} ${newTime}`, 'YYYY-MM-DD HH:mm', dealerTimezone);
+      if (bookingAt.isValid()) updates.booking.booking_at = bookingAt.utc().toDate();
+    }
+
+    const { booking: leadBooking, ...bookingUpdates } = updates;
+    const previous = { bookingDate: existingBooking.bookingDate, bookingTime: existingBooking.bookingTime };
     const updatedBooking = await Booking.findByIdAndUpdate(
       bookingId,
-      { $set: updates },
+      { $set: bookingUpdates },
       { new: true }
     );
 
-    if (!updatedBooking) {
-      return new Response(JSON.stringify({ error: 'Booking not found' }), {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+    if (dateChanged && dealerDoc && stillActive && !overbook && !(await keepsPlaceInSlot(Booking, {
+      dealer: dealerDoc, date: newDate, time: newTime, bookingId }))) {
+      await Booking.updateOne({ _id: bookingId }, { $set: previous });
+      return json({ success: false, error: 'slot_taken', message: `The ${newTime} slot on ${newDate} was just taken` }, 409);
     }
 
-    // Update the lead's booking reference
-    if (updates.booking) {
-      await Lead.findOneAndUpdate(
-        { 'data.bookingId': bookingId },
-        { $set: { 'data.booking': updates.booking } }
+    // Update the lead's booking fields (both the top-level ones the status
+    // screen writes and data.booking the booking page reads).
+    if (leadBooking) {
+      await Lead.updateOne(
+        { _id: existingBooking.lead_id },
+        { $set: { booking: leadBooking, 'data.booking': leadBooking } }
       );
     }
 
-    // Recreate appointment reminders if booking date/time changed
-    if (updates.booking && (updates.booking.booking_date || updates.booking.booking_time)) {
+    if (booking_status === 'cancelled') {
+      await cancelAllRemindersForLead(existingBooking.lead_id);
+    } else if (leadBooking) {
+      // Recreate appointment reminders for the new date/time (skipped for a
+      // dealer whose AI is live: appointmentReminderService gates it).
       try {
-        // Format booking data for createAppointmentReminders function
         const bookingData = {
           _id: updatedBooking.lead_id,
           customer_name: updatedBooking.customerName,
           customer_email: updatedBooking.email,
           customer_phone: updatedBooking.phone,
-          booking_date: booking_date, // Use original string (already in dealer timezone)
-          time: booking_time // Use original string (already in dealer timezone)
+          booking_date: newDate, // dealer-local YYYY-MM-DD
+          time: newTime // dealer-local HH:MM
         };
         const reminderResult = await createAppointmentReminders(bookingData, updatedBooking.dealer_id);
         console.log('Appointment reminders updated:', reminderResult);
@@ -669,25 +713,9 @@ export async function PUT(request) {
       }
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      booking: updatedBooking 
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    return json({ success: true, booking: updatedBooking });
   } catch (error) {
     console.error('Booking update error:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error.message 
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    return json({ success: false, error: error.message }, 500);
   }
 }

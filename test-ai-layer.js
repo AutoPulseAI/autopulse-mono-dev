@@ -334,7 +334,7 @@ test('a staff reply pauses the AI for live and shadow dealers, never for off', a
 
 test('moving a lead to a staff-owned status pauses the AI; other statuses do not', async () => {
   assert.deepEqual([...STAFF_OWNED_STATUSES], ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Managerial Review',
-    'Sold Pending', 'Sold Delivered', 'Unsold', 'No Show']);
+    'Sold Pending', 'Sold Delivered', 'Unsold', 'No Show', 'Closed - Lost']);
   const r = eventRecorder();
   await notifyAiOfStaffStatus({ leadId: LEAD, dealerId: DEALER, status: 'Appointment Booked', mode: 'live',
     send: r.send, logger: quiet, now: () => 42 });
