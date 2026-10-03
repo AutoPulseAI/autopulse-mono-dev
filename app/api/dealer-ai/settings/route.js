@@ -5,7 +5,7 @@
 // ai_mode is the same per-dealer switch as the admin route (app/api/admin/ai-mode),
 // with the same side effects: the cache is cleared, and going live clears the
 // dealer's pending rule-based follow-ups so a customer never gets both.
-// mms_enabled is stored on the dealer (User.mms_enabled, read with the dealer
+// mms_enabled is stored on the dealer (User.ai_mms_enabled, read with the dealer
 // record by the AI service; off unless turned on).
 // Opening hours are shown read-only: they are the ones on the dealer's account
 // (dealer_account_information.weekly_availability), which the AI uses.
@@ -37,7 +37,7 @@ function describe(dealer) {
     ai_mode: AI_MODES.includes(dealer.ai_mode) ? dealer.ai_mode : "off",
     effective_mode: effectiveAiMode(dealer),
     auto_reply_enabled: dealer.setting?.autoReplyEnabled !== false,
-    mms_enabled: dealer.mms_enabled === true,
+    mms_enabled: dealer.ai_mms_enabled !== false, // unset = on, as the AI service reads it (agent/vehicle_media.py)
     timezone: info.time_zone || null,
     hours,
     // The AI falls back to Monday-Saturday 9:00 AM-6:00 PM (for its own timing only,
@@ -58,7 +58,7 @@ async function canChange(user, dealerId) {
 
 async function loadDealer(dealerId) {
   return User.findOne({ _id: dealerId, type: "dealer" })
-    .select("name ai_mode setting mms_enabled dealer_account_information")
+    .select("name ai_mode setting ai_mms_enabled dealer_account_information")
     .lean();
 }
 
@@ -90,13 +90,13 @@ export async function PUT(req) {
   }
   if (body.mms_enabled !== undefined) {
     if (typeof body.mms_enabled !== "boolean") return jsonError("mms_enabled must be true or false", 422);
-    set.mms_enabled = body.mms_enabled;
+    set.ai_mms_enabled = body.mms_enabled;
   }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 
   const before = await loadDealer(session.dealerId);
   if (!before) return jsonError("Dealership not found", 404);
-  // strict: false - mms_enabled isn't in the shared User schema yet (see stream_C2.md).
+  // strict: false - ai_mms_enabled isn't in the shared User schema yet (see stream_C2.md).
   await User.updateOne({ _id: session.dealerId, type: "dealer" }, { $set: set }, { strict: false });
   invalidateDealerAiMode(session.dealerId);
 
