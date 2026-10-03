@@ -17,7 +17,7 @@ import Lead from './app/models/Lead.js';
 import User from './app/models/User.js';
 import { AiSendError, classifyProviderError, sendAiMessage } from './app/lib/ai/aiSend.js';
 import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayload } from './app/lib/ai/aiMessageRecord.js';
-import { markLeadDndFromAi, validateDndPayload } from './app/lib/ai/aiDnd.js';
+import { addAiLeadNote, markLeadDndFromAi, validateDndPayload, validateNotePayload } from './app/lib/ai/aiDnd.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
   capacitySettings, checkBookingSlot, checkSlot, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
@@ -182,7 +182,7 @@ const maybe = (name, fn) => test(name, async (t) => {
 
 async function seedDealerAndLead() {
   await User.collection.insertOne({ ...dealerDoc(), _id: new mongoose.Types.ObjectId(DEALER), type: 'dealer',
-    name: 'Test Motors', email: 'test-motors@example.test', password: 'x' });
+    name: 'Test Motors', email: 'test-motors@example.test', password: 'x', ai_mms_enabled: true });
   await EmailAccount.collection.insertOne({ dealer_id: new mongoose.Types.ObjectId(DEALER), account_name: 'Sales',
     event_type: 'Sales', email_address: 'sales@test-motors.test', email_password: 'x', active: true });
   await Lead.collection.insertOne({ _id: new mongoose.Types.ObjectId(LEAD), dealer_id: DEALER, name: 'Ann Lee',
@@ -297,6 +297,28 @@ maybe('the AI\'s opt-out sets the CRM lead to DND with a note, once', async () =
   assert.equal(await Email.countDocuments({ is_note: true }), 1);
   assert.deepEqual(cleared, [LEAD, LEAD]);
   assert.equal((await markLeadDndFromAi({ dealer_id: '66f0000000000000000000d9', lead_id: LEAD }, deps)).found, false);
+});
+
+maybe('photos go by text only for a dealer with ai_mms_enabled; the text still goes', async () => {
+  await seedDealerAndLead();
+  await User.collection.updateOne({}, { $set: { ai_mms_enabled: false } });
+  const p = providers();
+  const result = await sendAiMessage({ dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+15557654321',
+    text: 'Here it is', idempotency_key: 'mms-off', media_urls: ['https://cdn.test/a.jpg'] },
+  { Email, Lead, User, EmailAccount, ...p });
+  assert.deepEqual(p.calls[0].media, []);
+  assert.equal((await Email.findById(result.id).lean()).has_attachments, undefined);
+});
+
+maybe('the AI can leave an internal note on a lead of its dealer', async () => {
+  await seedDealerAndLead();
+  assert.ok(validateNotePayload({ dealer_id: DEALER, lead_id: LEAD, text: ' ' }).errors.length);
+  const made = await addAiLeadNote({ dealer_id: DEALER, lead_id: LEAD, text: 'Service request: Tuesday morning',
+    kind: 'service_request' }, { Lead, Email });
+  const note = await Email.findById(made.id).lean();
+  assert.deepEqual([note.is_note, note.internal_use, note.ai_note_kind], [true, true, 'service_request']);
+  assert.equal((await addAiLeadNote({ dealer_id: '66f0000000000000000000d9', lead_id: LEAD, text: 'x' },
+    { Lead, Email })).found, false);
 });
 
 maybe('the lead list carries the AI stage, read only', async () => {

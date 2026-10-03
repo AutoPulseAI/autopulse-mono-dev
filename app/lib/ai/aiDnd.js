@@ -26,6 +26,30 @@ export function validateDndPayload(body) {
   return { errors };
 }
 
+// An internal note on the lead, written by the AI service (a service request
+// with the customer's preferred day/time, a handoff summary, ...): shown in
+// the lead's notes like a staff note, marked internal and AI-written.
+// POST /api/internal/ai/leads/notes {dealer_id, lead_id, text, kind?}
+export function validateNotePayload(body) {
+  const { errors } = validateDndPayload({ ...body, reason: undefined });
+  if (typeof body?.text !== 'string' || !body.text.trim()) errors.push('text is required');
+  if (body?.kind != null && typeof body.kind !== 'string') errors.push('kind must be a string');
+  return { errors };
+}
+
+export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() }) {
+  const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id').lean();
+  if (!lead) return { found: false };
+  const at = now();
+  const note = await Email.create({
+    sender: 'AutoPulse AI', recipient: 'staff', subject: 'Lead Note', mail_content: body.text.trim().slice(0, 5000),
+    dealer_id: String(body.dealer_id), lead_id: lead._id, status: 'sent', communication_type: 'note', is_note: true,
+    internal_use: true, message_id: `note_ai_${body.lead_id}_${at.getTime()}`, timestamp: at, date: at,
+    ai_generated: true, ai_note_kind: body.kind || null,
+  });
+  return { found: true, id: String(note._id) };
+}
+
 export async function markLeadDndFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
 }) {

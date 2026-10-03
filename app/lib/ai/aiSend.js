@@ -45,6 +45,10 @@ export function classifyProviderError(error) {
   return new AiSendError(error?.message || 'Provider failed', { httpStatus: 502, retryable: true });
 }
 
+export function dealerAllowsMms(dealer) {
+  return dealer?.ai_mms_enabled === true || dealer?.dealer_account_information?.ai_mms_enabled === true;
+}
+
 export async function sendAiMessage(body, {
   Email, Lead, User, EmailAccount, sendSMS, sendEmail, now = () => new Date(),
 }) {
@@ -65,7 +69,11 @@ export async function sendAiMessage(body, {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id email phone').lean();
   if (!lead) throw new AiSendError('Lead not found for this dealer', { httpStatus: 404, retryable: false });
 
-  const mediaUrls = body.media_urls || [];
+  // Photos by text (MMS) only for a dealer that switched it on: `ai_mms_enabled`,
+  // the same dealer field the AI service reads before attaching any. Email
+  // photos are inline images and need no switch.
+  const mediaUrls = body.channel === 'sms' && !dealerAllowsMms(dealer) ? [] : (body.media_urls || []);
+  body = { ...body, media_urls: mediaUrls };
   let providerId;
   let emailAccount = null;
   if (body.channel === 'sms') {
