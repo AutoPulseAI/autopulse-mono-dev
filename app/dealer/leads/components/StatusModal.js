@@ -11,6 +11,8 @@ export default function StatusModal({
   const [tempStatus, setTempStatus] = useState(currentStatus || "");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
+  // Sales or service: each has its own slot capacity (app/lib/bookingService.js). Empty = decided from the lead.
+  const [appointmentType, setAppointmentType] = useState("");
   const [managerOutcome, setManagerOutcome] = useState("");
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export default function StatusModal({
       }
       extra.booking_date = bookingDate;
       extra.booking_time = bookingTime;
+      if (appointmentType) extra.appointment_type = appointmentType;
     }
     if (tempStatus === "Visited") {
       if (!managerOutcome) {
@@ -94,6 +97,14 @@ export default function StatusModal({
                 value={bookingTime}
                 onChange={(e) => setBookingTime(e.target.value)}
               />
+            </Form.Group>
+            <Form.Group controlId="appointmentType" className="mt-2">
+              <Form.Label>Appointment Type</Form.Label>
+              <Form.Select value={appointmentType} onChange={(e) => setAppointmentType(e.target.value)}>
+                <option value="">From the lead</option>
+                <option value="sales">Sales (up to 10 per hour)</option>
+                <option value="service">Service (1 per hour)</option>
+              </Form.Select>
             </Form.Group>
           </div>
         )}

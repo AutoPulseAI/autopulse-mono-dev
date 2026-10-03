@@ -25,7 +25,10 @@ const bookingSchema = new mongoose.Schema(
     showed_at: { type: Date, default: null },
     // Who booked it: 'ai' (the AI service, shared secret), 'staff' (a signed-in
     // user) or 'customer' (the public booking page).
-    created_by: { type: String, enum: ['ai', 'staff', 'customer'], default: undefined }
+    created_by: { type: String, enum: ['ai', 'staff', 'customer'], default: undefined },
+    // Sales and service slots have their own capacity (app/lib/bookingService.js). Older bookings without
+    // a type count as sales.
+    appointment_type: { type: String, enum: ['sales', 'service'], default: 'sales' }
   },
   { timestamps: true }
 );

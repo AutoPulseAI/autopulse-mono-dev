@@ -3,9 +3,12 @@
 // books: staff (lead status "Appointment Booked", app/api/conversations/lead/
 // status), the AI service and the customer booking page (app/api/booking).
 //
-// Per dealer, in `dealer_account_information` (the admin dealer form's object):
-//   booking_max_per_slot   bookings one slot takes        (default 1)
-//   booking_slot_minutes   slot length in minutes         (default 30)
+// Capacity depends on the appointment type (client, 5 Oct 2026): slots are one hour; a sales slot takes up
+// to 10 appointments, a service slot 1. When a slot is full the caller is told the next available one.
+// Sales and service bookings never share a count. Per dealer, in `dealer_account_information` (the admin
+// dealer form's object), to override the defaults:
+//   booking_capacity       { sales: { max_per_slot, slot_minutes }, service: { max_per_slot, slot_minutes } }
+//   booking_max_per_slot / booking_slot_minutes   older single setting; applies to sales only
 //   weekly_availability    opening hours, as the form saves them
 //                          ({monday: {active, start: "9:00 AM", end: "7:00 PM"}, ...})
 // A dealer with no usable hours gets Monday-Saturday 9:00-18:00, the same
@@ -19,8 +22,13 @@
 
 import moment from 'moment-timezone';
 
-export const DEFAULT_MAX_PER_SLOT = 1;
-export const DEFAULT_SLOT_MINUTES = 30;
+export const APPOINTMENT_TYPES = Object.freeze(['sales', 'service']);
+export const DEFAULT_CAPACITY = Object.freeze({
+  sales: Object.freeze({ maxPerSlot: 10, slotMinutes: 60 }),
+  service: Object.freeze({ maxPerSlot: 1, slotMinutes: 60 }),
+});
+// How far ahead the "next available slot" search looks.
+export const NEXT_SLOT_SEARCH_DAYS = 21;
 export const DEFAULT_TIMEZONE = 'America/New_York';
 export const WEEKDAYS = Object.freeze(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
 export const ACTIVE_BOOKING_STATUSES = Object.freeze(['pending', 'confirmed', 'completed']);
@@ -32,14 +40,37 @@ export function dealerTimezone(dealer) {
   return tz && moment.tz.zone(tz) ? tz : DEFAULT_TIMEZONE;
 }
 
-export function capacitySettings(dealer) {
+// "sales" or "service"; anything else counts as sales (test drives, sales visits).
+export function normalizeAppointmentType(value) {
+  return String(value || '').trim().toLowerCase() === 'service' ? 'service' : 'sales';
+}
+
+// The appointment type for a lead: an explicit choice first, then the lead's own type, then its source
+// ("Service Department", "Service Request"), else sales.
+export function appointmentTypeFor(lead, explicit) {
+  if (explicit && APPOINTMENT_TYPES.includes(String(explicit).toLowerCase())) return normalizeAppointmentType(explicit);
+  const type = lead?.lead_type || lead?.data?.lead_type || lead?.appointment_type;
+  if (type) return normalizeAppointmentType(type);
+  return /service/i.test(String(lead?.source || lead?.data?.source || '')) ? 'service' : 'sales';
+}
+
+export function capacitySettings(dealer, appointmentType = 'sales') {
+  const type = normalizeAppointmentType(appointmentType);
   const info = dealer?.dealer_account_information || {};
-  const max = Number.parseInt(info.booking_max_per_slot, 10);
-  const minutes = Number.parseInt(info.booking_slot_minutes, 10);
+  const own = info.booking_capacity?.[type] || {};
+  const legacy = type === 'sales' ? { max_per_slot: info.booking_max_per_slot, slot_minutes: info.booking_slot_minutes } : {};
+  const max = Number.parseInt(own.max_per_slot ?? legacy.max_per_slot, 10);
+  const minutes = Number.parseInt(own.slot_minutes ?? legacy.slot_minutes, 10);
   return {
-    maxPerSlot: Number.isFinite(max) && max > 0 ? max : DEFAULT_MAX_PER_SLOT,
-    slotMinutes: Number.isFinite(minutes) && minutes >= 5 && minutes <= 240 ? minutes : DEFAULT_SLOT_MINUTES,
+    appointmentType: type,
+    maxPerSlot: Number.isFinite(max) && max > 0 ? max : DEFAULT_CAPACITY[type].maxPerSlot,
+    slotMinutes: Number.isFinite(minutes) && minutes >= 5 && minutes <= 240 ? minutes : DEFAULT_CAPACITY[type].slotMinutes,
   };
+}
+
+// Only bookings of the same type share a slot's count. Bookings saved before types existed count as sales.
+function sameType(booking, type) {
+  return normalizeAppointmentType(booking?.appointment_type) === type;
 }
 
 // "9:00 AM", "9 am", "09:00", "18:30" -> minutes after midnight; else null.
@@ -99,15 +130,16 @@ export function slotOf(minutes, slotMinutes) {
 // Pure: is `time` on `date` bookable, given the other active bookings that day?
 // Returns {ok, reason?, message?, slot, taken, max}. reason: invalid_date,
 // invalid_time, in_past, closed_day, outside_hours, slot_full.
-export function checkSlot({ dealer, date, time, sameDayBookings = [], now = new Date(), allowPast = false }) {
+export function checkSlot({ dealer, date, time, sameDayBookings = [], now = new Date(), allowPast = false,
+  appointmentType = 'sales' }) {
   const tz = dealerTimezone(dealer);
-  const { maxPerSlot, slotMinutes } = capacitySettings(dealer);
+  const { maxPerSlot, slotMinutes, appointmentType: type } = capacitySettings(dealer, appointmentType);
   const day = moment.tz(String(date || ''), 'YYYY-MM-DD', true, tz);
   if (!day.isValid()) return { ok: false, reason: 'invalid_date', message: 'bookingDate must be YYYY-MM-DD' };
   const minutes = parseTimeOfDay(time);
   if (minutes == null) return { ok: false, reason: 'invalid_time', message: 'bookingTime must be a time like 14:30 or 2:30 PM' };
   const slot = slotOf(minutes, slotMinutes);
-  const base = { slot: formatHHMM(slot), slot_minutes: slotMinutes, max: maxPerSlot, timezone: tz };
+  const base = { slot: formatHHMM(slot), slot_minutes: slotMinutes, max: maxPerSlot, timezone: tz, appointment_type: type };
   const startsAt = day.clone().startOf('day').add(minutes, 'minutes');
   if (!allowPast && startsAt.isBefore(moment(now))) {
     return { ...base, ok: false, reason: 'in_past', message: `${date} ${formatHHMM(minutes)} (${tz}) has already passed` };
@@ -123,19 +155,19 @@ export function checkSlot({ dealer, date, time, sameDayBookings = [], now = new 
   }
   const taken = sameDayBookings.filter((b) => {
     const m = parseTimeOfDay(b.bookingTime);
-    return m != null && slotOf(m, slotMinutes) === slot;
+    return m != null && sameType(b, type) && slotOf(m, slotMinutes) === slot;
   }).length;
   if (taken >= maxPerSlot) {
     return { ...base, ok: false, taken, reason: 'slot_full',
-      message: `The ${formatHHMM(slot)} slot on ${date} is already taken (${taken}/${maxPerSlot})` };
+      message: `The ${formatHHMM(slot)} ${type} slot on ${date} is full (${taken}/${maxPerSlot})` };
   }
   return { ...base, ok: true, taken };
 }
 
 // Pure: every slot of `date` with how many bookings it has (for GET availability).
-export function slotsForDay({ dealer, date, sameDayBookings = [], now = new Date() }) {
+export function slotsForDay({ dealer, date, sameDayBookings = [], now = new Date(), appointmentType = 'sales' }) {
   const tz = dealerTimezone(dealer);
-  const { maxPerSlot, slotMinutes } = capacitySettings(dealer);
+  const { maxPerSlot, slotMinutes, appointmentType: type } = capacitySettings(dealer, appointmentType);
   const day = moment.tz(String(date || ''), 'YYYY-MM-DD', true, tz);
   if (!day.isValid()) return [];
   const hours = openingHours(dealer).hours[(day.isoWeekday() + 6) % 7];
@@ -145,7 +177,7 @@ export function slotsForDay({ dealer, date, sameDayBookings = [], now = new Date
     if (start < hours.open) continue;
     const taken = sameDayBookings.filter((b) => {
       const m = parseTimeOfDay(b.bookingTime);
-      return m != null && slotOf(m, slotMinutes) === start;
+      return m != null && sameType(b, type) && slotOf(m, slotMinutes) === start;
     }).length;
     const past = day.clone().startOf('day').add(start, 'minutes').isBefore(moment(now));
     slots.push({ time: formatHHMM(start), taken, max: maxPerSlot, available: !past && taken < maxPerSlot });
@@ -159,31 +191,50 @@ export async function sameDayBookings(Booking, { dealerId, date, tz, excludeBook
   if (!day) return [];
   const filter = { dealer_id: String(dealerId), bookingDate: day, booking_status: { $in: ACTIVE_BOOKING_STATUSES } };
   if (excludeBookingId) filter._id = { $ne: excludeBookingId };
-  return Booking.find(filter).select('_id lead_id bookingTime booking_status').sort({ _id: 1 }).lean();
+  return Booking.find(filter).select('_id lead_id bookingTime booking_status appointment_type').sort({ _id: 1 }).lean();
 }
 
 // The DB check every booking path calls before writing.
 export async function checkBookingSlot(Booking, {
-  dealer, date, time, excludeBookingId = null, now = new Date(), allowPast = false,
+  dealer, date, time, excludeBookingId = null, now = new Date(), allowPast = false, appointmentType = 'sales',
 }) {
   const bookings = await sameDayBookings(Booking, {
     dealerId: dealer._id, date, tz: dealerTimezone(dealer), excludeBookingId });
-  return checkSlot({ dealer, date, time, sameDayBookings: bookings, now, allowPast });
+  return checkSlot({ dealer, date, time, sameDayBookings: bookings, now, allowPast, appointmentType });
+}
+
+// The first open slot of this type from `date` + `time` onward (that slot itself excluded), searching
+// NEXT_SLOT_SEARCH_DAYS ahead, for "that hour is full, the next available is ...". Null when none.
+export async function nextAvailableSlot(Booking, {
+  dealer, date, time = null, appointmentType = 'sales', excludeBookingId = null, now = new Date(),
+}) {
+  const tz = dealerTimezone(dealer);
+  const start = moment.tz(String(date || ''), 'YYYY-MM-DD', true, tz);
+  if (!start.isValid()) return null;
+  const after = time == null ? -1 : parseTimeOfDay(time);
+  for (let i = 0; i < NEXT_SLOT_SEARCH_DAYS; i += 1) {
+    const day = start.clone().add(i, 'days').format('YYYY-MM-DD');
+    const bookings = await sameDayBookings(Booking, { dealerId: dealer._id, date: day, tz, excludeBookingId });
+    const open = slotsForDay({ dealer, date: day, sameDayBookings: bookings, now, appointmentType })
+      .find((s) => s.available && (i > 0 || after == null || parseTimeOfDay(s.time) > after));
+    if (open) return { date: day, time: open.time, appointment_type: normalizeAppointmentType(appointmentType) };
+  }
+  return null;
 }
 
 // Two requests for the last place in a slot can both pass the check above.
 // After writing, the slot's bookings are read back in creation order (ObjectId
 // order); a booking beyond the slot's capacity lost the race and the caller
 // removes it and answers 409. Returns true when `bookingId` keeps its place.
-export async function keepsPlaceInSlot(Booking, { dealer, date, time, bookingId }) {
-  const { maxPerSlot, slotMinutes } = capacitySettings(dealer);
+export async function keepsPlaceInSlot(Booking, { dealer, date, time, bookingId, appointmentType = 'sales' }) {
+  const { maxPerSlot, slotMinutes, appointmentType: type } = capacitySettings(dealer, appointmentType);
   const minutes = parseTimeOfDay(time);
   if (minutes == null) return true;
   const slot = slotOf(minutes, slotMinutes);
   const bookings = await sameDayBookings(Booking, { dealerId: dealer._id, date, tz: dealerTimezone(dealer) });
   const inSlot = bookings.filter((b) => {
     const m = parseTimeOfDay(b.bookingTime);
-    return m != null && slotOf(m, slotMinutes) === slot;
+    return m != null && sameType(b, type) && slotOf(m, slotMinutes) === slot;
   });
   const rank = inSlot.findIndex((b) => String(b._id) === String(bookingId));
   return rank === -1 || rank < maxPerSlot;
@@ -198,7 +249,16 @@ export function slotErrorResponseBody(check) {
     slot: check.slot ?? null,
     max_per_slot: check.max ?? null,
     timezone: check.timezone ?? null,
+    appointment_type: check.appointment_type ?? null,
   };
+}
+
+// "The 11:00 sales slot on 2026-10-08 is full. The next available is Thursday, Oct 8 at 12:00." - what a
+// person reads when a slot is full (client, 5 Oct 2026: guide them to the next available slot).
+export function nextSlotSentence(next, tz) {
+  if (!next) return 'No open slot in the next three weeks.';
+  const at = moment.tz(`${next.date} ${next.time}`, 'YYYY-MM-DD HH:mm', tz);
+  return `The next available is ${at.format('dddd, MMM D')} at ${at.format('h:mm A')}.`;
 }
 
 export function slotErrorStatus(check) {
@@ -222,20 +282,21 @@ export async function markLeadBookingShowed(Booking, { leadId, dealer, showed, n
 // Staff booked from the lead screen (status "Appointment Booked"): the lead's
 // active Booking is moved to the new time, or one is created, so staff and AI
 // bookings share one calendar (and one capacity check).
-export async function upsertLeadBooking(Booking, { lead, dealer, date, time, createdBy = 'staff' }) {
+export async function upsertLeadBooking(Booking, { lead, dealer, date, time, createdBy = 'staff', appointmentType = null }) {
+  const type = appointmentTypeFor(lead, appointmentType);
   const day = bookingDayUtc(date, dealerTimezone(dealer));
   const bookingTime = normalizeBookingTime(time);
   if (!day || !bookingTime) return null;
   const existing = await Booking.findOne({ lead_id: String(lead._id), booking_status: { $in: ['pending', 'confirmed'] } })
     .sort({ _id: -1 });
   if (existing) {
-    await Booking.updateOne({ _id: existing._id }, { $set: { bookingDate: day, bookingTime } });
+    await Booking.updateOne({ _id: existing._id }, { $set: { bookingDate: day, bookingTime, appointment_type: type } });
     return { _id: existing._id, bookingDate: day, bookingTime, created: false };
   }
   const created = await Booking.create({
     dealer_id: String(lead.dealer_id), lead_id: String(lead._id), customerName: lead.name || 'Customer',
     email: lead.email || undefined, phone: lead.phone || undefined, bookingDate: day, bookingTime,
-    created_by: createdBy,
+    created_by: createdBy, appointment_type: type,
   });
   return { _id: created._id, bookingDate: day, bookingTime, created: true };
 }

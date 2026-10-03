@@ -16,7 +16,8 @@ import moment from 'moment-timezone';
 import Email from '@models/Email.js';
 import Booking from '@models/Booking.js';
 import {
-  checkBookingSlot, markLeadBookingShowed, slotErrorResponseBody, slotErrorStatus, upsertLeadBooking,
+  appointmentTypeFor, checkBookingSlot, markLeadBookingShowed, nextAvailableSlot, nextSlotSentence, slotErrorResponseBody,
+  slotErrorStatus, upsertLeadBooking,
 } from '@lib/bookingService.js';
 import jwt from 'jsonwebtoken';
 import {
@@ -214,7 +215,7 @@ export async function PUT(request) {
     // Continue without token - messageBy will remain null
   }
   try {
-    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook } = await request.json();
+    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
@@ -254,10 +255,19 @@ export async function PUT(request) {
       if (slotDealer && allow_overbook !== true) {
         const ownBooking = await Booking.findOne({ lead_id: String(id), booking_status: { $in: ['pending', 'confirmed'] } })
           .sort({ _id: -1 }).select('_id').lean();
+        const appointmentType = appointmentTypeFor(originalLead, appointment_type);
         const check = await checkBookingSlot(Booking, { dealer: slotDealer, date: booking_date, time: booking_time,
-          excludeBookingId: ownBooking?._id ?? null, allowPast: true });
+          excludeBookingId: ownBooking?._id ?? null, allowPast: true, appointmentType });
         if (!check.ok) {
-          return NextResponse.json(slotErrorResponseBody(check), { status: slotErrorStatus(check) });
+          // A full slot names the next open one (client, 5 Oct 2026).
+          const body = slotErrorResponseBody(check);
+          let next_available = null;
+          if (check.reason === 'slot_full') {
+            next_available = await nextAvailableSlot(Booking, { dealer: { ...slotDealer, _id: originalLead.dealer_id },
+              date: booking_date, time: booking_time, appointmentType, excludeBookingId: ownBooking?._id ?? null });
+            body.message = `${body.message}. ${nextSlotSentence(next_available, check.timezone)}`;
+          }
+          return NextResponse.json({ ...body, next_available }, { status: slotErrorStatus(check) });
         }
       }
     }
@@ -340,7 +350,7 @@ export async function PUT(request) {
     if (slotDealer) {
       try {
         const leadBooking = await upsertLeadBooking(Booking, { lead: updated, dealer: slotDealer, date: booking_date,
-          time: booking_time });
+          time: booking_time, appointmentType: appointment_type });
         if (leadBooking?.created) {
           await Lead.updateOne({ _id: updated._id }, { $set: { 'data.bookingId': leadBooking._id } });
         }

@@ -20,7 +20,7 @@ import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayl
 import { addAiLeadNote, markLeadDndFromAi, validateDndPayload, validateNotePayload } from './app/lib/ai/aiDnd.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
-  capacitySettings, checkBookingSlot, checkSlot, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
+  appointmentTypeFor, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
   openingHours, slotsForDay, upsertLeadBooking,
 } from './app/lib/bookingService.js';
 import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib/providerStub.js';
@@ -56,12 +56,44 @@ test('booking times are normalized to HH:MM, whatever the caller sends', () => {
   assert.equal(normalizeBookingTime('soon'), null);
 });
 
-test('capacity defaults to 1 booking per 30-minute slot and is dealer-configurable', () => {
-  assert.deepEqual(capacitySettings(dealerDoc()), { maxPerSlot: 1, slotMinutes: 30 });
-  assert.deepEqual(capacitySettings(dealerDoc({ booking_max_per_slot: '3', booking_slot_minutes: 60 })),
-    { maxPerSlot: 3, slotMinutes: 60 });
+test('capacity: one-hour slots, 10 sales or 1 service per slot, dealer-configurable (client, 5 Oct 2026)', () => {
+  assert.deepEqual(capacitySettings(dealerDoc()), { appointmentType: 'sales', maxPerSlot: 10, slotMinutes: 60 });
+  assert.deepEqual(capacitySettings(dealerDoc(), 'service'), { appointmentType: 'service', maxPerSlot: 1, slotMinutes: 60 });
+  // The older single setting applies to sales only; booking_capacity wins over it.
+  assert.deepEqual(capacitySettings(dealerDoc({ booking_max_per_slot: '3', booking_slot_minutes: 30 })),
+    { appointmentType: 'sales', maxPerSlot: 3, slotMinutes: 30 });
+  assert.equal(capacitySettings(dealerDoc({ booking_max_per_slot: 3 }), 'service').maxPerSlot, 1);
+  assert.deepEqual(capacitySettings(dealerDoc({ booking_capacity: { service: { max_per_slot: 2, slot_minutes: 30 } } }),
+    'service'), { appointmentType: 'service', maxPerSlot: 2, slotMinutes: 30 });
   assert.deepEqual(capacitySettings(dealerDoc({ booking_max_per_slot: 0, booking_slot_minutes: 1 })),
-    { maxPerSlot: 1, slotMinutes: 30 });
+    { appointmentType: 'sales', maxPerSlot: 10, slotMinutes: 60 });
+});
+
+test('the appointment type comes from the choice, the lead type, then the lead source', () => {
+  assert.equal(appointmentTypeFor({ source: 'Service Department' }), 'service');
+  assert.equal(appointmentTypeFor({ source: 'CarGurus' }), 'sales');
+  assert.equal(appointmentTypeFor({ source: 'CarGurus', lead_type: 'service' }), 'service');
+  assert.equal(appointmentTypeFor({ source: 'Service Department' }, 'sales'), 'sales');
+  assert.equal(appointmentTypeFor({ source: 'CarGurus' }, 'bogus'), 'sales');
+  assert.equal(normalizeAppointmentType(undefined), 'sales');
+});
+
+test('a sales slot takes 10, a service slot 1, and the two never share a count', () => {
+  const dealer = dealerDoc();
+  const at = (n, type) => Array.from({ length: n }, () => ({ bookingTime: '10:00', appointment_type: type }));
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:30', now: NOW, sameDayBookings: at(9, 'sales') }).ok, true);
+  const full = checkSlot({ dealer, date: MONDAY, time: '10:30', now: NOW, sameDayBookings: at(10, 'sales') });
+  assert.equal(full.reason, 'slot_full');
+  assert.equal(full.slot, '10:00');
+  // Bookings saved before types existed count as sales.
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:00', now: NOW,
+    sameDayBookings: Array.from({ length: 10 }, () => ({ bookingTime: '10:00' })) }).reason, 'slot_full');
+  // Ten sales bookings leave the service slot free; one service booking fills it.
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:00', now: NOW, appointmentType: 'service',
+    sameDayBookings: at(10, 'sales') }).ok, true);
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:45', now: NOW, appointmentType: 'service',
+    sameDayBookings: at(1, 'service') }).reason, 'slot_full');
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:00', now: NOW, sameDayBookings: at(1, 'service') }).ok, true);
 });
 
 test('opening hours come from weekly_availability; none on record means Mon-Sat 9-18', () => {
@@ -83,22 +115,22 @@ test('a slot is refused when closed, outside hours, in the past or full; free ot
   assert.equal(checkSlot({ dealer, date: '2020-01-06', time: '10:00', now: NOW }).reason, 'in_past');
   assert.equal(checkSlot({ dealer, date: '2020-01-06', time: '10:00', now: NOW, allowPast: true }).ok, true);
   assert.equal(checkSlot({ dealer, date: 'next week', time: '10:00', now: NOW }).reason, 'invalid_date');
-  // 10:15 is in the 10:00 slot, which 10:00 already takes.
-  const full = checkSlot({ dealer, date: MONDAY, time: '10:15', now: NOW, sameDayBookings: [{ bookingTime: '10:00' }] });
+  // A service slot is one hour: 10:15 is in the 10:00 slot, which a 10:00 service booking already takes.
+  const service = { appointmentType: 'service', sameDayBookings: [{ bookingTime: '10:00', appointment_type: 'service' }] };
+  const full = checkSlot({ dealer, date: MONDAY, time: '10:15', now: NOW, ...service });
   assert.equal(full.reason, 'slot_full');
   assert.equal(full.slot, '10:00');
-  assert.equal(checkSlot({ dealer, date: MONDAY, time: '10:30', now: NOW, sameDayBookings: [{ bookingTime: '10:00' }] }).ok,
-    true);
-  const two = dealerDoc({ booking_max_per_slot: 2 });
-  assert.equal(checkSlot({ dealer: two, date: MONDAY, time: '10:00', now: NOW, sameDayBookings: [{ bookingTime: '10:00' }] }).ok,
-    true);
+  assert.equal(checkSlot({ dealer, date: MONDAY, time: '11:00', now: NOW, ...service }).ok, true);
 });
 
 test('the day view lists every slot inside opening hours with what is taken', () => {
-  const slots = slotsForDay({ dealer: dealerDoc(), date: MONDAY, now: NOW, sameDayBookings: [{ bookingTime: '09:00' }] });
-  assert.equal(slots.length, 20);
+  const booked = [{ bookingTime: '09:00', appointment_type: 'service' }];
+  const slots = slotsForDay({ dealer: dealerDoc(), date: MONDAY, now: NOW, sameDayBookings: booked, appointmentType: 'service' });
+  assert.equal(slots.length, 10); // 09:00-19:00 in one-hour slots
   assert.deepEqual(slots[0], { time: '09:00', taken: 1, max: 1, available: false });
   assert.equal(slots[1].available, true);
+  const sales = slotsForDay({ dealer: dealerDoc(), date: MONDAY, now: NOW, sameDayBookings: booked });
+  assert.deepEqual(sales[0], { time: '09:00', taken: 0, max: 10, available: true });
   assert.equal(slotsForDay({ dealer: dealerDoc(), date: SUNDAY, now: NOW }).length, 0);
 });
 
@@ -244,27 +276,34 @@ maybe('a send for another dealer\'s lead, or a STOP-ed number, is refused and no
   assert.equal(await Email.countDocuments({}), 0);
 });
 
-maybe('a taken slot is refused (409 path) for everyone, and a lead\'s own booking can move', async () => {
+maybe('a taken slot is refused (409 path) for everyone, and the next open slot is named', async () => {
   await seedDealerAndLead();
   const dealer = await User.findById(DEALER).lean();
+  const service = { appointmentType: 'service' };
   await Booking.create({ dealer_id: DEALER, lead_id: 'other', customerName: 'Bo', bookingDate: new Date('2031-03-03T05:00:00Z'),
-    bookingTime: '10:00' });
-  const taken = await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:10', now: NOW });
+    bookingTime: '10:00', appointment_type: 'service' });
+  const taken = await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:10', now: NOW, ...service });
   assert.equal(taken.reason, 'slot_full');
-  assert.equal((await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:30', now: NOW })).ok, true);
+  assert.equal((await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '11:00', now: NOW, ...service })).ok, true);
+  // The same hour still has room for sales.
+  assert.equal((await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:00', now: NOW })).ok, true);
+  // "Guide the user about the next available slot" (client, 5 Oct 2026).
+  assert.deepEqual(await nextAvailableSlot(Booking, { dealer, date: MONDAY, time: '10:10', now: NOW, ...service }),
+    { date: MONDAY, time: '11:00', appointment_type: 'service' });
   // A cancelled booking frees its slot.
   await Booking.updateMany({}, { $set: { booking_status: 'cancelled' } });
-  assert.equal((await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:00', now: NOW })).ok, true);
+  assert.equal((await checkBookingSlot(Booking, { dealer, date: MONDAY, time: '10:00', now: NOW, ...service })).ok, true);
 });
 
 maybe('two bookings racing for the last place: only the first keeps it', async () => {
   await seedDealerAndLead();
   const dealer = await User.findById(DEALER).lean();
   const day = new Date('2031-03-03T05:00:00Z');
-  const a = await Booking.create({ dealer_id: DEALER, lead_id: 'a', customerName: 'A', bookingDate: day, bookingTime: '11:00' });
-  const b = await Booking.create({ dealer_id: DEALER, lead_id: 'b', customerName: 'B', bookingDate: day, bookingTime: '11:15' });
-  assert.equal(await keepsPlaceInSlot(Booking, { dealer, date: MONDAY, time: '11:00', bookingId: a._id }), true);
-  assert.equal(await keepsPlaceInSlot(Booking, { dealer, date: MONDAY, time: '11:15', bookingId: b._id }), false);
+  const service = { appointment_type: 'service' };
+  const a = await Booking.create({ dealer_id: DEALER, lead_id: 'a', customerName: 'A', bookingDate: day, bookingTime: '11:00', ...service });
+  const b = await Booking.create({ dealer_id: DEALER, lead_id: 'b', customerName: 'B', bookingDate: day, bookingTime: '11:15', ...service });
+  assert.equal(await keepsPlaceInSlot(Booking, { dealer, date: MONDAY, time: '11:00', bookingId: a._id, appointmentType: 'service' }), true);
+  assert.equal(await keepsPlaceInSlot(Booking, { dealer, date: MONDAY, time: '11:15', bookingId: b._id, appointmentType: 'service' }), false);
 });
 
 maybe('a staff booking becomes a Booking; Visited marks it showed and completed', async () => {

@@ -178,7 +178,7 @@ export async function seed() {
       time_zone: DEMO_TIMEZONE, weekly_availability: WEEKLY_AVAILABILITY,
       // Twilio number placeholder: sends are stubbed locally (PROVIDER_SEND_STUB).
       sms_conversion_phone: DEMO_DEALER_SMS,
-      booking_max_per_slot: 1, booking_slot_minutes: 30,
+      // Appointment capacity: the CRM's defaults (one-hour slots; 10 sales or 1 service per slot).
       ai_agent_name: 'Ava', ai_bot_name: 'Ava',
       // The rest of the CRM's Dealer Setup form: without `sanitized_domain` the dealer portal forces the
       // setup modal open on every page.

@@ -27,6 +27,7 @@ import {
   slotErrorResponseBody,
   slotErrorStatus,
   slotsForDay,
+  appointmentTypeFor, nextAvailableSlot, nextSlotSentence, normalizeAppointmentType,
 } from '@lib/bookingService';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentBookingSMSTemplate } from '@lib/templates/appointmentSMSTemplate.js';
@@ -232,12 +233,17 @@ function json(body, status = 200) {
 
 // A failed slot check: 409 for a taken slot, 422 for a time that can't be
 // booked at all; with the day's free slots so the caller can offer one.
-async function slotRejection(check, { dealer, date, excludeBookingId = null }) {
+async function slotRejection(check, { dealer, date, time = null, excludeBookingId = null, appointmentType = 'sales' }) {
   const bookings = check.reason === 'invalid_date' ? [] : await sameDayBookings(Booking, {
     dealerId: dealer._id, date, tz: dealerTimezone(dealer), excludeBookingId });
-  const alternatives = slotsForDay({ dealer, date, sameDayBookings: bookings })
+  const alternatives = slotsForDay({ dealer, date, sameDayBookings: bookings, appointmentType })
     .filter((s) => s.available).map((s) => s.time).slice(0, 6);
-  return json({ ...slotErrorResponseBody(check), alternatives }, slotErrorStatus(check));
+  // The first open slot after the requested one, the same day or later (client, 5 Oct 2026).
+  const next_available = check.reason === 'invalid_date' ? null : await nextAvailableSlot(Booking, {
+    dealer, date, time: check.reason === 'slot_full' ? time : null, appointmentType, excludeBookingId });
+  const body = slotErrorResponseBody(check);
+  if (check.reason === 'slot_full') body.message = `${body.message}. ${nextSlotSentence(next_available, dealerTimezone(dealer))}`;
+  return json({ ...body, alternatives, next_available }, slotErrorStatus(check));
 }
 
 export async function POST(request) {
@@ -290,12 +296,13 @@ export async function POST(request) {
         leadUpdated: false });
     }
 
-    // Opening hours + slot capacity (app/lib/bookingService.js). Staff may
-    // overbook on purpose; the AI and the customer page never can.
+    // Opening hours + slot capacity (app/lib/bookingService.js), by appointment type: sales or service.
+    // Staff may overbook on purpose; the AI and the customer page never can.
+    const appointmentType = appointmentTypeFor(existingLead, body.appointment_type);
     const overbook = caller.kind === 'staff' && allow_overbook === true;
     if (!overbook) {
-      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime });
-      if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate });
+      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+      if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
     }
 
     // Create new booking
@@ -309,17 +316,19 @@ export async function POST(request) {
       bookingTime,
       notes,
       created_by: caller.kind,
+      appointment_type: appointmentType,
     });
 
     await booking.save();
 
     // Two requests for the slot's last place: the later one gives it back.
     if (!overbook && !(await keepsPlaceInSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
-      bookingId: booking._id }))) {
+      bookingId: booking._id, appointmentType }))) {
       await Booking.deleteOne({ _id: booking._id });
-      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime });
+      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
       return slotRejection(check.ok ? { ...check, ok: false, reason: 'slot_full',
-        message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check, { dealer: dealerDoc, date: bookingDate });
+        message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check,
+      { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
     }
 
     // Initialize updates object
@@ -590,9 +599,10 @@ export async function GET(request) {
       if (!dealer) return json({ error: 'Dealer not found' }, 404);
       const tz = dealerTimezone(dealer);
       const bookings = await sameDayBookings(Booking, { dealerId: dealer_id, date, tz });
-      const { maxPerSlot, slotMinutes } = capacitySettings(dealer);
-      return json({ date, timezone: tz, max_per_slot: maxPerSlot, slot_minutes: slotMinutes,
-        slots: slotsForDay({ dealer, date, sameDayBookings: bookings }) });
+      const appointmentType = normalizeAppointmentType(searchParams.get('appointment_type'));
+      const { maxPerSlot, slotMinutes } = capacitySettings(dealer, appointmentType);
+      return json({ date, timezone: tz, appointment_type: appointmentType, max_per_slot: maxPerSlot,
+        slot_minutes: slotMinutes, slots: slotsForDay({ dealer, date, sameDayBookings: bookings, appointmentType }) });
     }
 
     if (!lead_id) {
@@ -656,8 +666,9 @@ export async function PUT(request) {
     if (dateChanged) {
       if (dealerDoc && stillActive && !overbook) {
         const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: newDate, time: newTime,
-          excludeBookingId: existingBooking._id });
-        if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: newDate, excludeBookingId: existingBooking._id });
+          excludeBookingId: existingBooking._id, appointmentType: existingBooking.appointment_type });
+        if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: newDate, time: newTime,
+          excludeBookingId: existingBooking._id, appointmentType: existingBooking.appointment_type });
       }
       const normalizedDate = bookingDayUtc(newDate, dealerTimezone);
       if (!normalizedDate) return json({ error: 'booking_date must be YYYY-MM-DD' }, 422);
@@ -677,7 +688,7 @@ export async function PUT(request) {
     );
 
     if (dateChanged && dealerDoc && stillActive && !overbook && !(await keepsPlaceInSlot(Booking, {
-      dealer: dealerDoc, date: newDate, time: newTime, bookingId }))) {
+      dealer: dealerDoc, date: newDate, time: newTime, bookingId, appointmentType: existingBooking.appointment_type }))) {
       await Booking.updateOne({ _id: bookingId }, { $set: previous });
       return json({ success: false, error: 'slot_taken', message: `The ${newTime} slot on ${newDate} was just taken` }, 409);
     }

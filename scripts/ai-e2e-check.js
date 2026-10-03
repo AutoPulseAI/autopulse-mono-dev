@@ -512,15 +512,38 @@ async function crmLocal() {
   const again = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(sms) });
   check('D3. the same booking again is answered with the existing one (no duplicate)',
     again.ok && (await jsonOf(again)).duplicate === true && (await Booking.countDocuments({ lead_id: String(sms.lead._id) })) === 1);
+  // Client, 5 Oct 2026: one-hour slots; a sales slot takes 10 appointments, a service slot 1; a full slot
+  // names the next available one. Fill the 11:00 sales hour to 10 (the AI's booking is the first).
+  const bookingDay = new Date(bookedBody.booking.bookingDate);
+  const fillerRun = Date.now().toString().slice(-7);
+  for (let i = 1; i < 10; i += 1) {
+    await Booking.create({ dealer_id: DEMO_DEALER_ID, lead_id: `e2e-filler-${fillerRun}-${i}`, customerName: `Filler ${i}`,
+      bookingDate: bookingDay, bookingTime: i % 2 ? '11:00' : '11:30', appointment_type: 'sales', notes: 'e2e filler' });
+  }
   const clash = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(created.website, '11:15') });
   const clashBody = await jsonOf(clash);
-  check('D4. another lead in the same slot gets a clear 409 with free times', clash.status === 409
-    && clashBody.error === 'slot_taken' && clashBody.alternatives?.length > 0 && !clashBody.alternatives.includes('11:00'),
+  check('D4. the 11th sales booking in one hour gets a 409 naming the next available slot', clash.status === 409
+    && clashBody.error === 'slot_taken' && clashBody.max_per_slot === 10
+    && clashBody.next_available?.date === day && clashBody.next_available?.time === '12:00'
+    && /next available/i.test(clashBody.message || ''),
     `HTTP ${clash.status}: ${clashBody.message}`);
+  const serviceLead = created.service;
+  const serviceBody = (time) => JSON.stringify({ ...JSON.parse(bookingBody(serviceLead, time)), appointment_type: 'service' });
+  const serviceOk = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: serviceBody('11:00') });
+  const serviceOkBody = await jsonOf(serviceOk);
+  check('D4b. a full sales hour leaves the service slot free (separate counts)',
+    serviceOk.status === 201 && serviceOkBody.booking?.appointment_type === 'service', `HTTP ${serviceOk.status}`);
+  const serviceClash = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(created.website.lead._id), status: 'Appointment Booked', booking_date: day,
+      booking_time: '11:30', appointment_type: 'service' }) });
+  const serviceClashBody = await jsonOf(serviceClash);
+  check('D4c. a second service booking in the same hour gets a 409 naming the next slot', serviceClash.status === 409
+    && serviceClashBody.max_per_slot === 1 && serviceClashBody.next_available?.time === '12:00',
+    `HTTP ${serviceClash.status}: ${serviceClashBody.message}`);
   const staffClash = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
     body: JSON.stringify({ id: String(created.website.lead._id), status: 'Appointment Booked', booking_date: day,
       booking_time: '11:00' }) });
-  check('D5. staff booking the taken slot from the lead screen get the same 409', staffClash.status === 409,
+  check('D5. staff booking the full sales hour from the lead screen get the same 409', staffClash.status === 409,
     `HTTP ${staffClash.status}: ${(await jsonOf(staffClash)).message}`);
   const closed = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(created.website, '06:00') });
   check('D6. a time outside opening hours is refused (422)', closed.status === 422, `HTTP ${closed.status}`);
@@ -537,11 +560,19 @@ async function crmLocal() {
     return s?.stage === 'appointment_set' ? s : null;
   }).catch(() => null);
   check('D8. the AI was told about the staff booking (stage Appointment Set)', Boolean(staffStage));
+  const serviceBookingId = serviceOkBody.bookingId;
   const moved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
     body: JSON.stringify({ bookingId, booking_status: 'confirmed', booking_time: '12:00' }) });
-  check('D9. moving a booking onto a taken slot is refused (409)', moved.status === 409, `HTTP ${moved.status}`);
+  check('D9. moving a sales booking to an hour with room is allowed (12:00 has 1 of 10)', moved.ok, `HTTP ${moved.status}`);
+  const serviceFiller = await Booking.create({ dealer_id: DEMO_DEALER_ID, lead_id: `e2e-filler-${fillerRun}-svc`,
+    customerName: 'Service filler', bookingDate: bookingDay, bookingTime: '13:00', appointment_type: 'service', notes: 'e2e filler' });
+  const serviceMoved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
+    body: JSON.stringify({ bookingId: serviceBookingId, booking_time: '13:00' }) });
+  check('D9b. moving a service booking onto a taken service hour is refused (409)', serviceMoved.status === 409,
+    `HTTP ${serviceMoved.status}: ${(await jsonOf(serviceMoved)).message}`);
+  await Booking.deleteOne({ _id: serviceFiller._id });
   const fetched = await fetch(`${PLATFORM}/api/booking?booking_id=${bookingId}`, { headers: internal }).then(jsonOf);
-  check('D10. GET /api/booking returns the booking to the AI service', fetched.booking?.bookingTime === '11:00');
+  check('D10. GET /api/booking returns the booking to the AI service', fetched.booking?.bookingTime === '12:00');
 
   // --- E. Staff: Visited + Sold Pending, then Closed - Lost -----------------------------------------
   const visited = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
