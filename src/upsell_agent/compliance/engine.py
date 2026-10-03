@@ -34,10 +34,14 @@ Plain code, checked in this order; the first rule that stops a message wins:
    Email needs no consent.
 8. **Time** for anything the system starts by SMS: inside the dealer's
    opening hours and inside the customer's window in every zone they may be
-   in (decisions 23-25, 70): marketing 8:00-20:00 (strictest known state
-   rule, interim), transactional 8:00-21:00. Email has no time rule.
+   in (decisions 23-25, 70): marketing by the customer's state's own row
+   (MASTER_PLAN_4 F1, compliance/state_hours.py: a window per weekday, the
+   Sunday and holiday rules; the stricter of the ZIP and area-code states;
+   an unknown state gets the strictest row), transactional 8:00-21:00.
+   Email has no time rule.
 9. **Frequency** (marketing SMS): at most 3 per customer per 24 hours,
-   across the AI and campaigns; an ALLOW counts as soon as it's given.
+   across the AI and campaigns, plus any cap of the state's own row; an
+   ALLOW counts as soon as it's given.
 
 Rules 8 and 9 give HOLD with the first time both allow it.
 
@@ -52,6 +56,7 @@ from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
 from upsell_agent.channels import consent
+from upsell_agent.compliance import state_hours
 from upsell_agent.compliance.customer_zone import customer_zone
 from upsell_agent.compliance.origin import LeadOrigin, lead_origin
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
@@ -70,7 +75,9 @@ Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
 Purpose = Literal["marketing", "transactional", "opt_out_confirmation", "reply"]
 
 # Customer-local windows (start, end), end exclusive.
-MARKETING_WINDOW = (time(8), time(20))      # decision 25: strictest known state rule, everywhere, for now
+# Decision 25's interim 8:00-20:00 for everyone. Marketing texts now follow the per-state table
+# (MASTER_PLAN_4 F1, compliance/state_hours.py); kept for anything that still imports it.
+MARKETING_WINDOW = (time(8), time(20))
 TRANSACTIONAL_WINDOW = (time(8), time(21))  # decision 18: 8:00-21:00 customer time
 REPLY_WINDOW = (time(8), time(21))          # decision 29: outbound conversations keep going only inside this
 MARKETING_SMS_CAP = 3
@@ -392,6 +399,8 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
 
     profile = await dealer_profile(dealer_id)
     window = MARKETING_WINDOW if purpose == "marketing" else TRANSACTIONAL_WINDOW
+    # MASTER_PLAN_4 F1: marketing follows the customer's state's own row(s) (client's TCPA tables, 1 Oct).
+    rules = state_hours.rules_for(state_hours.zone_states(zone)) if purpose == "marketing" else None
     earliest = at
     frequency: dict[str, Any] = {}
     if purpose == "marketing":
@@ -404,9 +413,10 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                   f"{len(recent)} marketing texts in the last 24 hours (cap {MARKETING_SMS_CAP})")
         else:
             check("frequency", True, f"{len(recent)} of {MARKETING_SMS_CAP} marketing texts in the last 24 hours")
+        earliest = _state_caps(check, frequency, rules or [], recent, at, earliest)
 
-    window_text = f"{window[0]:%H:%M}-{window[1]:%H:%M}"
-    ok_customer = in_window(at, zone.zones, window)
+    window_text = state_hours.describe(rules) if rules else f"{window[0]:%H:%M}-{window[1]:%H:%M}"
+    ok_customer = state_hours.allowed(at, zone.zones, rules) if rules else in_window(at, zone.zones, window)
     ok_dealer = dealer_open(at, profile)
     check("customer_time", ok_customer, f"{window_text} customer time in {', '.join(zone.zones)} ({zone.detail})")
     check("dealer_hours", ok_dealer, f"dealer open hours ({profile.timezone})")
@@ -414,10 +424,12 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         return Decision("ALLOW", f"{purpose} text inside the customer's window and the dealer's hours", "allowed",
                         zone=zone.as_dict(), consent=consent_info, frequency=frequency)
 
-    until = next_allowed(earliest, zone.zones, window, profile)
+    until = (state_hours.next_allowed(earliest, zone.zones, rules, profile) if rules
+             else next_allowed(earliest, zone.zones, window, profile))
     reasons = []
     if earliest != at:
-        reasons.append(f"frequency cap: {MARKETING_SMS_CAP} marketing texts in 24 hours")
+        reasons.append("frequency cap: " + (frequency.get("cap_text")
+                                            or f"{MARKETING_SMS_CAP} marketing texts in 24 hours"))
     if not ok_customer:
         reasons.append(f"outside {window_text} customer time ({zone.detail})")
     if not ok_dealer:
@@ -429,6 +441,27 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                     frequency=frequency)
 
 
+def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateRule], recent: list[datetime],
+                at: datetime, earliest: datetime) -> datetime:
+    """A state row's own cap (MASTER_PLAN_4 F1), on top of the 3-in-24h one
+    above: the first time every cap has room again. Today's table only has
+    3 per 24 hours (FL, OK, MD), the same as ours, but a row with a tighter
+    cap would hold here."""
+    for count, period in state_hours.caps(rules):
+        inside = [r for r in recent if r > at - period]
+        if len(inside) < count:
+            continue
+        free = inside[-count] + period
+        check("state_frequency", False, f"{len(inside)} marketing texts in the last {period} (the state's cap "
+                                        f"is {count})")
+        if free > earliest:
+            earliest = free
+            hours = int(period.total_seconds() // 3600)
+            frequency.update(free_at=free.isoformat(),
+                             cap_text=f"{count} marketing texts in {hours} hours (the state's own cap)")
+    return earliest
+
+
 async def _log(db: DealerScopedDatabase, decision: Decision, *, customer_id: str | None, lead_id: str | None,
                channel: str, purpose: str, is_reply: bool, at: datetime, to: str | None, source: str,
                request_id: str | None, campaign: bool) -> str:
@@ -438,7 +471,9 @@ async def _log(db: DealerScopedDatabase, decision: Decision, *, customer_id: str
         "to": to, "purpose": purpose, "is_reply": is_reply, "campaign": campaign, "source": source,
         "request_id": request_id, "origin": decision.origin.get("origin"),
         "consent_evidence_id": decision.consent.get("evidence_id"), "consent": decision.consent,
-        "jurisdiction": {"zones": zones, "state": decision.zone.get("state"), "method": decision.zone.get("method")},
+        "jurisdiction": {"zones": zones, "state": decision.zone.get("state"), "method": decision.zone.get("method"),
+                         # MASTER_PLAN_4 F1: which states' rows applied, and the table's version.
+                         "states": decision.zone.get("states"), "rules_version": state_hours.RULES_VERSION},
         "local_time": {z: at.astimezone(ZoneInfo(z)).strftime("%a %H:%M") for z in zones},
         "dnc": next((c for c in decision.checks if c["rule"] == "do_not_contact"), None),
         "frequency": decision.frequency, "decision": decision.outcome, "decision_reason": decision.reason,

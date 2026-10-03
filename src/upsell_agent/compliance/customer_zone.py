@@ -71,10 +71,13 @@ class CustomerZone:
     detail: str
     state: str | None = None
     notes: list[str] = field(default_factory=list)
+    # Every state whose hours apply (MASTER_PLAN_4 F1): the ZIP / DealerVault state and, when it
+    # differs, the area-code state too (the stricter row wins). Empty: just `state`, if any.
+    states: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {"zones": list(self.zones), "method": self.method, "detail": self.detail, "state": self.state,
-                "notes": list(self.notes)}
+                "notes": list(self.notes), "states": list(self.states or ((self.state,) if self.state else ()))}
 
 
 def zone_for_zip(zip_code: Any) -> tuple[str | None, str | None]:
@@ -160,14 +163,16 @@ async def customer_zone(db: DealerScopedDatabase, customer_id: str | None, phone
                             "no ZIP, state or US area code: only hours legal in every continental US zone")
 
     # The ZIP state and the area-code state differ: keep both (the stricter wins).
+    states: tuple[str, ...] = (state,) if state else ()
     if method in ("zip", "state") and phone_state and state and phone_state != state and phone_zones:
+        # MASTER_PLAN_4 F1 item 2: both states' rows apply, even when they share a time zone.
+        states = (state, phone_state)
         extra = tuple(z for z in phone_zones if z not in zones)
-        if extra:
-            zones = zones + extra
-            notes.append(f"area code is in {phone_state}, not {state}: both states' hours apply")
+        zones = zones + extra
+        notes.append(f"area code is in {phone_state}, not {state}: both states' hours apply")
     if len(zones) > 1 and method == "state":
         notes.append(f"{state} spans {len(zones)} time zones: only hours legal in all of them")
-    return CustomerZone(zones, method, detail, state, notes)
+    return CustomerZone(zones, method, detail, state, notes, states)
 
 
 _STATE_NAMES = {

@@ -176,15 +176,19 @@ async def test_followup_waits_for_the_customers_8am_and_the_dealer_open(mongo, d
     created = await _lead(mongo, source="website", zip_code="90012")
     decision = await _check(created)
     assert decision.outcome == "HOLD" and decision.until == ny(22, 11)  # 8:00 Los Angeles
-    assert "outside 08:00-20:00 customer time" in decision.reason
+    # MASTER_PLAN_4 F1: California's own row (federal default), not the old interim 8:00-20:00.
+    assert "outside CA: Mon-Fri 08:00-21:00" in decision.reason
 
 
 async def test_unknown_zone_uses_the_hours_legal_everywhere(mongo, dealers):
     set_clock(ny(22, 10, 30))
     created = await _lead(mongo, source="website", zip_code=None)
     decision = await _check(created)
-    assert decision.outcome == "HOLD" and decision.until == ny(22, 11)
+    # MASTER_PLAN_4 F1: no state, so the strictest row (Kentucky's 10:00 start) in every continental zone:
+    # 10:00 Los Angeles.
+    assert decision.outcome == "HOLD" and decision.until == ny(22, 13)
     assert decision.zone["method"] == "unknown"
+    assert "STRICTEST" in decision.reason
 
 
 async def test_campaign_to_a_dealervault_contact_without_consent_is_blocked(mongo, dealers):

@@ -11,8 +11,9 @@ a person phones. It still follows the contact rules:
 4. **Time:** 8:00-21:00 in the customer's own time zone(s) (the transactional
    window, the same hours the law gives a person calling) AND inside the
    dealer's opening hours, which stand in for the agents' work schedule (the
-   platform has no per-agent schedule). Outside them: HOLD until the next
-   moment both allow it.
+   platform has no per-agent schedule), and inside the customer's state's
+   own live-call row (MASTER_PLAN_4 F1, compliance/state_hours.py). Outside
+   them: HOLD until the next moment all of them allow it.
 
 Every decision is added to the compliance log (channel `voice`, purpose
 `human_call`).
@@ -22,7 +23,7 @@ from datetime import datetime
 
 from upsell_agent import clock
 from upsell_agent.channels import consent
-from upsell_agent.compliance import engine
+from upsell_agent.compliance import engine, state_hours
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     PLATFORM_CUSTOMERS_COLLECTION,
@@ -72,15 +73,18 @@ async def can_call(*, dealer_id: str, customer_id: str | None, lead_id: str, at:
 
     zone = await engine.customer_zone(db, customer_id, phone)
     profile = await dealer_profile(dealer_id)
-    ok_customer = engine.in_window(at, zone.zones, CALL_WINDOW)
+    # MASTER_PLAN_4 F1: the client's Table 1 is literally the states' live-call windows, so a person's
+    # call follows the customer's state's row too (Sunday and holiday bans, later starts), inside 8:00-21:00.
+    rules = state_hours.rules_for(state_hours.zone_states(zone))
+    ok_customer = engine.in_window(at, zone.zones, CALL_WINDOW) and state_hours.allowed(at, zone.zones, rules)
     ok_dealer = engine.dealer_open(at, profile)
-    window = f"{CALL_WINDOW[0]:%H:%M}-{CALL_WINDOW[1]:%H:%M}"
+    window = f"{CALL_WINDOW[0]:%H:%M}-{CALL_WINDOW[1]:%H:%M} and {state_hours.describe(rules)}"
     check("customer_time", ok_customer, f"{window} customer time in {', '.join(zone.zones)} ({zone.detail})")
     check("agent_hours", ok_dealer, f"dealer open hours ({profile.timezone})")
     if ok_customer and ok_dealer:
         return await done(engine.Decision("ALLOW", "inside the customer's calling hours and the dealer's hours",
                                           "allowed", zone=zone.as_dict()))
-    until = engine.next_allowed(at, zone.zones, CALL_WINDOW, profile)
+    until = state_hours.next_allowed(at, zone.zones, rules, profile, extra_window=CALL_WINDOW)
     reasons = ([] if ok_customer else [f"outside {window} customer time ({zone.detail})"]) + (
         [] if ok_dealer else ["dealer closed"])
     if until is None:
