@@ -80,7 +80,11 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
                      "next_touch": ({**(touch_row.get("touch") or {}), "due_at": _iso(touch_row.get("due_at"))}
                                     if touch_row else None)}
                     if cadence_state.started_at else None)
+    # MASTER_PLAN_4 D2/D3 (stream A3): the opportunity status, SOLD PENDING's cadence and the ownership lifecycle.
+    from upsell_agent.scheduler.sold_lifecycles import lead_view
+    sold = await lead_view(db, lead_id, {**state, "customer_id": state.get("customer_id") or customer_id})
     return {
+        **sold,
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
         # MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py), its

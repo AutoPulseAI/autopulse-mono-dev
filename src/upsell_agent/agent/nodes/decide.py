@@ -29,6 +29,7 @@ from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
 from upsell_agent.agent.nodes.load_context import load_profile
+from upsell_agent.agent.sold_pending import reply_hold
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
 from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_day_offer, plan_visit
@@ -410,6 +411,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     questions = questions_for_turn(conversation, list(extraction.get("questions") or []))
     status = (ctx.lead_state or {}).get("status")
     hold = hold_questions_reason(extraction, ctx.compliance)
+    # MASTER_PLAN_4 D2/D4 (stream A3): a Sold Pending / Sold - Delivered customer gets answers only - no asks, no
+    # visit offer, no pitch - under that workflow's guardrails (agent/sold_pending.reply_hold).
+    sold_hold = reply_hold((ctx.lead_state or {}).get("stage"))
+    hold = hold or sold_hold
     pack = state.context_pack or {}
     now = clock.now()
     text = state.customer_text or state.inbound_text
@@ -430,7 +435,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         if after_hours.mode == "offer":
             after_hours.mode, after_hours.record = None, None
             after_hours.why = "No after-hours choice: the customer asked us to get back to them on a date."
-    not_interested, not_interested_reason = not_interested_mode(extraction, conversation)
+    not_interested, not_interested_reason = (None, None) if sold_hold else not_interested_mode(extraction, conversation)
     after_hours_blocking = after_hours.mode in ("offer", "later") or state.trigger == "resume_at_opening"
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,

@@ -46,6 +46,7 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
+    SOLD_LIFECYCLE_KINDS,
     cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
@@ -66,6 +67,10 @@ async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, c
     flt: dict[str, Any] = {"lead_id": lead_id, "status": {"$in": ["pending", "standby"]}}
     if channel_switches_only:
         flt.update(CHANNEL_SWITCHES)
+    else:
+        # MASTER_PLAN_4 (stream A3): staff taking a lead over doesn't end SOLD PENDING or an ownership lifecycle -
+        # only an outcome or the stage does (scheduler/sold_lifecycles.py re-checks them when they fire).
+        flt["kind"] = {"$nin": list(SOLD_LIFECYCLE_KINDS)}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
@@ -262,8 +267,10 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         await tracer.skipped("send", reason)
         await tracer.skipped("schedule", "Nothing was sent.")
 
+    from upsell_agent.scheduler.sold_lifecycles import ROUTER_ACTIONS  # MASTER_PLAN_4 (stream A3)
+
     outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation", "wrong_number",
-                                   *APPOINTMENT_ACTIONS) else "saved_only"
+                                   *APPOINTMENT_ACTIONS, *ROUTER_ACTIONS) else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
         "batched": len(rows)})
@@ -403,6 +410,20 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                          rows=unanswered, received_at=_parse_received_at(received_at))
     if answered:
         return {**answered, "followups_cancelled": cancelled}
+    if state.get("stage") in (lifecycle.Stage.SOLD_PENDING.value, lifecycle.Stage.SOLD_DELIVERED.value,
+                              lifecycle.Stage.CLOSED_NO_LONGER_OWNS.value) and not event.shadow:
+        # MASTER_PLAN_4 D2/D4/D7 (stream A3): the SOLD PENDING response router (§9), the anniversary YES / NO and
+        # the current-vehicle questions (SOLD-DELIVERED PDF §8), and the answer to a service offer. None: the AI
+        # turn answers, under sold_pending.reply_hold (agent/nodes/decide.py).
+        from upsell_agent.scheduler import sold_lifecycles
+        routed = await sold_lifecycles.route_inbound(
+            db, lead_id=lead_id, customer_id=event.customer_id, state=state, lead=lead,
+            text="\n".join(m["text"] for m in unanswered))
+        if routed:
+            held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=routed["action"],
+                                      reason=routed["reason"], received_at=_parse_received_at(received_at),
+                                      reply=routed["reply"])
+            return {**held, "sold_route": routed["action"], "followups_cancelled": cancelled}
 
     latest = unanswered[-1]
     turn_id = reply_turn_id(latest["_id"])
@@ -567,6 +588,10 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     if final_event == "appointment_set":
         return {"status": "not_paused", "reason": "Appointment Booked: the AI runs the appointment workflow",
                 "stage_change": stage_change, **extra}
+    if final_event in ("sold_pending", "sold_delivered"):
+        # MASTER_PLAN_4 D1 (stream A3): the AI runs the SOLD PENDING workflow / the ownership lifecycle, so the lead
+        # isn't paused; lifecycle.apply already started the one and stopped the others (scheduler/sold_lifecycles.py).
+        return {"status": f"resumed_{final_event}", "stage_change": stage_change, **extra}
     if final_event == "unsold":
         # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
         # fresh cadence's first touch is planned now.

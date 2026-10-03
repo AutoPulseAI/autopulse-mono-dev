@@ -23,7 +23,7 @@ from upsell_agent.integrations.redis_client import close_redis, get_redis, init_
 from upsell_agent.observability.trace import NullTraceSink, RedisTraceSink
 from upsell_agent.observability.tracing import init_tracing, shutdown_tracing
 from upsell_agent.scheduler.followups import worker_id
-from upsell_agent.worker.jobs import FUNCTIONS, close_expired_leads, fire_due_followups
+from upsell_agent.worker.jobs import FUNCTIONS, close_expired_leads, fire_due_followups, plan_birthdays
 from upsell_agent.worker.queue import make_enqueue, make_queue
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,9 @@ def settings() -> dict[str, Any]:
         # atomic claim makes an overlap harmless anyway.
         # MASTER_PLAN_3 C3: the Day 91 sweep closes expired leads, hourly.
         "cron_jobs": [CronJob(fire_due_followups, cron="* * * * *", timeout=300),
-                      CronJob(close_expired_leads, cron="7 * * * *", timeout=600)],
+                      CronJob(close_expired_leads, cron="7 * * * *", timeout=600),
+                      # MASTER_PLAN_4 D7 (stream A3): birthdays whose DealerVault date arrived late, daily.
+                      CronJob(plan_birthdays, cron="17 6 * * *", timeout=600)],
         # SAQ's sweep re-delivers a job it moved to "active" but never started
         # (seen twice in 300 during the Stage 12 burst test: a reply waited
         # 30-40s). Every 10s instead of 60s bounds that wait; a re-delivered

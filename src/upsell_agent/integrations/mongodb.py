@@ -186,6 +186,10 @@ AI_COMPLIANCE_LOG_COLLECTION = "ai_compliance_log"
 AI_SEND_CHECKS_COLLECTION = "ai_send_checks"
 # Staff call tasks opened after the 60-minute connection timer (MASTER_PLAN_3 C2, agent/call_tasks.py).
 AI_CALL_TASKS_COLLECTION = "ai_call_tasks"
+# MASTER_PLAN_4 D3/D8 (stream A3, agent/ownership.py; SOLD-DELIVERED PDF §9-§11, §14): one ownership record per
+# vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
+AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
+AI_CUSTOMER_STATUS_COLLECTION = "ai_customer_status"
 # DEV only: where the fake channel driver "sends" to (channels/fake.py).
 DEV_OUTBOX_COLLECTION = "dev_outbox"
 
@@ -241,6 +245,14 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     AI_CALL_TASKS_COLLECTION: [
         ([("dealer_id", 1), ("status", 1), ("opened_at", -1)], {}),
         ([("dealer_id", 1), ("lead_id", 1), ("status", 1)], {}),
+    ],
+    # MASTER_PLAN_4 D3 (stream A3).
+    AI_VEHICLE_OWNERSHIP_COLLECTION: [
+        ([("dealer_id", 1), ("customer_id", 1), ("ownership_status", 1)], {}),
+        ([("dealer_id", 1), ("lead_id", 1)], {"sparse": True}),
+    ],
+    AI_CUSTOMER_STATUS_COLLECTION: [
+        ([("dealer_id", 1), ("customer_id", 1)], {"unique": True}),
     ],
     AI_EVENTS_COLLECTION: [
         ([("received_at", 1)], {"expireAfterSeconds": EVENT_DEDUPE_TTL_S}),

@@ -431,11 +431,13 @@ async def test_sold_pending_stops_the_lead_workflow(mongo):
     result = await handlers.handle_lead_paused(LeadPausedEvent(
         event_id="o1", dealer_id=DEALER, lead_id=created["lead_id"],
         reason='Staff moved the lead to "Sold Pending"'), _deps())
-    assert result["status"] == "paused" and result["stage_change"]["stage"] == "sold_pending"
+    # MASTER_PLAN_4 D1/D2: the lead workflow stops and the AI runs SOLD PENDING's own cadence instead.
+    assert result["status"] == "resumed_sold_pending" and result["stage_change"]["stage"] == "sold_pending"
     state = await _state(mongo, created)
-    assert state["stage"] == "sold_pending" and state["status"] == "paused"
-    assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].count_documents(
-        {"lead_id": created["lead_id"], "status": "pending"}) == 0
+    assert state["stage"] == "sold_pending" and state["status"] == "active"
+    pending = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "status": "pending"}).to_list(None)
+    assert [p["kind"] for p in pending] == ["sold_pending_touch"]
 
 
 @pytestmark_flow
@@ -480,7 +482,7 @@ async def test_a_visit_and_its_outcome_arrive_as_one_event_and_apply_in_order(mo
     result = await handlers.handle_lead_paused(LeadPausedEvent(
         event_id="vo", dealer_id=DEALER, lead_id=created["lead_id"],
         reason='Staff moved the lead to "Visited" (manager outcome: "Sold Pending")'), _deps())
-    assert result["status"] == "paused" and result["stage_change"]["stage"] == "sold_pending"
+    assert result["status"] == "resumed_sold_pending" and result["stage_change"]["stage"] == "sold_pending"
     history = [h["to"] for h in (await _state(mongo, created))["stage_history"]]
     assert history[-2:] == ["sales_visit", "sold_pending"]
 
