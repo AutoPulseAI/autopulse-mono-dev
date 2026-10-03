@@ -186,6 +186,13 @@ AI_COMPLIANCE_LOG_COLLECTION = "ai_compliance_log"
 AI_SEND_CHECKS_COLLECTION = "ai_send_checks"
 # Staff call tasks opened after the 60-minute connection timer (MASTER_PLAN_3 C2, agent/call_tasks.py).
 AI_CALL_TASKS_COLLECTION = "ai_call_tasks"
+# MASTER_PLAN_4 D5/D6 (stream A4, agent/service_events.py): owned vehicles the recall and maintenance
+# monitors watch, one per (dealer, VIN); recalls found for them (SOLD-DELIVERED PDF §6: identifier,
+# description, detected date, status, source, last-checked date); and the service outreach events and staff
+# notices they raised (one per event_key, so the same alert is never raised twice).
+AI_SERVICE_VEHICLES_COLLECTION = "ai_service_vehicles"
+AI_VEHICLE_RECALLS_COLLECTION = "ai_vehicle_recalls"
+AI_SERVICE_EVENTS_COLLECTION = "ai_service_events"
 # DEV only: where the fake channel driver "sends" to (channels/fake.py).
 DEV_OUTBOX_COLLECTION = "dev_outbox"
 
@@ -270,6 +277,21 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     ],
     DEV_OUTBOX_COLLECTION: [
         ([("dealer_id", 1), ("lead_id", 1), ("created_at", 1)], {}),
+    ],
+    # MASTER_PLAN_4 D5/D6 (stream A4).
+    AI_SERVICE_VEHICLES_COLLECTION: [
+        ([("dealer_id", 1), ("vin", 1)], {"unique": True}),
+        # The sweeps' query (cross-dealer by design, like the Day 91 sweep).
+        ([("ownership_status", 1), ("recalls_next_check_at", 1)], {}),
+        ([("ownership_status", 1), ("maintenance_next_check_at", 1)], {}),
+    ],
+    AI_VEHICLE_RECALLS_COLLECTION: [
+        ([("dealer_id", 1), ("vin", 1), ("recall_id", 1)], {"unique": True}),
+        ([("dealer_id", 1), ("status", 1)], {}),
+    ],
+    AI_SERVICE_EVENTS_COLLECTION: [
+        ([("dealer_id", 1), ("event_key", 1)], {"unique": True}),
+        ([("dealer_id", 1), ("vin", 1), ("created_at", -1)], {}),
     ],
 }
 

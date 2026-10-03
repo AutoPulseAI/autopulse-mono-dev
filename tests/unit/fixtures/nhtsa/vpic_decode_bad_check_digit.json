@@ -1,0 +1,19 @@
+{
+ "Count": 1,
+ "Message": "Results returned successfully. NOTE: Any missing decoded values should be interpreted as NHTSA does not have data on the specific variable. Missing value should NOT be interpreted as an indication that a feature or technology is unavailable for a vehicle.",
+ "SearchCriteria": "VIN(s): 1HGCV1F30JA000000",
+ "Results": [
+  {
+   "ErrorCode": "1",
+   "ErrorText": "1 - Check Digit (9th position) does not calculate properly",
+   "Make": "HONDA",
+   "Manufacturer": "AMERICAN HONDA MOTOR CO., INC.",
+   "Model": "Accord",
+   "ModelYear": "2018",
+   "Trim": "Sport",
+   "VIN": "1HGCV1F30JA000000",
+   "VehicleType": "PASSENGER CAR",
+   "BodyClass": "Sedan/Saloon"
+  }
+ ]
+}

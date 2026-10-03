@@ -86,6 +86,28 @@ class Settings(BaseSettings):
     # image and still no link. MMS costs about 3x an SMS: the cost review comes before rollout.
     mms_enabled: bool = Field(default=True, alias="MMS_ENABLED")
 
+    # --- MASTER_PLAN_4 D5/D6 (stream A4): service outreach from external data -------------------
+    # NHTSA safety recalls (SOLD-DELIVERED PDF §6): the free public API, no key. The sweep re-checks each
+    # owned vehicle every RECALL_RECHECK_DAYS, at most RECALL_SWEEP_BATCH vehicles per run, with at least
+    # NHTSA_MIN_INTERVAL_S between calls (a polite rate limit; NHTSA publishes none).
+    nhtsa_recalls_enabled: bool = Field(default=True, alias="NHTSA_RECALLS_ENABLED")
+    nhtsa_api_base: str = Field(default="https://api.nhtsa.gov", alias="NHTSA_API_BASE")
+    nhtsa_vpic_base: str = Field(default="https://vpic.nhtsa.dot.gov/api", alias="NHTSA_VPIC_BASE")
+    nhtsa_min_interval_s: float = Field(default=1.0, alias="NHTSA_MIN_INTERVAL_S")
+    recall_recheck_days: int = Field(default=7, alias="RECALL_RECHECK_DAYS")
+    recall_sweep_batch: int = Field(default=100, alias="RECALL_SWEEP_BATCH")
+    # Vehicle Databases OEM maintenance schedules (SOLD-DELIVERED PDF §5; client, 1 Oct 2026). Off until the
+    # client starts the 15-day trial "near the end of building" (docs/data/5/vechicle_api.md).
+    vehicle_databases_enabled: bool = Field(default=False, alias="VEHICLE_DATABASES_ENABLED")
+    vehicle_databases_api_key: str = Field(default="", alias="VEHICLE_DATABASES_API_KEY")
+    vehicle_databases_api_base: str = Field(default="https://api.vehicledatabases.com",
+                                            alias="VEHICLE_DATABASES_API_BASE")
+    vehicle_databases_min_interval_s: float = Field(default=1.0, alias="VEHICLE_DATABASES_MIN_INTERVAL_S")
+    # §5 "if reliable current mileage is unavailable, use applicable time-based intervals": the Vehicle
+    # Databases schedule is mileage-only, so the time interval is ours until the client gives one (open item).
+    maintenance_time_interval_months: int = Field(default=6, alias="MAINTENANCE_TIME_INTERVAL_MONTHS")
+    # --- end D5/D6 ---------------------------------------------------------------------------------
+
     # Sending (architecture §9): provider attempts per message, with the delay
     # doubling from send_retry_base_s between attempts.
     send_max_attempts: int = Field(default=3, alias="SEND_MAX_ATTEMPTS")
