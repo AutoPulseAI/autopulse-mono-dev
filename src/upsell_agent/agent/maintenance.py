@@ -174,6 +174,7 @@ def compute_status(schedule: MaintenanceSchedule | None, readings: list[Reading]
                    due={"due_key": f"mileage:{due.miles}", "basis": BASIS_MILEAGE, "interval": due.as_dict(),
                         "facts": {"kind": "maintenance", "basis": BASIS_MILEAGE,
                                   "source": "OEM maintenance schedule (Vehicle Databases)",
+                                  "service": f"{due.miles:,}-mile service ({', '.join(due.items)})",
                                   "service_items": list(due.items), "interval_miles": due.miles,
                                   "verified_mileage": {"miles": current.miles,
                                                        "observed_at": current.observed_at.date().isoformat(),
@@ -198,6 +199,7 @@ def compute_status(schedule: MaintenanceSchedule | None, readings: list[Reading]
                due={"due_key": f"time:{anchor.date().isoformat()}", "basis": BASIS_TIME, "interval": None,
                     "facts": {"kind": "maintenance", "basis": BASIS_TIME,
                               "source": "time since the last service visit",
+                              "service": f"next service visit (it has been {months} months since the last one)",
                               "service_items": [], "interval_miles": None, "verified_mileage": None,
                               "mileage_is_estimate": False, "months_since_last_visit": months,
                               "last_visit_date": anchor.date().isoformat(),
@@ -253,6 +255,10 @@ async def check_vehicle(dealer_id: str, vehicle: dict[str, Any], *, client: Vehi
     if problem:
         status["schedule_problem"] = problem
     due = status.get("due")
+    # §4: the Day-3 check-in may name the first recommended service - the due one, else the next one - only
+    # from the OEM schedule and a verified mileage (never on the time basis, which knows no service items).
+    if status.get("basis") == BASIS_MILEAGE:
+        await service_events.publish_first_service(db, vehicle, (due or {}).get("interval") or status.get("next_service"))
     if not due:
         return await finish(status)
     recall_at = await service_events.last_customer_event_at(db, vin, service_events.RECALL_DETECTED)

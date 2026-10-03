@@ -6,17 +6,25 @@ Vehicle Databases from the example in its public docs (its trial must not be sta
 
 import json
 import sys
-import types
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import pytest
-from bson import ObjectId
 from fastapi import HTTPException
 
 from tests.unit.conftest import set_clock
-from upsell_agent.agent import maintenance, recalls, service_events
+from tests.unit.test_sold_lifecycles import (  # the real flow's helpers (stream A3)
+    DEALER,
+    _fire,
+    _new_lead,
+    _outbox,
+    _say,
+    _staff,
+    live_dealer,  # noqa: F401 - a fixture
+)
+from upsell_agent import clock
+from upsell_agent.agent import maintenance, ownership, recalls, service_events
 from upsell_agent.api import service_vehicles
 from upsell_agent.guardrails import service_claims
 from upsell_agent.guardrails.draft_guard import check_draft
@@ -25,16 +33,19 @@ from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_SERVICE_EVENTS_COLLECTION,
     AI_SERVICE_VEHICLES_COLLECTION,
+    AI_VEHICLE_OWNERSHIP_COLLECTION,
     AI_VEHICLE_RECALLS_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     PLATFORM_REPAIR_ORDERS_COLLECTION,
+    SCHEDULED_FOLLOWUPS_COLLECTION,
+    as_object_id,
+    dealer_scoped_db,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nhtsa"
-DEALER = "dealer-a4"
 VIN = "1HGCV1F30JA012345"
-NOW = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
+
+pytestmark = pytest.mark.usefixtures("during_opening_hours", "ny_customer", "live_dealer")
 
 VD_EXAMPLE = {  # https://vehicledatabases.com/docs/api-documentation/vehicle-maintenance/ (v4 example, trimmed)
     "status": "success",
@@ -84,24 +95,23 @@ def vd_client(body: dict | None = None, status: int = 200, enabled: bool = True)
 
 @pytest.fixture
 def owned(mongo):
-    """A SOLD - DELIVERED lead whose deal names the VIN (delivered 1 Sep 2026 at 12 miles)."""
-    set_clock(NOW)
-    lead_id = ObjectId()
-    customer_id = ObjectId()
+    """The real flow (stream A3): a lead, its DealerVault deal naming the VIN (delivered at 12 miles), and staff
+    setting Sold Delivered - which creates the ownership record and starts the monitors."""
 
     async def make(**deal_extra):
-        await mongo[PLATFORM_LEADS_COLLECTION].insert_one({"_id": lead_id, "dealer_id": DEALER,
-                                                          "customer_id": customer_id})
-        await mongo[AI_LEAD_STATE_COLLECTION].insert_one({
-            "dealer_id": DEALER, "lead_id": str(lead_id), "customer_id": str(customer_id), "stage": "sold_delivered",
-            "opportunity_created_at": datetime(2026, 8, 20, tzinfo=UTC),
-            "stage_history": [{"to": "sold_delivered", "at": datetime(2026, 9, 1, tzinfo=UTC)}]})
+        created = await _new_lead()
+        today = clock.now()
         await mongo[PLATFORM_DEALS_COLLECTION].insert_one({
-            "dealer_id": DEALER, "deal_number": "D1", "customer_id": customer_id, "vin": VIN,
-            "Contract Date": "9/1/2026", "Delivery Mileage": "12", **deal_extra})
-        return str(lead_id)
+            "dealer_id": DEALER, "deal_number": "D1", "customer_id": as_object_id(created["customer_id"]), "vin": VIN,
+            "Contract Date": f"{today.month}/{today.day}/{today.year}", "Delivery Mileage": "12", **deal_extra})
+        await _staff(created, "Sold Delivered")
+        return created
 
     return make
+
+
+async def _record(mongo, created) -> dict:
+    return await mongo[AI_VEHICLE_OWNERSHIP_COLLECTION].find_one({"lead_id": created["lead_id"]})
 
 
 # --- NHTSA client --------------------------------------------------------------------------------------------
@@ -133,10 +143,16 @@ async def test_nhtsa_client_caches_by_model_and_raises_on_errors():
 # --- Recalls -------------------------------------------------------------------------------------------------
 
 async def test_model_level_recalls_raise_a_staff_notice_never_customer_outreach(mongo, owned):
-    lead_id = await owned()
+    created = await owned()
+    lead_id, now = created["lead_id"], clock.now()
+    # Sold Delivered itself started the monitoring, from A3's ownership record (VIN from the DealerVault deal).
+    record = await _record(mongo, created)
+    assert record["vin"] == VIN and record["vin_source"] == "dealervault_deal"
+    watched = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
+    assert watched["ownership_id"] == str(record["_id"]) and watched["lead_id"] == lead_id
     client, _ = nhtsa_client()
     summary = await recalls.sweep(client=client)
-    assert summary["discovered"]["registered"] == 1 and summary["new"] == 6 and summary["outreach"] == 0
+    assert summary["checked"] == 1 and summary["new"] == 6 and summary["outreach"] == 0
 
     stored = await mongo[AI_VEHICLE_RECALLS_COLLECTION].find({"vin": VIN}).to_list(None)
     assert len(stored) == 6
@@ -151,7 +167,7 @@ async def test_model_level_recalls_raise_a_staff_notice_never_customer_outreach(
     assert state["staff_notice"]["kind"] == "recall_review" and "can't confirm" in state["staff_notice"]["text"]
     vehicle = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
     assert (vehicle["year"], vehicle["make"], vehicle["model"]) == (2018, "HONDA", "Accord")
-    assert abs(vehicle["recalls_next_check_at"].replace(tzinfo=UTC) - (NOW + timedelta(days=7))) < timedelta(minutes=1)
+    assert abs(vehicle["recalls_next_check_at"].replace(tzinfo=UTC) - (now + timedelta(days=7))) < timedelta(minutes=1)
 
     # A second sweep inside the re-check interval calls nothing and raises nothing.
     again, seen = nhtsa_client()
@@ -160,6 +176,7 @@ async def test_model_level_recalls_raise_a_staff_notice_never_customer_outreach(
 
 async def test_confirmed_recall_goes_out_with_cadence_and_stops_when_closed(mongo, owned):
     await owned()
+    start = clock.now()
     client, _ = nhtsa_client()
     await recalls.sweep(client=client)
 
@@ -171,18 +188,18 @@ async def test_confirmed_recall_goes_out_with_cadence_and_stops_when_closed(mong
     assert event["offer"] == "service_visit_request" and event["customer_facing"] is True
     assert event["facts"]["recall_id"] == "20V314000" and event["facts"]["vin_confirmed"] is True
     assert event["facts"]["source"] == "NHTSA"
-    assert event["status"] == "staff_notice"  # A3's lifecycle isn't merged: the fallback tells staff
+    assert event["status"] == "queued" and event["outcome"]["followup_id"]  # A3's lifecycle sends it
 
     # Re-checks inside 30 days raise nothing; after it, one reminder; never more than 3 in all.
     for days, expected in ((8, 1), (31, 2), (62, 3), (93, 3), (124, 3)):
-        set_clock(NOW + timedelta(days=days))
+        set_clock(start + timedelta(days=days))
         vehicle = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
-        await recalls.check_vehicle(DEALER, vehicle, client=client, now=NOW + timedelta(days=days))
+        await recalls.check_vehicle(DEALER, vehicle, client=client, now=start + timedelta(days=days))
         assert await mongo[AI_SERVICE_EVENTS_COLLECTION].count_documents({"type": "RECALL_DETECTED"}) == expected
 
     closed = await recalls.close(DEALER, VIN, "20V314000", reason="completed", by="svc")
     assert closed["status"] == "completed"
-    due, _why = recalls.outreach_due(closed, NOW + timedelta(days=400))
+    due, _why = recalls.outreach_due(closed, start + timedelta(days=400))
     assert not due
 
 
@@ -195,7 +212,7 @@ async def test_repair_order_naming_the_campaign_closes_the_recall(mongo, owned):
         "dealer_id": DEALER, "ro_number": "R9", "vin": VIN, "Close Date": "10/10/2026",
         "service_operations": [{"description": "RECALL 20V771000 BCM SOFTWARE UPDATE"}]})
     vehicle = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
-    result = await recalls.check_vehicle(DEALER, vehicle, client=client, now=NOW + timedelta(days=40))
+    result = await recalls.check_vehicle(DEALER, vehicle, client=client, now=clock.now() + timedelta(days=40))
     assert result["closed"] == 1
     row = await mongo[AI_VEHICLE_RECALLS_COLLECTION].find_one({"recall_id": "20V771000"})
     assert row["status"] == "completed" and row["closed_source"]["ro_number"] == "R9"
@@ -203,57 +220,119 @@ async def test_repair_order_naming_the_campaign_closes_the_recall(mongo, owned):
 
 
 async def test_no_longer_owned_vehicle_gets_no_recall_outreach(mongo, owned):
-    await owned()
+    created = await owned()
     client, _ = nhtsa_client()
     await recalls.sweep(client=client)
-    assert await service_events.stop_vehicle(DEALER, VIN, reason="customer no longer owns it")
+    await ownership.mark_no_longer_owned(dealer_scoped_db(DEALER), await _record(mongo, created), source="test",
+                                         reason="customer no longer owns it")
+    watched = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
+    assert watched["ownership_status"] == "NO_LONGER_OWNED"
     await recalls.confirm(DEALER, VIN, "20V314000")
     assert await mongo[AI_SERVICE_EVENTS_COLLECTION].count_documents({"type": "RECALL_DETECTED"}) == 0
 
 
-async def test_undecodable_vin_and_nhtsa_outage_are_recorded(mongo):
-    set_clock(NOW)
+async def test_a_vin_with_no_ownership_record_is_never_checked(mongo):
+    """One source of truth: a VIN the monitors were handed without A3's ownership record is unknown, not owned."""
     await service_events.register_vehicle(DEALER, VIN)
+    client, seen = nhtsa_client()
+    await recalls.sweep(client=client)
+    vehicle = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
+    assert vehicle["recall_check"]["result"] == "not_owned" and seen == []
+
+
+async def test_undecodable_vin_and_nhtsa_outage_are_recorded(mongo, owned):
+    await owned()
+    now = clock.now()
     down, _ = nhtsa_client(status=500)
     summary = await recalls.sweep(client=down)
     assert summary["errors"] == 1
     vehicle = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
     assert vehicle["recall_check"]["result"] == "error"
-    assert abs(vehicle["recalls_next_check_at"].replace(tzinfo=UTC) - (NOW + recalls.RETRY_AFTER_ERROR)) < timedelta(minutes=1)
+    assert abs(vehicle["recalls_next_check_at"].replace(tzinfo=UTC) - (now + recalls.RETRY_AFTER_ERROR)) < timedelta(minutes=1)
 
     bad, _ = nhtsa_client(decode_fixture="vpic_decode_bad_check_digit.json")
-    result = await recalls.check_vehicle(DEALER, vehicle, client=bad, now=NOW)
+    result = await recalls.check_vehicle(DEALER, vehicle, client=bad, now=now)
     assert result["result"] == "vin_not_decodable"
     assert await mongo[AI_VEHICLE_RECALLS_COLLECTION].count_documents({}) == 0
 
 
 # --- The A3 interface ----------------------------------------------------------------------------------------
 
-async def test_ownership_module_is_used_when_present(mongo, owned, monkeypatch):
-    await owned()
-    queued: list[dict] = []
-
-    async def queue_service_outreach(dealer_id, event):
-        queued.append(event)
-        return {"status": "queued", "task_id": "t1"}
-
-    module = types.ModuleType("upsell_agent.agent.ownership")
-    module.queue_service_outreach = queue_service_outreach
-    module.vehicle_is_owned = lambda dealer_id, vin, customer_id=None: True  # sync works too
-    monkeypatch.setitem(sys.modules, "upsell_agent.agent.ownership", module)
-    import upsell_agent.agent as agent_pkg
-    monkeypatch.setattr(agent_pkg, "ownership", module, raising=False)
-
+async def test_end_to_end_lead_to_recall_outreach_to_no_longer_owned(mongo, owned):
+    """lead -> Sold Delivered -> ownership record -> recall confirmed by staff -> queue_service_outreach -> the
+    fixed-wording message with service_facts -> guard -> NO at the anniversary -> monitoring stops."""
+    created = await owned()
     assert service_events.ownership_port().name == "ownership"
+    assert await ownership.vehicle_is_owned(DEALER, VIN) is True
     client, _ = nhtsa_client()
     await recalls.sweep(client=client)
-    await recalls.confirm(DEALER, VIN, "20V314000")
-    assert len(queued) == 1 and queued[0]["type"] == "RECALL_DETECTED" and queued[0]["event_id"]
-    stored = await mongo[AI_SERVICE_EVENTS_COLLECTION].find_one({"type": "RECALL_DETECTED"})
-    assert stored["status"] == "queued" and stored["outcome"]["task_id"] == "t1"
+    assert await _outbox_recall(mongo, created) == []  # model-level matches never reach the customer
+
+    await recalls.confirm(DEALER, VIN, "20V314000", by="svc-manager")
+    doc = await _fire(mongo, created, "service_outreach")
+    assert doc["status"] == "sent" and doc["outreach_kind"] == "recall"
+    text = (await _outbox(mongo, created))[-1]["text"]
+    assert "NHTSA" in text and "20V314000" in text and "FUEL PUMP" in text and "service campaign" not in text.lower()
+    facts = (await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}))["service_offer"]["facts"]
+    assert facts["recall_id"] == "20V314000" and facts["vin_confirmed"] is True  # -> decision["service_facts"]
+    # The guard accepts exactly that message with those facts, and rejects a recall claim they don't support.
+    assert service_claims.check_service_claims(text, facts) == []
+    draft = {"sms_text": text, "email_subject": "An open safety recall for your vehicle", "email_body": text}
+    assert check_draft(draft, customer_texts=[], known_values=[], service_facts=facts)["checks"][
+        "service_claims_grounded"]
+    other = {**draft, "sms_text": "There is also an open safety recall 23V158000 on your brakes."}
+    assert not check_draft(other, customer_texts=[], known_values=[], service_facts=facts)["checks"][
+        "service_claims_grounded"]
+    assert not check_draft(draft, customer_texts=[], known_values=[])["checks"]["service_claims_grounded"]
+
+    # A year on: "Do you still have your ...?" -> NO. The vehicle is NO_LONGER_OWNED and the monitors stop.
+    await _fire(mongo, created, "post_delivery_checkin")
+    await _fire(mongo, created, "ownership_anniversary")
+    assert (await _say(created, "No, we sold it"))["sold_route"] == "ownership_ended"
+    assert await ownership.vehicle_is_owned(DEALER, VIN) is False
+    watched = await mongo[AI_SERVICE_VEHICLES_COLLECTION].find_one({"vin": VIN})
+    assert watched["ownership_status"] == "NO_LONGER_OWNED" and watched["stopped_at"]
+    before = await mongo[AI_SERVICE_EVENTS_COLLECTION].count_documents({})
+    later, seen = nhtsa_client()
+    set_clock(clock.now() + timedelta(days=60))
+    assert (await recalls.sweep(client=later))["checked"] == 0 and seen == []
+    await recalls.confirm(DEALER, VIN, "20V771000")
+    vd, vd_calls = vd_client()
+    assert (await maintenance.sweep(client=vd))["checked"] == 0 and vd_calls == []
+    assert await mongo[AI_SERVICE_EVENTS_COLLECTION].count_documents({}) == before
+    assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].count_documents(
+        {"lead_id": created["lead_id"], "kind": "service_outreach", "status": "pending"}) == 0
+    assert await mongo[AI_VEHICLE_RECALLS_COLLECTION].count_documents({"vin": VIN}) == 6  # history kept
 
 
-def test_fallback_without_ownership_module():
+async def _outbox_recall(mongo, created) -> list[dict]:
+    return [m for m in await _outbox(mongo, created) if "recall" in (m.get("text") or "").lower()]
+
+
+async def test_day_3_names_the_first_service_only_from_the_oem_schedule(mongo, owned):
+    created = await owned()
+    vd, _ = vd_client()
+    await maintenance.sweep(client=vd)
+    record = await _record(mongo, created)
+    assert record["maintenance"]["first_service"]["interval_miles"] == 15000
+    await _fire(mongo, created, "post_delivery_checkin")
+    text = (await _outbox(mongo, created))[-1]["text"]
+    assert "first recommended service (Replace Air Cleaner Element, Replace Cabin Air Filter at 15,000 miles)" in text
+
+
+async def test_day_3_stays_in_words_without_a_schedule(mongo, owned):
+    created = await owned()
+    off, _ = vd_client(enabled=False)
+    await maintenance.sweep(client=off)
+    assert "maintenance" not in await _record(mongo, created)
+    await _fire(mongo, created, "post_delivery_checkin")
+    text = (await _outbox(mongo, created))[-1]["text"]
+    assert "your first recommended service now" in text and "miles" not in text
+
+
+def test_fallback_only_when_the_ownership_module_is_missing(monkeypatch):
+    assert service_events.ownership_port().name == "ownership"
+    monkeypatch.setitem(sys.modules, "upsell_agent.agent.ownership", None)  # import raises ImportError
     assert service_events.ownership_port().name == "local_fallback"
 
 
@@ -276,6 +355,9 @@ async def test_vehicle_databases_client_follows_the_docs():
     with pytest.raises(vehicle_databases.VehicleDatabasesDisabled):
         await off.maintenance_schedule(VIN)
     assert calls == []
+
+
+NOW = datetime(2026, 10, 5, 15, 0, tzinfo=UTC)
 
 
 def _schedule():
@@ -340,6 +422,9 @@ async def test_maintenance_due_raises_one_event_and_recalculates(mongo, owned):
     assert result["status"] == "due" and result["event"]
     event = await mongo[AI_SERVICE_EVENTS_COLLECTION].find_one({"type": "MAINTENANCE_DUE"})
     assert event["facts"]["interval_miles"] == 15000 and event["offer"] == "service_visit_request"
+    assert event["status"] == "queued"
+    queued = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"kind": "service_outreach", "status": "pending"})
+    assert queued["outreach_kind"] == "maintenance" and queued["facts"]["service"].startswith("15,000-mile service")
     # The same due service never alerts twice.
     again = await maintenance.record_mileage(DEALER, VIN, miles=14_700, client=client)
     assert again["status"] == "due"

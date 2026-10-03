@@ -94,3 +94,28 @@ interval_miles, verified_mileage: {miles, observed_at, source}|null, mileage_is_
 3. A dealer visit at/after a schedule mileage counts as that service done (RO operations aren't matched to OEM items).
 4. D4 (Day-3 first service) can reuse `maintenance.compute_status(...)["next_service"]`.
 5. Pre-existing ruff findings (auth.py B008, mongodb/redis PLW0602, test_qualification_state C408) left alone.
+
+## Integration with A3's ownership lifecycle (integration branch)
+
+- **One source of truth for ownership:** A3's `ai_vehicle_ownership` records. `ai_service_vehicles` is only the
+  monitors' own state per VIN (check times, decoded year/make/model, stored schedule) and carries `ownership_id`;
+  its `ownership_status` is a mirror used to pick sweep rows. `service_events.is_owned` asks only
+  `ownership.vehicle_is_owned`; `None` (no ownership record) means no check and no outreach.
+- **Sold Delivered registers:** `sold_lifecycles.start_ownership` calls `service_events.watch_delivered_vehicle(db,
+  record)`. A record with no VIN (leads rarely carry one) gets it from the customer's DealerVault deal for that
+  opportunity (`vin_source: dealervault_deal`, §11 "VIN only from legitimate approved source").
+  `discover_owned_vehicles` is now the catch-up over A3's ACTIVE dealer-sale records without
+  `service_monitoring_at` (e.g. the deal arrived later); it no longer reads lead stages.
+- **No longer owns stops:** `ownership.mark_no_longer_owned` calls `service_events.stop_vehicle`. Recalls, schedule
+  and events are kept.
+- **Day-3 first service:** `maintenance.check_vehicle` writes `first_service` (the due interval, else the next one)
+  through `ownership.set_maintenance_facts` only on the mileage basis with a stored OEM schedule; otherwise the
+  check-in stays in words.
+- **Facts A3's wording reads:** maintenance facts now carry `service` ("15,000-mile service (items)" or "next
+  service visit (it has been N months since the last one)"); recall facts were already compatible. Events carry
+  `ownership_id`.
+- **Cadence:** a recall outreach the lifecycle answers `skipped` doesn't count against the 3-message cadence and is
+  retried at the next re-check.
+- **LocalFallback** is used only if `agent/ownership.py` can't be imported.
+- Tests: `test_service_monitors.py` fixtures now go lead -> deal -> staff "Sold Delivered"; added the end-to-end
+  test, the Day-3 tests and "a VIN with no ownership record is never checked".

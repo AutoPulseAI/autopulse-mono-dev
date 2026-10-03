@@ -44,7 +44,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import lifecycle, ownership, sold_delivered, sold_pending
+from upsell_agent.agent import lifecycle, ownership, service_events, sold_delivered, sold_pending
 from upsell_agent.agent.templates import first_name as _first_name
 from upsell_agent.channels.sender import SendOutcome, SendRequest
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
@@ -216,12 +216,16 @@ async def start_ownership(db: DealerScopedDatabase, *, lead_id: str, customer_id
                                              vehicle=await sold_vehicle(db, lead, customer_id, lead_id),
                                              delivered_at=delivered_at, delivery_date=delivery_day)
     out: dict[str, Any] = {"ownership_id": str(record["_id"])}
-    # TODO(merge with stream A4): start recall / maintenance monitoring for this VIN -
-    #   from upsell_agent.agent import service_events; await service_events.register_vehicle(db.dealer_id, ...)
-    # (not imported here: that module lives on A4's branch). Its outreach comes back through
-    # ownership.queue_service_outreach. Likewise the Day-3 first-service name will come from
-    # agent/maintenance.compute_status(...)["next_service"] (-> ownership.set_maintenance_facts); until then the
+    # Stream A4 (D5/D6): the recall and maintenance monitors start watching this vehicle (its VIN from the
+    # lead, else from the DealerVault deal). Their outreach comes back through ownership.queue_service_outreach.
+    # The Day-3 first-service name is written by the maintenance check (agent/maintenance.check_vehicle ->
+    # compute_status -> ownership.set_maintenance_facts) once a verified OEM schedule exists; until then the
     # check-in offers service in words only, never an interval.
+    if record.get("ownership_status") == ownership.VEHICLE_ACTIVE:
+        try:
+            record = await service_events.watch_delivered_vehicle(db, record)
+        except Exception:  # monitoring is caught up by the sweeps; the lifecycle itself must still start
+            logger.exception("could not start recall / maintenance monitoring for lead %s", lead_id)
     if record.get("ownership_status") != ownership.VEHICLE_ACTIVE:
         return {**out, "planned": False, "reason": "the customer no longer owns this vehicle"}
     if not state.get("checkin_sent_at"):

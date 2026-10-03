@@ -27,9 +27,9 @@ from upsell_agent.worker.jobs import (
     FUNCTIONS,
     close_expired_leads,
     fire_due_followups,
+    plan_birthdays,
     sweep_maintenance,
     sweep_recalls,
-    plan_birthdays,
 )
 from upsell_agent.worker.queue import make_enqueue, make_queue
 

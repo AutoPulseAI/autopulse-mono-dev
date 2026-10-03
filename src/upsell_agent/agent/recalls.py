@@ -32,6 +32,7 @@ from upsell_agent import clock
 from upsell_agent.agent import service_events
 from upsell_agent.config import get_settings
 from upsell_agent.integrations.mongodb import (
+    AI_SERVICE_EVENTS_COLLECTION,
     AI_SERVICE_VEHICLES_COLLECTION,
     AI_VEHICLE_RECALLS_COLLECTION,
     PLATFORM_REPAIR_ORDERS_COLLECTION,
@@ -149,6 +150,12 @@ async def _maybe_outreach(db: DealerScopedDatabase, vehicle: dict[str, Any], rec
         summary=(f"Open safety recall {recall['recall_id']} ({recall.get('component') or 'see NHTSA'}) is confirmed "
                  f"for this customer's {label} (VIN {vehicle['vin']}): offer a service visit ({why})."),
         customer_facing=True)
+    if event and event.get("status") not in ("queued", "staff_notice"):
+        # The lifecycle didn't take it (e.g. the same recall message went out under 30 days ago): it doesn't
+        # count against the cadence, and the next re-check tries again under the same number.
+        await db.collection(AI_SERVICE_EVENTS_COLLECTION).update_one(
+            {"_id": event["_id"]}, {"$set": {"event_key": f"{event['event_key']}:not-taken:{now.isoformat()}"}})
+        return None
     outreach = {"count": count, "last_at": now, "next_allowed_at": now + timedelta(days=RECALL_REMINDER_DAYS)}
     await db.collection(AI_VEHICLE_RECALLS_COLLECTION).update_one(
         {"vin": vehicle["vin"], "recall_id": recall["recall_id"]}, {"$set": {"outreach": outreach}})

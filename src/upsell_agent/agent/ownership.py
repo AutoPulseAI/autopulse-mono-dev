@@ -225,10 +225,11 @@ async def mark_no_longer_owned(db: DealerScopedDatabase, record: dict[str, Any],
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         {"ownership_id": str(record["_id"]), "status": "pending"},
         {"$set": {"status": "cancelled", "reason": "the customer no longer owns this vehicle", "closed_at": now}})
-    # TODO(merge with stream A4): stop recall / maintenance monitoring for this vehicle -
-    #   from upsell_agent.agent import service_events; await service_events.stop_vehicle(db.dealer_id, record["vin"], ...)
-    # (not imported here: that module lives on A4's branch). Its queued outreach is already cancelled above and
-    # vehicle_is_owned() now answers False.
+    # Stream A4 (D5/D6): the recall and maintenance monitors stop watching this vehicle. Its queued outreach is
+    # already cancelled above and vehicle_is_owned() now answers False.
+    from upsell_agent.agent import service_events
+
+    await service_events.stop_vehicle(db.dealer_id, record.get("vin"), reason=reason)
     await recalculate_customer_status(db, record.get("customer_id"), reason="vehicle no longer owned")
     return result.modified_count
 
