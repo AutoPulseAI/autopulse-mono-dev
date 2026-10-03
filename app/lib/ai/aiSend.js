@@ -96,7 +96,10 @@ export async function sendAiMessage(body, {
       .sort({ timestamp: -1 }).select('message_id').lean();
     try {
       providerId = await sendEmail(body.to, body.subject || 'Thank you for your inquiry',
-        aiEmailHtml(body.text, mediaUrls), emailAccount.email_address, latest?.message_id || null, dealer);
+        aiEmailHtml(body.text, mediaUrls), emailAccount.email_address, latest?.message_id || null,
+        // The branded template reads these two objects without checking them.
+        { ...dealer, branding_information: dealer.branding_information || {},
+          dealer_account_information: dealer.dealer_account_information || {} });
     } catch (error) {
       throw classifyProviderError(error);
     }

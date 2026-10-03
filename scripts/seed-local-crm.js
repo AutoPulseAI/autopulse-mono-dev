@@ -182,6 +182,7 @@ export async function seed() {
       ai_agent_name: 'Ava',
     },
     setting: { autoReplyEnabled: true },
+    branding_information: { primaryColor: '#0272b4' },
     appointment_reminder_settings: { enabled: true },
     package_expiry: moment().add(1, 'year').toDate(),
     ai_mode: 'live', ai_mms_enabled: true, ...SEED_TAG, createdAt: now, updatedAt: now,
@@ -240,8 +241,7 @@ export async function seed() {
   for (const [i, h] of HISTORY.entries()) {
     const c = await customer(h.name, { birth_date: h.birth });
     const sold = moment().subtract(h.soldYearsAgo, 'years').toDate();
-    await Vehicle.collection.insertOne({ dealerId: DEMO_DEALER_ID, vin: h.vin, year: h.car[0], make: h.car[1],
-      model: h.car[2], trim: h.car[3], stock_number: `H${i}`, ...SEED_TAG, createdAt: sold });
+    // Their car is not stock: only the vAuto feed writes `vehicles`; the 360 takes it from the deal row.
     await Deal.collection.insertOne({ dealer_id: DEMO_DEALER_ID, deal_number: `DEMO-D${100 + i}`, vin: h.vin,
       customer_number: `DEMO-C${100 + i}`, customer_id: c._id, 'Contract Date': mdy(sold),
       'Sales Price': `${h.price.toLocaleString('en-US')}.00`, 'Salesman 1 Name': h.salesperson,
@@ -266,7 +266,7 @@ export async function seed() {
       'data.bookingId': booking._id, 'data.booking': { booking_date: day, booking_time: time } } });
   }
 
-  return { dealer: DEMO_DEALER_ID, staff: staff.length, vehicles: STOCK.length + HISTORY.length,
+  return { dealer: DEMO_DEALER_ID, staff: staff.length, vehicles: STOCK.length,
     leads: DEMO_LEADS.length, customers: DEMO_LEADS.length + HISTORY.length, bookings: bookingsSpec.length };
 }
 
