@@ -5,8 +5,10 @@ const bookingSchema = new mongoose.Schema(
     dealer_id: { type: String, required: true },
     lead_id: { type: String, required: true },
     customerName: { type: String, required: true },
-    email: { type: String, required: true },
-    phone: { type: String, required: true },
+    // Not required: an SMS-only lead has no email (and an email lead no phone);
+    // the AI books both kinds.
+    email: { type: String },
+    phone: { type: String },
     bookingDate: { type: Date, required: true },
     bookingTime: { type: String, required: true },
     notes: { type: String },
@@ -15,7 +17,15 @@ const bookingSchema = new mongoose.Schema(
       enum: ['pending', 'confirmed', 'cancelled', 'completed'],
       default: 'pending'
     },
-    statusChangedAt: { type: Date }
+    statusChangedAt: { type: Date },
+    // Did the customer come? null = not known yet; true when staff set the
+    // lead to Visited on the appointment's day (or the AI marks it), false
+    // on No Show (agentic-upsell MASTER_PLAN_3 C5: appointment.showed).
+    showed: { type: Boolean, default: null },
+    showed_at: { type: Date, default: null },
+    // Who booked it: 'ai' (the AI service, shared secret), 'staff' (a signed-in
+    // user) or 'customer' (the public booking page).
+    created_by: { type: String, enum: ['ai', 'staff', 'customer'], default: undefined }
   },
   { timestamps: true }
 );

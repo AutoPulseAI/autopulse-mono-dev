@@ -41,21 +41,30 @@ import FollowUpJob from '../app/models/FollowUpJob.js';
 import Lead from '../app/models/Lead.js';
 import User from '../app/models/User.js';
 
-const MONGODB_URI = process.env.AI_DEV_MONGODB_URI || 'mongodb://localhost:27017/pulse';
-const PLATFORM = process.env.PLATFORM_URL || 'http://localhost:3000';
+// `--crm-local` (make crm-e2e): the checks in crmLocal() below, against a
+// running `make crm-local` (its own database, ports and AI service).
+const CRM_LOCAL = process.argv.includes('--crm-local');
+const MONGODB_URI = CRM_LOCAL
+  ? (process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://localhost:27018/autopulse_local')
+  : (process.env.AI_DEV_MONGODB_URI || 'mongodb://localhost:27018/pulse');
+const PLATFORM = process.env.PLATFORM_URL || `http://localhost:${CRM_LOCAL ? (process.env.CRM_LOCAL_WEB_PORT || 3100) : 3000}`;
+const REDIS = CRM_LOCAL
+  ? { host: 'localhost', port: Number(process.env.CRM_LOCAL_REDIS_PORT || 6380), db: Number(process.env.CRM_LOCAL_REDIS_DB || 4) }
+  : { host: 'localhost', port: Number(process.env.AI_DEV_REDIS_PORT || 6380) };
 const LIVE_DEALER = '66f0000000000000000000a1'; // seeded Sunrise Motors (dev), ai_mode live
 const ROLLBACK_DEALER = '66f0000000000000000000b2'; // Lakeside Auto (dev), live; switched off and back in section 7
 const SHADOW_DEALER = '66f0000000000000000000c3'; // Hillside Cars (dev), ai_mode shadow
 const DEALER_MAILBOX = 'sales@sunrise-motors.dev.test';
 const TIMEOUT_MS = 30_000;
-const AI = process.env.AI_URL || 'http://localhost:8100';
-const N8N_TRIPWIRE = `http://localhost:${process.env.AI_DEV_N8N_PORT || 3999}/hits`;
+const AI = process.env.AI_URL || `http://localhost:${CRM_LOCAL ? (process.env.CRM_LOCAL_AI_PORT || 8110) : 8100}`;
+const N8N_TRIPWIRE = `http://localhost:${process.env.AI_DEV_N8N_PORT || (CRM_LOCAL ? 3998 : 3999)}/hits`;
 // Same default as scripts/ai-dev-full.js, so tokens signed here are accepted there.
 const JWT_SECRET = process.env.JWT_SECRET || 'autopulse-local-dev-jwt-secret';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 function sharedSecret() {
   if (process.env.UPSELL_SERVICE_SHARED_SECRET) return process.env.UPSELL_SERVICE_SHARED_SECRET;
+  if (CRM_LOCAL) return 'autopulse-local-dev-shared-secret'; // scripts/ai-dev-full.js LOCAL_DEV_SECRET
   const file = path.resolve(root, '../agentic-upsell/.env');
   const line = existsSync(file) && readFileSync(file, 'utf8').split(/\r?\n/).find((l) => l.startsWith('UPSELL_SERVICE_SHARED_SECRET='));
   return line ? line.split('=').slice(1).join('=').trim() : '';
@@ -94,7 +103,7 @@ async function textIn(phone, dealerSms, body, tag) {
 }
 
 async function queueLead(dealer, fields) {
-  const queue = new Queue('leadProcessingQueue', { connection: { host: 'localhost', port: 6379 } });
+  const queue = new Queue('leadProcessingQueue', { connection: REDIS });
   await queue.add('processLead', {
     leadData: { followup_preference: 'sms', source: 'website', dealer_id: String(dealer._id), ...fields },
     action: 'create', dealer,
@@ -126,7 +135,7 @@ async function main() {
   const email = `e2e-${run}@example.test`;
 
   // --- 1. New lead via the platform's lead queue ---------------------------------
-  const queue = new Queue('leadProcessingQueue', { connection: { host: 'localhost', port: 6379 } });
+  const queue = new Queue('leadProcessingQueue', { connection: REDIS });
   const createdAt = Date.now();
   await queue.add('processLead', {
     leadData: { name: `E2E Customer ${run}`, email, phone, followup_preference: 'sms', source: 'website',
@@ -349,7 +358,274 @@ async function main() {
   }
 }
 
-main()
+// --- make crm-e2e: the local CRM with the AI sending through it (MASTER_PLAN_4 stream C1) ---
+//
+//   A. The seeded demo dealer, its login (password + OTP) and what the AI reads
+//      from the CRM: dealer profile / hours, stock with photos (/api/car),
+//      Customer 360.
+//   B. A new lead from each source bucket (Capital One, KBB, CarGurus,
+//      Autotrader, website, service) -> the AI's first reply is SENT BY THE CRM
+//      (provider stubbed) and is in the lead's conversation; n8n never called;
+//      no rule-based FollowUpJob.
+//   C. The customer texts back -> the AI answers, again through the CRM.
+//   D. Booking through /api/booking with the shared secret: created, no
+//      platform confirmation / reminders for the AI dealer, a second booking
+//      of the same slot is refused with 409, a staff booking of it too.
+//   E. Staff: Visited + Sold Pending -> the AI's stage follows; then
+//      Closed - Lost on the Sold Pending lead reaches the AI.
+//   F. DND both ways: the customer opts out of everything with the AI -> the
+//      CRM lead is DND with a note; staff set DND -> the AI records the opt-out.
+//   G. Photos: a send with media_urls reaches the provider call (stub outbox)
+//      and the conversation; AI internal note endpoint.
+async function crmLocal() {
+  const { DEMO_DEALER_ID, DEMO_DEALER_SMS, DEMO_MAILBOX, DEMO_PASSWORD, DEMO_LEADS } = await import('./seed-local-crm.js');
+  const Booking = (await import('../app/models/Booking.js')).default;
+  await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 3_000 });
+  const db = mongoose.connection.db;
+  const dealer = await User.findById(DEMO_DEALER_ID).lean();
+  if (!dealer) throw new Error('Demo dealer not found - run `make crm-seed` (or `make crm-local`) first.');
+  const secret = sharedSecret();
+  const internal = { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` };
+  const run = Date.now().toString().slice(-7);
+  const state = (leadId) => db.collection('ai_lead_state').findOne({ dealer_id: DEMO_DEALER_ID, lead_id: String(leadId) });
+  const aiReplies = (leadId) => Email.find({ lead_id: leadId, ai_generated: true, is_note: { $ne: true } })
+    .sort({ timestamp: 1 }).lean();
+  const jsonOf = (response) => response.json().catch(() => ({}));
+
+  // --- A. Seed, login, read-only sources ----------------------------------------------------
+  const info = dealer.dealer_account_information || {};
+  check('A1. demo dealer seeded in the CRM\'s shape (hours, timezone, address, SMS number, mailbox)',
+    dealer.ai_mode === 'live' && Boolean(info.weekly_availability?.monday?.active) && Boolean(info.time_zone)
+      && Boolean(info.store_address) && info.sms_conversion_phone === DEMO_DEALER_SMS,
+    `${info.store_name}, ${info.time_zone}`);
+  const login = await fetch(`${PLATFORM}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'demo-dealer@autopulse.local', password: DEMO_PASSWORD, type: 'dealer' }) });
+  const loginBody = await jsonOf(login);
+  const otp = await fetch(`${PLATFORM}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'demo-dealer@autopulse.local', otp: loginBody.otp, type: 'dealer' }) });
+  const otpBody = await jsonOf(otp);
+  check('A2. the documented login works (password, then the OTP; the OTP mail is stubbed)',
+    login.ok && loginBody.otp_sent === true && otp.ok && Boolean(otpBody.token), `HTTP ${login.status} / ${otp.status}`);
+  const staffToken = otpBody.token || jwt.sign({ userId: DEMO_DEALER_ID, type: 'dealer' }, JWT_SECRET, { expiresIn: '30m' });
+  const staff = { 'Content-Type': 'application/json', Authorization: `Bearer ${staffToken}` };
+
+  const profile = await fetch(`${AI}/dev/dealers/${DEMO_DEALER_ID}/profile`).then(jsonOf).catch(() => ({}));
+  const car = await fetch(`${PLATFORM}/api/car?dealer_id=${DEMO_DEALER_ID}&limit=50`).then(jsonOf);
+  const listings = car.listings || [];
+  const withPhotos = listings.filter((l) => (l.media?.photo_links || []).length > 0);
+  check('A3. stock is served by /api/car with photos (the AI\'s inventory source)',
+    listings.length === 14 && withPhotos.length === listings.length,
+    `${listings.length} vehicles, ${withPhotos.length} with photos`);
+  const history = await db.collection('customers').findOne({ dealer_id: DEMO_DEALER_ID, name: 'Hannah Weber' });
+  const c360 = await fetch(`${PLATFORM}/api/customers/${history._id}/360?dealer_id=${DEMO_DEALER_ID}`, { headers: internal });
+  const c360Body = await jsonOf(c360);
+  check('A4. Customer 360 with the shared secret: the customer\'s deal and vehicle',
+    c360.ok && c360Body.data?.deals?.length === 1 && c360Body.data?.vehicles?.length >= 1,
+    `HTTP ${c360.status}, ${c360Body.data?.deals?.length ?? 0} deal(s), ${c360Body.data?.vehicles?.length ?? 0} vehicle(s)`);
+  const no360 = await fetch(`${PLATFORM}/api/customers/${history._id}/360?dealer_id=${DEMO_DEALER_ID}`);
+  check('A5. Customer 360 refuses a call without the secret', no360.status === 401, `HTTP ${no360.status}`);
+  if (profile?.name || profile?.hours) {
+    check('A6. the AI reads the dealer profile / hours from the CRM record', true, JSON.stringify(profile).slice(0, 120));
+  }
+
+  // --- B. A new lead per source bucket ---------------------------------------------------------
+  const created = {};
+  for (const [i, spec] of DEMO_LEADS.entries()) {
+    const phone = `+1555${String(i)}${run.slice(-6)}`;
+    const email = `e2e-${spec.key}-${run}@example.test`;
+    await queueLead(dealer, { name: spec.name, phone, email, source: spec.source,
+      lead_source: spec.source, followup_preference: spec.channel, comments: `${spec.comments} (${run})` });
+    created[spec.key] = { spec, phone, email };
+  }
+  for (const [key, entry] of Object.entries(created)) {
+    try {
+      entry.lead = await waitFor(`the ${key} lead`, () => Lead.findOne({ dealer_id: DEMO_DEALER_ID, email: entry.email }).lean());
+      const [reply] = await waitFor(`the AI first reply to the ${key} lead`, async () => {
+        const replies = await aiReplies(entry.lead._id);
+        return replies.length ? replies : null;
+      });
+      entry.firstReply = reply;
+      const viaCrm = reply.ai_sent_via_platform === true
+        && reply.sender === (reply.communication_type === 'sms' ? DEMO_DEALER_SMS : DEMO_MAILBOX);
+      const stubbed = await db.collection('dev_provider_outbox').findOne({ provider_id: reply.message_id });
+      check(`B. ${entry.spec.source}: first reply sent by the CRM and recorded in the conversation`,
+        viaCrm && Boolean(stubbed) && reply.status === 'sent',
+        `${reply.communication_type} ${reply.sender} -> ${reply.recipient}: "${reply.mail_content.slice(0, 50)}..."`);
+    } catch (error) {
+      check(`B. ${entry.spec.source}: first reply sent by the CRM and recorded in the conversation`, false, error.message);
+    }
+  }
+  const leadIds = Object.values(created).map((e) => e.lead?._id).filter(Boolean);
+  const hits = await n8nHits();
+  const ourHits = hits?.filter((h) => h.body.includes(run)) ?? [];
+  check('B7. n8n was never called for the AI dealer\'s leads (tripwire)', hits !== null && ourHits.length === 0,
+    hits === null ? 'tripwire not reachable' : `${ourHits.length} call(s)`);
+  const jobs = await FollowUpJob.countDocuments({ leadId: { $in: leadIds } });
+  check('B8. no rule-based FollowUpJob for the AI dealer\'s leads', jobs === 0, `${jobs} job(s)`);
+  const nonAi = await Email.countDocuments({ lead_id: { $in: leadIds }, ai_generated: { $ne: true },
+    status: { $in: ['sent', 'failed', 'draft'] } });
+  check('B9. nothing but the AI\'s messages went to these customers', nonAi === 0, `${nonAi} other outbound record(s)`);
+
+  // --- C. The customer texts back ---------------------------------------------------------------
+  const sms = created.cargurus;
+  const before = (await aiReplies(sms.lead._id)).length;
+  const inbound = await textIn(sms.phone, DEMO_DEALER_SMS, 'Yes, still interested. Do you have it in gray?', run);
+  check('C1. Twilio webhook accepted the customer\'s reply', inbound.response.ok, `HTTP ${inbound.response.status}`);
+  const answer = await waitFor('the AI answer', async () => {
+    const replies = await aiReplies(sms.lead._id);
+    return replies.length > before ? replies.at(-1) : null;
+  });
+  check('C2. the AI answered through the CRM, in the same conversation', answer.ai_sent_via_platform === true,
+    `"${answer.mail_content.slice(0, 60)}..."`);
+  const delivered = await fetch(`${PLATFORM}/api/internal/ai/messages/status`, { method: 'POST', headers: internal,
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, provider_id: answer.message_id, status: 'delivered' }) });
+  check('C3. a delivery status reaches the CRM record', (await jsonOf(delivered)).updated === true
+    && (await Email.findById(answer._id).lean()).ai_delivery_status === 'delivered');
+
+  // --- D. Booking through /api/booking ------------------------------------------------------------
+  const tz = info.time_zone;
+  const day = await (async () => {
+    for (let ahead = 4; ahead < 12; ahead += 1) {
+      const date = new Date(Date.now() + ahead * 86_400_000).toLocaleDateString('en-CA', { timeZone: tz });
+      const slots = await fetch(`${PLATFORM}/api/booking?dealer_id=${DEMO_DEALER_ID}&date=${date}`).then(jsonOf);
+      if (slots.slots?.find((s) => s.time === '11:00' && s.available)) return date;
+    }
+    throw new Error('no free 11:00 slot in the next days');
+  })();
+  const bookingBody = (entry, time = '11:00') => JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(entry.lead._id),
+    customerName: entry.lead.name, email: entry.email, phone: entry.phone, bookingDate: day, bookingTime: time,
+    notes: 'e2e' });
+  const emailsBefore = await Email.countDocuments({ lead_id: sms.lead._id });
+  const booked = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(sms) });
+  const bookedBody = await jsonOf(booked);
+  const bookingId = bookedBody.bookingId;
+  const leadAfter = await Lead.findById(sms.lead._id).lean();
+  check('D1. the AI service booked through /api/booking (shared secret)',
+    booked.status === 201 && Boolean(bookingId) && leadAfter.fe_lead_status === 'Appointment Booked'
+      && bookedBody.booking?.created_by === 'ai',
+    `HTTP ${booked.status}, ${day} 11:00 ${tz}`);
+  await sleep(1_500);
+  const notices = await Email.countDocuments({ lead_id: sms.lead._id, is_appointment_notification: true });
+  const reminders = await db.collection('appointmentreminders').countDocuments({ lead_id: sms.lead._id });
+  check('D2. no platform confirmation or reminders for the AI dealer (the AI sends its own)',
+    notices === 0 && reminders === 0, `${notices} notification(s), ${reminders} reminder(s), ${emailsBefore} messages before`);
+  const again = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(sms) });
+  check('D3. the same booking again is answered with the existing one (no duplicate)',
+    again.ok && (await jsonOf(again)).duplicate === true && (await Booking.countDocuments({ lead_id: String(sms.lead._id) })) === 1);
+  const clash = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(created.website, '11:15') });
+  const clashBody = await jsonOf(clash);
+  check('D4. another lead in the same slot gets a clear 409 with free times', clash.status === 409
+    && clashBody.error === 'slot_taken' && clashBody.alternatives?.length > 0 && !clashBody.alternatives.includes('11:00'),
+    `HTTP ${clash.status}: ${clashBody.message}`);
+  const staffClash = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(created.website.lead._id), status: 'Appointment Booked', booking_date: day,
+      booking_time: '11:00' }) });
+  check('D5. staff booking the taken slot from the lead screen get the same 409', staffClash.status === 409,
+    `HTTP ${staffClash.status}: ${(await jsonOf(staffClash)).message}`);
+  const closed = await fetch(`${PLATFORM}/api/booking`, { method: 'POST', headers: internal, body: bookingBody(created.website, '06:00') });
+  check('D6. a time outside opening hours is refused (422)', closed.status === 422, `HTTP ${closed.status}`);
+  const staffOk = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(created.website.lead._id), status: 'Appointment Booked', booking_date: day,
+      booking_time: '12:00' }) });
+  const staffBooking = await Booking.findOne({ lead_id: String(created.website.lead._id) }).lean();
+  const staffNotices = await Email.countDocuments({ lead_id: created.website.lead._id, is_appointment_notification: true });
+  check('D7. a staff booking of a free slot is saved as a Booking, with no platform confirmation for the AI dealer',
+    staffOk.ok && staffBooking?.bookingTime === '12:00' && staffBooking?.created_by === 'staff' && staffNotices === 0,
+    `HTTP ${staffOk.status}`);
+  const staffStage = await waitFor('the AI to set the staff-booked lead to Appointment Set', async () => {
+    const s = await state(created.website.lead._id);
+    return s?.stage === 'appointment_set' ? s : null;
+  }).catch(() => null);
+  check('D8. the AI was told about the staff booking (stage Appointment Set)', Boolean(staffStage));
+  const moved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
+    body: JSON.stringify({ bookingId, booking_status: 'confirmed', booking_time: '12:00' }) });
+  check('D9. moving a booking onto a taken slot is refused (409)', moved.status === 409, `HTTP ${moved.status}`);
+  const fetched = await fetch(`${PLATFORM}/api/booking?booking_id=${bookingId}`, { headers: internal }).then(jsonOf);
+  check('D10. GET /api/booking returns the booking to the AI service', fetched.booking?.bookingTime === '11:00');
+
+  // --- E. Staff: Visited + Sold Pending, then Closed - Lost -----------------------------------------
+  const visited = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(sms.lead._id), status: 'Visited', manager_outcome: 'Sold Pending' }) });
+  const afterVisit = await Lead.findById(sms.lead._id).lean();
+  check('E1. staff set Visited with the outcome Sold Pending', visited.ok && afterVisit.fe_lead_status === 'Sold Pending',
+    `HTTP ${visited.status}, CRM status ${afterVisit.fe_lead_status}`);
+  const soldPending = await waitFor('the AI stage Sold Pending', async () => {
+    const s = await state(sms.lead._id);
+    return s?.stage === 'sold_pending' ? s : null;
+  }).catch(() => null);
+  check('E2. the AI\'s stage follows: Sold Pending', Boolean(soldPending), soldPending?.stage_label);
+  const showed = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
+    body: JSON.stringify({ bookingId, booking_status: 'completed', showed: true }) });
+  check('E3. the booking records that the customer showed', showed.ok && (await Booking.findById(bookingId).lean()).showed === true);
+  const list = await fetch(`${PLATFORM}/api/leads?dealer_id=${DEMO_DEALER_ID}&limit=50`, { headers: staff }).then(jsonOf);
+  const row = (list.data || []).find((l) => String(l._id) === String(sms.lead._id));
+  check('E4. the lead list shows the AI stage read only', row?.ai_stage_label === 'Sold Pending',
+    row ? `ai_stage_label ${row.ai_stage_label}` : 'lead not in the list response');
+  const lost = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(sms.lead._id), status: 'Closed - Lost' }) });
+  const closedLost = await waitFor('the AI stage Closed - Lost', async () => {
+    const s = await state(sms.lead._id);
+    return s?.stage === 'closed_lost' ? s : null;
+  }).catch(() => null);
+  check('E5. Closed - Lost on a Sold Pending lead reaches the AI', lost.ok && Boolean(closedLost), closedLost?.stage_label);
+  const delivered2 = created['capital-one'];
+  await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(delivered2.lead._id), status: 'Visited', manager_outcome: 'Sold Pending' }) });
+  await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(delivered2.lead._id), status: 'Sold Delivered' }) });
+  const soldDelivered = await waitFor('the AI stage Sold - Delivered', async () => {
+    const s = await state(delivered2.lead._id);
+    return s?.stage === 'sold_delivered' ? s : null;
+  }).catch(() => null);
+  check('E6. Sold Delivered on a Sold Pending lead reaches the AI', Boolean(soldDelivered), soldDelivered?.stage_label);
+
+  // --- F. DND both ways ----------------------------------------------------------------------------
+  const optOut = created.service;
+  await textIn(optOut.phone, DEMO_DEALER_SMS, 'Please stop contacting me, remove me from all your lists.', run);
+  const dnd = await waitFor('the CRM lead to become DND', async () => {
+    const lead = await Lead.findById(optOut.lead._id).lean();
+    return lead.fe_lead_status === 'DND' ? lead : null;
+  }).catch(() => null);
+  const note = dnd && await Email.findOne({ lead_id: optOut.lead._id, is_note: true, ai_generated: true }).lean();
+  check('F1. the customer opted out of everything with the AI: the CRM lead is DND, with a note',
+    Boolean(dnd) && Boolean(note), note ? `"${note.mail_content.slice(0, 80)}"` : 'lead not DND');
+  const staffDnd = created.kbb;
+  await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(staffDnd.lead._id), status: 'DND' }) });
+  const optedOut = await waitFor('the AI stage Opted Out', async () => {
+    const s = await state(staffDnd.lead._id);
+    return s?.stage === 'opted_out' ? s : null;
+  }).catch(() => null);
+  check('F2. staff set DND in the CRM: the AI marks the lead opted out', Boolean(optedOut), optedOut?.stage_label);
+
+  // --- G. Photos and notes through the CRM -----------------------------------------------------------
+  const target = created.autotrader;
+  const photoUrl = withPhotos[0]?.media?.photo_links?.[0] || 'https://placehold.co/600x400/jpg';
+  const send = (channel, to, key) => fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', headers: internal,
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), customer_id: String(target.lead.customer_id || ''),
+      channel, to, text: 'Here is a photo of the F-150 Lariat.', subject: 'Your F-150 Lariat', idempotency_key: key,
+      media_urls: [photoUrl] }) });
+  const mms = await send('sms', target.phone, `e2e-${run}:sms`).then(jsonOf);
+  const mmsStub = await db.collection('dev_provider_outbox').findOne({ provider_id: mms.provider_id });
+  const mmsRecord = mms.id ? await Email.findById(mms.id).lean() : null;
+  check('G1. an AI text with a photo: Twilio MediaUrl set (stub) and shown in the conversation',
+    mmsStub?.media_urls?.[0] === photoUrl && mmsRecord?.attachments?.[0]?.url === photoUrl, `provider id ${mms.provider_id}`);
+  const mail = await send('email', target.email, `e2e-${run}:email`).then(jsonOf);
+  const mailStub = await db.collection('dev_provider_outbox').findOne({ provider_id: mail.provider_id });
+  check('G2. an AI email with a photo: inline image, from the dealer mailbox',
+    mailStub?.from === DEMO_MAILBOX && String(mailStub?.text || '').includes('<img'), `provider id ${mail.provider_id}`);
+  const repeat = await send('sms', target.phone, `e2e-${run}:sms`).then(jsonOf);
+  check('G3. the same send again is not sent twice', repeat.duplicate === true && repeat.provider_id === mms.provider_id);
+  const noAuth = await fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', body: '{}',
+    headers: { 'Content-Type': 'application/json' } });
+  check('G4. the send endpoint rejects calls without the shared secret', noAuth.status === 401, `HTTP ${noAuth.status}`);
+  const noted = await fetch(`${PLATFORM}/api/internal/ai/leads/notes`, { method: 'POST', headers: internal,
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), kind: 'service_request',
+      text: 'Service request: oil change, prefers Tuesday morning.' }) }).then(jsonOf);
+  check('G5. the AI can leave an internal note on the lead', noted.created === true);
+}
+
+(CRM_LOCAL ? crmLocal() : main())
   .catch((error) => {
     check('end-to-end run', false, error.message);
   })

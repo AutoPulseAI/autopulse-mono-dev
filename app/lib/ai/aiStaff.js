@@ -27,6 +27,9 @@ export const STAFF_OWNED_STATUSES = Object.freeze([
   'Closed Lost',
   // Staff marked a missed appointment: the AI runs the client's no-show messages (MASTER_PLAN_3 C5).
   'No Show',
+  // The lead is lost (client, 1 Oct 2026: the only closed status besides "Closed - No Longer Owns"). From
+  // Sold Pending too: staff picking Closed - Lost or Sold Delivered ends the Sold Pending workflow.
+  'Closed - Lost',
 ]);
 
 // The outcome a manager must pick when a lead is set to "Visited" (MASTER_PLAN_3 C5).

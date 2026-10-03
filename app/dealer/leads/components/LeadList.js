@@ -133,6 +133,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Sold Pending",
     "Sold Delivered",
     "Unsold",
+    "Closed - Lost",
     "Lead",
     "DND",
     "No Show"
@@ -149,6 +150,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       case 'sold pending': return 'warning';
       case 'sold delivered': return 'danger';
       case 'unsold': return 'secondary';
+      case 'closed - lost': return 'dark';
       case 'lead': return 'custom';
       case 'dnd': return 'secondary';
       default: return 'secondary';
@@ -951,7 +953,11 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to update status");
+      if (!response.ok) {
+        // e.g. 409 "The 14:00 slot on ... is already taken" (app/lib/bookingService.js)
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || body.error || "Failed to update status");
+      }
 
       setLeads(prev => prev.map(l =>
         l._id === selectedLead._id ? { ...l, fe_lead_status: newStatus } : l
@@ -959,7 +965,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       showAlert("Status updated successfully");
       setShowStatusModal(false);
     } catch (err) {
-      showAlert("Failed to update status", "danger");
+      showAlert(err?.message || "Failed to update status", "danger");
     }
   };
 
@@ -1719,6 +1725,12 @@ useImperativeHandle(ref, () => ({
                       >
                         {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
+                      {lead.ai_stage_label && (
+                        // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
+                        <div className="small text-muted mt-1" title="AI stage (read only)">
+                          <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
+                        </div>
+                      )}
                     </Col>
 
                     <Col xl={1} lg={2} sm={2} xs={5}>

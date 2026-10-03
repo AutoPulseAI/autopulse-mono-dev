@@ -14,6 +14,10 @@ import { sendEmail } from '@lib/email.js';
 import { sendSMS } from '@lib/sms.js';
 import moment from 'moment-timezone';
 import Email from '@models/Email.js';
+import Booking from '@models/Booking.js';
+import {
+  checkBookingSlot, markLeadBookingShowed, slotErrorResponseBody, slotErrorStatus, upsertLeadBooking,
+} from '@lib/bookingService.js';
 import jwt from 'jsonwebtoken';
 import {
   normalizeUserLanguage,
@@ -210,7 +214,7 @@ export async function PUT(request) {
     // Continue without token - messageBy will remain null
   }
   try {
-    const { id, status, booking_date, booking_time, manager_outcome } = await request.json();
+    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
@@ -235,6 +239,27 @@ export async function PUT(request) {
         { error: "Lead not found" },
         { status: 404 }
       );
+    }
+
+    // For a dealer whose AI is live, the AI sends the appointment / no-show /
+    // review messages itself: the platform's own are skipped below (PLAN_4 C1).
+    const aiOwnsMessages = await aiOwnsFollowUps(originalLead.dealer_id);
+
+    // A staff booking goes through the same opening hours + slot capacity
+    // check as the AI's (app/lib/bookingService.js): 409 for a taken slot.
+    // Staff can book a past time (recording a walk-in) and can overbook on purpose.
+    let slotDealer = null;
+    if (status === 'Appointment Booked' && booking_date && booking_time) {
+      slotDealer = await User.findById(originalLead.dealer_id).select('dealer_account_information').lean();
+      if (slotDealer && allow_overbook !== true) {
+        const ownBooking = await Booking.findOne({ lead_id: String(id), booking_status: { $in: ['pending', 'confirmed'] } })
+          .sort({ _id: -1 }).select('_id').lean();
+        const check = await checkBookingSlot(Booking, { dealer: slotDealer, date: booking_date, time: booking_time,
+          excludeBookingId: ownBooking?._id ?? null, allowPast: true });
+        if (!check.ok) {
+          return NextResponse.json(slotErrorResponseBody(check), { status: slotErrorStatus(check) });
+        }
+      }
     }
 
     const updateDoc = {
@@ -311,7 +336,30 @@ export async function PUT(request) {
       // Don't fail the entire request if cancellation fails
     }
 
+    // The staff booking as a Booking document, next to the AI's and the customer page's.
+    if (slotDealer) {
+      try {
+        const leadBooking = await upsertLeadBooking(Booking, { lead: updated, dealer: slotDealer, date: booking_date,
+          time: booking_time });
+        if (leadBooking?.created) {
+          await Lead.updateOne({ _id: updated._id }, { $set: { 'data.bookingId': leadBooking._id } });
+        }
+      } catch (bookingError) {
+        console.error('Error saving the staff booking:', bookingError);
+      }
+    }
+    // Visited / No Show: did the customer come to the appointment?
+    if (status === 'Visited' || status === 'No Show') {
+      try {
+        const dealerForShowed = await User.findById(updated.dealer_id).select('dealer_account_information').lean();
+        await markLeadBookingShowed(Booking, { leadId: updated._id, dealer: dealerForShowed, showed: status === 'Visited' });
+      } catch (showedError) {
+        console.error('Error recording whether the customer showed:', showedError);
+      }
+    }
+
     // Create appointment reminders if booking was created/updated
+    // (appointmentReminderService skips them for an AI-live dealer).
     if (status === 'Appointment Booked' && (booking_date || booking_time)) {
       try {
         // Pass the original booking_date string (already in dealer timezone) instead of the converted Date object
@@ -331,8 +379,9 @@ export async function PUT(request) {
       }
     }
 
-    // Send appointment booking/update notifications
-    if (status === 'Appointment Booked' && (booking_date || booking_time)) {
+    // Send appointment booking/update notifications (not for an AI-live
+    // dealer: the AI is told below and confirms the appointment itself)
+    if (status === 'Appointment Booked' && (booking_date || booking_time) && !aiOwnsMessages) {
       try {
         // Get dealer information
         const dealer = await User.findById(updated.dealer_id);
@@ -611,7 +660,7 @@ export async function PUT(request) {
     }
 
     // Create managerial review messages if status changed to "Managerial Review"
-    if (status === 'Managerial Review') {
+    if (status === 'Managerial Review' && !aiOwnsMessages) {
       try {
         const reviewResult = await createManagerialReviewMessages(updated._id, updated.dealer_id);
         console.log('Managerial review messages created from lead status update:', reviewResult);
@@ -622,7 +671,7 @@ export async function PUT(request) {
 
     // Send No-Show message if status changed to "No Show". For a dealer whose AI is live the AI owns the
     // no-show messages (MASTER_PLAN_3 C5): it is told below and sends the client's own, so we don't double it.
-    if (status === 'No Show' && !(await aiOwnsFollowUps(updated.dealer_id))) {
+    if (status === 'No Show' && !aiOwnsMessages) {
       try {
         // Get dealer information
         const dealer = await User.findById(updated.dealer_id);

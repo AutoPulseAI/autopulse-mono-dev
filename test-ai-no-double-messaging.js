@@ -15,7 +15,7 @@ import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 
-const URI = process.env.AI_TEST_MONGODB_URI || 'mongodb://localhost:27017/pulse_ai_nodouble_test';
+const URI = process.env.AI_TEST_MONGODB_URI || 'mongodb://localhost:27018/pulse_ai_nodouble_test';
 const LIVE = '66f0000000000000000000c1';
 const OFF = '66f0000000000000000000c2';
 const quiet = { info() {}, warn() {}, error() {}, log() {} };

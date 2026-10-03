@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { isProviderSendStubbed, recordStubSend } from './providerStub.js';
 
 // Initialize Twilio client
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -17,6 +18,15 @@ const client = twilio(accountSid, authToken);
  */
 export async function sendSMS(to, body, dealer, mediaUrls = []) {
   try {
+    // Local/dev runs never reach Twilio (app/lib/providerStub.js).
+    if (isProviderSendStubbed()) {
+      return await recordStubSend({
+        channel: 'sms', to: normalizeSmsPhone(to), text: body == null ? '' : String(body).trim(),
+        from: dealer?.dealer_account_information?.sms_conversion_phone || process.env.TWILIO_PHONE_NUMBER || null,
+        dealer_id: dealer?._id ? String(dealer._id) : null,
+        media_urls: (mediaUrls || []).filter((url) => url && typeof url === 'string').slice(0, 10),
+      });
+    }
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       throw new Error('Twilio credentials not configured');
     }
