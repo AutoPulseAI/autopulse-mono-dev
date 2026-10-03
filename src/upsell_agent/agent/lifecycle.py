@@ -155,6 +155,8 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     "Sold Pending": "sold_pending",
     "Sold Delivered": "sold_delivered",
     "Unsold": "unsold",
+    # Staff closed the lead as lost (client, 1 Oct 2026), e.g. a Sold Pending deal that fell through.
+    "Closed - Lost": "staff_closed_lost",
 }
 # Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
 UNSOLD_FOLLOWUP_DAYS = 90

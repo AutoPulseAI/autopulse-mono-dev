@@ -20,6 +20,9 @@ class OutboundMessage:
     text: str
     subject: str | None = None
     idempotency_key: str | None = None
+    # Photos sent with the message: Twilio MediaUrl (MMS) / inline images in an
+    # email. Only the platform driver sends them today (channels/platform.py).
+    media_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

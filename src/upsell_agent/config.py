@@ -82,9 +82,11 @@ class Settings(BaseSettings):
     send_retry_base_s: float = Field(default=0.5, alias="SEND_RETRY_BASE_S")
 
     # `fake` writes to the dev_outbox collection; `live` calls Twilio/SendGrid
-    # (Stage 12). `stub` platform client returns seeded Customer 360 data and
-    # records messages locally; `live` calls aidmvcs-be-dev (Stage 5).
-    channel_driver: Literal["fake", "live"] = Field(default="fake", alias="CHANNEL_DRIVER")
+    # (Stage 12); `platform` asks the CRM (aidmvcs-be-dev) to send through its
+    # own sendSMS / sendEmail (channels/platform.py, PLAN_4 stream C1). `stub`
+    # platform client returns seeded Customer 360 data and records messages
+    # locally; `live` calls aidmvcs-be-dev (Stage 5).
+    channel_driver: Literal["fake", "live", "platform"] = Field(default="fake", alias="CHANNEL_DRIVER")
     platform_client: Literal["stub", "live"] = Field(default="stub", alias="PLATFORM_CLIENT")
 
     # Delivery webhooks (architecture §9, MASTER_PLAN_1 Stage 10). Twilio signs

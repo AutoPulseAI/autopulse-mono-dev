@@ -72,6 +72,9 @@ class SendRequest:
     # and whether it answers a message the customer just sent.
     purpose: Purpose = "marketing"
     is_reply: bool = True
+    # Photos to send with it (Twilio MediaUrl / inline email images); the
+    # platform driver passes them to the CRM (channels/platform.py).
+    media_urls: tuple[str, ...] = ()
 
     @property
     def idempotency_key(self) -> str:
@@ -189,6 +192,7 @@ class Sender:
                     OutboundMessage(
                         dealer_id=req.dealer_id, lead_id=req.lead_id, customer_id=req.customer_id,
                         channel=req.channel, to=to, text=req.text, subject=req.subject, idempotency_key=key,
+                        media_urls=tuple(req.media_urls or ()),
                     )
                 )
             except ChannelSendError as exc:
@@ -234,6 +238,7 @@ class Sender:
             "channel": req.channel, "to": to, "text": req.text, "subject": req.subject, "status": status,
             "provider_id": provider_id, "idempotency_key": req.idempotency_key, "turn_id": req.turn_id,
             "is_fallback": req.is_fallback, "sent_at": at.isoformat(),
+            **({"media_urls": list(req.media_urls)} if req.media_urls else {}),
         }
         messages = dealer_scoped_db(req.dealer_id).collection(AI_MESSAGES_COLLECTION)
         last_error = ""

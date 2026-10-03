@@ -67,14 +67,24 @@ from upsell_agent.integrations.mongodb import (
 )
 
 DEV_PLATFORM_MESSAGES_COLLECTION = "dev_platform_messages"
-__all__ = ["EMPTY_360", "LivePlatformClient", "PlatformClient", "PlatformError", "StubPlatformClient",
-           "get_platform_client"]
+__all__ = ["EMPTY_360", "LivePlatformClient", "PlatformClient", "PlatformError", "SlotTakenError",
+           "StubPlatformClient", "get_platform_client"]
 
 RECORD_TIMEOUT_S = 5.0
 
 
 class PlatformError(RuntimeError):
     """The platform answered, but not with success."""
+
+
+class SlotTakenError(PlatformError):
+    """`POST/PUT /api/booking` answered 409: the slot is full (the CRM's own
+    capacity check, aidmvcs-be-dev app/lib/bookingService.js, PLAN_4 C1).
+    `alternatives` are that day's free "HH:MM" times, as the CRM sees them."""
+
+    def __init__(self, message: str, alternatives: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.alternatives = alternatives or []
 
 
 class PlatformClient(Protocol):
@@ -87,6 +97,8 @@ class PlatformClient(Protocol):
     async def create_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
 
     async def update_booking(self, dealer_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def mark_lead_dnd(self, dealer_id: str, lead_id: str, reason: str) -> bool: ...
 
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
@@ -154,10 +166,21 @@ class StubPlatformClient:
             update["bookingDate"] = _dealer_local_midnight_utc(payload["booking_date"], payload["dealer_timezone"])
         if payload.get("booking_time"):
             update["bookingTime"] = payload["booking_time"]
+        if isinstance(payload.get("showed"), bool):
+            update["showed"], update["showed_at"] = payload["showed"], clock.now()
         await db.collection(PLATFORM_BOOKINGS_COLLECTION).update_one(
             {"_id": as_object_id(payload["booking_id"])}, {"$set": update})
         doc = await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one({"_id": as_object_id(payload["booking_id"])})
         return {"booking_id": payload["booking_id"], "booking_status": (doc or {}).get("booking_status")}
+
+    async def mark_lead_dnd(self, dealer_id: str, lead_id: str, reason: str) -> bool:
+        """Writes what `POST /api/internal/ai/leads/dnd` does: the lead's CRM status DND, and a note."""
+        db = dealer_scoped_db(dealer_id)
+        result = await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
+            {"_id": as_object_id(lead_id)},
+            {"$set": {"status": "DND", "lead_status": "DND", "fe_lead_status": "DND", "statusChangedAt": clock.now(),
+                      "dnd_source": "ai_opt_out", "dnd_reason": reason}})
+        return result.matched_count > 0
 
 
 class LivePlatformClient:
@@ -208,13 +231,28 @@ class LivePlatformClient:
             "bookingId": payload["booking_id"], "booking_status": payload["booking_status"],
             **({"booking_date": payload["booking_date"]} if payload.get("booking_date") else {}),
             **({"booking_time": payload["booking_time"]} if payload.get("booking_time") else {}),
+            **({"showed": payload["showed"]} if isinstance(payload.get("showed"), bool) else {}),
         }, method="PUT")
         return {"booking_id": payload["booking_id"],
                 "booking_status": (body.get("booking") or {}).get("booking_status", payload["booking_status"])}
 
+    async def mark_lead_dnd(self, dealer_id: str, lead_id: str, reason: str) -> bool:
+        """`POST /api/internal/ai/leads/dnd`: the customer opted out of every channel, so the CRM shows the
+        lead as DND with a note, and its own follow-ups and reminders stop (PLAN_4 stream C1)."""
+        body = await self._post("/api/internal/ai/leads/dnd",
+                                {"dealer_id": dealer_id, "lead_id": lead_id, "reason": reason})
+        return bool(body.get("updated"))
+
     async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=RECORD_TIMEOUT_S) as client:
             response = await client.request(method, f"{self._base_url}{path}", json=payload, headers=self._headers)
+        if response.status_code == 409 and path == "/api/booking":
+            try:
+                body = response.json()
+            except ValueError:
+                body = {}
+            raise SlotTakenError(f"{method} {path} → 409: {body.get('message') or response.text[:300]}",
+                                 alternatives=body.get("alternatives"))
         if response.status_code >= 400:
             raise PlatformError(f"{method} {path} → {response.status_code}: {response.text[:300]}")
         return response.json()

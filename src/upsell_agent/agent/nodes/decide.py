@@ -38,6 +38,7 @@ from upsell_agent.agent.visit_offer import wants_visit as visit_wants_visit
 from upsell_agent.channels.consent import resolve_recipient
 from upsell_agent.compliance.opt_out import POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
+from upsell_agent.integrations.platform_client import SlotTakenError
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import UPSET_HANDOFF_CONFIDENCE, Flags, next_action
 from upsell_agent.slots.profile import Profile
@@ -250,14 +251,22 @@ async def _visit_and_booking(
                                                   f"{visit_ctx['ask_contact']} to book it."})
                 plan = VisitOfferPlan(record=record.model_dump(), why=record.why or "")
                 return visit_ctx, plan
-            result = await booking_tool.ensure_booking(
-                ctx.platform, dealer_id=state.dealer_id, dealer=dealer, lead=ctx.lead, lead_id=lead_id,
-                customer_name=state.customer_name or "there", email=email, phone=phone,
-                when=datetime.fromisoformat(picked["iso"]), notes=_customer_summary(profile))
-            booked_this_turn = True
-            visit_ctx = {"status": result["booking_status"], "display": picked["display"],
-                        "just_booked": not result["already_existed"], "stopped": False, "ask_contact": None,
-                        "booking_id": result["booking_id"]}
+            try:
+                result = await booking_tool.ensure_booking(
+                    ctx.platform, dealer_id=state.dealer_id, dealer=dealer, lead=ctx.lead, lead_id=lead_id,
+                    customer_name=state.customer_name or "there", email=email, phone=phone,
+                    when=datetime.fromisoformat(picked["iso"]), notes=_customer_summary(profile))
+            except SlotTakenError:
+                # The CRM's own capacity check (PLAN_4 C1) says the slot filled up since we read it (staff
+                # booked it a moment ago): fresh times instead, exactly like B5 item 3's own check.
+                result = None
+                slot_taken = True
+                visit_ctx["slot_taken"] = picked["display"]
+            if result is not None:
+                booked_this_turn = True
+                visit_ctx = {"status": result["booking_status"], "display": picked["display"],
+                            "just_booked": not result["already_existed"], "stopped": False, "ask_contact": None,
+                            "booking_id": result["booking_id"]}
 
     if booked_this_turn:
         plan = plan_visit(profile=profile, extraction=extraction, conversation=conversation, active_booking=None,

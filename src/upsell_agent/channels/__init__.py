@@ -1,5 +1,6 @@
 """Outbound channels. Only Twilio (SMS) and SendGrid (email) in production
-(architecture §9); a fake driver everywhere else."""
+(architecture §9) - or, with CHANNEL_DRIVER=platform, the CRM sends through its own
+providers (channels/platform.py); a fake driver everywhere else."""
 
 from upsell_agent.channels.base import ChannelDriver
 from upsell_agent.config import Settings
@@ -10,6 +11,14 @@ def get_channel_driver(settings: Settings) -> ChannelDriver:
         from upsell_agent.channels.fake import FakeChannelDriver
 
         return FakeChannelDriver()
+    if settings.channel_driver == "platform":
+        # The CRM sends through its own providers (channels/platform.py).
+        from upsell_agent.channels.platform import PlatformChannelDriver
+
+        return PlatformChannelDriver(
+            base_url=settings.autopulse_api_base_url, shared_secret=settings.upsell_service_shared_secret,
+            allowlist=None if settings.is_production else (settings.allowlist or None),
+        )
 
     from upsell_agent.channels.live import LiveChannelDriver
     from upsell_agent.channels.sendgrid import SendGridEmailDriver
