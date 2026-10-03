@@ -4,7 +4,8 @@ From the dealer's mailbox (or SENDGRID_FROM_EMAIL when dealer domains aren't
 authenticated in SendGrid), with reply-to set to the dealer's mailbox so the
 customer's answer comes back through the platform's Mailgun inbound route
 (architecture §15). The idempotency key rides along as a custom arg, so the
-event webhook can find the message even if the id doesn't match.
+event webhook can find the message even if the id doesn't match. A vehicle
+photo (MASTER_PLAN_4 F3) is shown inline in the HTML part.
 
 SendGrid answers 202 with the message id in the X-Message-Id header.
 Failures: network error, timeout, 429, 5xx are retryable; other 4xx permanent.
@@ -23,9 +24,16 @@ logger = logging.getLogger(__name__)
 TIMEOUT_S = 10.0
 
 
-def _html(text: str) -> str:
+def _html(text: str, media_urls: tuple[str, ...] = ()) -> str:
     paragraphs = [p for p in text.split("\n\n") if p.strip()]
-    return "".join(f"<p>{html.escape(p).replace(chr(10), '<br>')}</p>" for p in paragraphs)
+    body = [f"<p>{html.escape(p).replace(chr(10), '<br>')}</p>" for p in paragraphs]
+    if media_urls:
+        # MASTER_PLAN_4 F3: the vehicle's photo inline, right after the greeting, so it's the first thing they
+        # see. Referenced by its (already checked) https URL rather than attached.
+        images = "".join(f'<p><img src="{html.escape(u, quote=True)}" alt="The vehicle" '
+                         'style="max-width:100%;height:auto"></p>' for u in media_urls)
+        body.insert(min(1, len(body)), images)
+    return "".join(body)
 
 
 class SendGridEmailDriver:
@@ -49,7 +57,7 @@ class SendGridEmailDriver:
             "from": {"email": sender, **({"name": name} if name else {})},
             "subject": message.subject or "A message from your dealership",
             "content": [{"type": "text/plain", "value": message.text},
-                        {"type": "text/html", "value": _html(message.text)}],
+                        {"type": "text/html", "value": _html(message.text, message.media_urls)}],
         }
         if reply_to:
             body["reply_to"] = {"email": reply_to}

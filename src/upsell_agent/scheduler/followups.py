@@ -76,6 +76,7 @@ from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_TEXT,
     render_holding_reply,
 )
+from upsell_agent.agent.vehicle_media import lead_vehicle_vin, pick_vehicle_photo
 from upsell_agent.channels import consent
 from upsell_agent.channels.consent import usable_recipient
 from upsell_agent.channels.sender import SendOutcome, SendRequest
@@ -1200,23 +1201,29 @@ async def _fire_next_action_check_locked(db: DealerScopedDatabase, doc: dict, de
 
 
 async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnTracer, doc: dict,
-                              text: dict[str, str]) -> list[SendOutcome]:
+                              text: dict[str, str], photo_vin: str | None = None,
+                              photo_start: int = 0) -> list[SendOutcome]:
     """One appointment step on text AND email (Omnichannel PDF p.10). Each channel is its own send with its own
     check, so one opted out never stops the other. The idempotency key carries the step's record id and the
-    channel, so a re-run can't send either twice."""
+    channel, so a re-run can't send either twice. `photo_vin` (MASTER_PLAN_4 F3): the vehicle whose own photo
+    goes with it - the countdown and no-show step 1 call for one; `photo_start` picks which of its photos."""
     outcomes: list[SendOutcome] = []
     first = doc["to_channel"]
     for ch in (first, other_channel(first)):
         body = text["sms_text"] if ch == "sms" else text["email_body"]
+        photo = (await pick_vehicle_photo(db.dealer_id, photo_vin, channel=ch, settings=get_settings(),
+                                          start=photo_start) if photo_vin else None)
         request = SendRequest(
             dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
             turn_id=f"appointment-{doc['step']}-{doc['_id']}", channel=ch, text=body,
-            subject=None if ch == "sms" else text["email_subject"], purpose="transactional", is_reply=False)
+            subject=None if ch == "sms" else text["email_subject"], purpose="transactional", is_reply=False,
+            media_urls=photo.urls if photo else [])
         async with tracer.node(f"send_{ch}", {"channel": ch, "idempotency_key": request.idempotency_key,
-                                              "text": request.text, "subject": request.subject}) as span:
+                                              "text": request.text, "subject": request.subject,
+                                              "media_urls": request.media_urls}) as span:
             outcome = await deps.sender.send(request)
-            span.output = outcome.as_dict()
-            span.reasoning = list(outcome.reasoning)
+            span.output = {**outcome.as_dict(), **({"photo": photo.as_dict()} if photo else {})}
+            span.reasoning = [*(photo.reasons if photo else []), *outcome.reasoning]
             span.edge_label = f"{ch}: {outcome.status}"
         outcomes.append(outcome)
     return outcomes
@@ -1316,7 +1323,17 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
             agent_name=profile.agent_name, appt=appt_at,
             model=await _interest_model(db, doc["customer_id"], doc["lead_id"]))
-        outcomes = await _send_step_messages(db, deps, tracer, doc, text)
+        # MASTER_PLAN_4 F3: the countdown and no-show step 1 show the vehicle this lead is about - its own
+        # photo, a different one each countdown day where it has several (days left picks it). No vehicle on
+        # record, or no usable photo: the client's text-only fallback, as before (§15).
+        photo_vin = photo_start = None
+        if step in (appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK):
+            photo_vin = lead_vehicle_vin(lead, state)
+            due = appointment.aware(doc["due_at"], profile.tz) if isinstance(doc.get("due_at"), datetime) else None
+            photo_start = (appt_at.date() - due.date()).days if (due and appt_at
+                                                                 and step == appointment.STEP_COUNTDOWN) else 0
+        outcomes = await _send_step_messages(db, deps, tracer, doc, text, photo_vin=photo_vin,
+                                             photo_start=photo_start or 0)
         if any(o.status == "held" for o in outcomes) and not any(o.status in ("sent", "duplicate") for o in outcomes):
             # The check changed between the look above and the send (a clock move, the cap).
             await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(

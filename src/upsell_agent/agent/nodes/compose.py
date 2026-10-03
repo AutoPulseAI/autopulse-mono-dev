@@ -20,6 +20,7 @@ from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
 from upsell_agent.agent.llm import compose_agent, run_agent
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
+from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.display import about_customer, display_value
 from upsell_agent.slots.schema import SCHEMA
@@ -79,6 +80,8 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "touch1": decision.get("touch1"),
         "touch": decision.get("touch"),
         "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
+        # MASTER_PLAN_4 F3: only then may the message carry a vehicle's page_url (guardrails/link_guard.py).
+        "link_requested": wants_link(state.extraction),
         "reach_out": decision.get("reach_out"),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,

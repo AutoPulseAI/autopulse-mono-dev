@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # Plan 1's single 24h switch to the other channel instead - the rollback if a dealer's cadence
     # has to be stopped (decision 153).
     cadence_enabled: bool = Field(default=True, alias="CADENCE_ENABLED")
+    # MASTER_PLAN_4 F3: a vehicle's photo goes out as MMS on SMS (inline in email whatever this says). The
+    # client wants the image, not the link (conversation_6), so it's on by default; a dealer record's
+    # `ai_mms_enabled: false` turns it off for that dealer (agent/vehicle_media.py). Off: SMS carries no
+    # image and still no link. MMS costs about 3x an SMS: the cost review comes before rollout.
+    mms_enabled: bool = Field(default=True, alias="MMS_ENABLED")
 
     # Sending (architecture §9): provider attempts per message, with the delay
     # doubling from send_retry_base_s between attempts.

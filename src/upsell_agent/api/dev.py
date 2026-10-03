@@ -260,6 +260,8 @@ async def conversation(lead_id: str, dealer_id: str) -> list[dict]:
             "sent": msg["direction"] == "outbound" and msg.get("status") == "sent",
             "delivery_status": msg.get("delivery_status"), "is_fallback": msg.get("is_fallback", False),
             "message_id": str(msg["_id"]),
+            # MASTER_PLAN_4 F3: the vehicle photo the message carried (MMS / inline email image).
+            "media_urls": list(msg.get("media_urls") or []),
         })
     for turn in await db.collection(AI_TURN_LOG_COLLECTION).find({"lead_id": lead_id}).to_list(None):
         summary = turn.get("summary") or {}

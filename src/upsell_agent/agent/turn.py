@@ -36,6 +36,7 @@ from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
 from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
+from upsell_agent.agent.vehicle_media import MediaPick, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
@@ -207,17 +208,21 @@ async def run_turn(
         else:
             subject = None if channel == "sms" else draft.get("email_subject")
             reply, subject, freshness = await _fresh_send_text(ctx, dealer_id, draft, channel, reply, subject)
+            # MASTER_PLAN_4 F3: the named vehicle's own photo, checked, never a link in its place.
+            photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]))
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
                 shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
                 purpose="reply" if is_reply else "marketing",  # decision 136
+                media_urls=photo.urls,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
-                                            "text": request.text, "subject": request.subject}) as span:
+                                            "text": request.text, "subject": request.subject,
+                                            "media_urls": request.media_urls}) as span:
                 sent = await deps.sender.send(request)
-                span.output = {**sent.as_dict(), "freshness_recheck": freshness}
-                span.reasoning = list(sent.reasoning)
+                span.output = {**sent.as_dict(), "freshness_recheck": freshness, "photo": photo.as_dict()}
+                span.reasoning = [*photo.reasons, *sent.reasoning]
                 if freshness and freshness["sold"]:
                     span.reasoning.insert(0, f"Re-checked stock right before sending: {', '.join(freshness['sold'])} "
                                              "sold in the meantime, so the stock-free version was sent instead.")
@@ -227,7 +232,8 @@ async def run_turn(
             # together, not one channel now and the other in 24 hours.
             also_sent = await _send_other_channel(
                 tracer, deps, draft=draft, trigger=trigger, dealer_id=dealer_id, lead_id=lead_id,
-                customer_id=customer_id, channel=channel, shadow=shadow, event_received_at=event_received_at)
+                customer_id=customer_id, channel=channel, shadow=shadow, event_received_at=event_received_at,
+                ctx=ctx, decision=decision)
             async with tracer.node("schedule", {"sent_status": sent.status, "channel": channel}) as span:
                 planned = await _plan_next_contact(
                     db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,
@@ -371,7 +377,8 @@ def _hold_cadence(decision: dict[str, Any]) -> str | None:
 
 async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict[str, Any], trigger: str,
                               dealer_id: str, lead_id: str, customer_id: str, channel: str, shadow: bool,
-                              event_received_at: datetime | None) -> SendOutcome | None:
+                              event_received_at: datetime | None, ctx: TurnContext | None = None,
+                              decision: dict[str, Any] | None = None) -> SendOutcome | None:
     """The same touch on the other channel (MASTER_PLAN_3 C4). The send check
     runs again for it, so one channel being opted out, suppressed or outside
     its window never stops the other (Omnichannel PDF p.10, "continue every
@@ -384,16 +391,20 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     if not text:
         await tracer.skipped(f"send_{other}", f"The draft has no {other} version.")
         return None
+    photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
     request = SendRequest(
         dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
         text=text, subject=None if other == "sms" else draft.get("email_subject"), shadow=shadow,
         event_received_at=event_received_at, is_reply=False, purpose="marketing",
+        media_urls=photo.urls if photo else [],
     )
     async with tracer.node(f"send_{other}", {"channel": other, "idempotency_key": request.idempotency_key,
-                                             "text": request.text, "subject": request.subject}) as span:
+                                             "text": request.text, "subject": request.subject,
+                                             "media_urls": request.media_urls}) as span:
         outcome = await deps.sender.send(request)
-        span.output = outcome.as_dict()
-        span.reasoning = ["Every follow-up goes out on text and email together.", *outcome.reasoning]
+        span.output = {**outcome.as_dict(), **({"photo": photo.as_dict()} if photo else {})}
+        span.reasoning = ["Every follow-up goes out on text and email together.",
+                          *(photo.reasons if photo else []), *outcome.reasoning]
         span.metrics = {"attempts": outcome.attempts}
         span.edge_label = f"{other}: {outcome.status}"
     return outcome
@@ -679,6 +690,15 @@ async def _fresh_send_text(ctx: TurnContext, dealer_id: str, draft: dict[str, An
     if no_vehicle_reply:
         return no_vehicle_reply, no_vehicle_subject or subject, info
     return SOLD_VEHICLE_FALLBACK_TEXT, (None if channel == "sms" else SOLD_VEHICLE_FALLBACK_SUBJECT), info
+
+
+async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision: dict[str, Any], *,
+                 stock_free: bool = False) -> MediaPick:
+    """MASTER_PLAN_4 F3 (agent/vehicle_media.py): the photo for this channel's version of the draft."""
+    return await photo_for_draft(
+        ctx.db.dealer_id, draft, channel, settings=ctx.settings, source=ctx.inventory,
+        theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
+        stock_free=stock_free)
 
 
 def _hands_off(result: dict[str, Any]) -> bool:

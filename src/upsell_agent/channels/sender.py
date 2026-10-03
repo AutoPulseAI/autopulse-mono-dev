@@ -25,7 +25,7 @@ never double-messaging a customer beats never losing a message.
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal
 
@@ -72,6 +72,10 @@ class SendRequest:
     # and whether it answers a message the customer just sent.
     purpose: Purpose = "marketing"
     is_reply: bool = True
+    # MASTER_PLAN_4 F3: the checked vehicle photo to attach (agent/vehicle_media.py). Stored on the claimed
+    # row with the text, so the idempotency key covers it: a retry resumes with the row's own photo and a
+    # re-run finds the row already sent - never a second (or a different) picture.
+    media_urls: list[str] = field(default_factory=list)
 
     @property
     def idempotency_key(self) -> str:
@@ -94,6 +98,8 @@ class SendOutcome:
     # The send check's decision (compliance/engine.py), and for HOLD when it may go.
     compliance: dict[str, Any] | None = None
     hold_until: str | None = None
+    # MASTER_PLAN_4 F3: the photo this message carries (or would have).
+    media_urls: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -130,8 +136,12 @@ class Sender:
                 return self._outcome("unknown", req, existing, why, reason="previous attempt died mid-send")
             why.append(f"Already processed as '{existing.get('status')}'; not sending again.")
             return self._outcome("duplicate", req, existing, why, reason=f"already {existing.get('status')}")
+        media = list(req.media_urls)
         if existing:
             row_id = existing["_id"]
+            # The claimed row's photo, not whatever this run picked (MASTER_PLAN_4 F3).
+            media = list(existing.get("media_urls") or [])
+            req = replace(req, media_urls=media)
             why.append("Resuming a claimed send that never reached the provider.")
         else:
             try:
@@ -140,6 +150,8 @@ class Sender:
                 why.append("Another worker claimed this send first; not sending.")
                 return SendOutcome("duplicate", key, req.channel, reason="claimed concurrently", reasoning=why)
             row_id = inserted.inserted_id
+        if media:
+            why.append(f"With the vehicle's photo: {', '.join(media)}")
 
         async def finish(status: SendStatus, **fields: Any) -> SendOutcome:
             await messages.update_one({"_id": row_id}, {"$set": {"status": status, **fields}})
@@ -189,6 +201,7 @@ class Sender:
                     OutboundMessage(
                         dealer_id=req.dealer_id, lead_id=req.lead_id, customer_id=req.customer_id,
                         channel=req.channel, to=to, text=req.text, subject=req.subject, idempotency_key=key,
+                        media_urls=tuple(media),
                     )
                 )
             except ChannelSendError as exc:
@@ -234,6 +247,8 @@ class Sender:
             "channel": req.channel, "to": to, "text": req.text, "subject": req.subject, "status": status,
             "provider_id": provider_id, "idempotency_key": req.idempotency_key, "turn_id": req.turn_id,
             "is_fallback": req.is_fallback, "sent_at": at.isoformat(),
+            # MASTER_PLAN_4 F3: so the dealer's conversation screen can show the photo that went.
+            "media_urls": list(req.media_urls),
         }
         messages = dealer_scoped_db(req.dealer_id).collection(AI_MESSAGES_COLLECTION)
         last_error = ""
@@ -259,7 +274,7 @@ class Sender:
             "idempotency_key": req.idempotency_key, "direction": "outbound", "status": "queued",
             "lead_id": req.lead_id, "customer_id": req.customer_id, "turn_id": req.turn_id,
             "channel": req.channel, "text": req.text, "subject": req.subject, "is_fallback": req.is_fallback,
-            "shadow": req.shadow, "event_received_at": req.event_received_at, "created_at": clock.now(),
+            "media_urls": list(req.media_urls), "shadow": req.shadow, "event_received_at": req.event_received_at, "created_at": clock.now(),
             "attempts": 0,
         }
 
@@ -270,6 +285,7 @@ class Sender:
             message_id=str(row["_id"]) if row.get("_id") is not None else None, to=row.get("to"),
             provider_id=row.get("provider_id"), attempts=row.get("attempts", 0), reason=reason,
             platform_record_id=row.get("platform_record_id"), latency_ms=row.get("latency_ms"), reasoning=why,
+            media_urls=list(row.get("media_urls") or []),
         )
 
 
