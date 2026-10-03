@@ -216,7 +216,9 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         city=str(info.get("store_city") or "").strip() or None,
         state=str(info.get("store_state") or "").strip() or None,
         # Set by the dealer when they give their AI assistant a name; never invented (decision 150).
-        agent_name=str(info.get("ai_agent_name") or "").strip() or None,
+        # The CRM's Dealer Setup form saves the AI's name as `ai_bot_name` ("Bot Name"); `ai_agent_name` is
+        # the older field our dev seed used.
+        agent_name=str(info.get("ai_bot_name") or info.get("ai_agent_name") or "").strip() or None,
     )
 
 
