@@ -86,16 +86,21 @@ async def record_consent(
     return True
 
 
+# Newest first. Two entries written in the same instant (an open review and its resolution in one
+# request) tie on `recorded_at`; `_id` breaks the tie by insertion order, so the later one wins.
+_NEWEST_FIRST = [("recorded_at", -1), ("_id", -1)]
+
+
 async def latest(db: DealerScopedDatabase, customer_id: str, channel: str, consent_type: ConsentType) -> dict | None:
     rows = await db.collection(AI_CONSENT_COLLECTION).find(
         {"customer_id": customer_id, "channel": channel, "consent_type": consent_type}
-    ).sort("recorded_at", -1).to_list(1)
+    ).sort(_NEWEST_FIRST).to_list(1)
     return rows[0] if rows else None
 
 
 async def history(db: DealerScopedDatabase, customer_id: str) -> list[dict]:
     return await db.collection(AI_CONSENT_COLLECTION).find({"customer_id": customer_id}).sort(
-        "recorded_at", 1).to_list(None)
+        [("recorded_at", 1), ("_id", 1)]).to_list(None)
 
 
 def address_key(channel: str, value: str | None) -> str | None:
@@ -131,7 +136,7 @@ async def latest_opt_out(db: DealerScopedDatabase, customer_id: str | None, chan
         return None
     rows = await db.collection(AI_CONSENT_COLLECTION).find(
         {"$or": who, "channel": channel, "consent_type": "opt_out"}
-    ).sort("recorded_at", -1).to_list(1)
+    ).sort(_NEWEST_FIRST).to_list(1)
     return rows[0] if rows else None
 
 
