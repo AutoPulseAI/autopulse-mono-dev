@@ -3,6 +3,9 @@ import Link from "next/link";
 import { useCan } from "../../hooks/PermissionsContext";
 import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
+import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
+
+const AI_ALERT_COUNT_REFRESH_MS = 120_000;
 
 const Sidebar = ({ isOpen, onClose }) => {
   // All permission hooks must run unconditionally (same order every render)
@@ -27,6 +30,25 @@ const Sidebar = ({ isOpen, onClose }) => {
   const adminLinks = ["/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings"];
   const isAdminActive = adminLinks.includes(pathname);
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
+
+  // AI Assistant menu (app/dealer/ai/**), with the number of open AI alerts.
+  const canSeeAi = hasManageLeads || hasViewAssigned;
+  const isAiActive = pathname?.startsWith("/dealer/ai/");
+  const [aiOpen, setAiOpen] = useState(isAiActive);
+  const [aiAlertCount, setAiAlertCount] = useState(0);
+  useEffect(() => {
+    if (!canSeeAi) return undefined;
+    const loadCount = () => aiFetch("/api/dealer-ai/alerts?count_only=1")
+      .then((data) => setAiAlertCount(data.unhandled_count || 0))
+      .catch(() => setAiAlertCount(0)); // AI service down or no access: no badge
+    loadCount();
+    const timer = setInterval(loadCount, AI_ALERT_COUNT_REFRESH_MS);
+    window.addEventListener(ALERTS_CHANGED_EVENT, loadCount);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(ALERTS_CHANGED_EVENT, loadCount);
+    };
+  }, [canSeeAi]);
 
   // Helper function to add 'active' class
   const getLinkClass = (href) => {
@@ -108,6 +130,44 @@ const Sidebar = ({ isOpen, onClose }) => {
             <Link href={bookingHref} className={getLinkClass("/dealer/booking")}>
               <i className="fa-regular fa-calendar-check"></i>Appointments
             </Link>
+          </li>
+        )}
+
+        {canSeeAi && (
+          <li className="submenu">
+            <button
+              className={`nav-link submenu-toggle ${aiOpen ? "open" : ""}`}
+              onClick={() => setAiOpen(!aiOpen)}
+            >
+              <i className="fa-regular fa-message-bot"></i>AI Assistant
+              {aiAlertCount > 0 && !aiOpen && (
+                <span className="badge rounded-pill bg-danger ms-2">{aiAlertCount}</span>
+              )}
+              <i className={`fa-solid fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
+            </button>
+
+            {aiOpen && (
+              <ul className="submenu-list">
+                <li>
+                  <Link href="/dealer/ai/call-tasks" className={getLinkClass("/dealer/ai/call-tasks")}>
+                    <i className="fa-regular fa-phone"></i>Call Tasks
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/dealer/ai/alerts" className={getLinkClass("/dealer/ai/alerts")}>
+                    <i className="fa-regular fa-bell"></i>AI Alerts
+                    {aiAlertCount > 0 && (
+                      <span className="badge rounded-pill bg-danger ms-auto">{aiAlertCount}</span>
+                    )}
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/dealer/ai/settings" className={getLinkClass("/dealer/ai/settings")}>
+                    <i className="fa-regular fa-sliders"></i>AI Settings
+                  </Link>
+                </li>
+              </ul>
+            )}
           </li>
         )}
 

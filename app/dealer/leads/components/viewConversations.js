@@ -7,6 +7,7 @@ import EmailReplyModal from "./EmailReplyModal";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
+import AiLeadPanel from "../../ai/components/AiLeadPanel";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
 import { useUser } from "../../context/UserContext";
@@ -880,6 +881,8 @@ export default function ViewConversations({
                     </Row>
                   </div>
                 </div>
+                {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
+                {lead?._id && <AiLeadPanel key={lead._id} leadId={lead._id} />}
                 {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button

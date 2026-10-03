@@ -142,3 +142,6 @@ export function telHref(phone) {
   const digits = String(phone).replace(/[^\d+]/g, "");
   return digits ? `tel:${digits}` : null;
 }
+
+// Fired after an alert is marked handled, so the sidebar count refreshes.
+export const ALERTS_CHANGED_EVENT = "dealer-ai-alerts-changed";
