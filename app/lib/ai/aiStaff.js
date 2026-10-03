@@ -23,6 +23,8 @@ export const STAFF_OWNED_STATUSES = Object.freeze([
   // The manager outcomes after a visit (MASTER_PLAN_3 C5; Omnichannel PDF: "Sales Visit -> manager
   // outcome required").
   'Sold Pending', 'Sold Delivered', 'Unsold',
+  // MASTER_PLAN_4 D2 (SOLD PENDING PDF §2, §9): staff close a pending deal (or any lead) as lost.
+  'Closed Lost',
   // Staff marked a missed appointment: the AI runs the client's no-show messages (MASTER_PLAN_3 C5).
   'No Show',
 ]);
