@@ -73,6 +73,8 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         # the lead's current visit/booking state (for wording that matches a real booking, decision 60).
         "visit_offer": decision.get("visit_offer"),
         "visit": decision.get("visit"),
+        # MASTER_PLAN_4 A1: the lead bucket's intent and word-track emphasis (blueprint §2) - language only.
+        "bucket": decision.get("bucket"),
         # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
         # that we're checking back as they asked.
         # MASTER_PLAN_3 C4: Touch 1's required opening and closing, and the cadence touch's theme.

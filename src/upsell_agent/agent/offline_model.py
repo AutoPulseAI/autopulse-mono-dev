@@ -275,6 +275,7 @@ _PREFER_NOW = re.compile(r"\b(now|right now|now is (?:fine|good)|let'?s do it|go
 _PREFER_LATER = re.compile(r"\b(later|tomorrow|morning|when you open|when (?:you'?re|you are) open|business hours|"
                            r"have the team|team can|wait)\b", re.IGNORECASE)
 _VISIT = re.compile(r"\b(come (?:in|by|see|look)|stop by|swing by|test ?drive|see it in person|visit|"
+                    r"bring (?:it|her|the car|my car|the truck) in|"
                     r"book (?:a|an) (?:time|appointment|visit)|schedule (?:a|an) (?:time|appointment|visit))\b",
                     re.IGNORECASE)
 # Turning down a visit offer (MASTER_PLAN_3 B4 item 4). Only read when our last message
@@ -628,11 +629,25 @@ def _confirm_text(confirm: dict[str, Any]) -> str:
     return f"Just to confirm, your {confirm.get('label', 'detail').lower()} is {shown}, right?"
 
 
+# MASTER_PLAN_4 A1: the first reply's line for each lead bucket's word track (blueprint §2), no numbers,
+# no approval, no trade value, no question.
+_BUCKET_LINES = {
+    "credit": "Our team can walk you through your financing options and what you'd need to get started.",
+    "trade_in": "We'd be glad to take a proper look at your car and get you an accurate, in-person number.",
+    "general": "",
+}
+
+
 def _visit_offer_text(visit_offer: dict[str, Any]) -> str:
     """MASTER_PLAN_3 B4 item 3: 2-3 concrete times, grounded in the offer's
     own value_proposition, never a vague "when would you like to come in?".
     Exactly one "?" (it counts as one question, MASTER_PLAN_3 Bq/B4 decision
     107): the lead-in is a statement, not its own question."""
+    if visit_offer.get("service_request"):
+        # MASTER_PLAN_4 F2: a service visit is requested, not booked - ask for their day/time, offer none.
+        reason = visit_offer.get("value_proposition") or ""
+        return (f"Want to bring it in{f' {reason}' if reason else ''}? Just tell me the day and time that suit "
+                "you, and I'll pass it to our service team.")
     times = [t["display"] for t in visit_offer.get("times") or []]
     choices = (", or ".join(times) if len(times) <= 1
               else ", ".join(times[:-1]) + f", or {times[-1]}")
@@ -797,6 +812,12 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
                           else "What's a good phone number for the visit?")
         body = f"{f'{answered} ' if answered else ''}Got it - {visit.get('display')} works. {field_question}"
         why = f"The customer picked a time, but we're missing their {visit['ask_contact']} before it can be booked."
+    elif (request := visit.get("service_request") or {}).get("passed_this_turn"):
+        # MASTER_PLAN_4 F2: passed to the service team with notes - never "booked" or "confirmed".
+        body = (f"{f'{answered} ' if answered else ''}Thanks, {name} - I've passed {request.get('display')} to our "
+                "service team with your notes; they'll confirm the exact time with you.")
+        why = "A service visit request was passed to the team with notes (no booking: MASTER_PLAN_4 F2)."
+        promises = [*promises, "The service team will confirm the exact time."]
     if touch := payload.get("touch"):
         # MASTER_PLAN_3 C4: a scheduled cadence touch, not a reply to anything.
         if touch.get("fixed_text"):
@@ -815,6 +836,15 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         if (cut := body.find(marker)) > 0:
             tail, body = " " + body[cut:], body[:cut].rstrip()
         core = re.sub(r"^(?:Thanks for reaching out!|Thanks!)\s*", "", body.removeprefix(opener).strip()).strip()
+        # MASTER_PLAN_4 A1: one line in the bucket's word track (blueprint §2), after the answers and before
+        # any ask, when it fits the first reply's three segments.
+        line = _BUCKET_LINES.get((payload.get("bucket") or {}).get("name"))
+        if line and len(f"{touch1['intro']} {line} {core} {touch1.get('ending') or ''}{tail}") <= TOUCH1_SMS_MAX:
+            asks_at = core.find("?")
+            cut = core.rfind(". ", 0, asks_at) + 2 if asks_at > 0 and core.rfind(". ", 0, asks_at) > 0 else (
+                0 if asks_at > 0 else len(core))
+            core = " ".join(p for p in (core[:cut].strip(), line, core[cut:].strip()) if p)
+            why += f" Bucket {payload['bucket']['name']}: its word-track line."
         pieces = [touch1["intro"], core, touch1.get("ending") or ""]
         body = " ".join(piece for piece in pieces if piece) + tail
         why = f"{touch1['why']} {why}"

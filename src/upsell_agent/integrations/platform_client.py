@@ -111,6 +111,17 @@ class StubPlatformClient:
         doc = await messages.find_one({"idempotency_key": message["idempotency_key"]})
         return str(doc["_id"])
 
+    async def record_note(self, dealer_id: str, note: dict[str, Any]) -> str:
+        """MASTER_PLAN_4 F2: a staff-only note on the lead's conversation (a service request and its notes),
+        never sent to the customer. Stub only: the platform's notes route needs a staff login, and there's
+        no internal one for this service yet (stream_A1.md, open items), so the live client has none."""
+        messages = dealer_scoped_db(dealer_id).collection(DEV_PLATFORM_MESSAGES_COLLECTION)
+        await messages.update_one(
+            {"idempotency_key": note["idempotency_key"]},
+            {"$setOnInsert": {**note, "is_note": True, "recorded_at": clock.now()}}, upsert=True)
+        doc = await messages.find_one({"idempotency_key": note["idempotency_key"]})
+        return str(doc["_id"])
+
     async def update_message_status(self, dealer_id: str, provider_id: str, status: str) -> bool:
         result = await dealer_scoped_db(dealer_id).collection(DEV_PLATFORM_MESSAGES_COLLECTION).update_one(
             {"provider_id": provider_id}, {"$set": {"delivery_status": status, "status_at": clock.now()}}

@@ -25,7 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, lifecycle
+from upsell_agent.agent import cadence, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -156,6 +156,11 @@ async def run_turn(
     lead = await find_lead(db, lead_id)
     customer = await find_customer(db, customer_id)
     lead_state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) if lead_id else None
+    # MASTER_PLAN_4 A1: the lead's sales bucket (blueprint §2) - set on its first turn, moved by a clear change
+    # of intent in a reply, or picked by the demo keyword (which then isn't answered as a question).
+    lead_state, inbound_text = await lead_bucket.apply_to_turn(
+        db, lead_id=lead_id, customer_id=customer_id, lead=lead, lead_state=lead_state, trigger=trigger,
+        inbound_text=inbound_text, demo_keywords=settings.demo_bucket_keywords, source_message_id=source_message_id)
     ctx = TurnContext(
         db=db, platform=deps.platform, settings=settings, tracer=tracer, lead=lead, customer=customer,
         lead_state=lead_state, source_message_id=source_message_id or f"lead:{lead_id}",
@@ -289,6 +294,9 @@ async def run_turn(
             await _notify_team_at_opening(db, lead_id, result)
         if sent is not None and sent.status in ("sent", "duplicate") and not shadow:
             await _notify_team_of_booking(db, lead_id, decision)
+            # MASTER_PLAN_4 F2: a service visit is requested, not booked - the team gets the request and notes.
+            await service_request.notify_team(db, deps.platform, dealer_id=dealer_id, lead_id=lead_id,
+                                              customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):

@@ -24,7 +24,7 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence
+from upsell_agent.agent import cadence, lead_bucket, service_request
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
@@ -211,6 +211,14 @@ async def _visit_and_booking(
         plan = plan_visit(profile=profile, extraction=extraction, conversation=conversation,
                           active_booking=active_booking, built_times=[], booked_this_turn=False, now=now)
         return visit_ctx, plan
+
+    # MASTER_PLAN_4 F2 (client, scope Q16): a service visit is requested with notes, never booked here.
+    if service_request.is_service_visit(profile):
+        said = [text] + [m.get("text") or "" for m in (state.context_pack or {}).get("working_memory", [])
+                         if m.get("direction") == "inbound"]
+        return service_request.plan(profile=profile, extraction=extraction, conversation=conversation, text=text,
+                                    customer_texts=said, dealer=dealer, now=now, hold=hold,
+                                    after_hours_blocking=after_hours_blocking)
 
     # No active booking: is the customer's message a pick against what we just offered, or the
     # email/phone we asked for to book a time they already picked?
@@ -513,6 +521,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["after_hours"] = after_hours.as_dict()
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
+    # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
+    decision["bucket"] = lead_bucket.for_compose(ctx.lead_state, profile.values(include_stale=True))
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]

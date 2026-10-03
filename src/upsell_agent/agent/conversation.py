@@ -27,7 +27,7 @@ those drafts.
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -97,6 +97,11 @@ class VisitState(BaseModel):
     # 1 while the offered times are kept on the table for one extra reply (decision 115).
     held_over: int = 0
     why: str | None = None
+    # MASTER_PLAN_4 F2 (client, scope Q16): a service visit is offered by asking which day and time suit
+    # them, never with booked times. True while our last offer asked that.
+    service_ask: bool = False
+    # The service request passed to the team ({requested, display, notes, at}); no booking is made.
+    service_request: dict[str, Any] | None = None
 
 
 class NotInterestedState(BaseModel):
@@ -145,8 +150,8 @@ class ConversationState(BaseModel):
     def awaiting_visit_pick(self) -> bool:
         """Our last reply offered specific visit times (agent/visit_offer.py
         reads the customer's next message against them, in code, not via Extract)."""
-        return bool(self.visit and self.visit.offered_times and self.visit.offered_turn == self.turn
-                    and self.turn > 0)
+        return bool(self.visit and (self.visit.offered_times or self.visit.service_ask)
+                    and self.visit.offered_turn == self.turn and self.turn > 0)
 
 
 def _key(text: str) -> str:

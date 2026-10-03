@@ -3,6 +3,11 @@ every qualified or partly-qualified lead is offered a visit instead of being
 handed to staff, up to 3 attempts, each with a different angle. Every lead
 type gets it (decision 106: sales, trade-in, service and general).
 
+MASTER_PLAN_4 F2 (client, scope Q16): a SERVICE visit is offered but never
+booked in this SOW. Its offer (`service=True`) carries no times: it asks
+which day and time suit them, and agent/service_request.py passes their
+answer to the service team with notes.
+
 A pure function of the turn (like agent/after_hours.py): the profile, the
 conversation state's `visit` record, what Extract read, and the times Decide
 already built with tools/booking_tool.py (building them, and any booking
@@ -63,6 +68,8 @@ class VisitOfferPlan:
     followup_due: str | None = None  # ISO date
     # 3rd decline with a staff-only question still open (B0.13 decision 64, B4 item 8).
     handoff: bool = False
+    # MASTER_PLAN_4 F2: a service visit - ask for a preferred day/time, offer no times, book nothing.
+    service_request: bool = False
     why: str = ""
 
     def as_dict(self) -> dict[str, Any]:
@@ -161,6 +168,7 @@ def plan_visit(
     booked_this_turn: bool,
     now: datetime,
     same_attempt: bool = False,
+    service: bool = False,
 ) -> VisitOfferPlan:
     """`active_booking`: tools/booking_tool.find_active_booking()'s result,
     read fresh this turn. `built_times`: the offer already built with
@@ -183,7 +191,9 @@ def plan_visit(
         why = "The visit is already booked: no more offers."
         return VisitOfferPlan(record=({**record.model_dump(), "why": why} if conversation.visit else None), why=why)
 
-    just_offered = bool(record.offered_times) and record.offered_turn == conversation.turn and conversation.turn > 0
+    # A service offer asked for a day/time instead of naming times (MASTER_PLAN_4 F2): still "just offered".
+    just_offered = (bool(record.offered_times or record.service_ask) and record.offered_turn == conversation.turn
+                    and conversation.turn > 0)
     if just_offered and declines_visit(extraction):
         objection = str(extraction.get("visit_objection") or "none")
         objections = [*record.objections, objection] if objection != "none" else list(record.objections)
@@ -210,7 +220,8 @@ def plan_visit(
         # the next angle (architecture §15 decision 115).
         if record.held_over:
             why = "The times offered went unanswered twice: they come off the table."
-            return VisitOfferPlan(record={**record.model_dump(), "offered_times": [], "held_over": 0, "why": why},
+            return VisitOfferPlan(record={**record.model_dump(), "offered_times": [], "service_ask": False,
+                                          "held_over": 0, "why": why},
                                   why=why)
         why = "The customer answered something else: the times offered stay on the table for one more reply."
         return VisitOfferPlan(record={**record.model_dump(), "offered_turn": conversation.turn + 1, "held_over": 1,
@@ -220,7 +231,7 @@ def plan_visit(
     if record.declined and conversation.turn - record.declined_turn < PARKED_FOR_REPLIES:
         return VisitOfferPlan(why=f"Declined last at reply #{record.declined_turn}: parked for "
                                   f"{PARKED_FOR_REPLIES} replies, not offered again yet.")
-    if not built_times:
+    if not built_times and not service:
         return VisitOfferPlan(why="Not eligible for a visit offer yet, or there's nothing to offer.")
 
     attempt = record.attempts + 1
@@ -228,8 +239,13 @@ def plan_visit(
                                                                        else None)
     angle, value_prop = _angle_for_attempt(attempt, last_objection, profile)
     why = f"Offering a visit (attempt {attempt} of {MAX_ATTEMPTS}, angle: {angle})."
-    new_record = VisitState(attempts=attempt, angles_used=[*record.angles_used, angle], offered_times=built_times,
-                            offered_turn=conversation.turn + 1, declined=False, stopped=False,
-                            objections=record.objections, followup_due=None, why=why)
-    return VisitOfferPlan(fire=True, attempt=attempt, angle=angle, value_proposition=value_prop, times=built_times,
-                          record=new_record.model_dump(), why=why)
+    if service:
+        why = (f"Offering a service visit (attempt {attempt} of {MAX_ATTEMPTS}, angle: {angle}): asking which day "
+               "and time suit them - no times, no booking (MASTER_PLAN_4 F2).")
+    new_record = VisitState(attempts=attempt, angles_used=[*record.angles_used, angle],
+                            offered_times=[] if service else built_times, offered_turn=conversation.turn + 1,
+                            declined=False, stopped=False, objections=record.objections, followup_due=None,
+                            service_ask=service, why=why)
+    return VisitOfferPlan(fire=True, attempt=attempt, angle=angle, value_proposition=value_prop,
+                          times=[] if service else built_times, record=new_record.model_dump(),
+                          service_request=service, why=why)

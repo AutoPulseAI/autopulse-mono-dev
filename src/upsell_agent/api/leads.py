@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, lifecycle
+from upsell_agent.agent import cadence, lead_bucket, lifecycle
 from upsell_agent.api.auth import require_internal_auth
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
@@ -82,7 +82,12 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
                     if cadence_state.started_at else None)
     return {
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
-                 "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value},
+                 "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value,
+                 # MASTER_PLAN_4 A1: the sales bucket (blueprint §2) and the one it started in, for reporting.
+                 "bucket": state.get("bucket"), "original_bucket": state.get("original_bucket")},
+        "bucket": lead_bucket.for_api(state),
+        # MASTER_PLAN_4 F2: service visits passed to the team as requests (never booked in this SOW).
+        "service_requests": [{**r, "noticed_at": _iso(r.get("noticed_at"))} for r in state.get("service_requests") or []],
         # MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py), its
         # opportunity clock (never reset), a dated next step, and how it got here.
         "cadence": cadence_view,

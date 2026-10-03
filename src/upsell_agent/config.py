@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     # Plan 1's single 24h switch to the other channel instead - the rollback if a dealer's cadence
     # has to be stopped (decision 153).
     cadence_enabled: bool = Field(default=True, alias="CADENCE_ENABLED")
+    # MASTER_PLAN_4 A1 (client SMS demo): a brand-new conversation whose first SMS is exactly CREDIT,
+    # TRADE or GENERAL is put in that lead bucket (agent/lead_bucket.py), and the keyword isn't treated
+    # as the customer's question. A testing aid only: off for real dealers.
+    demo_bucket_keywords: bool = Field(default=False, alias="DEMO_BUCKET_KEYWORDS")
 
     # Sending (architecture §9): provider attempts per message, with the delay
     # doubling from send_retry_base_s between attempts.
