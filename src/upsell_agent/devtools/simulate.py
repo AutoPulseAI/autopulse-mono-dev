@@ -240,7 +240,7 @@ async def send_reply(dealer_id: str, lead_id: str, channel: str, text: str, enqu
 # The platform's staff-owned statuses (aidmvcs-be-dev lib/ai/aiStaff.js STAFF_OWNED_STATUSES): moving a
 # lead to one of these sends the AI `lead-paused` with this exact reason (notifyAiOfStaffStatus).
 STAFF_OWNED_STATUSES = ("Appointment Booked", "Visited", "Sold", "DND", "Managerial Review",
-                        "Sold Pending", "Sold Delivered", "Unsold", "No Show")
+                        "Sold Pending", "Sold Delivered", "Unsold", "No Show", "Closed Lost")
 # The manager's outcome after a Sales Visit (MASTER_PLAN_3 C5).
 MANAGER_OUTCOMES = ("Sold Pending", "Sold Delivered", "Unsold")
 

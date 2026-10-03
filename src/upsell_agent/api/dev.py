@@ -190,7 +190,7 @@ async def simulate_reply(body: Reply, request: Request) -> dict:
 class StaffStatus(BaseModel):
     dealer_id: str
     status: Literal["Appointment Booked", "Visited", "Sold", "DND", "Managerial Review",
-                    "Sold Pending", "Sold Delivered", "Unsold"]
+                    "Sold Pending", "Sold Delivered", "Unsold", "Closed Lost"]
     # Visited only: how the visit ended (MASTER_PLAN_3 C5); sent with it as one event.
     manager_outcome: Literal["Sold Pending", "Sold Delivered", "Unsold"] | None = None
     # Appointment Booked only: dealer-local ISO date-time ("2026-10-08T15:00").

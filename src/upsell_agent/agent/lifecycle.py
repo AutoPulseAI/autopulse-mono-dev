@@ -17,6 +17,8 @@ Appointment Set.
     sales_visit                      staff set "Visited" / "Sold"
     opted_out                        every channel stopped, or staff set "DND"
     closed_lost                      Day 91 with nothing superseding it, or staff closed it
+    sold_pending / sold_delivered    the manager outcomes (MASTER_PLAN_4 D1-D3: scheduler/sold_lifecycles.py)
+    closed_no_longer_owns            a Sold - Delivered customer said they no longer own the vehicle (D7)
 
 Rules (Omnichannel PDF §2):
 - One controlling workflow: entering a stage cancels the scheduled work the old
@@ -71,6 +73,9 @@ class Stage(StrEnum):
     SOLD_DELIVERED = "sold_delivered"
     OPTED_OUT = "opted_out"
     CLOSED_LOST = "closed_lost"
+    # MASTER_PLAN_4 D3 (stream A3; SOLD-DELIVERED PDF §1, §10): the second of "the ONLY two CLOSED opportunity
+    # statuses". Reached only from Sold - Delivered, when the customer confirms they no longer own the vehicle.
+    CLOSED_NO_LONGER_OWNS = "closed_no_longer_owns"
 
 
 # The client's own names (Omnichannel PDF §1; "Closed - Lost" from the 1 Oct answers).
@@ -86,11 +91,13 @@ STAGE_LABELS: dict[Stage, str] = {
     Stage.SOLD_DELIVERED: "Sold - Delivered",
     Stage.OPTED_OUT: "Opted Out / Suppressed",
     Stage.CLOSED_LOST: "Closed - Lost",
+    Stage.CLOSED_NO_LONGER_OWNS: "Closed - No Longer Owns",
 }
 
 # §11, lower wins. Closed - Lost is terminal (0): nothing outranks it.
 PRIORITY: dict[Stage, int] = {
     Stage.CLOSED_LOST: 0,
+    Stage.CLOSED_NO_LONGER_OWNS: 0,
     Stage.OPTED_OUT: 1,
     Stage.SALES_VISIT: 2,
     Stage.SOLD_PENDING: 2,
@@ -107,6 +114,9 @@ PRIORITY: dict[Stage, int] = {
 WORKING = frozenset({Stage.NEW_LEAD, Stage.NO_CONTACT, Stage.CONTACT_NO_ACTION, Stage.SPECIFIC_FOLLOWUP})
 # Day 91 closes only these (an appointment still pending supersedes it).
 CLOSABLE_AT_DAY_91 = WORKING
+# MASTER_PLAN_4 D3 (SOLD-DELIVERED PDF §1: "No other opportunity status is treated as CLOSED"). Sold - Delivered
+# is NOT in here: it is an active ownership lifecycle until the customer no longer owns the vehicle.
+CLOSED_STAGES = frozenset({Stage.CLOSED_LOST, Stage.CLOSED_NO_LONGER_OWNS})
 OPPORTUNITY_DAYS = 91
 HISTORY_LIMIT = 50
 
@@ -136,11 +146,20 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     "appointment_no_show_close": frozenset({Stage.NO_SHOW}),
     # MASTER_PLAN_3 C2: the staff call task behind the 60-minute connection timer follows the touches
     # it belongs to (the working stages; a call is also the dated step's own channel).
-    "call_task": WORKING,
+    "call_task": WORKING | {Stage.SOLD_PENDING, Stage.SOLD_DELIVERED},
     "next_action": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     "next_action_check": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     # A handoff check reminds the customer staff have their message: fine in any open stage.
     "handoff_check": WORKING | {Stage.APPOINTMENT_SET, Stage.NO_SHOW},
+    # MASTER_PLAN_4 (stream A3, scheduler/sold_lifecycles.py). The call task above now also follows a SOLD PENDING
+    # touch (SOLD PENDING PDF §3, §8: every touch is CALL + TEXT + EMAIL) and a service outreach (SOLD-DELIVERED
+    # PDF §12: "human tasks are for ... service opportunities").
+    "sold_pending_touch": frozenset({Stage.SOLD_PENDING}),
+    "post_delivery_checkin": frozenset({Stage.SOLD_DELIVERED}),
+    "ownership_anniversary": frozenset({Stage.SOLD_DELIVERED}),
+    "service_outreach": frozenset({Stage.SOLD_DELIVERED}),
+    # Customer-level, not vehicle-level (§7): it outlives one vehicle's Closed - No Longer Owns.
+    "birthday": frozenset({Stage.SOLD_DELIVERED, Stage.CLOSED_NO_LONGER_OWNS}),
 }
 
 # What the platform's staff statuses mean here (aidmvcs-be-dev lib/ai/aiStaff.js
@@ -155,6 +174,9 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     "Sold Pending": "sold_pending",
     "Sold Delivered": "sold_delivered",
     "Unsold": "unsold",
+    # MASTER_PLAN_4 D2 (SOLD PENDING PDF §2, §9: "Dealer determines transaction is lost -> CLOSED LOST"): staff
+    # close a lead as lost, arriving the same way "Sold Pending" does (aidmvcs-be-dev lib/ai/aiStaff.js).
+    "Closed Lost": "staff_closed_lost",
 }
 # Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
 UNSOLD_FOLLOWUP_DAYS = 90
@@ -260,10 +282,21 @@ def transition(current: Stage | None, event: Event) -> Transition:
         return _stay("already_started", "The lead already has a stage.", event)
     if current is None:
         current = Stage.NEW_LEAD
-    if current == Stage.CLOSED_LOST:
-        return _stay("closed", "The lead is Closed - Lost: nothing moves it (a new lead starts its own workflow).",
-                     event)
+    if current in CLOSED_STAGES:
+        return _stay("closed", f"The lead is {STAGE_LABELS[current]}: nothing moves it (a new lead starts its own "
+                               "workflow).", event)
 
+    if kind == "no_longer_owns":
+        # MASTER_PLAN_4 D7 (SOLD-DELIVERED PDF §8 "NO"): only a Sold - Delivered opportunity closes this way.
+        if current != Stage.SOLD_DELIVERED:
+            return _stay("not_delivered", "Only a Sold - Delivered opportunity closes as No Longer Owns.", event)
+        return Transition(Stage.CLOSED_NO_LONGER_OWNS, "no_longer_owns",
+                          why or "The customer no longer owns the vehicle", event)
+    if kind == "staff_closed_lost" and current == Stage.SOLD_DELIVERED:
+        # MASTER_PLAN_4 D3: Sold - Delivered stays active "until the associated vehicle ownership ends" (§2); Closed
+        # Lost is for a transaction that won't complete (SOLD PENDING PDF §2), which a delivered one already has.
+        return _stay("delivered", "Sold - Delivered isn't closed as lost: it closes when the customer no longer owns "
+                                  "the vehicle.", event)
     if kind == "staff_closed_lost":
         return Transition(Stage.CLOSED_LOST, "staff_closed_lost", why or "Staff closed the lead as lost", event)
     if kind == "opted_out":
@@ -273,7 +306,7 @@ def transition(current: Stage | None, event: Event) -> Transition:
     if current == Stage.OPTED_OUT:
         if kind == "opted_in":
             back = stage_of(event.detail.get("previous")) or Stage.CONTACT_NO_ACTION
-            if back in (Stage.OPTED_OUT, Stage.CLOSED_LOST):
+            if back == Stage.OPTED_OUT or back in CLOSED_STAGES:
                 back = Stage.CONTACT_NO_ACTION
             return Transition(back, "opted_back_in", why or "The customer opted back in", event)
         return _stay("opted_out", "Opted out: only an opt-in moves the lead on.", event)
@@ -287,8 +320,9 @@ def transition(current: Stage | None, event: Event) -> Transition:
             return _stay("already_sold", f"Already {STAGE_LABELS[current]}.", event)
         return Transition(new, kind, why or f"Manager outcome: {STAGE_LABELS[new]}", event)
     if current in (Stage.SOLD_PENDING, Stage.SOLD_DELIVERED):
-        # SOLD PENDING is "not an unsold lead" and never enters the Short-Term cadence (SOLD PENDING PDF §1);
-        # its own workflow is MASTER_PLAN_4's. Until then nothing in the lead workflow moves it.
+        # SOLD PENDING is "not an unsold lead" and never enters the Short-Term cadence (SOLD PENDING PDF §1); its
+        # own workflow (MASTER_PLAN_4 D2) runs from scheduler/sold_lifecycles.py. Nothing in the lead workflow moves
+        # it: only the two outcomes above, staff Closed Lost and an opt-out.
         return _stay("sold", f"{STAGE_LABELS[current]}: the lead workflow doesn't apply.", event)
     if kind == "unsold":
         # Client, 1 Oct 2026 (scope Q2): back to follow-up for 90 days; a visit is contact, so the stage is
@@ -501,8 +535,10 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         fields["day91_anchor"] = now
     elif setup.get("opportunity_created_at"):
         fields["day91_anchor"] = setup["opportunity_created_at"]
-    if new == Stage.CLOSED_LOST:
-        fields.update(opportunity_closed_at=now, closed_reason=event.detail.get("closed_reason") or result.rule)
+    if new in CLOSED_STAGES:
+        # MASTER_PLAN_4 D3 (SOLD-DELIVERED PDF §14): closed_at / closed_reason on both closed statuses.
+        fields.update(opportunity_closed_at=now, closed_at=now,
+                      closed_reason=event.detail.get("closed_reason") or result.rule)
     update: dict[str, Any] = {"$set": fields, "$push": {"stage_history": {"$each": [entry], "$slice": -HISTORY_LIMIT}},
                               "$setOnInsert": {"lead_id": lead_id, "created_at": now, "status": "active",
                                                **({"customer_id": customer_id} if customer_id else {})}}
@@ -513,6 +549,13 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
     if new != current:
         cancelled = await cancel_stale_work(db, lead_id, new, reason=f"stage changed to {STAGE_LABELS[new]}")
     out.update(stage=new.value, label=STAGE_LABELS[new], cancelled=cancelled)
+    if new != current:
+        # MASTER_PLAN_4 D1/D8 (stream A3): a manager outcome starts exactly one lifecycle and stops the others, and
+        # every lead opening or closing recalculates the customer's ACTIVE / INACTIVE status.
+        from upsell_agent.scheduler import sold_lifecycles
+        out.update(await sold_lifecycles.on_stage_change(
+            db, lead_id, current, new, event, lead=lead,
+            customer_id=customer_id or state.get("customer_id")))
     return out
 
 

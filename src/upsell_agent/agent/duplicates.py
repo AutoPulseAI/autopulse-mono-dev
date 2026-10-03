@@ -32,7 +32,8 @@ from upsell_agent.integrations.mongodb import (
 
 # Stages after which a lead's workflow is over: a newer lead doesn't link to it.
 _FINISHED = {lifecycle.Stage.CLOSED_LOST.value, lifecycle.Stage.OPTED_OUT.value,
-             lifecycle.Stage.SOLD_PENDING.value, lifecycle.Stage.SOLD_DELIVERED.value}
+             lifecycle.Stage.SOLD_PENDING.value, lifecycle.Stage.SOLD_DELIVERED.value,
+             lifecycle.Stage.CLOSED_NO_LONGER_OWNS.value}
 
 
 def _digits(value: Any) -> str:

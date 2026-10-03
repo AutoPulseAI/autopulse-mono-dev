@@ -204,11 +204,13 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
         KIND_NEXT_ACTION_CHECK,
         KIND_RESUME,
         KIND_VISIT_FOLLOWUP,
+        SOLD_LIFECYCLE_KINDS,
     )
 
     flt: dict[str, Any] = {}
     if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, *APPOINTMENT_KINDS):
+                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, *APPOINTMENT_KINDS,
+                            *SOLD_LIFECYCLE_KINDS):  # MASTER_PLAN_4 (stream A3)
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
         flt.update(CHANNEL_SWITCHES)

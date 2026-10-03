@@ -1,0 +1,18 @@
+name: SOLD - DELIVERED Day-3 check-in and service request
+stage: 404
+description: 'MASTER_PLAN_4 D1, D3, D4 (SOLD-DELIVERED PDF §2-§4; client scope Q16). Sold Pending, then Sold Delivered: SOLD PENDING stops at once and the ownership lifecycle starts (Day-3 check-in and anniversary year 1 planned). On Day 3 the check-in offers the first recommended service in words (no interval invented). The customer says yes with a day: the service team gets a request with notes - nothing is booked.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dana Delivered, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - staff_status: {lead: d, status: "Sold Pending"}
+  - expect_followup: {lead: d, kind: sold_pending_touch, status: pending, timeout_s: 20}
+  - staff_status: {lead: d, status: "Sold Delivered"}
+  - expect_lead: {lead: d, stage: sold_delivered, status: active, timeout_s: 20}
+  - expect_no_followup: {lead: d, kind: sold_pending_touch, status: pending}
+  - expect_followup: {lead: d, kind: post_delivery_checkin, status: pending, timeout_s: 20}
+  - expect_followup: {lead: d, kind: ownership_anniversary, status: pending, timeout_s: 20}
+  - advance_clock: {dealer: A, to: "Fri 10:05"}
+  - expect_followup: {lead: d, kind: post_delivery_checkin, status: sent, timeout_s: 30}
+  - reply: {lead: d, text: "Yes please, Saturday morning works"}
+  - expect_lead: {lead: d, stage: sold_delivered, staff_notice: service_request, timeout_s: 30}

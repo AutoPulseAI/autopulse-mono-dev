@@ -145,10 +145,14 @@ TRIGGER_APPOINTMENT = "appointment_step"
 # MASTER_PLAN_3 C2 (Omnichannel PDF §2): the staff call task behind the 60-minute connection timer
 # (agent/call_tasks.py). It opens for staff only if nobody has made contact by then.
 KIND_CALL_TASK = "call_task"
+# MASTER_PLAN_4 (stream A3, scheduler/sold_lifecycles.py): the SOLD PENDING touch and the ownership lifecycle's
+# messages. Kept in step with sold_lifecycles.LIFECYCLE_KINDS (a unit test checks it).
+SOLD_LIFECYCLE_KINDS = ("sold_pending_touch", "post_delivery_checkin", "ownership_anniversary", "birthday",
+                        "service_outreach")
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
-                                      *APPOINTMENT_KINDS]}}
+                                      *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -758,6 +762,10 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
                    KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
                    KIND_CADENCE_TOUCH: _fire_cadence_touch_locked,
                    KIND_CALL_TASK: _fire_call_task_locked}.get(doc.get("kind"), _fire_locked)
+    if doc.get("kind") in SOLD_LIFECYCLE_KINDS:
+        # MASTER_PLAN_4 (stream A3): SOLD PENDING and the ownership lifecycle fire from their own module.
+        from upsell_agent.scheduler import sold_lifecycles
+        fire_locked = sold_lifecycles.fire
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)

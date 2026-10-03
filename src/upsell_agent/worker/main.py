@@ -29,6 +29,7 @@ from upsell_agent.worker.jobs import (
     fire_due_followups,
     sweep_maintenance,
     sweep_recalls,
+    plan_birthdays,
 )
 from upsell_agent.worker.queue import make_enqueue, make_queue
 
@@ -102,7 +103,9 @@ def settings() -> dict[str, Any]:
                       CronJob(close_expired_leads, cron="7 * * * *", timeout=600),
                       # MASTER_PLAN_4 D5/D6 (stream A4): recall and maintenance monitors, hourly.
                       CronJob(sweep_recalls, cron="23 * * * *", timeout=900),
-                      CronJob(sweep_maintenance, cron="41 * * * *", timeout=900)],
+                      CronJob(sweep_maintenance, cron="41 * * * *", timeout=900),
+                      # MASTER_PLAN_4 D7 (stream A3): birthdays whose DealerVault date arrived late, daily.
+                      CronJob(plan_birthdays, cron="17 6 * * *", timeout=600)],
         # SAQ's sweep re-delivers a job it moved to "active" but never started
         # (seen twice in 300 during the Stage 12 burst test: a reply waited
         # 30-40s). Every 10s instead of 60s bounds that wait; a re-delivered
