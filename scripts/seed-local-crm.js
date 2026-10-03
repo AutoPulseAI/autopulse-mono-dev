@@ -144,7 +144,7 @@ export function assertLocal(uri) {
 
 async function reset(db) {
   const dealerFilter = { $in: [DEMO_DEALER_ID, new mongoose.Types.ObjectId(DEMO_DEALER_ID)] };
-  for (const name of ['users', 'emailaccounts', 'vehicles', 'customers', 'deals', 'leads', 'bookings', 'roles']) {
+  for (const name of ['users', 'emailaccounts', 'vehicles', 'customers', 'deals', 'leads', 'bookings', 'roles', 'permissions']) {
     await db.collection(name).deleteMany(SEED_TAG);
   }
   await db.collection('leads').deleteMany({ dealer_id: DEMO_DEALER_ID });
@@ -272,14 +272,63 @@ export async function seed() {
       'data.bookingId': booking._id, 'data.booking': { booking_date: day, booking_time: time } } });
   }
 
+  await seedRoles();
+
   return { dealer: DEMO_DEALER_ID, staff: staff.length, vehicles: STOCK.length,
     leads: DEMO_LEADS.length, customers: DEMO_LEADS.length + HISTORY.length, bookings: bookingsSpec.length };
+}
+
+// The CRM hides every menu item behind a permission (app/hooks/AdminPermissionsContext.js `useCan`, read from
+// the user's Role by /api/auth/me). Without roles the dealer portal shows no Leads, Conversations, Booking,
+// Settings or AI Assistant. The names are the ones the CRM's own code checks.
+const DEALER_PERMISSIONS = [
+  'Manage Leads', 'View Assigned Leads', 'Assign Leads', 'Manage Customer Conversation', 'Manage Follow-up setting',
+  'Manage Message Template', 'Manage Subscription', 'Manage Support Ticket', 'Manage Email Accounts',
+  'Manage Employee', "Manage Employee's  Role", 'Manage Account Information', 'manage_account_info',
+];
+const ADMIN_PERMISSIONS = ['Manage Agency', 'Manage Dealer', 'manage_dealer', 'Manage Contact Us', 'Manage Pages',
+  'Manage Subscription', 'Manage Support Ticket', 'Manage Employee', "Manage Employee's  Role"];
+const ROLES = [
+  // [name, entity, permissions (null = all of that entity), users]
+  ['Dealer Owner', 'dealer', null, ['owner']],
+  ['Sales Manager', 'dealer', ['Manage Leads', 'Assign Leads', 'Manage Customer Conversation',
+    'Manage Follow-up setting', 'Manage Message Template', 'Manage Support Ticket'], ['maya']],
+  ['Sales Agent', 'dealer', ['View Assigned Leads', 'Manage Customer Conversation'], ['sam']],
+  ['Platform Admin', 'admin', null, ['admin']],
+];
+
+export async function seedRoles() {
+  const db = mongoose.connection.db;
+  const now = new Date();
+  const oid = (id) => new mongoose.Types.ObjectId(id);
+  await db.collection('roles').deleteMany(SEED_TAG);
+  await db.collection('permissions').deleteMany(SEED_TAG);
+  const byEntity = { dealer: DEALER_PERMISSIONS, admin: ADMIN_PERMISSIONS };
+  const permissionIds = { dealer: {}, admin: {} };
+  for (const [entity, names] of Object.entries(byEntity)) {
+    for (const permission_name of names) {
+      const { insertedId } = await db.collection('permissions').insertOne({
+        permission_name, entity, group: 'Local seed', ...SEED_TAG, createdAt: now, updatedAt: now });
+      permissionIds[entity][permission_name] = insertedId;
+    }
+  }
+  for (const [name, entity, names, users] of ROLES) {
+    const permissions = (names || byEntity[entity]).map((n) => permissionIds[entity][n]);
+    const { insertedId } = await db.collection('roles').insertOne({
+      name, entity, permissions, entity_id: oid(ids.owner), ...SEED_TAG, createdAt: now, updatedAt: now });
+    await db.collection('users').updateMany({ _id: { $in: users.map((u) => oid(ids[u])) } }, { $set: { role: insertedId } });
+  }
+  return { roles: ROLES.length, permissions: DEALER_PERMISSIONS.length + ADMIN_PERMISSIONS.length };
 }
 
 async function main() {
   assertLocal(MONGODB_URI);
   await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 3_000 });
   try {
+    if (process.argv.includes('--roles-only')) {
+      console.log('Roles and permissions seeded:', await seedRoles());
+      return;
+    }
     if (process.argv.includes('--if-missing') && await User.exists({ _id: DEMO_DEALER_ID })) {
       console.log(`Demo dealer already seeded in ${MONGODB_URI} (make crm-seed to start over).`);
       return;
