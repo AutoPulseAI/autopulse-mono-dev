@@ -6,7 +6,8 @@
 // conversation record (Email, ai_sent_via_platform) and the stubbed provider outbox (dev_provider_outbox).
 //
 //   1. New lead Days 1-7: Touch 1's structure, Touch 2 "{FirstName}?" at +3h, Touches 3-8 one a day with the
-//      PDF's themes, text AND email, a 60-minute call-task timer after each touch, cancelled by a reply.
+//      PDF's themes, text AND email, a staff call task after each touch (60-minute timer or the Days 1-7
+//      daily tasks), cancelled by a reply.
 //   2. Days 8-30 weekly, Days 31-90 monthly, Day 91 -> Closed - Lost.
 //   3. A reply stops queued touches; "call me Friday" fires on Friday; no reply in 24h -> No Contact Made ->
 //      Short-Term again without resetting the Day 91 clock.
@@ -624,10 +625,18 @@ async function scenario(t0) {
     const timer = turn && await callTimerAfter(L.a, turn);
     timers.push({ n: w.n, timer, sent: w.m?.ok?.[0]?.sent_at });
   }
-  check('1i. every touch starts a 60-minute call-task timer, which opens a staff call task with no reply',
-    timers.every((t) => t.timer && Math.abs(t.timer.due_at - new Date(t.sent) - 3_600_000) < 120_000
-      && ['activated', 'superseded'].includes(t.timer.status)),
-    timers.map((t) => `T${t.n} ${t.timer ? `${t.timer.status} ${localParts(t.timer.due_at).hm}` : 'none'}`).join(', '));
+  // Stream T (Days 1-7 call tasks, on by default): a morning and an afternoon call task open for staff each of
+  // Days 1-7, and a lead gets at most 2 call tasks a day, so a touch on a day that already has its daily tasks
+  // starts no 60-minute timer of its own. Each touch is covered one way or the other (stream S).
+  const dailyDays = new Set((await col('ai_call_tasks').find({ lead_id: String(L.a.lead._id), source: 'daily' }).toArray())
+    .map((t) => localDate(t.created_at)));
+  const timed = (t) => t.timer && Math.abs(t.timer.due_at - new Date(t.sent) - 3_600_000) < 120_000
+    && ['activated', 'superseded'].includes(t.timer.status);
+  const coveredByDaily = (t) => !t.timer && t.sent && dailyDays.has(localDate(t.sent));
+  check('1i. every touch is followed by a staff call task: its 60-minute timer, or that day\'s Days 1-7 call tasks',
+    timers.every((t) => timed(t) || coveredByDaily(t)),
+    timers.map((t) => `T${t.n} ${t.timer ? `${t.timer.status} ${localParts(t.timer.due_at).hm}`
+      : coveredByDaily(t) ? 'daily tasks' : 'none'}`).join(', '));
   const tasksA = await col('ai_call_tasks').countDocuments({ lead_id: String(L.a.lead._id) });
   info('1i. staff call tasks opened for lead A', `${tasksA}`);
 
