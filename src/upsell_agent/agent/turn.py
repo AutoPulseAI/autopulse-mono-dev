@@ -831,6 +831,10 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         after_hours=_after_hours_record(result),
         visit=_visit_record(result, lead_state),
         shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
+        # PLAN_4 stream X3: what each vehicle was shown as, and the shown vehicle the customer referred to.
+        shown_details={r.get("vin"): r for r in (result.get("context_pack") or {}).get("inventory") or []
+                       if r.get("vin")},
+        focus_vin=((result.get("context_pack") or {}).get("referred_vehicle") or {}).get("vin"),
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
         human_contact=_human_contact_record(result),
