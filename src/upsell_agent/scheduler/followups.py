@@ -109,8 +109,9 @@ logger = logging.getLogger(__name__)
 
 FOLLOWUP_DELAY = timedelta(hours=24)
 STUCK_CLAIM_AFTER = timedelta(minutes=5)
-# A follow-up whose lead is busy (a turn is running) is retried this much later.
-BUSY_RETRY_AFTER = timedelta(seconds=30)
+# A follow-up whose lead is busy (a turn is running) is retried this much later: the worker queues its own
+# fire_due_followups run for then (worker/jobs.py), so it never waits for the next minute's cron (stream S).
+BUSY_RETRY_AFTER = timedelta(seconds=5)
 # Per cron run; anything left waits for the next minute.
 FIRE_BATCH_LIMIT = 500
 # Follow-ups fired at once by one worker (no AI call: a lookup and a send).

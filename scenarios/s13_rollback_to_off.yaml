@@ -2,6 +2,8 @@ name: Rolling a dealer back to off stops the AI
 stage: 13
 description: Rollback is setting the dealer to off. The platform stops sending events (the customer's reply never reaches the AI), and the AI's pending follow-up is cancelled when it comes due instead of being sent.
 steps:
+  # Inside opening hours whatever day it really is (on a Sunday the nudge waited for Monday and never fell due).
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rory Rollback, comments: "Looking at a used Civic"}
   - wait_turns: {lead: r, count: 1, timeout_s: 15}
   - expect_followup: {lead: r, kind: cadence_touch, status: pending}

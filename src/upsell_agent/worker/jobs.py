@@ -147,8 +147,24 @@ async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     lead's lock, so it never races a turn for the same lead."""
     settings = get_settings()
     redis = ctx["redis"]
-    return await followups.fire_due(
+    summary = await followups.fire_due(
         ctx["deps"], lock=lambda dealer_id, lead_id: lead_lock(redis, dealer_id, lead_id, settings.lead_lock_ttl_s))
+    if summary["results"].get("busy"):
+        summary["busy_retry"] = await _queue_busy_retry(ctx)
+    return summary
+
+
+async def _queue_busy_retry(ctx: dict[str, Any]) -> str | None:
+    """Follow-ups put back because their lead was busy fall due again in BUSY_RETRY_AFTER: run then, not at the
+    next minute's cron (stream S: a touch right after a turn waited up to 90 s). One run per retry window."""
+    worker = ctx.get("worker")
+    if worker is None:
+        return None
+    delay = followups.BUSY_RETRY_AFTER.total_seconds() + 1
+    at = int(time.time() + delay)
+    key = f"fire_due_followups:busy-retry:{at // max(1, int(delay))}"
+    await worker.queue.enqueue("fire_due_followups", key=key, scheduled=at, timeout=300)
+    return key
 
 
 async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
