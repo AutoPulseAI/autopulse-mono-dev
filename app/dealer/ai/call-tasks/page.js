@@ -23,7 +23,55 @@ const DONE_STATUS = {
   completed: { label: "Called", variant: "success" },
   dismissed: { label: "Dismissed", variant: "secondary" },
   cancelled: { label: "No longer needed", variant: "light" },
+  // Stream T: not completed by the end of its window (or of the agent's day).
+  missed: { label: "Missed", variant: "danger" },
 };
+const SLOT_LABELS = { morning: "Morning", afternoon: "Afternoon" };
+
+// Stream T: the Days 1-7 morning / afternoon call task, or the customer's own request.
+function WhyCell({ task }) {
+  return (
+    <td style={{ maxWidth: 260 }}>
+      {task.requested && (
+        <Badge bg="primary" className="d-inline-block mb-1">
+          <i className="fa-solid fa-user me-1" />Customer asked for a call
+        </Badge>
+      )}
+      {task.source === "daily" && (
+        <Badge bg="info" text="dark" className="d-inline-block mb-1">
+          Day {task.day} {(SLOT_LABELS[task.slot] || task.slot || "").toLowerCase()} call
+        </Badge>
+      )}
+      <small className="d-block">{task.reason}</small>
+    </td>
+  );
+}
+
+function MissedCounts({ missed }) {
+  if (!missed) return null;
+  return (
+    <div className="w_card">
+      <h3 className="w_card_title mb-0">Missed call tasks</h3>
+      <p className="text-secondary-light small">
+        Call tasks not completed by the end of their window, last {missed.days} days, by assigned salesperson.
+      </p>
+      {!missed.agents.length ? (
+        <p className="text-secondary-light mb-0">None missed.</p>
+      ) : (
+        <Table bordered size="sm" className="mb-0" style={{ maxWidth: 420 }}>
+          <tbody>
+            {missed.agents.map((row) => (
+              <tr key={row.agent_id || "none"}>
+                <td>{row.agent}</td>
+                <td className="text-end" style={{ width: 80 }}><Badge bg="danger">{row.missed}</Badge></td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </div>
+  );
+}
 // Calls started from this browser whose outcome isn't recorded yet survive a reload.
 const PENDING_KEY = "aiPendingCallTask";
 const REFRESH_MS = 60_000;
@@ -65,6 +113,7 @@ function CallTasksContent() {
   const { dealerParent } = useUser();
 
   const [tasks, setTasks] = useState([]);
+  const [missed, setMissed] = useState(null); // stream T: per-agent missed counts (Done tab)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -77,6 +126,7 @@ function CallTasksContent() {
     try {
       const data = await aiFetch(`/api/dealer-ai/call-tasks?view=${view}`);
       setTasks(data.tasks || []);
+      setMissed(data.missed_by_agent || null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -155,18 +205,20 @@ function CallTasksContent() {
 
         {error && <Alert variant="danger">{error}</Alert>}
         {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
+        {view === "done" && <MissedCounts missed={missed} />}
 
         <div className="w_card">
           {view === "open" && (
             <p className="text-secondary-light small">
-              The AI opens a call task when its text and email got no reply within an hour. Call the customer,
-              then record how it went.
+              The AI opens a call task when its text and email got no reply within an hour, and (if turned on in AI
+              Settings) a morning and an afternoon call for a new lead&apos;s first seven days. Call the customer,
+              then record how it went. A call not recorded by the end of its window is marked missed.
             </p>
           )}
           {view === "upcoming" && (
             <p className="text-secondary-light small">
-              A text or email just went out. If the customer doesn&apos;t reply by the time shown, the call moves to
-              &quot;To call now&quot;. A reply cancels it.
+              A text or email just went out, or the next daily call is coming up. If the customer doesn&apos;t reply
+              by the time shown, the call moves to &quot;To call now&quot;. A reply cancels it.
             </p>
           )}
 
@@ -203,12 +255,29 @@ function CallTasksContent() {
                         {task.status === "cancelled" && task.closed_reason && (
                           <small className="d-block text-secondary-light">{task.closed_reason}</small>
                         )}
+                        {task.missed_at && (
+                          <small className="d-block text-danger">
+                            {task.status === "missed" ? "Not called" : "Missed"} by {formatDateTime(task.due_by || task.missed_at)}
+                          </small>
+                        )}
                       </td>
                       <td>{callOutcomeLabel(task.outcome) || "-"}</td>
                       <td style={{ maxWidth: 320 }}><small>{task.note || "-"}</small></td>
-                      <td>{task.closed_by || (task.status === "cancelled" ? "AI" : "-")}</td>
-                      <td className="text-nowrap">{formatDateTime(task.closed_at)}</td>
                       <td>
+                        {task.closed_by || (task.status === "cancelled" ? "AI" : "-")}
+                        {task.status === "missed" && task.assigned_to && (
+                          <small className="d-block text-secondary-light">
+                            Assigned: {missed?.agents?.find((a) => a.agent_id === task.assigned_to)?.agent || "salesperson"}
+                          </small>
+                        )}
+                      </td>
+                      <td className="text-nowrap">{formatDateTime(task.closed_at)}</td>
+                      <td className="text-nowrap">
+                        {task.status === "missed" && (
+                          <Button size="sm" variant="outline-custom" className="me-1" onClick={() => recordOutcome(task)}>
+                            Record late call
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline-secondary" onClick={() => setDrawer(task)}>AI details</Button>
                       </td>
                     </tr>
@@ -227,14 +296,7 @@ function CallTasksContent() {
                           ? <span title={formatDateTime(task.opened_at)}>{fromNow(task.opened_at)}</span>
                           : <span title={formatDateTime(task.due_at)}>{fromNow(task.due_at)}</span>}
                       </td>
-                      <td style={{ maxWidth: 260 }}>
-                        {task.requested && (
-                          <Badge bg="primary" className="d-inline-block mb-1">
-                            <i className="fa-solid fa-user me-1" />Customer asked for a call
-                          </Badge>
-                        )}
-                        <small className="d-block">{task.reason}</small>
-                      </td>
+                      <WhyCell task={task} />
                       <td className="text-nowrap">
                         {view === "open" && (
                           <>

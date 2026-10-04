@@ -28,6 +28,7 @@ import { aiOwnsCustomerMessages } from './app/lib/appointmentReminderService.js'
 import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFailed } from './app/lib/bookingConflict.js';
 import { assignedOnlyScope, filterRowsToAssigned } from './app/lib/ai/assignedScope.js';
 import { hasAiPhotos, messagePhotoUrls } from './app/lib/ai/messagePhotos.js';
+import { dailyCallTasksUpdate, dailyCallTasksView, missedCountRows } from './app/lib/ai/aiCallTasks.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -452,4 +453,38 @@ test('a 409 full slot becomes a conflict with the next available and the day\'s 
     (err) => err instanceof BookingConflictError && err.slotConflict.nextAvailable.time === '11:00');
   await assert.rejects(throwIfStatusFailed({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }), /boom/);
   await throwIfStatusFailed({ ok: true });
+});
+
+// Stream T: the call outcome prompt books through aiFetch, whose error carries the status and body; a full slot
+// becomes the same conflict StatusModal shows (next available + the day's other times).
+test('the call outcome prompt turns a full slot from aiFetch into a conflict, other errors stay errors', () => {
+  const err = Object.assign(new Error('full'), { status: 409, body: {
+    error: 'slot_taken', message: 'That slot is full. The next available is Friday, Oct 9 at 11:00 AM.',
+    next_available: { date: '2026-10-09', time: '11:00' }, alternatives: ['10:00', '13:00'] } });
+  const conflict = bookingConflictFrom(err.status, err.body, { date: '2026-10-09', time: '10:00' });
+  assert.equal(conflict.nextAvailable.time, '11:00');
+  assert.deepEqual(conflict.alternatives, ['13:00']);
+  assert.equal(bookingConflictFrom(403, { error: 'forbidden' }, { date: '2026-10-09', time: '10:00' }), null);
+});
+
+// Stream T: the Days 1-7 call tasks setting and the per-agent missed counts.
+test('daily call tasks: on unless the dealer turned them off; only on/off saved', () => {
+  assert.equal(dailyCallTasksView({}), 'on');
+  assert.equal(dailyCallTasksView({ dealer_account_information: { ai_daily_call_tasks: 'off' } }), 'off');
+  assert.equal(dailyCallTasksView({ dealer_account_information: { ai_daily_call_tasks: 'ON' } }), 'on');
+  assert.deepEqual(dailyCallTasksUpdate('off'), { set: { 'dealer_account_information.ai_daily_call_tasks': 'off' } });
+  assert.ok(dailyCallTasksUpdate(true).error);
+  assert.ok(dailyCallTasksUpdate('maybe').error);
+});
+
+test('missed call task counts per agent, named, biggest first; assigned-only staff see their own', () => {
+  const agents = [{ assigned_to: 'u1', missed: 2 }, { assigned_to: null, missed: 1 }, { assigned_to: 'u2', missed: 5 },
+    { assigned_to: 'u3', missed: 0 }];
+  assert.deepEqual(missedCountRows(agents, { u1: 'Sam', u2: 'Ava' }), [
+    { agent_id: 'u2', agent: 'Ava', missed: 5 },
+    { agent_id: 'u1', agent: 'Sam', missed: 2 },
+    { agent_id: null, agent: 'Not assigned', missed: 1 },
+  ]);
+  assert.deepEqual(missedCountRows(agents, {}, 'u1'), [{ agent_id: 'u1', agent: 'Unknown user', missed: 2 }]);
+  assert.deepEqual(missedCountRows(null), []);
 });

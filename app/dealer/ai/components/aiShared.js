@@ -16,6 +16,7 @@ export async function aiFetch(url, options = {}) {
   if (!res.ok) {
     const error = new Error(data.error || data.message || `Request failed (${res.status})`);
     error.status = res.status;
+    error.body = data; // e.g. a full appointment slot's next_available / alternatives (app/lib/bookingConflict.js)
     throw error;
   }
   return data;

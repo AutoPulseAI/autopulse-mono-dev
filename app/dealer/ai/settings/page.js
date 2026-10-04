@@ -1,7 +1,7 @@
 "use client";
 // AI Settings for the dealership: AI mode (off / shadow / on), vehicle photos in
-// texts (MMS), appointment capacity per slot (stream R), and the opening hours the AI works to (read-only; they come from the
-// dealer account).
+// texts (MMS), the Days 1-7 daily call tasks (stream T), appointment capacity per slot (stream R), and the opening
+// hours the AI works to (read-only; they come from the dealer account).
 //   /dealer/ai/settings
 
 import { useEffect, useState } from "react";
@@ -46,6 +46,7 @@ export default function AiSettingsPage() {
   const [settings, setSettings] = useState(null);
   const [mode, setMode] = useState("off");
   const [mms, setMms] = useState(false);
+  const [daily, setDaily] = useState("on"); // stream T: Days 1-7 call tasks
   const [capacity, setCapacity] = useState(capacityForm(null));
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -58,6 +59,7 @@ export default function AiSettingsPage() {
         setSettings(data);
         setMode(data.ai_mode);
         setMms(data.mms_enabled);
+        setDaily(data.ai_daily_call_tasks || "on");
         setCapacity(capacityForm(data.booking_capacity));
       } catch (err) {
         setError(err.message);
@@ -71,7 +73,7 @@ export default function AiSettingsPage() {
   const capacityInvalid = CAPACITY_TYPES.some(([type]) => CAPACITY_FIELDS.some(([field, , min, max]) =>
     capacityProblem(capacity[type][field], min, max)));
   const changed = settings && (mode !== settings.ai_mode || mms !== settings.mms_enabled
-    || Object.keys(capacityChanged).length > 0);
+    || daily !== settings.ai_daily_call_tasks || Object.keys(capacityChanged).length > 0);
   const setCapacityField = (type, field, value) =>
     setCapacity((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
 
@@ -87,11 +89,13 @@ export default function AiSettingsPage() {
       const body = {};
       if (mode !== settings.ai_mode) body.ai_mode = mode;
       if (mms !== settings.mms_enabled) body.mms_enabled = mms;
+      if (daily !== settings.ai_daily_call_tasks) body.ai_daily_call_tasks = daily;
       if (Object.keys(capacityChanged).length) body.booking_capacity = capacityChanged;
       const data = await aiFetch("/api/dealer-ai/settings", { method: "PUT", body: JSON.stringify(body) });
       setSettings(data);
       setMode(data.ai_mode);
       setMms(data.mms_enabled);
+      setDaily(data.ai_daily_call_tasks || "on");
       setCapacity(capacityForm(data.booking_capacity));
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -169,6 +173,26 @@ export default function AiSettingsPage() {
                     </div>
                     <Form.Check type="switch" id="ai-mms-switch" disabled={!canChange}
                       label={mms ? "On" : "Off"} checked={mms} onChange={(e) => setMms(e.target.checked)} />
+                  </div>
+                </div>
+
+                <div className="w_card">
+                  <div className="d-flex">
+                    <div className="me-auto">
+                      <h3 className="w_card_title mb-0">Daily call tasks (Days 1-7)</h3>
+                      <p className="text-secondary-light mb-0">
+                        <small>
+                          When on, staff get two call tasks a working day for a new lead&apos;s first seven days: one
+                          in the morning (opening to noon) and one in the afternoon (noon to closing), only while the
+                          lead is still in its first follow-up. They go to the lead&apos;s assigned salesperson.
+                          The call task an hour after each unanswered text and email stays either way. A lead gets
+                          at most two call tasks a day.
+                        </small>
+                      </p>
+                    </div>
+                    <Form.Check type="switch" id="ai-daily-call-tasks-switch" disabled={!canChange}
+                      label={daily === "on" ? "On" : "Off"} checked={daily === "on"}
+                      onChange={(e) => setDaily(e.target.checked ? "on" : "off")} />
                   </div>
                 </div>
 
