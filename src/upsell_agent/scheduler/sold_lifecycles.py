@@ -136,17 +136,31 @@ def _name(customer: dict | None, lead: dict | None) -> str | None:
 async def sold_vehicle(db: DealerScopedDatabase, lead: dict | None, customer_id: str | None,
                        lead_id: str) -> dict[str, Any]:
     """What was sold on this opportunity, from what we actually have: the lead's own vehicle fields, else the
-    model the customer told us they wanted. Never guessed: a part we don't have stays None."""
-    from upsell_agent.slots.store import current_facts
-
+    customer's DealerVault deal for this opportunity (the deal / delivered vehicle). Never the model the customer
+    asked about (PLAN_4 stream X2, audit 3: they may have bought something else) and never guessed: a part we don't
+    have stays None, and the messages then say "your new vehicle"."""
     data = (lead or {}).get("data") or {}
     vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
     out = {k: vehicle.get(k) or data.get(k) or (lead or {}).get(k) for k in ("vin", "year", "make", "model")}
-    if not out["model"] and customer_id:
-        for fact in await current_facts(db, customer_id, lead_id):
-            if fact.get("path") == "interest.model" and fact.get("value"):
-                out["model"] = str(fact["value"])
+    if not out["model"] and customer_id and (deal := await _opportunity_deal(db, customer_id, lead_id)):
+        found = {k: deal.get(k) or deal.get(k.capitalize()) for k in ("year", "make", "model")}
+        if found["model"]:
+            out = {"vin": out["vin"] or deal.get("vin"), **{k: found[k] or None for k in found}}
     return out
+
+
+async def _opportunity_deal(db: DealerScopedDatabase, customer_id: str, lead_id: str) -> dict | None:
+    """The customer's latest DealerVault deal dated from this opportunity's start on (as service_events reads the
+    VIN), or None."""
+    from upsell_agent.integrations.customer360 import get_deal_date
+
+    deals = await db.collection(PLATFORM_DEALS_COLLECTION).find(
+        {"customer_id": {"$in": [as_object_id(customer_id), customer_id]}}).to_list(200)
+    state = await _state(db, lead_id)
+    since = _aware(state.get("opportunity_created_at"))
+    since = since - timedelta(days=1) if since else None
+    dated = [(at, d) for d in deals if (at := get_deal_date(d)) and (since is None or _aware(at) >= since)]
+    return max(dated, key=lambda p: _aware(p[0]))[1] if dated else None
 
 
 # --- D1: the manager outcome starts exactly one lifecycle ------------------------------------------------------------

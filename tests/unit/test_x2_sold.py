@@ -19,6 +19,7 @@ from tests.unit.test_sold_lifecycles import (  # noqa: F401  (live_dealer is a f
     _state,
     live_dealer,
 )
+from upsell_agent import clock
 from upsell_agent.integrations.mongodb import (
     AI_CALL_TASKS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
@@ -221,3 +222,32 @@ async def test_a_plain_sold_pending_reply_passes_and_other_stages_are_not_affect
     assert ok["checks"]["sold_pending_no_delay_or_invented_status"] is True
     other = await _guard_reply("Your financing was approved.", "contact_made_no_next_action")
     assert "sold_pending_no_delay_or_invented_status" not in other["checks"]
+
+
+# --- Item 16: name the vehicle actually sold, never the one the customer asked about -------------------------------
+
+@flow
+async def test_the_check_in_never_names_the_model_the_customer_only_asked_about(mongo):
+    created = await _new_lead()  # "Looking for a new Toyota RAV4"
+    await _staff(created, "Sold Delivered")
+    before = len(await _outbox(mongo, created))
+    await _fire(mongo, created, "post_delivery_checkin")
+    texts = [m["text"] for m in (await _outbox(mongo, created))[before:]]
+    assert texts and all("RAV4" not in t for t in texts)
+    assert any("your new vehicle" in t for t in texts)
+
+
+@flow
+async def test_the_check_in_names_the_delivered_vehicle_from_the_deal(mongo):
+    from upsell_agent.integrations.mongodb import PLATFORM_DEALS_COLLECTION, as_object_id
+    created = await _new_lead()
+    today = clock.now()
+    await mongo[PLATFORM_DEALS_COLLECTION].insert_one({
+        "dealer_id": DEALER, "deal_number": "D7", "customer_id": as_object_id(created["customer_id"]),
+        "vin": "4T1BF1FK5CU000001", "Year": "2025", "Make": "Toyota", "Model": "Camry",
+        "Contract Date": f"{today.month}/{today.day}/{today.year}"})
+    await _staff(created, "Sold Delivered")
+    before = len(await _outbox(mongo, created))
+    await _fire(mongo, created, "post_delivery_checkin")
+    texts = [m["text"] for m in (await _outbox(mongo, created))[before:]]
+    assert any("your new 2025 Toyota Camry" in t for t in texts) and all("RAV4" not in t for t in texts)

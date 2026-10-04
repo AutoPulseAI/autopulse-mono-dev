@@ -89,3 +89,7 @@ the fix.
   an unverified delivery date / document / approval / financing status -> one rewrite, then the template. Decide no
   longer drops the Sold Pending hold when another hold (a possible opt-out) applies - both go to Compose.
   Tests: `test_x2_sold.py::test_an_ai_reply_on_a_sold_pending_lead_*`, `test_a_plain_sold_pending_reply_*`.
+- **16. The vehicle actually sold.** `sold_lifecycles.sold_vehicle` no longer falls back to the model the customer
+  asked about (`interest.model`): the lead's own vehicle fields, else the customer's DealerVault deal for this
+  opportunity (Year / Make / Model / VIN), else nothing - the check-in says "your new vehicle" and the anniversary
+  "your vehicle". Tests: `test_x2_sold.py::test_the_check_in_*` (both failed before).
