@@ -429,7 +429,7 @@ test('a call outcome is shaped for the AI: follow-up, opt-out scope, and checks'
 
 test('booking-changed is an AI event type and its payload matches the AI service model', () => {
   assert.ok(AI_EVENT_TYPES.includes('booking-changed'));
-  assert.deepEqual([...BOOKING_CHANGES], ['cancelled', 'moved']);
+  assert.deepEqual([...BOOKING_CHANGES], ['cancelled', 'moved', 'confirmed']);  // + 'confirmed': PLAN_4 stream X2
   assert.deepEqual(buildBookingChangedEvent({ leadId: LEAD, dealerId: DEALER, bookingId: 'b1', change: 'moved',
     eventId: 'booking-b1-moved-1' }),
   { event_id: 'booking-b1-moved-1', dealer_id: DEALER, lead_id: LEAD, booking_id: 'b1', change: 'moved' });
@@ -442,7 +442,11 @@ test('a booking update is a cancel, a move, or nothing the AI acts on', () => {
   assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: undefined, dateChanged: true }), 'moved');
   assert.equal(bookingChangeKind({ previousStatus: 'confirmed', newStatus: 'confirmed', dateChanged: true }), 'moved');
   assert.equal(bookingChangeKind({ previousStatus: 'cancelled', newStatus: undefined, dateChanged: true }), null);
-  assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: 'confirmed', dateChanged: false }), null);
+  // PLAN_4 stream X2: staff confirming it is news to the AI (it marks the appointment confirmed, no Y / N).
+  assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: 'confirmed', dateChanged: false }), 'confirmed');
+  assert.equal(bookingChangeKind({ previousStatus: 'confirmed', newStatus: 'confirmed', dateChanged: false }), null);
+  assert.equal(bookingChangeKind({ previousStatus: 'cancelled', newStatus: 'confirmed', dateChanged: false }), null);
+  assert.ok(buildBookingChangedEvent({ leadId: 'l', dealerId: 'd', eventId: 'e', change: 'confirmed' }));
 });
 
 test('notifyAiOfBookingChange sends booking-changed for a live dealer, nothing when off', async () => {

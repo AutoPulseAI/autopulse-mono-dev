@@ -105,8 +105,9 @@ export async function notifyAiOfStaffStatus({
 // Staff cancelled or moved a booking in the CRM (PUT /api/booking, or the status screen taking a lead off
 // "Appointment Booked"): the AI cancels or re-plans the appointment's messages at once instead of when the
 // next one falls due (PLAN_4 stream S). Never for the AI's own booking changes (the caller checks), so there
-// is no loop. The AI re-reads the booking itself; `change` is 'cancelled' or 'moved'.
-export const BOOKING_CHANGES = Object.freeze(['cancelled', 'moved']);
+// is no loop. The AI re-reads the booking itself; `change` is 'cancelled', 'moved' or 'confirmed' (PLAN_4 stream
+// X2: staff confirmed it, e.g. by phone - the AI marks the appointment confirmed and skips its day-before Y / N).
+export const BOOKING_CHANGES = Object.freeze(['cancelled', 'moved', 'confirmed']);
 
 export function buildBookingChangedEvent({ leadId, dealerId, bookingId, change, eventId }) {
   if (!leadId || !dealerId || !eventId || !BOOKING_CHANGES.includes(change)) return null;
@@ -119,11 +120,14 @@ export function buildBookingChangedEvent({ leadId, dealerId, bookingId, change, 
   };
 }
 
-// What a booking update means for the AI: 'cancelled', 'moved' or null (nothing it acts on).
+// What a booking update means for the AI: 'cancelled', 'moved', 'confirmed' or null (nothing it acts on). A move
+// wins over a confirmation in the same save (the AI re-plans; a confirmed booking at its new time stays confirmed).
 export function bookingChangeKind({ previousStatus, newStatus, dateChanged }) {
   if (newStatus === 'cancelled') return previousStatus === 'cancelled' ? null : 'cancelled';
   const active = (newStatus ?? previousStatus) !== 'cancelled';
-  return dateChanged && active ? 'moved' : null;
+  if (dateChanged && active) return 'moved';
+  if (newStatus === 'confirmed' && previousStatus !== 'confirmed' && previousStatus !== 'cancelled') return 'confirmed';
+  return null;
 }
 
 export async function notifyAiOfBookingChange({
