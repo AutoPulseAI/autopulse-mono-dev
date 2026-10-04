@@ -56,6 +56,7 @@ from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTrace
 from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import (
     TRIGGER_CADENCE_TOUCH,
+    TRIGGER_NEXT_ACTION,
     cancel_cadence_touch,
     cancel_resume,
     cancel_visit_followup,
@@ -368,11 +369,13 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
 
 
 #: Turns whose message the client requires on every permitted channel at once (Omnichannel PDF p.10).
-#: The staff call task (C2) is a separate timer behind these, so that means text + email together.
-OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH})
+#: The staff call task (C2) is a separate timer behind these, so that means text + email together. The dated
+#: check-back of Contact Made - Specific Follow-Up is one too (p.10 "Applies Everywhere Follow-Up Occurs").
+OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION})
 #: Turns whose sent message starts the 60-minute connection timer behind a staff call task (MASTER_PLAN_3 C2):
-#: Touch 1 and every cadence touch, not a reply to something the customer just wrote.
-CALL_TASK_TRIGGERS = frozenset({"lead_created", TRIGGER_CADENCE_TOUCH})
+#: Touch 1, every cadence touch and the specific follow-up's check-back (Global Human Call Task Escalation
+#: Rule, "Where This Rule Applies"), not a reply to something the customer just wrote.
+CALL_TASK_TRIGGERS = frozenset({"lead_created", TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION})
 
 
 def _hold_cadence(decision: dict[str, Any]) -> str | None:

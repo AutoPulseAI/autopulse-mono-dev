@@ -1145,8 +1145,8 @@ async def _fire_next_action_locked(db: DealerScopedDatabase, doc: dict, deps: An
     await _close(db, doc, status, reason=log["outcome"], fired_at=clock.now(), turn_id=log["turn_id"])
     planned = doc.get("next_action") or {}
     if planned.get("call_requested"):
-        # The customer asked for a call on this date. Staff call tasks (C2) are skipped for now, so the
-        # team gets a notice instead; the AI's text/email above covers the rest of the touch. A customer
+        # The customer asked for a call on this date: the team gets a notice now, on top of the 60-minute
+        # call-task timer the check-back's text + email started (agent/turn.py CALL_TASK_TRIGGERS). A customer
         # who has since said "don't call me" gets no call request: staff see "do not call" (decision 144).
         no_calls = await consent.is_opted_out(db, doc["customer_id"], "voice")
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": {
