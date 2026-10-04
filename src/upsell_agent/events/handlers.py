@@ -392,7 +392,8 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             if not event.shadow:
                 await lifecycle.apply(db, lead_id, [lifecycle.Event(
                     "opted_in", source="customer_start", reason=f"The customer replied START on {channel}",
-                    detail={"previous": state.get("previous_stage")})], lead=lead, customer_id=event.customer_id)
+                    detail={"previous": state.get("previous_stage"),  # X2: delivered -> never back to Sold Pending
+                            "delivered": bool(state.get("sold_delivered_at"))})], lead=lead, customer_id=event.customer_id)
             await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_in",
                                reason=f"The customer replied START on {channel}: opted back in. The carrier sends "
                                       "its own confirmation, so nothing is sent.",
@@ -722,7 +723,8 @@ async def _opt_back_in(db: DealerScopedDatabase, event: InboundMessageEvent, lea
         await lifecycle.apply(db, lead_id, [lifecycle.Event(
             "opted_in", source="customer_opt_in_phrase",
             reason=f"The customer opted back in ({opt_in.matched!r}): {', '.join(reversed_)}",
-            detail={"previous": state.get("previous_stage")})], lead=lead, customer_id=event.customer_id)
+            detail={"previous": state.get("previous_stage"),  # X2: delivered -> never back to Sold Pending
+                            "delivered": bool(state.get("sold_delivered_at"))})], lead=lead, customer_id=event.customer_id)
     return reversed_
 
 

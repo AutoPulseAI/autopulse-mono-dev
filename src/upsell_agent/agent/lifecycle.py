@@ -188,6 +188,8 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     # Staff closed the lead as lost (client, 1 Oct 2026), e.g. a Sold Pending deal that fell through.
     "Closed - Lost": "staff_closed_lost",
 }
+# PLAN_4 stream X2: the outcomes only staff set, which always take effect (transition()).
+STAFF_OUTCOMES = frozenset({"sold_pending", "sold_delivered", "staff_closed_lost"})
 # Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
 UNSOLD_FOLLOWUP_DAYS = 90
 _STAFF_STATUS_REASON = re.compile(r'Staff moved the lead to "([^"]+)"')
@@ -292,6 +294,16 @@ def transition(current: Stage | None, event: Event) -> Transition:
         return _stay("already_started", "The lead already has a stage.", event)
     if current is None:
         current = Stage.NEW_LEAD
+    if kind in STAFF_OUTCOMES and current in (Stage.CLOSED_LOST, Stage.OPTED_OUT):
+        # PLAN_4 stream X2 (audit 3): a manager / staff outcome is a fact about the deal and always takes effect, even
+        # on a lead the AI had opted out (consent is untouched: every message still obeys it) or closed at Day 91 (the
+        # customer came back and bought on the same CRM lead). Closed - No Longer Owns stays terminal.
+        if kind == "staff_closed_lost":
+            if current == Stage.CLOSED_LOST:
+                return _stay("closed", "Already Closed - Lost.", event)
+            return Transition(Stage.CLOSED_LOST, "staff_closed_lost", why or "Staff closed the lead as lost", event)
+        new = Stage.SOLD_PENDING if kind == "sold_pending" else Stage.SOLD_DELIVERED
+        return Transition(new, kind, why or f"Manager outcome: {STAGE_LABELS[new]}", event)
     if current in CLOSED_STAGES:
         return _stay("closed", f"The lead is {STAGE_LABELS[current]}: nothing moves it (a new lead starts its own "
                                "workflow).", event)
@@ -318,6 +330,8 @@ def transition(current: Stage | None, event: Event) -> Transition:
             back = stage_of(event.detail.get("previous")) or Stage.CONTACT_NO_ACTION
             if back == Stage.OPTED_OUT or back in CLOSED_STAGES:
                 back = Stage.CONTACT_NO_ACTION
+            if back == Stage.SOLD_PENDING and event.detail.get("delivered"):
+                back = Stage.SOLD_DELIVERED  # stream X2: never SOLD PENDING again for a car already delivered
             return Transition(back, "opted_back_in", why or "The customer opted back in", event)
         return _stay("opted_out", "Opted out: only an opt-in moves the lead on.", event)
     if kind == "opted_in":

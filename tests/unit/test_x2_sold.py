@@ -91,3 +91,49 @@ async def test_staff_status_changes_run_under_the_lead_lock(mongo):
                                                              "lead_id": "lead-1"})
     assert paused["status"] == "requeued" and resumed["status"] == "requeued"
     assert queue.enqueued == ["handle_lead_paused", "handle_lead_resumed"]
+
+
+# --- Item 12: staff outcomes always apply -----------------------------------------------------------------------
+
+@pytest.mark.parametrize(("current", "kind", "expected"), [
+    ("opted_out", "sold_delivered", "sold_delivered"),
+    ("opted_out", "sold_pending", "sold_pending"),
+    ("opted_out", "staff_closed_lost", "closed_lost"),
+    ("closed_lost", "sold_delivered", "sold_delivered"),
+    ("closed_lost", "sold_pending", "sold_pending"),
+    ("closed_no_longer_owns", "sold_delivered", None),  # still terminal
+])
+def test_a_staff_outcome_takes_effect_on_an_opted_out_or_closed_lead(current, kind, expected):
+    from upsell_agent.agent import lifecycle
+    moved = lifecycle.transition(lifecycle.Stage(current), lifecycle.Event(kind, source="staff_status"))
+    assert (moved.stage.value if moved.stage else None) == expected
+
+
+def test_opting_back_in_never_restarts_sold_pending_for_a_delivered_car():
+    from upsell_agent.agent import lifecycle
+    back = lifecycle.transition(lifecycle.Stage.OPTED_OUT, lifecycle.Event(
+        "opted_in", detail={"previous": "sold_pending", "delivered": True}))
+    assert back.stage == lifecycle.Stage.SOLD_DELIVERED
+
+
+@flow
+async def test_sold_delivered_set_on_an_opted_out_lead_starts_ownership_and_keeps_the_opt_out(mongo):
+    from upsell_agent.agent import lifecycle
+    from upsell_agent.channels import consent
+    from upsell_agent.integrations.mongodb import AI_VEHICLE_OWNERSHIP_COLLECTION, dealer_scoped_db
+    created = await _new_lead()
+    await _staff(created, "Sold Pending")
+    db = dealer_scoped_db(DEALER)
+    for channel in ("sms", "email"):
+        await consent.set_channel_consent(db, created["customer_id"], channel, False, source="customer_stop",
+                                          lead_id=created["lead_id"])
+    await lifecycle.apply(db, created["lead_id"], [lifecycle.Event("opted_out", source="customer_stop")])
+    assert (await _state(mongo, created))["stage"] == "opted_out"
+    await _staff(created, "Sold Delivered")
+    state = await _state(mongo, created)
+    assert state["stage"] == "sold_delivered" and state["sold_delivered_at"]
+    assert await mongo[AI_VEHICLE_OWNERSHIP_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 1
+    assert await consent.is_opted_out(db, created["customer_id"], "sms")  # consent untouched
+    before = len(await _outbox(mongo, created))
+    await _fire(mongo, created, "post_delivery_checkin")
+    assert len(await _outbox(mongo, created)) == before  # and nothing reaches an opted-out customer

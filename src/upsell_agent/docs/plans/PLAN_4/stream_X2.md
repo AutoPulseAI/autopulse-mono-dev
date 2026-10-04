@@ -68,3 +68,7 @@ the fix.
   writing back the pre-send copy (a staff outcome's `ended_at` / `outcome` stands). With item 3's `planned_stage`,
   a SOLD PENDING call timer never opens after Sold Delivered / Closed Lost. Tests: `test_x2_sold.py` (race,
   stale timer, lock).
+- **12. Staff outcomes always apply.** `lifecycle.transition`: Sold Pending / Sold Delivered / Closed Lost set by
+  staff (`STAFF_OUTCOMES`) take effect on an Opted Out or Closed - Lost lead (Closed - No Longer Owns stays
+  terminal). Consent is untouched, so every message still obeys the opt-out. Opting back in after a delivery
+  returns to Sold - Delivered, never Sold Pending (`opted_in` carries `delivered`). Tests: `test_x2_sold.py`.
