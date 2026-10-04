@@ -345,6 +345,14 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"last_inbound_at": event.received_at}}
     )
+    if (not state.get("stage") and not state.get("last_turn_at") and not state.get("duplicate_of")
+            and not event.shadow):
+        # PLAN_4 stream X3 item 5: the AI first sees this lead through a reply (it was open before the dealer went
+        # live, or its lead-created event was lost). Its stage and opportunity clock start from the CRM lead's own
+        # creation date, so its cadence and its Day-91 close follow from where it stands, not from today.
+        await lifecycle.apply(db, lead_id, [lifecycle.Event("lead_created", source="first_seen_on_reply")],
+                              lead=lead, customer_id=event.customer_id)
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or state
 
     # Opt-outs, handled in code with no AI (architecture §5 step 3,
     # MASTER_PLAN_3 C1 item 3). A keyword stops its channel and the carrier

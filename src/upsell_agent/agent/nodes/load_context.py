@@ -29,6 +29,7 @@ from upsell_agent.agent.context_pack import (
     to_pack_message,
 )
 from upsell_agent.agent.conversation import load_conversation
+from upsell_agent.agent.history_sync import sync_lead_history
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import load_summary, summary_behind
 from upsell_agent.agent.templates import first_name
@@ -44,8 +45,9 @@ from upsell_agent.slots.profile import build_profile
 from upsell_agent.slots.requirements import lead_type_for
 from upsell_agent.slots.store import current_facts, fact_history
 
-# Only what the customer actually received, plus everything they sent.
-_THREAD = {"$or": [{"direction": "inbound"}, {"direction": "outbound", "status": "sent"}]}
+# Only what the customer actually received, plus everything they sent, plus staff's internal notes from the CRM
+# (PLAN_4 stream X3 item 5, agent/history_sync.py).
+_THREAD = {"$or": [{"direction": "inbound"}, {"direction": "outbound", "status": "sent"}, {"direction": "note"}]}
 
 
 async def load_profile(ctx: TurnContext, state: AgentState):
@@ -104,6 +106,20 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
     reasoning.append(f"Profile: {', '.join(f'{n} {s}' for s, n in sorted(states.items())) or 'empty'}; "
                      f"{filled} of {total} required details collected.")
 
+    if state.lead_id:
+        # PLAN_4 stream X3 item 5: staff replies and notes, CRM / n8n / campaign texts, and (first time) the
+        # lead's CRM history before the AI saw it, into the thread, marked by author.
+        try:
+            synced = await sync_lead_history(ctx.db, lead_id=state.lead_id, customer_id=state.customer_id,
+                                             lead_state=ctx.lead_state)
+            if synced["imported"]:
+                reasoning.append(f"CRM history: {synced['imported']} message(s)/note(s) the AI didn't write added "
+                                 "to the thread" + (" (first look at this lead)." if synced["first"] else "."))
+            ctx.lead_state = await ctx.db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+                {"lead_id": state.lead_id}) or ctx.lead_state
+        except Exception as exc:  # noqa: BLE001 - history is context; a failed read never stops the reply
+            reasoning.append(f"CRM history not synced ({exc!r}).")
+
     new_messages, exclude = await _new_messages(ctx, state)
     history: list[PackMessage] = []
     rows: list[dict[str, Any]] = []
@@ -116,6 +132,11 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         rows.reverse()
         history = [to_pack_message(r) for r in rows]
     summary = load_summary(ctx.lead_state)
+    summary_text = summary.text
+    if previous := (ctx.lead_state or {}).get("previous_lead_summary"):
+        # PLAN_4 stream X3 item 5: a returning customer - what their previous lead's conversation was about.
+        summary_text = f"{previous}\n{summary_text}".strip()
+        reasoning.append("Returning customer: their previous lead's conversation is summarised in context.")
 
     campaign = await find_campaign_context(ctx.db, customer_id=state.customer_id)
     dealer = await dealer_profile(state.dealer_id)
@@ -140,7 +161,7 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         conversation=conversation,
         campaign=campaign,
         working_tokens=ctx.settings.context_working_tokens,
-        summary=summary.text,
+        summary=summary_text,
         summary_covers=summary.messages,
     )
     pack.budget.summary_behind = summary_behind(rows, pack.budget.kept, more_not_loaded, summary)
