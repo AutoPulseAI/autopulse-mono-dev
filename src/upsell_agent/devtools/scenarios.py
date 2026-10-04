@@ -8,7 +8,8 @@ far the build has got.
 Steps (one key per step):
   ping_worker:        {timeout_s}
   new_lead:           {as, dealer: A|B|<id>, lead_type, channel, name, comments, send_event: true,
-                       history?: DMS records, see devtools/simulate.insert_history}
+                       history?: DMS records, see devtools/simulate.insert_history,
+                       local_phone: true (an area code of the dealer's state; false: a 555 number, state unknown)}
   send_lead_created:  {lead, event_id?, expect: queued|duplicate}
   reply:              {lead, text, channel?}   like the platform: not sent at all if the dealer is off
   pause / resume:     {lead, reason?}
@@ -157,9 +158,11 @@ class RunContext:
 
 async def _turns(lead: dict[str, str]) -> list[dict]:
     """The lead's turns, oldest first. Rolling-summary runs are background
-    work, not turns, so they're left out."""
+    work, not turns, so they're left out. So are the Days 1-7 staff call tasks (stream T): their records fall due
+    on the clock, next to the conversation, and say nothing to the customer (stream S: one landing between a
+    reply and its answer made `wait_turns` / `expect_turn` read the wrong turn)."""
     cursor = dealer_scoped_db(lead["dealer_id"]).collection(AI_TURN_LOG_COLLECTION).find(
-        {"lead_id": lead["lead_id"], "trigger": {"$ne": "summary"}})
+        {"lead_id": lead["lead_id"], "trigger": {"$nin": ["summary", "daily_call_task"]}})
     return sorted(await cursor.to_list(None), key=lambda t: t["created_at"])
 
 
@@ -278,7 +281,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         )
         ctx.leads[args["as"]] = {**created, "dealer_id": dealer_id, "channel": args.get("channel", "sms")}
         await _set_scenario_contact(dealer_id, created, ctx.leads[args["same_contact_as"]]
-                                    if args.get("same_contact_as") else None)
+                                    if args.get("same_contact_as") else None,
+                                    local=bool(args.get("local_phone", True)))
         if args.get("send_event", True):
             await simulate.send_lead_created(dealer_id, created["lead_id"], created["customer_id"],
                                              args.get("channel", "sms"), ctx.enqueue)
@@ -974,11 +978,14 @@ async def _replies_with_jargon(ctx: RunContext) -> list[str]:
     return found
 
 
-async def _set_scenario_contact(dealer_id: str, created: dict[str, str], same_as: dict[str, Any] | None) -> None:
+async def _set_scenario_contact(dealer_id: str, created: dict[str, str], same_as: dict[str, Any] | None, *,
+                                local: bool = True) -> None:
     """Every scenario lead gets a phone and email of its own (a name always hashed to the same ones), so a
     lead left by an earlier run is never mistaken for the same customer (C6 duplicate leads). With
-    `same_contact_as` it shares that lead's phone and email on purpose: a duplicate."""
-    await simulate.set_contact(dealer_id, created, same_as["lead_id"] if same_as else None)
+    `same_contact_as` it shares that lead's phone and email on purpose: a duplicate. The phone has one of the
+    dealer's own area codes, so the customer lives in the dealer's state like a real walk-in customer (stream S;
+    `local_phone: false` keeps a 555 number whose state is unknown)."""
+    await simulate.set_contact(dealer_id, created, same_as["lead_id"] if same_as else None, local=local)
 
 
 async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue | None) -> dict[str, Any]:

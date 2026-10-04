@@ -14,4 +14,4 @@ steps:
   - expect_last_sent: {lead: n, contains: "Nina?"}
   - expect_outbox: {lead: n, channel: email, count: 1, contains: "Nina?"}
   - expect_lead: {lead: n, stage: no_contact_made}
-  - expect_followup: {lead: n, kind: cadence_touch, status: pending, due_local: "11:00", count: 2}
+  - expect_followup: {lead: n, kind: cadence_touch, status: pending, due_local: "10:00", count: 2}

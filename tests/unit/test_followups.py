@@ -330,6 +330,37 @@ async def test_a_busy_lead_puts_the_followup_back_for_shortly_after(mongo, live_
     assert (await followups.fire_due(_deps()))["results"] == {"sent": 1}
 
 
+async def test_a_busy_lead_gets_its_own_retry_run_not_the_next_minutes_cron(monkeypatch):
+    """Stream S: a touch put back because a turn held the lead waited for the next cron (up to 90 s); the worker
+    now queues a fire_due_followups run for when it falls due again."""
+    import time
+
+    from upsell_agent.worker import jobs
+
+    async def busy_once(*_args, **_kwargs):
+        return {"reset": 0, "fired": 1, "results": {"busy": 1}}
+
+    queued = []
+
+    class Queue:
+        async def enqueue(self, function, **kwargs):
+            queued.append((function, kwargs))
+
+    class Worker:
+        queue = Queue()
+
+    monkeypatch.setattr(followups, "fire_due", busy_once)
+    before = time.time()
+    summary = await jobs.fire_due_followups({"redis": None, "deps": None, "worker": Worker()})
+    [(function, kwargs)] = queued
+    assert function == "fire_due_followups" and summary["busy_retry"] == kwargs["key"]
+    assert before + followups.BUSY_RETRY_AFTER.total_seconds() <= kwargs["scheduled"] <= before + 15
+    # Nothing busy: no extra run.
+    monkeypatch.setattr(followups, "fire_due", lambda *a, **k: asyncio.sleep(0, {"results": {"sent": 1}}))
+    assert "busy_retry" not in await jobs.fire_due_followups({"redis": None, "deps": None, "worker": Worker()})
+    assert len(queued) == 1
+
+
 async def test_a_stuck_claim_is_reset_and_sent_once(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)

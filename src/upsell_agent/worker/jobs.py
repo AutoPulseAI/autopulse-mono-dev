@@ -21,6 +21,7 @@ from upsell_agent.agent import lifecycle, maintenance, recalls, summary
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
+    BookingChangedEvent,
     InboundMessageEvent,
     LeadCreatedEvent,
     LeadPausedEvent,
@@ -110,6 +111,18 @@ async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], **_:
     return await handlers.handle_lead_paused(LeadPausedEvent.model_validate(event), ctx.get("deps"))
 
 
+async def handle_booking_changed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                                 busy_attempt: int = 0) -> dict[str, Any]:
+    """Staff cancelled or moved the booking in the CRM (stream S): under the lead's lock, so it never races a
+    turn or a due appointment step for the same lead."""
+    parsed = BookingChangedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_booking_changed", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_booking_changed(parsed, ctx.get("deps")),
+    )
+
+
 async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await handlers.handle_lead_resumed(LeadResumedEvent.model_validate(event))
 
@@ -134,8 +147,26 @@ async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     lead's lock, so it never races a turn for the same lead."""
     settings = get_settings()
     redis = ctx["redis"]
-    return await followups.fire_due(
+    summary = await followups.fire_due(
         ctx["deps"], lock=lambda dealer_id, lead_id: lead_lock(redis, dealer_id, lead_id, settings.lead_lock_ttl_s))
+    if summary["results"].get("busy"):
+        summary["busy_retry"] = await _queue_busy_retry(ctx)
+    return summary
+
+
+async def _queue_busy_retry(ctx: dict[str, Any]) -> str | None:
+    """Follow-ups put back because their lead was busy fall due again in BUSY_RETRY_AFTER: run then, not at the
+    next minute's cron (stream S: a touch right after a turn waited up to 90 s). One run per retry window."""
+    worker = ctx.get("worker")
+    if worker is None:
+        return None
+    delay = followups.BUSY_RETRY_AFTER.total_seconds() + 1
+    at = int(time.time() + delay)
+    # One run per second at most. Never a wider window: a follow-up put back just after an earlier retry was
+    # queued falls due after that retry runs, and a shared key would leave it to the next minute's cron.
+    key = f"fire_due_followups:busy-retry:{at}"
+    await worker.queue.enqueue("fire_due_followups", key=key, scheduled=at, timeout=300)
+    return key
 
 
 async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
@@ -182,6 +213,7 @@ async def sweep_prices(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
 
 
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
+             handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
              plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)

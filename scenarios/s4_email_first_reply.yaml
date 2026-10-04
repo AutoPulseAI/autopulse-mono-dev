@@ -4,4 +4,4 @@ description: The first reply goes out on the channel the lead came in on, using 
 steps:
   - new_lead: {as: e, dealer: B, lead_type: trade_in, channel: email, name: Ellis Scenario, comments: "Want to trade my Civic"}
   - wait_turns: {lead: e, count: 1, timeout_s: 15}
-  - expect_last_sent: {lead: e, channel: email, max_latency_ms: 2000, text_starts_with: "Hi Ellis,"}
+  - expect_last_sent: {lead: e, channel: email, max_latency_ms: 2000, text_starts_with: "Hello Ellis, greetings from Lakeside Auto"}

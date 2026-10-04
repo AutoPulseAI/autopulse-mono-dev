@@ -9,6 +9,6 @@ steps:
   - wait_turns: {lead: b, count: 1, timeout_s: 20}
   - reply: {lead: b, text: "Can I come see it this weekend?"}
   - wait_turns: {lead: b, count: 2, timeout_s: 20}
-  - expect_turn: {lead: b, outcome: answer}
+  - expect_turn: {lead: b, outcome: offer_visit}
   - expect_last_sent: {lead: b, contains: "Which one works?"}
   - expect_lead: {lead: b, visit_attempts: 1}

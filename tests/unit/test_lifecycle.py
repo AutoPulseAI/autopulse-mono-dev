@@ -422,6 +422,61 @@ async def test_day_91_closes_a_working_lead_as_closed_lost(mongo):
 
 
 @pytestmark_flow
+async def test_day_91_shows_closed_lost_as_the_crm_lead_status(mongo):
+    """Stream S: the AI's Day 91 close is written to the CRM lead (POST /api/internal/ai/leads/status)."""
+    created = await _new_lead(created_at=clock.now() - timedelta(days=92))
+    await _say(created, "Yes, I'm interested")
+    await lifecycle.close_expired()
+    lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
+    assert lead["fe_lead_status"] == "Closed - Lost" and lead["status_source"] == "ai"
+    assert (await _state(mongo, created))["crm_status_sync"]["status"] == "updated"
+
+
+@pytestmark_flow
+async def test_a_staff_closing_is_not_sent_back_to_the_crm(mongo, monkeypatch):
+    from upsell_agent.agent import crm_status
+
+    calls = []
+
+    class Recording(StubPlatformClient):
+        async def set_lead_status(self, *args, **kwargs):
+            calls.append(args)
+            return {"updated": True}
+
+    monkeypatch.setattr(crm_status, "_client", lambda platform: Recording())
+    created = await _new_lead()
+    await handlers.handle_lead_paused(LeadPausedEvent(event_id="s1", dealer_id=DEALER, lead_id=created["lead_id"],
+                                                      reason='Staff moved the lead to "Closed - Lost"'), _deps())
+    assert (await _state(mongo, created))["stage"] == "closed_lost" and calls == []
+
+
+@pytestmark_flow
+async def test_a_crm_that_cannot_be_reached_is_tried_again_by_the_next_sweep(mongo, monkeypatch):
+    from upsell_agent.agent import crm_status
+
+    answers = [RuntimeError("CRM down"), {"updated": True}]
+    calls = []
+
+    class Flaky(StubPlatformClient):
+        async def set_lead_status(self, dealer_id, lead_id, status, *, reason, closed_at):
+            calls.append(status)
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+    monkeypatch.setattr(crm_status, "_client", lambda platform: Flaky())
+    created = await _new_lead(created_at=clock.now() - timedelta(days=92))
+    await _say(created, "Yes, I'm interested")
+    first = await lifecycle.close_expired()
+    assert first["closed"] == 1 and (await _state(mongo, created))["crm_status_sync"]["status"] == "failed"
+    second = await lifecycle.close_expired()
+    assert second["crm_status_retry"] == {"retried": 1, "synced": 1}
+    assert (await _state(mongo, created))["crm_status_sync"]["status"] == "updated"
+    assert calls == ["Closed - Lost", "Closed - Lost"]
+
+
+@pytestmark_flow
 async def test_day_91_waits_for_a_pending_appointment(mongo):
     created = await _new_lead(created_at=clock.now() - timedelta(days=95))
     await lifecycle.apply(dealer_scoped_db(DEALER), created["lead_id"], [Event("appointment_set")])

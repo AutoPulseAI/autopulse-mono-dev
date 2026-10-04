@@ -33,6 +33,7 @@ LABELS = {
     "service_outreach": "Service outreach",
     "not_interested": "Not interested",
     "bad_contact": "Contact problem",
+    "text_consent_missing": "Email only - no text consent",
 }
 MAX_TEXT = 1500
 

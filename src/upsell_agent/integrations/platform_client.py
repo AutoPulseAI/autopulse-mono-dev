@@ -100,6 +100,9 @@ class PlatformClient(Protocol):
 
     async def mark_lead_dnd(self, dealer_id: str, lead_id: str, reason: str) -> bool: ...
 
+    async def set_lead_status(self, dealer_id: str, lead_id: str, status: str, *, reason: str,
+                              closed_at: datetime) -> dict[str, Any]: ...
+
     async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
                             idempotency_key: str | None = None, customer_id: str | None = None) -> str: ...
 
@@ -203,6 +206,17 @@ class StubPlatformClient:
                       "dnd_source": "ai_opt_out", "dnd_reason": reason}})
         return result.matched_count > 0
 
+    async def set_lead_status(self, dealer_id: str, lead_id: str, status: str, *, reason: str,
+                              closed_at: datetime) -> dict[str, Any]:
+        """What `POST /api/internal/ai/leads/status` does, minus the staff-status rules (the CRM's own tests cover
+        those): the lead's CRM status becomes the AI's closing."""
+        db = dealer_scoped_db(dealer_id)
+        result = await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
+            {"_id": as_object_id(lead_id)},
+            {"$set": {"status": status, "lead_status": status, "fe_lead_status": status,
+                      "statusChangedAt": clock.now(), "status_source": "ai", "status_reason": reason}})
+        return {"found": result.matched_count > 0, "updated": result.matched_count > 0}
+
 
 class LivePlatformClient:
     def __init__(self, settings: Settings):
@@ -263,6 +277,16 @@ class LivePlatformClient:
         body = await self._post("/api/internal/ai/leads/dnd",
                                 {"dealer_id": dealer_id, "lead_id": lead_id, "reason": reason})
         return bool(body.get("updated"))
+
+    async def set_lead_status(self, dealer_id: str, lead_id: str, status: str, *, reason: str,
+                              closed_at: datetime) -> dict[str, Any]:
+        """`POST /api/internal/ai/leads/status`: the AI closed the opportunity itself (Day 91, No Longer Owns), so
+        the CRM lead shows it too - unless staff changed the status after `closed_at` or it is a staff status the
+        AI can't override (the CRM decides, aidmvcs-be-dev app/lib/ai/aiDnd.js markLeadClosedFromAi; stream S)."""
+        at = closed_at if closed_at.tzinfo else closed_at.replace(tzinfo=UTC)
+        return await self._post("/api/internal/ai/leads/status", {
+            "dealer_id": dealer_id, "lead_id": lead_id, "status": status, "reason": reason,
+            "closed_at": at.isoformat()})
 
     async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
                             idempotency_key: str | None = None, customer_id: str | None = None) -> str:

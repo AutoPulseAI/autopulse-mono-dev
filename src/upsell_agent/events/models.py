@@ -47,10 +47,20 @@ class LeadResumedEvent(BaseEvent):
     lead_id: str = Field(min_length=1)
 
 
+class BookingChangedEvent(BaseEvent):
+    """Staff cancelled or moved the lead's booking in the CRM (`PUT /api/booking`, or the status screen taking
+    the lead off "Appointment Booked"), PLAN_4 stream S. The AI re-reads the booking itself; `change` only says
+    what staff did. Not sent for the AI's own booking changes."""
+    lead_id: str = Field(min_length=1)
+    booking_id: str | None = None
+    change: Literal["cancelled", "moved"]
+
+
 # URL segment -> (worker job name, payload model)
 EVENT_TYPES: dict[str, tuple[str, type[BaseEvent]]] = {
     "lead-created": ("handle_lead_created", LeadCreatedEvent),
     "inbound-message": ("handle_inbound_message", InboundMessageEvent),
     "lead-paused": ("handle_lead_paused", LeadPausedEvent),
     "lead-resumed": ("handle_lead_resumed", LeadResumedEvent),
+    "booking-changed": ("handle_booking_changed", BookingChangedEvent),
 }

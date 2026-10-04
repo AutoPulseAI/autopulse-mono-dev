@@ -10,7 +10,7 @@ steps:
   - expect_lead: {lead: r, stage: contact_made_no_next_action}
   - advance_clock: {hours: 4}
   - expect_outbox: {lead: r, channel: email, count: 0}
-  - expect_followup: {lead: r, kind: cadence_touch, status: pending, due_local: "11:00", count: 2}
+  - expect_followup: {lead: r, kind: cadence_touch, status: pending, due_local: "10:00", count: 2}
   - advance_clock: {dealer: A, to: "Wed 11:05"}
   - expect_followup: {lead: r, kind: cadence_touch, status: sent, index: 1, timeout_s: 30}
   - expect_outbox: {lead: r, channel: email, count: 1}

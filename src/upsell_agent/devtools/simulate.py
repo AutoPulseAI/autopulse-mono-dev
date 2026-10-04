@@ -183,10 +183,33 @@ async def create_lead(
     return {"lead_id": str(lead_id), "customer_id": customer_id}
 
 
-async def set_contact(dealer_id: str, created: dict[str, str], same_as_lead_id: str | None = None) -> None:
+# Real area codes per dealer state, for scenario customers who live near their dealer (stream S). Without one a
+# simulated customer has a 555 "area code", no known state, and only the strictest hours of every state apply
+# (compliance/state_hours.py STRICTEST), which is not what a scenario about a local customer means.
+LOCAL_AREA_CODES = {
+    "NJ": ("201", "551", "609", "732", "848", "856", "862", "908", "973"),
+    "WI": ("262", "414", "608", "715", "920"),
+    "CA": ("213", "310", "323", "408", "415", "510", "562", "626", "650", "714", "818", "909", "949"),
+}
+
+
+async def _local_phone(db, area_codes: tuple[str, ...]) -> str:
+    """A number no other lead has, in one of the dealer's area codes, on the never-assigned 555 exchange
+    (+1 AAA 555 XXXX): its area code gives the customer's state and time zone; it never reaches a real phone."""
+    for _ in range(50):
+        token = uuid.uuid4().int
+        phone = f"+1{area_codes[token % len(area_codes)]}555{(token // 97) % 10_000:04d}"
+        if not await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"phone": phone}):
+            return phone
+    raise RuntimeError("no free local scenario phone number")
+
+
+async def set_contact(dealer_id: str, created: dict[str, str], same_as_lead_id: str | None = None, *,
+                      local: bool = False) -> None:
     """Gives a simulated lead a phone and email of its own (a name always hashed to the same ones, so two
     "Maria Test" leads were silently the same customer: MASTER_PLAN_3 C6 duplicate leads). With
-    `same_as_lead_id` it shares that lead's phone and email on purpose: a duplicate."""
+    `same_as_lead_id` it shares that lead's phone and email on purpose: a duplicate. With `local` the phone has
+    one of the dealer's own area codes (LOCAL_AREA_CODES), so the customer's state is the dealer's."""
     db = dealer_scoped_db(dealer_id)
     if same_as_lead_id:
         source = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(same_as_lead_id)}) or {}
@@ -194,6 +217,10 @@ async def set_contact(dealer_id: str, created: dict[str, str], same_as_lead_id: 
     else:
         token = uuid.uuid4().int
         phone, email = f"+1555{token % 10_000_000:07d}", f"sim.{token % 10**8}@example.test"
+        dealer = next((d for d in DEV_DEALERS if d["_id"] == dealer_id), None)
+        area_codes = LOCAL_AREA_CODES.get(((dealer or {}).get("store") or {}).get("store_state", ""))
+        if local and area_codes:
+            phone = await _local_phone(db, area_codes)
     await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
         {"_id": as_object_id(created["lead_id"])}, {"$set": {"phone": phone, "email": email}})
     await db.collection(PLATFORM_CUSTOMERS_COLLECTION).update_one(

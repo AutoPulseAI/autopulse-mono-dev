@@ -29,6 +29,7 @@ from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.events.models import (
+    BookingChangedEvent,
     InboundMessageEvent,
     LeadCreatedEvent,
     LeadPausedEvent,
@@ -49,6 +50,7 @@ from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
     SOLD_LIFECYCLE_KINDS,
+    appointment_cancelled_on_platform,
     cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
@@ -639,6 +641,36 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                            keep_requested=True)
     return {"status": "paused", "followups_cancelled": cancelled,
             **({"stage_change": stage_change} if stage_change else {}), **extra}
+
+
+async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | None = None) -> dict[str, Any]:
+    """Staff cancelled or moved the lead's booking in the CRM (PLAN_4 stream S): the appointment's steps are
+    cancelled or re-planned now, not when the next one falls due. The booking is re-read from the CRM's own
+    record (the event only says what happened), so a stale or repeated event changes nothing wrong."""
+    from upsell_agent.tools import booking_tool
+
+    db = dealer_scoped_db(event.dealer_id)
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
+    stage = lifecycle.stage_of(state.get("stage"))
+    if stage not in (lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW):
+        return {"status": "not_needed", "reason": f"the lead is at {lifecycle.label(stage) or 'no stage'}, "
+                                                  "not waiting on an appointment"}
+    lead = await find_lead(db, event.lead_id)
+    customer_id = str((lead or {}).get("customer_id") or state.get("customer_id") or "") or None
+    if not customer_id:
+        return {"status": "not_needed", "reason": "no customer on the lead"}
+    channel = ((lead or {}).get("data") or {}).get("channel") or "sms"
+    active = await booking_tool.find_active_booking(event.dealer_id, lead)
+    if active is None:
+        if not await booking_tool.booking_cancelled(event.dealer_id, lead):
+            return {"status": "not_needed", "reason": "the lead has no booking of its own to act on"}
+        moved = await appointment_cancelled_on_platform(
+            db, lead_id=event.lead_id, customer_id=customer_id, lead=lead, customer=None, channel=channel,
+            turn_id=f"booking-changed-{event.event_id}", source="crm_booking")
+        return {"status": "appointment_cancelled", "stage_change": moved}
+    planned = await plan_appointment_timers(db, lead_id=event.lead_id, customer_id=customer_id, lead=lead,
+                                            channel=channel, turn_id=f"booking-changed-{event.event_id}")
+    return {"status": "appointment_replanned", "appointment_timers": planned}
 
 
 def _address(lead: dict | None, customer: dict | None, channel: str) -> str | None:

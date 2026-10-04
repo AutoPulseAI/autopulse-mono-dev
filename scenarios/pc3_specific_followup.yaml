@@ -13,11 +13,11 @@ steps:
   - wait_turns: {lead: n, count: 3, timeout_s: 20}
   - expect_lead: {lead: n, stage: contact_made_specific_followup, next_action: true}
   - expect_last_sent: {lead: n, contains: "check back with you around Monday", question_marks: 0}
-  - expect_followup: {lead: n, kind: next_action, status: pending, due_local: "11:00"}
+  - expect_followup: {lead: n, kind: next_action, status: pending, due_local: "10:00"}
   - expect_no_followup: {lead: n, kind: channel_switch, status: pending}
   - advance_clock: {dealer: A, to: "Mon 11:05"}
   - expect_followup: {lead: n, kind: next_action, status: sent, timeout_s: 30}
-  - expect_last_sent: {lead: n, contains: "Checking back in like you asked"}
+  - expect_last_sent: {lead: n, contains: "checking back in, as you asked"}
   - expect_lead: {lead: n, staff_notice: call_requested}
   - expect_followup: {lead: n, kind: next_action_check, status: pending}
   - advance_clock: {hours: 24.5}

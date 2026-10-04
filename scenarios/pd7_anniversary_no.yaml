@@ -8,7 +8,8 @@ steps:
   - staff_status: {lead: a, status: "Sold Delivered"}
   - expect_followup: {lead: a, kind: ownership_anniversary, status: pending, timeout_s: 20}
   - advance_clock: {hours: 8790}
-  - expect_followup: {lead: a, kind: ownership_anniversary, status: sent, timeout_s: 60}
+  # Index 0: sending Year 1 plans Year 2 at once (stream A3), so the newest one is the pending Year 2.
+  - expect_followup: {lead: a, kind: ownership_anniversary, status: sent, index: 0, timeout_s: 60}
   - reply: {lead: a, text: "No, we sold it"}
   - expect_lead: {lead: a, stage: closed_no_longer_owns, timeout_s: 30}
   - expect_no_followup: {lead: a, kind: ownership_anniversary, status: pending}
