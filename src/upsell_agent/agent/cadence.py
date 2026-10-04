@@ -46,6 +46,9 @@ NAME_NUDGE_AFTER = timedelta(hours=3)
 # own window is closed.
 TOUCH_HOUR = 10
 LAST_DAY = 90
+# A name nudge sent on a later calendar day at or after this local hour was held into that day's business
+# hours, so it counts as that day's touch (stream X2).
+NUDGE_HELD_FROM_HOUR = 6
 MAX_THEMES_REMEMBERED = 20
 
 
@@ -219,8 +222,12 @@ def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bo
     # A fixed touch moves to the next day; a grid touch to the next grid day.
     last_sent = _aware(state.last_touch_at, tz)
     # Touch 3 follows the name nudge, which belongs to Day 1 even when it went out after midnight (§3), so
-    # it never counts as a touch on Day 2.
-    last_date = last_sent.date() if last_sent and touch != 3 else None
+    # it never counts as a touch on Day 2 - unless a hold pushed it into the next day's daytime (an evening
+    # lead's nudge held to 09:00): then Touch 3 waits for the next day (PLAN_4 stream X2, audit probe P1).
+    last_date = last_sent.date() if last_sent else None
+    if touch == 3 and last_sent is not None and (last_sent.date() <= started.date()
+                                                 or last_sent.hour < NUDGE_HELD_FROM_HOUR):
+        last_date = None
 
     def advance(day: int) -> int | None:
         return day + 1 if touch in FIXED_DAYS and day < 13 else next_day_after(day)

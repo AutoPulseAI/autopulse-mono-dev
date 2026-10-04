@@ -422,3 +422,16 @@ async def test_the_profile_api_shows_where_the_lead_is_in_the_cadence(mongo):
     profile = await lead_profile(DEALER, created["lead_id"])
     assert profile["cadence"]["day"] == 1 and profile["cadence"]["touch_number"] == 2
     assert profile["cadence"]["next_touch"]["theme"] == "name_nudge"
+
+
+def test_an_evening_leads_held_nudge_and_touch_3_never_share_a_day():
+    # PLAN_4 stream X2 (audit probe P1): lead Tue 22:00, the nudge is held to Wed 09:00 and sent then. Touch 3
+    # used to follow at Wed 10:00 - two touches on one calendar day (§15). It moves to Thursday.
+    start = datetime(2026, 10, 6, 22, 0, tzinfo=NY)
+    state = cadence.started(CadenceState(), at=start)
+    nudge = cadence.plan_touch(state, now=start, tz=NY, first_contact_done=True)
+    sent_at = datetime(2026, 10, 7, 9, 0, tzinfo=NY)
+    state = cadence.after_touch(state, nudge, at=sent_at)
+    plan = cadence.plan_touch(state, now=sent_at, tz=NY, first_contact_done=True)
+    assert plan.touch_number == 3 and plan.due_at.date() > sent_at.date()
+    assert plan.due_at == datetime(2026, 10, 8, 10, 0, tzinfo=NY)
