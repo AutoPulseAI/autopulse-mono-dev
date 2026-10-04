@@ -23,6 +23,20 @@ Code fixes:
   codes on the never-assigned 555 exchange (`devtools/simulate.py LOCAL_AREA_CODES`, unique per lead);
   `new_lead: {local_phone: false}` keeps a customer whose state is unknown.
 
+- **The runner's turn count** leaves out the Days 1-7 call-task records (stream T), like the rolling summary:
+  they fall due on the clock next to the conversation, and one landing between a reply and its answer made
+  `wait_turns` / `expect_turn` read the wrong turn.
+- **crm-local runs with `SEND_TIME_AB=false`** (stream L's morning / afternoon split puts a lead's touch at
+  10:00 or 15:00 by chance; `CRM_LOCAL_SEND_TIME_AB=true` turns it on) and `VEHICLE_DATABASES_ENABLED=false`
+  (no paid credits from the local stack). `aidmvcs-be-dev/scripts/ai-dev-full.js`.
+
+Result after merging streams T and L: **76 / 76** (two full runs), `make crm-cadence-check` 50 / 50,
+`make crm-e2e` 48 / 48 (five runs in a row on the same data), AI unit tests 1618+, CRM tests 108.
+
+Cadence check 1i now reads "every touch is followed by a staff call task: its 60-minute timer, or that day's
+Days 1-7 call tasks": with stream T's daily tasks on (the default) a lead gets at most 2 call tasks a day, so a
+Day 2-7 touch starts no timer of its own.
+
 Scenario changes (each expectation was outdated by an intentional change):
 
 | Scenario | Change | Why |
