@@ -13,7 +13,8 @@ a real, current booking's status (MASTER_PLAN_3 B5 item 7, architecture §15
 decision 60): never "booked"/"confirmed" for a merely-requested (pending)
 visit, and never any of those words with no active booking on the lead at
 all - "never claim a booking that doesn't exist" (B4's principle 4). And no
-link unless the customer asked for one (MASTER_PLAN_4 F3)."""
+link unless the customer asked for one (MASTER_PLAN_4 F3), and no mechanical
+grammar mistake (MASTER_PLAN_4 stream G, guardrails/grammar.py)."""
 
 import re
 from typing import Any
@@ -23,6 +24,7 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
+from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
 from upsell_agent.observability.trace import NodeSpan
@@ -84,6 +86,13 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if "which would you like" not in str(draft.get(key) or "").lower()]
+
+
+def mandated_wording(decision: dict[str, Any]) -> list[str]:
+    """The client's exact wording in this draft (stream G): Touch 1's opening and closing and a touch's fixed
+    text (Touch 2's "{FirstName}?"). Sent as written, so never grammar-checked."""
+    touch1, touch = decision.get("touch1") or {}, decision.get("touch") or {}
+    return [t for t in (touch1.get("intro"), touch1.get("ending"), touch.get("fixed_text")) if t]
 
 
 _CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then))\b", re.IGNORECASE)
@@ -199,6 +208,12 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_links:
         result["passed"] = False
         result["violations"] += bad_links
+    # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
+    bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}))
+    result["checks"]["grammar"] = not bad_grammar
+    if bad_grammar:
+        result["passed"] = False
+        result["violations"] += bad_grammar
     will_retry = not result["passed"] and state.retry_count < MAX_REWRITES
     result["next"] = "send" if result["passed"] else ("compose" if will_retry else "fallback")
 
