@@ -167,7 +167,9 @@ async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, 
             {"kind": "call_task", "status": {"$in": ["pending", "standby"]}}).sort("due_at", 1).to_list(LIMIT)
         rows = [{"_id": r["_id"], "lead_id": r.get("lead_id"), "customer_id": r.get("customer_id"),
                  "phone": r.get("to"), "status": "waiting", "due_at": r.get("due_at"), "reason": r.get("reason"),
-                 "sent_channels": r.get("sent_channels"), "created_at": r.get("created_at")} for r in rows]
+                 "sent_channels": r.get("sent_channels"), "created_at": r.get("created_at"),
+                 # PLAN_4 stream H: the customer's own call request, waiting for calling hours.
+                 "requested": bool(r.get("requested"))} for r in rows]
     elif view == "done":
         rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
             {"status": {"$in": [call_tasks.COMPLETED, call_tasks.DISMISSED, call_tasks.CANCELLED]}}).sort(

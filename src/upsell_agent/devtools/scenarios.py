@@ -64,6 +64,9 @@ Steps (one key per step):
                       the lead's platform booking (MASTER_PLAN_3 B5)
   take_offered_time:  {lead, index: 0, count: 2}  other customers fill a time we just offered (B5 item 3)
   expect_lead's visit_attempts / visit_declined: the visit offer's state (MASTER_PLAN_3 B4)
+  call_outcome:       {lead, outcome: connected|no_answer|..., lead_outcome, follow_up?: {date: +Nd|YYYY-MM-DD,
+                       time?, channel?, owner?, notes?}, opt_out_scope?}   staff record how the open call task went
+                      (the CRM's Call Tasks prompt; PLAN_4 stream H)
   sleep:              {seconds}
 
 Run from the CLI:  python -m upsell_agent.devtools.scenarios [name ...]
@@ -531,6 +534,28 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 {"lead_id": lead["lead_id"]}).to_list(None)
             raise ScenarioFailed(f"call tasks: {[r['status'] for r in rows] or 'none'}, expected {want}") from None
         return "no call task" if want == "none" else f"call task {found['status']} for {found['phone']}"
+
+    if kind == "call_outcome":
+        # PLAN_4 stream H: staff finished the lead's open call task; the lead outcome reaches the AI.
+        from datetime import timedelta as days_later
+
+        from upsell_agent.api.call_tasks import Resolution, complete
+
+        lead = ctx.lead(args["lead"])
+        task = await dealer_scoped_db(lead["dealer_id"]).collection(AI_CALL_TASKS_COLLECTION).find_one(
+            {"lead_id": lead["lead_id"], "status": "open"})
+        if task is None:
+            raise ScenarioFailed("no open call task to record an outcome for")
+        follow = dict(args.get("follow_up") or {}) or None
+        if follow and str(follow.get("date", "")).startswith("+"):
+            profile = await dealer_profile(lead["dealer_id"])
+            day = clock.now().astimezone(profile.tz).date() + days_later(days=int(str(follow["date"]).strip("+d")))
+            follow["date"] = day.isoformat()
+        done = await complete(str(task["_id"]), Resolution(
+            dealer_id=lead["dealer_id"], outcome=args.get("outcome", "connected"), by="scenario-staff",
+            lead_outcome=args.get("lead_outcome"), follow_up=follow,
+            opt_out_scope=args.get("opt_out_scope", "all")))
+        return f"call task completed: {done.get('lead_outcome')}"
 
     if kind == "expect_followup":
         lead = ctx.lead(args["lead"])
