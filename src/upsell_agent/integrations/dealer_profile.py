@@ -82,6 +82,9 @@ class DealerProfile:
     # aidmvcs-be-dev app/lib/bookingService.js). The AI books sales visits only; service visits are requests.
     sales_slot_minutes: int = 60
     sales_per_slot: int = 10
+    # PLAN_4 stream T: the Days 1-7 morning + afternoon human call tasks (scheduler/daily_call_tasks.py), a per-dealer
+    # setting (`ai_daily_call_tasks`: "off" | "on"; unset = on, as the Omnichannel PDF §3 has them).
+    daily_call_tasks: bool = True
 
     def hours_text(self) -> dict[str, str]:
         """Opening hours as a customer reads them: {"Monday": "9:00 AM to 7:00 PM", "Sunday": "closed"}."""
@@ -229,6 +232,7 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         agent_name=str(info.get("ai_bot_name") or info.get("ai_agent_name") or "").strip() or None,
         agent_phone=format_phone(info.get("sms_conversion_phone")),  # MASTER_PLAN_4 (stream R)
         **_sales_capacity(info),
+        daily_call_tasks=str(info.get("ai_daily_call_tasks") or "on").strip().lower() != "off",  # stream T
     )
 
 

@@ -149,10 +149,12 @@ KIND_CALL_TASK = "call_task"
 # messages. Kept in step with sold_lifecycles.LIFECYCLE_KINDS (a unit test checks it).
 SOLD_LIFECYCLE_KINDS = ("sold_pending_touch", "post_delivery_checkin", "ownership_anniversary", "birthday",
                         "service_outreach")
+# PLAN_4 stream T: the Days 1-7 morning / afternoon call tasks (scheduler/daily_call_tasks.py KIND).
+KIND_DAILY_CALL_TASK = "daily_call_task"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
-                                      *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
+                                      KIND_DAILY_CALL_TASK, *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -495,6 +497,9 @@ async def plan_cadence_touch(
     _, stage_ok, stage_detail = lifecycle.stage_check(state, KIND_CADENCE_TOUCH)
     if not stage_ok:
         return {"created": False, "reason": f"No cadence touch: {stage_detail}."}
+    # PLAN_4 stream T: the Days 1-7 human call tasks start (and restart) with the cadence. Idempotent.
+    from upsell_agent.scheduler import daily_call_tasks
+    await daily_call_tasks.plan(db, lead_id=lead_id, customer_id=customer_id, lead_state=state)
     planned = cadence.plan_touch(
         cadence_state, now=now, tz=profile.tz,
         # The caller knows whether the message it just sent went out; the lead's own record is only
@@ -636,6 +641,9 @@ async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: st
     count = result.modified_count
     if include_open:
         count += await call_tasks.cancel_open(db, lead_id, reason, keep_requested=keep_requested)
+    # PLAN_4 stream T: this half-day's waiting Days 1-7 call task goes too (later half-days stay planned).
+    from upsell_agent.scheduler import daily_call_tasks
+    await daily_call_tasks.cancel_current(db, lead_id, reason=reason)
     return count
 
 
@@ -692,6 +700,10 @@ async def fire_due(deps: Any, *, lock: LeadLock = _no_lock, claimed_by: str | No
     one took over 20s per 200 in the Stage 12 burst leftovers."""
     claimed_by = claimed_by or worker_id()
     summary: dict[str, Any] = {"reset": await reset_stuck_claims(), "fired": 0, "results": {}}
+    # PLAN_4 stream T: call tasks past their window / the agent's day are marked missed first, so a new
+    # half-day's task never meets a stale open one.
+    if missed := await call_tasks.mark_missed():
+        summary["missed_call_tasks"] = missed
     slots = asyncio.Semaphore(max(1, concurrency))
 
     async def fire(doc: dict) -> None:
@@ -774,6 +786,9 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
                    KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
                    KIND_CADENCE_TOUCH: _fire_cadence_touch_locked,
                    KIND_CALL_TASK: _fire_call_task_locked}.get(doc.get("kind"), _fire_locked)
+    if doc.get("kind") == KIND_DAILY_CALL_TASK:
+        from upsell_agent.scheduler import daily_call_tasks  # PLAN_4 stream T
+        fire_locked = daily_call_tasks.fire
     if doc.get("kind") in SOLD_LIFECYCLE_KINDS:
         # MASTER_PLAN_4 (stream A3): SOLD PENDING and the ownership lifecycle fire from their own module.
         from upsell_agent.scheduler import sold_lifecycles
@@ -1562,6 +1577,10 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
             # PLAN_4 stream H: the customer asked for this call. It waited only for calling hours: their later
             # messages, the handoff to staff and the AI's mode don't cancel it. The stage and call rules still do.
             checks = [lifecycle.stage_check(state, KIND_CALL_TASK)]
+        else:
+            # PLAN_4 stream T: with the Days 1-7 call tasks on, at most 2 call tasks per lead per workday in all.
+            from upsell_agent.scheduler import daily_call_tasks
+            checks.append(await daily_call_tasks.workday_cap_check(db, doc["lead_id"]))
         failed = [c for c in checks if not c[1]]
         decision = None
         if not failed:

@@ -21,29 +21,43 @@ and staff mark them done or dismissed there. One task per lead at a time: a newe
 touch replaces a waiting one.
 
 This module is only the store (no scheduler imports, so the lifecycle can use it).
+
+PLAN_4 stream T: the Days 1-7 morning and afternoon call tasks (scheduler/daily_call_tasks.py) open here too
+(`source: "daily"`, with their `slot`). Every task opened now carries `due_by` - the end of its half-day window
+for a daily task, the end of the agent's day (the dealer's closing time) for the others - and the lead's
+`assigned_to`. A task still open at `due_by` is marked `missed` (`mark_missed`, every minute with the scheduler)
+with the time and the assigned agent: the client wants missed human tasks recorded for the BDC report (1 Oct).
+Staff can still record the outcome of a missed call afterwards; `missed_at` stays on it.
 """
 
-from datetime import timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 from bson import ObjectId
 
 from upsell_agent import clock
+from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
     DealerScopedDatabase,
+    as_object_id,
+    dealer_scoped_db,
+    get_db,
 )
 
 # From a successful send to the call task opening, if there was no contact (client: 60 minutes).
 CONNECTION_WINDOW = timedelta(minutes=60)
 OPEN, COMPLETED, DISMISSED, CANCELLED = "open", "completed", "dismissed", "cancelled"
+MISSED = "missed"  # stream T: not completed by the end of its window / the agent's day
 OUTCOMES = {"connected", "no_answer", "voicemail", "wrong_number", "other"}
 
 
 async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, phone: str, customer_name: str | None,
                     reason: str, source_turn_id: str | None, followup_id: str | None, created_at: Any,
-                    requested: bool = False, notice: str | None = None) -> dict[str, Any]:
+                    requested: bool = False, notice: str | None = None,
+                    extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """Opens the task for staff and tells them on the lead. One open task per lead.
 
     `requested` (PLAN_4 stream H): the customer asked for this call ("Customer asked for a call"), so it opens
@@ -64,7 +78,10 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     now = clock.now()
     doc = {"lead_id": lead_id, "customer_id": customer_id, "phone": phone, "customer_name": customer_name,
            "status": OPEN, "reason": reason, "source_turn_id": source_turn_id, "followup_id": followup_id,
-           "timer_started_at": created_at, "opened_at": now, "created_at": now, "requested": requested}
+           "timer_started_at": created_at, "opened_at": now, "created_at": now, "requested": requested,
+           # stream T: who should call, and when it counts as missed.
+           "source": "connection_timer", "assigned_to": await assigned_agent(db, lead_id),
+           "due_by": await end_of_agent_day(db.dealer_id, now), **(extra or {})}
     inserted = await tasks.insert_one(doc)
     doc["_id"] = inserted.inserted_id
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
@@ -73,11 +90,14 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     return doc
 
 
-async def cancel_open(db: DealerScopedDatabase, lead_id: str, reason: str, *, keep_requested: bool = False) -> int:
+async def cancel_open(db: DealerScopedDatabase, lead_id: str, reason: str, *, keep_requested: bool = False,
+                      source: str | None = None) -> int:
     """The customer or staff made contact (or the lead moved on) while a task was open. `keep_requested`: a call
-    the customer asked for stays open (PLAN_4 stream H) - their next message isn't the call they asked for."""
+    the customer asked for stays open (PLAN_4 stream H) - their next message isn't the call they asked for.
+    `source` (stream T): only tasks of that source (e.g. "daily")."""
     result = await db.collection(AI_CALL_TASKS_COLLECTION).update_many(
-        {"lead_id": lead_id, "status": OPEN, **({"requested": {"$ne": True}} if keep_requested else {})},
+        {"lead_id": lead_id, "status": OPEN, **({"requested": {"$ne": True}} if keep_requested else {}),
+         **({"source": source} if source else {})},
         {"$set": {"status": CANCELLED, "closed_reason": reason, "closed_at": clock.now()}})
     if result.modified_count:
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
@@ -93,11 +113,78 @@ async def resolve(db: DealerScopedDatabase, task_id: str, *, status: str, outcom
         return None
     tasks = db.collection(AI_CALL_TASKS_COLLECTION)
     task = await tasks.find_one({"_id": ObjectId(task_id)})
-    if task is None or task["status"] != OPEN:
+    # stream T: a missed task can still get its outcome afterwards (the call happened late); missed_at stays.
+    if task is None or task["status"] not in (OPEN, MISSED):
         return task
-    await tasks.update_one({"_id": task["_id"], "status": OPEN}, {"$set": {
+    await tasks.update_one({"_id": task["_id"], "status": task["status"]}, {"$set": {
         "status": status, "outcome": outcome, "note": note, "closed_by": by, "closed_at": clock.now()}})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": task["lead_id"], "staff_notice.kind": "call_task"}, {"$unset": {"staff_notice": ""}})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": task["lead_id"]}, {"$unset": {"call_task": ""}})
     return await tasks.find_one({"_id": task["_id"]})
+
+
+# --- PLAN_4 stream T: who calls, and missed tasks ---------------------------------------------
+
+async def assigned_agent(db: DealerScopedDatabase, lead_id: str) -> str | None:
+    """The lead's `assigned_to` (a CRM User id), or None."""
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)},
+                                                                    projection={"assigned_to": 1})
+    value = (lead or {}).get("assigned_to")
+    return str(value) if value else None
+
+
+async def end_of_agent_day(dealer_id: str, at: datetime) -> datetime:
+    """The dealer's closing time on `at`'s local day (opening hours stand in for the agents' schedule), or local
+    midnight when the dealer is closed that day or already shut."""
+    profile = await dealer_profile(dealer_id)
+    local = at.astimezone(profile.tz)
+    hours = profile.hours.get(local.weekday())
+    if hours:
+        closes = datetime.combine(local.date(), hours[1], tzinfo=profile.tz)
+        if closes > local:
+            return closes.astimezone(UTC)
+    return datetime.combine(local.date() + timedelta(days=1), time(0), tzinfo=profile.tz).astimezone(UTC)
+
+
+def _aware(value: Any) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+async def mark_missed(now: datetime | None = None, *, limit: int = 1000) -> int:
+    """Open tasks past their `due_by` become `missed` (`missed_at`; the assigned agent stays on the task).
+    Cross-dealer like the stuck-claim reset; each update is dealer-scoped. Tasks opened before `due_by`
+    existed are left alone."""
+    now = now or clock.now()
+    rows = await get_db()[AI_CALL_TASKS_COLLECTION].find(
+        {"status": OPEN, "due_by": {"$lte": now}}, projection={"dealer_id": 1, "lead_id": 1, "due_by": 1}
+    ).to_list(limit)
+    count = 0
+    for row in rows:
+        db = dealer_scoped_db(row["dealer_id"])
+        result = await db.collection(AI_CALL_TASKS_COLLECTION).update_one(
+            {"_id": row["_id"], "status": OPEN},
+            {"$set": {"status": MISSED, "missed_at": now, "closed_at": now,
+                      "closed_reason": f"not completed by {_aware(row['due_by']).isoformat()}"}})
+        if not result.modified_count:
+            continue
+        count += 1
+        state = db.collection(AI_LEAD_STATE_COLLECTION)
+        await state.update_one({"lead_id": row["lead_id"], "staff_notice.kind": "call_task"},
+                               {"$unset": {"staff_notice": ""}})
+        await state.update_one({"lead_id": row["lead_id"], "call_task.id": str(row["_id"])},
+                               {"$unset": {"call_task": ""}})
+    return count
+
+
+async def missed_by_agent(db: DealerScopedDatabase, *, since: datetime | None = None) -> list[dict[str, Any]]:
+    """A simple per-agent count of missed call tasks (`missed_at` set, so one completed late still counts).
+    The BDC performance report itself is next SOW."""
+    flt: dict[str, Any] = {"missed_at": {"$gte": since} if since else {"$ne": None}}
+    rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(flt, projection={"assigned_to": 1}).to_list(None)
+    counts: dict[str | None, int] = {}
+    for row in rows:
+        counts[row.get("assigned_to")] = counts.get(row.get("assigned_to"), 0) + 1
+    return [{"assigned_to": k, "missed": v} for k, v in sorted(counts.items(), key=lambda kv: -kv[1])]

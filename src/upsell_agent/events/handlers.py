@@ -73,7 +73,9 @@ async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, c
     else:
         # MASTER_PLAN_4 (stream A3): staff taking a lead over doesn't end SOLD PENDING or an ownership lifecycle -
         # only an outcome or the stage does (scheduler/sold_lifecycles.py re-checks them when they fire).
-        flt["kind"] = {"$nin": list(SOLD_LIFECYCLE_KINDS)}
+        # PLAN_4 stream T: nor the Days 1-7 human call tasks - they are for staff anyway; cancel_call_task ends this
+        # half-day's one and the stage decides the rest.
+        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, "daily_call_task"]}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
