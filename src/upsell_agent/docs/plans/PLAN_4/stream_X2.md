@@ -99,3 +99,9 @@ the fix.
 - **17. CUSTOMER_REPORTED vehicles only from vehicle words.** In the current-vehicle capture, a reply with no make
   or model ("I need an oil change", "since 2019") stores nothing, closes the capture question and goes to the AI
   turn. Test: `test_a_reply_with_no_vehicle_in_it_*`.
+- **11. Recall confirmation in the CRM.** New proxy `GET|POST /api/dealer-ai/leads/<leadId>/recalls` (same lead-access
+  auth as the other AI pages): GET lists the AI's recall records for each VIN on the lead's ownership records; POST
+  `{vin, recall_id, action: confirm|close, reason?}` calls the AI's existing `/v1/vehicles/{vin}/recalls/{id}/confirm`
+  / `close`. Only a VIN on the lead itself is accepted (`app/lib/ai/aiRecalls.js`, pure). `RecallsSection` in the AI
+  panel (lead screen and the AI Alerts / Call Tasks drawers) shows each recall with "Confirm for this VIN",
+  "Repaired" and "Doesn't apply". Test: `test-ai-crm-platform.js` (recall actions). Not exercised in a browser.
