@@ -9,12 +9,17 @@
 //   no contact         -> recorded; the lead stays in its flow
 //   wrong number       -> the AI marks that phone invalid (never texted or called again)
 //   opted out          -> the AI's consent records (every channel, or calls only); every channel also sets DND
+// A full appointment slot (stream T, with stream R's shared pieces): the booking route's 409 / slot 422 shows as
+// SlotFullNotice - the message, one-click "Book {next available}" and the day's other open times - and nothing
+// else is saved until the booking goes through.
 // The lead outcome goes to the AI service with the call result (PLAN_4 stream H).
 // Then an internal note summarising the call is added to the lead's conversation,
 // and the call task is completed (or dismissed) in the AI service.
 
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Col, Form, Modal, Row, Spinner } from "react-bootstrap";
+import { bookingConflictFrom } from "@lib/bookingConflict";
+import SlotFullNotice from "../../components/SlotFullNotice";
 import { CALL_OUTCOMES, CHANNEL_LABELS, aiFetch, callOutcomeLabel } from "./aiShared";
 
 const LEAD_OUTCOMES = [
@@ -38,16 +43,21 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dismissMode, setDismissMode] = useState(false);
+  const [conflict, setConflict] = useState(null); // a full appointment slot
 
   useEffect(() => {
     if (show) {
       setForm(EMPTY);
       setError("");
       setDismissMode(false);
+      setConflict(null);
     }
   }, [show, task?.id]);
 
-  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  const set = (field) => (e) => {
+    if (["bookingDate", "bookingTime", "appointmentType"].includes(field)) setConflict(null);
+    setForm((f) => ({ ...f, [field]: e.target.value }));
+  };
   const connected = form.callOutcome === "connected";
   const leadOptions = useMemo(
     () => LEAD_OUTCOMES.filter((o) => (o.needsContact === null || o.needsContact === connected)
@@ -75,10 +85,10 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
 
   const leadDealerId = task?.dealer_id || dealerId;
 
-  const summary = () => {
+  const summary = (booking) => {
     if (dismissMode) return `Call task dismissed (no call made): ${form.notes.trim()}`;
     const parts = [`Call outcome: ${callOutcomeLabel(form.callOutcome)}.`, `Lead outcome: ${leadOutcomeLabel(form.leadOutcome)}.`];
-    if (form.leadOutcome === "appointment") parts.push(`Appointment: ${form.bookingDate} at ${form.bookingTime}.`);
+    if (form.leadOutcome === "appointment") parts.push(`Appointment: ${booking.date} at ${booking.time}.`);
     if (form.leadOutcome === "specific_followup") {
       parts.push(`Follow up on ${form.followDate}${form.followTime ? ` at ${form.followTime}` : ""} by `
         + `${CHANNEL_LABELS[form.followChannel] || form.followChannel} (${form.followOwner === "ai" ? "the AI" : "staff"})`
@@ -94,21 +104,32 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
     body: JSON.stringify({ id: task.lead_id, status, ...extra }),
   });
 
-  const submit = async () => {
+  // `slot`: a time picked from the full-slot notice ({date, time}), booked at once.
+  const submit = async (slot = null) => {
     if (missing) {
       setError(missing);
       return;
     }
+    const booking = { date: slot?.date || form.bookingDate, time: slot?.time || form.bookingTime };
     setSaving(true);
     setError("");
-    const note = summary();
+    setConflict(null);
+    const note = summary(booking);
     try {
       // 1. The lead outcome, through the CRM's existing flows.
       if (!dismissMode && form.leadOutcome === "appointment") {
-        await updateLeadStatus("Appointment Booked", {
-          booking_date: form.bookingDate, booking_time: form.bookingTime,
-          ...(form.appointmentType ? { appointment_type: form.appointmentType } : {}),
-        });
+        try {
+          await updateLeadStatus("Appointment Booked", {
+            booking_date: booking.date, booking_time: booking.time,
+            ...(form.appointmentType ? { appointment_type: form.appointmentType } : {}),
+          });
+        } catch (err) {
+          // A full / unbookable slot: offer the next available time instead of a plain error; nothing else saved.
+          const found = bookingConflictFrom(err.status, err.body, booking);
+          if (!found) throw err;
+          setConflict(found);
+          return;
+        }
       } else if (!dismissMode && form.leadOutcome === "opted_out" && form.optOutScope === "all") {
         await updateLeadStatus("DND");
       }
@@ -208,6 +229,10 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
                   <small className="text-secondary-light">
                     The appointment is booked the same way as &quot;Update Status&quot; - &quot;Appointment Booked&quot;.
                   </small>
+                  <SlotFullNotice conflict={conflict} busy={saving} onBook={(date, time) => {
+                    setForm((f) => ({ ...f, bookingDate: date, bookingTime: time }));
+                    submit({ date, time });
+                  }} />
                 </Col>
               </Row>
             )}
@@ -289,7 +314,7 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
             </Button>
           </div>
         )}
-        <Button variant="custom" onClick={submit} disabled={saving || Boolean(missing)}>
+        <Button variant="custom" onClick={() => submit()} disabled={saving || Boolean(missing)}>
           {saving && <Spinner animation="border" size="sm" className="me-2" />}
           {dismissMode ? "Dismiss call task" : "Save outcome"}
         </Button>

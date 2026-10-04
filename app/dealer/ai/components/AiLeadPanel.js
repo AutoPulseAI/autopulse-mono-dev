@@ -17,6 +17,7 @@ import { Alert, Badge, Button, Form, Modal, Spinner } from "react-bootstrap";
 import {
   AI_MODE_LABELS, CHANNEL_LABELS, aiFetch, alertKind, formatDate, formatDateTime, fromNow, stageLabel, stageVariant,
 } from "./aiShared";
+import { vehicleTypeText } from "@lib/ai/aiInsights";
 
 const OPPORTUNITY_DAYS = 91;
 const HISTORY_SHOWN = 5;
@@ -141,6 +142,8 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
     ? (BUCKET_LABELS[bucketKey] || bucketKey)
       + (originalBucket && originalBucket !== bucketKey ? ` (came in as ${BUCKET_LABELS[originalBucket] || originalBucket})` : "")
     : null;
+  // PLAN_4 stream L: new / used now, and as the lead came in (kept for reporting).
+  const vehicleType = vehicleTypeText(profile?.vehicle_type ?? profile?.lead);
   const oppDay = typeof life.opportunity_age_days === "number" ? life.opportunity_age_days + 1 : null;
   const channels = data?.consent?.channels;
 
@@ -209,6 +212,7 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
                   <p className="mb-1 small text-secondary-light">No stage yet.</p>
                 )}
                 <Row label="Bucket">{bucket}</Row>
+                <Row label="New or used">{vehicleType}</Row>
                 <Row label="Why">{life.reason}</Row>
                 <Row label="Opportunity">
                   {oppDay !== null && (life.opportunity_closed_at

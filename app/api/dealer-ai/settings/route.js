@@ -1,7 +1,11 @@
 // The AI Settings page (app/dealer/ai/settings).
 //   GET /api/dealer-ai/settings[?dealer_id=]
 //   PUT /api/dealer-ai/settings  { ai_mode?: "off" | "shadow" | "live", mms_enabled?: boolean, dealer_id?,
-//                                  booking_capacity?: { sales?: {max_per_slot?, slot_minutes?}, service?: {...} } }
+//                                  booking_capacity?: { sales?: {max_per_slot?, slot_minutes?}, service?: {...} },
+//                                  ai_daily_call_tasks?: "on" | "off" }
+//
+// ai_daily_call_tasks (agentic-upsell PLAN_4 stream T): the Days 1-7 morning + afternoon call tasks, saved to
+// dealer_account_information.ai_daily_call_tasks (unset = on); see app/lib/ai/aiCallTasks.js.
 //
 // booking_capacity (stream R): appointments per slot and slot length, per type, saved to
 // dealer_account_information.booking_capacity - read by the CRM's booking check (app/lib/bookingService.js
@@ -26,6 +30,7 @@ import "@models/Role";
 import "@models/Permission";
 import { jsonError, requireDealerSession, staffName } from "../_lib/dealerAi";
 import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
+import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const SETTINGS_PERMISSION = "Manage Follow-up setting";
@@ -50,6 +55,7 @@ function describe(dealer) {
     // never told to customers) when no day is marked open.
     hours_on_record: hours.some((h) => h.open),
     booking_capacity: bookingCapacityView(dealer), // stream R
+    ai_daily_call_tasks: dailyCallTasksView(dealer), // stream T
   };
 }
 
@@ -103,6 +109,11 @@ export async function PUT(req) {
     const capacity = bookingCapacityUpdate(body.booking_capacity);
     if (capacity.errors.length) return jsonError(capacity.errors.join("; "), 422);
     Object.assign(set, capacity.set);
+  }
+  if (body.ai_daily_call_tasks !== undefined) { // stream T
+    const daily = dailyCallTasksUpdate(body.ai_daily_call_tasks);
+    if (daily.error) return jsonError(daily.error, 422);
+    Object.assign(set, daily.set);
   }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 
