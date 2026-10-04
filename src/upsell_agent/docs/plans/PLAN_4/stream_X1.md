@@ -137,3 +137,33 @@ arrives, so provider leads stay at REVIEW for campaigns (AI follow-ups on an inb
   and "qualifies for the CPO warranty" pass.
 
 Tests: `tests/unit/test_x1_consent_claims.py` (17; all failed before).
+
+## Item 10: state holidays, IN / ME automated-device rows, New Jersey's cell-phone sales ban
+
+All in the versioned table `compliance/state_hours.py` (RULES_VERSION `tcpa_7/2026-10-04-x1`, logged per decision):
+
+- `state_holidays(state, year)`: RI Victory Day (2nd Monday in August); LA Mardi Gras, Good Friday, All Saints'
+  Day; AL Mardi Gras, Confederate Memorial Day (4th Monday in April), Jefferson Davis' Birthday (1st Monday in
+  June). Easter computed (Gregorian). The STRICTEST row (unknown state) bans all of them.
+- Rows carry `automated` rules: IN ADAD 9:00-20:00 every day; ME weekdays 9:00-17:00, no weekends, 1 per 8 hours.
+  `rules_for(states, automated=True)` overlaps them with the live row; the engine uses it for every AI text (all
+  are automated), call tasks keep the live row. Unknown state → `STRICTEST_AUTOMATED` (Mon-Fri 10:00-17:00, no
+  weekends). Switch: `TCPA_AUTOMATED_DEVICE_ROWS=false`.
+- NJ row `unsolicited_sales_ban` (N.J.S.A. 56:8-130): a marketing text to a New Jersey customer is BLOCKed
+  (`unsolicited_sales_ban`) unless it follows up their own inbound inquiry, the customer opted (back) in, or a
+  lead provider's complete consent record exists. Every number is treated as a cell phone. Switch:
+  `TCPA_NJ_CELL_SALES_BAN=false`.
+
+Tests: `tests/unit/test_x1_state_rules.py` (13; failed before). **Counsel must confirm**: the holiday lists (LA and
+AL Mardi Gras are parish / county holidays, applied statewide; LA All Saints' Day), whether AI texts are
+"automated devices" under IN / ME law (we assume yes), whether the ME 1-per-8h cap is per number across texts and
+calls, and how NJ's "unsolicited" reads for a dealer's follow-ups.
+
+## Open items for counsel (all items)
+
+- The `lead_response` exemption from marketing consent for consumer-initiated leads (TCPA PDF §4).
+- Transactional texts under the state rows (applied, the stricter reading).
+- `_customer_wrote` still gives an outbound / DealerVault lead 91 days of AI follow-ups once the customer writes.
+- Whether a customer's request for a dated contact is itself enough for a text then (today: email if no consent).
+- State caps counted across all subjects (texts and calls together), not per subject.
+- State holidays, IN / ME automated rows, NJ ban: as above. National / state DNC lists: not used (client Q19).

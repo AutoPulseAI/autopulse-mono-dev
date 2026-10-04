@@ -475,8 +475,20 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     # MASTER_PLAN_4 F1: marketing follows the customer's state's own row(s) (client's TCPA tables, 1 Oct).
     # PLAN_4 stream X1 item 7: transactional texts follow the state rows too (state windows apply to every
     # automated text; replies to the customer's own message keep their exemption, rule 5).
-    rules = (state_hours.rules_for(state_hours.zone_states(zone))
+    # PLAN_4 stream X1 item 10: an AI text is an automated message, so the automated-device rows apply (IN, ME).
+    rules = (state_hours.rules_for(state_hours.zone_states(zone), automated=True)
              if purpose in (*CAPPED_PURPOSES, "transactional") else None)
+    if purpose == "marketing" and (banned := state_hours.unsolicited_sales_banned(rules or [])):
+        solicited = (consent_info.get("source") in ("lead_provider",)
+                     or str(consent_info.get("source") or "").startswith("customer_")
+                     or (consent_info.get("source") == "own_inquiry" and origin.origin == "inbound"))
+        if not solicited:
+            check("unsolicited_sales_ban", False, f"{', '.join(banned)} bans unsolicited sales texts to cell "
+                                                  "phones (N.J.S.A. 56:8-130) and this isn't a follow-up the "
+                                                  "customer asked for")
+            return Decision("BLOCK", f"{', '.join(banned)}: no unsolicited sales texts to cell phones",
+                            "unsolicited_sales_ban", zone=zone.as_dict(), consent=consent_info)
+        check("unsolicited_sales_ban", True, f"{', '.join(banned)}: the customer's own inquiry or express consent")
     earliest = at
     frequency: dict[str, Any] = {}
     if purpose in CAPPED_PURPOSES:

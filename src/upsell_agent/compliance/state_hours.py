@@ -24,23 +24,46 @@ Rows the client marks with an asterisk ("federal default", not individually
 verified) are kept as `verified=False`: research status, not a legal
 conclusion. Counsel confirms (the client's own note under Table 1).
 
-The hours are the "live-call window" column. Indiana's and Maine's stricter
-rules for automatic dialing-announcing / automated calling devices
-(recorded-message calls) are kept as notes, not applied, and listed for
-counsel in docs/plans/PLAN_4/stream_A1.md.
+The hours are the "live-call window" column. PLAN_4 stream X1 item 10 adds, as configurable rules in this
+same versioned table (counsel must confirm each, docs/plans/PLAN_4/stream_X1.md):
+
+- **State holidays** besides the federal calendar for the holiday-ban states: Rhode Island's Victory Day,
+  Louisiana's Mardi Gras, Good Friday and All Saints' Day, Alabama's Mardi Gras, Confederate Memorial Day and
+  Jefferson Davis' Birthday (STATE_HOLIDAYS).
+- **Automated-device rows** (`automated`): Indiana's ADAD 9:00-20:00 and Maine's automated-device weekdays
+  9:00-17:00 with at most 1 per 8 hours. Every AI text is automated, so the engine applies them to texts
+  (`rules_for(..., automated=True)`); a person's call keeps the live row. Off with
+  TCPA_AUTOMATED_DEVICE_ROWS=false.
+- **New Jersey's ban on unsolicited sales calls to cell phones** (N.J.S.A. 56:8-130, `unsolicited_sales_ban`):
+  the engine blocks a marketing text to a New Jersey customer unless it follows up their own inquiry or they
+  gave express consent. Off with TCPA_NJ_CELL_SALES_BAN=false.
 
 Replies to the customer's own message are not marketing and keep their
 current exemption (engine.py rule 5): nothing here touches them.
 """
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 
 # Bump when any row changes. Logged with every decision (ai_compliance_log.jurisdiction.rules_version).
-RULES_VERSION = "tcpa_7/2026-10-01"
+RULES_VERSION = "tcpa_7/2026-10-04-x1"
+
+
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+# PLAN_4 stream X1 item 10: configurable, on by default (the stricter reading) until counsel says otherwise.
+def automated_rows_on() -> bool:
+    return _flag("TCPA_AUTOMATED_DEVICE_ROWS")
+
+
+def nj_cell_sales_ban_on() -> bool:
+    return _flag("TCPA_NJ_CELL_SALES_BAN")
 SEARCH_DAYS = 14
 
 Window = tuple[time, time]  # (start, end), end exclusive, customer-local
@@ -59,10 +82,15 @@ class StateRule:
     verified: bool = True
     cite: str = ""
     note: str = ""
+    # PLAN_4 stream X1 item 10: automated-device rules {"weekday": Window, "saturday": Window | None,
+    # "sunday": Window | None, "cap": (count, period) | None, "cite": str} - applied to AI texts.
+    automated: dict[str, Any] | None = None
+    # N.J.S.A. 56:8-130: no unsolicited sales calls (texts) to cell phones.
+    unsolicited_sales_ban: bool = False
 
     def window_on(self, day: date) -> Window | None:
         """The window on that customer-local day (None: no texts that day)."""
-        if self.holidays_banned and is_federal_holiday(day):
+        if self.holidays_banned and (is_federal_holiday(day) or is_state_holiday(day, self.state)):
             return None
         weekday = day.weekday()
         if weekday == 5:
@@ -101,9 +129,11 @@ _SAME: Any = "same"  # Saturday / Sunday use the weekday window
 
 def _row(state: str, weekday: Window = _FEDERAL, *, saturday: Any = _SAME, sunday: Any = _SAME,
          holidays_banned: bool = False, cap: tuple[int, timedelta] | None = None, verified: bool = True,
-         cite: str = "", note: str = "") -> StateRule:
+         cite: str = "", note: str = "", automated: dict[str, Any] | None = None,
+         unsolicited_sales_ban: bool = False) -> StateRule:
     return StateRule(state, weekday, weekday if saturday is _SAME else saturday,
-                     weekday if sunday is _SAME else sunday, holidays_banned, cap, verified, cite, note)
+                     weekday if sunday is _SAME else sunday, holidays_banned, cap, verified, cite, note,
+                     automated, unsolicited_sales_ban)
 
 
 def _federal_default(state: str, *, verified: bool = False, note: str = "") -> StateRule:
@@ -128,15 +158,19 @@ STATE_RULES: dict[str, StateRule] = {r.state: r for r in [
     _federal_default("ID"),
     _federal_default("IL"),
     _row("IN", cite="Ind. Code § 24-5-14-8",
-         note="Live calls: federal default. Autodialed (ADAD) calls 9:00-20:00 - not applied, see module doc"),
+         note="Live calls: federal default. Autodialed (ADAD) calls 9:00-20:00 - applied to AI texts (X1 item 10)",
+         automated={"weekday": (time(9), time(20)), "saturday": (time(9), time(20)), "sunday": (time(9), time(20)),
+                    "cap": None, "cite": "Ind. Code § 24-5-14-8 (ADAD)"}),
     _federal_default("IA"),
     _federal_default("KS"),
     _row("KY", (time(10), time(21)), cite="KRS 367.46955(16)", note="Latest start in the country"),
     _row("LA", _EIGHT_TO_EIGHT, sunday=None, holidays_banned=True,
          cite="LPSC DNC General Order R-29617 § V(A)(2); La. R.S. 45:811"),
     _row("ME", cite="10 M.R.S. § 1498(3)",
-         note="Live calls: federal default. Automated devices: weekdays 9:00-17:00, 1 per 8h - not applied, "
-              "see module doc"),
+         note="Live calls: federal default. Automated devices: weekdays 9:00-17:00, 1 per 8h - applied to AI texts "
+              "(X1 item 10)",
+         automated={"weekday": (time(9), time(17)), "saturday": None, "sunday": None,
+                    "cap": (1, timedelta(hours=8)), "cite": "10 M.R.S. § 1498(3) (automated devices)"}),
     _row("MD", _EIGHT_TO_EIGHT, cap=_THREE_A_DAY, cite="Md. Com. Law § 14-4502(c)",
          note="Table 2: PEWC for automated selection or dialing (calls, texts, voicemail)"),
     _row("MA", _EIGHT_TO_EIGHT, cite="201 CMR 12.02(2)"),
@@ -148,8 +182,10 @@ STATE_RULES: dict[str, StateRule] = {r.state: r for r in [
     _row("NE", cite="Neb. Rev. Stat. § 86-248(1)(a)"),
     _row("NV", (time(9), time(20)), cite="NRS 598.0918(3)"),
     _federal_default("NH", verified=True, note="State telemarketing law has no hours rule"),
-    _federal_default("NJ", note="Table 2: no calls 21:00-8:00; outright ban on unsolicited sales calls to cell "
-                                "phones (N.J.S.A. 56:8-130) - for counsel"),
+    _row("NJ", verified=False, cite="16 C.F.R. § 310.4(c); N.J.S.A. 56:8-130",
+         note="Table 2: no calls 21:00-8:00; outright ban on unsolicited sales calls to cell phones (N.J.S.A. "
+              "56:8-130) - applied to marketing texts without the customer's own inquiry or express consent "
+              "(X1 item 10), for counsel", unsolicited_sales_ban=True),
     _row("NM", (time(9), time(21)), cite="NMSA § 57-12-22(B)(5)"),
     _row("NY", cite="N.Y. Gen. Bus. Law § 399-z(2), (5-a)"),
     _federal_default("NC"),
@@ -161,7 +197,7 @@ STATE_RULES: dict[str, StateRule] = {r.state: r for r in [
     _row("PA", cite="73 P.S. § 2245(a)(1)"),
     _row("RI", (time(9), time(18)), saturday=(time(10), time(17)), sunday=None, holidays_banned=True,
          cite="R.I. Gen. Laws §§ 5-61-2(2), 5-61-3.6",
-         note="State holidays as well as federal; only the federal calendar is applied today"),
+         note="State holidays as well as federal (Victory Day, X1 item 10)"),
     _row("SC", cite="S.C. Code § 37-21-30"),
     _row("SD", (time(9), time(21)), sunday=None, cite="SDCL 37-30A-3(2)"),
     _federal_default("TN"),
@@ -206,13 +242,40 @@ def _strictest(rows: list[StateRule]) -> StateRule:
 STRICTEST = _strictest(list(STATE_RULES.values()))
 
 
-def rules_for(states: tuple[str, ...] | list[str]) -> list[StateRule]:
+def as_automated(rule: StateRule) -> StateRule:
+    """The row with its automated-device rules applied on top (PLAN_4 stream X1 item 10): each day's window is
+    the overlap of the live and the automated windows, and the tighter cap wins."""
+    auto = rule.automated
+    if not auto:
+        return rule
+    caps = [c for c in (rule.cap, auto.get("cap")) if c]
+    return replace(rule, weekday=_intersect([rule.weekday, auto["weekday"]]) or (time(0), time(0)),
+                   saturday=_intersect([rule.saturday, auto.get("saturday")]),
+                   sunday=_intersect([rule.sunday, auto.get("sunday")]),
+                   cap=min(caps, key=lambda c: c[0] / c[1].total_seconds()) if caps else None,
+                   cite=f"{rule.cite}; {auto.get('cite', '')}".strip("; "))
+
+
+def rules_for(states: tuple[str, ...] | list[str], *, automated: bool = False) -> list[StateRule]:
     """Every row that applies: one per known state; the strictest row when
-    there's no state, or a state the table doesn't have."""
+    there's no state, or a state the table doesn't have. `automated`: an AI
+    text (an automated message), so the automated-device rows apply too
+    (PLAN_4 stream X1 item 10) while TCPA_AUTOMATED_DEVICE_ROWS is on."""
+    automated = automated and automated_rows_on()
     known = [s.upper() for s in states if s]
     if not known or any(s not in STATE_RULES for s in known):
-        return [STRICTEST]
-    return [STATE_RULES[s] for s in dict.fromkeys(known)]
+        return [STRICTEST_AUTOMATED if automated else STRICTEST]
+    rows = [STATE_RULES[s] for s in dict.fromkeys(known)]
+    return [as_automated(r) for r in rows] if automated else rows
+
+
+def unsolicited_sales_banned(rules: list[StateRule]) -> list[str]:
+    """States among `rules` that ban unsolicited sales messages to cell phones (NJ), while the switch is on."""
+    return [r.state for r in rules if r.unsolicited_sales_ban] if nj_cell_sales_ban_on() else []
+
+# PLAN_4 stream X1 item 10: for an AI text to a customer in no known state, the automated-device rows count too.
+STRICTEST_AUTOMATED = replace(_strictest([as_automated(r) for r in STATE_RULES.values()]),
+                              note="No known state: every state's rules at once, automated-device rows included")
 
 
 def zone_states(zone: dict | object) -> tuple[str, ...]:
@@ -320,3 +383,47 @@ def federal_holidays(year: int) -> dict[date, str]:
 
 def is_federal_holiday(day: date) -> bool:
     return day in federal_holidays(day.year)
+
+
+# --- State holidays (PLAN_4 stream X1 item 10; counsel to confirm the lists) -----------------------------
+
+def _easter(year: int) -> date:
+    """Western Easter Sunday (anonymous Gregorian algorithm)."""
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    m = (32 + 2 * e + 2 * i - h - k) % 7
+    n = (a + 11 * h + 22 * m) // 451
+    month, day = divmod(h + m - 7 * n + 114, 31)
+    return date(year, month, day + 1)
+
+
+@lru_cache(maxsize=64)
+def state_holidays(state: str, year: int) -> dict[date, str]:
+    """The state's own legal holidays that its no-holiday rule adds to the federal calendar.
+
+    - RI (R.I. Gen. Laws § 25-1-1): Victory Day, the second Monday in August.
+    - LA (La. R.S. 1:55): Mardi Gras, Good Friday, All Saints' Day (1 Nov). Mardi Gras is a legal holiday in
+      some parishes only; applied statewide, the stricter reading.
+    - AL (Ala. Code § 1-3-8): Mardi Gras (Baldwin and Mobile counties; applied statewide), Confederate Memorial
+      Day (fourth Monday in April), Jefferson Davis' Birthday (first Monday in June). Robert E. Lee Day and
+      Washington / Jefferson Day fall on federal holidays already.
+    STRICTEST (an unknown state) uses every one of them."""
+    easter = _easter(year)
+    days: dict[str, dict[date, str]] = {
+        "RI": {_nth_weekday(year, 8, 0, 2): "Victory Day"},
+        "LA": {easter - timedelta(days=47): "Mardi Gras", easter - timedelta(days=2): "Good Friday",
+               date(year, 11, 1): "All Saints' Day"},
+        "AL": {easter - timedelta(days=47): "Mardi Gras", _nth_weekday(year, 4, 0, 4): "Confederate Memorial Day",
+               _nth_weekday(year, 6, 0, 1): "Jefferson Davis' Birthday"},
+    }
+    if state == "STRICTEST":
+        return {d: n for rows in days.values() for d, n in rows.items()}
+    return days.get(state, {})
+
+
+def is_state_holiday(day: date, state: str) -> bool:
+    return day in state_holidays(state, day.year)
