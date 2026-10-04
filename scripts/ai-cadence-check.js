@@ -496,9 +496,11 @@ async function scenario(t0) {
       txT2 ? `due ${local(txT2.due_at)} CT` : 'no Touch 2');
   }
 
-  // ---- Section 6: after-hours leads at 21:30 ------------------------------------------------------------------------
+  // ---- Section 6: after-hours leads. 19:30: the dealer is closed and texting is still allowed (8:00-21:00), so the
+  // choice message goes at once (blueprint box 0: "continues the conversation immediately (if within TCPA allowed
+  // hours)"). 21:30: outside the window, so the first text waits for 8:00 (PLAN_4 stream X1). ------------------------
   if (want(6)) {
-    await walkTo(await toLocal(0, '21:30', t0));
+    await walkTo(await toLocal(0, '19:30', t0));
     L.h1 = await newLead('h1', { name: 'Hana Now', comments: 'Hi, I want a new Toyota RAV4' });
     L.h2 = await newLead('h2', { name: 'Hugo Later', comments: 'Hi, I want a new Toyota RAV4' });
     const h1First = (await quiet(firstReply(L.h1)))?.[0];
@@ -518,6 +520,14 @@ async function scenario(t0) {
       offered(await state(L.h2)) === 'later' && resume && localParts(resume.due_at).hm === '09:00',
       `"${clip(h2Answer.at(-1)?.text, 70)}"; due ${resume && local(resume.due_at)}`);
     void h2First;
+    await walkTo(await toLocal(0, '21:30', t0));
+    L.h3 = await newLead('h3', { name: 'Hale Night', comments: 'Hi, I want a new Toyota RAV4' });
+    const held = await waitFor('the 21:30 lead\'s held first reply', async () =>
+      (await followups(L.h3, 'first_reply_held', { status: 'pending' }))[0]).catch(() => null);
+    const sentAtNight = (await outbound(L.h3, { status: 'sent' })).length;
+    check('6e. a 21:30 lead (outside the 8:00-21:00 texting window) is not texted at night: the first reply waits for 8:00',
+      Boolean(held) && sentAtNight === 0 && localParts(held.due_at).hm === '08:00' && dayDiff(t0, held.due_at) === 1,
+      held ? `held until ${local(held.due_at)}; ${clip(held.reason, 90)}` : `no held first reply; ${sentAtNight} sent`);
   }
 
   // ---- Day 2 morning --------------------------------------------------------------------------------------------
