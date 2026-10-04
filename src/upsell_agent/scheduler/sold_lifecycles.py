@@ -620,7 +620,11 @@ def _reply(action: str, reason: str, text: str, subject: str = "Your vehicle") -
 
 
 async def _notice(db: DealerScopedDatabase, lead_id: str, kind: str, text: str, **extra: Any) -> None:
-    await _set(db, lead_id, {"staff_notice": {"at": clock.now(), "kind": kind, "text": text, **extra}})
+    at = clock.now()
+    await _set(db, lead_id, {"staff_notice": {"at": at, "kind": kind, "text": text, **extra}})
+    # MASTER_PLAN_4 (stream R): the same notice as a staff note in the CRM conversation, once per notice.
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind=kind, text=text, key=f"{kind}:{lead_id}:{at.isoformat()}")
 
 
 async def route_inbound(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, state: dict, text: str,

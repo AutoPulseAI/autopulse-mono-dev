@@ -196,9 +196,8 @@ async def notify_team(db: DealerScopedDatabase, platform: Any, *, dealer_id: str
         {"lead_id": lead_id},
         {"$set": {"staff_notice": {"at": now, "kind": NOTICE_KIND, "text": text, "request": entry}},
          "$push": {"service_requests": {**entry, "turn_id": turn_id, "noticed_at": now}}})
-    noted = False
-    if record_note := getattr(platform, "record_note", None):
-        await record_note(dealer_id, {"lead_id": lead_id, "customer_id": customer_id, "text": text,
-                                      "kind": NOTICE_KIND, "idempotency_key": f"{turn_id}:{NOTICE_KIND}"})
-        noted = True
-    return {"text": text, "platform_note": noted}
+    # MASTER_PLAN_4 (stream R): the note in the CRM conversation, through the platform client (stub or live).
+    from upsell_agent.agent import crm_notes
+    note = await crm_notes.write(db, lead_id=lead_id, kind=NOTICE_KIND, text=text, key=f"{turn_id}:{NOTICE_KIND}",
+                                 platform=platform, customer_id=customer_id)
+    return {"text": text, "platform_note": note["status"] in ("written", "duplicate"), "crm_note": note}
