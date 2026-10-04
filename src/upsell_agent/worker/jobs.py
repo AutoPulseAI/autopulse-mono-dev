@@ -203,8 +203,16 @@ async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]
     return {"status": "cleared"}
 
 
+async def sweep_prices(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """PLAN_4 stream L: every 6 hours, a price snapshot of every vehicle of every dealer the AI works for, for
+    verified price drops (learning/price_watch.py)."""
+    from upsell_agent.learning import price_watch
+    return await price_watch.sweep()
+
+
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
-             plan_birthdays]  # MASTER_PLAN_4 D7 (stream A3)
+             plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)
+             sweep_prices]  # PLAN_4 stream L

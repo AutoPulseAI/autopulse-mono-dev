@@ -148,6 +148,9 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     # MASTER_PLAN_3 C2: the staff call task behind the 60-minute connection timer follows the touches
     # it belongs to (the working stages; a call is also the dated step's own channel).
     "call_task": WORKING | {Stage.SOLD_PENDING, Stage.SOLD_DELIVERED},
+    # PLAN_4 stream T (Omnichannel PDF §3 "Human call tasks - Days 1-7"): the morning and afternoon call tasks
+    # run only while the lead has an eligible Short-Term status (scheduler/daily_call_tasks.py).
+    "daily_call_task": SHORT_TERM,
     "next_action": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     "next_action_check": frozenset({Stage.SPECIFIC_FOLLOWUP}),
     # A handoff check reminds the customer staff have their message: fine in any open stage.
@@ -467,7 +470,12 @@ async def cancel_stale_work(db: DealerScopedDatabase, lead_id: str, stage: Stage
         # An open call task is stale too (an appointment, a visit, an opt-out or a close came first).
         from upsell_agent.agent import call_tasks
         await call_tasks.cancel_open(db, lead_id, reason)
-    stale = [p["_id"] for p in pending if not kind_allowed(p.get("kind") or "channel_switch", stage)]
+    elif not kind_allowed("daily_call_task", stage):
+        # stream T: an open Days 1-7 call task is obsolete once the lead leaves Short-Term ("Status changed
+        # first: cancel obsolete call task").
+        from upsell_agent.agent import call_tasks
+        await call_tasks.cancel_open(db, lead_id, reason, source="daily")
+    stale =[p["_id"] for p in pending if not kind_allowed(p.get("kind") or "channel_switch", stage)]
     if not stale:
         return 0
     result = await followups.update_many(
@@ -559,6 +567,9 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
             out["crm_status"] = await crm_status.sync_closed(db, lead_id, event.kind, reason=result.reason,
                                                              closed_at=now)
     if new != current:
+        # PLAN_4 stream L: an appointment, a visit or an opt-out is credited to the lead's latest touch.
+        from upsell_agent.learning import touches
+        await touches.on_stage_change(db, lead_id, new, at=now)
         # MASTER_PLAN_4 D1/D8 (stream A3): a manager outcome starts exactly one lifecycle and stops the others, and
         # every lead opening or closing recalculates the customer's ACTIVE / INACTIVE status.
         from upsell_agent.scheduler import sold_lifecycles

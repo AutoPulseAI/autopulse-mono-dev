@@ -123,6 +123,10 @@ async def set_channel_consent(
     await record_consent(db, customer_id=customer_id, channel=channel, consent_type="opt_out",
                          status="opted_in" if allowed else "opted_out", source=source, lead_id=lead_id,
                          evidence=evidence, address=address_key(channel, address))
+    if not allowed:
+        # PLAN_4 stream L: the opt-out is marked on the latest AI touch (learning/touches.py).
+        from upsell_agent.learning import touches
+        await touches.on_opt_out(db, lead_id=lead_id, customer_id=customer_id, channel=channel)
 
 
 async def latest_opt_out(db: DealerScopedDatabase, customer_id: str | None, channel: str,

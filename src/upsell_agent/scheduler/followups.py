@@ -98,6 +98,7 @@ from upsell_agent.integrations.mongodb import (
     dealer_scoped_db,
     get_db,
 )
+from upsell_agent.learning import optimizer, touches
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.contact_window import (
     add_business_minutes,
@@ -150,10 +151,12 @@ KIND_CALL_TASK = "call_task"
 # messages. Kept in step with sold_lifecycles.LIFECYCLE_KINDS (a unit test checks it).
 SOLD_LIFECYCLE_KINDS = ("sold_pending_touch", "post_delivery_checkin", "ownership_anniversary", "birthday",
                         "service_outreach")
+# PLAN_4 stream T: the Days 1-7 morning / afternoon call tasks (scheduler/daily_call_tasks.py KIND).
+KIND_DAILY_CALL_TASK = "daily_call_task"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
-                                      *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
+                                      KIND_DAILY_CALL_TASK, *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -496,6 +499,9 @@ async def plan_cadence_touch(
     _, stage_ok, stage_detail = lifecycle.stage_check(state, KIND_CADENCE_TOUCH)
     if not stage_ok:
         return {"created": False, "reason": f"No cadence touch: {stage_detail}."}
+    # PLAN_4 stream T: the Days 1-7 human call tasks start (and restart) with the cadence. Idempotent.
+    from upsell_agent.scheduler import daily_call_tasks
+    await daily_call_tasks.plan(db, lead_id=lead_id, customer_id=customer_id, lead_state=state)
     planned = cadence.plan_touch(
         cadence_state, now=now, tz=profile.tz,
         # The caller knows whether the message it just sent went out; the lead's own record is only
@@ -508,6 +514,9 @@ async def plan_cadence_touch(
         {"$set": {"status": "superseded", "reason": "a newer cadence touch", "closed_at": now}})
     if not planned.scheduled:
         return {"created": False, "reason": f"No cadence touch: {planned.why}", "plan": planned.as_dict()}
+    # PLAN_4 stream L: the learned angle (Days 8-90), wording variant and send time (learning/optimizer.py).
+    planned, touch = await optimizer.plan(db, planned, lead_id=lead_id, state=cadence_state, lead=lead,
+                                          lead_state=state, tz=profile.tz, now=now)
     channel, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
                                               channel=channel, at=planned.due_at, lead=lead, customer=customer)
     if check.outcome in ("BLOCK", "REVIEW"):
@@ -517,13 +526,13 @@ async def plan_cadence_touch(
     doc = {
         "kind": KIND_CADENCE_TOUCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
-        "due_at": due_at, "created_at": now, "claim_count": 0, "touch": planned.as_dict(),
+        "due_at": due_at, "created_at": now, "claim_count": 0, "touch": touch,
         "reason": f"held by the send check: {check.reason}" if due_at > planned.due_at else None,
     }
     inserted = await followups.insert_one(doc)
     local = due_at.astimezone(profile.tz).strftime("%a %b %d %H:%M %Z")
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
-            "timezone": profile.timezone, "plan": planned.as_dict(),
+            "timezone": profile.timezone, "plan": touch,
             "reason": f"{planned.why} Due {local}."}
 
 
@@ -637,6 +646,9 @@ async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: st
     count = result.modified_count
     if include_open:
         count += await call_tasks.cancel_open(db, lead_id, reason, keep_requested=keep_requested)
+    # PLAN_4 stream T: this half-day's waiting Days 1-7 call task goes too (later half-days stay planned).
+    from upsell_agent.scheduler import daily_call_tasks
+    await daily_call_tasks.cancel_current(db, lead_id, reason=reason)
     return count
 
 
@@ -693,6 +705,10 @@ async def fire_due(deps: Any, *, lock: LeadLock = _no_lock, claimed_by: str | No
     one took over 20s per 200 in the Stage 12 burst leftovers."""
     claimed_by = claimed_by or worker_id()
     summary: dict[str, Any] = {"reset": await reset_stuck_claims(), "fired": 0, "results": {}}
+    # PLAN_4 stream T: call tasks past their window / the agent's day are marked missed first, so a new
+    # half-day's task never meets a stale open one.
+    if missed := await call_tasks.mark_missed():
+        summary["missed_call_tasks"] = missed
     slots = asyncio.Semaphore(max(1, concurrency))
 
     async def fire(doc: dict) -> None:
@@ -775,6 +791,9 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
                    KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
                    KIND_CADENCE_TOUCH: _fire_cadence_touch_locked,
                    KIND_CALL_TASK: _fire_call_task_locked}.get(doc.get("kind"), _fire_locked)
+    if doc.get("kind") == KIND_DAILY_CALL_TASK:
+        from upsell_agent.scheduler import daily_call_tasks  # PLAN_4 stream T
+        fire_locked = daily_call_tasks.fire
     if doc.get("kind") in SOLD_LIFECYCLE_KINDS:
         # MASTER_PLAN_4 (stream A3): SOLD PENDING and the ownership lifecycle fire from their own module.
         from upsell_agent.scheduler import sold_lifecycles
@@ -1247,6 +1266,10 @@ async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnT
             span.reasoning = [*(photo.reasons if photo else []), *outcome.reasoning]
             span.edge_label = f"{ch}: {outcome.status}"
         outcomes.append(outcome)
+    # PLAN_4 stream L: the appointment step is a touch (learning/touches.py).
+    await touches.record_touch(db, touch_id=f"appointment-{doc['step']}-{doc['_id']}", lead_id=doc["lead_id"],
+                               customer_id=doc["customer_id"], kind="appointment", outcomes=outcomes,
+                               theme=doc["step"], theme_label=f"Appointment: {doc['step'].replace('_', ' ')}")
     return outcomes
 
 
@@ -1518,6 +1541,8 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         await _log(db, tracer, "cadence_touch_suppressed", {"followup_id": touch_id, "reason": check.reason})
         return "suppressed"
 
+    # PLAN_4 stream L: a price-drop touch re-checks the drop on a fresh read; lapsed, it loses the price.
+    touch = await optimizer.recheck_price_drop(db, touch, deps.config)
     # The turn reads the theme from here (agent/nodes/decide.py) and clears it when it's done.
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": doc["lead_id"]}, {"$set": {"pending_touch": touch}})
@@ -1568,6 +1593,10 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
             # PLAN_4 stream H: the customer asked for this call. It waited only for calling hours: their later
             # messages, the handoff to staff and the AI's mode don't cancel it. The stage and call rules still do.
             checks = [lifecycle.stage_check(state, KIND_CALL_TASK)]
+        else:
+            # PLAN_4 stream T: with the Days 1-7 call tasks on, at most 2 call tasks per lead per workday in all.
+            from upsell_agent.scheduler import daily_call_tasks
+            checks.append(await daily_call_tasks.workday_cap_check(db, doc["lead_id"]))
         failed = [c for c in checks if not c[1]]
         decision = None
         if not failed:

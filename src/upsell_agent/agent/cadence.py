@@ -177,15 +177,17 @@ def next_day_after(day: int) -> int | None:
     return next((d for d in EXTENDED_GRID if d > day), None)
 
 
-def pick_theme(touch_number: int, used: list[str]) -> Theme:
+def pick_theme(touch_number: int, used: list[str], exclude: frozenset[str] = frozenset()) -> Theme:
     """Days 2-7 follow the client's fixed order; Days 8-90 take the
-    least-recently-used angle, so nothing repeats while others are unused (§4)."""
+    least-recently-used angle, so nothing repeats while others are unused (§4).
+    `exclude` (PLAN_4 stream L): angles whose facts aren't available (no verified price drop)."""
     if touch_number in FIXED_DAYS:
         return DAY_THEMES[touch_number - 3]
-    unused = [t for t in EXTENDED_THEMES if t.id not in used]
+    themes = [t for t in EXTENDED_THEMES if t.id not in exclude] or EXTENDED_THEMES
+    unused = [t for t in themes if t.id not in used]
     if unused:
         return unused[0]
-    oldest = {t.id: used.index(t.id) for t in EXTENDED_THEMES if t.id in used}
+    oldest = {t.id: used.index(t.id) for t in themes if t.id in used}
     return BY_ID[min(oldest, key=lambda k: oldest[k])]
 
 

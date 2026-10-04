@@ -45,6 +45,7 @@ from upsell_agent.integrations.mongodb import (
     as_object_id,
     dealer_scoped_db,
 )
+from upsell_agent.learning import touches
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
@@ -75,7 +76,9 @@ async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, c
     else:
         # MASTER_PLAN_4 (stream A3): staff taking a lead over doesn't end SOLD PENDING or an ownership lifecycle -
         # only an outcome or the stage does (scheduler/sold_lifecycles.py re-checks them when they fire).
-        flt["kind"] = {"$nin": list(SOLD_LIFECYCLE_KINDS)}
+        # PLAN_4 stream T: nor the Days 1-7 human call tasks - they are for staff anyway; cancel_call_task ends this
+        # half-day's one and the stage decides the rest.
+        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, "daily_call_task"]}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
@@ -181,13 +184,17 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
         lead_id = str(latest[0]["_id"]) if latest else None
     # MASTER_PLAN_3 C6: a customer's message belongs to the lead the AI works, never to a linked duplicate.
     lead_id = await duplicates.workflow_lead_id(db, lead_id)
-    await db.collection(AI_MESSAGES_COLLECTION).update_one(
+    saved = await db.collection(AI_MESSAGES_COLLECTION).update_one(
         {"platform_message_id": event.message_id},
         {"$setOnInsert": {"lead_id": lead_id, "customer_id": event.customer_id, "direction": "inbound",
                           "channel": event.channel, "text": event.text, "platform_message_id": event.message_id,
                           "created_at": event.received_at, "answered_turn_id": None}},
         upsert=True,
     )
+    if saved.upserted_id is not None:
+        # PLAN_4 stream L: the reply is credited to the lead's latest AI touch, once (learning/touches.py).
+        # Timed by our clock (the one the touch was stamped with), so DEV's moved clock agrees.
+        await touches.on_customer_reply(db, lead_id, text=event.text, at=clock.now())
     return lead_id
 
 
