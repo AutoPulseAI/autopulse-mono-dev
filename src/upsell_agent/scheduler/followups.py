@@ -587,10 +587,13 @@ async def plan_appointment_timers(
         ch, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
                                              channel=channel, at=step.due_at, lead=lead, customer=customer,
                                              purpose="transactional")
-        if check.outcome in ("BLOCK", "REVIEW"):
+        no_show_check = step.step == appointment.STEP_NO_SHOW_CHECK
+        if check.outcome in ("BLOCK", "REVIEW") and not no_show_check:
             skipped.append({**step.as_dict(), "why": f"neither channel is allowed ({check.outcome}: {check.reason})"})
             continue
-        due_at = check.until if check.outcome == "HOLD" and check.until else step.due_at
+        # Stream X2: the +1h check moves the stage to No Show at +1h whatever the send check says; only its
+        # message waits for (or skips) the send check, at fire time.
+        due_at = check.until if check.outcome == "HOLD" and check.until and not no_show_check else step.due_at
         doc = {
             "kind": step.kind, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
             "from_channel": ch, "to_channel": ch, "text": None, "subject": None, "status": "pending",
@@ -1407,6 +1410,15 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         same = current is not None and current.isoformat() == doc.get("appointment_at")
         needs_booking_check = step in (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
                                        appointment.STEP_NO_SHOW_CHECK)
+        moved = None
+        if step == appointment.STEP_NO_SHOW_CHECK and same and stage_of_state(state) == lifecycle.Stage.APPOINTMENT_SET:
+            # Appointment + 1 hour and no Sales Visit: the lead is a No Show (§9) - whoever holds the conversation
+            # and whatever the send check says (stream X2, audit probes P2 / P4). Only the message below depends on
+            # those. The stage change comes first, so a reply to the message is routed as a reply to a no-show.
+            moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
+                "appointment_missed", source="appointment_timer",
+                reason="Appointment time + 1 hour with no Sales Visit")], lead=lead, customer_id=doc["customer_id"])
+            state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
         checks = [
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
@@ -1420,6 +1432,10 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             useful = appointment.details_still_useful(current, now=clock.now())
             checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
                            if useful else "too close to the appointment for the details message to help"))
+        if step == appointment.STEP_NO_SHOW_CLOSE:
+            # Stream X2: the close step sends nothing - it only moves an unanswered no-show back into follow-up, so
+            # who holds the conversation doesn't stop it (else a paused lead sat at No Show for good).
+            checks = [lifecycle.stage_check(state, doc["kind"])]
         failed = [c for c in checks if not c[1]]
         check = None
         if not failed:
@@ -1442,7 +1458,22 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             await appointment_cancelled_on_platform(
                 db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], lead=lead, customer=customer,
                 channel=doc.get("to_channel"), turn_id=f"appointment-cancelled-{doc['_id']}")
+        else:
+            await _continue_no_show(db, doc, state)
         return "cancelled"
+    appt_at = appointment.aware(datetime.fromisoformat(doc["appointment_at"]), profile.tz)
+    if step == appointment.STEP_NO_SHOW_CHECK and check.outcome in ("ALLOW", "HOLD"):
+        # Stream X2: "I am looking for you in the showroom" only while it can be true. Held (the dealership shut
+        # after a late appointment) or fired past that point, the +24h "how did everything go" message replaces it.
+        later = check.until if check.outcome == "HOLD" and check.until else clock.now()
+        if later > appt_at + appointment.NO_SHOW_MESSAGE_LATEST:
+            await _close(db, doc, "replaced", reason=(
+                f"too late for the showroom message (next allowed time {later.isoformat()}): the "
+                "how-did-it-go message goes instead"))
+            await _continue_no_show(db, doc, state, due_at=later)
+            await _log(db, tracer, f"appointment_{step}_replaced", {"followup_id": step_id, "lifecycle": moved,
+                                                                    "followup_due": later.isoformat()})
+            return "replaced"
     # The close step sends nothing, so the send check's verdict doesn't apply to it.
     if step != appointment.STEP_NO_SHOW_CLOSE:
         if check.outcome == "HOLD" and check.until:
@@ -1455,19 +1486,12 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             return "deferred"
         if check.outcome != "ALLOW":
             await _close(db, doc, "suppressed", reason=f"{check.outcome}: {check.reason}")
+            await _continue_no_show(db, doc, state)
             await _log(db, tracer, f"appointment_{step}_suppressed", {"followup_id": step_id, "reason": check.reason})
             return "suppressed"
 
-    appt_at = appointment.aware(datetime.fromisoformat(doc["appointment_at"]), profile.tz)
     lead_state_fields: dict[str, Any] = {}
     outcomes: list[SendOutcome] = []
-    moved = None
-    if step == appointment.STEP_NO_SHOW_CHECK:
-        # Appointment + 1 hour and no Sales Visit: the lead is a No Show (§9). The stage change comes first, so
-        # a reply to the message below is routed as a reply to a no-show.
-        moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
-            "appointment_missed", source="appointment_timer", reason="Appointment time + 1 hour with no Sales Visit")],
-            lead=lead, customer_id=doc["customer_id"])
     if step == appointment.STEP_NO_SHOW_CLOSE:
         moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
             "no_show_unanswered", source="appointment_timer",
@@ -1509,10 +1533,10 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         if step == appointment.STEP_CONFIRM and delivered:
             lead_state_fields["appointment.confirmation"] = {"status": "asked", "sent_at": clock.now(),
                                                              "asked_again": False}
-        if step == appointment.STEP_NO_SHOW_CHECK and delivered:
-            await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_FOLLOWUP, appointment.NO_SHOW_FOLLOWUP_AFTER)
-        if step == appointment.STEP_NO_SHOW_FOLLOWUP and delivered:
-            await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_CLOSE, appointment.NO_SHOW_CLOSE_AFTER)
+        if step in (appointment.STEP_NO_SHOW_CHECK, appointment.STEP_NO_SHOW_FOLLOWUP):
+            # Sent or not, the no-show flow moves on (stream X2: it never strands the lead at No Show).
+            await _continue_no_show(db, doc, await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+                {"lead_id": doc["lead_id"]}) or {})
     if lead_state_fields:
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]},
                                                                  {"$set": lead_state_fields})
@@ -1548,14 +1572,34 @@ async def staff_no_show(db: DealerScopedDatabase, lead_id: str) -> dict[str, Any
     return {"no_show_check": "none pending (already sent, or no appointment on record)"}
 
 
-async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, after: timedelta) -> None:
-    """The next no-show step, `after` the one that just went out. It belongs to the No Show stage, so a reply
-    (which moves the stage) or a visit cancels it."""
+async def _continue_no_show(db: DealerScopedDatabase, doc: dict, state: dict, *,
+                            due_at: datetime | None = None) -> None:
+    """Stream X2: whatever happened to a no-show step's message (sent, held over, suppressed, the lead with staff),
+    the no-show flow goes on while the lead is still a No Show: after the +1h step the +24h one, after that the close
+    back into follow-up - so a lead is never left at No Show (which Day 91 doesn't close)."""
+    if stage_of_state(state) != lifecycle.Stage.NO_SHOW:
+        return
+    if doc.get("step") == appointment.STEP_NO_SHOW_CHECK:
+        await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_FOLLOWUP, appointment.NO_SHOW_FOLLOWUP_AFTER,
+                                 due_at=due_at)
+    elif doc.get("step") == appointment.STEP_NO_SHOW_FOLLOWUP:
+        await _plan_no_show_step(db, doc, appointment.STEP_NO_SHOW_CLOSE, appointment.NO_SHOW_CLOSE_AFTER,
+                                 due_at=due_at)
+
+
+async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, after: timedelta, *,
+                             due_at: datetime | None = None) -> None:
+    """The next no-show step, `after` the one that just went out (or at `due_at`). It belongs to the No Show stage,
+    so a reply (which moves the stage) or a visit cancels it. One pending record per step."""
     now = clock.now()
+    kind = appointment.KIND_PREFIX + step
+    if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"lead_id": doc["lead_id"], "kind": kind, "status": "pending"}):
+        return
     await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).insert_one({
         "kind": appointment.KIND_PREFIX + step, "lead_id": doc["lead_id"], "customer_id": doc["customer_id"],
         "source_turn_id": doc["source_turn_id"], "from_channel": doc["to_channel"], "to_channel": doc["to_channel"],
-        "text": None, "subject": None, "status": "pending", "due_at": now + after, "created_at": now,
+        "text": None, "subject": None, "status": "pending", "due_at": due_at or now + after, "created_at": now,
         "claim_count": 0, "step": step, "appointment_at": doc.get("appointment_at"),
         "booking_id": doc.get("booking_id"), "reason": None})
 

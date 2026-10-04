@@ -142,7 +142,9 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     "appointment_details": frozenset({Stage.APPOINTMENT_SET}),  # MASTER_PLAN_4 (stream R): the 15-minute message
     "appointment_confirm": frozenset({Stage.APPOINTMENT_SET}),
     "appointment_countdown": frozenset({Stage.APPOINTMENT_SET}),
-    "appointment_no_show_check": frozenset({Stage.APPOINTMENT_SET}),
+    # Stream X2: the +1h check moves the stage to No Show first and its message may then wait for the send check
+    # (up to appointment.NO_SHOW_MESSAGE_LATEST), so it is also allowed at No Show.
+    "appointment_no_show_check": frozenset({Stage.APPOINTMENT_SET, Stage.NO_SHOW}),
     "appointment_no_show_followup": frozenset({Stage.NO_SHOW}),
     "appointment_no_show_close": frozenset({Stage.NO_SHOW}),
     # MASTER_PLAN_3 C2: the staff call task behind the 60-minute connection timer follows the touches
@@ -381,6 +383,12 @@ def transition(current: Stage | None, event: Event) -> Transition:
             return _stay("not_specific", "The lead isn't at Specific Follow-Up any more.", event)
         return Transition(Stage.NO_CONTACT, "specific_unanswered",
                           why or "No reply within 24 hours of the scheduled follow-up", event)
+    if kind == "day_91" and current in (Stage.APPOINTMENT_SET, Stage.NO_SHOW) and event.detail.get(
+            "appointment_stale"):
+        # Stream X2: an appointment long past that nothing resolved (no visit, no outcome, no new time) doesn't hold
+        # the opportunity open for ever.
+        return Transition(Stage.CLOSED_LOST, "day_91_stale_appointment",
+                          why or "Day 91 reached; the appointment is long past with no visit or outcome", event)
     if kind == "day_91":
         if current not in CLOSABLE_AT_DAY_91:
             return _stay("superseded", f"Day 91, but the lead is at {STAGE_LABELS[current]}: that supersedes it.",
@@ -581,6 +589,30 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
 
 # --- Day 91 ---------------------------------------------------------------------------
 
+# Stream X2: an Appointment Set / No Show lead whose appointment is this far in the past with nothing resolving it
+# closes at Day 91 like any other (it used to wait for ever when the +1h check never fired).
+STALE_APPOINTMENT_AFTER = timedelta(days=2)
+
+
+async def _appointment_stale(dealer_id: str, state: dict, lead: dict | None, booking: dict | None,
+                             now: datetime) -> bool:
+    from upsell_agent.agent import appointment
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+
+    if stage_of(state.get("stage")) not in (Stage.APPOINTMENT_SET, Stage.NO_SHOW):
+        return False
+    profile = await dealer_profile(dealer_id)
+    at = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead, recorded=state.get("appointment"))
+    return at is not None and at < now - STALE_APPOINTMENT_AFTER
+
+
+async def _booking_long_past(dealer_id: str, booking: dict, now: datetime) -> bool:
+    from upsell_agent.agent import appointment
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+
+    at = appointment.appointment_at(tz=(await dealer_profile(dealer_id)).tz, booking=booking)
+    return at is not None and at < now - STALE_APPOINTMENT_AFTER
+
 async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> dict[str, Any]:
     """The Day 91 sweep (§4, §12; client, scope Q1): every lead whose
     opportunity is 91 days old and still in a Short-Term / Day 1-90 stage
@@ -593,7 +625,7 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
     now = now or clock.now()
     cutoff = now - timedelta(days=OPPORTUNITY_DAYS)
     rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(
-        {"stage": {"$in": [s.value for s in CLOSABLE_AT_DAY_91]},
+        {"stage": {"$in": [s.value for s in (*CLOSABLE_AT_DAY_91, Stage.APPOINTMENT_SET, Stage.NO_SHOW)]},
          "$or": [{"day91_anchor": {"$lte": cutoff}},
                  {"day91_anchor": {"$exists": False}, "opportunity_created_at": {"$lte": cutoff}}]}
     ).to_list(limit)
@@ -608,7 +640,11 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
         db = dealer_scoped_db(dealer_id)
         lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
         active = await find_active_booking(dealer_id, lead)
+        stale = await _appointment_stale(dealer_id, row, lead, active, now)
+        if active is not None and await _booking_long_past(dealer_id, active, now):
+            active = None  # stream X2: a booking long past nobody resolved isn't a pending appointment
         moved = await apply(db, lead_id, [Event("day_91", detail={"appointment_active": bool(active),
+                                                                  "appointment_stale": stale,
                                                                   "closed_reason": "day_91_no_response"},
                                                 source="day_91_sweep")], lead=lead)
         if moved and moved.get("changed"):

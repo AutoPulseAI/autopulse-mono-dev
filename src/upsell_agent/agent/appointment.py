@@ -46,6 +46,10 @@ NO_SHOW_FOLLOWUP_AFTER = timedelta(hours=24)
 # How long the customer has to answer the "how did everything go" message before the lead goes back into
 # follow-up. The PDF says only "no response after Step 2 window" (§9); 24 hours, like the gap before it.
 NO_SHOW_CLOSE_AFTER = timedelta(hours=24)
+# Stream X2: "I am looking for you in the showroom" is only true shortly after the appointment. A +1h message that
+# can't go out by this long after the appointment (the dealership shut after a late appointment) is replaced by the
+# +24h "how did everything go" message instead of arriving a day and a half late.
+NO_SHOW_MESSAGE_LATEST = timedelta(hours=2)
 # A day-before confirmation that would land closer than this to the appointment is skipped ("any
 # nonsensical day-before confirmation", §7).
 MIN_CONFIRM_LEAD = timedelta(hours=2)
