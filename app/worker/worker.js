@@ -7,7 +7,10 @@ import { setupCampaignWorker } from './campaignWorker.js';
 import { setupDealerVaultWorkers } from './dealervault/index.js';
 import { setupDealerVaultSqsConsumer } from './dealervault/sqsConsumer.js';
 import { setupAdfTradeWorker } from './adfTradeWorker.js';
-import { AI_EVENT_RETRY_QUEUE, processAiEventRetryJob } from '../lib/ai/aiEvents.js';
+import { AI_EVENT_RETRY_QUEUE, postAiEvent, processAiEventRetryJob } from '../lib/ai/aiEvents.js';
+import { AI_OUTBOX_REPLAY_EVERY_MS, noteForStaff, replayAiOutbox } from '../lib/ai/aiOutbox.js';
+import { getDealerAiMode } from '../lib/ai/aiMode.js';
+import dbConnect from '../lib/mongodb.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -55,6 +58,21 @@ setupDealerVaultSqsConsumer(redis);
 setupAdfTradeWorker(redis);
 // Re-delivers AI-service events that failed on the first try (app/lib/ai/aiEvents.js).
 const aiEventRetryWorker = new Worker(AI_EVENT_RETRY_QUEUE, processAiEventRetryJob, { connection: redis });
+// PLAN_4 stream X3 item 6: events stored after every retry failed (ai_event_outbox) are replayed once the AI
+// service answers again; a day-old one goes to staff as a note instead (the customer is not answered days late).
+setInterval(async () => {
+  try {
+    await dbConnect();
+    await replayAiOutbox({
+      post: postAiEvent,
+      skip: async (row) => (await getDealerAiMode(row.dealer_id)) === 'off',
+      onExpired: (row) => noteForStaff({ type: row.type, leadId: row.lead_id, dealerId: row.dealer_id,
+        reason: 'the AI service could not be reached for a day' }),
+    });
+  } catch (error) {
+    console.error('[ai] outbox replay failed', error?.message);
+  }
+}, AI_OUTBOX_REPLAY_EVERY_MS).unref?.();
 
 // Shared event listeners (optional)
 const setupWorkerEvents = (worker, queueName) => {

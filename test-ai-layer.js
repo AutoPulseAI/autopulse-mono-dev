@@ -167,6 +167,7 @@ test('sendAiEvent: even the retry queue being down does not throw', async () => 
   const result = await sendAiEvent('lead-created', payload, {
     post: async () => { throw new AiEventError('down'); },
     enqueueRetry: async () => { throw new Error('redis down'); },
+    storeUndelivered: async () => false,
     logger: quiet,
   });
   assert.equal(result.status, 'lost');
@@ -202,7 +203,8 @@ test('lead-created payload uses the Lead id as the event id', () => {
   assert.deepEqual(buildLeadCreatedEvent({ lead, dealerId: DEALER, channel: 'sms', shadow: true }), {
     event_id: LEAD, dealer_id: DEALER, lead_id: LEAD, customer_id: 'cust1', channel: 'sms', shadow: true,
   });
-  assert.equal(buildLeadCreatedEvent({ lead: { _id: LEAD }, dealerId: DEALER, channel: 'sms' }), null, 'no customer');
+  assert.equal(buildLeadCreatedEvent({ lead: { _id: LEAD }, dealerId: DEALER, channel: 'sms' }), null,
+    'no customer link and no phone/email to derive one');
 });
 
 test('inbound-message payload uses the Email record id', () => {
@@ -221,6 +223,8 @@ test('notify helpers: off does nothing, shadow marks the event, missing customer
   const sent = [];
   const send = async (type, event) => { sent.push({ type, event }); return { status: 'delivered' }; };
   const lead = { _id: LEAD, customer_id: 'cust1', phone: '+15551234567' };
+  const fallback = async () => true;
+  const remember = async () => null;
 
   assert.deepEqual(await notifyAiOfNewLead({ lead, dealerId: DEALER, mode: 'off', send, logger: quiet }), { status: 'off' });
   await notifyAiOfNewLead({ lead, dealerId: DEALER, mode: 'shadow', send, logger: quiet });
@@ -228,10 +232,13 @@ test('notify helpers: off does nothing, shadow marks the event, missing customer
   assert.equal(sent[0].event.shadow, true);
   assert.equal(sent[0].event.channel, 'sms', 'channel derived from the lead');
 
-  const skipped = await notifyAiOfNewLead({ lead: { _id: LEAD }, dealerId: DEALER, mode: 'live', send, logger: quiet });
+  const skipped = await notifyAiOfNewLead({ lead: { _id: LEAD }, dealerId: DEALER, mode: 'live', send, logger: quiet,
+    fallback, remember });
   assert.equal(skipped.status, 'skipped');
+  assert.equal(skipped.fallback, 'staff_note');
 
-  await notifyAiOfInbound({ emailRecord: { _id: 'e1', mail_content: 'x' }, lead, dealerId: DEALER, channel: 'email', mode: 'live', send, logger: quiet });
+  await notifyAiOfInbound({ emailRecord: { _id: 'e1', mail_content: 'x' }, lead, dealerId: DEALER, channel: 'email', mode: 'live', send, logger: quiet,
+    fallback, remember });
   assert.equal(sent[1].type, 'inbound-message');
   assert.equal(sent[1].event.shadow, false);
 });
@@ -239,7 +246,7 @@ test('notify helpers: off does nothing, shadow marks the event, missing customer
 test('notify helpers never throw, even if sending blows up', async () => {
   const result = await notifyAiOfNewLead({
     lead: { _id: LEAD, customer_id: 'c' }, dealerId: DEALER, channel: 'sms', mode: 'live',
-    send: async () => { throw new Error('boom'); }, logger: quiet,
+    send: async () => { throw new Error('boom'); }, logger: quiet, fallback: async () => true, remember: async () => null,
   });
   assert.equal(result.status, 'error');
 });

@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 // through the dealer's opening hours + slot capacity check
 // (app/lib/bookingService.js): 409 for a taken slot.
 import { onLeadStatusChange ,onFollowUpEvent} from '@lib/followupService.js';
+import { aiMayChangeBooking } from '@lib/ai/aiOwnership';
 import { aiOwnsCustomerMessages, cancelAllRemindersForLead, createAppointmentReminders } from '@lib/appointmentReminderService';
 import { bookingChangeKind, notifyAiOfBookingChange, notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
 import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
@@ -641,7 +642,8 @@ export async function PUT(request) {
     const booking_time = body.booking_time ? (normalizeBookingTime(body.booking_time) || body.booking_time) : body.booking_time;
 
     const existingBooking = bookingId && mongoose.isValidObjectId(bookingId) ? await Booking.findById(bookingId) : null;
-    if (!existingBooking) {
+    // PLAN_4 stream X3 item 11: the AI service (one shared secret for every dealer) must name the booking's dealer.
+    if (!existingBooking || !aiMayChangeBooking(caller, existingBooking, body.dealer_id)) {
       return json({ error: 'Booking not found' }, 404);
     }
     if (booking_status !== undefined && !Booking.schema.path('booking_status').enumValues.includes(booking_status)) {
