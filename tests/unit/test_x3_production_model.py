@@ -53,7 +53,7 @@ async def _production_lead(mongo, *, store_key=True):
     return created["lead_id"], key
 
 
-async def test_a_production_lead_is_worked_and_found_by_its_key(mongo):
+async def test_a_production_lead_is_worked_and_found_by_its_key(mongo, during_opening_hours, ny_customer):
     lead_id, key = await _production_lead(mongo)
     result = await handlers.handle_lead_created(
         LeadCreatedEvent(event_id=lead_id, dealer_id=DEALER, lead_id=lead_id, customer_id=key, channel="sms"),

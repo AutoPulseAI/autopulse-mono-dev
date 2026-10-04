@@ -53,7 +53,7 @@ async def test_only_closed_leads_and_nothing_owned_is_inactive(mongo):
     assert status["customer_status"] == "INACTIVE"  # before: ACTIVE for ever ("no ownership record" = unknown)
 
 
-async def test_a_new_lead_after_the_close_runs_its_own_workflow(mongo):
+async def test_a_new_lead_after_the_close_runs_its_own_workflow(mongo, during_opening_hours, ny_customer):
     first, _ = await _created()
     await _close(first["lead_id"], first["customer_id"])
     second, result = await _created(first["customer_id"])
