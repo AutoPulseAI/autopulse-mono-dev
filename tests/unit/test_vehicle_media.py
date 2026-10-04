@@ -429,6 +429,7 @@ async def test_each_countdown_day_shows_a_different_photo_of_the_vehicle(mongo):
     created, _ = await _booked_friday(mongo)
     await _stock(mongo, _rav4(photos=PHOTOS))
     await _lead_about(mongo, created)
+    await _fire(mongo, created, "details")  # stream R: the 15-minute details message (no photo) goes first
     before = len(await _outbox(mongo, created))
     await _fire(mongo, created, "countdown")
     await _fire(mongo, created, "countdown")

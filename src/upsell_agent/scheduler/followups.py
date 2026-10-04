@@ -138,7 +138,7 @@ TRIGGER_NEXT_ACTION = KIND_NEXT_ACTION
 NEXT_ACTION_REPLY_WINDOW = timedelta(hours=24)
 # MASTER_PLAN_3 C5 (Omnichannel PDF §7-§9): the appointment's own messages (agent/appointment.py), one scheduled
 # record per step. `step` says which.
-APPOINTMENT_STEPS = (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK,
+APPOINTMENT_STEPS = (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK,
                      appointment.STEP_NO_SHOW_FOLLOWUP, appointment.STEP_NO_SHOW_CLOSE)
 APPOINTMENT_KINDS = tuple(appointment.KIND_PREFIX + s for s in APPOINTMENT_STEPS)
 TRIGGER_APPOINTMENT = "appointment_step"
@@ -559,6 +559,12 @@ async def plan_appointment_timers(
     if appt_at is None:
         return {"created": 0, "reason": "No appointment time on record: nothing to schedule."}
     steps = appointment.plan_steps(appt_at, now=now, tz=profile.tz)
+    # MASTER_PLAN_4 (stream R): the 15-minute details message, once per appointment time - a re-plan for the same
+    # time (staff saving the status again) doesn't send it twice; a move sends it for the new time.
+    details_sent_for = state.get("appointment_details_sent_for")  # outside `appointment`, which a new set replaces
+    details = appointment.details_step(appt_at, now=now) if details_sent_for != appt_at.isoformat() else None
+    if details:
+        steps = sorted([details, *steps], key=lambda s: s.due_at)
     booking_id = str(booking["_id"]) if booking else (state.get("appointment") or {}).get("booking_id")
     created, skipped = [], []
     for step in steps:
@@ -1262,7 +1268,7 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         current = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
                                              recorded=state.get("appointment"))
         same = current is not None and current.isoformat() == doc.get("appointment_at")
-        needs_booking_check = step in (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
+        needs_booking_check = step in (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
                                        appointment.STEP_NO_SHOW_CHECK)
         checks = [
             ("lead_active", status not in SILENT_STATUSES,
@@ -1273,6 +1279,10 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
              else "the appointment was moved or cancelled since"),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
+        if step == appointment.STEP_DETAILS:  # MASTER_PLAN_4 (stream R)
+            useful = appointment.details_still_useful(current, now=clock.now())
+            checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
+                           if useful else "too close to the appointment for the details message to help"))
         failed = [c for c in checks if not c[1]]
         check = None
         if not failed:
@@ -1330,7 +1340,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         text = appointment.render_message(
             step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
             agent_name=profile.agent_name, appt=appt_at,
-            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]))
+            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
+            address=profile.address, agent_phone=profile.agent_phone)
         # MASTER_PLAN_4 F3: the countdown and no-show step 1 show the vehicle this lead is about - its own
         # photo, a different one each countdown day where it has several (days left picks it). No vehicle on
         # record, or no usable photo: the client's text-only fallback, as before (§15).
@@ -1352,6 +1363,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         delivered = any(o.status in ("sent", "duplicate") for o in outcomes)
         if delivered:
             lead_state_fields["last_outbound_at"] = clock.now()
+        if step == appointment.STEP_DETAILS and delivered:  # MASTER_PLAN_4 (stream R): not again for this time
+            lead_state_fields["appointment_details_sent_for"] = doc.get("appointment_at")
         if step == appointment.STEP_CONFIRM and delivered:
             lead_state_fields["appointment.confirmation"] = {"status": "asked", "sent_at": clock.now(),
                                                              "asked_again": False}
