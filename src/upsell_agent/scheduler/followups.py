@@ -645,6 +645,9 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
         "kind": KIND_CALL_TASK, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "from_channel": sent_channels[0] if sent_channels else "sms", "to_channel": "voice", "to": phone,
         "sent_channels": sent_channels, "status": "pending", "due_at": due, "created_at": now, "claim_count": 0,
+        # Stream X2: the stage the touch went out in. The timer belongs to that touch: a stage change since (an
+        # appointment after a cadence touch, Sold Delivered after a SOLD PENDING touch) makes it stale.
+        "planned_stage": stage,
         "reason": f"60-minute connection timer: call {phone} if no contact"})
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due.isoformat(), "phone": phone,
             "superseded": superseded.modified_count}
@@ -1702,6 +1705,15 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
     return status
 
 
+def _same_stage_check(doc: dict, state: dict) -> tuple[str, bool, str]:
+    """Stream X2: a call timer is tied to the touch that started it, so it is stale once the lead's stage has moved
+    on since (records from before the field: the stage rule alone decides)."""
+    planned, now_at = doc.get("planned_stage"), state.get("stage")
+    ok = not planned or planned == now_at
+    return ("same_stage", ok, "the lead is still at the stage the touch went out in" if ok else
+            f"the stage changed since the touch ({lifecycle.label(planned)} -> {lifecycle.label(now_at)})")
+
+
 async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """The 60-minute connection timer ran out (MASTER_PLAN_3 C2). Re-read the lead, then either cancel (contact
     happened, staff have it, the stage moved on), defer to the next allowed calling time, or open the call task
@@ -1725,6 +1737,7 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CALL_TASK),
+            _same_stage_check(doc, state),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
         if doc.get("requested"):

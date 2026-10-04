@@ -135,3 +135,34 @@ async def test_day_91_closes_an_appointment_long_past_that_nothing_resolved(mong
     set_clock(clock.now() + timedelta(days=95))
     await lifecycle.close_expired()
     assert (await _state(mongo, created))["stage"] == "closed_lost"
+
+
+
+# --- Item 3: the call checkpoint behind appointment / no-show / visit follow-up touches (probe P3) ----------------
+
+@flow
+async def test_the_confirmation_and_no_show_touches_start_the_call_checkpoint(mongo):
+    created, _ = await _booked_friday(mongo)
+    await _fire(mongo, created, "confirm")
+    [timer] = await _pending(mongo, created, "call_task")
+    assert timer["planned_stage"] == "appointment_set"
+    await _fire(mongo, created, "no_show_check")
+    [timer] = await _pending(mongo, created, "call_task")
+    assert timer["source_turn_id"].startswith("appointment-no_show_check")
+
+
+@flow
+async def test_the_visit_follow_up_goes_on_text_and_email_and_starts_the_call_checkpoint(mongo):
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    created = await _new_lead()
+    db = dealer_scoped_db(DEALER)
+    await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].update_many({"lead_id": created["lead_id"]},
+                                                           {"$set": {"status": "cancelled"}})
+    tomorrow = (clock.now() + timedelta(days=1)).astimezone(NY).date().isoformat()
+    await followups.plan_visit_followup(db, lead_id=created["lead_id"], customer_id=created["customer_id"],
+                                        channel="sms", turn_id="t", due_date=tomorrow)
+    before = len(await _outbox(mongo, created))
+    set_clock(datetime.fromisoformat(tomorrow + "T10:05").replace(tzinfo=NY))
+    await followups.fire_due(_deps())
+    assert {m["channel"] for m in (await _outbox(mongo, created))[before:]} == {"sms", "email"}
+    assert len(await _pending(mongo, created, "call_task")) == 1

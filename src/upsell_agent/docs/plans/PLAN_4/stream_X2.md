@@ -26,3 +26,12 @@ the fix.
   (it sends nothing) ignores who holds the lead. Day 91 now also closes an Appointment Set / No Show lead whose
   appointment is more than 2 days past with nothing resolving it, and a long-past booking no longer counts as
   pending. Tests: `test_x2_workflow.py` (staff-held no-show, after-closing no-show, stale appointment).
+- **3. Call checkpoint after every AI follow-up** (probe P3). The day-before confirmation and both no-show
+  messages now start the 60-minute call timer (not the 15-minute details or the countdown: human follow-up isn't
+  appropriate there - PDF p.9 "when human follow-up is appropriate"). The visit follow-up (3rd-decline re-offer)
+  now goes on text + email and starts it; the after-hours morning message starts it. `call_task` is allowed at
+  Appointment Set / No Show; entering those stages still cancels the old stage's timers and open tasks. Each
+  timer stores `planned_stage` and is cancelled at fire time if the stage moved since its touch (also closes the
+  audit 3 race where a SOLD PENDING timer opened after Sold Delivered). The workday cap (stream T) still applies
+  at fire time. Already covered before: SOLD PENDING touches, the specific follow-up check-back, Touch 1, cadence.
+  Birthday / anniversary never start one. Tests: `test_x2_workflow.py::test_the_confirmation_*`, `*visit_follow_up*`.
