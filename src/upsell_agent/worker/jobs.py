@@ -107,8 +107,17 @@ async def handle_inbound_message(ctx: dict[str, Any], *, event: dict[str, Any], 
     )
 
 
-async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
-    return await handlers.handle_lead_paused(LeadPausedEvent.model_validate(event), ctx.get("deps"))
+async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                             busy_attempt: int = 0) -> dict[str, Any]:
+    """Staff took the lead over or moved its status. PLAN_4 stream X2 (audit 3): under the lead's lock, so a staff
+    status change (Sold Delivered, Closed Lost...) never lands in the middle of a SOLD PENDING touch, an appointment
+    step or a turn for the same lead - each sees the stage before or after it, never half of it."""
+    parsed = LeadPausedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_lead_paused", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_lead_paused(parsed, ctx.get("deps")),
+    )
 
 
 async def handle_booking_changed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
@@ -123,8 +132,15 @@ async def handle_booking_changed(ctx: dict[str, Any], *, event: dict[str, Any], 
     )
 
 
-async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
-    return await handlers.handle_lead_resumed(LeadResumedEvent.model_validate(event))
+async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                              busy_attempt: int = 0) -> dict[str, Any]:
+    """Under the lead's lock too (stream X2): resuming re-plans the lead's workflow."""
+    parsed = LeadResumedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_lead_resumed", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_lead_resumed(parsed),
+    )
 
 
 async def update_summary(ctx: dict[str, Any], *, dealer_id: str, lead_id: str, **_: Any) -> dict[str, Any]:

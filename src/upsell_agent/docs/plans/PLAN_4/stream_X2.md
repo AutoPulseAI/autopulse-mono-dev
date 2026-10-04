@@ -62,3 +62,9 @@ the fix.
   Per-dealer default follow-up time: `dealer_account_information.ai_followup_default_time` (HH:MM, default 10:00),
   used by the AI's dated next step and by staff call outcomes (no CRM settings field for it yet - open item).
   Tests: `test_x2_workflow.py::test_touch_1_names_the_year_*`, `test_call_outcomes.py` (two X2 tests).
+- **10. Status-change race (audit 3).** `worker/jobs.py`: `handle_lead_paused` (every staff status move) and
+  `handle_lead_resumed` now run under the lead lock (busy -> requeued like the other events). `sold_lifecycles.fire`
+  re-reads the stage right before sending and cancels if it changed, and `advance()` re-reads the state instead of
+  writing back the pre-send copy (a staff outcome's `ended_at` / `outcome` stands). With item 3's `planned_stage`,
+  a SOLD PENDING call timer never opens after Sold Delivered / Closed Lost. Tests: `test_x2_sold.py` (race,
+  stale timer, lock).

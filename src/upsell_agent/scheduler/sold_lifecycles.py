@@ -531,12 +531,15 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
 
     async def advance(sent: bool, asked_documents: bool = False) -> None:
         """SOLD PENDING moves on to its next touch whatever happened to this one (§9: "No response: continue")."""
-        if kind != KIND_SOLD_PENDING_TOUCH or state.get("stage") != lifecycle.Stage.SOLD_PENDING.value:
+        # Stream X2 (audit 3 race): re-read, never write back the state read before the send - a staff outcome may
+        # have ended SOLD PENDING meanwhile, and its `ended_at` / `outcome` must stand.
+        fresh = await _state(db, doc["lead_id"])
+        if kind != KIND_SOLD_PENDING_TOUCH or fresh.get("stage") != lifecycle.Stage.SOLD_PENDING.value:
             return
-        sp = sold_pending.SoldPendingState.load(state)
+        sp = sold_pending.SoldPendingState.load(fresh)
         number = int((doc.get("touch") or {}).get("touch_number") or sp.touch_number)
         sp = sold_pending.after_touch(sp, number, at=now, asked_documents=asked_documents, sent=sent)
-        await _set(db, doc["lead_id"], {"sold_pending": {**(state.get("sold_pending") or {}), **sp.as_dict()}})
+        await _set(db, doc["lead_id"], {"sold_pending": {**(fresh.get("sold_pending") or {}), **sp.as_dict()}})
         await plan_sold_pending_touch(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], lead=lead)
 
     async def next_yearly() -> None:
@@ -613,6 +616,13 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         lead_fields["service_offer"] = {"kind": outreach_kind, "ownership_id": doc.get("ownership_id"),
                                         "asked_at": now, "status": "offered", "facts": doc.get("facts"),
                                         "event_type": doc.get("event_type"), "offer": doc.get("offer")}
+    latest = await _state(db, doc["lead_id"])
+    if not lifecycle.stage_check(latest, kind)[1]:
+        # Stream X2: the stage changed while this was being prepared (a staff outcome): nothing goes out.
+        reason = f"the stage changed before sending ({lifecycle.label(latest.get('stage'))})"
+        await _close(db, doc, "cancelled", reason=reason)
+        await _log(db, tracer, f"{kind}_cancelled", {"followup_id": doc_id, "reason": reason})
+        return "cancelled"
     outcomes = await _send_both(db, deps, tracer, doc, text, PURPOSE[kind])
     await _note_email_only_for_consent(db, doc["lead_id"], kind, outcomes, state)
     # PLAN_4 stream L: a lifecycle message is a touch (learning/touches.py).
