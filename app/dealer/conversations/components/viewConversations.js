@@ -9,6 +9,7 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import { decode } from "quoted-printable";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -275,6 +276,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                                         <div dangerouslySetInnerHTML={{ __html: cleaned.content }} />
 
                                     )}
+                                    <MessagePhotos email={email} />{/* stream R: the AI's photos as thumbnails */}
                                 </div>
                             </div>
                         );

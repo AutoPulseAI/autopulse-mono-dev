@@ -27,6 +27,7 @@ import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib
 import { aiOwnsCustomerMessages } from './app/lib/appointmentReminderService.js';
 import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFailed } from './app/lib/bookingConflict.js';
 import { assignedOnlyScope, filterRowsToAssigned } from './app/lib/ai/assignedScope.js';
+import { hasAiPhotos, messagePhotoUrls } from './app/lib/ai/messagePhotos.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -400,6 +401,20 @@ test('assigned-only staff get only the tasks and alerts of leads assigned to the
   const leads = [{ _id: 'a', assigned_to: 'u-sam' }, { _id: 'b', assigned_to: 'u-maya' }, { _id: 'c' }];
   assert.deepEqual(filterRowsToAssigned(rows, leads, 'u-sam').map((r) => r.id), [1, 4]);
   assert.equal(filterRowsToAssigned(rows, leads, null).length, 4);
+});
+
+// Stream R: the AI's photos show as thumbnails in the conversation views.
+test('an AI message with photos shows them; other messages keep their attachments', () => {
+  const doc = buildAiEmailDocument({
+    payload: { channel: 'sms', to: '+1555', text: 'Here it is', status: 'sent', idempotency_key: 'k', lead_id: LEAD,
+      media_urls: ['https://cdn.test/a.jpg', 'https://cdn.test/a.jpg', 'javascript:alert(1)'] },
+    dealer: { _id: DEALER, dealer_account_information: { sms_conversion_phone: '+1999' } } });
+  assert.equal(hasAiPhotos(doc), true);
+  assert.deepEqual(messagePhotoUrls(doc), ['https://cdn.test/a.jpg']);
+  const staff = { attachments: [{ publicUrl: 'https://cdn.test/b.png', contentType: 'image/png' }] };
+  assert.equal(hasAiPhotos(staff), false);
+  assert.deepEqual(messagePhotoUrls(staff), ['https://cdn.test/b.png']);
+  assert.deepEqual(messagePhotoUrls({ ai_generated: true, mail_content: 'hi' }), []);
 });
 
 // Stream R: booking capacity from the AI Settings page.

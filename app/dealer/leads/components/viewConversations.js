@@ -19,6 +19,8 @@ import {
   messageUserLanguageDisplay,
 } from "../../utils/conversationTranslation";
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
+import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -1174,7 +1176,8 @@ export default function ViewConversations({
                             </div>
                           )}
                           {/* Attachments Section */}
-                          {email.attachments?.map((attachment, index) => {
+                          <MessagePhotos email={email} />{/* stream R: the AI's photos as thumbnails */}
+                          {(hasAiPhotos(email) ? [] : email.attachments)?.map((attachment, index) => {
                             // Handle both formats: SMS (publicUrl, contentType, fileName) and Campaign (url, mimeType, filename)
                             const attachmentUrl = attachment.publicUrl || attachment.url;
                             const attachmentType = attachment.contentType || attachment.mimeType;
