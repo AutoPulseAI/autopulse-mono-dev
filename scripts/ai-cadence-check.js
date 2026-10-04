@@ -403,7 +403,7 @@ async function scenario(t0) {
   await stageIs(L.n, 'appointment_set');
   await sleep(1000);
   const cSteps = await followups(L.c, null, { status: 'pending', kind: { $regex: '^appointment_' } });
-  check('4a. bookings made in the CRM plan the appointment messages the appointment messages: countdown, day-before confirmation, +1h check',
+  check('4a. bookings made in the CRM plan the appointment messages: countdown, day-before confirmation, +1h check',
     cBook.status === 200 && nBook.status === 200 && Boolean(cAppt)
       && cSteps.some((f) => f.kind === 'appointment_countdown' && localParts(f.due_at).weekday === 'Tue')
       && cSteps.some((f) => f.kind === 'appointment_confirm' && localParts(f.due_at).weekday === 'Wed')
