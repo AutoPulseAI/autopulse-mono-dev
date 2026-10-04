@@ -50,7 +50,7 @@ async def test_metrics_count_what_happened(mongo):
     assert m["template_fallback"]["turns"] == 1 and m["template_fallback"]["rate"] == 0.2
     assert m["guard_failures"] == {"drafts": 3, "turns": 2, "rate": 0.4}
     assert m["rejected_extractions"]["values"] >= 1
-    assert m["leads"]["by_status"].get("handoff") == 2   # asked for a person + the double guard failure
+    assert m["leads"]["by_status"].get("handoff") == 1   # asked for a person (one double guard failure: no handoff, stream Q)
     assert m["sends"] == {"sent": 5}
     assert m["followups"].get("pending", 0) >= 1
     assert set(m["cost_usd"]["by_day"]) == {clock.now().strftime("%Y-%m-%d")}

@@ -64,7 +64,12 @@ _COLOR = re.compile(r"\b(white|black|silver|gr[ae]y|red|blue|green|orange|yellow
 # Trim words said right after the model ("RAV4 XLE Hybrid").
 _TRIM_AFTER = re.compile(r"\s+((?:(?:le|xle|se|xse|limited|platinum|sport|touring|ex-l|ex|lx|sr5|trd|adventure|hybrid|"
                          r"premium|lariat|xlt|lt|ltz|sv|sl|sel|long range|standard)\b\s*)+)", re.IGNORECASE)
-_HUMAN = re.compile(r"\b(real person|human|someone (?:call|text)|call me|talk to (?:a|someone|somebody)|manager|salesperson|"
+# A manager or salesperson counts only when they ask for one ("I want a manager", "can a manager call me"), never
+# a mention ("the manager promised me 20% off" - PLAN_4 stream Q).
+_HUMAN = re.compile(r"\b(real person|human|someone (?:call|text)|call me|talk to (?:a|someone|somebody)|"
+                    r"(?:want|need|get|speak (?:to|with)|talk (?:to|with)|put me through to|connect me (?:to|with))"
+                    r"(?: me)? (?:a|the|your|to a|to the|to your)? ?(?:manager|salesperson|sales ?man|sales rep)|"
+                    r"(?:manager|salesperson|sales ?man|sales rep) (?:call|text|contact|reach out to) me|"
                     r"speak (?:to|with) (?:a|someone|somebody)|(?:a|an actual) person (?:call|text|to))\b", re.IGNORECASE)
 _PREFERENCE = re.compile(r"\b(best|works?|work for me|prefer|good for me|available|free|reach me|call me)\b", re.IGNORECASE)
 # Upset with the dealer or the situation: clear (a handoff signal) or mild (not enough on its own).
@@ -295,7 +300,7 @@ _OBJECTION_PATTERNS = [
 ]
 # Urgent-need signals (MASTER_PLAN_3 B0.13 decision 26, built in B4 item 8).
 _URGENT_PATTERNS = [
-    (r"\b(car broke down|no (?:working )?car|without a car|stranded|no transportation|can'?t get around)\b",
+    (r"\b(car broke down|no (?:working )?car|without a car|stranded|no transportation|can'?t get (?:around|to work))\b",
      "no_transportation"),
     ((r"\b(need (?:it|a car|a vehicle) (?:by|within|in) (?:tomorrow|today|\d+\s*(?:hours?|hrs?|days?))|"
       r"need something (?:asap|right away|immediately))\b"), "needed_within_48h"),

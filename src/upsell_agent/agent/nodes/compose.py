@@ -12,6 +12,7 @@ told what the Guard objected to. Any failure routes the turn to the
 template.
 """
 
+import re
 from datetime import date
 from typing import Any
 
@@ -58,6 +59,43 @@ def _after_hours(decision: dict[str, Any]) -> dict[str, Any] | None:
     return {"mode": plan["mode"], "opens_at": plan.get("opens_at")} if plan.get("mode") else None
 
 
+_SALUTATION_LINE = re.compile(r"^\s*(?:hello|hi|hey|dear|good (?:morning|afternoon|evening))\b[^\n]{0,40}\n+",
+                              re.IGNORECASE)
+_THANKS_OPENING = re.compile(r"^\s*(?:thanks|thank you)(?: so much)? for (?:reaching out|getting in touch|your interest|"
+                             r"contacting (?:us|our [\w ]+?)|your inquiry|your message)[^.!?\n]*[.!]\s*", re.IGNORECASE)
+
+
+def _sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
+
+
+def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
+    """PLAN_4 stream Q: Touch 1's required opening is fixed text, so code puts it first when the model didn't.
+    Seen with gpt-5-mini on most first replies (the stream E/Q runs): the email opened "Hello Ray,\\n\\n" and then
+    left the intro out or reworded it, the guard's touch1_opening_first check failed twice and the lead went to
+    staff with the generic template. A leading salutation line, any copy of the intro's sentences and an opening
+    "Thanks for reaching out." (the intro already thanks them) are removed, then the intro goes first.
+    Changes `draft` in place; returns which versions were changed (for the trace)."""
+    if not intro:
+        return []
+    intro = intro.strip()
+    first = _sentences(intro)[0] if _sentences(intro) else intro
+    # "Hello Ray, greetings from ..." also appears without its greeting ("Greetings from ...").
+    pieces = [*_sentences(intro), first.split(", ", 1)[1] if ", " in first else first]
+    changed = []
+    for name, key, gap in (("SMS", "sms_text", " "), ("email", "email_body", "\n\n")):
+        text = str(draft.get(key) or "")
+        if not text.strip() or text.lstrip().startswith(intro):
+            continue
+        text = _SALUTATION_LINE.sub("", text, count=1)
+        for piece in sorted(pieces, key=len, reverse=True):
+            text = re.sub(re.escape(piece) + r"\s*", "", text, flags=re.IGNORECASE)
+        text = _THANKS_OPENING.sub("", text, count=1).strip()
+        draft[key] = f"{intro}{gap}{text}".rstrip() if text else intro
+        changed.append(name)
+    return changed
+
+
 def compose_payload(state: AgentState) -> dict[str, Any]:
     decision = state.decision or {}
     return {
@@ -75,6 +113,9 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         # the lead's current visit/booking state (for wording that matches a real booking, decision 60).
         "visit_offer": decision.get("visit_offer"),
         "visit": decision.get("visit"),
+        # PLAN_4 stream Q: buying urgency drives the appointment (agent/nodes/decide.py urgency), never a handoff.
+        "urgency": decision.get("urgency"),
+        "reply_language": decision.get("reply_language"),
         # MASTER_PLAN_4 A1: the lead bucket's intent and word-track emphasis (blueprint §2) - language only.
         "bucket": decision.get("bucket"),
         # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
@@ -117,9 +158,14 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
 
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
+    # Not for a reply in another language: the model translates the opening (stream Q, agent/language.py).
+    placed = [] if (state.decision or {}).get("reply_language") else place_touch1_intro(
+        draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
+    if placed:
+        span.reasoning.append("Touch 1's required opening put first by code in the " + " and ".join(placed) + ".")
     if draft.get("promises"):
         span.reasoning.append("Promises the team: " + "; ".join(draft["promises"]))
     if payload["guard_feedback"]:

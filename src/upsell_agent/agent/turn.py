@@ -31,7 +31,7 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
 from upsell_agent.agent.nodes.decide import possible_opt_out
-from upsell_agent.agent.nodes.template_reply import template_draft
+from upsell_agent.agent.nodes.template_reply import mid_conversation, template_draft
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
@@ -690,7 +690,8 @@ async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: fl
     reason = f"the turn ran past its {deadline:g}s limit"
     async with tracer.node("fallback", {"reason": reason, "lead_type": state.lead_type}) as span:
         lead_type = lead_type_for(await find_lead(dealer_scoped_db(state.dealer_id), state.lead_id))
-        draft = template_draft(lead_type, state.customer_name, f"Template used because {reason}.")
+        draft = template_draft(lead_type, state.customer_name, f"Template used because {reason}.",
+                               mid_conversation=mid_conversation(state), decision=state.decision)
         span.output = draft
         span.reasoning = [f"Out of time: {reason}. Sending the '{lead_type.value}' template instead."]
         span.edge_label = "fallback template"
@@ -814,6 +815,8 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
         human_contact=_human_contact_record(result),
+        confirmed_fact=(decision.get("confirm") or {}).get("fact_id"),
+        used_fallback=bool(result.get("used_fallback")),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

@@ -277,20 +277,26 @@ def describe(state: CadenceState, now: datetime, tz) -> dict[str, Any]:
             "started_at": state.started_at.isoformat() if isinstance(state.started_at, datetime) else None}
 
 
-def touch1_ending(trade_in_known: bool) -> str | None:
+def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
     """Touch 1's mandatory closing question (Omnichannel PDF §3, "ALWAYS end"),
     unless the customer has already told us about a trade-in (client, 1 Oct
     2026: "it will always ask 'What are you driving now' (or a variation of
-    that question) EXCEPT when a trade-in is already indicated")."""
-    return None if trade_in_known else "Tell me, what are you driving now?"
+    that question) EXCEPT when a trade-in is already indicated"). It is a sales
+    question: a service lead (stream Q) is asked about the car they want serviced instead, by Decide's own asks."""
+    return None if trade_in_known or service else "Tell me, what are you driving now?"
 
 
 def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dealership: str | None,
-                 city: str | None, state_code: str | None, vehicle: str | None) -> str:
+                 city: str | None, state_code: str | None, vehicle: str | None, service: bool = False) -> str:
     """The client's required opening (Omnichannel PDF §3). Anything the dealer
     record doesn't have is left out rather than invented: with no agent name
     the message doesn't claim one, and with no vehicle on the lead it thanks
-    them for getting in touch instead."""
+    them for getting in touch instead.
+
+    `service` (PLAN_4 stream Q): the Omnichannel PDF is the SALES lead workflow, so its "Thank you for your
+    interest in our {vehicle}. I am excited to help you with your purchase." doesn't fit a customer asking for
+    service (seen: an oil-change request got "...help you with your purchase ... what are you driving now?").
+    A service lead gets the same greeting with a service sentence, and no closing question (touch1_ending)."""
     who = f"Hello {customer_first_name}" if customer_first_name else "Hello"
     speaker = f", this is {agent_name}" if agent_name else ""
     place = ""
@@ -300,6 +306,10 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
         if customer_first_name and not agent_name:
             # Stream G (grammar): "Hello Maria from ABC Toyota." reads as if Maria were from ABC Toyota.
             place = f", greetings{place}"
+    if service:
+        care = f"your {vehicle}" if vehicle else "your vehicle"
+        return (f"{who}{speaker}{place}. Thank you for contacting our service team. "
+                f"I am happy to help you take care of {care}.")
     thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
               else " Thank you for getting in touch.")
     return f"{who}{speaker}{place}.{thanks} I am excited to help you with your purchase."

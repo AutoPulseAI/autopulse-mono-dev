@@ -21,16 +21,28 @@ from typing import Any
 
 from upsell_agent.agent import human_contact, service_request
 from upsell_agent.agent.context import TurnContext
+from upsell_agent.agent.nodes.compose import just_captured
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
 from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
+from upsell_agent.guardrails.wording import (
+    invented_names,
+    repeated_vehicle_name,
+    unverified_features,
+    vin_in_text,
+)
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
 
 MAX_REWRITES = 1
+# PLAN_4 stream Q (client, 25 Sept: "The goal is not to escalate every customer ... allowing the lead to go cold"):
+# a draft rejected twice sends the safe template; the lead goes to staff only when the previous reply was a
+# template fallback too. Before, every double rejection handed off - in the stream E/Q runs that stopped the AI
+# for most leads at their first or second message.
+FALLBACKS_BEFORE_HANDOFF = 2
 # "Hello, Name!" / "Hi Name," at the very start of a reply.
 _GREETING = re.compile(r"^\s*(hello|hi|hey)\b[\s,!]*\w*[\s,!]", re.IGNORECASE)
 
@@ -99,7 +111,7 @@ def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[st
     """Touch 1 opens with the client's required intro, word for word (MASTER_PLAN_3 C4). Stream G saw
     gpt-5-mini put a "Hello Maria," salutation above it in the email, greeting the customer twice."""
     intro = ((decision.get("touch1") or {}).get("intro") or "").strip()
-    if not intro:
+    if not intro or decision.get("reply_language"):  # stream Q: a reply in Spanish carries it translated
         return []
     return [f"the {name} doesn't start with Touch 1's required opening" for name, key in
             (("SMS", "sms_text"), ("email", "email_body")) if not str(draft.get(key) or "").lstrip().startswith(intro)]
@@ -149,6 +161,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # The dealer wrote the campaign: its name and offer may be repeated.
         known += [state.campaign.get(k) for k in ("name", "goal", "subject", "body")]
     known += known_from_sources(state)
+    # What Validate saved from this very message, in the plain words Compose was told to repeat back ("Got it -
+    # Friday, September 25."): worked out in code from their words, not invented (stream Q: the context pack's
+    # profile predates this turn's values, so a just-resolved date was rejected as an invented number).
+    known += [c["display"] for c in just_captured(state) if c.get("display")]
     if (state.decision or {}).get("quiet_hours"):
         # The send check's own resume time (decision 29): "the team will pick this up at 8:00 AM".
         known.append("8:00 AM")
@@ -160,7 +176,7 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         known += [t.get("display") for t in visit_offer.get("times") or []]
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
-    known += [visit[k] for k in ("display", "slot_taken") if visit.get(k)]
+    known += [visit[k] for k in ("display", "slot_taken", "time_not_open") if visit.get(k)]
     # The day the customer asked for, and the day offered instead when it had no open time (both real).
     known += [v for k in ("asked", "offered_day") if (v := (visit.get("day_request") or {}).get(k))]
     if next_action := (state.decision or {}).get("next_action"):
@@ -226,6 +242,22 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if not_first:
         result["passed"] = False
         result["violations"] += not_first
+    # PLAN_4 stream Q (guardrails/wording.py): no VIN unless asked, a vehicle named once per sentence, no
+    # feature the stock record doesn't show, and no made-up person's name.
+    dealer_layer = pack.get("dealer") or {}
+    wording = {
+        "no_vin_unless_asked": vin_in_text(draft, inventory, customer_texts),
+        "vehicle_named_once": repeated_vehicle_name(draft, inventory),
+        "features_grounded": unverified_features(draft, inventory),
+        "no_invented_names": invented_names(
+            draft, customer_texts=customer_texts,
+            allowed=[t for t in (dealer_layer.get("name"), dealer_layer.get("agent_name"), state.customer_name) if t]),
+    }
+    for check, problems in wording.items():
+        result["checks"][check] = not problems
+        if problems:
+            result["passed"] = False
+            result["violations"] += problems
     # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
     bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}))
     result["checks"]["grammar"] = not bad_grammar
@@ -240,8 +272,7 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if result["violations"]:
         span.reasoning.append("Problems: " + "; ".join(result["violations"]))
     if not result["passed"]:
-        span.reasoning.append("One rewrite allowed." if will_retry
-                              else "Second failure: sending the template and flagging the lead for a human.")
+        span.reasoning.append("One rewrite allowed." if will_retry else "Second failure: sending the template.")
     span.edge_label = "approved" if result["passed"] else ("rewrite" if will_retry else "fallback")
 
     if will_retry:
@@ -249,5 +280,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
                                attempt=state.retry_count + 1)
         return {"guard_result": result, "retry_count": state.retry_count + 1}
     if not result["passed"]:
-        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": True}
+        in_a_row = int(((state.context_pack or {}).get("conversation") or {}).get("fallbacks_in_a_row") or 0) + 1
+        repeated = in_a_row >= FALLBACKS_BEFORE_HANDOFF
+        span.reasoning.append("A template fallback twice in a row: handing the lead to staff." if repeated else
+                              "The first fallback in a row: the template goes out and the AI carries on (stream Q).")
+        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": repeated}
     return {"guard_result": result}

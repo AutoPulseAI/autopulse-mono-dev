@@ -43,6 +43,19 @@ _YES = re.compile(r"^\s*(yes|yeah|yep|yup|correct|that'?s (?:right|correct)|righ
 _NO = re.compile(r"^\s*(no|nope|not quite|wrong|incorrect|that'?s not right)\b", re.IGNORECASE)
 
 
+# PLAN_4 stream Q (seen with gpt-5-mini): "Carvana offered me 24k" was saved as the payoff owed, and the next
+# reply asked "Is that your final payoff owed, $24,000?". Someone else's offer for the car is never what they owe.
+_OFFER_WORDS = re.compile(r"\b(offer(?:ed|ing|s)?|quote[ds]?|quoting|apprais\w*|carvana|carmax|vroom|kbb|kelley|"
+                          r"would give|will give|gave me|worth)\b", re.IGNORECASE)
+_OWED_WORDS = re.compile(r"\b(owe[ds]?|owing|payoff|pay off|paid off|loan|balance|financed|left on)\b", re.IGNORECASE)
+
+
+def offer_not_payoff(path: str, customer_text: str) -> bool:
+    """A payoff "value" taken from a message about someone's offer for the car, with nothing about a loan."""
+    return path == "trade_in.payoff" and bool(_OFFER_WORDS.search(customer_text or "")) and not _OWED_WORDS.search(
+        customer_text or "")
+
+
 def normalise(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s$.,/-]", " ", text.lower())).strip()
 
@@ -191,6 +204,9 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
         outcome = run_checks(value, text)
         item = {**value, "checks": outcome["checks"]}
         checks = outcome["checks"]
+        if checks["slot_exists"] and offer_not_payoff(str(value.get("path")), text):
+            outcome["reason"] = "an offer for their car from someone else, not what they owe on it"
+            checks["value_valid"] = False
         if not (checks["slot_exists"] and checks["value_valid"] and checks["quote_found"]):
             rejected.append({**item, "reason": outcome["reason"]})
             reasoning.append(f"✗ {value.get('path')} rejected: {outcome['reason']}")

@@ -128,7 +128,9 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
     pack = build_pack(
         now_local=now.astimezone(dealer.tz),
         opening=opening,
-        dealer={"name": dealer.name, "timezone": dealer.timezone, "info": dealer.public_info()},
+        # agent_name (Dealer Setup's "Bot Name", or None): the only name the AI may introduce itself by (stream Q).
+        dealer={"name": dealer.name, "timezone": dealer.timezone, "agent_name": dealer.agent_name,
+                "info": dealer.public_info()},
         customer={"first_name": first_name(state.customer_name), "channel": state.channel},
         lead_type=profile.effective_lead_type.value,
         profile=profile.to_api(),

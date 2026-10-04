@@ -17,7 +17,7 @@ when the customer's own zone is known and differs from the dealer's.
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from upsell_agent.integrations.dealer_profile import DealerProfile
@@ -261,6 +261,57 @@ class PickResult:
     matched: dict[str, str] | None = None  # one of the `format_offer` dicts, or a freshly built one
     ambiguous: bool = False
     note: str = ""
+    # PLAN_4 stream Q: the exact time they asked for (dealer-local) when it isn't open - Decide then offers the
+    # open times nearest to it (nearest_times) instead of dropping the booking.
+    wanted: datetime | None = None
+
+
+# A time with no day ("3pm", "10 works", "at 4:30"), answering times we offered (stream Q: seen with gpt-5-mini,
+# "3pm" after "Thursday at 12:00 PM, 2:00 PM or 4:00 PM" matched nothing and the booking was dropped).
+_BARE_TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])"
+                        r"|\b(\d{1,2}):(\d{2})\b"
+                        r"|^\s*(?:at\s+|around\s+|maybe\s+|how about\s+)?(\d{1,2})"
+                        r"(?:\s+(?:works|is good|is fine|would work|please|o'?clock|then))?\s*[.!?]?\s*$", re.IGNORECASE)
+
+
+def bare_time(text: str) -> time | None:
+    """The clock time a message names without a day, or None."""
+    m = _BARE_TIME.search(text or "")
+    if not m:
+        return None
+    if m.group(1):
+        hour, minute, meridiem = m.group(1), m.group(2), m.group(3).replace(".", "").lower()
+    elif m.group(4):
+        hour, minute, meridiem = m.group(4), m.group(5), None
+    else:
+        hour, minute, meridiem = m.group(6), None, None
+    if int(hour) > (12 if meridiem else 23) or int(minute or 0) > 59:
+        return None
+    return _clock(hour, minute, meridiem)
+
+
+def nearest_times(available: list[datetime], wanted: datetime, dealer: DealerProfile,
+                  *, count: int = MAX_OFFERED) -> list[datetime]:
+    """The open times closest to the one they asked for: on that day when it has any (else the next day that
+    does), in time order."""
+    day = wanted.astimezone(dealer.tz).date()
+    pool = [a for a in available if a.astimezone(dealer.tz).date() == day]
+    if not pool:
+        later = sorted({a.astimezone(dealer.tz).date() for a in available if a.astimezone(dealer.tz).date() > day})
+        pool = [a for a in available if later and a.astimezone(dealer.tz).date() == later[0]]
+        if pool:
+            wanted = datetime.combine(later[0], wanted.astimezone(dealer.tz).time(), tzinfo=dealer.tz)
+    return sorted(sorted(pool, key=lambda a: abs((a - wanted).total_seconds()))[:count])
+
+
+def _fresh_pick(candidate: datetime, dealer: DealerProfile, available: list[datetime] | None) -> dict[str, str] | None:
+    """A real, free time that wasn't offered (B5 item 2), as a `format_offer` dict; None when it isn't open."""
+    if available is None or not any(a == candidate for a in available):
+        return None
+    local = candidate.astimezone(dealer.tz)
+    display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"
+    return {"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"), "time": local.strftime("%H:%M"),
+            "display": display}
 
 
 def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
@@ -283,7 +334,21 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
 
     resolved = resolve_date(text, now.astimezone(dealer.tz))
     if resolved is None:
-        return PickResult()
+        # A time with no day answers the times we offered: the first offered day that has it open (else the
+        # first offered day, for the nearest open times).
+        at = bare_time(text) if offered else None
+        if at is None:
+            return PickResult()
+        days = list(dict.fromkeys(o["date"] for o in offered))
+        for day_iso in days:
+            exact = next((o for o in offered if o["date"] == day_iso and o["time"] == at.strftime("%H:%M")), None)
+            if exact:
+                return PickResult(matched=exact)
+            fresh = _fresh_pick(datetime.combine(date.fromisoformat(day_iso), at, tzinfo=dealer.tz), dealer, available)
+            if fresh:
+                return PickResult(matched=fresh)
+        wanted = datetime.combine(date.fromisoformat(days[0]), at, tzinfo=dealer.tz)
+        return PickResult(ambiguous=True, note=f"{days[0]} at {at.strftime('%H:%M')} isn't an open time", wanted=wanted)
     day = resolved.day
     same_day = [o for o in offered if o["date"] == day.isoformat()]
     if isinstance(resolved.value, datetime):
@@ -292,12 +357,9 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
         if exact:
             return PickResult(matched=exact)
         candidate = datetime.combine(day, resolved.value.time(), tzinfo=dealer.tz)
-        if available is not None and any(a == candidate for a in available):
-            local = candidate.astimezone(dealer.tz)
-            display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"
-            return PickResult(matched={"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"),
-                                       "time": local.strftime("%H:%M"), "display": display})
-        return PickResult(ambiguous=True, note=f"{day.isoformat()} at {target} isn't an open time")
+        if fresh := _fresh_pick(candidate, dealer, available):
+            return PickResult(matched=fresh)
+        return PickResult(ambiguous=True, note=f"{day.isoformat()} at {target} isn't an open time", wanted=candidate)
     if len(same_day) == 1:
         return PickResult(matched=same_day[0])
     if len(same_day) > 1:

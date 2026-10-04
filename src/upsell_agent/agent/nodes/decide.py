@@ -28,7 +28,9 @@ from upsell_agent.agent import cadence, human_contact, lead_bucket, service_requ
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
+from upsell_agent.agent.language import customer_language
 from upsell_agent.agent.nodes.load_context import load_profile
+from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.sold_pending import reply_hold
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
@@ -51,6 +53,12 @@ from upsell_agent.slots.profile import Profile
 from upsell_agent.tools import booking_tool
 
 URGENT_BACKSTOP_HOURS = 48
+# PLAN_4 stream Q (client, 25 Sept: "The goal is not to escalate every customer ... strike while the iron is hot
+# and get the customer in the dealership"): only an urgent PROBLEM goes to a person straight away - a car that is
+# unsafe to drive, or a customer left with no working car. Buying urgency ("I need a truck asap", "by tomorrow",
+# another offer expiring, the 48h needed-by backstop) drives the appointment instead: the visit is offered now,
+# with the soonest open times. Architecture decision 26 is narrowed accordingly (stream_Q.md).
+ESCALATING_URGENT_REASONS = frozenset({"safety_problem", "no_transportation"})
 # "Not interested" counts at the same bar as the other signals (MASTER_PLAN_3 C3).
 NOT_INTERESTED_CONFIDENCE = 0.8
 # A dated next step with no time of its own goes out at this dealer-local hour (Omnichannel PDF §6:
@@ -93,6 +101,22 @@ def hold_questions_reason(extraction: dict[str, Any], compliance: dict[str, Any]
     if (compliance or {}).get("quiet_hours"):
         return "an outbound conversation outside 8:00-21:00 customer time: the team picks up at 8:00"
     return None
+
+
+def urgency(extraction: dict[str, Any], *, backstop: bool) -> tuple[str | None, str]:
+    """("escalate" | "buying" | None, reason) for this message (PLAN_4 stream Q). Extract's urgent signal at the
+    handoff bar escalates only for a genuine problem (ESCALATING_URGENT_REASONS); any other urgency, and the
+    pure-code 48h needed-by backstop, is buying urgency: the visit is offered now instead of a handoff."""
+    reason = str(extraction.get("urgent_reason") or "none")
+    clear = bool(extraction.get("urgent")) and float(
+        extraction.get("urgent_confidence") or 0.0) >= URGENT_HANDOFF_CONFIDENCE
+    if clear and reason in ESCALATING_URGENT_REASONS:
+        return "escalate", reason
+    if clear:
+        return "buying", reason if reason != "none" else "needed_soon"
+    if backstop:
+        return "buying", "needed_within_48h"
+    return None, "none"
 
 
 def _within_48h(needed_by: str, now: datetime, dealer_tz) -> bool:
@@ -153,7 +177,7 @@ def _day_offer_why(info: dict[str, Any]) -> str:
 async def _visit_and_booking(
     ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
     extraction: dict[str, Any], *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
-    after_hours_blocking: bool,
+    after_hours_blocking: bool, buying_urgency: bool = False,
 ) -> tuple[dict[str, Any], Any]:
     """Everything B4/B5 needs the database for, done once: reads the active
     booking fresh (decision 60), matches a pick or a cancel/reschedule
@@ -240,8 +264,22 @@ async def _visit_and_booking(
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         picked = pending
         offered = conversation.visit.offered_times if conversation.awaiting_visit_pick and conversation.visit else []
+        wanted = None
         if offered or asks_for_a_time:
-            picked = booking_tool.match_pick(text, offered, dealer, now, available=available).matched or pending
+            pick = booking_tool.match_pick(text, offered, dealer, now, available=available)
+            picked, wanted = pick.matched or pending, pick.wanted
+        if not picked and wanted and not visit_declines(extraction):
+            # Stream Q: they named a time that isn't open ("Wednesday after work, like 6pm?", "3pm"): the open
+            # times nearest to it - never a dropped booking or a handoff.
+            built = booking_tool.format_offer(
+                booking_tool.nearest_times(available, wanted, dealer), dealer,
+                customer_zones=tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ()))
+            if built:
+                shown = await _dealer_local_display(wanted, dealer)
+                visit_ctx["time_not_open"] = shown["display"]
+                return visit_ctx, plan_day_offer(
+                    profile=profile, conversation=conversation, built_times=built,
+                    why=f"The customer asked for {shown['display']}, which isn't open: offering the nearest open times.")
         if not picked and not pending and not visit_declines(extraction) and (
                 request := booking_tool.preferred_day(text, dealer, now)):
             # A day but no time, answering our times or asking to come in ("not Wednesday, what about
@@ -291,7 +329,7 @@ async def _visit_and_booking(
         return visit_ctx, plan
 
     built_times: list[dict[str, str]] = []
-    if not hold and not after_hours_blocking and (slot_taken or visit_eligible(profile, extraction)):
+    if not hold and not after_hours_blocking and (slot_taken or buying_urgency or visit_eligible(profile, extraction)):
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         customer_zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
@@ -306,12 +344,32 @@ async def _visit_and_booking(
     return visit_ctx, plan
 
 
+# "Not interested anymore" given as its own reason (seen with gpt-5-mini, stream Q: the reason field held the
+# customer's whole message, so the lead was handed off without the ask-why the client requires). Restating the
+# objection is not a reason: only words that say WHY count.
+_NOT_A_REASON = re.compile(
+    r"^(?:(?:i'?m|i am|we'?re|we are)\s+)?(?:just\s+|really\s+|actually\s+)?(?:not|no longer|no more)\s+"
+    r"(?:really\s+)?(?:interested|in the market|looking|shopping|buying)(?:\s+(?:any\s?more|now|right now|at this time|"
+    r"in (?:it|this|that|the \w+)))*$"
+    r"|^(?:i'?m|i am|we'?re)\s+(?:good|all good|fine|ok(?:ay)?|set)(?:\s+(?:thanks|thank you|for now))*$"
+    r"|^(?:no thanks?|no thank you|nah|nope|pass|not anymore|never ?mind|changed my mind)$", re.IGNORECASE)
+
+
+def real_not_interested_reason(reason: Any) -> str | None:
+    """The customer's reason for not being interested, or None when the "reason" only restates the objection."""
+    text = re.sub(r"[^\w\s']", " ", str(reason or "")).strip()
+    text = re.sub(r"\s+", " ", text)
+    if not text or _NOT_A_REASON.match(text):
+        return None
+    return str(reason).strip()
+
+
 def not_interested_mode(extraction: dict[str, Any], conversation: ConversationState) -> tuple[str | None, str | None]:
     """(mode, reason) for "not interested / no longer in the market / I'm
     good" (MASTER_PLAN_3 C3, client scope Q10): the AI asks why, once; with a
     reason (or the same answer again after we asked), it notes it and hands
     the lead to a person, who alone may close it."""
-    reason = (extraction.get("not_interested_reason") or "").strip() or None
+    reason = real_not_interested_reason(extraction.get("not_interested_reason"))
     said = bool(extraction.get("not_interested")) and float(
         extraction.get("not_interested_confidence") or 0.0) >= NOT_INTERESTED_CONFIDENCE
     if conversation.awaiting_not_interested_reason and (said or reason):
@@ -373,6 +431,18 @@ def _vehicle_of_interest(profile: Profile) -> str | None:
     return str(model) if model else None
 
 
+def _service_vehicle(profile: Profile) -> str | None:
+    """The car a service lead wants serviced, in the customer's own words ("2021 Camry"), if we know its model."""
+    values = profile.values(include_stale=True)
+    if not values.get("vehicle.model"):
+        return None
+    return " ".join(str(values[p]) for p in ("vehicle.year", "vehicle.make", "vehicle.model") if values.get(p))
+
+
+def is_service_lead(profile: Profile) -> bool:
+    return profile.lead_type == LeadType.SERVICE
+
+
 def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: str | None) -> dict[str, Any]:
     """Touch 1's required structure (Omnichannel PDF §3, MASTER_PLAN_3 C4):
     the client's opening, then the answers, then the mandatory closing
@@ -380,16 +450,18 @@ def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: st
     client's own answer of 1 Oct 2026: the question is always asked, unless a
     trade-in is already indicated. It is one of the message's two questions,
     so Compose gets at most one other ask alongside it."""
-    ending = cadence.touch1_ending(_trade_in_known(profile))
+    service = is_service_lead(profile)
+    ending = cadence.touch1_ending(_trade_in_known(profile), service=service)
     return {
         "intro": cadence.touch1_intro(
             customer_first_name=first_name(customer_first_name), agent_name=dealer.agent_name,
-            dealership=dealer.name,
-            city=dealer.city, state_code=dealer.state, vehicle=_vehicle_of_interest(profile)),
+            dealership=dealer.name, city=dealer.city, state_code=dealer.state,
+            vehicle=_service_vehicle(profile) if service else _vehicle_of_interest(profile), service=service),
         "ending": ending,
         "ending_slot": TOUCH1_ENDING_SLOT if ending else None,
         "why": ("The client's required Touch 1 structure: the opening, the answers, then "
-                + (f"{ending!r}." if ending else "no closing question - they've already told us about a trade-in.")),
+                + (f"{ending!r}." if ending else "no sales closing question - a service lead." if service
+                   else "no closing question - they've already told us about a trade-in.")),
     }
 
 
@@ -494,15 +566,6 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             after_hours.why = "No after-hours choice: the customer asked us to get back to them on a date."
     not_interested, not_interested_reason = (None, None) if sold_hold else not_interested_mode(extraction, conversation)
     after_hours_blocking = after_hours.mode in ("offer", "later") or state.trigger == "resume_at_opening"
-    visit_ctx, visit_plan = await _visit_and_booking(
-        ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,
-        after_hours_blocking=after_hours_blocking)
-    if visit_ctx.get("day_request"):
-        # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
-        questions = [q for q in questions if not booking_tool.preferred_day(q["text"], dealer, now)]
-
-    urgent = bool(extraction.get("urgent"))
-    urgent_confidence = float(extraction.get("urgent_confidence") or 0.0)
     # Only a needed_by Validate accepted THIS turn (never an older stored value, architecture
     # decision 26's wording is about "an urgent message"): a stale needed_by left over from an
     # unrelated earlier message (seen in testing: "tomorrow" answering the after-hours choice)
@@ -514,10 +577,20 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # testing: the offline model reads it as a needed_by date too).
     # Nor when the date is a visit day the customer asked about ("not Tuesday, what about Thursday?"): that's
     # when they'd come in, not when they need the car.
-    backstop = (bool(needed_by) and not conversation.awaiting_contact_choice and not visit_ctx.get("day_request")
-               and _within_48h(str(needed_by), now, dealer.tz))
-    if backstop and not urgent:
-        urgent, urgent_confidence = True, 1.0
+    # Nor when they're asking to come in or picking a time ("Wednesday after work, like 6pm?"): that's the visit
+    # day, not a deadline (PLAN_4 stream Q, seen with gpt-5-mini).
+    backstop = (bool(needed_by) and not conversation.awaiting_contact_choice and not visit_wants_visit(extraction)
+                and not conversation.awaiting_visit_pick and _within_48h(str(needed_by), now, dealer.tz))
+    urgency_mode, urgency_reason = urgency(extraction, backstop=backstop)
+    visit_ctx, visit_plan = await _visit_and_booking(
+        ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,
+        after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
+    if visit_ctx.get("day_request"):
+        # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
+        questions = [q for q in questions if not booking_tool.preferred_day(q["text"], dealer, now)]
+    # Only an urgent problem reaches the handoff rule (stream Q); buying urgency offers the visit instead.
+    urgent = urgency_mode == "escalate"
+    urgent_confidence = float(extraction.get("urgent_confidence") or 0.0) if urgent else 0.0
 
     wants_human = bool(extraction.get("wants_human")) and not (dated and dated["call_requested"])
     escalate = ((bool(extraction.get("upset")) and float(extraction.get("upset_confidence") or 0.0)
@@ -536,6 +609,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         already_qualified=status == "qualified",
         stop_asking=status == "partly_qualified",
         asks={path: (a.count, a.last_turn) for path, a in conversation.asks.items()},
+        confirms=dict(conversation.confirms),
         last_asked=list(conversation.last_asked),
         replies=conversation.turn,
         wants_human=wants_human,
@@ -592,10 +666,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         after_hours.cancel_resume = True
         after_hours.why = f"No after-hours choice: the reply is a {decision['action']}."
     decision["after_hours"] = after_hours.as_dict()
+    # Stream Q: buying urgency, for Compose to lean into getting them in soon (never a handoff by itself).
+    decision["urgency"] = ({"reason": urgency_reason} if urgency_mode == "buying"
+                           and decision["action"] not in ("stop", "handoff", "offer_human") else None)
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
     decision["bucket"] = lead_bucket.for_compose(ctx.lead_state, profile.values(include_stale=True))
+    # Stream Q: a customer writing in Spanish is answered in Spanish (agent/language.py).
+    decision["reply_language"] = customer_language(
+        text, [m.get("text") or "" for m in pack.get("working_memory", []) if m.get("direction") == "inbound"])
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]
@@ -625,8 +705,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                               f"{float(extraction.get('upset_confidence') or 0):.2f}, needs "
                               f"{UPSET_HANDOFF_CONFIDENCE:.2f}).")
     if backstop:
-        span.reasoning.append(f"Urgent (pure-code backstop): interest.needed_by ({needed_by}) is within "
+        span.reasoning.append(f"Needed soon (pure-code backstop): interest.needed_by ({needed_by}) is within "
                               f"{URGENT_BACKSTOP_HOURS}h.")
+    if urgency_mode == "buying":
+        span.reasoning.append(f"Buying urgency ({urgency_reason}): offering the visit now, not handing off.")
     if decision["next_action"]:
         span.reasoning.append(f"Dated next step: the customer said {dated['words']!r}, worked out as "
                               f"{dated['display']} at {dated['time']}"
@@ -635,6 +717,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         span.reasoning.append(f"Speak to a person: {person.why}")
     if touch1:
         span.reasoning.append(f"Touch 1: {touch1['why']}")
+    if decision["reply_language"]:
+        span.reasoning.append(f"The customer writes in {decision['reply_language']}: the reply is in "
+                              f"{decision['reply_language']}.")
     if decision.get("touch"):
         span.reasoning.append(f"Cadence touch {decision['touch']['touch_number']} (day "
                               f"{decision['touch']['day']}): {decision['touch']['label']}.")

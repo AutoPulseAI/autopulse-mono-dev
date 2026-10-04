@@ -102,6 +102,12 @@ def _numbers(texts: Iterable[Any]) -> set[str]:
             found.add(_normalize_number(raw))
         for kilo in re.findall(r"(\d+(?:\.\d+)?)\s+k\b", str(text), re.IGNORECASE):
             found.add(_normalize_number(f"{kilo}k"))
+        # "3pm" / "10am" read as a model-name token above (stream Q: a reply repeating the customer's "3pm" as
+        # "3:00 PM" was rejected as an invented 3), so a clock time's own numbers are added here.
+        for hour, minute in re.findall(r"\b(\d{1,2})(?::(\d{2}))?\s*(?:am|pm)\b", str(text), re.IGNORECASE):
+            found.add(_normalize_number(hour))
+            if minute:
+                found.add(_normalize_number(minute))
     return found
 
 
@@ -110,6 +116,12 @@ def _mentioned(draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[d
     by_vin = {r["vin"]: r for r in inventory if r.get("vin")}
     vins = {*(draft.get("sms_vins") or []), *(draft.get("email_vins") or [])}
     return [by_vin[v] for v in vins if v in by_vin]
+
+
+def _named_by_model(text: str, inventory: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Loaded records whose model the text names (whole word), vin or not."""
+    return [r for r in inventory if (model := str(r.get("model") or "").strip())
+            and re.search(rf"(?<![\w-]){re.escape(model)}(?![\w-])", text, re.IGNORECASE)]
 
 
 def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]]]:
@@ -197,6 +209,11 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     # Phase 3 decision C): they came from a record this draft actually named,
     # not invented.
     vehicle_facts = [r[k] for r in _mentioned(draft, inventory or []) for k in ("year", "miles") if r.get(k) is not None]
+    # Stream Q: a follow-up that names a vehicle from this turn's stock by model without listing its vin again
+    # ("that 2022 Toyota RAV4 XLE in blue has 31,200 miles", answering "What's the mileage on it?") is still
+    # quoting that record's own year and miles: allowed, not invented.
+    vehicle_facts += [r[k] for r in _named_by_model(text, inventory or []) for k in ("year", "miles")
+                      if r.get(k) is not None]
     # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach may repeat its own facts' numbers.
     allowed = _numbers([*customer_texts, *known_values, *vehicle_facts, *service_claims.known_values(service_facts)])
     violations: list[str] = []

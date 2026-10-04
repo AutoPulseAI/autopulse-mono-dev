@@ -14,14 +14,23 @@ Templates contain no prices, numbers or promises (agent/templates.py).
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
-from upsell_agent.agent.templates import render_first_reply
+from upsell_agent.agent.templates import render_continue_reply, render_first_reply
 from upsell_agent.observability.trace import NodeSpan
 
 
-def template_draft(lead_type: LeadType | None, customer_name: str | None, why: str) -> dict:
-    draft = render_first_reply(lead_type or LeadType.GENERAL, customer_name)
+def template_draft(lead_type: LeadType | None, customer_name: str | None, why: str, *,
+                   mid_conversation: bool = False, decision: dict | None = None) -> dict:
+    """The first-reply template, or (PLAN_4 stream Q) once the conversation has started, the continue template
+    built from Decide's plan (agent/templates.render_continue_reply) - never "new or used?" out of the blue."""
+    draft = (render_continue_reply(customer_name, decision) if mid_conversation
+             else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
     draft["why"] = why
     return draft
+
+
+def mid_conversation(state: AgentState) -> bool:
+    """We've already written to this customer (the conversation has at least one reply of ours)."""
+    return int(((state.context_pack or {}).get("conversation") or {}).get("turn") or 0) > 0
 
 
 async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | None = None) -> dict:
@@ -43,6 +52,9 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
         if state.flag_human:
             span.reasoning.append("The lead is flagged for a human to review.")
         span.edge_label = "fallback template"
-    draft = template_draft(lead_type, state.customer_name, why)
+    later = not first_reply and mid_conversation(state)
+    if later:
+        span.reasoning.append("Mid-conversation: the continue template, built from Decide's plan.")
+    draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
     span.output = draft
     return {"draft": draft, "used_template": True, "used_fallback": not first_reply}

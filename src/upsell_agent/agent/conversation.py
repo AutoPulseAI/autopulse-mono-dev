@@ -142,6 +142,15 @@ class ConversationState(BaseModel):
     shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
     not_interested: NotInterestedState | None = None
     human_contact: HumanContactState | None = None
+    # PLAN_4 stream Q: how many replies asked the customer to confirm each pending value, by its fact id (a new
+    # value is a new fact, so it gets its own confirmation). One ask is enough: seen with gpt-5-mini, "Just to
+    # confirm - your vehicle model is Wrangler Unlimited Sahara, right?" went out five replies in a row while the
+    # customer kept answering other things (slots/policy.py MAX_CONFIRMS_PER_VALUE).
+    confirms: dict[str, int] = Field(default_factory=dict)
+    # PLAN_4 stream Q: template fallbacks in a row (an AI-written reply resets it). The guard hands the lead to
+    # staff only on the second in a row (agent/nodes/guard.py): one rejected draft is a safe template and the AI
+    # carries on, instead of the lead going cold with the team.
+    fallbacks_in_a_row: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -231,6 +240,8 @@ def after_turn(
     channel: str | None = None,
     not_interested_reason: str | None = None,
     human_contact: dict | None = None,
+    confirmed_fact: str | None = None,
+    used_fallback: bool = False,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -281,6 +292,9 @@ def after_turn(
             updated.visit = VisitState.model_validate(visit)
         if human_contact is not None:
             updated.human_contact = HumanContactState.model_validate(human_contact)
+        updated.fallbacks_in_a_row = updated.fallbacks_in_a_row + 1 if used_fallback else 0
+        if confirmed_fact and not used_template:
+            updated.confirms[confirmed_fact] = updated.confirms.get(confirmed_fact, 0) + 1
         if action == "ask_why" and not used_template:
             updated.not_interested = NotInterestedState(asked_turn=updated.turn)
     if not_interested_reason:

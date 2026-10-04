@@ -59,6 +59,9 @@ from upsell_agent.slots.schema import SCHEMA
 # Questions per message, a confirmation included (MASTER_PLAN_3 Bq, decision 35).
 MAX_ASKS_PER_MESSAGE = 2
 MAX_ASKS_PER_SLOT = 2
+# A pending value is asked to be confirmed once (PLAN_4 stream Q). If the customer moves on without a yes or a
+# no, it stays unconfirmed for the team to see, and it is neither confirmed again nor asked for again.
+MAX_CONFIRMS_PER_VALUE = 1
 # A parked detail can be asked again once this many other replies have gone out.
 PARKED_FOR_REPLIES = 3
 # Upset is a handoff signal only when this sure (MASTER_PLAN_2 Phase 4): one
@@ -113,6 +116,8 @@ class Flags:
     # PLAN_4 stream H (agent/human_contact.py): how a person will reach them - "call" / "text" (with wants_human:
     # the handoff), or "offer" (they asked for a person without saying how: ask call-or-text first).
     human_contact: str | None = None
+    # Times each pending value (by fact id) was already asked to be confirmed (agent/conversation.py confirms).
+    confirms: dict[str, int] = field(default_factory=dict)
 
     @property
     def clearly_upset(self) -> bool:
@@ -153,8 +158,10 @@ def _ask_item(profile: Profile, requirement: Requirement) -> dict[str, Any]:
 
 
 def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
-    pending = profile.pending()
-    missing = profile.missing()
+    # A value already asked to be confirmed isn't confirmed again, and its detail isn't asked for again either.
+    confirmed_once = {s.path for s in profile.pending() if flags.confirms.get(s.fact_id, 0) >= MAX_CONFIRMS_PER_VALUE}
+    pending = [s for s in profile.pending() if s.path not in confirmed_once]
+    missing = [r for r in profile.missing() if not (confirmed_once and set(_unfilled(profile, r)) <= confirmed_once)]
     filled, total = profile.progress()
     clarify_questions = [q for q in flags.questions if q.get("label") == "clarify"]
     other_questions = [q for q in flags.questions if q.get("label") != "clarify"]

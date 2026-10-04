@@ -135,6 +135,50 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
     }
 
 
+# PLAN_4 stream Q: the safety net mid-conversation. The first-reply template ("Are you looking for a new or a used
+# vehicle?") ignored the conversation (seen: sent right after the customer said "used"). This one only thanks
+# them, takes any open question to the team, or asks the next detail Decide chose - a detail still missing, so
+# never one they just gave. Still no numbers, prices or promises beyond the team following up.
+CONTINUE_CHECKING = "Thanks, {name}. Let me check on that with the team, and someone will get back to you shortly."
+CONTINUE_NOTED = "Thanks, {name}. I've made a note of that."
+CONTINUE_ASK = "Thanks, {name}. {question}"
+# The same for a customer who writes in Spanish (agent/language.py). The asks' wording is English-only, so a
+# Spanish fallback never asks: it notes their message, or takes the question to the team.
+CONTINUE_CHECKING_ES = "Gracias, {name}. Voy a consultarlo con el equipo, y alguien le responderá muy pronto."
+CONTINUE_NOTED_ES = "Gracias, {name}. Ya tomé nota."
+_SIGN_OFF_ES = "\n\nGracias,\nEl equipo de atención al cliente"
+
+
+def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None) -> dict[str, Any]:
+    """The template for a reply after the first one (agent/nodes/template_reply.py), from Decide's own plan."""
+    decision = decision or {}
+    name = first_name(full_name)
+    asks = [a for a in decision.get("asks") or [] if a.get("question")][:1]
+    promises: list[str] = []
+    if decision.get("reply_language") == "Spanish":
+        line = (CONTINUE_CHECKING_ES if decision.get("answer_questions") else CONTINUE_NOTED_ES).format(name=name)
+        return {"sms_text": line, "email_subject": "Seguimiento",
+                "email_body": f"Hola {name},\n\n{line.split('. ', 1)[1]}" + _SIGN_OFF_ES, "template": "continue",
+                "asks": {"sms": [], "email": []},
+                "promises": [TEMPLATE_PROMISE] if decision.get("answer_questions") else []}
+    if decision.get("answer_questions"):
+        line, asked = CONTINUE_CHECKING.format(name=name), []
+        promises = [TEMPLATE_PROMISE]
+    elif asks:
+        line, asked = CONTINUE_ASK.format(name=name, question=asks[0]["question"]), list(asks[0].get("slots") or [])
+    else:
+        line, asked = CONTINUE_NOTED.format(name=name), []
+    body = f"Hi {name},\n\n{line.split('. ', 1)[1] if '. ' in line else line}" + _SIGN_OFF.format(team="Customer Care")
+    return {
+        "sms_text": line,
+        "email_subject": "Following up",
+        "email_body": body,
+        "template": "continue",
+        "asks": {"sms": asked, "email": asked},
+        "promises": promises,
+    }
+
+
 # While a person owns the lead (architecture §15, decision 12). "holding": the
 # customer wrote while the lead is handed off. "still_waiting": the handoff
 # timeout fired and staff haven't taken the lead over yet.

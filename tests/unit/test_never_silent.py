@@ -265,6 +265,8 @@ async def test_guard_failing_twice_also_gets_a_staff_check(mongo, dealers):
     set_clock(ny(22, 10))
     created = await _lead()
     await _say(created, "What's the best price? #fallback")
+    assert (await _state(mongo, created))["status"] != "handoff"  # stream Q: the first fallback carries on
+    await _say(created, "Hello? #fallback")
     state = await _state(mongo, created)
     assert state["status"] == "handoff" and state["status_reason"] == "AI couldn't write a safe reply"
     [check] = await _scheduled(mongo, created, followups.KIND_HANDOFF_CHECK)

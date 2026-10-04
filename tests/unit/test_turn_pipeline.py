@@ -179,12 +179,18 @@ async def test_guard_rejection_gets_one_rewrite(mongo):
 
 
 async def test_second_guard_failure_sends_the_template_and_flags_a_human(mongo):
+    # PLAN_4 stream Q: one double rejection sends the safe template and the AI carries on; a second fallback in
+    # a row hands the lead to staff.
     created = await _lead()
     log = await _turn(created, "hello #fallback")
     assert log["outcome"] == "fallback" and "fallback" in _done(log)
-    assert log["summary"]["flag_human"] is True
+    assert log["summary"]["flag_human"] is False
     outbox = await mongo[DEV_OUTBOX_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert "$" not in outbox["text"] and "guarantee" not in outbox["text"].lower()
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
+    assert state["status"] != "handoff" and state["conversation"]["fallbacks_in_a_row"] == 1
+    log = await _turn(created, "hello again #fallback")
+    assert log["outcome"] == "fallback" and log["summary"]["flag_human"] is True
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
     assert state["status"] == "handoff" and state["status_reason"] == "AI couldn't write a safe reply"
 
