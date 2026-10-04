@@ -29,6 +29,7 @@ import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFail
 import { assignedOnlyScope, filterRowsToAssigned } from './app/lib/ai/assignedScope.js';
 import { hasAiPhotos, messagePhotoUrls } from './app/lib/ai/messagePhotos.js';
 import { dailyCallTasksUpdate, dailyCallTasksView, missedCountRows } from './app/lib/ai/aiCallTasks.js';
+import { insightsDays, percent, rateTone, vehicleTypeText } from './app/lib/ai/aiInsights.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -487,4 +488,19 @@ test('missed call task counts per agent, named, biggest first; assigned-only sta
   ]);
   assert.deepEqual(missedCountRows(agents, {}, 'u1'), [{ agent_id: 'u1', agent: 'Unknown user', missed: 2 }]);
   assert.deepEqual(missedCountRows(null), []);
+});
+
+// agentic-upsell PLAN_4 stream L: the AI Insights page and the AI panel's new/used row.
+test('AI Insights: the period falls back to 30 days, rates read as whole percents', () => {
+  assert.equal(insightsDays('90'), 90);
+  assert.equal(insightsDays('12'), 30);
+  assert.equal(insightsDays(undefined), 30);
+  assert.equal(percent(0.3456), '35%');
+  assert.equal(percent(null), '—');
+  assert.equal(rateTone(0.4, 0.3, 50), 'better');
+  assert.equal(rateTone(0.2, 0.3, 50), 'worse');
+  assert.equal(rateTone(0.4, 0.3, 3), ''); // too few to call
+  assert.equal(vehicleTypeText({ vehicle_type: 'used', original_vehicle_type: 'new' }), 'Used (came in as New)');
+  assert.equal(vehicleTypeText({ vehicle_type: 'new', original_vehicle_type: 'new' }), 'New');
+  assert.equal(vehicleTypeText(null), null);
 });

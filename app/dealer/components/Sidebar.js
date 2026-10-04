@@ -166,6 +166,11 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <i className="fa-regular fa-sliders"></i>AI Settings
                   </Link>
                 </li>
+                <li>
+                  <Link href="/dealer/ai/insights" className={getLinkClass("/dealer/ai/insights")}>
+                    <i className="fa-regular fa-chart-line"></i>AI Insights
+                  </Link>
+                </li>
               </ul>
             )}
           </li>
