@@ -13,7 +13,7 @@ import mongoose from 'mongoose';
 // (app/lib/bookingService.js): 409 for a taken slot.
 import { onLeadStatusChange ,onFollowUpEvent} from '@lib/followupService.js';
 import { aiOwnsCustomerMessages, cancelAllRemindersForLead, createAppointmentReminders } from '@lib/appointmentReminderService';
-import { notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
+import { bookingChangeKind, notifyAiOfBookingChange, notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
 import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
 import {
   ACTIVE_BOOKING_STATUSES,
@@ -721,6 +721,17 @@ export async function PUT(request) {
       } catch (reminderError) {
         console.error('Error updating appointment reminders:', reminderError);
         // Don't fail the booking update if reminders fail
+      }
+    }
+
+    // Staff (or the customer's own booking page) cancelled or moved it: the AI cancels or re-plans the
+    // appointment's messages now (PLAN_4 stream S). Not for the AI's own change: it already knows.
+    if (caller.kind !== 'ai') {
+      const change = bookingChangeKind({ previousStatus: existingBooking.booking_status,
+        newStatus: updates.booking_status, dateChanged });
+      if (change) {
+        await notifyAiOfBookingChange({ leadId: existingBooking.lead_id, dealerId: existingBooking.dealer_id,
+          bookingId: existingBooking._id, change });
       }
     }
 

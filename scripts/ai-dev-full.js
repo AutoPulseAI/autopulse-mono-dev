@@ -122,6 +122,8 @@ const aiServiceEnv = {
   FIRST_REPLY_MODE: process.env.AI_FIRST_REPLY_MODE || 'ai',
   PUBLIC_BASE_URL: '',
   PYDANTIC_AI_NO_BANNER: '1',
+  // Never spend paid Vehicle Databases credits from the local stack (scenarios/e2e/seed run many leads).
+  VEHICLE_DATABASES_ENABLED: process.env.CRM_LOCAL_VEHICLE_DATABASES_ENABLED || 'false',
 };
 
 const N8N_TRIPWIRE_PORT = Number(config.n8nPort);

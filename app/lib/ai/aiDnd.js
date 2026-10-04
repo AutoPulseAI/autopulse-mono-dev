@@ -85,3 +85,64 @@ export async function markLeadDndFromAi(body, {
   await cancelAllRemindersForLead(lead._id);
   return { found: true, updated: true, already_dnd: already };
 }
+
+// The AI's own closings shown as the lead's status (agentic-upsell PLAN_4 stream S, agent/crm_status.py):
+// Day 91 with no response -> "Closed - Lost"; the customer no longer owns the vehicle sold on this lead
+// (ownership anniversary "NO") -> "Closed - No Longer Owns" (read only in the CRM: only the AI sets it).
+// POST /api/internal/ai/leads/status {dealer_id, lead_id, status, reason?, closed_at?}
+//
+// Staff always win: a status changed after the AI closed the lead (`closed_at`) is kept, and so is a staff
+// status the AI could not have been working from (a Sold / Visited / DND lead is never "lost" by the AI).
+export const AI_CLOSED_STATUSES = Object.freeze(['Closed - Lost', 'Closed - No Longer Owns']);
+// Statuses only the AI sets: shown in the CRM's lists and filters, not offered in the status picker.
+export const READ_ONLY_STATUSES = Object.freeze(['Closed - No Longer Owns']);
+// Staff statuses a Day 91 "Closed - Lost" never replaces.
+const KEEP_FOR_CLOSED_LOST = Object.freeze(['Visited', 'Sold', 'DND', 'Managerial Review', 'Sold Pending',
+  'Sold Delivered', 'Closed - No Longer Owns']);
+// The only statuses "Closed - No Longer Owns" replaces: the vehicle was sold on this lead.
+const FROM_FOR_NO_LONGER_OWNS = Object.freeze(['Sold Delivered', 'Sold']);
+
+export function validateClosedStatusPayload(body) {
+  const { errors } = validateDndPayload(body);
+  if (!AI_CLOSED_STATUSES.includes(body?.status)) errors.push(`status must be one of ${AI_CLOSED_STATUSES.join(', ')}`);
+  if (body?.closed_at != null && Number.isNaN(Date.parse(body.closed_at))) errors.push('closed_at must be a date');
+  return { errors };
+}
+
+// Why the AI's closing is not applied to a lead now showing `current` (changed at `changedAt`), or null.
+export function closedStatusConflict({ status, current, changedAt, closedAt }) {
+  if (current === status) return 'already';
+  if (changedAt && closedAt && new Date(changedAt) > new Date(closedAt)) return 'staff_changed_it_after';
+  if (status === 'Closed - Lost' && KEEP_FOR_CLOSED_LOST.includes(current)) return 'staff_status_kept';
+  if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
+  return null;
+}
+
+export async function markLeadClosedFromAi(body, {
+  Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
+}) {
+  const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id })
+    .select('_id fe_lead_status lead_status status statusChangedAt').lean();
+  if (!lead) return { found: false, updated: false };
+  const current = lead.fe_lead_status || lead.lead_status || lead.status || null;
+  const conflict = closedStatusConflict({ status: body.status, current, changedAt: lead.statusChangedAt,
+    closedAt: body.closed_at });
+  if (conflict) return { found: true, updated: false, reason: conflict, current };
+  const at = now();
+  // Only if nobody changed it in the meantime: a staff save between the read and this write wins.
+  const changed = await Lead.updateOne({ _id: lead._id, statusChangedAt: lead.statusChangedAt ?? null }, { $set: {
+    status: body.status, lead_status: body.status, fe_lead_status: body.status, statusChangedAt: at,
+    status_source: 'ai', status_reason: body.reason || null,
+  } });
+  if (!changed.modifiedCount) return { found: true, updated: false, reason: 'staff_changed_it_after', current };
+  await Email.create({
+    sender: 'AutoPulse AI', recipient: 'staff', subject: 'Lead Note',
+    mail_content: `Set to ${body.status} by the AI${body.reason ? `: ${body.reason}` : ''}`,
+    dealer_id: String(body.dealer_id), lead_id: new mongoose.Types.ObjectId(body.lead_id),
+    status: 'sent', communication_type: 'note', is_note: true, internal_use: true,
+    message_id: `note_ai_status_${body.lead_id}_${at.getTime()}`, timestamp: at, date: at, ai_generated: true,
+  });
+  await clearPendingJobs(lead._id);
+  await cancelAllRemindersForLead(lead._id);
+  return { found: true, updated: true, previous: current };
+}

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { UnrecoverableError } from 'bullmq';
 
 import { aiRouting, clearAiModeCache, effectiveAiMode, getDealerAiMode, invalidateDealerAiMode } from './app/lib/ai/aiMode.js';
-import { AiEventError, postAiEvent, processAiEventRetryJob, retryJobId, sendAiEvent } from './app/lib/ai/aiEvents.js';
+import { AI_EVENT_TYPES, AiEventError, postAiEvent, processAiEventRetryJob, retryJobId, sendAiEvent } from './app/lib/ai/aiEvents.js';
 import {
   buildInboundMessageEvent,
   buildLeadCreatedEvent,
@@ -23,8 +23,13 @@ import { parseSenderHeader } from './app/lib/ai/aiInbound.js';
 import {
   MANAGER_OUTCOMES,
   STAFF_OWNED_STATUSES,
+  BOOKING_CHANGES,
+  bookingChangeKind,
+  buildBookingChangedEvent,
   buildLeadPausedEvent,
   buildLeadResumedEvent,
+  leftAppointmentBooked,
+  notifyAiOfBookingChange,
   notifyAiOfStaffReply,
   notifyAiOfStaffStatus,
   pauseAiForLead,
@@ -418,4 +423,46 @@ test('a call outcome is shaped for the AI: follow-up, opt-out scope, and checks'
   assert.equal(callTaskResolution({ action: 'dismiss', note: 'x', lead_outcome: 'opted_out' }, ctx).body.lead_outcome,
     undefined);
   assert.equal(callTaskResolution({ action: 'complete' }, ctx).status, 422);
+});
+
+// --- Booking cancelled / moved in the CRM (PLAN_4 stream S) -----------------------------------------------
+
+test('booking-changed is an AI event type and its payload matches the AI service model', () => {
+  assert.ok(AI_EVENT_TYPES.includes('booking-changed'));
+  assert.deepEqual([...BOOKING_CHANGES], ['cancelled', 'moved']);
+  assert.deepEqual(buildBookingChangedEvent({ leadId: LEAD, dealerId: DEALER, bookingId: 'b1', change: 'moved',
+    eventId: 'booking-b1-moved-1' }),
+  { event_id: 'booking-b1-moved-1', dealer_id: DEALER, lead_id: LEAD, booking_id: 'b1', change: 'moved' });
+  assert.equal(buildBookingChangedEvent({ leadId: LEAD, dealerId: DEALER, change: 'other', eventId: 'x' }), null);
+});
+
+test('a booking update is a cancel, a move, or nothing the AI acts on', () => {
+  assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: 'cancelled', dateChanged: false }), 'cancelled');
+  assert.equal(bookingChangeKind({ previousStatus: 'cancelled', newStatus: 'cancelled', dateChanged: false }), null);
+  assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: undefined, dateChanged: true }), 'moved');
+  assert.equal(bookingChangeKind({ previousStatus: 'confirmed', newStatus: 'confirmed', dateChanged: true }), 'moved');
+  assert.equal(bookingChangeKind({ previousStatus: 'cancelled', newStatus: undefined, dateChanged: true }), null);
+  assert.equal(bookingChangeKind({ previousStatus: 'pending', newStatus: 'confirmed', dateChanged: false }), null);
+});
+
+test('notifyAiOfBookingChange sends booking-changed for a live dealer, nothing when off', async () => {
+  const r = eventRecorder();
+  await notifyAiOfBookingChange({ leadId: LEAD, dealerId: DEALER, bookingId: 'b9', change: 'cancelled', mode: 'live',
+    send: r.send, logger: quiet, now: () => 5 });
+  assert.equal(r.sent[0].type, 'booking-changed');
+  assert.deepEqual(r.sent[0].event, { event_id: 'booking-b9-cancelled-5', dealer_id: DEALER, lead_id: LEAD,
+    booking_id: 'b9', change: 'cancelled' });
+  const off = eventRecorder();
+  assert.equal((await notifyAiOfBookingChange({ leadId: LEAD, dealerId: DEALER, bookingId: 'b9', change: 'moved',
+    mode: 'off', send: off.send, logger: quiet })).status, 'off');
+  assert.equal(off.sent.length, 0);
+});
+
+test('only leaving "Appointment Booked" for a status staff do not own cancels the booking', () => {
+  assert.equal(leftAppointmentBooked('Appointment Booked', 'Contacted'), true);
+  assert.equal(leftAppointmentBooked('Appointment Booked', 'Lead'), true);
+  assert.equal(leftAppointmentBooked('Appointment Booked', 'Appointment Booked'), false);
+  assert.equal(leftAppointmentBooked('Appointment Booked', 'Visited'), false);  // the AI is told "Visited" itself
+  assert.equal(leftAppointmentBooked('Appointment Booked', 'No Show'), false);
+  assert.equal(leftAppointmentBooked('Contacted', 'Lead'), false);
 });

@@ -16,7 +16,9 @@
 import { Queue, UnrecoverableError } from 'bullmq';
 import Redis from 'ioredis';
 
-export const AI_EVENT_TYPES = Object.freeze(['lead-created', 'inbound-message', 'lead-paused', 'lead-resumed']);
+// booking-changed: staff cancelled or moved a booking (PLAN_4 stream S, aiStaff.notifyAiOfBookingChange).
+export const AI_EVENT_TYPES = Object.freeze(['lead-created', 'inbound-message', 'lead-paused', 'lead-resumed',
+  'booking-changed']);
 export const AI_EVENT_RETRY_QUEUE = 'aiEventRetryQueue';
 export const AI_EVENT_TIMEOUT_MS = 2_000;
 export const AI_EVENT_RETRY_OPTIONS = Object.freeze({

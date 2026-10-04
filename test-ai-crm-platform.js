@@ -17,7 +17,11 @@ import Lead from './app/models/Lead.js';
 import User from './app/models/User.js';
 import { AiSendError, classifyProviderError, sendAiMessage } from './app/lib/ai/aiSend.js';
 import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayload } from './app/lib/ai/aiMessageRecord.js';
-import { addAiLeadNote, markLeadDndFromAi, validateDndPayload, validateNotePayload } from './app/lib/ai/aiDnd.js';
+import {
+  READ_ONLY_STATUSES, addAiLeadNote, closedStatusConflict, markLeadClosedFromAi, markLeadDndFromAi,
+  validateClosedStatusPayload, validateDndPayload, validateNotePayload,
+} from './app/lib/ai/aiDnd.js';
+import { cancelBookingsForStatusChange } from './app/lib/ai/aiStaff.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
   appointmentTypeFor, bookingCapacityUpdate, bookingCapacityView, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
@@ -452,4 +456,68 @@ test('a 409 full slot becomes a conflict with the next available and the day\'s 
     (err) => err instanceof BookingConflictError && err.slotConflict.nextAvailable.time === '11:00');
   await assert.rejects(throwIfStatusFailed({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }), /boom/);
   await throwIfStatusFailed({ ok: true });
+});
+
+// --- The AI's closings as the CRM status; bookings cancelled from the status screen (PLAN_4 stream S) -------
+
+test('AI closing payloads: only the two closed statuses, a valid date', () => {
+  assert.deepEqual(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Closed - Lost',
+    closed_at: '2026-10-04T10:00:00Z' }).errors, []);
+  assert.match(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Sold' }).errors[0], /status must be/);
+  assert.match(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Closed - Lost',
+    closed_at: 'nope' }).errors[0], /closed_at/);
+  assert.deepEqual([...READ_ONLY_STATUSES], ['Closed - No Longer Owns']);
+});
+
+test('staff win: a later staff change or a staff-owned status keeps the CRM status', () => {
+  const closedAt = '2026-10-04T10:00:00Z';
+  assert.equal(closedStatusConflict({ status: 'Closed - Lost', current: 'Contacted', changedAt: '2026-09-01', closedAt }), null);
+  assert.equal(closedStatusConflict({ status: 'Closed - Lost', current: 'Unsold', changedAt: null, closedAt }), null);
+  assert.equal(closedStatusConflict({ status: 'Closed - Lost', current: 'Contacted', changedAt: '2026-10-04T10:05:00Z',
+    closedAt }), 'staff_changed_it_after');
+  for (const kept of ['Sold', 'Visited', 'DND', 'Sold Pending', 'Sold Delivered']) {
+    assert.equal(closedStatusConflict({ status: 'Closed - Lost', current: kept, closedAt }), 'staff_status_kept');
+  }
+  assert.equal(closedStatusConflict({ status: 'Closed - Lost', current: 'Closed - Lost', closedAt }), 'already');
+  assert.equal(closedStatusConflict({ status: 'Closed - No Longer Owns', current: 'Sold Delivered', closedAt }), null);
+  assert.equal(closedStatusConflict({ status: 'Closed - No Longer Owns', current: 'Contacted', closedAt }), 'not_a_sold_lead');
+});
+
+maybe('the AI\'s Day 91 close sets the CRM lead to Closed - Lost with a note, never over a newer staff change', async () => {
+  await seedDealerAndLead();
+  await Lead.updateOne({ _id: LEAD }, { $set: { fe_lead_status: 'Contacted', lead_status: 'Contacted',
+    statusChangedAt: new Date('2026-07-01T00:00:00Z') } });
+  const cleared = [];
+  const deps = { Lead, Email, clearPendingJobs: async (id) => cleared.push(String(id)) };
+  const body = { dealer_id: DEALER, lead_id: LEAD, status: 'Closed - Lost', reason: 'Day 91 with no response',
+    closed_at: '2026-10-01T12:00:00Z' };
+  const done = await markLeadClosedFromAi(body, deps);
+  assert.deepEqual([done.updated, done.previous], [true, 'Contacted']);
+  const lead = await Lead.findById(LEAD).lean();
+  assert.deepEqual([lead.fe_lead_status, lead.status_source], ['Closed - Lost', 'ai']);
+  assert.match((await Email.findOne({ lead_id: LEAD, is_note: true }).lean()).mail_content, /Closed - Lost by the AI/);
+  assert.deepEqual(cleared, [LEAD]);
+  // Staff reopened it after the AI closed it: a retried call doesn't undo that.
+  await Lead.updateOne({ _id: LEAD }, { $set: { fe_lead_status: 'Contacted', statusChangedAt: new Date('2026-10-02') } });
+  const again = await markLeadClosedFromAi(body, deps);
+  assert.deepEqual([again.updated, again.reason], [false, 'staff_changed_it_after']);
+  assert.equal((await Lead.findById(LEAD).lean()).fe_lead_status, 'Contacted');
+  assert.equal((await markLeadClosedFromAi({ ...body, dealer_id: '66f0000000000000000000d9' }, deps)).found, false);
+});
+
+maybe('taking a lead off Appointment Booked cancels its booking and tells the AI', async () => {
+  await seedDealerAndLead();
+  const day = new Date('2031-03-03T05:00:00Z');
+  const booking = await Booking.create({ dealer_id: DEALER, lead_id: LEAD, customerName: 'Ann', bookingDate: day,
+    bookingTime: '11:00' });
+  const told = [];
+  const notify = async (args) => { told.push(args); return { status: 'delivered' }; };
+  const kept = await cancelBookingsForStatusChange({ Booking, leadId: LEAD, dealerId: DEALER,
+    previousStatus: 'Appointment Booked', status: 'Visited', notify });
+  assert.equal(kept.cancelled, 0);
+  const done = await cancelBookingsForStatusChange({ Booking, leadId: LEAD, dealerId: DEALER,
+    previousStatus: 'Appointment Booked', status: 'Contacted', notify });
+  assert.equal(done.cancelled, 1);
+  assert.equal((await Booking.findById(booking._id).lean()).booking_status, 'cancelled');
+  assert.deepEqual(told.map((t) => [String(t.bookingId), t.change]), [[String(booking._id), 'cancelled']]);
 });

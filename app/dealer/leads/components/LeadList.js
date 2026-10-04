@@ -137,7 +137,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Closed - Lost",
     "Lead",
     "DND",
-    "No Show"
+    "No Show",
+    // Set only by the AI (ownership ended; PLAN_4 stream S): filterable, never picked in the status modal.
+    "Closed - No Longer Owns"
 
   ];
 
@@ -152,6 +154,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       case 'sold delivered': return 'danger';
       case 'unsold': return 'secondary';
       case 'closed - lost': return 'dark';
+      case 'closed - no longer owns': return 'dark';
       case 'lead': return 'custom';
       case 'dnd': return 'secondary';
       default: return 'secondary';

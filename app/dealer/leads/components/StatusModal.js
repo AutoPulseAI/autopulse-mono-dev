@@ -45,6 +45,8 @@ export default function StatusModal({
     "DND",
     "No Show"
   ];
+  // Statuses only the AI sets (app/lib/ai/aiDnd.js READ_ONLY_STATUSES).
+  const readOnlyStatuses = ["Closed - No Longer Owns"];
   // MASTER_PLAN_3 C5: a visit needs the manager's outcome (client: "Sales Visit -> manager outcome required").
   const managerOutcomes = ["Sold Pending", "Sold Delivered", "Unsold"];
 
@@ -108,6 +110,12 @@ export default function StatusModal({
                 {status}
               </option>
             ))}
+            {/* Set only by the AI (PLAN_4 stream S): shown when it is the lead's status, never offered. */}
+            {readOnlyStatuses.includes(currentStatus) && (
+              <option value={currentStatus} disabled>
+                {currentStatus} (set by the AI)
+              </option>
+            )}
           </Form.Select>
         </Form.Group>
 

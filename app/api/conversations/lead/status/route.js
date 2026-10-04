@@ -4,7 +4,8 @@ import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
 import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
-import { notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
+import { cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
+import { READ_ONLY_STATUSES } from '@lib/ai/aiDnd';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentUpdateTemplate } from '@lib/templates/appointmentUpdateTemplate.js';
@@ -223,6 +224,11 @@ export async function PUT(request) {
         { error: "Missing `id` or `status` in request body" },
         { status: 400 }
       );
+    }
+
+    // Only the AI sets "Closed - No Longer Owns" (POST /api/internal/ai/leads/status; PLAN_4 stream S).
+    if (READ_ONLY_STATUSES.includes(status)) {
+      return NextResponse.json({ error: `"${status}" is set by the AI only` }, { status: 400 });
     }
 
     // MASTER_PLAN_3 C5: "Visited" requires the manager's outcome (Sold Pending / Sold Delivered / Unsold).
@@ -816,6 +822,11 @@ export async function PUT(request) {
     }
 
     await onLeadStatusChange(id);
+
+    // Taken off "Appointment Booked" (to Contacted, Lead, ...): the booking is cancelled and the AI cancels the
+    // appointment's messages now (PLAN_4 stream S). Never throws.
+    await cancelBookingsForStatusChange({ Booking, leadId: id, dealerId: updated.dealer_id, status,
+      previousStatus: originalLead.fe_lead_status || originalLead.lead_status || originalLead.status });
 
     // Booked / visited / sold / DND / managerial review: staff own this lead
     // now, so the AI stops replying to it (MASTER_PLAN_1 Stage 11). Never throws.
