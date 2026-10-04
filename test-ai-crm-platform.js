@@ -15,7 +15,10 @@ import Email from './app/models/Email.js';
 import EmailAccount from './app/models/EmailAccount.js';
 import Lead from './app/models/Lead.js';
 import User from './app/models/User.js';
-import { AiSendError, classifyProviderError, sendAiMessage } from './app/lib/ai/aiSend.js';
+import {
+  AiSendError, DECISION_MAX_AGE_MS, classifyProviderError, decisionAllowsSend, isDndLead, recipientBelongsToLead,
+  sendAiMessage,
+} from './app/lib/ai/aiSend.js';
 import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayload } from './app/lib/ai/aiMessageRecord.js';
 import {
   READ_ONLY_STATUSES, addAiLeadNote, closedStatusConflict, markLeadClosedFromAi, markLeadDndFromAi,
@@ -38,6 +41,8 @@ import { insightsDays, percent, rateTone, vehicleTypeText } from './app/lib/ai/a
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
 const LEAD = '66f0000000000000000000e1';
+// PLAN_4 stream X1 item 5: every send names the AI's send-check decision.
+const DECISION = '66f0000000000000000000f1';
 const HOURS = {
   monday: { active: true, start: '9:00 AM', end: '7:00 PM' },
   tuesday: { active: true, start: '9:00 AM', end: '7:00 PM' },
@@ -243,7 +248,8 @@ maybe('the CRM sends an AI SMS from the dealer number, with photos, and records 
   await seedDealerAndLead();
   const p = providers();
   const body = { dealer_id: DEALER, lead_id: LEAD, customer_id: 'c1', channel: 'sms', to: '+15557654321',
-    text: 'Here is the RAV4', idempotency_key: 'turn1:sms', media_urls: ['https://cdn.test/rav4.jpg'] };
+    text: 'Here is the RAV4', idempotency_key: 'turn1:sms', media_urls: ['https://cdn.test/rav4.jpg'],
+    compliance_decision_id: DECISION };
   const first = await sendAiMessage(body, { Email, Lead, User, EmailAccount, ...p });
   assert.equal(first.provider_id, 'SM123');
   assert.equal(first.created, true);
@@ -254,6 +260,7 @@ maybe('the CRM sends an AI SMS from the dealer number, with photos, and records 
   assert.equal(record.sender, '+15550001111');
   assert.equal(record.message_id, 'SM123');
   assert.equal(record.attachments[0].url, 'https://cdn.test/rav4.jpg');
+  assert.equal(record.ai_compliance_decision_id, DECISION);
   // A retried send is answered from the record and never sent twice.
   const again = await sendAiMessage(body, { Email, Lead, User, EmailAccount, ...p });
   assert.equal(again.duplicate, true);
@@ -267,7 +274,8 @@ maybe('an AI email goes from the dealer mailbox, threaded under the lead\'s last
     communication_type: 'email', status: 'incoming', dealer_id: DEALER, lead_id: LEAD, timestamp: new Date() });
   const p = providers();
   const result = await sendAiMessage({ dealer_id: DEALER, lead_id: LEAD, channel: 'email', to: 'ann@example.test',
-    text: 'Hello', subject: 'Your RAV4', idempotency_key: 't2:email' }, { Email, Lead, User, EmailAccount, ...p });
+    text: 'Hello', subject: 'Your RAV4', idempotency_key: 't2:email', compliance_decision_id: DECISION },
+  { Email, Lead, User, EmailAccount, ...p });
   assert.equal(p.calls[0].from, 'sales@test-motors.test');
   assert.equal(p.calls[0].parent, '<prev@x>');
   assert.equal((await Email.findById(result.id).lean()).subject, 'Your RAV4');
@@ -275,8 +283,8 @@ maybe('an AI email goes from the dealer mailbox, threaded under the lead\'s last
 
 maybe('a send for another dealer\'s lead, or a STOP-ed number, is refused and not recorded', async () => {
   await seedDealerAndLead();
-  const other = { dealer_id: '66f0000000000000000000d9', lead_id: LEAD, channel: 'sms', to: '+1555', text: 'x',
-    idempotency_key: 'x1' };
+  const other = { dealer_id: '66f0000000000000000000d9', lead_id: LEAD, channel: 'sms', to: '+15557654321',
+    text: 'x', idempotency_key: 'x1', compliance_decision_id: DECISION };
   await assert.rejects(sendAiMessage(other, { Email, Lead, User, EmailAccount, ...providers() }),
     (e) => e instanceof AiSendError && e.httpStatus === 404);
   const stop = { ...providers(), sendSMS: async () => { throw Object.assign(new Error('21610'), { code: 21610 }); } };
@@ -352,7 +360,8 @@ maybe('photos go by text only for a dealer with ai_mms_enabled; the text still g
   await User.collection.updateOne({}, { $set: { ai_mms_enabled: false } });
   const p = providers();
   const result = await sendAiMessage({ dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+15557654321',
-    text: 'Here it is', idempotency_key: 'mms-off', media_urls: ['https://cdn.test/a.jpg'] },
+    text: 'Here it is', idempotency_key: 'mms-off', media_urls: ['https://cdn.test/a.jpg'],
+    compliance_decision_id: DECISION },
   { Email, Lead, User, EmailAccount, ...p });
   assert.deepEqual(p.calls[0].media, []);
   assert.equal((await Email.findById(result.id).lean()).has_attachments, undefined);
@@ -571,4 +580,55 @@ test('AI Insights: the period falls back to 30 days, rates read as whole percent
   assert.equal(vehicleTypeText({ vehicle_type: 'used', original_vehicle_type: 'new' }), 'Used (came in as New)');
   assert.equal(vehicleTypeText({ vehicle_type: 'new', original_vehicle_type: 'new' }), 'New');
   assert.equal(vehicleTypeText(null), null);
+});
+
+// --- PLAN_4 stream X1 item 5: the internal send endpoint is not a force-send ----------------------------------
+
+test('a send needs an ALLOW decision for exactly this dealer, lead, channel and recipient, and a recent one', () => {
+  const now = new Date('2026-09-22T16:00:00Z');
+  const body = { dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+1 (555) 765-4321' };
+  const ok = { dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+15557654321', decision: 'ALLOW',
+    logged_at: new Date(now.getTime() - 60_000) };
+  assert.equal(decisionAllowsSend(ok, body, now), null);
+  assert.match(decisionAllowsSend(null, body, now), /no such/);
+  assert.match(decisionAllowsSend({ ...ok, decision: 'BLOCK' }, body, now), /BLOCK/);
+  assert.match(decisionAllowsSend({ ...ok, dealer_id: 'other' }, body, now), /another dealer/);
+  assert.match(decisionAllowsSend({ ...ok, lead_id: 'other' }, body, now), /another lead/);
+  assert.match(decisionAllowsSend({ ...ok, channel: 'email' }, body, now), /another channel/);
+  assert.match(decisionAllowsSend({ ...ok, to: '+15550000000' }, body, now), /another recipient/);
+  assert.match(decisionAllowsSend({ ...ok, logged_at: new Date(now.getTime() - DECISION_MAX_AGE_MS - 1) }, body, now),
+    /too old/);
+  assert.equal(isDndLead({ fe_lead_status: 'DND' }), true);
+  assert.equal(isDndLead({ lead_status: 'Do Not Contact' }), true);
+  assert.equal(isDndLead({ fe_lead_status: 'New' }), false);
+  assert.equal(recipientBelongsToLead('sms', '+15557654321', { phone: '5557654321' }), true);
+  assert.equal(recipientBelongsToLead('sms', '+15550000000', { phone: '5557654321' }, { phones: [{ value: '5550000000' }] }), true);
+  assert.equal(recipientBelongsToLead('email', 'X@Y.test', { email: 'x@y.test' }), true);
+  assert.equal(recipientBelongsToLead('email', 'z@y.test', { email: 'x@y.test' }), false);
+});
+
+maybe('the endpoint refuses a send with no decision, to a stranger, to a DND lead, or on a BLOCK', async () => {
+  await seedDealerAndLead();
+  const base = { dealer_id: DEALER, lead_id: LEAD, customer_id: 'c1', channel: 'sms', to: '+15557654321', text: 'hi' };
+  const refusedBy = (re) => (e) => e instanceof AiSendError && e.httpStatus === 422 && e.retryable === false
+    && e.compliance === true && re.test(e.message);
+  const p = providers();
+  const deps = { Email, Lead, User, EmailAccount, ...p };
+  await assert.rejects(sendAiMessage({ ...base, idempotency_key: 'k1' }, deps), refusedBy(/compliance_decision_id/));
+  await assert.rejects(sendAiMessage({ ...base, to: '+12125550199', idempotency_key: 'k2',
+    compliance_decision_id: DECISION }, deps), refusedBy(/not this lead's phone/));
+  const allow = { dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+15557654321', decision: 'ALLOW',
+    logged_at: new Date() };
+  await assert.rejects(sendAiMessage({ ...base, idempotency_key: 'k3', compliance_decision_id: DECISION },
+    { ...deps, findComplianceDecision: async () => ({ ...allow, decision: 'HOLD' }) }), refusedBy(/HOLD/));
+  await Lead.collection.updateOne({}, { $set: { fe_lead_status: 'DND' } });
+  await assert.rejects(sendAiMessage({ ...base, idempotency_key: 'k4', compliance_decision_id: DECISION },
+    { ...deps, findComplianceDecision: async () => allow }), refusedBy(/DND/));
+  assert.equal(p.calls.length, 0);
+  assert.equal(await Email.countDocuments({}), 0);
+  // With the decision it asked for, the same send goes and keeps the decision id.
+  await Lead.collection.updateOne({}, { $set: { fe_lead_status: 'New' } });
+  const sent = await sendAiMessage({ ...base, idempotency_key: 'k5', compliance_decision_id: DECISION },
+    { ...deps, findComplianceDecision: async () => allow });
+  assert.equal((await Email.findById(sent.id).lean()).ai_compliance_decision_id, DECISION);
 });

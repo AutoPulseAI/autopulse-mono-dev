@@ -14,6 +14,8 @@ import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
 import { AiSendError, sendAiMessage } from '@lib/ai/aiSend';
 import { sendSMS } from '@lib/sms';
 import { sendEmail } from '@lib/email';
+import mongoose from 'mongoose';
+import Customer from '@models/Customer';
 import Email from '@models/Email';
 import EmailAccount from '@models/EmailAccount';
 import Lead from '@models/Lead';
@@ -31,11 +33,16 @@ export async function POST(req) {
   }
   try {
     await dbConnect();
-    const result = await sendAiMessage(body, { Email, Lead, User, EmailAccount, sendSMS, sendEmail });
+    // PLAN_4 stream X1 item 5: the AI's send-check row (same database) must ALLOW exactly this send.
+    const findComplianceDecision = async (id) => mongoose.connection.db.collection('ai_compliance_log')
+      .findOne({ _id: new mongoose.Types.ObjectId(String(id)) });
+    const result = await sendAiMessage(body, {
+      Email, Lead, User, EmailAccount, Customer, sendSMS, sendEmail, findComplianceDecision });
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AiSendError) {
       return NextResponse.json({ error: error.message, retryable: error.retryable, opted_out: error.optedOut,
+        ...(error.compliance ? { compliance: true } : {}),
         ...(error.details ? { details: error.details } : {}) }, { status: error.httpStatus });
     }
     console.error('[ai] platform send failed', { idempotency_key: body?.idempotency_key, error: error?.message });
