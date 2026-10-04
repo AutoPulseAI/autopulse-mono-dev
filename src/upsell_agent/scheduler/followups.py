@@ -85,6 +85,7 @@ from upsell_agent.compliance.engine import can_contact
 from upsell_agent.config import get_settings
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
+from upsell_agent.learning import optimizer, touches
 from upsell_agent.integrations.mongodb import (
     AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
@@ -507,6 +508,9 @@ async def plan_cadence_touch(
         {"$set": {"status": "superseded", "reason": "a newer cadence touch", "closed_at": now}})
     if not planned.scheduled:
         return {"created": False, "reason": f"No cadence touch: {planned.why}", "plan": planned.as_dict()}
+    # PLAN_4 stream L: the learned angle (Days 8-90), wording variant and send time (learning/optimizer.py).
+    planned, touch = await optimizer.plan(db, planned, lead_id=lead_id, state=cadence_state, lead=lead,
+                                          lead_state=state, tz=profile.tz, now=now)
     channel, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
                                               channel=channel, at=planned.due_at, lead=lead, customer=customer)
     if check.outcome in ("BLOCK", "REVIEW"):
@@ -516,13 +520,13 @@ async def plan_cadence_touch(
     doc = {
         "kind": KIND_CADENCE_TOUCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
-        "due_at": due_at, "created_at": now, "claim_count": 0, "touch": planned.as_dict(),
+        "due_at": due_at, "created_at": now, "claim_count": 0, "touch": touch,
         "reason": f"held by the send check: {check.reason}" if due_at > planned.due_at else None,
     }
     inserted = await followups.insert_one(doc)
     local = due_at.astimezone(profile.tz).strftime("%a %b %d %H:%M %Z")
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
-            "timezone": profile.timezone, "plan": planned.as_dict(),
+            "timezone": profile.timezone, "plan": touch,
             "reason": f"{planned.why} Due {local}."}
 
 
@@ -1246,6 +1250,10 @@ async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnT
             span.reasoning = [*(photo.reasons if photo else []), *outcome.reasoning]
             span.edge_label = f"{ch}: {outcome.status}"
         outcomes.append(outcome)
+    # PLAN_4 stream L: the appointment step is a touch (learning/touches.py).
+    await touches.record_touch(db, touch_id=f"appointment-{doc['step']}-{doc['_id']}", lead_id=doc["lead_id"],
+                               customer_id=doc["customer_id"], kind="appointment", outcomes=outcomes,
+                               theme=doc["step"], theme_label=f"Appointment: {doc['step'].replace('_', ' ')}")
     return outcomes
 
 
@@ -1512,6 +1520,8 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         await _log(db, tracer, "cadence_touch_suppressed", {"followup_id": touch_id, "reason": check.reason})
         return "suppressed"
 
+    # PLAN_4 stream L: a price-drop touch re-checks the drop on a fresh read; lapsed, it loses the price.
+    touch = await optimizer.recheck_price_drop(db, touch)
     # The turn reads the theme from here (agent/nodes/decide.py) and clears it when it's done.
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": doc["lead_id"]}, {"$set": {"pending_touch": touch}})

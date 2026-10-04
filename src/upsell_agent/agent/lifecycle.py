@@ -553,6 +553,9 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         cancelled = await cancel_stale_work(db, lead_id, new, reason=f"stage changed to {STAGE_LABELS[new]}")
     out.update(stage=new.value, label=STAGE_LABELS[new], cancelled=cancelled)
     if new != current:
+        # PLAN_4 stream L: an appointment, a visit or an opt-out is credited to the lead's latest touch.
+        from upsell_agent.learning import touches
+        await touches.on_stage_change(db, lead_id, new, at=now)
         # MASTER_PLAN_4 D1/D8 (stream A3): a manager outcome starts exactly one lifecycle and stops the others, and
         # every lead opening or closing recalculates the customer's ACTIVE / INACTIVE status.
         from upsell_agent.scheduler import sold_lifecycles

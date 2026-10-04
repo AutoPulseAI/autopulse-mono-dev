@@ -197,6 +197,10 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     # Phase 3 decision C): they came from a record this draft actually named,
     # not invented.
     vehicle_facts = [r[k] for r in _mentioned(draft, inventory or []) for k in ("year", "miles") if r.get(k) is not None]
+    # PLAN_4 stream L (architecture §15 decision 14's exception): a verified price drop's own prices, only for
+    # that vehicle and only when the draft names it. Only a price-drop cadence touch's record carries one.
+    vehicle_facts += [v for r in _mentioned(draft, inventory or []) for v in (r.get("price_drop") or {}).values()
+                      if isinstance(v, (int, float)) and not isinstance(v, bool)]
     # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach may repeat its own facts' numbers.
     allowed = _numbers([*customer_texts, *known_values, *vehicle_facts, *service_claims.known_values(service_facts)])
     violations: list[str] = []

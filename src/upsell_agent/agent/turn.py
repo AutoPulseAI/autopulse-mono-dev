@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 from upsell_agent import clock
 from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
+from upsell_agent.learning import touches
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
@@ -302,6 +303,16 @@ async def run_turn(
 
         await _update_lead_state(db, lead_id, trigger, sent, result, lead_state=lead_state, channel=channel,
                                  shadow=shadow, turn_id=tracer.turn_id)
+        # PLAN_4 stream L: new/used (current and original, agent/lead_bucket.py), then the touch this turn sent,
+        # if it was one (learning/touches.py: the first reply, a cadence touch, a dated step...).
+        lead_state = await lead_bucket.track_vehicle_type(db, lead_id=lead_id, lead=lead, lead_state=lead_state,
+                                                          profile=result.get("profile"))
+        if (kind := touches.touch_kind(trigger)) and not shadow:
+            await touches.record_touch(
+                db, touch_id=tracer.turn_id, lead_id=lead_id, customer_id=customer_id, kind=kind,
+                outcomes=[sent, also_sent], lead=lead, lead_state=lead_state,
+                touch=(lead_state or {}).get("pending_touch") if trigger == TRIGGER_CADENCE_TOUCH else None,
+                theme_label="Touch 1" if kind == touches.KIND_FIRST_REPLY else None)
         stage_change = await _lifecycle_after_turn(db, lead_id, trigger, sent, result, inbound_text=inbound_text,
                                                    lead=lead, customer=customer, customer_id=customer_id,
                                                    channel=channel, turn_id=tracer.turn_id, shadow=shadow,
