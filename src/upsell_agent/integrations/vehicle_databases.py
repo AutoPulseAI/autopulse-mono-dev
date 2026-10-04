@@ -130,6 +130,9 @@ class VehicleDatabasesClient:
         """The OEM schedule for this VIN; None when Vehicle Databases has no record for it (400)."""
         if not self.enabled:
             raise VehicleDatabasesDisabled()
+        if not valid_vin(vin):
+            # Same answer as Vehicle Databases' own 400 for an unknown VIN, without spending a credit.
+            return None
         async with self._lock:
             wait = self._min_interval_s - (time.monotonic() - self._last_call)
             if wait > 0:
@@ -154,6 +157,23 @@ class VehicleDatabasesClient:
             raise VehicleDatabasesError(f"Vehicle Databases refused the request ({status})", retryable=False)
         # 403 / 429 rate limit, 5xx: try again on a later sweep.
         raise VehicleDatabasesError(f"Vehicle Databases answered {status}")
+
+
+_VIN_VALUES = {**{str(d): d for d in range(10)}, **dict(zip("ABCDEFGH", range(1, 9))),
+               **dict(zip("JKLMNPR", (1, 2, 3, 4, 5, 7, 9))), **dict(zip("STUVWXYZ", range(2, 10)))}
+_VIN_WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+
+
+def valid_vin(vin: str | None) -> bool:
+    """A real 17-character North American VIN: no I, O or Q, and the check digit (position 9) matches.
+    Every Vehicle Databases call costs a credit, so a made-up or mistyped VIN (dev seed stock, a typo on a
+    DMS import) is never sent."""
+    vin = str(vin or "").strip().upper()
+    if len(vin) != 17 or any(ch not in _VIN_VALUES for ch in vin):
+        return False
+    total = sum(_VIN_VALUES[ch] * w for ch, w in zip(vin, _VIN_WEIGHTS, strict=True))
+    check = total % 11
+    return vin[8] == ("X" if check == 10 else str(check))
 
 
 _client: VehicleDatabasesClient | None = None

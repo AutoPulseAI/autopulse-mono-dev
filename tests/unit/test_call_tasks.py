@@ -202,7 +202,7 @@ async def test_a_stage_that_no_longer_wants_a_call_cancels_it_before_it_opens(mo
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
                                                      {"$set": {"stage": "appointment_set"}})
     set_clock(START + timedelta(minutes=61))
-    assert (await _fire())["cancelled"] == 1
+    assert (await _fire())["cancelled"] == 2  # + PLAN_4 stream T's Days 1-7 morning call task, same re-check
     assert await _tasks(mongo, created) == []
     [timer] = await _timers(mongo, created)
     assert "appointment" in timer["reason"].lower()
@@ -310,3 +310,23 @@ async def test_one_dealers_tasks_are_not_visible_to_another(mongo, live_dealer):
     await _fire()
     other_dealer = simulate.DEV_DEALERS[1]["_id"]
     assert await list_tasks(other_dealer, "open") == []
+
+
+async def test_the_specific_follow_up_goes_on_text_and_email_and_starts_the_call_timer(mongo, live_dealer):
+    """Stream F (crm-cadence-check 3d/3e): the dated check-back of Contact Made - Specific Follow-Up is a follow-up
+    like any other (Omnichannel PDF p.9-10): text + email together, then the 60-minute call-task timer."""
+    created = await _lead()
+    await _first_reply(created)
+    await _say(created, "I am busy this week, can you call me Friday?")
+    assert (await _state(mongo, created))["stage"] == "contact_made_specific_followup"
+    [action] = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "kind": "next_action", "status": "pending"}).to_list(None)
+    set_clock(action["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    await _fire()
+    turn = f"next-action-{action['_id']}"
+    sent = await mongo["ai_messages"].find({"lead_id": created["lead_id"], "turn_id": turn,
+                                            "status": "sent"}).to_list(None)
+    assert sorted(m["channel"] for m in sent) == ["email", "sms"]
+    timers = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "kind": "call_task", "source_turn_id": turn}).to_list(None)
+    assert len(timers) == 1 and timers[0]["status"] == "pending"

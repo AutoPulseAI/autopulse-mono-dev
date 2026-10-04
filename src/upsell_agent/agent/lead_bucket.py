@@ -212,6 +212,75 @@ def vehicle_type(profile_values: dict[str, Any]) -> str | None:
     return value if value in VEHICLE_TYPE_TRACKS else None
 
 
+# --- PLAN_4 stream L item 5: new / used, current and original -----------------------------------------------
+# Blueprint box 2 ("vehicle type filter"): "AutoPulse continuously updates New/Used classification ... while
+# retaining the original classification for reporting and attribution". Like the bucket: `vehicle_type` follows
+# the latest signal, `original_vehicle_type` is the first one and never changes.
+
+_LEAD_CONDITION_KEYS = ("condition", "vehicle_condition", "new_used", "inventory_type", "stock_type", "car_type")
+
+
+def _as_vehicle_type(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if text in ("new", "brand new"):
+        return "new"
+    if text in ("used", "pre-owned", "preowned", "certified", "cpo", "certified pre-owned"):
+        return "used"
+    return None
+
+
+def vehicle_type_from_lead(lead: dict | None) -> str | None:
+    """New / used as the lead itself states it (its vehicle's condition), else None."""
+    lead = lead or {}
+    data = lead.get("data") or {}
+    vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
+    for source in (vehicle, data, lead):
+        for key in _LEAD_CONDITION_KEYS:
+            if kind := _as_vehicle_type(source.get(key)):
+                return kind
+    return None
+
+
+async def track_vehicle_type(db: DealerScopedDatabase, *, lead_id: str | None, lead: dict | None,
+                             lead_state: dict | None, profile: dict | None) -> dict | None:
+    """Called by agent/turn.py after the graph: the customer's own new/used answer (the profile's
+    `interest.new_or_used`) wins, else the lead's vehicle condition. Records a change with its history and sets
+    `original_vehicle_type` the first time. Returns the lead state as updated."""
+    if not lead_id:
+        return lead_state
+    state = lead_state or {}
+    slot = next((s for s in (profile or {}).get("slots") or []
+                 if s.get("path") == "interest.new_or_used" and s.get("state") in ("filled", "stale")), None)
+    kind, method = (_as_vehicle_type(slot.get("value")), "customer") if slot else (None, None)
+    if kind is None and (kind := vehicle_type_from_lead(lead)):
+        method = "lead"
+    if kind is None or kind == state.get("vehicle_type"):
+        return lead_state
+    now = clock.now()
+    update: dict[str, Any] = {"vehicle_type": kind, "vehicle_type_method": method, "vehicle_type_at": now}
+    if not state.get("original_vehicle_type"):
+        update["original_vehicle_type"] = kind
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$set": update, "$push": {"vehicle_type_history": {"$each": [{"vehicle_type": kind, "at": now,
+                                                                         "method": method}], "$slice": -20}},
+         "$setOnInsert": {"lead_id": lead_id, "created_at": now, "status": "active"}}, upsert=True)
+    return {**state, **update}
+
+
+def vehicle_type_for_api(lead_state: dict | None) -> dict[str, Any] | None:
+    state = lead_state or {}
+    if not state.get("original_vehicle_type"):
+        return None
+    at = state.get("vehicle_type_at")
+    return {"vehicle_type": state.get("vehicle_type"), "original_vehicle_type": state.get("original_vehicle_type"),
+            "changed": state.get("vehicle_type") != state.get("original_vehicle_type"),
+            "method": state.get("vehicle_type_method"),
+            "at": at.isoformat() if hasattr(at, "isoformat") else at,
+            "history": [{**h, "at": h["at"].isoformat() if hasattr(h.get("at"), "isoformat") else h.get("at")}
+                        for h in state.get("vehicle_type_history") or []]}
+
+
 def for_compose(lead_state: dict | None, profile_values: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """What Compose (and the offline model) get: the current bucket, its
     intent and word-track emphasis, the original bucket, and the vehicle

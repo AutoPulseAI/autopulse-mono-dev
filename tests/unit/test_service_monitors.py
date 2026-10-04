@@ -500,3 +500,35 @@ def test_draft_guard_uses_service_facts():
     assert passed["passed"], passed["violations"]
     failed = check_draft(draft, customer_texts=[], known_values=[])
     assert not failed["passed"] and not failed["checks"]["service_claims_grounded"]
+
+
+def test_parses_a_real_vehicle_databases_maintenance_response():
+    """A real sandbox response (4 Oct 2026, GET /vehicle-maintenance/v4/{vin}, a public sample VIN: 2003 Honda
+    Accord), recorded so the parser is checked against the live format without spending API credits."""
+    import json
+    from pathlib import Path
+
+    from upsell_agent.integrations.vehicle_databases import parse_schedule
+
+    body = json.loads((Path(__file__).parent / "fixtures" / "vehicle_databases"
+                       / "maintenance_v4_1HGCM82633A004352.json").read_text())
+    schedule = parse_schedule("1HGCM82633A004352", body)
+    assert schedule is not None
+    data = schedule.as_dict()
+    assert (data["year"], data["make"], data["model"]) == (2003, "Honda", "Accord")
+    assert len(data["intervals"]) == 48
+    assert data["intervals"][0]["miles"] == 3750
+    assert data["intervals"][0]["service_items"] == ["Replace Engine Oil", "Replace Engine Oil Filter"]
+    assert data["intervals"][-1]["miles"] == 120000
+
+
+def test_invalid_vins_are_never_sent_to_vehicle_databases():
+    from upsell_agent.integrations.vehicle_databases import valid_vin
+
+    assert valid_vin("1HGCM82633A004352")  # 2003 Honda Accord, NHTSA decodes it cleanly
+    assert valid_vin("5YJSA1DG9DFP14705")  # 2013 Tesla Model S
+    assert not valid_vin("1FTFW1ET5DFC10312")  # wrong check digit (NHTSA error 1)
+    assert not valid_vin("DEV77104D87E42D2C")  # dev seed stock
+    assert not valid_vin("1HGCM82633A00435")  # 16 characters
+    assert not valid_vin("1HGCM8263IA004352")  # contains I
+    assert not valid_vin(None)

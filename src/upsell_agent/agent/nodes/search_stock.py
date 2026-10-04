@@ -34,7 +34,10 @@ from upsell_agent.tools.inventory_tool import (
     InventoryCriteria,
     criteria_from_profile,
     get_inventory_source,
+    get_vehicle,
 )
+
+TRIGGER_CADENCE_TOUCH = "cadence_touch"  # scheduler/followups.py (not imported: it imports the agent)
 from upsell_agent.tools.stock_search import find_stock
 
 BIGGER = re.compile(r"\b(bigger|larger|more room|more space|roomier)\b", re.IGNORECASE)
@@ -61,6 +64,31 @@ def _asked_about_stock(state: AgentState) -> bool:
 
 
 async def search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
+    out = await _search_stock(state, span, ctx)
+    # PLAN_4 stream L: a cadence touch announcing a verified price drop gets that vehicle, read fresh, with
+    # its verified prices - the only record that ever carries a price (learning/price_watch.py).
+    drop = ((ctx.lead_state or {}).get("pending_touch") or {}).get("price_drop")
+    if drop and state.trigger == TRIGGER_CADENCE_TOUCH:
+        pack = out["context_pack"]
+        source = ctx.inventory or get_inventory_source(ctx.settings)
+        try:
+            record = await get_vehicle(state.dealer_id, drop["vin"], source)
+        except Exception as exc:  # noqa: BLE001 - no fresh record means no price in the reply
+            record, note = None, f"Price-drop vehicle {drop['vin']} couldn't be re-read ({exc!r}): no price."
+        else:
+            note = (f"Price-drop vehicle {drop['vin']} added with its verified price ${drop['price']:,} "
+                    f"(was ${drop['previous_price']:,})." if record else
+                    f"Price-drop vehicle {drop['vin']} is no longer in stock: no price.")
+        if record:
+            entry = {**record.model_dump(), "price_drop": {k: drop[k] for k in ("price", "previous_price", "amount")}}
+            others = [r for r in pack.get("inventory") or [] if r.get("vin") != drop["vin"]]
+            out = {"context_pack": _patch(pack, [entry, *others][:MAX_LOADED], pack.get("inventory_query"),
+                                          pack.get("inventory_checked_at"))}
+        span.reasoning = [*(span.reasoning or []), note]
+    return out
+
+
+async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     criteria = criteria_from_profile(state.profile or {})
     text = state.customer_text or state.inbound_text
     bigger = bool(BIGGER.search(text or ""))

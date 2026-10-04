@@ -22,7 +22,7 @@ Shared-secret auth like the other /v1 routes; every read is dealer-scoped.
 Nothing here changes what the AI does.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -164,15 +164,20 @@ async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, 
     db = dealer_scoped_db(dealer_id)
     if view == "upcoming":
         rows = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
-            {"kind": "call_task", "status": {"$in": ["pending", "standby"]}}).sort("due_at", 1).to_list(LIMIT)
+            # PLAN_4 stream T: the next Days 1-7 morning / afternoon call task waits here too.
+            {"kind": {"$in": ["call_task", "daily_call_task"]}, "status": {"$in": ["pending", "standby"]}}).sort(
+            "due_at", 1).to_list(LIMIT)
         rows = [{"_id": r["_id"], "lead_id": r.get("lead_id"), "customer_id": r.get("customer_id"),
                  "phone": r.get("to"), "status": "waiting", "due_at": r.get("due_at"), "reason": r.get("reason"),
                  "sent_channels": r.get("sent_channels"), "created_at": r.get("created_at"),
                  # PLAN_4 stream H: the customer's own call request, waiting for calling hours.
-                 "requested": bool(r.get("requested"))} for r in rows]
+                 "requested": bool(r.get("requested")),
+                 "source": "daily" if r.get("kind") == "daily_call_task" else "connection_timer",
+                 "slot": r.get("slot"), "day": r.get("day")} for r in rows]
     elif view == "done":
         rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
-            {"status": {"$in": [call_tasks.COMPLETED, call_tasks.DISMISSED, call_tasks.CANCELLED]}}).sort(
+            {"status": {"$in": [call_tasks.COMPLETED, call_tasks.DISMISSED, call_tasks.CANCELLED,
+                                call_tasks.MISSED]}}).sort(
             "closed_at", -1).to_list(LIMIT)
     else:
         rows = await db.collection(AI_CALL_TASKS_COLLECTION).find({"status": call_tasks.OPEN}).sort(
@@ -189,6 +194,15 @@ async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, 
 async def get_call_tasks(dealer_id: str = Query(...),
                          view: Literal["open", "upcoming", "done"] = "open") -> list[dict[str, Any]]:
     return await list_call_tasks(dealer_id, view)
+
+
+@router.get("/call-tasks/missed-by-agent")
+async def get_missed_by_agent(dealer_id: str = Query(...), days: int = Query(30, ge=1, le=365)) -> dict[str, Any]:
+    """PLAN_4 stream T: missed call tasks per assigned agent over the last `days` days (`assigned_to` null = the
+    lead had nobody assigned). The BDC performance report is next SOW; this is the raw count it will use."""
+    since = clock.now() - timedelta(days=days)
+    return {"days": days, "since": _iso(since),
+            "agents": await call_tasks.missed_by_agent(dealer_scoped_db(dealer_id), since=since)}
 
 
 async def lead_consent(dealer_id: str, lead_id: str) -> dict[str, Any] | None:

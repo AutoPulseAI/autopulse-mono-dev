@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field
 from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION, dealer_scoped_db
+from upsell_agent.learning import price_watch
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +247,9 @@ def to_listing(doc: dict[str, Any]) -> dict[str, Any]:
         "id": doc.get("vin") or "", "vin": doc.get("vin") or "",
         "heading": f"{doc.get('year')} {doc.get('make')} {doc.get('model')} {doc.get('trim') or ''}",
         "miles": int(doc.get("mileage") or 0), "vdp_url": doc.get("inventoryUrl") or "",
+        # route.js: parseFloat(doc.internetreduced || 0). Read only by the price snapshots (learning/price_watch.py),
+        # never put on the typed record.
+        "price": float(doc.get("internetreduced") or 0),
         "exterior_color": doc.get("exteriorcolor") or "", "inventory_type": doc.get("condition") or "used",
         "media": {"photo_links": photos},
         "dealer": {"id": str(doc["dealerId"]) if doc.get("dealerId") else None},
@@ -333,6 +337,8 @@ async def search_inventory(dealer_id: str, criteria: InventoryCriteria, source: 
     body = await source.search(params, limit)
     listings = body.get("listings") or []
     records, excluded = _records(dealer_id, listings)
+    # PLAN_4 stream L: every price the AI reads is snapshotted for verified price drops (never shown to it).
+    await price_watch.record_listings(dealer_id, [x for x in listings if x.get("vin") in {r.vin for r in records}])
     result = SearchResult(query=criteria.model_dump(exclude_none=True), params=params,
                           matched=int(body.get("num_found") or 0), fetched=len(listings), records=records,
                           excluded=excluded, checked_at=clock.now().isoformat())
@@ -346,7 +352,10 @@ async def get_vehicle(dealer_id: str, vin: str, source: InventorySource) -> Inve
         raise ValueError("dealer_id and vin are required")
     vin = vin.replace(",", "").strip()
     body = await source.search({"dealer_id": dealer_id, "vin": vin}, 1)
-    records, _ = _records(dealer_id, [x for x in body.get("listings") or [] if x.get("vin") == vin])
+    listings = [x for x in body.get("listings") or [] if x.get("vin") == vin]
+    records, _ = _records(dealer_id, listings)
+    if records:
+        await price_watch.record_listings(dealer_id, listings[:1])  # PLAN_4 stream L
     return records[0] if records else None
 
 

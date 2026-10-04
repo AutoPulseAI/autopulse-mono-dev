@@ -17,6 +17,7 @@ from upsell_agent import clock
 from upsell_agent.api.call_tasks import router as call_tasks_router
 from upsell_agent.api.customers import router as customers_router
 from upsell_agent.api.events import router as events_router
+from upsell_agent.api.insights import router as insights_router
 from upsell_agent.api.leads import router as leads_router
 from upsell_agent.api.metrics import router as metrics_router
 from upsell_agent.api.service_vehicles import router as service_vehicles_router
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None, *, connect: bool = True) -> Fas
     app.include_router(metrics_router)
     app.include_router(webhooks_router)
     app.include_router(service_vehicles_router)  # MASTER_PLAN_4 D5/D6 (stream A4)
+    app.include_router(insights_router)  # PLAN_4 stream L
 
     if settings.is_dev:
         from upsell_agent.api.dev import router as dev_router
