@@ -137,3 +137,16 @@ async def test_sold_delivered_set_on_an_opted_out_lead_starts_ownership_and_keep
     before = len(await _outbox(mongo, created))
     await _fire(mongo, created, "post_delivery_checkin")
     assert len(await _outbox(mongo, created)) == before  # and nothing reaches an opted-out customer
+
+
+# --- Item 13: the CRM and the AI agree: a delivered sale isn't closed as lost ----------------------------------
+
+@flow
+async def test_closed_lost_on_a_delivered_lead_is_refused_and_pauses_nothing(mongo):
+    created = await _new_lead()
+    await _staff(created, "Sold Delivered")
+    result = await _staff(created, "Closed - Lost")
+    assert result["status"] == "refused"
+    state = await _state(mongo, created)
+    assert state["stage"] == "sold_delivered" and state["status"] == "active"
+    assert await _pending(mongo, created, "post_delivery_checkin")  # the ownership lifecycle carries on

@@ -609,6 +609,10 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
             stage_change = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
                 outcome_event, source="manager_outcome", reason=f'Manager outcome: "{outcome_status}"')],
                 lead=lead, customer_id=customer_id)
+    if final_event == "staff_closed_lost" and (stage_change or {}).get("stage") == lifecycle.Stage.SOLD_DELIVERED.value:
+        # PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2): a delivered sale isn't "lost" - it closes as No Longer Owns. The
+        # CRM refuses this too (aiDnd.statusChangeError); an older CRM's event changes nothing and pauses nothing.
+        return {"status": "refused", "reason": "Sold - Delivered isn't closed as lost", "stage_change": stage_change}
     if final_event == "appointment_set":
         return {"status": "not_paused", "reason": "Appointment Booked: the AI runs the appointment workflow",
                 "stage_change": stage_change, **extra}

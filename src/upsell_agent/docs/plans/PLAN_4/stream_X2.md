@@ -72,3 +72,10 @@ the fix.
   staff (`STAFF_OUTCOMES`) take effect on an Opted Out or Closed - Lost lead (Closed - No Longer Owns stays
   terminal). Consent is untouched, so every message still obeys the opt-out. Opting back in after a delivery
   returns to Sold - Delivered, never Sold Pending (`opted_in` carries `delivered`). Tests: `test_x2_sold.py`.
+- **13. CRM and AI agree on closing a delivered lead.** Chosen per SD PDF §1-§2: Closed Lost is for a lost
+  transaction; a delivered car leaves only as Closed - No Longer Owns. CRM: `aiDnd.statusChangeError` refuses
+  "Closed - Lost" on a Sold Delivered lead in the status route with a clear message, and the status picker no longer
+  offers it there. AI: the transition already refused it; now the event also pauses nothing (status `refused`), so
+  the ownership lifecycle carries on. Tests: `test-ai-crm-platform.js` (statusChangeError),
+  `test_x2_sold.py::test_closed_lost_on_a_delivered_lead_*`. (Pre-existing ESLint unused-var errors in the status
+  route, lines 167/443/569/723, are not from this change.)
