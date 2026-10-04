@@ -794,6 +794,10 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     if doc.get("kind") == KIND_DAILY_CALL_TASK:
         from upsell_agent.scheduler import daily_call_tasks  # PLAN_4 stream T
         fire_locked = daily_call_tasks.fire
+    if doc.get("kind") == "first_reply_held":
+        # PLAN_4 stream X1 item 1: the held first reply on a new lead.
+        from upsell_agent.events import handlers
+        fire_locked = handlers.fire_held_first_reply
     if doc.get("kind") in SOLD_LIFECYCLE_KINDS:
         # MASTER_PLAN_4 (stream A3): SOLD PENDING and the ownership lifecycle fire from their own module.
         from upsell_agent.scheduler import sold_lifecycles

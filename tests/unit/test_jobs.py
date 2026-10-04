@@ -45,6 +45,7 @@ async def _lead_event():
     return created, event
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_runs_the_turn_when_free(mongo, ctx):
     created, event = await _lead_event()
     result = await jobs.handle_lead_created(ctx, event=event, received_at=None)

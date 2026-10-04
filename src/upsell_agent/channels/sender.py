@@ -174,6 +174,13 @@ class Sender:
             source="ai_reply" if req.is_reply else "ai_followup", request_id=key)
         why.append(f"Send check: {check.summary()}")
         compliance = check.as_dict()
+        if check.outcome == "HOLD" and req.shadow:
+            # PLAN_4 stream X1: a shadow draft is a draft whatever the hour; nothing is sent or resumed.
+            why.append("Dealer is in shadow mode: drafted, not sent (the send check would hold it).")
+            outcome = await finish("shadow", to=to, reason=f"shadow mode; HOLD: {check.reason}",
+                                   compliance=compliance)
+            outcome.compliance = compliance
+            return outcome
         if check.outcome == "HOLD":
             outcome = await finish("held", to=to, reason=check.reason, held_until=check.until,
                                    compliance=compliance)

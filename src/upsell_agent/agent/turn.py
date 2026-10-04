@@ -40,7 +40,7 @@ from upsell_agent.agent.vehicle_media import MediaPick, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
-from upsell_agent.compliance.engine import Decision, can_contact
+from upsell_agent.compliance.engine import Decision, Purpose, can_contact
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
@@ -136,9 +136,14 @@ async def run_turn(
     turn_id: str | None = None,
     batch: list[dict[str, Any]] | None = None,
     is_reply: bool = True,
+    purpose: Purpose | None = None,
 ) -> dict[str, Any]:
     """`is_reply`: False for a message the system starts (the after-hours
     morning message), which the send check treats as outbound.
+
+    `purpose`: the send check's class for this turn's message; by default
+    `reply` (is_reply) or `marketing`. The first message on a new lead is
+    `lead_response` (PLAN_4 stream X1 item 1), never a reply.
 
     `turn_id`: the handlers derive it from what triggered the turn, so a
     re-run of the same job (a retry, or the queue re-delivering it) reuses the
@@ -147,6 +152,9 @@ async def run_turn(
     `batch`: the stored customer messages this turn answers ({id, channel,
     text, at}), listed in the trace and in the context pack one by one."""
     settings = deps.config
+    purpose = purpose or ("reply" if is_reply else "marketing")
+    if purpose != "reply":
+        is_reply = False
     db = dealer_scoped_db(dealer_id)
     tracer = TurnTracer(
         sink=deps.sink, dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id,
@@ -173,7 +181,7 @@ async def run_turn(
         # the real one), so a night-time reply in an outbound conversation is
         # written to ask nothing (architecture §15 decision 29).
         precheck = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
-                                     purpose="reply" if is_reply else "marketing", is_reply=is_reply, lead=lead,
+                                     purpose=purpose, is_reply=is_reply, lead=lead,
                                      customer=customer,
                                      record=False)
         ctx.compliance = precheck.as_dict()
@@ -221,7 +229,7 @@ async def run_turn(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
                 shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
-                purpose="reply" if is_reply else "marketing",  # decision 136
+                purpose=purpose,  # decision 136; PLAN_4 stream X1 item 1
                 media_urls=photo.urls,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,

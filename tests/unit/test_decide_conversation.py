@@ -189,6 +189,7 @@ async def _last_sms(mongo, created):
     return rows[0]["text"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_what_do_you_know_about_me_is_answered_then_one_ask(mongo):
     created = await _lead(comments="Interested in a used Ford F-150")
     await _say(created, "so far what do u know about me?")
@@ -228,6 +229,7 @@ async def test_frustrated_customer_gets_an_apology_and_no_question(mongo):
     assert state["status"] == "active"
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_clarify_re_explains_and_asks_the_same_question_again(mongo):
     created = await _lead()
     asked_first = (await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}))[

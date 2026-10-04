@@ -406,6 +406,7 @@ async def _search(mongo, created, index=-1):
                 if n["node"] == "search_stock" and n.get("status") == "done")
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_turn_loads_matching_stock_into_the_pack(mongo):
     await _stock(mongo,
                  _vehicle("VIN00000000000151", added_minutes_ago=20),
@@ -442,6 +443,7 @@ async def test_stock_is_in_the_pack_but_held_back_from_the_models(mongo):
         assert not set(context) & HELD_FROM_MODELS
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_platform_down_means_a_reply_without_stock(mongo, monkeypatch):
     async def down(self, params, limit):
         raise httpx.ConnectError("platform unreachable")
