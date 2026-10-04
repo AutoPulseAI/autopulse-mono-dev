@@ -25,7 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, lead_bucket, lifecycle, service_request
+from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -272,6 +272,15 @@ async def run_turn(
                         + ("" if check["hours_from_record"] else ", default hours") + "). If nobody has taken "
                         "the lead over by then, the customer gets one more holding reply and staff get an alert.")
                     span.edge_label = "staff check"
+                    # PLAN_4 stream H: the customer chose a call or a text from a person - staff get the call
+                    # task (now, or at the next calling time) or the "wants a text" notice.
+                    person = await human_contact.act_after_send(
+                        db, decision, lead_id=lead_id, customer_id=customer_id,
+                        customer_name=(customer or {}).get("name") or (lead or {}).get("name"),
+                        turn_id=tracer.turn_id)
+                    if person:
+                        span.output = {**(span.output or {}), "human_contact": person}
+                        span.reasoning.append(f"Speak to a person ({person['mode']}): {person['reason']}.")
                 after_hours = await _after_hours_followup(db, decision, sent, lead_id=lead_id, lead=lead,
                                                           customer=customer, customer_id=customer_id,
                                                           channel=channel, turn_id=tracer.turn_id, shadow=shadow)
@@ -739,6 +748,15 @@ def _after_hours_record(result: dict[str, Any]) -> dict | None:
     return plan.get("record")
 
 
+def _human_contact_record(result: dict[str, Any]) -> dict | None:
+    """PLAN_4 stream H: the call-or-text state as this turn leaves it. An offer only counts when the AI-written
+    reply (which carries the question) went out, not a template - the same rule as _after_hours_record."""
+    plan = (result.get("decision") or {}).get("human_contact") or {}
+    if plan.get("mode") == human_contact.OFFER and result.get("used_template"):
+        return None
+    return plan.get("record")
+
+
 def _visit_record(result: dict[str, Any]) -> dict | None:
     """The visit-offer state as this turn leaves it (MASTER_PLAN_3 B4/B5). An
     offer only counts when the AI-written reply (which carries it) went out,
@@ -776,6 +794,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
+        human_contact=_human_contact_record(result),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

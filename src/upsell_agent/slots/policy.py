@@ -10,6 +10,9 @@ Rules, checked in order; the first that applies wins:
                        they're not interested and gave a reason (or said it
                        again after we asked why) - only a person may close
                        that lead (MASTER_PLAN_3 C3, client scope Q10)
+  2a. offer_human     they asked for a person without saying how: offer a call or
+                       a text from a team member, once (PLAN_4 stream H,
+                       agent/human_contact.py); their answer hands off
   2b. ask_why          they said they're not interested, with no reason: ask
                        why, once, gently (C3, client scope Q10)
   3. clarify           they asked what our last message meant: re-explain it
@@ -107,6 +110,9 @@ class Flags:
     # (a reason was given, or they said it again after we asked). The reason, when given.
     not_interested: str | None = None
     not_interested_reason: str | None = None
+    # PLAN_4 stream H (agent/human_contact.py): how a person will reach them - "call" / "text" (with wants_human:
+    # the handoff), or "offer" (they asked for a person without saying how: ask call-or-text first).
+    human_contact: str | None = None
 
     @property
     def clearly_upset(self) -> bool:
@@ -170,9 +176,11 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     not_interested_handoff = flags.not_interested == "handoff"
     conditions: dict[str, tuple[bool, str]] = {
         "stop": (flags.opted_out, "Customer opted out"),
-        "handoff": (flags.wants_human or flags.clearly_upset or flags.clearly_urgent or flags.visit_handoff
+        "handoff": ((flags.wants_human and flags.human_contact != "offer") or flags.clearly_upset or flags.clearly_urgent or flags.visit_handoff
                     or not_interested_handoff,
-                    "Customer asked for a person" if flags.wants_human
+                    ("Customer asked for a person" + (f" - wants a {flags.human_contact}" if flags.human_contact
+                                                      in ("call", "text") else ""))
+                    if flags.wants_human and flags.human_contact != "offer"
                     else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})" if flags.clearly_upset
                     else f"Customer sounds urgent (confidence {flags.urgent_confidence:.2f})" if flags.clearly_urgent
                     else "Declined a visit 3 times and a staff-only question is still open" if flags.visit_handoff
@@ -180,6 +188,8 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
                           + (f"{flags.not_interested_reason!r}" if flags.not_interested_reason
                              else "no reason given, even after we asked")
                           + " - a person decides whether to close the lead")),
+        "offer_human": (flags.human_contact == "offer",
+                        "Customer asked for a person without saying how: offer a call or a text, once"),
         "ask_why": (flags.not_interested == "ask_why",
                     "Customer says they're not interested, with no reason: ask why, once"),
         "clarify": (bool(clarify_questions and flags.last_asked),

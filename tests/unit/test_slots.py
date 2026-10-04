@@ -146,9 +146,19 @@ def test_decide_rule_order_stop_beats_handoff_beats_everything():
     assert next_action(profile, Flags(upset=True, upset_confidence=0.6))["action"] != "handoff"
     assert next_action(profile, Flags(annoyed_at_bot=True))["action"] != "handoff"
     rules = next_action(profile, Flags(wants_human=True))["rules"]
-    # 11 rules: MASTER_PLAN_3 B4 added offer_visit between confirm and ask, and C3 added ask_why
-    # ("not interested", no reason given) right after handoff.
-    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 9
+    # 12 rules: MASTER_PLAN_3 B4 added offer_visit between confirm and ask, C3 added ask_why
+    # ("not interested", no reason given) right after handoff, and PLAN_4 stream H offer_human before it.
+    assert [r["result"] for r in rules] == ["no", "fired"] + ["skipped"] * 10
+    # PLAN_4 stream H: a person asked for without saying how is offered a call or a text, not handed off yet...
+    assert next_action(profile, Flags(wants_human=True, human_contact="offer"))["action"] == "offer_human"
+    # ...their answer hands off, and says how.
+    chosen = next_action(profile, Flags(wants_human=True, human_contact="text"))
+    assert chosen["action"] == "handoff"
+    assert next(r["why"] for r in chosen["rules"] if r["result"] == "fired") == (
+        "Customer asked for a person - wants a text")
+    # Clearly upset still escalates at once, never the question.
+    assert next_action(profile, Flags(wants_human=True, human_contact="offer", upset=True,
+                                      upset_confidence=0.9))["action"] == "handoff"
 
 
 def test_decide_is_deterministic_and_passes_questions_through():

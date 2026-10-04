@@ -42,31 +42,42 @@ OUTCOMES = {"connected", "no_answer", "voicemail", "wrong_number", "other"}
 
 
 async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, phone: str, customer_name: str | None,
-                    reason: str, source_turn_id: str | None, followup_id: str, created_at: Any) -> dict[str, Any]:
-    """Opens the task for staff and tells them on the lead. One open task per lead."""
+                    reason: str, source_turn_id: str | None, followup_id: str | None, created_at: Any,
+                    requested: bool = False, notice: str | None = None) -> dict[str, Any]:
+    """Opens the task for staff and tells them on the lead. One open task per lead.
+
+    `requested` (PLAN_4 stream H): the customer asked for this call ("Customer asked for a call"), so it opens
+    straight away instead of after the 60-minute timer, and a later reply from the customer doesn't cancel it.
+    A 60-minute task already open for the lead becomes the requested one."""
     tasks = db.collection(AI_CALL_TASKS_COLLECTION)
+    who = customer_name or "the customer"
+    text = notice or f"Please call {who} at {phone}: our text and email went out over an hour ago with no reply."
     existing = await tasks.find_one({"lead_id": lead_id, "status": OPEN})
     if existing:
+        if requested and not existing.get("requested"):
+            await tasks.update_one({"_id": existing["_id"]}, {"$set": {"requested": True, "reason": reason,
+                                                                        "phone": phone}})
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+                "staff_notice": {"at": clock.now(), "kind": "call_task", "text": text, "reason": reason}}})
+            existing = {**existing, "requested": True, "reason": reason, "phone": phone}
         return existing
     now = clock.now()
     doc = {"lead_id": lead_id, "customer_id": customer_id, "phone": phone, "customer_name": customer_name,
            "status": OPEN, "reason": reason, "source_turn_id": source_turn_id, "followup_id": followup_id,
-           "timer_started_at": created_at, "opened_at": now, "created_at": now}
+           "timer_started_at": created_at, "opened_at": now, "created_at": now, "requested": requested}
     inserted = await tasks.insert_one(doc)
     doc["_id"] = inserted.inserted_id
-    who = customer_name or "the customer"
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
-        "call_task": {"id": str(doc["_id"]), "status": OPEN, "phone": phone, "opened_at": now},
-        "staff_notice": {"at": now, "kind": "call_task",
-                         "text": f"Please call {who} at {phone}: our text and email went out over an hour ago "
-                                 "with no reply."}}})
+        "call_task": {"id": str(doc["_id"]), "status": OPEN, "phone": phone, "opened_at": now, "reason": reason},
+        "staff_notice": {"at": now, "kind": "call_task", "text": text, "reason": reason}}})
     return doc
 
 
-async def cancel_open(db: DealerScopedDatabase, lead_id: str, reason: str) -> int:
-    """The customer or staff made contact (or the lead moved on) while a task was open."""
+async def cancel_open(db: DealerScopedDatabase, lead_id: str, reason: str, *, keep_requested: bool = False) -> int:
+    """The customer or staff made contact (or the lead moved on) while a task was open. `keep_requested`: a call
+    the customer asked for stays open (PLAN_4 stream H) - their next message isn't the call they asked for."""
     result = await db.collection(AI_CALL_TASKS_COLLECTION).update_many(
-        {"lead_id": lead_id, "status": OPEN},
+        {"lead_id": lead_id, "status": OPEN, **({"requested": {"$ne": True}} if keep_requested else {})},
         {"$set": {"status": CANCELLED, "closed_reason": reason, "closed_at": clock.now()}})
     if result.modified_count:
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(

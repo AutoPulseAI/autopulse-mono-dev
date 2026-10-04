@@ -24,7 +24,7 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, lead_bucket, service_request
+from upsell_agent.agent import cadence, human_contact, lead_bucket, service_request
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
@@ -41,7 +41,12 @@ from upsell_agent.compliance.opt_out import POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
 from upsell_agent.integrations.platform_client import SlotTakenError
 from upsell_agent.observability.trace import NodeSpan
-from upsell_agent.slots.policy import UPSET_HANDOFF_CONFIDENCE, Flags, next_action
+from upsell_agent.slots.policy import (
+    UPSET_HANDOFF_CONFIDENCE,
+    URGENT_HANDOFF_CONFIDENCE,
+    Flags,
+    next_action,
+)
 from upsell_agent.slots.profile import Profile
 from upsell_agent.tools import booking_tool
 
@@ -420,6 +425,41 @@ def _customer_summary(profile: Profile) -> str:
     return "; ".join(parts) or "See conversation for details."
 
 
+async def _call_check(ctx: TurnContext, state: AgentState, dealer: DealerProfile, now: datetime,
+                      text: str) -> human_contact.CallCheck:
+    """PLAN_4 stream H: could a person call this customer, and when (compliance/call_check.py: a usable phone,
+    no voice opt-out, not DND, calling hours and the dealer's hours)? Not logged here: the call task's own
+    check logs it when it opens."""
+    from upsell_agent.compliance.call_check import can_call
+
+    decision = await can_call(dealer_id=state.dealer_id, customer_id=state.customer_id, lead_id=state.lead_id or "",
+                              at=now, record=False)
+    phone = next((c["detail"].removeprefix("call ") for c in decision.checks if c["rule"] == "phone" and c["passed"]),
+                 None)
+    if decision.outcome != "BLOCK" and (own := human_contact.given_phone(text)):
+        phone = own  # "call me at 555-123-4567": the number they just gave
+    when = dealer.opening_text(decision.until, now) if decision.outcome == "HOLD" and decision.until else None
+    return human_contact.CallCheck(outcome=decision.outcome, reason=decision.reason, code=decision.rule,
+                                   phone=phone, until=decision.until.isoformat() if decision.until else None,
+                                   when=when)
+
+
+async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: ConversationState,
+                             extraction: dict[str, Any], *, dealer: DealerProfile, now: datetime, text: str,
+                             wants_human: bool, escalate: bool, hold: str | None) -> human_contact.HumanContactPlan:
+    """PLAN_4 stream H: "speak to a human" -> a call or a text (agent/human_contact.py)."""
+    awaiting = conversation.awaiting_human_choice
+    if not (wants_human or awaiting):
+        return human_contact.HumanContactPlan()
+    method = human_contact.said_method(text, answering=awaiting)
+    # The call check only matters when a call is on the table.
+    call = await _call_check(ctx, state, dealer, now, text) if method != human_contact.TEXT else None
+    text_when = None if dealer.is_open(now) else (
+        dealer.opening_text(opens, now) if (opens := dealer.next_opening(now)) else None)
+    return human_contact.plan(text=text, wants_human=wants_human, awaiting=awaiting, escalate=escalate, hold=hold,
+                              channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
+
+
 async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     extraction = state.extraction or {}
     profile = await load_profile(ctx, state)
@@ -479,6 +519,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if backstop and not urgent:
         urgent, urgent_confidence = True, 1.0
 
+    wants_human = bool(extraction.get("wants_human")) and not (dated and dated["call_requested"])
+    escalate = ((bool(extraction.get("upset")) and float(extraction.get("upset_confidence") or 0.0)
+                 >= UPSET_HANDOFF_CONFIDENCE) or (urgent and urgent_confidence >= URGENT_HANDOFF_CONFIDENCE))
+    person = await plan_human_contact(
+        ctx, state, conversation, extraction, dealer=dealer, now=now, text=text, wants_human=wants_human,
+        escalate=escalate, hold=hold_questions_reason(extraction, ctx.compliance))
+    if person.mode in (human_contact.CALL, human_contact.TEXT):
+        wants_human = True  # their answer to "call or text?" is the request for a person
+    elif person.record and person.record.get("choice") == "withdrawn":
+        wants_human = False
     decision = next_action(profile, Flags(
         hold_questions=hold,
         contact_choice=after_hours.mode if after_hours.mode in ("offer", "later") else None,
@@ -488,7 +538,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         asks={path: (a.count, a.last_turn) for path, a in conversation.asks.items()},
         last_asked=list(conversation.last_asked),
         replies=conversation.turn,
-        wants_human=bool(extraction.get("wants_human")) and not (dated and dated["call_requested"]),
+        wants_human=wants_human,
+        human_contact=person.mode,
         upset=bool(extraction.get("upset")),
         upset_confidence=float(extraction.get("upset_confidence") or 0.0),
         annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
@@ -503,7 +554,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     ))
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
     touch1 = (plan_touch1(profile, dealer, state.customer_name)
-              if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff") else None)
+              if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff", "offer_human")
+              else None)
     if touch1:
         decision["touch1"] = touch1
         if touch1["ending"]:
@@ -523,7 +575,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # MASTER_PLAN_4 D4 + stream A4: the recall / maintenance facts our outreach was built from. Stream A4's
         # guard allows exactly these service claims in the reply and rejects any others.
         decision["service_facts"] = service_offer["facts"]
-    decision["next_action"] = dated if decision["action"] not in ("stop", "handoff") else None
+    decision["next_action"] = dated if decision["action"] not in ("stop", "handoff", "offer_human") else None
     decision["not_interested"] = ({"mode": not_interested, "reason": not_interested_reason}
                                   if not_interested else None)
     if state.trigger == NEXT_ACTION_TRIGGER:
@@ -532,7 +584,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["reach_out"] = {"words": planned.get("words"), "notes": planned.get("context_notes")}
     if (ctx.compliance or {}).get("quiet_hours"):
         decision["quiet_hours"] = {"resume_at": ctx.compliance.get("resume_at")}
-    if decision["action"] in ("stop", "handoff") and after_hours.mode in ("offer", "later"):
+    decision["human_contact"] = person.as_dict() if (person.mode or person.record) and decision["action"] in (
+        "handoff", "offer_human") or (person.record or {}).get("choice") == "withdrawn" else None
+    if decision["action"] in ("stop", "handoff", "offer_human") and after_hours.mode in ("offer", "later"):
         # Staff (or nobody) take it from here: no choice to offer, no morning message.
         after_hours.mode, after_hours.record, after_hours.schedule_resume = None, None, False
         after_hours.cancel_resume = True
@@ -577,6 +631,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         span.reasoning.append(f"Dated next step: the customer said {dated['words']!r}, worked out as "
                               f"{dated['display']} at {dated['time']}"
                               + ("" if dated["time_given"] else " (no time given: the dealer default)") + ".")
+    if decision["human_contact"]:
+        span.reasoning.append(f"Speak to a person: {person.why}")
     if touch1:
         span.reasoning.append(f"Touch 1: {touch1['why']}")
     if decision.get("touch"):

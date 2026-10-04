@@ -64,7 +64,8 @@ _COLOR = re.compile(r"\b(white|black|silver|gr[ae]y|red|blue|green|orange|yellow
 # Trim words said right after the model ("RAV4 XLE Hybrid").
 _TRIM_AFTER = re.compile(r"\s+((?:(?:le|xle|se|xse|limited|platinum|sport|touring|ex-l|ex|lx|sr5|trd|adventure|hybrid|"
                          r"premium|lariat|xlt|lt|ltz|sv|sl|sel|long range|standard)\b\s*)+)", re.IGNORECASE)
-_HUMAN = re.compile(r"\b(real person|human|someone call|call me|talk to (?:a|someone|somebody)|manager|salesperson)\b", re.IGNORECASE)
+_HUMAN = re.compile(r"\b(real person|human|someone (?:call|text)|call me|talk to (?:a|someone|somebody)|manager|salesperson|"
+                    r"speak (?:to|with) (?:a|someone|somebody)|(?:a|an actual) person (?:call|text|to))\b", re.IGNORECASE)
 _PREFERENCE = re.compile(r"\b(best|works?|work for me|prefer|good for me|available|free|reach me|call me)\b", re.IGNORECASE)
 # Upset with the dealer or the situation: clear (a handoff signal) or mild (not enough on its own).
 _UPSET_CLEAR = re.compile(r"\b(angry|furious|ridiculous|unacceptable|terrible|worst|scam|rip-?off|waste of (?:my )?time|"
@@ -747,6 +748,27 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         body = f"{opener}{follow_up.strip()}"
         why = "A value came in uncertain, so it is confirmed before it's relied on" + (
             ", then one more detail is asked." if asks else ".")
+    elif action == "offer_human":
+        # PLAN_4 stream H: they asked for a person without saying how - one warm question, the last 4 digits only.
+        person = payload.get("human_contact") or {}
+        written = person.get("written") or "text"
+        number = f" at the number ending in {person['phone_last4']}" if person.get("phone_last4") else ""
+        body = (f"Happy to get someone from our team for you, {name}. Would you like a call{number}, "
+                f"or a{'n' if written == 'email' else ''} {written} from a team member?")
+        why = "The customer asked for a person without saying how: offer a call or a text, once."
+    elif action == "handoff" and (person := payload.get("human_contact")):
+        written = person.get("written") or "text"
+        if person["mode"] == "call":
+            number = f" at the number ending in {person['phone_last4']}" if person.get("phone_last4") else ""
+            when = f" at {person['call_when']}, when we're able to call" if person.get("call_when") else " shortly"
+            body = f"You got it, {name} - a member of our team will call you{number}{when}."
+            promises.append(f"A member of the team will call{when}.")
+        else:
+            when = f" at {person['text_when']}, when we open" if person.get("text_when") else " shortly"
+            no_call = "We won't call. " if person.get("calls_blocked") else ""
+            body = f"You got it, {name}. {no_call}A member of our team will {written} you here{when}."
+            promises.append(f"A member of the team will {written} them{when}.")
+        why = f"The customer asked for a person: they'll get a {person['mode']} from the team, so the AI steps back."
     elif action == "handoff":
         body = "No problem - I'm passing this to a member of our team, who will reach out to you shortly."
         why = "The customer asked for a person or is clearly upset, so the AI steps back."

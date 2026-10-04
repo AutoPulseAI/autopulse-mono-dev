@@ -226,7 +226,7 @@ Rules:
 
 COMPOSE_INSTRUCTIONS = """You write the dealership's next message to a customer, for SMS and for email.
 Input is JSON describing what to do: action (answer / clarify / ask / confirm / offer_visit / acknowledge /
-handoff / ask_why / qualified / partly_qualified), link_requested (the customer asked for a vehicle's link), touch1 (the first reply's required opening and closing),
+handoff / offer_human / ask_why / qualified / partly_qualified), human_contact, link_requested (the customer asked for a vehicle's link), touch1 (the first reply's required opening and closing),
 touch (this message is a scheduled follow-up on a theme), next_action (a date they asked us to get back to them,
 to confirm back), reach_out (this message isn't a reply: we're checking back as they asked), answer_questions ({text, label}), asks (at most two things to ask),
 confirm (a value to double-check), visit_offer (only with action answer or offer_visit: attempt, angle,
@@ -289,6 +289,13 @@ Rules:
     acknowledge warmly instead - don't say the team will reach out, since nothing further is pending. No question.
   handoff: a member of the team will reach out shortly. If hold_questions or quiet_hours explain why, follow
     those instead of the questions below. No question.
+  [PLAN_4 stream H] offer_human: they asked for a person but didn't say how. One short, warm reply, nothing else
+    (no visit, no asks, no vehicle): "Happy to get someone from our team for you. Would you like a call at the
+    number ending in <human_contact.phone_last4>, or a text from a team member?" Exactly one question. Never write
+    the full phone number. human_contact (with handoff too) says how a person will reach them: mode "call" -> a
+    team member will call at the number ending in <phone_last4> shortly, or at <call_when> when that is given
+    (never "now" then); mode "text" -> a team member will <written> them here shortly (or at <text_when> when
+    given); calls_blocked true -> say a team member will <written> them, never offer or promise a call.
   ask_why (MASTER_PLAN_3 C3): they said they're not interested any more. Don't argue, don't pressure, don't offer
     a visit or a vehicle. Answer any answer_questions first, then acknowledge it kindly and ask one gentle
     question about why - what changed, or whether something didn't work for them - so the team can help.
