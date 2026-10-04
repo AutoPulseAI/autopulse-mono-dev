@@ -5,7 +5,7 @@ import Lead from "@models/Lead.js";
 import User from "@models/User.js";
 import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
 import { cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
-import { READ_ONLY_STATUSES } from '@lib/ai/aiDnd';
+import { READ_ONLY_STATUSES, statusChangeError } from '@lib/ai/aiDnd';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentUpdateTemplate } from '@lib/templates/appointmentUpdateTemplate.js';
@@ -246,6 +246,11 @@ export async function PUT(request) {
         { error: "Lead not found" },
         { status: 404 }
       );
+    }
+    // PLAN_4 stream X2: a status the AI's lifecycle can't follow (Closed - Lost on a delivered sale) is refused here.
+    const changeError = statusChangeError(originalLead.status, status);
+    if (changeError) {
+      return NextResponse.json({ error: changeError }, { status: 400 });
     }
 
     // For a dealer whose AI is live, the AI sends the appointment / no-show /

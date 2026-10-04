@@ -96,6 +96,20 @@ export async function markLeadDndFromAi(body, {
 export const AI_CLOSED_STATUSES = Object.freeze(['Closed - Lost', 'Closed - No Longer Owns']);
 // Statuses only the AI sets: shown in the CRM's lists and filters, not offered in the status picker.
 export const READ_ONLY_STATUSES = Object.freeze(['Closed - No Longer Owns']);
+
+// PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2; SOLD PENDING PDF §2): "Closed - Lost" is for a transaction that won't
+// complete. A delivered car's opportunity stays active until the customer no longer owns it, and it leaves only as
+// "Closed - No Longer Owns" (the AI's ownership check). The AI refuses Closed Lost on it; the CRM refuses it too.
+export const CLOSED_LOST_STATUSES = Object.freeze(['Closed - Lost', 'Closed Lost']);
+export const DELIVERED_CLOSE_ERROR = 'A Sold Delivered opportunity can\'t be closed as "Closed - Lost": the sale is '
+  + 'complete. It closes as "Closed - No Longer Owns" once the customer no longer owns the vehicle (the AI asks at '
+  + 'each ownership anniversary).';
+
+// The error for a status change the CRM refuses because the AI's lifecycle can't follow it, or null.
+export function statusChangeError(previousStatus, status) {
+  if (previousStatus === 'Sold Delivered' && CLOSED_LOST_STATUSES.includes(status)) return DELIVERED_CLOSE_ERROR;
+  return null;
+}
 // Staff statuses a Day 91 "Closed - Lost" never replaces.
 const KEEP_FOR_CLOSED_LOST = Object.freeze(['Visited', 'Sold', 'DND', 'Managerial Review', 'Sold Pending',
   'Sold Delivered', 'Closed - No Longer Owns']);

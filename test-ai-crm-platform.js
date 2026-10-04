@@ -18,7 +18,8 @@ import User from './app/models/User.js';
 import { AiSendError, classifyProviderError, sendAiMessage } from './app/lib/ai/aiSend.js';
 import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayload } from './app/lib/ai/aiMessageRecord.js';
 import {
-  READ_ONLY_STATUSES, addAiLeadNote, closedStatusConflict, markLeadClosedFromAi, markLeadDndFromAi,
+  DELIVERED_CLOSE_ERROR, READ_ONLY_STATUSES, addAiLeadNote, closedStatusConflict, markLeadClosedFromAi,
+  markLeadDndFromAi, statusChangeError,
   validateClosedStatusPayload, validateDndPayload, validateNotePayload,
 } from './app/lib/ai/aiDnd.js';
 import { cancelBookingsForStatusChange } from './app/lib/ai/aiStaff.js';
@@ -571,4 +572,15 @@ test('AI Insights: the period falls back to 30 days, rates read as whole percent
   assert.equal(vehicleTypeText({ vehicle_type: 'used', original_vehicle_type: 'new' }), 'Used (came in as New)');
   assert.equal(vehicleTypeText({ vehicle_type: 'new', original_vehicle_type: 'new' }), 'New');
   assert.equal(vehicleTypeText(null), null);
+});
+
+// --- PLAN_4 stream X2 item 13: the CRM and the AI agree on closing a delivered sale -----------------------------
+
+test('a Sold Delivered lead cannot be closed as lost (it closes as No Longer Owns)', () => {
+  assert.equal(statusChangeError('Sold Delivered', 'Closed - Lost'), DELIVERED_CLOSE_ERROR);
+  assert.equal(statusChangeError('Sold Delivered', 'Closed Lost'), DELIVERED_CLOSE_ERROR);
+  assert.match(DELIVERED_CLOSE_ERROR, /Closed - No Longer Owns/);
+  assert.equal(statusChangeError('Sold Pending', 'Closed - Lost'), null); // a pending deal can fall through
+  assert.equal(statusChangeError('Sold Delivered', 'DND'), null);
+  assert.equal(statusChangeError(undefined, 'Closed - Lost'), null);
 });

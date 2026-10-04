@@ -105,7 +105,9 @@ export default function StatusModal({
             onChange={(e) => setTempStatus(e.target.value)}
           >
             <option value="">Select Status</option>
-            {statusOptions.map((status) => (
+            {/* PLAN_4 stream X2: a delivered sale isn't "lost" (aiDnd.statusChangeError). */}
+            {statusOptions.filter((status) => !(currentStatus === "Sold Delivered" && status === "Closed - Lost"))
+              .map((status) => (
               <option key={status} value={status}>
                 {status}
               </option>
