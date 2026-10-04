@@ -227,7 +227,14 @@ function CallTasksContent() {
                           ? <span title={formatDateTime(task.opened_at)}>{fromNow(task.opened_at)}</span>
                           : <span title={formatDateTime(task.due_at)}>{fromNow(task.due_at)}</span>}
                       </td>
-                      <td style={{ maxWidth: 260 }}><small>{task.reason}</small></td>
+                      <td style={{ maxWidth: 260 }}>
+                        {task.requested && (
+                          <Badge bg="primary" className="d-inline-block mb-1">
+                            <i className="fa-solid fa-user me-1" />Customer asked for a call
+                          </Badge>
+                        )}
+                        <small className="d-block">{task.reason}</small>
+                      </td>
                       <td className="text-nowrap">
                         {view === "open" && (
                           <>

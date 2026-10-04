@@ -1,15 +1,16 @@
 // Staff finished a call task (Call Tasks page outcome prompt).
 //   POST /api/dealer-ai/call-tasks/<taskId>
-//   { action: "complete" | "dismiss", outcome?, note?, dealer_id? }
+//   { action: "complete" | "dismiss", outcome?, note?, dealer_id?, lead_outcome?, follow_up?, opt_out_scope? }
 // outcome (complete only): connected | no_answer | voicemail | wrong_number | other.
-// The lead outcome (appointment, follow-up, opted out...) is applied by the page
-// through the CRM's own routes first and summarised in `note`.
+// lead_outcome (complete only) reaches the AI (app/lib/ai/aiCallOutcome.js; agentic-upsell
+// agent/call_outcomes.py): a specific follow-up becomes its dated next step, "contact, no next step" keeps the
+// cadence going, a wrong number marks the phone invalid, an opt-out writes the AI's consent (every channel, or
+// calls only). An appointment is still booked by the page through the CRM's own status route.
 
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { callTaskResolution } from "@lib/ai/aiCallOutcome.js";
 import { aiServiceError, callAiService, jsonError, requireDealerSession, staffName } from "../../_lib/dealerAi";
-
-const OUTCOMES = ["connected", "no_answer", "voicemail", "wrong_number", "other"];
 
 export async function POST(req, { params }) {
   const { id } = await params;
@@ -23,21 +24,10 @@ export async function POST(req, { params }) {
   const session = await requireDealerSession(req, body?.dealer_id);
   if (session.error) return session.error;
 
-  const { action, outcome, note } = body || {};
-  if (!["complete", "dismiss"].includes(action)) return jsonError("action must be complete or dismiss", 400);
-  if (action === "complete" && !OUTCOMES.includes(outcome)) {
-    return jsonError("Pick how the call went.", 422);
-  }
+  const built = callTaskResolution(body, { dealerId: session.dealerId, by: await staffName(session.user) });
+  if (built.error) return jsonError(built.error, built.status);
 
-  const result = await callAiService(`/v1/call-tasks/${id}/${action}`, {
-    method: "POST",
-    body: {
-      dealer_id: session.dealerId,
-      outcome: action === "complete" ? outcome : null,
-      note: note ? String(note).slice(0, 2000) : null,
-      by: await staffName(session.user),
-    },
-  });
+  const result = await callAiService(`/v1/call-tasks/${id}/${built.action}`, { method: "POST", body: built.body });
   if (!result.ok) return aiServiceError(result, "That call task was not found.");
   return NextResponse.json(result.body);
 }
