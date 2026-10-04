@@ -565,7 +565,8 @@ async function crmLocal() {
     `HTTP ${staffOk.status}`);
   const staffStage = await waitFor('the AI to set the staff-booked lead to Appointment Set', async () => {
     const s = await state(created.website.lead._id);
-    return s?.stage === 'appointment_set' ? s : null;
+    // ...and its steps are planned (`appointment.planned_at`): the move in D11 must not overtake that planning.
+    return s?.stage === 'appointment_set' && s.appointment?.planned_at ? s : null;
   }).catch(() => null);
   check('D8. the AI was told about the staff booking (stage Appointment Set)', Boolean(staffStage));
   const serviceBookingId = serviceOkBody.bookingId;
