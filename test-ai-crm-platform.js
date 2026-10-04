@@ -25,6 +25,7 @@ import {
 } from './app/lib/bookingService.js';
 import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib/providerStub.js';
 import { aiOwnsCustomerMessages } from './app/lib/appointmentReminderService.js';
+import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFailed } from './app/lib/bookingConflict.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -384,4 +385,23 @@ maybe('a stubbed send is written to the dev outbox, with its media', async () =>
   const id = await recordStubSend({ channel: 'sms', to: '+15557654321', text: 'hi', media_urls: ['https://cdn.test/a.jpg'] });
   const row = await mongoose.connection.collection('dev_provider_outbox').findOne({ provider_id: id });
   assert.deepEqual(row.media_urls, ['https://cdn.test/a.jpg']);
+});
+
+// Stream R: a full slot shows the same way in every staff booking screen, with a one-click next slot.
+test('a 409 full slot becomes a conflict with the next available and the day\'s other times', async () => {
+  const body = { error: 'slot_taken', message: 'The 10:00 slot on 2026-10-09 is full. The next available is Friday, Oct 9 at 11:00 AM.',
+    next_available: { date: '2026-10-09', time: '11:00' }, alternatives: ['10:00', '11:00', '14:30', 'x'] };
+  const conflict = bookingConflictFrom(409, body, { date: '2026-10-09', time: '10:00' });
+  assert.equal(conflict.message, body.message);
+  assert.deepEqual(conflict.nextAvailable, { date: '2026-10-09', time: '11:00' });
+  assert.deepEqual(conflict.alternatives, ['11:00', '14:30']);
+  assert.equal(bookingConflictFrom(500, body), null);
+  assert.equal(bookingConflictFrom(422, { error: 'missing_field' }), null);
+  assert.equal(slotLabel('2026-10-09', '14:30'), 'Friday, Oct 9 at 2:30 PM');
+  assert.equal(slotLabel('2026-10-10', '00:15'), 'Saturday, Oct 10 at 12:15 AM');
+  const response = { ok: false, status: 409, json: async () => body };
+  await assert.rejects(throwIfStatusFailed(response, { booking_date: '2026-10-09', booking_time: '10:00' }),
+    (err) => err instanceof BookingConflictError && err.slotConflict.nextAvailable.time === '11:00');
+  await assert.rejects(throwIfStatusFailed({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }), /boom/);
+  await throwIfStatusFailed({ ok: true });
 });

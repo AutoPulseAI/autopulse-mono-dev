@@ -18,6 +18,7 @@ import {
   leadUserLanguageDisplay,
   messageUserLanguageDisplay,
 } from "../../utils/conversationTranslation";
+import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -446,12 +447,14 @@ export default function ViewConversations({
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to update status");
+      // A full slot keeps the modal open with "Book {next available}" (stream R, app/lib/bookingConflict.js).
+      await throwIfStatusFailed(response, extra);
       
       // Update local state
       lead.fe_lead_status = newStatus;
       setRefreshKey(prev => prev + 1);
     } catch (err) {
+      if (err?.slotConflict) throw err; // shown in the StatusModal (stream R)
       console.error("Error updating status:", err);
     }
   };
