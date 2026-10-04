@@ -100,6 +100,19 @@ export function buildLeadCreatedEvent({ lead, dealerId, channel, shadow = false 
   };
 }
 
+// PLAN_4 stream X3 item 10: an out-of-office / auto-responder email, by its headers (RFC 3834 Auto-Submitted and
+// the common vendor ones). The AI does not answer it (agentic-upsell agent/auto_reply.py also reads phrases).
+export function isAutoReplyRecord(record) {
+  const raw = record?.headers;
+  if (!raw || typeof raw !== 'object') return false;
+  const headers = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase(),
+    String(Array.isArray(v) ? v.join(',') : v ?? '').toLowerCase().trim()]));
+  if (headers['auto-submitted'] && headers['auto-submitted'] !== 'no') return true;
+  if (headers['x-autoreply'] || headers['x-autorespond'] || headers['x-auto-response-suppress']) return true;
+  if (/^(auto_reply|bulk|junk|list)$/.test(headers.precedence || '')) return true;
+  return false;
+}
+
 export function buildInboundMessageEvent({ emailRecord, lead, dealerId, channel, text, shadow = false }) {
   const customerId = customerIdForLead(lead, dealerId);
   if (!emailRecord?._id || !lead?._id || !customerId || !channel) return null;
@@ -114,6 +127,7 @@ export function buildInboundMessageEvent({ emailRecord, lead, dealerId, channel,
     text: String(text ?? emailRecord.mail_content ?? ''),
     received_at: new Date(at).toISOString(),
     shadow: Boolean(shadow),
+    ...(isAutoReplyRecord(emailRecord) ? { auto_reply: true } : {}),
   };
 }
 

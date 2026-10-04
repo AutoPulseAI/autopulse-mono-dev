@@ -9,6 +9,7 @@ import {
   buildLeadCreatedEvent,
   customerIdForLead,
   derivedCustomerKey,
+  isAutoReplyRecord,
   notifyAiOfInbound,
   notifyAiOfNewLead,
 } from './app/lib/ai/aiDispatch.js';
@@ -164,4 +165,19 @@ test('replay delivers stored events once the AI is back, stops while it is down,
     onExpired: async (row) => expired.push(row.event_id), logger: quiet });
   assert.equal(counts.expired, 1);
   assert.deepEqual(expired, ['c']);
+});
+
+// --- Item 10: auto-responders ---------------------------------------------------
+
+test('auto-reply headers mark the inbound event so the AI does not answer an out-of-office', () => {
+  const lead = { _id: LEAD, dealer_id: DEALER, email: 'a@b.co' };
+  const ooo = { _id: 'e9', mail_content: 'Thanks', headers: { 'Auto-Submitted': 'auto-replied' } };
+  assert.equal(buildInboundMessageEvent({ emailRecord: ooo, lead, dealerId: DEALER, channel: 'email' }).auto_reply, true);
+  assert.ok(isAutoReplyRecord({ headers: { 'X-Autoreply': 'yes' } }));
+  assert.ok(isAutoReplyRecord({ headers: { precedence: 'auto_reply' } }));
+  assert.ok(!isAutoReplyRecord({ headers: { 'Auto-Submitted': 'no' } }));
+  assert.ok(!isAutoReplyRecord({}));
+  const normal = buildInboundMessageEvent({ emailRecord: { _id: 'e8', mail_content: 'hi' }, lead, dealerId: DEALER,
+    channel: 'email' });
+  assert.equal('auto_reply' in normal, false, 'the payload is unchanged for ordinary messages');
 });
