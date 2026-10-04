@@ -53,7 +53,8 @@ class BookingChangedEvent(BaseEvent):
     what staff did. Not sent for the AI's own booking changes."""
     lead_id: str = Field(min_length=1)
     booking_id: str | None = None
-    change: Literal["cancelled", "moved"]
+    # PLAN_4 stream X2: "confirmed" - staff confirmed it (a phone call; Omnichannel PDF §8 "Human phone confirmation").
+    change: Literal["cancelled", "moved", "confirmed"]
 
 
 # URL segment -> (worker job name, payload model)

@@ -669,6 +669,25 @@ async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | No
             db, lead_id=event.lead_id, customer_id=customer_id, lead=lead, customer=None, channel=channel,
             turn_id=f"booking-changed-{event.event_id}", source="crm_booking")
         return {"status": "appointment_cancelled", "stage_change": moved}
+    if active.get("booking_status") == "confirmed" and event.change == "confirmed":
+        # PLAN_4 stream X2 (Omnichannel PDF §7-§8 "Confirmed by AI/human", "Human phone confirmation"): staff confirmed
+        # it in the CRM. The appointment is confirmed and the day-before Y / N isn't sent; nothing else changes.
+        from upsell_agent.agent import appointment
+        from upsell_agent.integrations.dealer_profile import dealer_profile
+
+        profile = await dealer_profile(event.dealer_id)
+        appt_at = appointment.appointment_at(tz=profile.tz, booking=active, lead=lead,
+                                             recorded=state.get("appointment"))
+        now = clock.now()
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": event.lead_id}, {"$set": {
+            "appointment.confirmed": True, "appointment.confirmed_at": now, "appointment.confirmed_by": "staff",
+            **({"appointment.at": appt_at.isoformat()} if appt_at else {}),
+            "appointment.confirmation": {**((state.get("appointment") or {}).get("confirmation") or {}),
+                                         "status": "confirmed", "answered_at": now, "by": "staff"}}})
+        dropped = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+            {"lead_id": event.lead_id, "status": "pending", "kind": "appointment_confirm"},
+            {"$set": {"status": "cancelled", "reason": "staff confirmed the appointment", "closed_at": now}})
+        return {"status": "appointment_confirmed", "confirmation_cancelled": dropped.modified_count}
     planned = await plan_appointment_timers(db, lead_id=event.lead_id, customer_id=customer_id, lead=lead,
                                             channel=channel, turn_id=f"booking-changed-{event.event_id}")
     return {"status": "appointment_replanned", "appointment_timers": planned}

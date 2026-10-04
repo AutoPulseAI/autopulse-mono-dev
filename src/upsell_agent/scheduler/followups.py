@@ -1441,6 +1441,10 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             useful = appointment.details_still_useful(current, now=clock.now())
             checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
                            if useful else "too close to the appointment for the details message to help"))
+        if step == appointment.STEP_CONFIRM:
+            # Stream X2: already confirmed (the customer's Y, or staff in the CRM): no Y / N.
+            done = bool((state.get("appointment") or {}).get("confirmed"))
+            checks.append(("not_confirmed_yet", not done, "already confirmed" if done else "not confirmed yet"))
         if step == appointment.STEP_NO_SHOW_CLOSE:
             # Stream X2: the close step sends nothing - it only moves an unanswered no-show back into follow-up, so
             # who holds the conversation doesn't stop it (else a paused lead sat at No Show for good).

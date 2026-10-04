@@ -41,3 +41,9 @@ the fix.
   and a CRM note ("Requested call not made in 5 minutes"); the task stays open until the end of the agent's day,
   then is missed as before. Requested tasks opened outside hours open at calling hours and get the 5 minutes then.
   Test: `test_x2_workflow.py::test_a_requested_call_is_due_in_5_minutes_and_escalates_when_it_isnt_made`.
+- **6. Staff confirmation in the CRM reaches the AI.** CRM `aiStaff.bookingChangeKind` now returns `confirmed`
+  when PUT /api/booking (the booking screens use it) moves a booking to `confirmed` (a move still wins);
+  `BOOKING_CHANGES` includes it. AI: `BookingChangedEvent.change` accepts `confirmed`; `handle_booking_changed` sets
+  `appointment.confirmed = true` (`confirmed_by: staff`) and cancels the pending day-before Y/N; the confirm step
+  also re-checks `appointment.confirmed` before sending, and a re-plan for the same time keeps the confirmation.
+  Tests: `test_x2_workflow.py::test_staff_confirming_the_booking_*`, `test-ai-layer.js` bookingChangeKind table.

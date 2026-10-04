@@ -196,3 +196,31 @@ async def test_a_requested_call_is_due_in_5_minutes_and_escalates_when_it_isnt_m
                                        phone="+15550100002", customer_name=None, reason="no contact",
                                        source_turn_id=None, followup_id=None, created_at=now)
     assert plain["due_by"] > now + timedelta(hours=1) and "sla_due_by" not in plain
+
+
+
+# --- Item 6: staff confirmation in the CRM reaches the AI -------------------------------------------------------------
+
+@flow
+async def test_staff_confirming_the_booking_in_the_crm_confirms_the_appointment_and_skips_the_y_n(mongo):
+    from tests.unit.test_appointment import _booking
+    from upsell_agent.events.models import BookingChangedEvent
+    from upsell_agent.integrations.mongodb import PLATFORM_BOOKINGS_COLLECTION
+    created, _ = await _booked_friday(mongo)
+    booking = await _booking(mongo, created)
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]},
+                                                        {"$set": {"booking_status": "confirmed"}})
+    result = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="bc1", dealer_id=DEALER, lead_id=created["lead_id"], booking_id=str(booking["_id"]),
+        change="confirmed"))
+    assert result["status"] == "appointment_confirmed"
+    state = await _state(mongo, created)
+    assert state["appointment"]["confirmed"] is True and state["appointment"]["confirmed_by"] == "staff"
+    assert "confirm" not in [s["step"] for s in await _steps(mongo, created)]
+    # A later re-plan (a pause / resume) keeps it confirmed and still sends no Y / N.
+    await _pause_and_resume(created)
+    assert (await _state(mongo, created))["appointment"]["confirmed"] is True
+    assert "confirm" not in [s["step"] for s in await _steps(mongo, created)]
+    set_clock(datetime(2026, 10, 8, 18, 0, tzinfo=NY))  # Thursday evening, after the day-before slot
+    await followups.fire_due(_deps())
+    assert not any("Please reply Y for Yes" in m["text"] for m in await _outbox(mongo, created))
