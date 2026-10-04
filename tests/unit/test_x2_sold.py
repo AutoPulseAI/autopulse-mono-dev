@@ -251,3 +251,47 @@ async def test_the_check_in_names_the_delivered_vehicle_from_the_deal(mongo):
     await _fire(mongo, created, "post_delivery_checkin")
     texts = [m["text"] for m in (await _outbox(mongo, created))[before:]]
     assert any("your new 2025 Toyota Camry" in t for t in texts) and all("RAV4" not in t for t in texts)
+
+
+# --- Anniversary companion + item 17: questions that expire, and vehicles only from real vehicle words -----------
+
+async def _anniversary_asked(mongo):
+    created = await _new_lead()
+    await _staff(created, "Sold Delivered")
+    await _fire(mongo, created, "post_delivery_checkin")
+    await _fire(mongo, created, "ownership_anniversary")
+    assert (await _state(mongo, created))["ownership_prompt"]["kind"] == "anniversary"
+    return created
+
+
+async def _say_sold(created, text):
+    from tests.unit.test_sold_lifecycles import _say
+    return await _say(created, text)
+
+
+@flow
+async def test_an_unclear_answer_closes_the_ownership_question_so_a_later_no_is_not_read_as_the_answer(mongo):
+    created = await _anniversary_asked(mongo)
+    await _say_sold(created, "Thanks! Does my warranty cover the tires?")
+    assert not (await _state(mongo, created)).get("ownership_prompt")
+    set_clock(clock.now() + timedelta(days=60))
+    await _say_sold(created, "No rush, but can I get an oil change next week")
+    assert (await _state(mongo, created))["stage"] == "sold_delivered"
+
+
+@flow
+async def test_the_ownership_question_expires(mongo):
+    created = await _anniversary_asked(mongo)
+    set_clock(clock.now() + timedelta(days=20))
+    await _say_sold(created, "No rush, I'll call about service")
+    assert (await _state(mongo, created))["stage"] == "sold_delivered"
+
+
+@flow
+async def test_a_reply_with_no_vehicle_in_it_never_creates_a_customer_reported_vehicle(mongo):
+    from upsell_agent.integrations.mongodb import AI_VEHICLE_OWNERSHIP_COLLECTION
+    created = await _anniversary_asked(mongo)
+    assert (await _say_sold(created, "No, we sold it"))["sold_route"] == "ownership_ended"
+    await _say_sold(created, "I need an oil change")
+    assert await mongo[AI_VEHICLE_OWNERSHIP_COLLECTION].count_documents({"vehicle_source": "CUSTOMER_REPORTED"}) == 0
+    assert not ((await _state(mongo, created)).get("vehicle_capture") or {}).get("step")

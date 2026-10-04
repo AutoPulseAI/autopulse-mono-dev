@@ -84,6 +84,8 @@ STAFF_RECENT = timedelta(days=2)
 OWNERSHIP_RETRY = timedelta(days=1)
 # An anniversary more than this late (the lifecycle was off: an opt-out, an outage) is skipped, not sent late.
 ANNIVERSARY_GRACE = timedelta(days=30)
+# Stream X2: the anniversary "Do you still have your [Model]?" is open this long; after that a reply isn't its answer.
+OWNERSHIP_PROMPT_TTL = timedelta(days=14)
 # The same maintenance / recall message (its dedupe key) isn't sent twice within this (§6 "avoid repetitive
 # outreach").
 SERVICE_REPEAT_AFTER = timedelta(days=30)
@@ -731,6 +733,12 @@ async def route_inbound(db: DealerScopedDatabase, *, lead_id: str, customer_id: 
     if capture.get("step"):
         return await _capture_step(db, lead_id=lead_id, customer_id=customer_id, capture=capture, text=text, name=name)
     prompt = state.get("ownership_prompt") or {}
+    asked = _aware(prompt.get("asked_at"))
+    if prompt and asked is not None and now - asked > OWNERSHIP_PROMPT_TTL:
+        # Stream X2: an anniversary question long unanswered is no longer a question - a "No..." months later is
+        # about something else.
+        await _set(db, lead_id, {}, unset=["ownership_prompt"])
+        prompt = {}
     if prompt.get("kind") == "anniversary" and stage == lifecycle.Stage.SOLD_DELIVERED.value:
         answer = sold_delivered.classify_ownership_answer(text)
         record = await ownership.find_record(db, prompt.get("ownership_id"))
@@ -753,7 +761,10 @@ async def route_inbound(db: DealerScopedDatabase, *, lead_id: str, customer_id: 
             return _reply("ownership_ended", f"§8 NO: vehicle NO_LONGER_OWNED, opportunity Closed - No Longer Owns, "
                                              f"{cancelled} pending reminder(s) for it stopped.",
                           "Thanks for letting me know! What are you driving now?")
-        # Anything else is no answer: nothing changes (§8 "NO RESPONSE"); the AI answers what they did say.
+        # Anything else is no answer: ownership doesn't change (§8 "NO RESPONSE") and the AI answers what they did
+        # say. Stream X2: the question is closed with it, so a later message ("No rush, but can I get an oil
+        # change?") is never read as the answer.
+        await _set(db, lead_id, {}, unset=["ownership_prompt"])
     offer = state.get("service_offer") or {}
     if offer.get("status") == "offered":
         answer = sold_delivered.classify_service_answer(text)
@@ -786,6 +797,12 @@ async def _capture_step(db: DealerScopedDatabase, *, lead_id: str, customer_id: 
     reported = capture.get("ownership_id")
     if step == "current_vehicle":
         parsed = sold_delivered.parse_current_vehicle(text)
+        if parsed is None or (parsed and not (parsed.get("make") or parsed.get("model"))):
+            # Stream X2 (audit 3): no vehicle in it ("I need an oil change", "since 2019"): nothing is stored - a
+            # CUSTOMER_REPORTED vehicle only from a real year / make / model. The question is closed and the AI
+            # answers what they did say.
+            await _set(db, lead_id, {}, unset=["vehicle_capture"])
+            return None
         if parsed == {}:
             await _set(db, lead_id, {}, unset=["vehicle_capture"])
             return _reply("current_vehicle_captured", "§8: the customer doesn't drive a vehicle now; nothing stored.",

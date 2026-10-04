@@ -93,3 +93,9 @@ the fix.
   asked about (`interest.model`): the lead's own vehicle fields, else the customer's DealerVault deal for this
   opportunity (Year / Make / Model / VIN), else nothing - the check-in says "your new vehicle" and the anniversary
   "your vehicle". Tests: `test_x2_sold.py::test_the_check_in_*` (both failed before).
+- **Anniversary companion (with 1acb7ec).** The ownership question is cleared after an unclear answer (the AI
+  answers what they said) and expires after `OWNERSHIP_PROMPT_TTL` (14 days), so a "No rush..." months later is never
+  read as NO. Tests: `test_x2_sold.py::test_an_unclear_answer_*`, `test_the_ownership_question_expires`.
+- **17. CUSTOMER_REPORTED vehicles only from vehicle words.** In the current-vehicle capture, a reply with no make
+  or model ("I need an oil change", "since 2019") stores nothing, closes the capture question and goes to the AI
+  turn. Test: `test_a_reply_with_no_vehicle_in_it_*`.
