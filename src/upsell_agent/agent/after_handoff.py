@@ -54,4 +54,4 @@ def is_soft_handoff(state: dict) -> bool:
     if state.get("handoff_soft") is not None:
         return bool(state["handoff_soft"])
     reason = str(state.get("status_reason") or "")
-    return reason.startswith("AI couldn't write a safe reply") or reason.startswith("Customer is clearly upset")
+    return reason.startswith(("AI couldn't write a safe reply", "Customer is clearly upset"))

@@ -67,3 +67,44 @@ def test_a_reason_built_from_their_numbers_passes_the_guard():
     result = check_draft(draft, customer_texts=["I'd want to keep it under 400 a month"],
                          known_values=["Saturday at 10:00 AM", reason])
     assert result["passed"], result["violations"]
+
+
+# --- Item 9: invented facts in words (real replies from the audit-4 transcripts) -----------------------
+
+def _guard(sms, customer=("hi",)):
+    return check_draft({"sms_text": sms, "email_subject": "Re", "email_body": sms}, customer_texts=list(customer),
+                       known_values=[])
+
+
+import pytest
+
+
+@pytest.mark.parametrize("reply", [
+    "It usually takes about an hour to an hour and a half.",                      # service-1 C6
+    "Most take about one to three hours, and the team can confirm when you come in, Gary",  # service-3 C5 (no hedge
+    # on the duration: the hedge is about another thing in a following sentence)
+    "We try to prequalify with a soft pull first so your score doesn't change.",  # credit-1 C9
+    "No, you don't need to bring the title.",                                     # trade-1 C14
+    "If you want financing, bring proof of income (pay stubs or bank statements) and your social security number.",
+    "We don't share prices over text.",                                           # credit-2 C4
+    "The appraisal is free and there's no cost to you.",                          # HANDOFF known gap 1
+    "Yes — the team will confirm whether that specific vehicle has AWD.",          # general-1 C3
+])
+def test_invented_word_claims_are_rejected(reply):
+    result = _guard(reply)
+    assert not result["passed"] and not result["checks"]["no_invented_word_claims"], reply
+
+
+@pytest.mark.parametrize("reply", [
+    "The team will confirm whether that specific vehicle has AWD.",
+    "The team will confirm whether they run a soft pull or a hard pull before anything is done.",
+    "The team can tell you how long it takes when you book.",
+    "Would Saturday at 10:00 AM work to come by?",
+    "There's no obligation - coming by just lets you see it in person.",
+])
+def test_safe_wording_passes(reply):
+    assert _guard(reply)["checks"]["no_invented_word_claims"], reply
+
+
+def test_a_duration_the_customer_gave_may_be_repeated():
+    assert _guard("We'll keep it under an hour.", customer=["I only have an hour"])["checks"]["no_invented_word_claims"]

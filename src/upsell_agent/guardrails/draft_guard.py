@@ -33,7 +33,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from upsell_agent.agent.media import unattached_photo_claim
-from upsell_agent.guardrails import service_claims
+from upsell_agent.guardrails import service_claims, word_claims
 from upsell_agent.guardrails.never_invent import _APPROVAL_LANGUAGE_PATTERNS
 from upsell_agent.tools.inventory_tool import KNOWN_MAKES, TRIM_WORDS
 
@@ -250,12 +250,18 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
                                                       for t in customer_texts))
     violations += service
 
+    # PLAN_4 stream X3 item 9: durations, dealer process / policy and "Yes - the team will confirm whether ..."
+    # written in words.
+    words = word_claims.check(text, customer_texts)
+    violations += words
+
     checks = {
         "no_invented_numbers": not invented,
         "no_approval_language": not approval,
         "grounded_in_real_stock": not grounding,
         "no_unattached_photo_claims": not photo_claims,
         "service_claims_grounded": not service,
+        "no_invented_word_claims": not words,
         "sms_length_ok": 0 < len(sms) <= sms_max,
         "email_complete": bool(subject.strip()) and bool(body.strip()),
     }
