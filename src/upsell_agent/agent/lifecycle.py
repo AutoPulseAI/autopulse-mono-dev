@@ -139,6 +139,7 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     # MASTER_PLAN_3 C5 (Omnichannel PDF §7-§9): the appointment's own messages. The confirmation and the countdown
     # belong to Appointment Set, the +1h no-show check too (it is what moves the lead to No Show), and the
     # no-show messages to Appointment No Show.
+    "appointment_details": frozenset({Stage.APPOINTMENT_SET}),  # MASTER_PLAN_4 (stream R): the 15-minute message
     "appointment_confirm": frozenset({Stage.APPOINTMENT_SET}),
     "appointment_countdown": frozenset({Stage.APPOINTMENT_SET}),
     "appointment_no_show_check": frozenset({Stage.APPOINTMENT_SET}),

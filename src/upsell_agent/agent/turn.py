@@ -312,6 +312,7 @@ async def run_turn(
             # MASTER_PLAN_4 F2: a service visit is requested, not booked - the team gets the request and notes.
             await service_request.notify_team(db, deps.platform, dealer_id=dealer_id, lead_id=lead_id,
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
+            await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
@@ -575,6 +576,22 @@ async def _visit_followup_schedule(db: DealerScopedDatabase, decision: dict[str,
         cancelled = await cancel_visit_followup(db, lead_id, reason="a booking was made")
         return {"created": False, "reason": "Visit follow-up cancelled: a booking was made."} if cancelled else None
     return None
+
+
+async def _note_not_interested(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                               decision: dict[str, Any], turn_id: str) -> None:
+    """MASTER_PLAN_4 (stream R): the customer is no longer interested and the lead goes to a person - the reason, in
+    their own words, as a staff note in the CRM conversation (agent/crm_notes.py)."""
+    info = decision.get("not_interested") or {}
+    if not lead_id or info.get("mode") != "handoff":
+        return
+    from upsell_agent.agent import crm_notes
+    reason = info.get("reason")
+    text = (f"The customer says they're no longer interested. Their reason: {reason!r}." if reason else
+            "The customer says they're no longer interested and gave no reason after being asked.")
+    await crm_notes.write(db, lead_id=lead_id, kind="not_interested", platform=platform, customer_id=customer_id,
+                          key=f"{turn_id}:not_interested",
+                          text=text + " The AI has stopped following up; a person decides whether to close the lead.")
 
 
 async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[str, Any]) -> None:

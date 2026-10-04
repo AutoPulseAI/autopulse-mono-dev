@@ -100,6 +100,9 @@ class PlatformClient(Protocol):
 
     async def mark_lead_dnd(self, dealer_id: str, lead_id: str, reason: str) -> bool: ...
 
+    async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
+                            idempotency_key: str | None = None, customer_id: str | None = None) -> str: ...
+
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
     """The same value route.js's `moment.tz(bookingDate, 'YYYY-MM-DD',
@@ -123,10 +126,17 @@ class StubPlatformClient:
         doc = await messages.find_one({"idempotency_key": message["idempotency_key"]})
         return str(doc["_id"])
 
+    async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
+                            idempotency_key: str | None = None, customer_id: str | None = None) -> str:
+        """What `POST /api/internal/ai/leads/notes` does (MASTER_PLAN_4 stream R, agent/crm_notes.py): a staff-only
+        note on the lead's conversation, never sent to the customer; one per idempotency key."""
+        return await self.record_note(dealer_id, {
+            "lead_id": lead_id, "customer_id": customer_id, "text": text, "kind": kind,
+            "idempotency_key": idempotency_key or f"note:{lead_id}:{clock.now().isoformat()}"})
+
     async def record_note(self, dealer_id: str, note: dict[str, Any]) -> str:
         """MASTER_PLAN_4 F2: a staff-only note on the lead's conversation (a service request and its notes),
-        never sent to the customer. Stub only: the platform's notes route needs a staff login, and there's
-        no internal one for this service yet (stream_A1.md, open items), so the live client has none."""
+        never sent to the customer. Kept for older callers; agent/crm_notes.py uses `add_lead_note`."""
         messages = dealer_scoped_db(dealer_id).collection(DEV_PLATFORM_MESSAGES_COLLECTION)
         await messages.update_one(
             {"idempotency_key": note["idempotency_key"]},
@@ -254,11 +264,14 @@ class LivePlatformClient:
                                 {"dealer_id": dealer_id, "lead_id": lead_id, "reason": reason})
         return bool(body.get("updated"))
 
-    async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None) -> str:
+    async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
+                            idempotency_key: str | None = None, customer_id: str | None = None) -> str:
         """`POST /api/internal/ai/leads/notes`: an internal note on the lead, visible to staff in the CRM
-        (e.g. a service request with the customer's preferred day and time)."""
+        (e.g. a service request with the customer's preferred day and time). The CRM returns the same note for a
+        repeated `idempotency_key` (stream R, agent/crm_notes.py)."""
         body = await self._post("/api/internal/ai/leads/notes",
-                                {"dealer_id": dealer_id, "lead_id": lead_id, "text": text, "kind": kind})
+                                {"dealer_id": dealer_id, "lead_id": lead_id, "text": text, "kind": kind,
+                                 **({"idempotency_key": idempotency_key} if idempotency_key else {})})
         return str(body.get("id") or "")
 
     async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:

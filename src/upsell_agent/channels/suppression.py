@@ -96,10 +96,14 @@ async def suppress_contact(db: DealerScopedDatabase, *, channel: str, address: s
     out["channels_left"] = left
     states = db.collection(AI_LEAD_STATE_COLLECTION)
     # Staff see it, quoted, on the lead.
+    text = notice or (f"{channel} address {address} was marked invalid ({reason}). "
+                      + (f"Still contactable by {', '.join(left)}." if left else "No contactable channel is left."))
     await states.update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
-        "at": clock.now(), "kind": "bad_contact",
-        "text": notice or f"{channel} address {address} was marked invalid ({reason}). "
-                          + (f"Still contactable by {', '.join(left)}." if left else "No contactable channel is left.")}}})
+        "at": clock.now(), "kind": "bad_contact", "text": text}}})
+    # MASTER_PLAN_4 (stream R): the CRM conversation shows it too, once per address.
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="bad_contact", text=text, customer_id=customer_id,
+                          key=f"bad_contact:{lead_id}:{channel}:{address}")
     if left:
         return out
     out["suppressed_lead"] = True

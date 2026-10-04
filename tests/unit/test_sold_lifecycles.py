@@ -397,6 +397,10 @@ async def test_the_sold_pending_router_escalates_records_and_stays_sold_pending(
     info = await _say(created, "I just sent my insurance card to Bob")
     assert info["sold_route"] == "sold_pending_info_received"
     assert (await _state(mongo, created))["staff_notice"]["kind"] == "sold_pending_info"
+    # Stream R: both are written into the CRM conversation as staff notes too, once each.
+    notes = await mongo["dev_platform_messages"].find({"lead_id": created["lead_id"], "is_note": True}).to_list(None)
+    assert sorted(n["kind"] for n in notes) == ["sold_pending_escalation", "sold_pending_info"]
+    assert any("When will my car be ready" in n["text"] for n in notes)
     # Anything else is an AI-written answer under the guardrails: no visit offer, still Sold Pending.
     other = await _say(created, "Does it have heated seats")
     assert other["status"] == "done" and (await _state(mongo, created))["stage"] == "sold_pending"

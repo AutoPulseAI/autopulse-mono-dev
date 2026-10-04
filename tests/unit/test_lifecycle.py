@@ -467,6 +467,9 @@ async def test_not_interested_asks_why_then_a_person_decides(mongo):
     assert state["status"] == "handoff"
     assert "Bought one elsewhere" in state["status_reason"]
     assert state["conversation"]["not_interested"]["reason"].startswith("Bought one elsewhere")
+    # Stream R: the reason is written into the CRM conversation for staff.
+    [note] = await mongo["dev_platform_messages"].find({"lead_id": created["lead_id"], "is_note": True}).to_list(None)
+    assert note["kind"] == "not_interested" and "Bought one elsewhere" in note["text"]
     # Only a person closes such a lead (client, scope Q10): the AI never moves it to Closed - Lost.
     assert state["stage"] == "contact_made_no_next_action"
 
