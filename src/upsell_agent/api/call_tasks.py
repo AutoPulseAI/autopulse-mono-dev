@@ -1,7 +1,9 @@
 """Staff call tasks for the platform (MASTER_PLAN_3 C2; agent/call_tasks.py).
 
   GET  /v1/call-tasks?dealer_id=...&status=open    the tasks staff should call (newest first)
-  POST /v1/call-tasks/{id}/complete                staff called: {dealer_id, outcome, note?, by?}
+  POST /v1/call-tasks/{id}/complete                staff called: {dealer_id, outcome, note?, by?, lead_outcome?,
+                                                   follow_up?, opt_out_scope?} - the lead outcome reaches the AI
+                                                   (agent/call_outcomes.py, PLAN_4 stream H)
   POST /v1/call-tasks/{id}/dismiss                 staff will not call: {dealer_id, note?, by?}
 
 Shared-secret auth like the other /v1 routes. The platform's own screen for these (a task list with
@@ -15,7 +17,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from upsell_agent.agent import call_tasks
+from upsell_agent.agent import call_outcomes, call_tasks
 from upsell_agent.api.auth import require_internal_auth
 from upsell_agent.integrations.mongodb import AI_CALL_TASKS_COLLECTION, dealer_scoped_db
 
@@ -39,6 +41,10 @@ class Resolution(BaseModel):
     outcome: Literal["connected", "no_answer", "voicemail", "wrong_number", "other"] | None = None
     note: str | None = None
     by: str | None = None
+    # PLAN_4 stream H: what the call means for the lead (agent/call_outcomes.py).
+    lead_outcome: call_outcomes.LeadOutcome | None = None
+    follow_up: call_outcomes.FollowUp | None = None
+    opt_out_scope: Literal["all", "voice"] = "all"
 
 
 @router.get("")
@@ -51,11 +57,30 @@ async def list_tasks(dealer_id: str = Query(...), status: str | None = Query("op
 
 
 async def _resolve(task_id: str, body: Resolution, status: str) -> dict[str, Any]:
-    task = await call_tasks.resolve(dealer_scoped_db(body.dealer_id), task_id, status=status,
-                                    outcome=body.outcome, note=body.note, by=body.by)
+    db = dealer_scoped_db(body.dealer_id)
+    task = await call_tasks.resolve(db, task_id, status=status, outcome=body.outcome, note=body.note, by=body.by)
     if task is None:
         raise HTTPException(status_code=404, detail="no call task with that id")
-    return view(task)
+    out = view(task)
+    if status == call_tasks.COMPLETED and body.lead_outcome and not task.get("lead_outcome"):
+        applied = await call_outcomes.apply(db, task, body.lead_outcome, follow_up=body.follow_up,
+                                            opt_out_scope=body.opt_out_scope, by=body.by)
+        await db.collection(AI_CALL_TASKS_COLLECTION).update_one(
+            {"_id": task["_id"]}, {"$set": {"lead_outcome": body.lead_outcome}})
+        out["lead_outcome"] = body.lead_outcome
+        out["applied"] = _plain(applied)
+    return out
+
+
+def _plain(value: Any) -> Any:
+    """JSON-safe copy of what call_outcomes.apply returned (datetimes as ISO, ObjectIds as str)."""
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, datetime):
+        return _iso(value)
+    return value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
 
 
 @router.post("/{task_id}/complete")

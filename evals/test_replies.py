@@ -81,6 +81,10 @@ class SafeReply(_Rules):
         # Visit times offered (MASTER_PLAN_3 B4/B5) come from real availability, as the Guard allows.
         decision = self.result.get("decision") or {}
         allowed += [t.get("display") or "" for t in (decision.get("visit_offer") or {}).get("times") or []]
+        # PLAN_4 stream H: the number on file's last 4 digits and when a person will call/text, as the Guard allows.
+        person = (decision.get("human_contact") or {})
+        allowed += [v for v in (person.get("phone_last4"), (person.get("call") or {}).get("when"),
+                                person.get("text_when")) if v]
         guard = check_draft({"sms_text": reply[:SMS_MAX] or "-", "email_subject": "s", "email_body": "b"},
                             customer_texts=allowed, known_values=[])
         rules = {f"guard: {v}": False for v in guard["violations"]}

@@ -15,6 +15,7 @@ template.
 from datetime import date
 from typing import Any
 
+from upsell_agent.agent import human_contact
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
 from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
 from upsell_agent.agent.llm import compose_agent, run_agent
@@ -85,6 +86,9 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         # MASTER_PLAN_4 F3: only then may the message carry a vehicle's page_url (guardrails/link_guard.py).
         "link_requested": wants_link(state.extraction),
         "reach_out": decision.get("reach_out"),
+        # PLAN_4 stream H: "speak to a person" - offer a call or a text, or say how they'll be contacted.
+        # Never the full phone number: its last 4 digits only (agent/human_contact.for_compose).
+        "human_contact": human_contact.for_compose(decision.get("human_contact")),
         "customer_first_name": first_name(state.customer_name),
         "channel": state.channel,
         "campaign": state.campaign,

@@ -598,6 +598,9 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
         return {"created": False, "reason": f"no call task at stage {stage}"}
     if await db.collection(AI_CALL_TASKS_COLLECTION).find_one({"lead_id": lead_id, "status": call_tasks.OPEN}):
         return {"created": False, "reason": "a call task is already open for staff"}
+    if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": "pending", "requested": True}):
+        return {"created": False, "reason": "the customer's own call request is already waiting for calling hours"}
     phone = await usable_recipient(db, lead, customer, "sms")
     if not phone:
         return {"created": False, "reason": "no valid phone to call"}
@@ -616,14 +619,17 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
             "superseded": superseded.modified_count}
 
 
-async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: str, include_open: bool = False) -> int:
-    """Contact happened: the waiting timer is cancelled (and, with `include_open`, a task already shown to staff)."""
+async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: str, include_open: bool = False,
+                           keep_requested: bool = False) -> int:
+    """Contact happened: the waiting timer is cancelled (and, with `include_open`, a task already shown to staff).
+    `keep_requested` (PLAN_4 stream H): a call the customer asked for is kept - waiting or open."""
+    keep = {"requested": {"$ne": True}} if keep_requested else {}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
-        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}},
+        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}, **keep},
         {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
     count = result.modified_count
     if include_open:
-        count += await call_tasks.cancel_open(db, lead_id, reason)
+        count += await call_tasks.cancel_open(db, lead_id, reason, keep_requested=keep_requested)
     return count
 
 
@@ -1512,6 +1518,10 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
             lifecycle.stage_check(state, KIND_CALL_TASK),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
+        if doc.get("requested"):
+            # PLAN_4 stream H: the customer asked for this call. It waited only for calling hours: their later
+            # messages, the handoff to staff and the AI's mode don't cancel it. The stage and call rules still do.
+            checks = [lifecycle.stage_check(state, KIND_CALL_TASK)]
         failed = [c for c in checks if not c[1]]
         decision = None
         if not failed:
@@ -1542,10 +1552,16 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
         await _log(db, tracer, "call_task_suppressed", {"followup_id": task_id, "reason": decision.reason})
         return "suppressed"
     customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    requested = bool(doc.get("requested"))
+    who = (customer or {}).get("name") or "the customer"
     task = await call_tasks.open_task(
         db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], phone=doc["to"],
-        customer_name=(customer or {}).get("name"), reason="no contact within 60 minutes of the touch",
-        source_turn_id=doc.get("source_turn_id"), followup_id=task_id, created_at=doc["created_at"])
+        customer_name=(customer or {}).get("name"),
+        reason=doc.get("task_reason") or "no contact within 60 minutes of the touch",
+        source_turn_id=doc.get("source_turn_id"), followup_id=task_id, created_at=doc["created_at"],
+        requested=requested,
+        notice=(f"Please call {who} at {doc['to']}: they asked to speak with a person by phone, and it's calling "
+                "hours now." if requested else None))
     await _close(db, doc, "activated", reason="call task opened for staff", task_id=str(task["_id"]),
                  fired_at=clock.now())
     await _log(db, tracer, "call_task_opened", {"followup_id": task_id, "task_id": str(task["_id"]),

@@ -15,6 +15,8 @@ conversation itself, beyond the slot values. Stored on
                   how many times it's been offered, the angle and times each
                   attempt used, whether it's been declined out, and any
                   active booking
+  human_contact   "speak to a human" (PLAN_4 stream H, agent/human_contact.py):
+                  whether our last reply offered a call or a text, and the answer
   shown_vehicles  VINs this reply named (MASTER_PLAN_3 Phase 3 decision F), so
                   the next turn doesn't offer the same vehicle as new. Stored
                   on this lead's own state, so nothing is shared across leads
@@ -113,6 +115,15 @@ class NotInterestedState(BaseModel):
     reason: str | None = None
 
 
+class HumanContactState(BaseModel):
+    """"Speak to a human" (PLAN_4 stream H, agent/human_contact.py): whether our last reply offered a call or a
+    text from a team member, and what they chose. offered: asked, no answer yet; call / text: chosen (the lead
+    is with staff); withdrawn: they said never mind."""
+    choice: Literal["offered", "call", "text", "withdrawn"] = "offered"
+    # The reply (ConversationState.turn) that offered the choice / recorded the answer.
+    offered_turn: int = 0
+
+
 class ShownVehicle(BaseModel):
     vin: str
     turn: int = 0
@@ -130,6 +141,7 @@ class ConversationState(BaseModel):
     visit: VisitState | None = None
     shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
     not_interested: NotInterestedState | None = None
+    human_contact: HumanContactState | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -144,6 +156,13 @@ class ConversationState(BaseModel):
         """Our last reply offered "now or when we open?" (Extract reads the answer against it)."""
         return bool(self.after_hours and self.after_hours.choice in ("offered", "later")
                     and self.after_hours.offered_turn == self.turn and self.turn > 0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def awaiting_human_choice(self) -> bool:
+        """Our last reply asked "a call or a text from a team member?" (agent/human_contact.py reads the answer)."""
+        return bool(self.human_contact and self.human_contact.choice == "offered"
+                    and self.human_contact.offered_turn == self.turn and self.turn > 0)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -211,6 +230,7 @@ def after_turn(
     shown_vins: list[str] | None = None,
     channel: str | None = None,
     not_interested_reason: str | None = None,
+    human_contact: dict | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -259,6 +279,8 @@ def after_turn(
             updated.after_hours = AfterHoursChoice.model_validate(after_hours)
         if visit is not None:
             updated.visit = VisitState.model_validate(visit)
+        if human_contact is not None:
+            updated.human_contact = HumanContactState.model_validate(human_contact)
         if action == "ask_why" and not used_template:
             updated.not_interested = NotInterestedState(asked_turn=updated.turn)
     if not_interested_reason:

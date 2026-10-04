@@ -18,7 +18,7 @@ link unless the customer asked for one (MASTER_PLAN_4 F3)."""
 import re
 from typing import Any
 
-from upsell_agent.agent import service_request
+from upsell_agent.agent import human_contact, service_request
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import wants_link
@@ -148,6 +148,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # The date the customer asked us to get back to them (MASTER_PLAN_3 C3), worked out in code from
         # their own words (slots/dates.py), and its time: confirmed back to them, never invented.
         known += [next_action.get("display"), next_action.get("date"), next_action.get("time")]
+    if person := human_contact.for_compose((state.decision or {}).get("human_contact")):
+        # PLAN_4 stream H: the last 4 digits of the number on file, and when a person will call/text - all real.
+        known += [person.get(k) for k in ("phone_last4", "call_when", "text_when") if person.get(k)]
     inventory = pack.get("inventory") or []
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does

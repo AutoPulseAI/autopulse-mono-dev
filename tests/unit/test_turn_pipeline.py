@@ -162,7 +162,8 @@ async def test_asking_for_a_person_hands_the_lead_off(mongo):
     log = await _turn(created, "Can a real person call me instead?")
     assert log["outcome"] == "handoff"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
-    assert state["status"] == "handoff" and state["status_reason"] == "Customer asked for a person"
+    # PLAN_4 stream H: they said how ("call me"), so the handoff says it too.
+    assert state["status"] == "handoff" and state["status_reason"] == "Customer asked for a person - wants a call"
 
 
 async def test_guard_rejection_gets_one_rewrite(mongo):
