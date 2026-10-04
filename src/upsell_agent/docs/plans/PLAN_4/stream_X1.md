@@ -126,3 +126,14 @@ the stricter reading), and whether the state caps are per subject (we count ever
 Tests: `tests/unit/test_x1_audit.py` (8; all failed before). Open: the CRM lead ingestion (ADF / provider feeds)
 must put the provider's consent object on the lead under one of those keys; today only AutoTrader's comment line
 arrives, so provider leads stay at REVIEW for campaigns (AI follow-ups on an inbound lead use the own-inquiry rule).
+
+## Item 9: the AI never states or infers consent or eligibility (§10)
+
+- `agent/llm.py` COMPOSE_INSTRUCTIONS: first rule now forbids saying or implying the customer consented, opted
+  in, subscribed, agreed, is eligible / qualifies, has an existing relationship, is not on a do-not-call / opt-out
+  list, or may be contacted; who may be contacted is decided in code and never mentioned.
+- `guardrails/consent_claims.py` + `draft_guard.check_draft` check `no_consent_claims`: a draft with such a phrase
+  fails the guard (retry, then the safe fallback / handoff, like any other guard failure). "Reply STOP to opt out"
+  and "qualifies for the CPO warranty" pass.
+
+Tests: `tests/unit/test_x1_consent_claims.py` (17; all failed before).
