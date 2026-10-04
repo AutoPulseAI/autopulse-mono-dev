@@ -49,14 +49,15 @@ class FollowUp(BaseModel):
     notes: str | None = None
 
 
-def next_action_from(follow: FollowUp, *, by: str | None) -> dict[str, Any]:
-    """The same fields decide.plan_next_action gives "call me Friday" (Omnichannel PDF §6), entered by staff."""
+def next_action_from(follow: FollowUp, *, by: str | None, default_time: str | None = None) -> dict[str, Any]:
+    """The same fields decide.plan_next_action gives "call me Friday" (Omnichannel PDF §6), entered by staff.
+    `default_time` (stream X2): the dealer's own default when staff gave no time."""
     from upsell_agent.agent.nodes.decide import NEXT_ACTION_DEFAULT_TIME
 
     day = date.fromisoformat(follow.date)
     call = follow.channel == "voice"
     notes = (follow.notes or "").strip()[:500]
-    return {"date": day.isoformat(), "time": follow.time or NEXT_ACTION_DEFAULT_TIME, "time_given": bool(follow.time),
+    return {"date": day.isoformat(), "time": follow.time or default_time or NEXT_ACTION_DEFAULT_TIME, "time_given": bool(follow.time),
             "approximate": False, "words": f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}",
             "display": f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}",
             # A person phones; the AI's own check-back for a phone follow-up goes by text.
@@ -79,6 +80,7 @@ async def apply(db: DealerScopedDatabase, task: dict[str, Any], outcome: LeadOut
     from upsell_agent.scheduler.followups import (
         KIND_CADENCE_TOUCH,
         plan_cadence_touch,
+        plan_human_followup_check,
         plan_next_action,
     )
 
@@ -99,7 +101,9 @@ async def apply(db: DealerScopedDatabase, task: dict[str, Any], outcome: LeadOut
     if outcome == "specific_followup":
         if follow_up is None:
             return {"lead_outcome": outcome, "applied": False, "reason": "no follow-up date given"}
-        planned = next_action_from(follow_up, by=by)
+        from upsell_agent.integrations.dealer_profile import dealer_profile
+        profile = await dealer_profile(db.dealer_id)
+        planned = next_action_from(follow_up, by=by, default_time=profile.followup_default_time)
         out["stage_change"] = await lifecycle.apply(db, lead_id, [lifecycle.Event(
             "customer_replied", source=SOURCE, reason=f"{who} agreed a follow-up on {planned['display']} on a call",
             detail={"next_action": planned})], lead=lead, customer_id=customer_id)
@@ -110,7 +114,10 @@ async def apply(db: DealerScopedDatabase, task: dict[str, Any], outcome: LeadOut
                 db, lead_id=lead_id, customer_id=customer_id or "", channel=planned["channel"], turn_id=turn_id,
                 next_action=planned, lead=lead, customer=customer)
         else:
-            out["scheduled"] = {"created": False, "reason": "a person owns this follow-up: nothing for the AI to send"}
+            # Stream X2 (Omnichannel PDF §6 "No response 24h -> No Contact Made -> Short-Term"): the AI sends nothing
+            # for a person's follow-up, but the 24-hour rule still applies - counted from the agreed time.
+            out["scheduled"] = await plan_human_followup_check(db, lead_id=lead_id, customer_id=customer_id or "",
+                                                               next_action=planned, tz=profile.tz)
         return out
 
     if outcome == "contact_no_action":

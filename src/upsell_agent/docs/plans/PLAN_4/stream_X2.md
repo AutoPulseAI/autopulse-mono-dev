@@ -56,3 +56,9 @@ the fix.
   before it went out) no longer says "no longer available": it leads with similar options and a next step, and
   claims no stock it has not checked. Test: `test_the_sold_vehicle_fallback_leads_with_the_next_step_*`. (The guard
   still allows a denial paired with an alternative in AI-written replies - decision D, unchanged.)
+- **9. Minor.** Touch 1 names "{year} {model}" when the year is known (`decide._vehicle_of_interest`). A dated
+  follow-up a *person* owns now gets the §6 24-hour rule too (`followups.plan_human_followup_check`: a
+  `next_action_check` due 24h after the agreed time, replies counted from that time) -> No Contact Made -> cadence.
+  Per-dealer default follow-up time: `dealer_account_information.ai_followup_default_time` (HH:MM, default 10:00),
+  used by the AI's dated next step and by staff call outcomes (no CRM settings field for it yet - open item).
+  Tests: `test_x2_workflow.py::test_touch_1_names_the_year_*`, `test_call_outcomes.py` (two X2 tests).

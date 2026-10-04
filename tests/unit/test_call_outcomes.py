@@ -156,3 +156,35 @@ async def test_a_handed_off_lead_goes_back_to_the_ai_when_it_owns_the_next_step(
     [task] = await mongo[AI_CALL_TASKS_COLLECTION].find({"lead_id": created["lead_id"], "status": "open"}).to_list(None)
     await _done(str(task["_id"]), lead_outcome="contact_no_action")
     assert (await _state(mongo, created))["status"] == "active"
+
+
+# --- PLAN_4 stream X2 item 9 ---------------------------------------------------------------------------------
+
+async def test_a_follow_up_a_person_owns_still_times_out_to_no_contact_made_after_24_hours(mongo):
+    created, task_id = await _open_task(mongo)
+    await _done(task_id, lead_outcome="specific_followup",
+                follow_up={"date": "2026-09-24", "channel": "voice", "owner": "human"})
+    assert (await _state(mongo, created))["stage"] == "contact_made_specific_followup"
+    pending = {"lead_id": created["lead_id"], "status": "pending"}
+    [check] = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find({**pending, "kind": "next_action_check"}).to_list(None)
+    assert check["due_at"].replace(tzinfo=UTC) == datetime(2026, 9, 25, 14, 0, tzinfo=UTC)  # 10:00 NY + 24h
+    # The AI sends nothing for a person's step.
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({**pending, "kind": "next_action"})
+    set_clock(START + timedelta(days=3, hours=1))
+    await followups.fire_due(_deps())
+    state = await _state(mongo, created)
+    assert state["stage"] == "no_contact_made" and state["cadence"]["reentered"] is True
+
+
+async def test_the_dealers_own_default_follow_up_time_is_used_when_none_was_given(mongo):
+    from bson import ObjectId
+
+    from upsell_agent.integrations import dealer_profile as dp
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
+    await mongo[PLATFORM_USERS_COLLECTION].update_one(
+        {"_id": ObjectId(DEALER)}, {"$set": {"dealer_account_information.ai_followup_default_time": "16:00"}})
+    dp.clear_cache()
+    created, task_id = await _open_task(mongo)
+    await _done(task_id, lead_outcome="specific_followup", follow_up={"date": "2026-09-25", "owner": "ai"})
+    assert (await _state(mongo, created))["next_action"]["time"] == "16:00"
+    assert dp.profile_from_record(DEALER, {}).followup_default_time == "10:00"  # unset: 10:00, as before

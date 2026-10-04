@@ -423,7 +423,7 @@ def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: Deale
     if resolved is None or resolved.day <= local_now.date():
         return None
     given = isinstance(resolved.value, datetime)
-    at = resolved.value.strftime("%H:%M") if given else NEXT_ACTION_DEFAULT_TIME
+    at = resolved.value.strftime("%H:%M") if given else (dealer.followup_default_time or NEXT_ACTION_DEFAULT_TIME)
     day = resolved.day
     call = bool(_CALL_ME.search(text or ""))
     return {"date": day.isoformat(), "time": at, "time_given": given, "approximate": resolved.approximate,
@@ -450,7 +450,11 @@ def _trade_in_known(profile: Profile) -> bool:
 def _vehicle_of_interest(profile: Profile) -> str | None:
     values = profile.values(include_stale=True)
     model = values.get("interest.model")
-    return str(model) if model else None
+    if not model:
+        return None
+    # Stream X2: "{vehicle_year} {vehicle_model}" (Omnichannel PDF §3) when the year is known.
+    year = values.get("interest.year")
+    return f"{year} {model}" if year and str(year) not in str(model) else str(model)
 
 
 def _service_vehicle(profile: Profile) -> str | None:

@@ -285,3 +285,21 @@ def test_the_sold_vehicle_fallback_leads_with_the_next_step_never_not_available(
     assert not any(re.search(p, text, re.IGNORECASE) for p in _UNAVAILABLE_PATTERNS)
     assert not re.search(r"\b(no longer|sold|unavailable|not available|gone)\b", text, re.IGNORECASE)
     assert "options" in text and text.rstrip().endswith("?")  # alternatives, then the next step
+
+
+
+# --- Item 9: Touch 1's vehicle year; a person's follow-up times out too; the dealer's default follow-up time -----
+
+def test_touch_1_names_the_year_and_model_when_the_year_is_known():
+    from upsell_agent.agent.nodes import decide
+
+    class _Profile:
+        def __init__(self, values):
+            self._values = values
+
+        def values(self, include_stale=False):
+            return self._values
+
+    assert decide._vehicle_of_interest(_Profile({"interest.model": "RAV4", "interest.year": 2025})) == "2025 RAV4"
+    assert decide._vehicle_of_interest(_Profile({"interest.model": "RAV4"})) == "RAV4"
+    assert decide._vehicle_of_interest(_Profile({})) is None

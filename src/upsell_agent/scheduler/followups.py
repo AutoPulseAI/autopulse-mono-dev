@@ -450,6 +450,29 @@ async def plan_next_action(
             "timezone": profile.timezone, "reason": f"Next step due {local}."}
 
 
+async def plan_human_followup_check(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
+                                    next_action: dict[str, Any], tz) -> dict[str, Any]:
+    """Stream X2: a dated next step a person owns (agreed on a call). The AI sends nothing, but the 24-hour rule of
+    Omnichannel PDF §6 still applies: no reply from the customer within 24 hours of the agreed time -> No Contact
+    Made, back into the Short-Term cadence. The check counts replies from the agreed time (`reply_since`)."""
+    now = clock.now()
+    hour, minute = (int(x) for x in str(next_action.get("time") or "10:00").split(":")[:2])
+    at = max(datetime.combine(date.fromisoformat(next_action["date"]), time(hour, minute), tzinfo=tz), now)
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many(
+        {"lead_id": lead_id, "status": "pending", "kind": {"$in": [KIND_NEXT_ACTION, KIND_NEXT_ACTION_CHECK]}},
+        {"$set": {"status": "superseded", "reason": "a newer next step", "closed_at": now}})
+    inserted = await followups.insert_one({
+        "kind": KIND_NEXT_ACTION_CHECK, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": None,
+        "from_channel": "voice", "to_channel": "voice", "text": None, "subject": None, "status": "pending",
+        "due_at": at + NEXT_ACTION_REPLY_WINDOW, "created_at": now, "reply_since": at, "claim_count": 0,
+        "next_action": next_action, "owner": "human",
+        "reason": "a person owns this follow-up: no reply within 24 hours of it -> No Contact Made"})
+    return {"created": True, "followup_id": str(inserted.inserted_id),
+            "due_at": (at + NEXT_ACTION_REPLY_WINDOW).isoformat(),
+            "reason": "A person owns this follow-up; the 24-hour no-reply check is planned."}
+
+
 async def _permitted_channel(*, dealer_id: str, customer_id: str, lead_id: str, channel: str, at: datetime | None,
                              lead: dict | None = None, customer: dict | None = None, purpose: str = "marketing"):
     """The send check for a cadence touch, which goes out on text AND email together (MASTER_PLAN_3 C4,
@@ -1302,7 +1325,8 @@ async def _fire_next_action_check_locked(db: DealerScopedDatabase, doc: dict, de
     await tracer.start({"followup_id": check_id})
     async with tracer.node("next_action_check", {"followup_id": check_id, "due_at": doc["due_at"]}) as span:
         replied = await db.collection(AI_MESSAGES_COLLECTION).find(
-            {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gt": doc["created_at"]}}
+            {"lead_id": doc["lead_id"], "direction": "inbound",
+             "created_at": {"$gt": doc.get("reply_since") or doc["created_at"]}}  # stream X2: a person's step
         ).to_list(1)
         if replied:
             span.output = {"decision": "nothing to do", "replied": True}
