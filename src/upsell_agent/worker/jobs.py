@@ -162,7 +162,9 @@ async def _queue_busy_retry(ctx: dict[str, Any]) -> str | None:
         return None
     delay = followups.BUSY_RETRY_AFTER.total_seconds() + 1
     at = int(time.time() + delay)
-    key = f"fire_due_followups:busy-retry:{at // max(1, int(delay))}"
+    # One run per second at most. Never a wider window: a follow-up put back just after an earlier retry was
+    # queued falls due after that retry runs, and a shared key would leave it to the next minute's cron.
+    key = f"fire_due_followups:busy-retry:{at}"
     await worker.queue.enqueue("fire_due_followups", key=key, scheduled=at, timeout=300)
     return key
 

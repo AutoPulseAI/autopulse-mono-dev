@@ -16,6 +16,7 @@ steps:
   - expect_outbox: {lead: t, channel: sms, count: 3, contains: "Sorry for the wait"}
   - advance_clock: {hours: 2.1}
   - reply: {lead: t, text: "Anyone there?"}
-  - wait_turns: {lead: t, count: 4, timeout_s: 20}
+  # 5: the Days 1-7 call task (stream T) logged a turn of its own when it fell due at 12:00.
+  - wait_turns: {lead: t, count: 5, timeout_s: 20}
   - expect_turn: {lead: t, trigger: inbound_held, outcome: holding_reply}
   - expect_outbox: {lead: t, channel: sms, count: 4, contains: "passed this to the team"}
