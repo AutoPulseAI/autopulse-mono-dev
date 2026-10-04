@@ -271,3 +271,21 @@ def test_two_different_vehicles_of_the_same_year_and_model_are_not_a_repeat():
     draft = {"sms_text": "I have a 2025 Toyota RAV4 XLE Hybrid in white and a 2025 Toyota RAV4 LE in silver.",
              "email_body": ""}
     assert repeated_vehicle_name(draft, inv) == []
+
+
+def test_spanish_day_and_time_words_reach_the_booking_code():
+    from upsell_agent.agent.language import dates_to_english
+
+    assert dates_to_english("¿Puedo ir el sábado en la mañana?") == "¿Puedo ir el Saturday morning?"
+    assert dates_to_english("A las 11") == "at 11"
+    assert dates_to_english("Mañana a las 3:30") == "tomorrow at 3:30"
+    assert booking_tool.preferred_day(dates_to_english("¿Puedo ir el sábado en la mañana?"), _dealer(),
+                                      TUESDAY_NOON).part_words
+
+
+def test_spanish_booking_words_need_a_real_booking():
+    from upsell_agent.agent.nodes.guard import invalid_booking_wording
+
+    draft = {"sms_text": "Perfecto, nos veremos a las 11:00.", "email_body": ""}
+    assert invalid_booking_wording({"visit": {}}, draft)
+    assert not invalid_booking_wording({"visit": {"status": "confirmed"}}, draft)

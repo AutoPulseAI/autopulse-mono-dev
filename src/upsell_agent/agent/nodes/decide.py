@@ -28,7 +28,7 @@ from upsell_agent.agent import cadence, human_contact, lead_bucket, service_requ
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
-from upsell_agent.agent.language import customer_language
+from upsell_agent.agent.language import SPANISH, customer_language, dates_to_english
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.sold_pending import reply_hold
@@ -598,8 +598,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     backstop = (bool(needed_by) and not conversation.awaiting_contact_choice and not visit_wants_visit(extraction)
                 and not conversation.awaiting_visit_pick and _within_48h(str(needed_by), now, dealer.tz))
     urgency_mode, urgency_reason = urgency(extraction, backstop=backstop)
+    # Stream Q: a customer writing in Spanish (agent/language.py) is answered in Spanish, and their day and time
+    # words are read by the same booking code as anyone's ("el sábado en la mañana" -> "Saturday morning").
+    reply_language = customer_language(
+        text, [m.get("text") or "" for m in pack.get("working_memory", []) if m.get("direction") == "inbound"])
+    booking_text = dates_to_english(text) if reply_language == SPANISH else text
     visit_ctx, visit_plan = await _visit_and_booking(
-        ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=text, hold=hold,
+        ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
     if visit_ctx.get("day_request"):
         # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
@@ -690,8 +695,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
     decision["bucket"] = lead_bucket.for_compose(ctx.lead_state, profile.values(include_stale=True))
     # Stream Q: a customer writing in Spanish is answered in Spanish (agent/language.py).
-    decision["reply_language"] = customer_language(
-        text, [m.get("text") or "" for m in pack.get("working_memory", []) if m.get("direction") == "inbound"])
+    decision["reply_language"] = reply_language
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]

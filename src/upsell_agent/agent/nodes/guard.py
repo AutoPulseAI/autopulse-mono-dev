@@ -121,8 +121,11 @@ def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[st
             (("SMS", "sms_text"), ("email", "email_body")) if not str(draft.get(key) or "").lstrip().startswith(intro)]
 
 
-_CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then))\b", re.IGNORECASE)
-_REQUESTED_WORDING = re.compile(r"\brequested\b", re.IGNORECASE)
+# Spanish too (stream Q, a reply in the customer's language): "nos vemos/veremos", "reservad@", "confirmad@",
+# "agendad@" claim a booking; "solicitad@" is the requested wording.
+_CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then)|nos (?:vemos|veremos)|reservad[oa]s?|"
+                                r"confirmad[oa]s?|agendad[oa]s?)\b", re.IGNORECASE)
+_REQUESTED_WORDING = re.compile(r"\b(requested|solicitad[oa]s?)\b", re.IGNORECASE)
 
 
 def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:

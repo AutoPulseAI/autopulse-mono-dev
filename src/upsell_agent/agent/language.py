@@ -53,3 +53,27 @@ def customer_language(latest: str, earlier: Iterable[str] = ()) -> str | None:
         if found:
             return found if found != "English" else None
     return None
+
+
+# Spanish day and time words, put into the English the dealership's date and booking code reads
+# (slots/dates.py, tools/booking_tool.py). Only for a customer writing in Spanish: "¿Puedo ir el sábado en la
+# mañana?" -> "... Saturday morning", "A las 11" -> "at 11". "mañana" alone is tomorrow; "en/por la mañana" is
+# the morning.
+_ES_DATE_WORDS = [
+    (r"\b(?:en|por) la mañana\b", "morning"), (r"\b(?:en|por) la tarde\b", "afternoon"),
+    (r"\b(?:en|por) la noche\b", "evening"), (r"\bpasado mañana\b", "the day after tomorrow"),
+    (r"\bmañana\b", "tomorrow"), (r"\bhoy\b", "today"), (r"\besta semana\b", "this week"),
+    (r"\bla próxima semana\b|\bla semana que viene\b", "next week"),
+    (r"\blunes\b", "Monday"), (r"\bmartes\b", "Tuesday"), (r"\bmi[ée]rcoles\b", "Wednesday"),
+    (r"\bjueves\b", "Thursday"), (r"\bviernes\b", "Friday"), (r"\bs[áa]bado\b", "Saturday"),
+    (r"\bdomingo\b", "Sunday"), (r"\b(?:a las|a la)\s+(\d{1,2}(?::\d{2})?)\b", r"at \1"),
+    (r"\bmismo horario\b|\bmisma hora\b", "same time"),
+]
+
+
+def dates_to_english(text: str) -> str:
+    """A Spanish message with its day and time words in English, for the booking code; other words unchanged."""
+    out = text or ""
+    for pattern, english in _ES_DATE_WORDS:
+        out = re.sub(pattern, english, out, flags=re.IGNORECASE)
+    return out
