@@ -228,21 +228,30 @@ def render_service_outreach(kind: str, facts: dict[str, Any], *, first_name: str
 
 # --- Reading the customer's answers ---------------------------------------------------------------------------------
 
-_YES = re.compile(r"^\s*(y|yes|yep|yeah|yup|still do|i do|sure|of course|absolutely|still have (?:it|her|him))\b",
-                  re.IGNORECASE)
-_NO = re.compile(r"^\s*(n|no|nope|nah|not anymore|no longer|i don'?t|sold it|traded it|got rid of it|"
-                 r"we sold|i sold|we traded|i traded)\b|\b(sold it|traded it in|no longer (?:have|own)|"
-                 r"don'?t have it|totaled|totalled)\b", re.IGNORECASE)
+# Clear statements that the vehicle is gone: these decide on their own.
+_GONE = re.compile(r"\b(sold it|sold (?:her|him)|traded it(?: in)?|traded (?:her|him)|no longer (?:have|own)|"
+                   r"don'?t (?:have|own) it|do not (?:have|own) it|not anymore|got rid of it|totaled|totalled|"
+                   r"gave it (?:away|to)|it was (?:stolen|repossessed))\b", re.IGNORECASE)
+# Clear statements that the customer still has it. They beat a leading "no": "No problem, yes I still have it!",
+# "No, I still have it" and "Nope, still driving it daily" all mean YES.
+_STILL = re.compile(r"\b(still (?:have|own|drive|driving|got|using)|i do|yes|yep|yeah|yup|of course|absolutely)\b",
+                    re.IGNORECASE)
+# A bare leading no. "No problem" / "no worries" are pleasantries, not answers.
+_LEADING_NO = re.compile(r"^\s*(?!no (?:problem|worries)\b)(n|no|nope|nah)\b", re.IGNORECASE)
 
 
 def classify_ownership_answer(text: str) -> str:
     """"yes" / "no" / "other" to "Do you still have your [Model]?" (§8). Anything that isn't clearly one or the
-    other changes nothing ("Do not change ownership ... solely because the customer did not respond")."""
+    other changes nothing ("Do not change ownership ... solely because the customer did not respond"). A NO
+    closes the opportunity for good, so it needs either a clear "it's gone" statement or a bare "no" with no
+    sign that the customer still has the vehicle."""
     body = (text or "").strip()
-    if _NO.search(body):
+    if _GONE.search(body):
         return "no"
-    if _YES.search(body):
+    if _STILL.search(body) or re.fullmatch(r"y[\s.!]*", body, re.IGNORECASE):  # "Y": the message asks YES or NO
         return "yes"
+    if _LEADING_NO.search(body):
+        return "no"
     return "other"
 
 

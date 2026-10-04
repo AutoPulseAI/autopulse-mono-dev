@@ -624,3 +624,17 @@ async def _check_endpoints(client, created):
     assert view["opportunities"][0]["opportunity_status"] == "SOLD_PENDING"
     assert client.get("/v1/customers/66f0000000000000000000ff/ownership", params={"dealer_id": DEALER},
                       headers=headers).status_code == 404
+
+
+def test_anniversary_answers_starting_with_no_but_meaning_yes_are_yes():
+    # Audit, 4 Oct 2026: these closed the opportunity for good as NO LONGER OWNS.
+    from upsell_agent.agent.sold_delivered import classify_ownership_answer as classify
+
+    for text in ("No problem, yes I still have it!", "No, I still have it", "Nope, still driving it daily",
+                 "yes", "Yep", "I do", "Still have it", "of course"):
+        assert classify(text) == "yes", text
+    for text in ("No", "nope", "Not anymore", "Sold it last year", "No longer have it", "We traded it in",
+                 "No, I sold it", "It was totaled", "I don't have it anymore"):
+        assert classify(text) == "no", text
+    for text in ("No problem", "Thanks!", "Who is this?", "Happy anniversary to you too"):
+        assert classify(text) == "other", text
