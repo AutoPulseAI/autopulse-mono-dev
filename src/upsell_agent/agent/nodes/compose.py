@@ -158,9 +158,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
 
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
-    # Not for a reply in another language: the model translates the opening (stream Q, agent/language.py).
-    placed = [] if (state.decision or {}).get("reply_language") else place_touch1_intro(
-        draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
+    placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]

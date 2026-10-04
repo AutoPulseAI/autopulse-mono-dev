@@ -142,6 +142,15 @@ async def _logs(created: dict[str, str]) -> list[dict]:
         {"lead_id": created["lead_id"]}).sort("created_at", 1).to_list(None)
 
 
+def _captured(validation: dict[str, Any]) -> list[str]:
+    from upsell_agent.slots.display import display_value
+    from upsell_agent.slots.schema import SCHEMA
+
+    today = clock.now().astimezone(EVAL_NOW.tzinfo).date()
+    return [display_value(SCHEMA[v["path"]], v["value"], today)
+            for v in [*validation.get("accepted", []), *validation.get("needs_confirming", [])] if v.get("path") in SCHEMA]
+
+
 def _turn_view(log: dict) -> dict[str, Any]:
     nodes = {n["node"]: n for n in log["nodes"] if n.get("status") == "done"}
     guards = [n for n in log["nodes"] if n["node"] == "guard" and n.get("status") == "done"]
@@ -158,6 +167,8 @@ def _turn_view(log: dict) -> dict[str, Any]:
         "guard_violations": [v for g in guards for v in g["output"].get("violations", [])],
         "draft": (nodes.get("compose") or {}).get("output"),
         "decision": (nodes.get("decide") or {}).get("output"),
+        # What Validate saved from this message, in plain words (the Guard allows Compose to repeat it back).
+        "just_captured": _captured((nodes.get("validate") or {}).get("output") or {}),
         "inventory": (nodes.get("search_stock") or {}).get("output"),
         "questions": ((nodes.get("extract") or {}).get("output") or {}).get("questions", []),
         "cost_usd": float(summary.get("cost_usd") or 0), "ms": log.get("ms"),

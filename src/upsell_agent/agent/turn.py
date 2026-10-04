@@ -825,11 +825,16 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
             fields["last_outbound_at"] = clock.now()
             if trigger == "lead_created" and sent.latency_ms is not None:
                 fields["first_reply_ms"] = sent.latency_ms
+    if "reply_language" in decision:
+        # Stream Q: the customer's language, for staff (agent/language.py); None means English.
+        fields["customer_language"] = decision.get("reply_language") or "English"
     if decision.get("required_total") is not None:
         fields["required"] = {"filled": decision.get("required_filled"), "total": decision.get("required_total")}
     if _hands_off(result):
         # handoff_id ties this handoff to its staff check (scheduler/followups.py).
-        fields.update(status="handoff", status_reason=_handoff_reason(result), status_at=clock.now(),
+        reason = _handoff_reason(result) + (f" (the customer writes in {decision['reply_language']})"
+                                            if decision.get("reply_language") else "")
+        fields.update(status="handoff", status_reason=reason, status_at=clock.now(),
                       handoff_id=turn_id, staff_alert=None)
         if sent is not None and sent.status == "sent":
             # The handoff reply counts as the first "passed to the team" notice.

@@ -434,8 +434,10 @@ Rules:
   say so briefly and offer the times in visit_offer, on `offered_day`. Never say the team will confirm the
   day or that you can't help with times: the times given are real and open.
 - reply_language (only when given, e.g. "Spanish"): the customer writes in that language. Write sms_text,
-  email_subject and email_body entirely in it, with the same rules and the same care for grammar. Fixed wording
-  (touch1.intro, touch1.ending, touch.fixed_text) is translated faithfully, keeping its meaning and order.
+  email_subject and email_body in it, with the same rules and the same care for grammar. The client requires
+  touch1.intro word for word, so it stays exactly as given (in English) at the start; everything after it is
+  in reply_language. Other fixed wording (touch1.ending, the after-hours question) is translated faithfully,
+  keeping its meaning and order; touch.fixed_text ("<name>?") stays as it is.
 - visit.time_not_open (only when given, e.g. "Wednesday at 6:00 PM"): the customer asked for that time, but it
   isn't open. Say so briefly and offer visit_offer's times, the nearest open ones ("6:00 PM Wednesday is taken,
   but I have 4:00 PM or 5:00 PM. Would either work?"). Never hand them off or say the team will find a time.

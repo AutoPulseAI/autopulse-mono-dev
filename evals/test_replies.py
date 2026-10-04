@@ -81,6 +81,8 @@ class SafeReply(_Rules):
         # Visit times offered (MASTER_PLAN_3 B4/B5) come from real availability, as the Guard allows.
         decision = self.result.get("decision") or {}
         allowed += [t.get("display") or "" for t in (decision.get("visit_offer") or {}).get("times") or []]
+        # Stream Q: a value just saved from this message, repeated back in plain words, as the Guard allows.
+        allowed += [d for d in self.result.get("just_captured") or [] if d]
         # PLAN_4 stream H: the number on file's last 4 digits and when a person will call/text, as the Guard allows.
         person = (decision.get("human_contact") or {})
         allowed += [v for v in (person.get("phone_last4"), (person.get("call") or {}).get("when"),

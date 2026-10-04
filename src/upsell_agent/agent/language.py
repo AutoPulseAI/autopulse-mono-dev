@@ -18,7 +18,7 @@ hola gracias quiero tengo tiene tienen puedo puede pueden cuanto cuánto cuánta
 cuando cuándo que qué carro coche camioneta usted ustedes hablan habla español espanol millas debo todavía
 todavia también tambien mañana manana sábado sabado domingo lunes martes miércoles miercoles jueves viernes
 buenas buenos dias días tardes noches por favor necesito busco estoy está esta están estan mi mis su sus muy
-bien sí si nada vender comprar precio pago dinero quisiera favor ayuda una uno el la los las del para con
+bien sí si nada vender comprar precio pago dinero quisiera favor ayuda un una uno unos el la los las del para con pero
 """))
 _ENGLISH_WORDS = frozenset(re.findall(r"\S+", """
 the and you your have has want need what when where how much is are can could would will my it this that with

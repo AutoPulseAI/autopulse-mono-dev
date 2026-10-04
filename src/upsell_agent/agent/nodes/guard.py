@@ -95,6 +95,10 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
     choice; seen live (1 Oct) dropping it for a plain closing line instead."""
     if ((decision.get("after_hours") or {}).get("mode")) != "offer":
         return []
+    if decision.get("reply_language"):
+        # Stream Q: translated, so its English words can't be checked; it is still a question.
+        return [f"the {name} doesn't offer the after-hours choice" for name, key in
+                (("SMS", "sms_text"), ("email", "email_body")) if "?" not in str(draft.get(key) or "")]
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if "which would you like" not in str(draft.get(key) or "").lower()]
@@ -111,7 +115,7 @@ def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[st
     """Touch 1 opens with the client's required intro, word for word (MASTER_PLAN_3 C4). Stream G saw
     gpt-5-mini put a "Hello Maria," salutation above it in the email, greeting the customer twice."""
     intro = ((decision.get("touch1") or {}).get("intro") or "").strip()
-    if not intro or decision.get("reply_language"):  # stream Q: a reply in Spanish carries it translated
+    if not intro:
         return []
     return [f"the {name} doesn't start with Touch 1's required opening" for name, key in
             (("SMS", "sms_text"), ("email", "email_body")) if not str(draft.get(key) or "").lstrip().startswith(intro)]
@@ -259,7 +263,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
             result["passed"] = False
             result["violations"] += problems
     # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
-    bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}))
+    bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}),
+                                      english=not (state.decision or {}).get("reply_language"))
     result["checks"]["grammar"] = not bad_grammar
     if bad_grammar:
         result["passed"] = False

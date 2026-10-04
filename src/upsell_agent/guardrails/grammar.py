@@ -17,6 +17,10 @@ Rules:
   clearly doesn't ("an car", "an used"), with short known lists where the spelling misleads (a used car,
   an hour, an SUV are all right; acronyms and capitalized words are never judged).
 
+`english=False` (PLAN_4 stream Q: a reply in the customer's own language, agent/language.py) drops the
+English-only rules - "a"/"an" (Spanish "a" is a preposition: "a ella" is right) and the lone "i" - and keeps
+the rest, which hold for Spanish too (¿ and ¡ open a sentence and are never judged).
+
 The client's fixed wording (Touch 1's opening and closing, Touch 2's "{FirstName}?") is passed in `exempt`
 and never checked: it is sent exactly as the client wrote it.
 """
@@ -109,7 +113,7 @@ def _segments(text: str, exempt: list[str]) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def _segment_problems(seg: str) -> list[str]:
+def _segment_problems(seg: str, english: bool = True) -> list[str]:
     problems = []
     for m in _SENTENCE_START.finditer(seg):
         word = m.group(1)
@@ -126,18 +130,21 @@ def _segment_problems(seg: str) -> list[str]:
     problems += [f'a space before "{m.group(1)}"' for m in _SPACE_BEFORE.finditer(seg)]
     problems += [f'no space after "{m.group(0)}"' for m in _NO_SPACE_AFTER_END.finditer(seg)]
     problems += [f'no space after the comma in "{m.group(0)}"' for m in _NO_SPACE_AFTER_COMMA.finditer(seg)]
+    if not english:
+        return problems
     if _LONE_I.search(seg):
         problems.append('"i" instead of "I"')
     return problems + _articles(seg)
 
 
-def grammar_problems(text: str, *, exempt: Iterable[str] = (), needs_final_punctuation: bool = False) -> list[str]:
+def grammar_problems(text: str, *, exempt: Iterable[str] = (), needs_final_punctuation: bool = False,
+                     english: bool = True) -> list[str]:
     """Mechanical grammar mistakes in `text`, each described for the rewrite (empty when it's clean)."""
     if not text or not text.strip():
         return []
     exempt = [p.strip() for p in exempt if p and p.strip()]
     segments = [_mask(s) for s in _segments(text, exempt)]
-    problems = [p for seg in segments for p in _segment_problems(seg)]
+    problems = [p for seg in segments for p in _segment_problems(seg, english)]
     problems += _unbalanced("\n".join(segments))
     if needs_final_punctuation:
         tail = text.rstrip()
@@ -147,14 +154,15 @@ def grammar_problems(text: str, *, exempt: Iterable[str] = (), needs_final_punct
     return list(dict.fromkeys(problems))
 
 
-def check_draft_grammar(draft: dict | None, *, exempt: Iterable[str] = ()) -> list[str]:
+def check_draft_grammar(draft: dict | None, *, exempt: Iterable[str] = (), english: bool = True) -> list[str]:
     """The guard's grammar rule, on the SMS and the email body (the subject is a heading, not a sentence)."""
     if not draft:
         return []
     exempt = list(exempt)
     violations = []
     for name, key, final in (("SMS", "sms_text", True), ("email", "email_body", False)):
-        problems = grammar_problems(str(draft.get(key) or ""), exempt=exempt, needs_final_punctuation=final)
+        problems = grammar_problems(str(draft.get(key) or ""), exempt=exempt, needs_final_punctuation=final,
+                                    english=english)
         if problems:
             violations.append(f"grammar in the {name}: " + "; ".join(problems))
     return violations
