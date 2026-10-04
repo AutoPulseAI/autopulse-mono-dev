@@ -68,6 +68,45 @@ export function capacitySettings(dealer, appointmentType = 'sales') {
   };
 }
 
+// The AI Settings page's booking capacity (agentic-upsell MASTER_PLAN_4 stream R): what is in force for each
+// type, in the shape stored on the dealer (dealer_account_information.booking_capacity), plus the defaults.
+export const CAPACITY_LIMITS = Object.freeze({ maxPerSlot: [1, 50], slotMinutes: [15, 240] });
+
+export function bookingCapacityView(dealer) {
+  const view = {};
+  for (const type of APPOINTMENT_TYPES) {
+    const { maxPerSlot, slotMinutes } = capacitySettings(dealer, type);
+    view[type] = { max_per_slot: maxPerSlot, slot_minutes: slotMinutes,
+      default_max_per_slot: DEFAULT_CAPACITY[type].maxPerSlot, default_slot_minutes: DEFAULT_CAPACITY[type].slotMinutes };
+  }
+  return view;
+}
+
+// {errors, set}: the dotted $set for a PUT {sales?: {max_per_slot?, slot_minutes?}, service?: {...}}.
+// Whole numbers only: 1-50 bookings per slot, 15-240 minutes per slot.
+export function bookingCapacityUpdate(input) {
+  const errors = [];
+  const set = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: ['booking_capacity must be an object'], set };
+  for (const [type, values] of Object.entries(input)) {
+    if (!APPOINTMENT_TYPES.includes(type)) { errors.push(`unknown appointment type "${type}"`); continue; }
+    if (!values || typeof values !== 'object') { errors.push(`${type} must be an object`); continue; }
+    const fields = [['max_per_slot', CAPACITY_LIMITS.maxPerSlot, 'bookings per slot'],
+      ['slot_minutes', CAPACITY_LIMITS.slotMinutes, 'slot length in minutes']];
+    for (const [field, [min, max], label] of fields) {
+      if (values[field] === undefined) continue;
+      const n = Number(values[field]);
+      if (!Number.isInteger(n) || n < min || n > max) {
+        errors.push(`${type === 'sales' ? 'Sales' : 'Service'} ${label} must be a whole number from ${min} to ${max}`);
+      } else {
+        set[`dealer_account_information.booking_capacity.${type}.${field}`] = n;
+      }
+    }
+  }
+  if (!errors.length && !Object.keys(set).length) errors.push('booking_capacity has nothing to change');
+  return { errors, set };
+}
+
 // Only bookings of the same type share a slot's count. Bookings saved before types existed count as sales.
 function sameType(booking, type) {
   return normalizeAppointmentType(booking?.appointment_type) === type;

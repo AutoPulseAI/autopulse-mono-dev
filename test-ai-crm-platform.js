@@ -20,11 +20,14 @@ import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayl
 import { addAiLeadNote, markLeadDndFromAi, validateDndPayload, validateNotePayload } from './app/lib/ai/aiDnd.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
-  appointmentTypeFor, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
+  appointmentTypeFor, bookingCapacityUpdate, bookingCapacityView, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
   openingHours, slotsForDay, upsertLeadBooking,
 } from './app/lib/bookingService.js';
 import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib/providerStub.js';
 import { aiOwnsCustomerMessages } from './app/lib/appointmentReminderService.js';
+import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFailed } from './app/lib/bookingConflict.js';
+import { assignedOnlyScope, filterRowsToAssigned } from './app/lib/ai/assignedScope.js';
+import { hasAiPhotos, messagePhotoUrls } from './app/lib/ai/messagePhotos.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -360,6 +363,17 @@ maybe('the AI can leave an internal note on a lead of its dealer', async () => {
     { Lead, Email })).found, false);
 });
 
+maybe('an AI note with an idempotency key is written once', async () => {
+  await seedDealerAndLead();
+  const body = { dealer_id: DEALER, lead_id: LEAD, text: 'SOLD PENDING: the customer asks for a person',
+    kind: 'sold_pending_escalation', idempotency_key: 'notice:abc' };
+  const first = await addAiLeadNote(body, { Lead, Email });
+  const again = await addAiLeadNote(body, { Lead, Email });
+  assert.deepEqual([first.created, again.created, again.id], [true, false, first.id]);
+  assert.equal(await Email.countDocuments({ lead_id: LEAD, is_note: true }), 1);
+  assert.ok(validateNotePayload({ ...body, idempotency_key: 5 }).errors.length);
+});
+
 maybe('the lead list carries the AI stage, read only', async () => {
   await mongoose.connection.collection('ai_lead_state').insertOne({ dealer_id: DEALER, lead_id: LEAD,
     stage: 'sold_pending', stage_label: 'Sold Pending', status: 'paused' });
@@ -373,4 +387,69 @@ maybe('a stubbed send is written to the dev outbox, with its media', async () =>
   const id = await recordStubSend({ channel: 'sms', to: '+15557654321', text: 'hi', media_urls: ['https://cdn.test/a.jpg'] });
   const row = await mongoose.connection.collection('dev_provider_outbox').findOne({ provider_id: id });
   assert.deepEqual(row.media_urls, ['https://cdn.test/a.jpg']);
+});
+
+// Stream R: "View Assigned Leads" staff see only their own leads' call tasks and AI alerts.
+test('assigned-only staff get only the tasks and alerts of leads assigned to them', () => {
+  const perms = (...names) => ({ permissions: names.map((permission_name) => ({ permission_name })) });
+  const sam = { _id: 'u-sam', parent_id: DEALER, role: perms('View Assigned Leads') };
+  assert.equal(assignedOnlyScope(sam), 'u-sam');
+  assert.equal(assignedOnlyScope({ ...sam, role: perms('View Assigned Leads', 'Manage Leads') }), null);
+  assert.equal(assignedOnlyScope({ _id: DEALER, role: perms('View Assigned Leads') }), null); // the dealer account
+  assert.equal(assignedOnlyScope({ ...sam, role: null }), null); // no lead permission at all: unchanged
+  const rows = [{ lead_id: 'a', id: 1 }, { lead_id: 'b', id: 2 }, { lead_id: 'c', id: 3 }, { lead_id: 'a', id: 4 }];
+  const leads = [{ _id: 'a', assigned_to: 'u-sam' }, { _id: 'b', assigned_to: 'u-maya' }, { _id: 'c' }];
+  assert.deepEqual(filterRowsToAssigned(rows, leads, 'u-sam').map((r) => r.id), [1, 4]);
+  assert.equal(filterRowsToAssigned(rows, leads, null).length, 4);
+});
+
+// Stream R: the AI's photos show as thumbnails in the conversation views.
+test('an AI message with photos shows them; other messages keep their attachments', () => {
+  const doc = buildAiEmailDocument({
+    payload: { channel: 'sms', to: '+1555', text: 'Here it is', status: 'sent', idempotency_key: 'k', lead_id: LEAD,
+      media_urls: ['https://cdn.test/a.jpg', 'https://cdn.test/a.jpg', 'javascript:alert(1)'] },
+    dealer: { _id: DEALER, dealer_account_information: { sms_conversion_phone: '+1999' } } });
+  assert.equal(hasAiPhotos(doc), true);
+  assert.deepEqual(messagePhotoUrls(doc), ['https://cdn.test/a.jpg']);
+  const staff = { attachments: [{ publicUrl: 'https://cdn.test/b.png', contentType: 'image/png' }] };
+  assert.equal(hasAiPhotos(staff), false);
+  assert.deepEqual(messagePhotoUrls(staff), ['https://cdn.test/b.png']);
+  assert.deepEqual(messagePhotoUrls({ ai_generated: true, mail_content: 'hi' }), []);
+});
+
+// Stream R: booking capacity from the AI Settings page.
+test('booking capacity: defaults shown, valid values saved where the booking check reads them, bad ones refused', () => {
+  const view = bookingCapacityView({ dealer_account_information: {} });
+  assert.deepEqual([view.sales.max_per_slot, view.sales.slot_minutes, view.service.max_per_slot, view.service.slot_minutes],
+    [10, 60, 1, 60]);
+  const ok = bookingCapacityUpdate({ sales: { max_per_slot: 4, slot_minutes: 30 }, service: { max_per_slot: 2 } });
+  assert.deepEqual(ok, { errors: [], set: {
+    'dealer_account_information.booking_capacity.sales.max_per_slot': 4,
+    'dealer_account_information.booking_capacity.sales.slot_minutes': 30,
+    'dealer_account_information.booking_capacity.service.max_per_slot': 2 } });
+  const dealer = { dealer_account_information: { booking_capacity: { sales: { max_per_slot: 4, slot_minutes: 30 } } } };
+  assert.deepEqual(capacitySettings(dealer, 'sales'), { appointmentType: 'sales', maxPerSlot: 4, slotMinutes: 30 });
+  for (const bad of [{ sales: { max_per_slot: 0 } }, { sales: { max_per_slot: 51 } }, { service: { slot_minutes: 10 } },
+    { service: { slot_minutes: 241 } }, { sales: { max_per_slot: 2.5 } }, { parts: { max_per_slot: 1 } }, {}, null]) {
+    assert.ok(bookingCapacityUpdate(bad).errors.length, JSON.stringify(bad));
+  }
+});
+
+// Stream R: a full slot shows the same way in every staff booking screen, with a one-click next slot.
+test('a 409 full slot becomes a conflict with the next available and the day\'s other times', async () => {
+  const body = { error: 'slot_taken', message: 'The 10:00 slot on 2026-10-09 is full. The next available is Friday, Oct 9 at 11:00 AM.',
+    next_available: { date: '2026-10-09', time: '11:00' }, alternatives: ['10:00', '11:00', '14:30', 'x'] };
+  const conflict = bookingConflictFrom(409, body, { date: '2026-10-09', time: '10:00' });
+  assert.equal(conflict.message, body.message);
+  assert.deepEqual(conflict.nextAvailable, { date: '2026-10-09', time: '11:00' });
+  assert.deepEqual(conflict.alternatives, ['11:00', '14:30']);
+  assert.equal(bookingConflictFrom(500, body), null);
+  assert.equal(bookingConflictFrom(422, { error: 'missing_field' }), null);
+  assert.equal(slotLabel('2026-10-09', '14:30'), 'Friday, Oct 9 at 2:30 PM');
+  assert.equal(slotLabel('2026-10-10', '00:15'), 'Saturday, Oct 10 at 12:15 AM');
+  const response = { ok: false, status: 409, json: async () => body };
+  await assert.rejects(throwIfStatusFailed(response, { booking_date: '2026-10-09', booking_time: '10:00' }),
+    (err) => err instanceof BookingConflictError && err.slotConflict.nextAvailable.time === '11:00');
+  await assert.rejects(throwIfStatusFailed({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }), /boom/);
+  await throwIfStatusFailed({ ok: true });
 });

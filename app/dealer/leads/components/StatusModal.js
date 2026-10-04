@@ -1,6 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
+import SlotFullNotice from "../../components/SlotFullNotice";
+
+// One status modal for the lead list, the booking page and the conversation views (stream R: the booking and
+// conversations folders re-export this one). `onStatusChange` may return a promise: when it rejects with a
+// full-slot answer (app/lib/bookingConflict.js `throwIfStatusFailed`), the modal stays open, shows the message
+// and offers "Book {next available}" in one click.
 
 export default function StatusModal({ 
   show, 
@@ -14,10 +20,16 @@ export default function StatusModal({
   // Sales or service: each has its own slot capacity (app/lib/bookingService.js). Empty = decided from the lead.
   const [appointmentType, setAppointmentType] = useState("");
   const [managerOutcome, setManagerOutcome] = useState("");
+  const [conflict, setConflict] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setTempStatus(currentStatus || "");
   }, [currentStatus]);
+
+  useEffect(() => {
+    if (!show) setConflict(null);
+  }, [show]);
 
   const statusOptions = [
     "Contacted",
@@ -36,15 +48,29 @@ export default function StatusModal({
   // MASTER_PLAN_3 C5: a visit needs the manager's outcome (client: "Sales Visit -> manager outcome required").
   const managerOutcomes = ["Sold Pending", "Sold Delivered", "Unsold"];
 
-  const handleStatusUpdate = () => {
+  const submit = async (status, extra) => {
+    setBusy(true);
+    setConflict(null);
+    try {
+      await onStatusChange(status, extra);
+      onHide();
+    } catch (err) {
+      if (err?.slotConflict) setConflict(err.slotConflict);
+      else onHide();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleStatusUpdate = (date = bookingDate, time = bookingTime) => {
     const extra = {};
     if (tempStatus === "Appointment Booked") {
-      if (!bookingDate || !bookingTime) {
+      if (!date || !time) {
         alert("Please select booking date and time.");
         return;
       }
-      extra.booking_date = bookingDate;
-      extra.booking_time = bookingTime;
+      extra.booking_date = date;
+      extra.booking_time = time;
       if (appointmentType) extra.appointment_type = appointmentType;
     }
     if (tempStatus === "Visited") {
@@ -54,9 +80,14 @@ export default function StatusModal({
       }
       extra.manager_outcome = managerOutcome;
     }
-    console.log('StatusModal submitting:', { status: tempStatus, ...extra });
-    onStatusChange(tempStatus, extra);
-    onHide();
+    submit(tempStatus, extra);
+  };
+
+  // "Book {next available}": the suggested time goes into the form and is submitted at once.
+  const bookSuggested = (date, time) => {
+    setBookingDate(date);
+    setBookingTime(time);
+    handleStatusUpdate(date, time);
   };
 
   return (
@@ -102,10 +133,11 @@ export default function StatusModal({
               <Form.Label>Appointment Type</Form.Label>
               <Form.Select value={appointmentType} onChange={(e) => setAppointmentType(e.target.value)}>
                 <option value="">From the lead</option>
-                <option value="sales">Sales (up to 10 per hour)</option>
-                <option value="service">Service (1 per hour)</option>
+                <option value="sales">Sales</option>
+                <option value="service">Service</option>
               </Form.Select>
             </Form.Group>
+            <SlotFullNotice conflict={conflict} onBook={bookSuggested} busy={busy} />
           </div>
         )}
 
@@ -127,8 +159,8 @@ export default function StatusModal({
         </Button>
         <Button
           variant="custom"
-          onClick={handleStatusUpdate}
-          disabled={(tempStatus === "Appointment Booked" && (!bookingDate || !bookingTime)) ||
+          onClick={() => handleStatusUpdate()}
+          disabled={busy || (tempStatus === "Appointment Booked" && (!bookingDate || !bookingTime)) ||
             (tempStatus === "Visited" && !managerOutcome)}
         >
           Update Status

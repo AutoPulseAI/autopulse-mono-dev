@@ -8,6 +8,8 @@ import EmailReplyModal from "../components/EmailReplyModal";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import { decode } from "quoted-printable";
 import StatusModal from "./StatusModal"; // Import StatusModal
+import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -45,7 +47,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
         try {
           const response = await fetch("/api/conversations/lead/status", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
             body: JSON.stringify({
               id: lead._id,
               status: newStatus,
@@ -53,12 +55,14 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
             }),
           });
     
-          if (!response.ok) throw new Error("Failed to update status");
+          // A full slot keeps the modal open with "Book {next available}" (stream R, app/lib/bookingConflict.js).
+          await throwIfStatusFailed(response, extra);
           
           // Update local state
           lead.fe_lead_status = newStatus;
           setRefreshKey(prev => prev + 1);
         } catch (err) {
+          if (err?.slotConflict) throw err; // shown in the StatusModal (stream R)
           console.error("Error updating status:", err);
         }
       };
@@ -272,6 +276,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                                         <div dangerouslySetInnerHTML={{ __html: cleaned.content }} />
 
                                     )}
+                                    <MessagePhotos email={email} />{/* stream R: the AI's photos as thumbnails */}
                                 </div>
                             </div>
                         );
