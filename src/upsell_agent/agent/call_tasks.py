@@ -96,6 +96,10 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
            "source": "connection_timer", "assigned_to": await assigned_agent(db, lead_id),
            "due_by": await end_of_agent_day(db.dealer_id, now),
            **(await _requested_due(db, now) if requested else {}), **(extra or {})}
+    # PLAN_4 stream X1 item 7: the calling window staff must keep to, worked out as the task opens; the platform
+    # re-reads it live (GET /v1/call-tasks adds it fresh, GET /v1/call-tasks/{id}/check) before anyone dials.
+    from upsell_agent.compliance.call_check import call_window
+    doc["call_window"] = await call_window(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, at=now)
     inserted = await tasks.insert_one(doc)
     doc["_id"] = inserted.inserted_id
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {

@@ -37,6 +37,7 @@ def _inbound(created, text="hello", event_id="m1"):
                                received_at=datetime.now(UTC))
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_lead_created_creates_state_and_runs_a_turn(mongo):
     created = await _lead()
     result = await handlers.handle_lead_created(
@@ -101,6 +102,7 @@ async def test_inbound_without_lead_id_finds_the_customers_latest_lead(mongo):
 
 # --- Stage 4: first reply, STOP / START --------------------------------------------
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_first_reply_is_answered_and_sent(mongo):
     created = await _lead()
     result = await handlers.handle_lead_created(
@@ -160,6 +162,7 @@ async def test_stop_inside_a_sentence_is_not_an_opt_out(mongo):
     assert result["status"] == "done"
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_shadow_event_drafts_but_does_not_send(mongo):
     created = await _lead()
     result = await handlers.handle_lead_created(
@@ -209,6 +212,7 @@ async def _outbound(mongo, created):
         {"lead_id": created["lead_id"], "direction": "outbound"})
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_a_first_reply_job_that_runs_twice_sends_once(mongo):
     created = await _lead()
     first = await handlers.handle_lead_created(_created_event(created), TurnDeps())
@@ -218,6 +222,7 @@ async def test_a_first_reply_job_that_runs_twice_sends_once(mongo):
     assert await _outbound(mongo, created) == 1
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_a_reply_job_rerun_after_a_crash_before_marking_answered_sends_once(mongo):
     created = await _lead()
     await handlers.handle_lead_created(_created_event(created), TurnDeps())

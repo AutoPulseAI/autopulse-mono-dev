@@ -54,6 +54,7 @@ def _new_lead(client, **overrides):
     return res.json()
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 def test_simulated_lead_runs_a_turn_and_shows_up_everywhere(client):
     created = _new_lead(client)
     assert created["event"] == "queued"
@@ -83,6 +84,7 @@ def test_simulated_lead_runs_a_turn_and_shows_up_everywhere(client):
     assert {s["path"] for s in slots["slots"] if s["state"] == "missing"} >= {"trade_in.mileage", "trade_in.payoff"}
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 def test_reply_adds_a_second_turn(client):
     created = _new_lead(client)
     res = client.post("/dev/simulate/reply", json={"dealer_id": DEALER, "lead_id": created["lead_id"],
@@ -123,6 +125,7 @@ def test_scenario_files_load_and_are_grouped_by_stage():
         assert s["steps"], s["id"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 def test_profile_endpoint_needs_the_shared_secret_and_returns_the_profile(client):
     created = _new_lead(client)
     url = f"/v1/leads/{created['lead_id']}/profile"
@@ -145,6 +148,7 @@ def test_ping_says_which_models_are_running(client):
     assert body["models"] == {"extract": "offline", "compose": "offline"} and body["offline"] is True
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 def test_slots_come_with_the_conversation_state(client):
     lead_id = _new_lead(client, lead_type="sales", comments="Hi, I saw your ad")["lead_id"]
     res = client.post("/dev/simulate/reply", json={"dealer_id": DEALER, "lead_id": lead_id, "text": "hmm, is it AWD?"})

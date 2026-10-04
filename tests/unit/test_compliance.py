@@ -199,13 +199,17 @@ async def test_campaign_to_a_dealervault_contact_without_consent_is_blocked(mong
     assert decision.origin["origin"] == "outbound"
 
 
-async def test_platform_opt_in_flag_allows_a_campaign_and_is_kept_as_evidence(mongo, dealers):
+async def test_platform_opt_in_flag_is_not_marketing_consent(mongo, dealers):
+    # PLAN_4 stream X1 item 4: the CRM sets sms_opt_in on any inbound text ("what time do you close?"), which is
+    # not consent to campaigns or AI marketing. Nothing is recorded as granted from it.
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="", dealervault=True, opt_in=True)
-    decision = await _check(created, campaign=True)
-    assert decision.outcome == "ALLOW" and decision.consent["source"] == "platform_sms_opt_in"
-    [entry] = await mongo[AI_CONSENT_COLLECTION].find({"consent_type": "marketing_consent"}).to_list(None)
-    assert entry["consent_status"] == "granted" and entry["consent_evidence_id"] == decision.consent["evidence_id"]
+    for campaign in (True, False):
+        decision = await _check(created, campaign=campaign)
+        assert decision.outcome == "BLOCK" and decision.rule == "no_consent"
+    assert await mongo[AI_CONSENT_COLLECTION].count_documents({"consent_status": "granted"}) == 0
+    # It still never stops a reply to the customer's own message.
+    assert (await _check(created, purpose="reply", is_reply=True)).outcome == "ALLOW"
 
 
 async def test_own_inquiry_covers_ai_followups_not_campaigns(mongo, dealers):
@@ -372,9 +376,10 @@ async def test_possible_opt_out_opens_a_review_with_a_plain_reply(mongo, dealers
     assert await consent.open_review(db, created["customer_id"])
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["staff_notice"]["kind"] == "possible_opt_out"
-    # Marketing stops; a transactional text doesn't.
+    # Marketing stops, and (PLAN_4 stream X1 item 3) so does every other automated text; a reply still goes.
     assert (await _check(created)).outcome == "REVIEW"
-    assert (await _check(created, purpose="transactional")).outcome == "ALLOW"
+    assert (await _check(created, purpose="transactional")).outcome == "REVIEW"
+    assert (await _check(created, purpose="reply", is_reply=True)).outcome == "ALLOW"
 
     # The customer writes again with something that isn't an opt-out: resolved.
     await handlers.handle_inbound_message(_inbound(created, "Actually, is the CR-V still there?"), _deps())
@@ -393,10 +398,22 @@ async def test_an_admin_resume_resolves_the_review(mongo, dealers):
 
 # --- The campaign check queue (decision 66) ----------------------------------------------
 
+async def _opted_back_in(created):
+    """Real marketing consent in this model: the customer's own START after an earlier STOP (decision 141)."""
+    db = dealer_scoped_db(DEALER)
+    at = clock.now()
+    set_clock(at - timedelta(minutes=2))
+    await consent.set_channel_consent(db, created["customer_id"], "sms", False, source="customer_stop")
+    set_clock(at - timedelta(minutes=1))
+    await consent.set_channel_consent(db, created["customer_id"], "sms", True, source="customer_start")
+    set_clock(at)
+
+
 async def test_campaign_requests_get_an_answer_on_their_own_entry(mongo, dealers):
     set_clock(ny(22, 12))
-    allowed = await _lead(mongo, source="", dealervault=True, opt_in=True)
-    blocked = await _lead(mongo, source="", dealervault=True)
+    allowed = await _lead(mongo, source="", dealervault=True)
+    await _opted_back_in(allowed)
+    blocked = await _lead(mongo, source="", dealervault=True, opt_in=True)  # the flag alone isn't consent
     for key, created in (("campaign:a:0", allowed), ("campaign:b:0", blocked)):
         await mongo[AI_SEND_CHECKS_COLLECTION].insert_one(
             {"request_key": key, "dealer_id": DEALER, "campaign_id": "camp1", "campaign_lead_id": key,
@@ -415,7 +432,8 @@ async def test_campaign_requests_get_an_answer_on_their_own_entry(mongo, dealers
 
 async def test_a_campaign_outside_the_window_is_held(mongo, dealers):
     set_clock(ny(22, 21))
-    created = await _lead(mongo, source="", dealervault=True, opt_in=True)
+    created = await _lead(mongo, source="", dealervault=True)
+    await _opted_back_in(created)
     await mongo[AI_SEND_CHECKS_COLLECTION].insert_one(
         {"request_key": "campaign:c:0", "dealer_id": DEALER, "lead_id": created["lead_id"], "channel": "sms",
          "purpose": "marketing", "status": "pending", "requested_at": clock.now()})
@@ -547,7 +565,7 @@ async def test_the_platform_flag_never_regrants_consent_after_an_opt_out(mongo, 
     # Decision 141: the platform sets sms_opt_in on any inbound text, even one after a STOP.
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="", dealervault=True, opt_in=True)
-    assert (await _check(created, campaign=True)).outcome == "ALLOW"
+    assert (await _check(created, campaign=True)).rule == "no_consent"  # PLAN_4 stream X1 item 4
     await handlers.handle_inbound_message(_inbound(created, "STOP"), _deps())
     db = dealer_scoped_db(DEALER)
     # Reversed by something other than the customer (here: a test entry): the flag still doesn't count.

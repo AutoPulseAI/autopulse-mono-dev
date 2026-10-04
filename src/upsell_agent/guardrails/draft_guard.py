@@ -34,6 +34,7 @@ from typing import Any
 
 from upsell_agent.agent.media import unattached_photo_claim
 from upsell_agent.guardrails import service_claims
+from upsell_agent.guardrails.consent_claims import consent_claims
 from upsell_agent.guardrails.never_invent import _APPROVAL_LANGUAGE_PATTERNS
 from upsell_agent.tools.inventory_tool import KNOWN_MAKES, TRIM_WORDS
 
@@ -250,7 +251,13 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
                                                       for t in customer_texts))
     violations += service
 
+    # PLAN_4 stream X1 item 9 (TCPA PDF §10): never state or infer consent, eligibility or contactability.
+    consent_said = consent_claims(text)
+    if consent_said:
+        violations.append(f"states the customer's consent or eligibility: {', '.join(consent_said)}")
+
     checks = {
+        "no_consent_claims": not consent_said,
         "no_invented_numbers": not invented,
         "no_approval_language": not approval,
         "grounded_in_real_stock": not grounding,

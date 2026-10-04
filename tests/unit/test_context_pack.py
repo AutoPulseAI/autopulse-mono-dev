@@ -268,6 +268,7 @@ def _node(turn, name):
     return next(n for n in turn["nodes"] if n["node"] == name and n.get("status") == "done")
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_second_turn_sees_the_first_reply_and_its_question(mongo):
     created = await _new_lead()
     await _reply(created, "Next month probably")
@@ -298,6 +299,7 @@ async def test_extract_and_compose_read_the_same_pack(mongo):
     assert extract_payload(state)["recently_asked"] == pack["conversation"]["last_asked"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_conversation_state_saved_after_each_turn(mongo):
     created = await _new_lead()
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})

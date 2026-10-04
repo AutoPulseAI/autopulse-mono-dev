@@ -325,6 +325,7 @@ async def test_nothing_is_bigger_than_the_largest_tier(mongo):
 
 # --- Through real turns -------------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_the_first_turn_searches_from_the_lead_form(mongo):
     await _stock(mongo, _rav4("VIN00000000000501", color="Silver", condition="used"))
     created = await _new_lead("Do you have a used white Toyota RAV4?")
@@ -336,6 +337,7 @@ async def test_the_first_turn_searches_from_the_lead_form(mongo):
     assert any(line.startswith("Loosened colour") for line in search["reasoning"])
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_search_uses_this_turns_profile_not_the_one_load_context_saw(mongo):
     await _stock(mongo, _vehicle("VIN00000000000511"), _rav4("VIN00000000000512"))
     created = await _new_lead("Looking at a used Honda CR-V")
@@ -346,6 +348,7 @@ async def test_search_uses_this_turns_profile_not_the_one_load_context_saw(mongo
     assert out["query"]["model"] == "RAV4" and [r["vin"] for r in out["records"]] == ["VIN00000000000512"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_a_colour_said_in_this_message_counts_this_turn(mongo):
     await _stock(mongo, _rav4("VIN00000000000521", color="Blue"), _rav4("VIN00000000000522", color="Red"))
     created = await _new_lead("Looking at a used Toyota RAV4")
@@ -355,6 +358,7 @@ async def test_a_colour_said_in_this_message_counts_this_turn(mongo):
     assert [r["vin"] for r in out["records"]] == ["VIN00000000000522"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_budget_never_reaches_the_models(mongo):
     """As of Phase 3, `inventory` itself (with its VIN) reaches Compose, so it
     can answer from real stock (its output names the loaded vehicle); the raw
@@ -405,6 +409,7 @@ def test_price_questions_stay_restricted():
 
 # --- Regressions from the Debug UI review (28 Sept) --------------------------------------------------------
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_bigger_after_a_named_rav4_never_sends_the_rav4(mongo):
     """"Anything bigger?" after "a new RAV4 Adventure": the search sent is the next size up, without the
     make, model, trim or year they named; only new/used carries over."""
@@ -421,6 +426,7 @@ async def test_bigger_after_a_named_rav4_never_sends_the_rav4(mongo):
     assert any("swapped for the next size up" in line for line in search["reasoning"])
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_more_matches_than_the_per_reply_limit_says_so(mongo):
     await _stock(mongo, *[_rav4(f"VIN0000000000070{i}", added_minutes_ago=i) for i in range(5)])
     created = await _new_lead("Looking at a used Toyota RAV4")

@@ -76,6 +76,8 @@ class SendRequest:
     # row with the text, so the idempotency key covers it: a retry resumes with the row's own photo and a
     # re-run finds the row already sent - never a second (or a different) picture.
     media_urls: list[str] = field(default_factory=list)
+    # PLAN_4 stream X1 item 8: the template the text came from, for the audit row (None: the AI wrote it).
+    template_id: str | None = None
 
     @property
     def idempotency_key(self) -> str:
@@ -171,9 +173,17 @@ class Sender:
         check = await can_contact(
             dealer_id=req.dealer_id, customer_id=req.customer_id, lead_id=req.lead_id, channel=req.channel,
             purpose=req.purpose, is_reply=req.is_reply, to=to, lead=lead, customer=customer,
-            source="ai_reply" if req.is_reply else "ai_followup", request_id=key)
+            source="ai_reply" if req.is_reply else "ai_followup", request_id=key, message_id=str(row_id),
+            template_id=req.template_id)
         why.append(f"Send check: {check.summary()}")
         compliance = check.as_dict()
+        if check.outcome == "HOLD" and req.shadow:
+            # PLAN_4 stream X1: a shadow draft is a draft whatever the hour; nothing is sent or resumed.
+            why.append("Dealer is in shadow mode: drafted, not sent (the send check would hold it).")
+            outcome = await finish("shadow", to=to, reason=f"shadow mode; HOLD: {check.reason}",
+                                   compliance=compliance)
+            outcome.compliance = compliance
+            return outcome
         if check.outcome == "HOLD":
             outcome = await finish("held", to=to, reason=check.reason, held_until=check.until,
                                    compliance=compliance)
@@ -201,7 +211,7 @@ class Sender:
                     OutboundMessage(
                         dealer_id=req.dealer_id, lead_id=req.lead_id, customer_id=req.customer_id,
                         channel=req.channel, to=to, text=req.text, subject=req.subject, idempotency_key=key,
-                        media_urls=tuple(media),
+                        media_urls=tuple(media), compliance_decision_id=check.log_id,
                     )
                 )
             except ChannelSendError as exc:
@@ -230,11 +240,13 @@ class Sender:
                 sent_at=sent_at, attempts=attempts, latency_ms=latency_ms,
             )
             outcome.platform_record_id = await self._record(req, to, "sent", result.provider_id, sent_at, row_id, why)
+            await record_delivery(db, check.log_id, "sent", provider_id=result.provider_id)
             outcome.reasoning = why
             return outcome
 
         why.append(f"Gave up after {attempts} attempt(s).")
         outcome = await finish("failed", to=to, attempts=attempts, reason=str(last_error), failed_at=clock.now())
+        await record_delivery(db, check.log_id, "failed", error=str(last_error))
         outcome.platform_record_id = await self._record(req, to, "failed", None, clock.now(), row_id, why)
         outcome.reasoning = why
         return outcome
@@ -287,6 +299,27 @@ class Sender:
             platform_record_id=row.get("platform_record_id"), latency_ms=row.get("latency_ms"), reasoning=why,
             media_urls=list(row.get("media_urls") or []),
         )
+
+
+async def record_delivery(db: Any, log_id: str | None, status: str, *, provider_id: str | None = None,
+                          error: str | None = None, request_id: str | None = None) -> None:
+    """PLAN_4 stream X1 item 8: the delivery result on the decision's audit row (by its id, or by the send's
+    idempotency key for a provider callback). Only `delivery` changes; the decision itself never does."""
+    from upsell_agent.integrations.mongodb import AI_COMPLIANCE_LOG_COLLECTION
+
+    if log_id:
+        flt: dict[str, Any] = {"_id": as_object_id(log_id)}
+    elif request_id:
+        flt = {"request_id": request_id, "decision": "ALLOW"}
+    else:
+        return
+    now = clock.now()
+    event = {"status": status, "at": now, **({"provider_id": provider_id} if provider_id else {}),
+             **({"error": error} if error else {})}
+    await db.collection(AI_COMPLIANCE_LOG_COLLECTION).update_many(
+        flt, {"$set": {"delivery.status": status, "delivery.updated_at": now,
+                       **({"delivery.provider_id": provider_id} if provider_id else {})},
+              "$push": {"delivery.events": event}})
 
 
 def _ms_between(start: datetime | None, end: datetime) -> int | None:

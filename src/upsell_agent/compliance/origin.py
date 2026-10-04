@@ -52,7 +52,9 @@ class LeadOrigin:
 
 def _source(lead: dict | None) -> str:
     lead = lead or {}
-    return " ".join(str(lead.get(k) or "") for k in ("source", "lead_source")).strip().lower()
+    # Each value once (PLAN_4 stream X1 item 8: the audit row's lead_source reads "website", not "website website").
+    values = dict.fromkeys(str(lead.get(k) or "").strip().lower() for k in ("source", "lead_source"))
+    return " ".join(v for v in values if v)
 
 
 def origin_from_records(lead: dict | None, customer: dict | None, *, from_campaign: bool) -> LeadOrigin:

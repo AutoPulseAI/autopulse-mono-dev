@@ -159,16 +159,147 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     if state["status"] in SILENT_STATUSES:
         return {"status": "skipped", "reason": f"lead is {state['status']}"}
     turn_id = first_reply_turn_id(event.lead_id)
-    if previous := await _already_sent(db, turn_id):
+    if (previous := await _already_sent(db, turn_id)) and previous.get("status") != "held":
         return {"status": "already_answered", "turn_id": turn_id, "send_status": previous.get("status")}
+    return await _first_reply(db, deps, customer_id=event.customer_id, lead_id=event.lead_id, lead=lead,
+                              channel=event.channel, shadow=event.shadow,
+                              received_at=_parse_received_at(received_at), turn_id=turn_id)
+
+
+# PLAN_4 stream X1 item 1: the first reply held to the customer's next allowed time (scheduler/followups.py fires
+# it through fire_held_first_reply). Not in followups.CHANNEL_SWITCHES' exclusions on purpose: the customer
+# writing first cancels it, and their own message gets the reply instead.
+KIND_FIRST_REPLY = "first_reply_held"
+
+
+async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id: str, lead_id: str,
+                       lead: dict | None, channel: str, shadow: bool, received_at: datetime | None, turn_id: str,
+                       followup: dict | None = None) -> dict[str, Any]:
+    """The first message on a new lead, as its own send-check class (PLAN_4 stream X1 item 1, TCPA PDF §4):
+    `lead_response`, never a reply. Checked before anything is drafted: BLOCK / REVIEW sends nothing (the lead's
+    other channel is tried), HOLD plans the first reply for the customer's next allowed time. An imported or
+    otherwise non-consumer lead is checked as outbound marketing by the engine itself."""
+    from upsell_agent.compliance.engine import can_contact
+
+    if not shadow:
+        customer = await find_customer(db, customer_id)
+        check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                                  purpose="lead_response", is_reply=False, lead=lead, customer=customer,
+                                  record=False)
+        other = "email" if channel == "sms" else "sms"
+        if check.outcome in ("BLOCK", "REVIEW") and await consent.usable_recipient(db, lead, customer, other):
+            alt = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=other,
+                                    purpose="lead_response", is_reply=False, lead=lead, customer=customer,
+                                    record=False)
+            if alt.outcome in ("ALLOW", "HOLD"):
+                channel, check = other, alt
+        if check.outcome == "HOLD" and check.until:
+            return await _hold_first_reply(db, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                                           until=check.until, reason=check.reason, followup=followup,
+                                           turn_id=turn_id)
+        if check.outcome != "ALLOW":
+            await _log_first_reply_not_sent(db, deps, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                                            check=check, turn_id=turn_id)
+            if followup:
+                await _close_followup(db, followup, "suppressed", f"{check.outcome}: {check.reason}")
+            return {"status": "not_sent", "turn_id": turn_id, "send_check": check.outcome, "rule": check.rule,
+                    "reason": check.reason}
 
     log = await run_turn(
-        dealer_id=event.dealer_id, customer_id=event.customer_id, lead_id=event.lead_id,
-        trigger="lead_created", channel=event.channel, inbound_text=_comments(lead),
-        shadow=event.shadow, deps=deps, event_received_at=_parse_received_at(received_at), turn_id=turn_id,
+        dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
+        trigger="lead_created", channel=channel, inbound_text=_comments(lead),
+        shadow=shadow, deps=deps, event_received_at=received_at, turn_id=turn_id,
+        is_reply=False, purpose="lead_response",
     )
-    return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"],
-            "send_status": log["summary"].get("send_status")}
+    sent = log["summary"].get("send_status")
+    if sent == "held" and not shadow:
+        # The check changed between the look above and the send: plan it for the time it now gives.
+        row = await _already_sent(db, turn_id) or {}
+        until = row.get("held_until")
+        if isinstance(until, datetime):
+            await _hold_first_reply(db, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                                    until=_aware(until), reason=row.get("reason") or "held by the send check",
+                                    followup=followup, turn_id=turn_id)
+            return {"status": "held", "turn_id": log["turn_id"], "until": _aware(until).isoformat()}
+    if followup:
+        await _close_followup(db, followup, "sent" if sent in ("sent", "duplicate") else (sent or "failed"),
+                              log["outcome"])
+    return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"], "send_status": sent}
+
+
+async def _hold_first_reply(db: DealerScopedDatabase, *, customer_id: str, lead_id: str, channel: str,
+                            until: datetime, reason: str, followup: dict | None, turn_id: str) -> dict[str, Any]:
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    why = f"held by the send check: {reason}"
+    if followup:
+        await followups.update_one({"_id": followup["_id"], "status": "claimed"},
+                                   {"$set": {"status": "pending", "due_at": until, "to_channel": channel,
+                                             "reason": why}})
+        followup_id = str(followup["_id"])
+    else:
+        await followups.update_many({"lead_id": lead_id, "kind": KIND_FIRST_REPLY, "status": "pending"},
+                                    {"$set": {"status": "superseded", "closed_at": clock.now()}})
+        inserted = await followups.insert_one({
+            "kind": KIND_FIRST_REPLY, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
+            "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
+            "due_at": until, "created_at": clock.now(), "claim_count": 0, "reason": why})
+        followup_id = str(inserted.inserted_id)
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id}, {"$set": {"first_reply_held": {"until": until, "reason": reason,
+                                                             "followup_id": followup_id}}})
+    return {"status": "held", "turn_id": turn_id, "until": until.isoformat(), "reason": reason,
+            "followup_id": followup_id}
+
+
+async def _close_followup(db: DealerScopedDatabase, doc: dict, status: str, reason: str) -> None:
+    await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+        {"_id": doc["_id"], "status": "claimed"},
+        {"$set": {"status": status, "closed_at": clock.now(), "reason": reason}})
+
+
+async def _log_first_reply_not_sent(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id: str, lead_id: str,
+                                    channel: str, check: Any, turn_id: str) -> None:
+    """A turn log saying why the new lead got no first message (never silent), and the decision in the
+    compliance log."""
+    from upsell_agent.compliance.engine import can_contact
+
+    logged = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
+                               purpose="lead_response", is_reply=False, source="ai_first_reply",
+                               request_id=f"{turn_id}:{channel}")
+    tracer = TurnTracer(sink=deps.sink, dealer_id=db.dealer_id, lead_id=lead_id, customer_id=customer_id,
+                        trigger="lead_created", channel=channel, store_prompts=deps.store_prompts,
+                        turn_id=f"{turn_id}:not-sent")
+    await tracer.start({"channel": channel, "text": ""})
+    async with tracer.node("send_check", {"purpose": "lead_response", "channel": channel}) as span:
+        span.output = logged.as_dict()
+        span.reasoning = [f"{c['rule']}: {'ok' if c['passed'] else 'no'} - {c['detail']}" for c in logged.checks]
+        span.edge_label = logged.outcome
+    await tracer.skipped("send", f"The send check says {check.outcome}: {check.reason}")
+    log = await tracer.finish("not_sent", {"send_check": check.outcome, "rule": check.rule, "reason": check.reason})
+    await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
+
+
+async def fire_held_first_reply(db: DealerScopedDatabase, doc: dict, deps: TurnDeps) -> str:
+    """The held first reply's time came (PLAN_4 stream X1 item 1): checked again, then sent, held again,
+    or dropped (the customer wrote meanwhile, staff took over, the lead was linked to another)."""
+    lead_id = doc["lead_id"]
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+    wrote = await db.collection(AI_MESSAGES_COLLECTION).find_one(
+        {"lead_id": lead_id, "direction": "inbound", "created_at": {"$gt": doc["created_at"]}})
+    turn_id = doc.get("source_turn_id") or first_reply_turn_id(lead_id)
+    previous = await _already_sent(db, turn_id)
+    why = ("the customer wrote first; their message got the reply" if wrote
+           else f"the lead is {state['status']}" if state.get("status") in SILENT_STATUSES
+           else "linked to another open lead" if state.get("duplicate_of")
+           else "already answered" if previous and previous.get("status") != "held" else None)
+    if why:
+        await _close_followup(db, doc, "cancelled", why)
+        return "cancelled"
+    lead = await find_lead(db, lead_id)
+    result = await _first_reply(db, deps, customer_id=doc["customer_id"], lead_id=lead_id, lead=lead,
+                                channel=doc.get("to_channel") or "sms", shadow=False, received_at=None,
+                                turn_id=turn_id, followup=doc)
+    return {"held": "deferred", "not_sent": "suppressed"}.get(result["status"], result.get("send_status") or "sent")
 
 
 async def record_inbound(event: InboundMessageEvent) -> str | None:
@@ -262,7 +393,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         request = SendRequest(
             dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
             channel=channel, text=text, subject=subject, shadow=event.shadow, event_received_at=received_at,
-            purpose=purpose, is_reply=True)
+            purpose=purpose, is_reply=True, template_id=f"template:{action}")
         async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                         "text": request.text, "subject": request.subject}) as span:
             sent = await deps.sender.send(request)
@@ -404,11 +535,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             # message is answered (decision 138).
             await _opt_back_in(db, event, lead, customer, lead_id, state, opt_in, message)
 
-    # A possible opt-out under review is resolved by the customer writing
-    # again with something that isn't one (decision 72). This message may
-    # open a new review in its own turn.
-    await _resolve_review(db, event.customer_id, lead_id, "customer_wrote_again",
-                          {"message": unanswered[-1]["text"]})
+    # A possible opt-out under review is no longer resolved just because the customer wrote again (PLAN_4 stream
+    # X1 item 3): the AI turn resolves it only on a clearly non-opt-out message that answers it
+    # (agent/turn.py _resolve_review_if_answered); otherwise staff or an admin resume do (decision 72).
 
     meaningful_now, _ = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
     if meaningful_now and not event.shadow:

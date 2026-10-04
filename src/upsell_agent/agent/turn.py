@@ -40,7 +40,7 @@ from upsell_agent.agent.vehicle_media import MediaPick, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
-from upsell_agent.compliance.engine import Decision, can_contact
+from upsell_agent.compliance.engine import Decision, Purpose, can_contact
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
@@ -137,9 +137,14 @@ async def run_turn(
     turn_id: str | None = None,
     batch: list[dict[str, Any]] | None = None,
     is_reply: bool = True,
+    purpose: Purpose | None = None,
 ) -> dict[str, Any]:
     """`is_reply`: False for a message the system starts (the after-hours
     morning message), which the send check treats as outbound.
+
+    `purpose`: the send check's class for this turn's message; by default
+    `reply` (is_reply) or `marketing`. The first message on a new lead is
+    `lead_response` (PLAN_4 stream X1 item 1), never a reply.
 
     `turn_id`: the handlers derive it from what triggered the turn, so a
     re-run of the same job (a retry, or the queue re-delivering it) reuses the
@@ -148,6 +153,9 @@ async def run_turn(
     `batch`: the stored customer messages this turn answers ({id, channel,
     text, at}), listed in the trace and in the context pack one by one."""
     settings = deps.config
+    purpose = purpose or ("reply" if is_reply else "marketing")
+    if purpose != "reply":
+        is_reply = False
     db = dealer_scoped_db(dealer_id)
     tracer = TurnTracer(
         sink=deps.sink, dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id,
@@ -174,7 +182,7 @@ async def run_turn(
         # the real one), so a night-time reply in an outbound conversation is
         # written to ask nothing (architecture §15 decision 29).
         precheck = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
-                                     purpose="reply" if is_reply else "marketing", is_reply=is_reply, lead=lead,
+                                     purpose=purpose, is_reply=is_reply, lead=lead,
                                      customer=customer,
                                      record=False)
         ctx.compliance = precheck.as_dict()
@@ -222,8 +230,10 @@ async def run_turn(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
                 shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
-                purpose="reply" if is_reply else "marketing",  # decision 136
+                purpose=purpose,  # decision 136; PLAN_4 stream X1 item 1
                 media_urls=photo.urls,
+                # PLAN_4 stream X1 item 8: which template, for the audit row (None: the AI wrote it).
+                template_id=f"template:{trigger}" if result.get("used_template") else None,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject,
@@ -327,6 +337,8 @@ async def run_turn(
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
+        if not review and trigger == "inbound_message":
+            await _resolve_review_if_answered(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
             outcome = "template_reply"
@@ -684,6 +696,32 @@ async def _open_review_if_possible_opt_out(db: DealerScopedDatabase, lead_id: st
                                    "text": f"Possible opt-out, please review: {text!r}. Marketing is stopped "
                                            "until the customer writes again or the AI is resumed; set the "
                                            "lead to DND if it was an opt-out."}}})
+    return True
+
+
+async def _resolve_review(db: DealerScopedDatabase, lead_id: str, customer_id: str, text: str,
+                          channel: str) -> None:
+    await consent.record_consent(db, customer_id=customer_id, channel="all", consent_type="review",
+                                 status="resolved", source="customer_answered_review", lead_id=lead_id,
+                                 evidence={"message": text, "channel": channel})
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                             {"$set": {"compliance_review": None}})
+
+
+async def _resolve_review_if_answered(db: DealerScopedDatabase, lead_id: str | None, customer_id: str,
+                                      result: dict[str, Any], text: str, channel: str) -> bool:
+    """PLAN_4 stream X1 item 3 (decision 72): an open review is resolved by the customer only with a message that
+    clearly isn't an opt-out and answers it (opt_out.answers_review: real words, no stop / remove / "too many"
+    vocabulary, not a bare "ok"), and only when Extract saw no sign of an opt-out in it. Anything else leaves it
+    open for staff (DND) or an admin resume."""
+    from upsell_agent.compliance.opt_out import answers_review
+
+    if not lead_id or not await consent.open_review(db, customer_id):
+        return False
+    extraction = result.get("extraction") or {}
+    if extraction.get("possible_opt_out") or not answers_review(text):
+        return False
+    await _resolve_review(db, lead_id, customer_id, text, channel)
     return True
 
 

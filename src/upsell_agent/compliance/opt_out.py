@@ -25,6 +25,7 @@ can make a send stricter, never allow one.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
@@ -42,14 +43,14 @@ POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE = 0.5
 NL_CONFIRMATION = "Understood, we won't contact you again."
 _CONFIRM_VERBS = {"sms": "text", "email": "email", "voice": "call"}
 
-_NOT = r"(?:do\s*n[o']?t|dont|don't|never|no\s+more|stop)"
+_NOT = r"(?:do\s*n[o']?t|dont|don't|never|no\s+more|stop|quit)"
 # Up to two words between "don't" and the verb ("don't ever text me"), but
 # never a channel word: "don't email me, text is fine" is about email.
 _FILL = (r"(?:(?!(?:text|texting|sms|email|e-mail|emailing|mail|call|calling|phone|contact|contacting|"
          r"message|messaging|reach)\b)\w+\s+){0,2}")
 # (pattern, channels it names; None = every channel)
 _PHRASES: list[tuple[re.Pattern[str], tuple[Channel, ...] | None]] = [
-    (re.compile(rf"\b{_NOT}\s+{_FILL}(?:text|texting|sms|message\s+my\s+phone)(?:ing)?\b(?!\s+(?:you|u)\b)"),
+    (re.compile(rf"\b{_NOT}\s+{_FILL}(?:text|texting|txt|txting|sms|message\s+my\s+phone)(?:ing)?\b(?!\s+(?:you|u)\b)"),
      ("sms",)),
     (re.compile(r"\b(?:remove|delete|take)\s+my\s+(?:phone\s+)?number\b"), ("sms", "voice")),
     (re.compile(r"\bno\s+more\s+(?:texts|text\s+messages|sms)\b"), ("sms",)),
@@ -65,7 +66,51 @@ _PHRASES: list[tuple[re.Pattern[str], tuple[Channel, ...] | None]] = [
     (re.compile(r"\bno\s+more\s+messages\b"), None),
     (re.compile(r"\bunsubscribe\s+me\b"), None),
     (re.compile(r"\blose\s+my\s+(?:number|contact)\b"), None),
+    # PLAN_4 stream X1 item 2: the near variants the audit found missed (any length).
+    (re.compile(r"\b(?:stop|quit|cease)\s+(?:all\s+)?(?:the\s+)?(?:calling|calls|phone\s+calls|ringing)\b"),
+     ("voice",)),
+    (re.compile(r"\bno\s+more\s+(?:phone\s+)?calls\b"), ("voice",)),
+    (re.compile(r"\b(?:stop|quit)\s+sending\s+(?:me\s+)?(?:any\s+(?:more\s+)?)?(?:texts?|text\s+messages|txts?|sms)\b"),
+     ("sms",)),
+    (re.compile(r"\b(?:stop|quit)\s+sending\s+(?:me\s+)?(?:any\s+(?:more\s+)?)?e-?mails?\b"), ("email",)),
+    (re.compile(r"\b(?:stop|quit)\s+sending\s+(?:me\s+)?(?:any\s+(?:more\s+)?)?(?:messages|msgs|stuff|these|this)\b"),
+     None),
+    (re.compile(r"\b(?:do\s*n[o']?t|dont|do\s+not)\s+(?:want|need)\s+(?:any\s*more|any|more|no\s+more)\s+"
+                r"(?:texts?|text\s+messages|txts?|sms)\b"), ("sms",)),
+    (re.compile(r"\b(?:do\s*n[o']?t|dont|do\s+not)\s+(?:want|need)\s+(?:any\s*more|any|more|no\s+more)\s+e-?mails?\b"),
+     ("email",)),
+    (re.compile(r"\b(?:do\s*n[o']?t|dont|do\s+not)\s+(?:want|need)\s+(?:any\s*more|any|more|no\s+more)\s+"
+                r"(?:phone\s+)?calls\b"), ("voice",)),
+    (re.compile(r"\b(?:do\s*n[o']?t|dont|do\s+not)\s+(?:want|need)\s+(?:any\s*more|any|more|no\s+more)\s+"
+                r"(?:messages|contact)\b"), None),
+    (re.compile(r"\bopt\s+me\s+out\b"), None),
+    (re.compile(r"\bno\s+mas\s+(?:mensajes|textos|llamadas|correos)\b"), None),
+    (re.compile(r"\bno\s+me\s+(?:escriba[ns]?|llame[ns]?|contacte[ns]?)\b"), None),
 ]
+
+# A short message (at most SHORT_WORDS words) whose whole meaning is stopping contact (PLAN_4 stream X1 item 2):
+# the stop word(s) plus nothing but politeness or emphasis. "stop by", "cancel my appointment" are not this.
+SHORT_WORDS = 6
+_STOP_TOKENS = {"stop", "stopall", "unsubscribe", "unsub", "cancel", "end", "quit", "optout", "revoke"}
+_FILLER = {"please", "pls", "plz", "plez", "just", "now", "ok", "okay", "k", "seriously", "already", "immediately",
+           "asap", "thanks", "thank", "you", "ty", "again", "all", "everything", "i", "said", "man", "dude", "guys",
+           "sir", "maam", "lol", "omg", "yes", "yeah", "hell", "damn", "srsly", "right", "away", "for", "good",
+           "forever", "permanently", "por", "favor"}
+_SHORT_PHRASES: list[re.Pattern[str]] = [
+    re.compile(r"^(?:i\s+)?(?:want|wanna|would\s+like|need)\s+to\s+(?:opt\s*-?\s*out|unsubscribe)"
+               r"(?:\s+(?:please|now|of\s+(?:this|these|texts|messages|everything|all|your\s+list)))?$"),
+    re.compile(r"^(?:please\s+)?(?:opt\s*-?\s*out|unsubscribe)(?:\s+(?:me|please|now|of\s+(?:this|these|"
+               r"texts|messages|everything|all|your\s+list)))*$"),
+    re.compile(r"^(?:please\s+)?remove\s+me(?:\s+(?:please|now|from\s+(?:this|it|here)))*$"),
+    re.compile(r"^(?:please\s+)?take\s+me\s+off(?:\s+(?:of\s+)?(?:this|it|here|the\s+list|your\s+list))?"
+               r"(?:\s+please)?$"),
+    re.compile(r"^(?:please\s+)?(?:do\s*n[o']?t|dont|do\s+not)\s+contact(?:\s+me)?(?:\s+(?:again|anymore|"
+               r"ever\s+again|please))*$"),
+]
+_DOUBLE_NEGATIVE = re.compile(r"^(?:do\s*n[o']?t|dont|don't|never)\s+(?:\w+\s+)?(?:stop|quit)\b")
+# A word right before the match that turns it around: "don't stop texting me".
+_NEGATORS = {"dont", "don't", "not", "never", "wont", "won't", "didnt", "didn't", "cant", "can't", "shouldnt",
+             "shouldn't", "no"}
 
 
 @dataclass(frozen=True)
@@ -81,7 +126,35 @@ class OptOut:
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"[^\w\s'-]", "", (text or "").replace("’", "'").strip().lower()).strip()
+    """Lower case, curly quotes straightened, accents dropped ("más" → "mas"), emojis and punctuation
+    removed, whitespace collapsed."""
+    text = unicodedata.normalize("NFKD", (text or "").replace("’", "'"))
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"[^\w\s'-]", " ", text.lower()).replace("_", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _short_opt_out(lowered: str) -> str | None:
+    """A short message that only says stop (with politeness or emphasis): the matched text, or None."""
+    words = lowered.replace("opt-out", "optout").replace("opt out", "optout").replace("-", " ").split()
+    if not words or len(words) > SHORT_WORDS:
+        return None
+    stops = [w for w in words if w in _STOP_TOKENS]
+    rest = [w for w in words if w not in _STOP_TOKENS]
+    # "it" only goes with stop / quit ("stop it", "quit it"); "cancel it" is usually the appointment.
+    if stops and any(s in ("stop", "quit") for s in stops):
+        rest = [w for w in rest if w != "it"]
+    if stops and all(w in _FILLER for w in rest):
+        return lowered
+    for pattern in _SHORT_PHRASES:
+        if pattern.match(lowered):
+            return lowered
+    return None
+
+
+def _negated(lowered: str, start: int) -> bool:
+    before = lowered[:start].split()
+    return bool(before) and before[-1] in _NEGATORS
 
 
 def classify_keyword(text: str) -> Literal["stop", "start"] | None:
@@ -139,6 +212,25 @@ def detect_opt_in(text: str) -> OptIn | None:
     return None
 
 
+# Words that keep a possible opt-out open (PLAN_4 stream X1 item 3): the customer may still be asking us to stop.
+_REVIEW_DOUBT = re.compile(
+    r"\b(?:stop|stopp\w*|unsub\w*|remove|quit|cancel|opt|end|enough|spam\w*|block\w*|harass\w*|annoy\w*|"
+    r"bother\w*|leave|alone|too\s+(?:many|much|often)|so\s+(?:many|much)|keep\s+(?:texting|messaging|calling|emailing)|who\s+is\s+this|"
+    r"wrong\s+(?:number|person)|lawyer|report|complain\w*|not\s+interested|no\s+thanks|nope)\b")
+_BARE = re.compile(r"^(?:ok(?:ay)?|k|kk|yes|yeah|yep|no|nah|sure|fine|thanks|thank\s+you|ty|hm+|what|huh|why|lol)$")
+
+
+def answers_review(text: str) -> bool:
+    """A message that clearly isn't an opt-out and engages with the conversation, so it can resolve an open
+    review (decision 72): at least three words (or a question of two), none of the stop / remove / "too many"
+    vocabulary, not a bare "ok" or "why"."""
+    lowered = _normalize(text)
+    words = lowered.split()
+    if not words or _BARE.match(lowered) or _REVIEW_DOUBT.search(lowered) or detect_opt_out(text, "sms"):
+        return False
+    return len(words) >= 3 or ("?" in (text or "") and len(words) >= 2)
+
+
 def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
     """The customer's message as an opt-out, or None. `channel` is the one
     it arrived on (a keyword stops that channel)."""
@@ -146,6 +238,13 @@ def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
         return OptOut("keyword", (channel,), text.strip())
     lowered = _normalize(text)
     for pattern, channels in _PHRASES:
-        if m := pattern.search(lowered):
+        for m in pattern.finditer(lowered):
+            if (m.group(0).split()[0] in ("stop", "quit") and _negated(lowered, m.start())) or \
+                    _DOUBLE_NEGATIVE.match(m.group(0)):
+                continue  # "please don't stop texting me"
             return OptOut("phrase", channels or ALL_CHANNELS, m.group(0))
+    if matched := _short_opt_out(lowered):
+        # PLAN_4 stream X1 item 2: "please stop", "STOP ALL", "unsubscribe please": every channel, as the
+        # customer didn't limit it, with our one confirmation (the carrier's keyword match needs the bare word).
+        return OptOut("phrase", ALL_CHANNELS, matched)
     return None

@@ -293,10 +293,11 @@ async def test_switch_to_sms_planned_after_dark_waits_for_8am(mongo, dealers):
 
 
 async def test_switch_to_email_is_never_held(mongo, dealers):
-    set_clock(ny(22, 21))
+    # PLAN_4 stream X1: 20:30, as a first text at 21:00 now waits for the customer's 8:00.
+    set_clock(ny(22, 20, 30))
     created = await _lead(channel="sms")
     [switch] = await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)
-    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(23, 21)).total_seconds()) < 5
+    assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(23, 20, 30)).total_seconds()) < 5
 
 
 async def test_sms_switch_due_after_dark_is_deferred_when_it_fires(mongo, dealers):

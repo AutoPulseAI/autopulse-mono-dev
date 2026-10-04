@@ -135,6 +135,7 @@ async def _asked(mongo, created):
     return state["conversation"]["last_asked"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_short_answer_fills_the_slot_we_asked_for(mongo):
     created = await _lead(lead_type="trade_in", comments="Thinking about trading my car")
     asked = await _asked(mongo, created)

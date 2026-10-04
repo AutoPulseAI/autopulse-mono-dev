@@ -125,6 +125,7 @@ async def test_an_accepted_event_whose_job_never_ran_is_caught(mongo, dealer):
     assert whys == ["the customer's message was never recorded", "the new lead never got a first reply"]
 
 
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
 async def test_two_sends_for_one_turn_are_caught(mongo, dealer):
     created = await _lead_with_first_reply()
     first = await mongo[AI_MESSAGES_COLLECTION].find_one({"lead_id": created["lead_id"], "direction": "outbound"})

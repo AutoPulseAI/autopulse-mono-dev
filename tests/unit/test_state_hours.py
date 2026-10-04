@@ -189,8 +189,9 @@ async def test_a_kentucky_customer_is_held_until_ten_and_the_log_names_the_rules
     row = await mongo[AI_COMPLIANCE_LOG_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert row["jurisdiction"]["states"] == ["KY"]
     assert row["jurisdiction"]["rules_version"] == state_hours.RULES_VERSION
-    # Transactional texts keep 8:00-21:00; a reply keeps its exemption.
-    assert (await _marketing(created, purpose="transactional")).outcome == "ALLOW"
+    # PLAN_4 stream X1 item 7: transactional texts follow the state row too; a reply keeps its exemption.
+    held = await _marketing(created, purpose="transactional")
+    assert held.outcome == "HOLD" and held.until == local(NY, 9, 22, 10)
     assert (await _marketing(created, is_reply=True, purpose="reply")).outcome == "ALLOW"
 
 

@@ -49,6 +49,7 @@ Every decision is added to `ai_compliance_log` (never edited, kept 5 years)
 with what was checked, unless `record=False` (planning a due time).
 """
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any, Literal
@@ -61,6 +62,7 @@ from upsell_agent.compliance.customer_zone import customer_zone
 from upsell_agent.compliance.origin import LeadOrigin, lead_origin
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
 from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
     AI_COMPLIANCE_LOG_COLLECTION,
     AI_MESSAGES_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
@@ -72,7 +74,11 @@ from upsell_agent.integrations.mongodb import (
 
 Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
 # `reply`: the answer to a message the customer sent - customer service, not marketing (decision 136).
-Purpose = Literal["marketing", "transactional", "opt_out_confirmation", "reply"]
+# `lead_response` (PLAN_4 stream X1 item 1, TCPA PDF §4 "Consumer-initiated lead response"): the first message
+# on a new lead. Its own class: every suppression rule, the review, the customer's state window and the cap
+# apply, but a genuine consumer inquiry (inbound origin) needs no marketing consent. A lead that isn't the
+# consumer reaching out (a CSV / DMS import, DealerVault, a campaign, an unmapped source) is outbound marketing.
+Purpose = Literal["marketing", "transactional", "opt_out_confirmation", "reply", "lead_response"]
 
 # Customer-local windows (start, end), end exclusive.
 # Decision 25's interim 8:00-20:00 for everyone. Marketing texts now follow the per-state table
@@ -81,6 +87,8 @@ MARKETING_WINDOW = (time(8), time(20))
 TRANSACTIONAL_WINDOW = (time(8), time(21))  # decision 18: 8:00-21:00 customer time
 REPLY_WINDOW = (time(8), time(21))          # decision 29: outbound conversations keep going only inside this
 MARKETING_SMS_CAP = 3
+# Texts counted toward (and held by) the 3-in-24h cap and the state rows' caps (PLAN_4 stream X1 item 1).
+CAPPED_PURPOSES = ("marketing", "lead_response")
 CAP_PERIOD = timedelta(hours=24)
 # The customer's own inquiry allows follow-ups until the opportunity closes (Day 91).
 INQUIRY_DAYS = 91
@@ -103,6 +111,8 @@ class Decision:
     frequency: dict[str, Any] = field(default_factory=dict)
     checks: list[dict[str, Any]] = field(default_factory=list)
     log_id: str | None = None
+    # PLAN_4 stream X1 item 8: the opt-out entry that decided it (BLOCK) or that a reply went out despite.
+    opt_out_event_id: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -174,6 +184,31 @@ def _is_dnd(lead: dict | None) -> bool:
                for k in ("fe_lead_status", "lead_status", "status"))
 
 
+_DND_PATTERN = {"$regex": r"^\s*(dnd|do not disturb|do not contact)\s*$", "$options": "i"}
+
+
+async def _dnd_elsewhere(db: DealerScopedDatabase, lead: dict | None, customer: dict | None,
+                         customer_id: str | None) -> dict | None:
+    """PLAN_4 stream X1 item 6: a DND staff set on ANY of this dealer's leads for the same customer, phone or email
+    suppresses the customer everywhere at this dealer - a new web lead, a re-import with a new customer id. Returns
+    that lead, or None."""
+    who: list[dict[str, Any]] = []
+    if customer_id:
+        who.append({"customer_id": {"$in": [customer_id, as_object_id(customer_id)]}})
+    phones = {consent.address_key("sms", p) for p in consent.recipient_candidates(lead, customer, "sms")} - {None}
+    for phone in phones:
+        digits = "".join(c for c in phone if c.isdigit())[-10:]
+        who.append({"phone": {"$regex": f"{digits}$"}})
+    emails = {consent.address_key("email", e) for e in consent.recipient_candidates(lead, customer, "email")} - {None}
+    for email in emails:
+        who.append({"email": {"$regex": f"^\\s*{re.escape(email)}\\s*$", "$options": "i"}})
+    if not who:
+        return None
+    status = {"$or": [{k: _DND_PATTERN} for k in ("fe_lead_status", "lead_status", "status")]}
+    return await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"$and": [{"$or": who}, status]},
+                                                                  projection={"_id": 1})
+
+
 def _lead_created(lead: dict | None) -> datetime | None:
     lead = lead or {}
     created = lead.get("createdAt") or lead.get("created_at")
@@ -196,26 +231,17 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
     """B0.4's steps 2-6 for a marketing text the business starts (step 1,
     the explicit no, is checked before). Returns {status, source, detail,
     evidence_id}; status is `granted`, `review_required` or `none`."""
-    flag, phone = consent.phone_opt_in(customer, to)
     if await consent.ever_opted_out(db, customer_id, "sms", to):
-        # The platform sets sms_opt_in on any inbound text, even one after a STOP, so after an
-        # opt-out only the customer's own opt-in back (START, "YES", a phrase) counts (decision 141).
+        # After an opt-out only the customer's own opt-in back (START, "YES", a phrase) counts (decision 141).
         back = await consent.latest_opt_out(db, customer_id, "sms", to)
         if back and back["consent_status"] == "opted_in" and back["consent_source"].startswith("customer_"):
             return {"status": "granted", "source": back["consent_source"],
                     "evidence_id": str(back["_id"]),
                     "detail": f"the customer opted back in to texts ({back['consent_source']})"}
-        flag = None
-    if flag is True:
-        evidence_id = f"platform_opt_in:{customer_id}:{(phone or {}).get('value')}"
-        if customer_id:
-            await consent.record_consent(
-                db, customer_id=customer_id, channel="sms", consent_type="marketing_consent", status="granted",
-                source="platform_sms_opt_in", lead_id=lead_id, evidence_id=evidence_id,
-                evidence={"phone": (phone or {}).get("value"), "phone_source": (phone or {}).get("source"),
-                          "added_at": str((phone or {}).get("added_at"))})
-        return {"status": "granted", "source": "platform_sms_opt_in", "evidence_id": evidence_id,
-                "detail": "the customer texted the dealer from this phone (platform sms_opt_in)"}
+    # PLAN_4 stream X1 item 4: the platform's `sms_opt_in: true` is NOT marketing consent. The CRM sets it on any
+    # inbound text (processSms.js / aiInbound.js linkCustomerToLead smsOptIn: true): a customer asking "what time
+    # do you close?" never agreed to campaigns. It only ever supported answering that conversation (a reply needs
+    # no consent). Its `false` is still an explicit no (rule 4).
 
     if not campaign:
         created = _lead_created(lead)
@@ -226,11 +252,22 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
             return {"status": "granted", "source": "own_inquiry", "evidence_id": f"inquiry:{lead_id}",
                     "detail": f"follow-up on the customer's own inquiry ({why}), within {INQUIRY_DAYS} days"}
 
-    form = consent.lead_form_consent(lead)
-    if form and form[0]:
-        return {"status": "review_required", "source": "lead_form", "evidence_id": f"lead_form:{lead_id}",
-                "detail": f"lead form says {form[1]!r}, with no disclosure wording, time or source: "
-                          "CONSENT_REVIEW_REQUIRED"}
+    # PLAN_4 stream X1 item 8 (TCPA PDF §6): the provider's consent object, kept whole. Complete (disclosure,
+    # its version, the time, the phone we'd text) it counts; anything less is CONSENT_REVIEW_REQUIRED.
+    provider = consent.lead_provider_consent(lead)
+    if provider and provider.get("opted_in"):
+        missing = consent.missing_provider_evidence(provider, to)
+        evidence_id = f"lead_form:{lead_id}" if provider["format"] == "comment_line" else f"lead_provider:{lead_id}"
+        if not missing:
+            return {"status": "granted", "source": "lead_provider", "evidence_id": evidence_id,
+                    "text_version": provider.get("disclosure_version"), "evidence": provider,
+                    "detail": f"the lead provider's consent record ({provider.get('provider')}, disclosure "
+                              f"{provider.get('disclosure_version')}, given {provider.get('consent_timestamp')})"}
+        what = (f"lead form says {provider.get('quote')!r}" if provider["format"] == "comment_line"
+                else f"the lead provider's consent ({provider.get('provider')})")
+        return {"status": "review_required", "source": "lead_provider", "evidence_id": evidence_id,
+                "text_version": provider.get("disclosure_version"), "missing": missing,
+                "detail": f"{what}, missing {', '.join(missing)}: CONSENT_REVIEW_REQUIRED"}
     missing = "not a follow-up on their own inquiry" if campaign else "no inquiry of their own"
     return {"status": "none", "source": None, "evidence_id": None,
             "detail": f"no text consent (no platform opt-in flag, {missing})"}
@@ -241,7 +278,8 @@ async def _marketing_sms_sent_recently(db: DealerScopedDatabase, customer_id: st
     """ALLOWed marketing texts to this customer in the last 24 hours."""
     who: dict[str, Any] = {"customer_id": customer_id} if customer_id else {"to": to}
     rows = await db.collection(AI_COMPLIANCE_LOG_COLLECTION).find(
-        {**who, "channel": "sms", "purpose": "marketing", "is_reply": False, "decision": "ALLOW",
+        {**who, "channel": "sms", "purpose": {"$in": list(CAPPED_PURPOSES)}, "is_reply": False,
+         "decision": "ALLOW",
          "at": {"$gt": at - CAP_PERIOD, "$lte": at}}).to_list(None)
     return sorted(_aware(r["at"]) for r in rows)
 
@@ -262,6 +300,8 @@ async def can_contact(
     source: str = "ai",
     request_id: str | None = None,
     record: bool = True,
+    message_id: str | None = None,
+    template_id: str | None = None,
 ) -> Decision:
     """`campaign`: a platform campaign text (the customer's own inquiry
     doesn't cover it). `source` says who is asking (ai_reply, ai_followup,
@@ -289,7 +329,8 @@ async def can_contact(
     if record:
         decision.log_id = await _log(db, decision, customer_id=customer_id, lead_id=lead_id, channel=channel,
                                      purpose=purpose, is_reply=is_reply, at=at, to=to, source=source,
-                                     request_id=request_id, campaign=campaign)
+                                     request_id=request_id, campaign=campaign, message_id=message_id,
+                                     template_id=template_id)
     return decision
 
 
@@ -303,6 +344,16 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         return Decision("BLOCK", "AI voice calls are off", "ai_voice_disabled")
     check("ai_voice", True, f"channel is {channel}")
 
+    if purpose == "lead_response":
+        is_reply = False  # never the reply exemption: the business sends first
+        if origin.origin != "inbound":
+            # PLAN_4 stream X1 item 1: an imported / historical / campaign record is not a consumer inquiry.
+            check("lead_response", False, f"not a consumer-initiated lead ({origin.rule}): its first message is "
+                                          "outbound marketing")
+            purpose = "marketing"
+        else:
+            check("lead_response", True, f"a consumer-initiated lead ({origin.rule})")
+
     # 2. Opt-out on this channel, by customer or by phone / email (decision 140).
     address = to or consent.resolve_recipient(lead, customer, "email" if channel == "email" else "sms")
     if await consent.is_invalid(db, channel, address):
@@ -310,10 +361,12 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         return Decision("BLOCK", f"{address} is marked invalid (wrong person, bad number or hard bounce)",
                         "invalid_contact")
     check("invalid_contact", True, f"{channel} address not marked invalid")
-    opted_out = await consent.is_opted_out(db, customer_id, channel, address)
+    opt_out_entry = await consent.latest_opt_out(db, customer_id, channel, address)
+    opted_out = bool(opt_out_entry and opt_out_entry["consent_status"] == "opted_out")
     if opted_out and purpose != "opt_out_confirmation" and not is_reply:
         check("opt_out", False, f"the customer opted out of {channel}")
-        return Decision("BLOCK", f"the customer opted out of {channel}", "opted_out")
+        return Decision("BLOCK", f"the customer opted out of {channel}", "opted_out",
+                        opt_out_event_id=str(opt_out_entry["_id"]))
     check("opt_out", True,
           "opt-out confirmation (allowed once)" if opted_out and purpose == "opt_out_confirmation"
           else f"opted out of {channel}, but this replies to the customer's own message (decision 136)"
@@ -325,17 +378,31 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     if _is_dnd(lead):
         check("do_not_contact", False, "staff set the lead to DND")
         return Decision("BLOCK", "the lead is on the dealer's do-not-contact list (DND)", "do_not_contact")
+    if other := await _dnd_elsewhere(db, lead, customer, customer_id):
+        check("do_not_contact", False, f"staff set another lead of this customer / phone / email to DND "
+                                       f"({other['_id']})")
+        return Decision("BLOCK", "the customer is on the dealer's do-not-contact list (DND on another of their "
+                                 "leads)", "do_not_contact")
     check("do_not_contact", True, "not on the dealer's do-not-contact list")
 
     marketing_sms = purpose == "marketing" and channel == "sms" and not is_reply
-    # 4. An explicit no (marketing texts only; a reply still goes out).
-    form = consent.lead_form_consent(lead)
-    if form and customer_id:
+    lead_response_sms = purpose == "lead_response" and channel == "sms"
+    # 4. An explicit no (marketing texts and the first message on a lead; a reply still goes out).
+    provider = consent.lead_provider_consent(lead)
+    form = (provider["opted_in"], provider.get("quote") or "the lead provider's consent record") \
+        if provider and provider.get("opted_in") is not None else None
+    if provider and customer_id:
+        # PLAN_4 stream X1 item 8: the whole evidence object, its disclosure version and source URL (TCPA PDF §6).
+        complete = provider.get("opted_in") and not consent.missing_provider_evidence(provider, to)
         await consent.record_consent(
             db, customer_id=customer_id, channel="sms", consent_type="marketing_consent",
-            status="review_required" if form[0] else "denied", source="lead_form", lead_id=lead_id,
-            evidence_id=f"lead_form:{lead_id}", evidence={"quote": form[1], "lead_source": origin.source})
-    if marketing_sms:
+            status="denied" if provider.get("opted_in") is False else "granted" if complete else "review_required",
+            source="lead_form" if provider["format"] == "comment_line" else "lead_provider", lead_id=lead_id,
+            evidence_id=(f"lead_form:{lead_id}" if provider["format"] == "comment_line"
+                         else f"lead_provider:{lead_id}"),
+            evidence={**provider, "lead_source": origin.source}, text_version=provider.get("disclosure_version"),
+            source_url=provider.get("source_url"), address=consent.address_key("sms", provider.get("phone")))
+    if marketing_sms or lead_response_sms:
         flag, _ = consent.phone_opt_in(customer, to)
         if flag is False:
             check("explicit_no", False, "the phone is marked sms_opt_in: false on the customer record")
@@ -365,8 +432,9 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                                  "out, asks nothing, and says the team picks up at 8:00", "reply_quiet_hours",
                         quiet_hours=True, resume_at=resume, zone=zone.as_dict())
 
-    # 6. An open review stops marketing.
-    if purpose == "marketing" and customer_id and (review := await consent.open_review(db, customer_id)):
+    # 6. An open review stops everything the system starts (PLAN_4 stream X1 item 3: transactional too - the
+    # countdown with its photo, the no-show follow-up); only a reply to the customer's own message goes (rule 5).
+    if customer_id and (review := await consent.open_review(db, customer_id)):
         quote = (review.get("evidence") or {}).get("message")
         check("review", False, f"possible opt-out awaiting review: {quote!r}")
         return Decision("REVIEW", f"possible opt-out awaiting review ({quote!r})", "review_open",
@@ -388,6 +456,11 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
             return Decision("BLOCK", consent_info["detail"], "no_consent", zone=zone.as_dict(),
                             consent=consent_info)
         check("consent", True, consent_info["detail"])
+    elif purpose == "lead_response":
+        consent_info = {"status": "inquiry", "source": "consumer_inquiry", "evidence_id": f"inquiry:{lead_id}",
+                        "lead_source": origin.source,
+                        "detail": "a response to the consumer's own inquiry: no marketing consent needed"}
+        check("consent", True, consent_info["detail"])
     else:
         check("consent", True, "email needs no consent (unsubscribe link and postal address)" if channel == "email"
               else f"{purpose}: no marketing consent needed")
@@ -400,10 +473,25 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     profile = await dealer_profile(dealer_id)
     window = MARKETING_WINDOW if purpose == "marketing" else TRANSACTIONAL_WINDOW
     # MASTER_PLAN_4 F1: marketing follows the customer's state's own row(s) (client's TCPA tables, 1 Oct).
-    rules = state_hours.rules_for(state_hours.zone_states(zone)) if purpose == "marketing" else None
+    # PLAN_4 stream X1 item 7: transactional texts follow the state rows too (state windows apply to every
+    # automated text; replies to the customer's own message keep their exemption, rule 5).
+    # PLAN_4 stream X1 item 10: an AI text is an automated message, so the automated-device rows apply (IN, ME).
+    rules = (state_hours.rules_for(state_hours.zone_states(zone), automated=True)
+             if purpose in (*CAPPED_PURPOSES, "transactional") else None)
+    if purpose == "marketing" and (banned := state_hours.unsolicited_sales_banned(rules or [])):
+        solicited = (consent_info.get("source") in ("lead_provider",)
+                     or str(consent_info.get("source") or "").startswith("customer_")
+                     or (consent_info.get("source") == "own_inquiry" and origin.origin == "inbound"))
+        if not solicited:
+            check("unsolicited_sales_ban", False, f"{', '.join(banned)} bans unsolicited sales texts to cell "
+                                                  "phones (N.J.S.A. 56:8-130) and this isn't a follow-up the "
+                                                  "customer asked for")
+            return Decision("BLOCK", f"{', '.join(banned)}: no unsolicited sales texts to cell phones",
+                            "unsolicited_sales_ban", zone=zone.as_dict(), consent=consent_info)
+        check("unsolicited_sales_ban", True, f"{', '.join(banned)}: the customer's own inquiry or express consent")
     earliest = at
     frequency: dict[str, Any] = {}
-    if purpose == "marketing":
+    if purpose in CAPPED_PURPOSES:
         recent = await _marketing_sms_sent_recently(db, customer_id, to, at)
         frequency = {"sent_last_24h": len(recent), "cap": MARKETING_SMS_CAP}
         if len(recent) >= MARKETING_SMS_CAP:
@@ -413,19 +501,28 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                   f"{len(recent)} marketing texts in the last 24 hours (cap {MARKETING_SMS_CAP})")
         else:
             check("frequency", True, f"{len(recent)} of {MARKETING_SMS_CAP} marketing texts in the last 24 hours")
-        earliest = _state_caps(check, frequency, rules or [], recent, at, earliest)
+        # PLAN_4 stream X1 item 7: the state's own cap (FL / OK / MD "3 per 24 hours") counts staff calls too.
+        calls = await calls_recently(db, customer_id, at) if state_hours.caps(rules or []) else []
+        if calls:
+            frequency["calls_last_24h"] = len(calls)
+        earliest = _state_caps(check, frequency, rules or [], sorted(recent + calls), at, earliest)
 
     window_text = state_hours.describe(rules) if rules else f"{window[0]:%H:%M}-{window[1]:%H:%M}"
     ok_customer = state_hours.allowed(at, zone.zones, rules) if rules else in_window(at, zone.zones, window)
-    ok_dealer = dealer_open(at, profile)
+    # PLAN_4 stream X1 item 1: a consumer's own inquiry is answered while the dealer is closed (the after-hours
+    # "now or when we open?" choice), but only inside the customer's state window.
+    dealer_hours_apply = purpose != "lead_response"
+    ok_dealer = dealer_open(at, profile) if dealer_hours_apply else True
     check("customer_time", ok_customer, f"{window_text} customer time in {', '.join(zone.zones)} ({zone.detail})")
-    check("dealer_hours", ok_dealer, f"dealer open hours ({profile.timezone})")
+    check("dealer_hours", ok_dealer, f"dealer open hours ({profile.timezone})" if dealer_hours_apply
+          else "a response to the consumer's own inquiry: the after-hours choice covers a closed dealer")
     if earliest == at and ok_customer and ok_dealer:
         return Decision("ALLOW", f"{purpose} text inside the customer's window and the dealer's hours", "allowed",
                         zone=zone.as_dict(), consent=consent_info, frequency=frequency)
 
-    until = (state_hours.next_allowed(earliest, zone.zones, rules, profile) if rules
-             else next_allowed(earliest, zone.zones, window, profile))
+    hours = profile if dealer_hours_apply else None
+    until = (state_hours.next_allowed(earliest, zone.zones, rules, hours) if rules
+             else next_allowed(earliest, zone.zones, window, hours))
     reasons = []
     if earliest != at:
         reasons.append("frequency cap: " + (frequency.get("cap_text")
@@ -441,6 +538,21 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                     frequency=frequency)
 
 
+# Call outcomes that mean a person actually dialled (a dismissed task is no call).
+DIALLED_OUTCOMES = ("connected", "no_answer", "voicemail", "other", None)
+
+
+async def calls_recently(db: DealerScopedDatabase, customer_id: str | None, at: datetime) -> list[datetime]:
+    """Staff calls to this customer recorded in the last 24 hours (a completed call task: PLAN_4 stream X1 item 7),
+    for the states whose cap counts calls and texts together."""
+    if not customer_id:
+        return []
+    rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
+        {"customer_id": customer_id, "status": "completed", "outcome": {"$in": list(DIALLED_OUTCOMES)},
+         "closed_at": {"$gt": at - CAP_PERIOD, "$lte": at}}, projection={"closed_at": 1}).to_list(None)
+    return sorted(_aware(r["closed_at"]) for r in rows)
+
+
 def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateRule], recent: list[datetime],
                 at: datetime, earliest: datetime) -> datetime:
     """A state row's own cap (MASTER_PLAN_4 F1), on top of the 3-in-24h one
@@ -452,24 +564,33 @@ def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateR
         if len(inside) < count:
             continue
         free = inside[-count] + period
-        check("state_frequency", False, f"{len(inside)} marketing texts in the last {period} (the state's cap "
-                                        f"is {count})")
+        check("state_frequency", False, f"{len(inside)} marketing texts and calls in the last {period} (the "
+                                        f"state's cap is {count})")
         if free > earliest:
             earliest = free
             hours = int(period.total_seconds() // 3600)
             frequency.update(free_at=free.isoformat(),
-                             cap_text=f"{count} marketing texts in {hours} hours (the state's own cap)")
+                             cap_text=f"{count} texts and calls in {hours} hours (the state's own cap)")
     return earliest
 
 
 async def _log(db: DealerScopedDatabase, decision: Decision, *, customer_id: str | None, lead_id: str | None,
                channel: str, purpose: str, is_reply: bool, at: datetime, to: str | None, source: str,
-               request_id: str | None, campaign: bool) -> str:
+               request_id: str | None, campaign: bool, message_id: str | None = None,
+               template_id: str | None = None) -> str:
+    """One add-only row per decision with the TCPA PDF §11 audit fields. `delivery` is filled in afterwards from
+    the send and the provider's callback (channels/sender.py, channels/delivery.py: record_delivery); nothing
+    else on the row is ever changed."""
     zones = decision.zone.get("zones") or []
     doc = {
         "at": at, "logged_at": clock.now(), "customer_id": customer_id, "lead_id": lead_id, "channel": channel,
         "to": to, "purpose": purpose, "is_reply": is_reply, "campaign": campaign, "source": source,
         "request_id": request_id, "origin": decision.origin.get("origin"),
+        # PLAN_4 stream X1 item 8: lead source, disclosure version, message / template, the opt-out event.
+        "lead_source": decision.origin.get("source"), "origin_rule": decision.origin.get("rule"),
+        "message_id": message_id, "template_id": template_id, "opt_out_event_id": decision.opt_out_event_id,
+        "consent_text_version": decision.consent.get("text_version"),
+        "rules_version": state_hours.RULES_VERSION, "delivery": {"status": None},
         "consent_evidence_id": decision.consent.get("evidence_id"), "consent": decision.consent,
         "jurisdiction": {"zones": zones, "state": decision.zone.get("state"), "method": decision.zone.get("method"),
                          # MASTER_PLAN_4 F1: which states' rows applied, and the table's version.

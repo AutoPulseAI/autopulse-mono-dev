@@ -78,6 +78,10 @@ async def test_the_crm_is_asked_to_send_with_the_secret_and_the_photos(mongo):
     assert body["lead_id"] == created["lead_id"] and body["channel"] == "sms" and body["to"].startswith("+1")
     assert body["media_urls"] == ["https://cdn.test/rav4.jpg"]
     assert body["idempotency_key"] == "t1:sms"
+    # PLAN_4 stream X1 item 5: the send check's ALLOW goes with it; the CRM refuses a send without one.
+    from upsell_agent.integrations.mongodb import AI_COMPLIANCE_LOG_COLLECTION
+    log = await mongo[AI_COMPLIANCE_LOG_COLLECTION].find_one({"request_id": "t1:sms", "decision": "ALLOW"})
+    assert body["compliance_decision_id"] == str(log["_id"])
 
 
 async def test_the_platform_record_carries_the_media(mongo):

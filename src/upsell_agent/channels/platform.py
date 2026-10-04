@@ -55,6 +55,8 @@ class PlatformChannelDriver:
             "dealer_id": message.dealer_id, "lead_id": message.lead_id, "customer_id": message.customer_id,
             "channel": message.channel, "to": message.to, "text": message.text, "subject": message.subject,
             "idempotency_key": message.idempotency_key, "media_urls": list(message.media_urls or ()),
+            # PLAN_4 stream X1 item 5: the CRM checks this decision (ALLOW, this lead / channel / recipient).
+            "compliance_decision_id": message.compliance_decision_id,
         }
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=self._transport) as client:

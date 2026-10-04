@@ -23,6 +23,8 @@ class OutboundMessage:
     # MASTER_PLAN_4 F3: the vehicle photo(s) to attach - MMS on SMS, an inline image in email. Already
     # checked (agent/vehicle_media.py); empty means text only.
     media_urls: tuple[str, ...] = ()
+    # PLAN_4 stream X1 item 5: the send check's ALLOW (its ai_compliance_log id). The CRM refuses a send without it.
+    compliance_decision_id: str | None = None
 
 
 @dataclass(frozen=True)
