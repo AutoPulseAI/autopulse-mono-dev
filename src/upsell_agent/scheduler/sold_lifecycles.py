@@ -421,6 +421,39 @@ async def _send_both(db: DealerScopedDatabase, deps: Any, tracer: TurnTracer, do
     return outcomes
 
 
+NO_TEXT_CONSENT = "no text consent"  # compliance/engine.py marketing_sms_consent's BLOCK detail
+TEXT_CONSENT_NOTICE = (
+    "{what} went by email only: there is no text consent on record for {name}. They never texted the dealer "
+    "(no platform opt-in) and their own enquiry is more than 91 days old, so it no longer counts. To text owners "
+    "after the sale, record the customer's written consent to texts, or have counsel approve treating the sale / "
+    "delivery as an established business relationship (TCPA guardrails PDF §13); the AI does not decide this.")
+_LIFECYCLE_NAMES = {KIND_ANNIVERSARY: "The ownership anniversary message", KIND_BIRTHDAY: "The birthday message",
+                    KIND_POST_DELIVERY_CHECKIN: "The Day-3 check-in", KIND_SOLD_PENDING_TOUCH: "The Sold Pending message",
+                    KIND_SERVICE_OUTREACH: "The service message"}
+
+
+async def _note_email_only_for_consent(db: DealerScopedDatabase, lead_id: str, kind: str,
+                                       outcomes: list[SendOutcome], state: dict) -> bool:
+    """Stream S (stream F's finding): a lifecycle message whose text was blocked for lack of text consent but whose
+    email went. The consent rules are not changed; staff are told why, once per lead (AI panel notice and a CRM
+    note), with what would make texting possible."""
+    sms = next((o for o in outcomes if o.channel == "sms"), None)
+    emailed = any(o.channel == "email" and o.status in ("sent", "duplicate") for o in outcomes)
+    if not (emailed and sms and sms.status == "suppressed" and NO_TEXT_CONSENT in (sms.reason or "")):
+        return False
+    if state.get("text_consent_notice_at"):
+        return False
+    lead = await _lead(db, lead_id)
+    text = TEXT_CONSENT_NOTICE.format(what=_LIFECYCLE_NAMES.get(kind, "This message"),
+                                      name=(lead or {}).get("name") or "this customer")
+    await _set(db, lead_id, {"text_consent_notice_at": clock.now(),
+                             "staff_notice": {"at": clock.now(), "kind": "text_consent_missing", "text": text}})
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="text_consent_missing", text=text,
+                          key=f"text_consent_missing:{lead_id}")
+    return True
+
+
 async def _requeue(db: DealerScopedDatabase, doc: dict, due: datetime, reason: str) -> None:
     await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
         {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
@@ -581,6 +614,7 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
                                         "asked_at": now, "status": "offered", "facts": doc.get("facts"),
                                         "event_type": doc.get("event_type"), "offer": doc.get("offer")}
     outcomes = await _send_both(db, deps, tracer, doc, text, PURPOSE[kind])
+    await _note_email_only_for_consent(db, doc["lead_id"], kind, outcomes, state)
     # PLAN_4 stream L: a lifecycle message is a touch (learning/touches.py).
     from upsell_agent.learning import touches
     await touches.record_touch(db, touch_id=f"{doc['kind']}-{doc['_id']}", lead_id=doc["lead_id"],

@@ -15,5 +15,5 @@ steps:
   - reply: {lead: h, text: "Hello?"}
   - wait_turns: {lead: h, count: 4, timeout_s: 20}
   - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
-  - expect_outbox: {lead: h, channel: sms, count: 2, contains: "passing this to a member of our team"}
+  - expect_outbox: {lead: h, channel: sms, count: 2, contains: "a member of our team will call you"}
   - expect_followup: {lead: h, kind: handoff_check, status: pending}

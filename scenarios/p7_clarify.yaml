@@ -2,6 +2,8 @@ name: '"What do you mean?" gets the same question explained'
 stage: 107
 description: The AI asks about the trade-in's condition; the customer asks what that means. The reply explains it in plain words and asks the same question again, nothing new, and the customer's answer then fills it.
 steps:
+  # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: c, dealer: A, lead_type: trade_in, channel: sms, name: Cal Clarify, comments: "Trading my 2018 Honda Civic with 60,000 miles"}
   - wait_turns: {lead: c, count: 1, timeout_s: 20}
   - expect_last_sent: {lead: c, contains: "excellent, good, fair or poor", question_marks: 2}
