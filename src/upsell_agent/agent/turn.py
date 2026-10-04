@@ -854,7 +854,9 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         reason = _handoff_reason(result) + (f" (the customer writes in {decision['reply_language']})"
                                             if decision.get("reply_language") else "")
         fields.update(status="handoff", status_reason=reason, status_at=clock.now(),
-                      handoff_id=turn_id, staff_alert=None)
+                      handoff_id=turn_id, staff_alert=None,
+                      # PLAN_4 stream X3 item 4: no person's decision is pending - the AI may take it back to book.
+                      handoff_soft=bool(result.get("flag_human")) or reason.startswith("Customer is clearly upset"))
         if sent is not None and sent.status == "sent":
             # The handoff reply counts as the first "passed to the team" notice.
             fields["last_handoff_notice_at"] = clock.now()

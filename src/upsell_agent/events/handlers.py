@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import duplicates, human_contact, lifecycle
+from upsell_agent.agent import after_handoff, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
@@ -205,12 +205,14 @@ def _aware(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
 
 
-def _hold_decision(state: dict) -> tuple[str, str]:
-    """(action, reason) for customer messages on a lead the AI doesn't answer."""
+def _hold_decision(state: dict, request: str | None = None) -> tuple[str, str]:
+    """(action, reason) for customer messages on a lead the AI doesn't answer. `request` (PLAN_4 stream X3 item 4):
+    the customer asked to book or asked a question - they get a holding reply even inside the 2-hour window."""
     status, why = state["status"], state.get("status_reason")
     if status == "handoff":
         last = _aware(state.get("last_handoff_notice_at"))
-        if last and clock.now() - last < HOLDING_REPLY_EVERY:
+        gap = after_handoff.HOLDING_REPLY_MIN_GAP if request else HOLDING_REPLY_EVERY
+        if last and clock.now() - last < gap:
             return "saved_only", (f"The lead is with staff ({why or 'handed off'}); the customer was told at "
                                   f"{last:%H:%M} UTC that the team will reach out (at most one holding reply "
                                   f"every {HOLDING_REPLY_EVERY.total_seconds() / 3600:g} hours). Saved for staff.")
@@ -218,6 +220,26 @@ def _hold_decision(state: dict) -> tuple[str, str]:
     if status == "paused":
         return "saved_only", f"Paused: a person is handling this lead ({why or 'paused by staff'}). Saved for them."
     return "saved_only", f"The customer opted out ({why or 'opted out'}). Nothing is sent."
+
+
+async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *, lead_id: str, customer_id: str,
+                                    request: str, rows: list[dict], took_back: bool, why: str | None = None) -> None:
+    """A staff notice and a CRM note with what the customer asked after the handoff (PLAN_4 stream X3 item 4)."""
+    from upsell_agent.agent import crm_notes
+
+    said = " / ".join(str(r.get("text") or "") for r in rows)[:600]
+    if took_back:
+        text = (f"The customer asked to book after the handoff ({why or 'handed off'}): the AI took the lead back "
+                f"to book it. They wrote: \"{said}\"")
+    elif request == "booking":
+        text = f"The customer asked to book while the lead is with staff - please book it: \"{said}\""
+    else:
+        text = f"The customer asked a question while the lead is with staff - please answer: \"{said}\""
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+        "staff_notice": {"at": clock.now(), "kind": f"after_handoff_{request}", "text": text}}})
+    await crm_notes.write(db, lead_id=lead_id, kind="after_handoff", text=text,
+                          key=f"after-handoff-{rows[-1]['_id']}", platform=getattr(deps, "platform", None),
+                          customer_id=customer_id)
 
 
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
@@ -410,6 +432,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         # MASTER_PLAN_3 C2: contact within the 60 minutes (or while the task was open): no call needed.
         await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True, keep_requested=True)
 
+    if (state["status"] == "handoff" and not event.shadow and after_handoff.is_soft_handoff(state)
+            and after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) == "booking"):
+        # PLAN_4 stream X3 item 4: the handoff needed no person's decision (an unsafe draft, or read as upset) and
+        # the customer now asks to book: the AI takes the lead back and books it; staff are told.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+            "status": "active", "status_reason": None, "status_at": clock.now(), "resumed_at": clock.now(),
+            "handoff_soft": None}})
+        await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id, request="booking",
+                                        rows=unanswered, took_back=True, why=state.get("status_reason"))
+        state = {**state, "status": "active", "status_reason": None}
+
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
         # doesn't reply, and these aren't answered later on resume either.
@@ -419,7 +452,12 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             await lifecycle.apply(db, lead_id, [lifecycle.Event("customer_replied", source="customer_reply",
                                                                 reason=f"The customer replied: {why}")],
                                   lead=lead, customer_id=event.customer_id)
-        action, reason = _hold_decision(state)
+        request = after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) \
+            if state["status"] == "handoff" else None
+        if request and not event.shadow:
+            await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id,
+                                            request=request, rows=unanswered, took_back=False)
+        action, reason = _hold_decision(state, request)
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                   received_at=_parse_received_at(received_at))
         return {**held, "followups_cancelled": cancelled}

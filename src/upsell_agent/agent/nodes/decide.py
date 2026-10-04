@@ -45,10 +45,12 @@ from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profi
 from upsell_agent.integrations.platform_client import SlotTakenError
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import (
+    UPSET_ALONE_CONFIDENCE,
     UPSET_HANDOFF_CONFIDENCE,
     URGENT_HANDOFF_CONFIDENCE,
     Flags,
     next_action,
+    upset_words,
 )
 from upsell_agent.slots.profile import Profile
 from upsell_agent.tools import booking_tool
@@ -658,8 +660,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     urgent_confidence = float(extraction.get("urgent_confidence") or 0.0) if urgent else 0.0
 
     wants_human = bool(extraction.get("wants_human")) and not (dated and dated["call_requested"])
-    escalate = ((bool(extraction.get("upset")) and float(extraction.get("upset_confidence") or 0.0)
-                 >= UPSET_HANDOFF_CONFIDENCE) or (urgent and urgent_confidence >= URGENT_HANDOFF_CONFIDENCE))
+    said_upset = upset_words(text)
+    upset_confidence = float(extraction.get("upset_confidence") or 0.0)
+    escalate = ((bool(extraction.get("upset")) and (upset_confidence >= UPSET_ALONE_CONFIDENCE or (
+        upset_confidence >= UPSET_HANDOFF_CONFIDENCE and said_upset)))
+        or (urgent and urgent_confidence >= URGENT_HANDOFF_CONFIDENCE))
     person = await plan_human_contact(
         ctx, state, conversation, extraction, dealer=dealer, now=now, text=text, wants_human=wants_human,
         escalate=escalate, hold=hold_questions_reason(extraction, ctx.compliance))
@@ -681,6 +686,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         human_contact=person.mode,
         upset=bool(extraction.get("upset")),
         upset_confidence=float(extraction.get("upset_confidence") or 0.0),
+        upset_words=said_upset,
         annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
         questions=questions,
         urgent=urgent,
@@ -767,7 +773,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if extraction.get("upset") and decision["action"] != "handoff":
         span.reasoning.append(f"Upset, but not clearly enough to hand off (confidence "
                               f"{float(extraction.get('upset_confidence') or 0):.2f}, needs "
-                              f"{UPSET_HANDOFF_CONFIDENCE:.2f}).")
+                              f"{UPSET_HANDOFF_CONFIDENCE:.2f} with clear words of upset, or "
+                              f"{UPSET_ALONE_CONFIDENCE:.2f}).")
     if backstop:
         span.reasoning.append(f"Needed soon (pure-code backstop): interest.needed_by ({needed_by}) is within "
                               f"{URGENT_BACKSTOP_HOURS}h.")

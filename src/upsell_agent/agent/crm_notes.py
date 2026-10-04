@@ -34,6 +34,7 @@ LABELS = {
     "not_interested": "Not interested",
     "bad_contact": "Contact problem",
     "text_consent_missing": "Email only - no text consent",
+    "after_handoff": "Customer wrote after the handoff",
 }
 MAX_TEXT = 1500
 
