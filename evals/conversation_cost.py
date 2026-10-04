@@ -171,6 +171,12 @@ class Turn:
     summary_runs: int = 0
     no_reply_reason: str | None = None
     ms: int = 0
+    # Stream Q: why the turn went the way it did - Decide's action and the rule that fired, and every guard
+    # violation (each rejected draft), so a handoff or a fallback can be traced from the report alone.
+    action: str | None = None
+    action_why: str | None = None
+    guard_violations: list[str] = field(default_factory=list)
+    rejected_drafts: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -387,6 +393,7 @@ def _apply_logs(turn: Turn, logs: list[dict[str, Any]]) -> None:
     for log in logs:
         if log.get("trigger") == "summary":
             continue
+        draft: dict[str, str] | None = None
         summary = log.get("summary") or {}
         turn.outcome = log.get("outcome") or turn.outcome
         turn.guard_retries += int(summary.get("retries") or 0)
@@ -396,6 +403,17 @@ def _apply_logs(turn: Turn, logs: list[dict[str, Any]]) -> None:
         turn.after_hours = summary.get("after_hours") or turn.after_hours
         turn.booked = turn.booked or bool(summary.get("booked"))
         for node in log.get("nodes") or []:
+            output = node.get("output") or {}
+            if node.get("node") == "decide" and isinstance(output, dict) and output.get("action"):
+                turn.action = output["action"]
+                turn.action_why = next((r.get("why") for r in output.get("rules") or []
+                                        if r.get("result") == "fired"), None)
+            if node.get("node") == "compose" and isinstance(output, dict) and output.get("sms_text"):
+                draft = {"sms": output.get("sms_text") or "", "email": output.get("email_body") or ""}
+            if node.get("node") == "guard" and isinstance(output, dict):
+                turn.guard_violations += [str(v) for v in output.get("violations") or []]
+                if output.get("passed") is False and draft:
+                    turn.rejected_drafts.append(draft)
             if node.get("node") == "search_stock" and node.get("status") == "done":
                 output = node.get("output") or {}
                 if output.get("searched") is True:
@@ -824,7 +842,14 @@ def write_report(convs: list[Conversation], out_dir: Path, tag: str, meta: dict[
                 notes.append(f"after hours: {t.after_hours}")
             if t.flag_human:
                 notes.append("flagged for staff")
+            if t.action:
+                notes.append(f"decide: {t.action}" + (f" ({t.action_why})" if t.action_why else ""))
+            if t.guard_violations:
+                notes.append("guard: " + " / ".join(t.guard_violations))
             w(f"<sub>{'; '.join(notes)}</sub>")
+            for d in t.rejected_drafts:
+                w("")
+                w(f"<sub>rejected draft - SMS: {d['sms']!r}; email: {d['email']!r}</sub>")
             w("")
 
     md = base.with_suffix(".md")
