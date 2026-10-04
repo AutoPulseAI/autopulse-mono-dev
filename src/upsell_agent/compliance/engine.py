@@ -202,26 +202,17 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
     """B0.4's steps 2-6 for a marketing text the business starts (step 1,
     the explicit no, is checked before). Returns {status, source, detail,
     evidence_id}; status is `granted`, `review_required` or `none`."""
-    flag, phone = consent.phone_opt_in(customer, to)
     if await consent.ever_opted_out(db, customer_id, "sms", to):
-        # The platform sets sms_opt_in on any inbound text, even one after a STOP, so after an
-        # opt-out only the customer's own opt-in back (START, "YES", a phrase) counts (decision 141).
+        # After an opt-out only the customer's own opt-in back (START, "YES", a phrase) counts (decision 141).
         back = await consent.latest_opt_out(db, customer_id, "sms", to)
         if back and back["consent_status"] == "opted_in" and back["consent_source"].startswith("customer_"):
             return {"status": "granted", "source": back["consent_source"],
                     "evidence_id": str(back["_id"]),
                     "detail": f"the customer opted back in to texts ({back['consent_source']})"}
-        flag = None
-    if flag is True:
-        evidence_id = f"platform_opt_in:{customer_id}:{(phone or {}).get('value')}"
-        if customer_id:
-            await consent.record_consent(
-                db, customer_id=customer_id, channel="sms", consent_type="marketing_consent", status="granted",
-                source="platform_sms_opt_in", lead_id=lead_id, evidence_id=evidence_id,
-                evidence={"phone": (phone or {}).get("value"), "phone_source": (phone or {}).get("source"),
-                          "added_at": str((phone or {}).get("added_at"))})
-        return {"status": "granted", "source": "platform_sms_opt_in", "evidence_id": evidence_id,
-                "detail": "the customer texted the dealer from this phone (platform sms_opt_in)"}
+    # PLAN_4 stream X1 item 4: the platform's `sms_opt_in: true` is NOT marketing consent. The CRM sets it on any
+    # inbound text (processSms.js / aiInbound.js linkCustomerToLead smsOptIn: true): a customer asking "what time
+    # do you close?" never agreed to campaigns. It only ever supported answering that conversation (a reply needs
+    # no consent). Its `false` is still an explicit no (rule 4).
 
     if not campaign:
         created = _lead_created(lead)

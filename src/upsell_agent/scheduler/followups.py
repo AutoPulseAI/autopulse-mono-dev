@@ -424,6 +424,14 @@ async def plan_next_action(
     check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
                               purpose="marketing", is_reply=False, at=wanted, lead=lead, customer=customer,
                               record=False)
+    if check.outcome in ("BLOCK", "REVIEW"):
+        # PLAN_4 stream X1 item 4: no text consent (the platform's sms_opt_in flag no longer counts) - the step
+        # the customer asked for still goes by email, which needs none, when email is allowed.
+        alt = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
+                                channel=other_channel(channel), purpose="marketing", is_reply=False, at=wanted,
+                                lead=lead, customer=customer, record=False)
+        if alt.outcome in ("ALLOW", "HOLD"):
+            channel, check = other_channel(channel), alt
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     await followups.update_many(
         {"lead_id": lead_id, "status": "pending", "kind": {"$in": [KIND_NEXT_ACTION, KIND_NEXT_ACTION_CHECK]}},

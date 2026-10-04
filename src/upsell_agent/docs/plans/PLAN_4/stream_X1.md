@@ -59,3 +59,23 @@ Tests: `tests/unit/test_x1_first_reply.py` (P1, P2, CSV import, consumer inquiry
 
 Tests: `tests/unit/test_x1_review.py` (failed before: import + behaviour); `test_compliance.py` review test updated
 (transactional under review is now REVIEW).
+
+## Item 4: the CRM's `sms_opt_in` flag is not marketing consent
+
+The CRM sets `phones.$.sms_opt_in = true` on any inbound text (`processSms.js:339`, `aiInbound.js:78` →
+`customerResolver.appendPhoneIfMissing`). The engine (`marketing_sms_consent`) no longer grants marketing or
+campaign consent from it and no longer writes `platform_sms_opt_in` "granted" entries. A reply to the customer's
+own message needs no consent, so the flag's only legitimate use (answering that conversation) is unaffected; its
+`false` is still an explicit no. Marketing text consent now comes only from the customer's own inquiry (follow-ups
+within 91 days, unchanged) or the customer's own opt-in back after a STOP. The CRM flag and its other uses
+(the "SMS opt-in" badge, link logic) are left as they are.
+
+Side effect handled (small, marked change in `scheduler/followups.py plan_next_action`): a dated next step the
+customer asked for whose text is blocked for consent now goes by email when email is allowed, instead of not at all.
+
+For counsel: whether a customer's own request for a dated contact ("try me again next year") is itself enough for
+a text then; and whether "the customer wrote back" on an outbound / DealerVault lead should keep granting 91 days of
+AI follow-up consent (`_customer_wrote`, unchanged here; the audit flagged it).
+
+Tests: `test_compliance.py::test_platform_opt_in_flag_is_not_marketing_consent` (new; ALLOW before), campaign-queue
+tests now use a customer START as the real consent.
