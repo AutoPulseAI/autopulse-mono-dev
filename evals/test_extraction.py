@@ -12,7 +12,7 @@ Understanding (MASTER_PLAN_2 Phase 4): cases can also give what we last asked
 handoff / frustration signals, scored by the Understanding metric.
 
 - Default (MODEL_EXTRACT=offline): checks the offline model's rules.
-- With a real model:  MODEL_EXTRACT=openai:gpt-4o-mini OPENAI_API_KEY=... pytest evals/test_extraction.py
+- With a real model:  MODEL_EXTRACT=openai:gpt-5-mini OPENAI_API_KEY=... pytest evals/test_extraction.py
   Skipped automatically when the key is missing.
 """
 

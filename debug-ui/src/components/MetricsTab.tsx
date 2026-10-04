@@ -180,7 +180,7 @@ export function MetricsTab({ dealerId, onError }: Props) {
             <Card
               title="Cost"
               value={`$${m.cost_usd.total.toFixed(4)}`}
-              detail={`${m.cost_usd.tokens_in.toLocaleString()} in / ${m.cost_usd.tokens_out.toLocaleString()} out tokens`}
+              detail={`${m.cost_usd.tokens_in.toLocaleString()} in (${(m.cost_usd.tokens_cached ?? 0).toLocaleString()} cached) / ${m.cost_usd.tokens_out.toLocaleString()} out tokens`}
             />
             <Card
               title="Qualified"

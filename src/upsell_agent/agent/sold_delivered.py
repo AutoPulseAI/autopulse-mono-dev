@@ -136,7 +136,7 @@ def render_checkin(*, first_name: str | None, dealership: str | None, vehicle: d
         service = (first_service or {}).get("name")
         what = f"your first recommended service ({service})" if service else "your first recommended service"
         body += (f" I can also get a request in for {what} now so it is already taken care of - just reply YES "
-                 "with a day and time that suits you, and our service team will confirm it.")
+                 "with a day and time that suit you, and our service team will confirm it.")
     subject = f"How are you enjoying {car}?"
     return {"sms_text": body, "email_subject": subject[0].upper() + subject[1:], "email_body": body + _sign(dealership)}
 
@@ -212,7 +212,7 @@ def render_service_outreach(kind: str, facts: dict[str, Any], *, first_name: str
         what = facts.get("component") or facts.get("summary") or "a safety recall"
         body = (f"{_hi(first_name)}, {facts['source']} shows an open safety recall ({facts['recall_id']}) for "
                 f"{car}: {what}. Would you like us to get a service request in for it? Reply YES with a day and "
-                "time that suits you, and our service team will confirm it.")
+                "time that suit you, and our service team will confirm it.")
         subject = "An open safety recall for your vehicle"
     else:
         service = facts.get("service")
@@ -220,7 +220,7 @@ def render_service_outreach(kind: str, facts: dict[str, Any], *, first_name: str
             return None
         when = f" (due {facts['due']})" if facts.get("due") else ""
         body = (f"{_hi(first_name)}, {car} is coming up on its {service}{when}. Would you like us to get a "
-                "service request in? Reply YES with a day and time that suits you, and our service team will "
+                "service request in? Reply YES with a day and time that suit you, and our service team will "
                 "confirm it.")
         subject = "Your vehicle's next service"
     return {"sms_text": body, "email_subject": subject, "email_body": body + _sign(dealership)}

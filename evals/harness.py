@@ -33,6 +33,7 @@ from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
 from upsell_agent import clock
+from upsell_agent.agent import llm
 from upsell_agent.agent.turn import TurnDeps
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender
@@ -92,6 +93,11 @@ async def _setup(case: dict[str, Any]) -> dict[str, str]:
     """A fresh database with the dev dealers, the clock at EVAL_NOW, and a new
     lead (whose first reply runs when `comments` is given or the trigger is a new lead)."""
     mongodb.set_db_for_tests(AsyncMongoMockClient()[f"evals_{ObjectId()}"])
+    # Each case runs in its own event loop (asyncio.run); a cached agent's OpenAI client is bound to the
+    # previous one, and a real model then fails with "Event loop is closed" and the turn sends the template
+    # (found by stream G's grammar eval). Fresh agents per case.
+    for agent in (llm.extract_agent, llm.compose_agent, llm.summary_agent):
+        agent.cache_clear()
     dealer_profile.clear_cache()
     # Dev customers have 555 phones and no DealerVault address, so the send
     # check would use only hours legal in every US zone, and a campaign reply

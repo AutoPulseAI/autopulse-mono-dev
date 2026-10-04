@@ -137,7 +137,7 @@ CUSTOMER_WORDING: dict[str, tuple[str, str]] = {
          "Either is fine too.")),
     "interest.model": (
         "Which vehicle do you have in mind?",
-        "Just the kind of car you'd like, for example a Toyota RAV4 or a small SUV. It helps us find good options."),
+        "Just tell me the kind of car you'd like, for example, a Toyota RAV4 or a small SUV. It helps us find good options."),
     "interest.budget": (
         "Roughly how much would you like to spend? A monthly amount is fine too.",
         "A rough price, or a monthly amount you're comfortable with, helps us show you vehicles that fit."),
@@ -146,7 +146,7 @@ CUSTOMER_WORDING: dict[str, tuple[str, str]] = {
         "That's the amount you'd be happy to pay each month if you finance or lease."),
     "interest.timeline": (
         "When are you hoping to get your next vehicle?",
-        "Just a rough idea, for example this week, next month, or you're only looking for now."),
+        "A rough idea is fine, for example, this week, next month, or that you're only looking for now."),
     "interest.service_needed": (
         "What does your vehicle need done?",
         "For example an oil change, new tires, or a noise you'd like us to check."),

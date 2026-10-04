@@ -32,16 +32,31 @@ class Settings(BaseSettings):
     # message - the main cost lever (architecture §10). "offline" selects the
     # deterministic stand-in (agent/offline_model.py) for development without
     # a key; it is rules, not AI, and must not be used in production.
-    model_extract: str = Field(default="openai:gpt-4o-mini", alias="MODEL_EXTRACT")
-    model_compose: str = Field(default="openai:gpt-4o", alias="MODEL_COMPOSE")
+    # MASTER_PLAN_4 stream G (client, 5 Oct 2026): the team switched to GPT-5 mini for both steps.
+    model_extract: str = Field(default="openai:gpt-5-mini", alias="MODEL_EXTRACT")
+    model_compose: str = Field(default="openai:gpt-5-mini", alias="MODEL_COMPOSE")
+    # GPT-5 models reason before answering, and reasoning tokens are billed and timed as output. Extract and
+    # Compose follow detailed instructions rather than solving puzzles, so they run at a low effort
+    # ("minimal", "low", "medium", "high"; "" sends none - for a model that doesn't reason, e.g. gpt-4o).
+    # Only sent to openai:gpt-5* / o-series models (agent/llm.py).
+    reasoning_effort_extract: str = Field(default="minimal", alias="REASONING_EFFORT_EXTRACT")
+    # Measured (stream G, gpt-5-mini, 4 Oct 2026): Compose at "minimal" took 2.4-3.2 s; at "low" 5.7-7.7 s with
+    # 3x the output tokens, and once dropped a sentence of Touch 1's required opening.
+    reasoning_effort_compose: str = Field(default="minimal", alias="REASONING_EFFORT_COMPOSE")
+    # OpenAI's prompt cache (agent/llm.py): each agent sends a stable `prompt_cache_key` so its requests land
+    # where its static prefix is already cached. This prefix namespaces the keys, e.g. per environment.
+    prompt_cache_key_prefix: str = Field(default="autopulse", alias="PROMPT_CACHE_KEY_PREFIX")
     # Makes every offline-model call wait this long, like a real model would
     # (burst tests, MASTER_PLAN_1 Stage 12). 0 = answer instantly.
     offline_model_latency_ms: int = Field(default=0, alias="OFFLINE_MODEL_LATENCY_MS")
 
     # Per-turn limits (architecture §7). Hitting any of them sends the template.
-    extract_timeout_s: float = Field(default=3.0, alias="EXTRACT_TIMEOUT_S")
-    compose_timeout_s: float = Field(default=5.0, alias="COMPOSE_TIMEOUT_S")
-    first_reply_deadline_s: float = Field(default=8.0, alias="FIRST_REPLY_DEADLINE_S")
+    # Stream G re-measured them on gpt-5-mini at the efforts above (4 Oct 2026, docs/plans/PLAN_4/stream_G.md):
+    # Extract 1.8-4.7 s, Compose 2.4-3.2 s per call (gpt-4o-mini/gpt-4o were about 1-2 s), so the old 3 s / 5 s /
+    # 8 s sent the template on ordinary turns. The first reply has room for Extract + Compose + one rewrite.
+    extract_timeout_s: float = Field(default=6.0, alias="EXTRACT_TIMEOUT_S")
+    compose_timeout_s: float = Field(default=8.0, alias="COMPOSE_TIMEOUT_S")
+    first_reply_deadline_s: float = Field(default=15.0, alias="FIRST_REPLY_DEADLINE_S")
     reply_deadline_s: float = Field(default=20.0, alias="REPLY_DEADLINE_S")
     max_ai_calls_per_turn: int = Field(default=4, alias="MAX_AI_CALLS_PER_TURN")
     # Working memory in the context pack (MASTER_PLAN_2 Phase 1): the recent

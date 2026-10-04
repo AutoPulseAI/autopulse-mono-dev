@@ -251,7 +251,7 @@ def reply_text(kind: str, *, customer_name: str | None, appt: datetime | None,
     first = _first(customer_name)
     day, at = _when(appt) if appt else ("", "")
     if kind == "confirmed":
-        return f"Perfect, thank you {first}! See you {day} at {at}."
+        return f"Perfect, thank you, {first}! See you {day} at {at}."
     if kind == "clarify":
         return "Just to be sure, does that time still work? Please reply Y for Yes or N for No."
     if kind == "reschedule":

@@ -333,6 +333,8 @@ async def run_turn(
             "required": {"filled": decision.get("required_filled"), "total": decision.get("required_total")},
             "ai_calls": ctx.ai_calls,
             "tokens_in": sum(c.get("tokens_in") or 0 for c in calls),
+            # Stream G: the part of tokens_in served from OpenAI's prompt cache (billed at the cached price).
+            "tokens_cached": sum(c.get("tokens_cached") or 0 for c in calls),
             "tokens_out": sum(c.get("tokens_out") or 0 for c in calls),
             "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 6),
             "campaign_id": (result.get("campaign") or {}).get("campaign_id"),

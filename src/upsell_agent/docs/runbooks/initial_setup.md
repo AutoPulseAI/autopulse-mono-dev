@@ -123,9 +123,9 @@ In `agentic-upsell/.env`, set `OPENAI_API_KEY`. Then, in the shell you run
 `make` from:
 
 ```bash
-export AI_MODEL_EXTRACT=openai:gpt-4o-mini AI_MODEL_COMPOSE=openai:gpt-4o
+export AI_MODEL_EXTRACT=openai:gpt-5-mini AI_MODEL_COMPOSE=openai:gpt-5-mini
 make ai-up                                  # recreates the containers with the real models
-MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o make ai-evals   # the eval gate on the real models
+MODEL_EXTRACT=openai:gpt-5-mini MODEL_COMPOSE=openai:gpt-5-mini make ai-evals   # the eval gate on the real models
 ```
 
 Langfuse traces appear once `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set.
@@ -134,7 +134,7 @@ A full report on the real models (every reply and conversation case, pass rates,
 time and cost per reply; saved in `agentic-upsell/evals/reports/`):
 
 ```bash
-MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o make ai-evals-report
+MODEL_EXTRACT=openai:gpt-5-mini MODEL_COMPOSE=openai:gpt-5-mini make ai-evals-report
 ```
 
 The Debug UI's banner shows which models are running.

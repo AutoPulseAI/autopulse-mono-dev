@@ -151,6 +151,7 @@ async def update_summary(dealer_id: str, lead_id: str, deps: Any) -> dict[str, A
     metrics = call.as_metrics()
     log = await tracer.finish("summary_updated", {
         "messages_folded": len(rows), "covers_messages": updated.messages, "summary_chars": len(updated.text),
-        "tokens_in": metrics["tokens_in"], "tokens_out": metrics["tokens_out"], "cost_usd": metrics["cost_usd"]})
+        "tokens_in": metrics["tokens_in"], "tokens_cached": metrics["tokens_cached"], "tokens_out": metrics["tokens_out"],
+        "cost_usd": metrics["cost_usd"]})
     await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
     return {"status": "updated", "messages_folded": len(rows), "covers_messages": updated.messages}

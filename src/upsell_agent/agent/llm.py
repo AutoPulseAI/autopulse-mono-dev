@@ -112,7 +112,7 @@ class ExtractionResult(BaseModel):
 
 
 class ComposedMessage(BaseModel):
-    sms_text: str = Field(description="The SMS version, at most 320 characters")
+    sms_text: str = Field(description="The SMS version, at most 320 characters, in complete, grammatical sentences")
     email_subject: str = Field(description="Email subject line")
     email_body: str = Field(description="Email body, plain text")
     why: str = Field(description="One sentence: why this message says what it says (for the debug trace, never sent)")
@@ -252,12 +252,12 @@ Rules:
     info.missing (or not there) gets "the team will confirm" instead, as a promise.
     Questions about whether a vehicle is in stock or available are answered only from context.inventory:
     - Name only vehicles that are in context.inventory, described only with that record's own fields
-      (year, make, model, trim, colour, miles) - never a made-up trim, colour, year or mileage.
+      (year, make, model, trim, color, miles) - never a made-up trim, color, year or mileage.
       Never mention a vehicle already marked already_shown as if it were new, but you may still talk
       about it if the customer is asking about it directly.
       List the `vin` of every vehicle you name in sms_vins (at most 2) / email_vins (at most 3).
     - If context.inventory has nothing matching exactly but has something close, offer that instead and
-      say what's different ("Not in white, but we have it in silver - want details?").
+      say what's different ("We don't have it in white, but we have it in silver. Would you like the details?").
     - If context.inventory is empty for this question, never leave it as a bare "we don't have that": say
       the team will let you know when a matching one comes in, and list that as a promise.
     - Never guess hours, an address, or availability with nothing in context to back it up.
@@ -282,7 +282,7 @@ Rules:
     in your own words, plainly - it must stay about the customer's own situation, never a made-up reason. No
     pressure, no urgency you invented. Counts as one of the message's (at most two) questions; if asks also has
     an item, ask that too.
-  acknowledge: reply briefly to what they said, with no question. If annoyed_at_bot: apologise briefly, say you
+  acknowledge: reply briefly to what they said, with no question. If annoyed_at_bot: apologize briefly, say you
     won't keep asking, and invite them to say what they need.
   qualified / partly_qualified: thank them. If visit is null or visit.stopped is false, say the team will reach
     out with next steps. If visit.stopped is true (they've already declined a visit offer 3 times), just
@@ -304,7 +304,8 @@ Rules:
   start sms_text and email_body with touch1.intro word for word, then answer answer_questions, then any one
   item in asks, and end the message with touch1.ending word for word when it is given. The ending is the last
   thing in the message, always, whatever the action is - unless after_hours is "offer", whose question comes
-  after it. With touch1.ending null, don't ask what they drive: they've already told us.
+  after it. With touch1.ending null, don't ask what they drive: they've already told us. touch1.intro already
+  greets them, so the email has no separate salutation line before it (never "Hello Maria," then the intro).
 - touch (only when this message is a scheduled follow-up - MASTER_PLAN_3 C4, Omnichannel PDF §3-§4):
   touch.label and touch.instruction say what this one is about. Follow the instruction, keep it short and
   easy to answer, and don't repeat a question they have already answered. If touch.fixed_text is given, that
@@ -342,6 +343,26 @@ Rules:
   Bad: "Please provide interest.new_or_used and your budget." (internal terms)
   Bad: "Could you share your timeline, budget and whether you have a trade-in?" (three questions)
   Bad: "Your timeline is this_week." (a code, not words)
+- Writing (client, 5 Oct 2026: the grammar must be right in every message). Write natural American English,
+  like a careful salesperson texting a customer:
+  - Complete, grammatical sentences: a subject and a verb in each, subjects and verbs that agree ("the team
+    has", "the times are"), and the right article ("a used SUV", "an hour", "an SUV"). No fragments ("Worth a
+    look?", "Anything else?" -> "Would you like to take a look?", "Is there anything else I can help with?")
+    and no run-ons or comma splices (two sentences joined by a comma: use a period instead).
+  - Start every sentence with a capital letter, and capitalize "I", names, days and months. End every
+    sentence with a period, a question mark or an exclamation point - the last sentence too. One space after
+    each, none before. Commas after an opening "Thanks", "Hi Maria", "Sure" or "Got it", and around the
+    customer's name ("Thanks, Maria!").
+  - Spell every word correctly and use American spellings ("color", "apologize", "favorite"). No all-caps
+    words (except abbreviations like SUV or VIN), no doubled words, no emoji, no text-speak ("u", "pls",
+    "thx").
+  - Contractions are fine ("we're", "you'll"). Use "a" or "an" by sound ("an hour", "a used car").
+  - In an SMS, keep one idea per sentence and at most three or four short sentences.
+  - The fixed wording you are given (touch1.intro, touch1.ending, touch.fixed_text, the after-hours question)
+    stays exactly as written: never "correct" it.
+  - Good: "Thanks, Maria! We have a 2022 RAV4 XLE in silver. Would you like to come see it on Saturday?"
+  - Bad: "thanks maria we have a rav4 , want to come see it saturday" (no capitals, space before a comma,
+    a fragment, no final punctuation)
 - When the context has a value's `display`, say it that way (e.g. dates as "Saturday, September 27").
 - just_captured lists what the customer told us in this message, in plain words. When it has a date,
   repeat that date back briefly ("Got it - Saturday, September 27.") so they can see we understood.
@@ -358,7 +379,9 @@ Rules:
   Do the same for email_vins with email_subject_no_vehicles / email_body_no_vehicles. Leave all three empty
   if the message names no vehicle.
 - If a campaign is given, the customer is replying to that campaign: acknowledge it naturally.
-- sms_text at most 320 characters (480 on the first reply, when touch1 is given). email_body: greeting, 2-4 short sentences, sign-off.
+- Always write both versions, whatever `channel` is (either may be sent; seen with gpt-5-mini: an email lead got an
+  empty sms_text). sms_text at most 320 characters (480 on the first reply, when touch1 is given), never empty.
+  email_body: greeting, 2-4 short sentences, sign-off.
 - Photos and links (MASTER_PLAN_4 F3): when a message names a vehicle, set sms_media_vin / email_media_vin to
   the vin it is mainly about - the dealership attaches that vehicle's own photo, if it has a good one. Never
   mention a photo, picture or attachment in the words (it may not be attached), and never write an image link.
@@ -389,7 +412,7 @@ Rules:
   plain question for it ("What's the best email for your confirmation?" / "What's a good phone number for the
   visit?") - this is the message's only question when nothing else is being asked.
 - visit.slot_taken (only when given, e.g. "Saturday at 10:00 AM"): the time the customer picked was just taken by
-  someone else. Say so briefly and apologise, then present the fresh times in visit_offer.
+  someone else. Say so briefly and apologize, then present the fresh times in visit_offer.
 - visit.day_request (only when given): the customer asked for a day of their own (`asked`, e.g. "Monday,
   October 5", maybe a part of the day in `part`). visit_offer's times are on that day when `on_that_day` is
   true: say so ("Monday works - I have ...") and ask which one. When it's false that day has no open time:
@@ -424,27 +447,36 @@ Rules:
 - When space runs out, drop small talk and our own wording first; keep the customer's facts and open questions."""
 
 
-# Rough $ per 1M tokens (input, output), for the per-turn cost in the trace.
-PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4.1-mini": (0.40, 1.60),
-    "gpt-4.1": (2.00, 8.00),
+# $ per 1M tokens: (input, cached input, output), for the per-turn cost in the trace. OpenAI bills prompt
+# tokens served from its prompt cache at the cached-input price; reasoning tokens (GPT-5) count as output.
+# Source: OpenAI's published API pricing (platform.openai.com/docs/pricing), as known on 4 Oct 2026
+# (MASTER_PLAN_4 stream G). CHECK these against that page before relying on the cost figures: prices change.
+PRICES_PER_MTOK: dict[str, tuple[float, float, float]] = {
+    "gpt-5": (1.25, 0.125, 10.00),
+    "gpt-5-mini": (0.25, 0.025, 2.00),
+    "gpt-5-nano": (0.05, 0.005, 0.40),
+    "gpt-4o-mini": (0.15, 0.075, 0.60),
+    "gpt-4o": (2.50, 1.25, 10.00),
+    "gpt-4.1-mini": (0.40, 0.10, 1.60),
+    "gpt-4.1": (2.00, 0.50, 8.00),
 }
 
 
 @dataclass
 class ModelCall:
-    """Metrics for one AI call, shown in the Debug UI and the turn log."""
+    """Metrics for one AI call, shown in the Debug UI and the turn log. `cached_input_tokens` is the part of
+    `input_tokens` OpenAI served from its prompt cache (Pydantic AI's `cache_read_tokens`)."""
     model: str
     ms: int
     input_tokens: int
     output_tokens: int
     cost_usd: float | None
+    cached_input_tokens: int = 0
 
     def as_metrics(self) -> dict[str, Any]:
         return {"model": self.model, "ms": self.ms, "tokens_in": self.input_tokens,
-                "tokens_out": self.output_tokens, "cost_usd": self.cost_usd}
+                "tokens_cached": self.cached_input_tokens, "tokens_out": self.output_tokens,
+                "cost_usd": self.cost_usd}
 
 
 def _model(name: str):
@@ -476,27 +508,73 @@ def compose_agent(model_name: str) -> Agent[None, ComposedMessage]:
                  name="compose", defer_model_check=True, retries=1)
 
 
-def _cost(model_name: str, tokens_in: int, tokens_out: int) -> float | None:
+def reasons(model_name: str) -> bool:
+    """An OpenAI reasoning model (GPT-5 family, o-series): it takes a reasoning effort and no sampling
+    parameters, and its reasoning tokens count as output. Not gpt-5-chat, which doesn't reason."""
+    if not model_name.startswith("openai:"):
+        return False
+    model_id = model_name.split(":", 1)[1]
+    return (model_id.startswith("gpt-5") and not model_id.startswith("gpt-5-chat")) or (
+        model_id[:1] == "o" and model_id[1:2].isdigit())
+
+
+# Measured on gpt-5-mini (stream G, 4 Oct 2026): Compose wrote ~180-250 output tokens at effort "minimal" and
+# ~600-810 at "low" (the extra is reasoning). A reasoning model's output budget gets this much on top.
+REASONING_HEADROOM_TOKENS = 1500
+
+
+def prompt_cache_key(agent_name: str) -> str:
+    return f"{get_settings().prompt_cache_key_prefix}-{agent_name}"
+
+
+def model_settings(agent_name: str, model_name: str) -> dict[str, Any]:
+    """Per-call OpenAI settings (MASTER_PLAN_4 stream G):
+    - `openai_prompt_cache_key`: one stable key per agent, so OpenAI routes its requests to where that agent's
+      static prefix (instructions + output schema, identical on every call; the per-turn JSON comes after)
+      is already cached. OpenAI caches automatically once that prefix is 1024+ tokens.
+    - `openai_reasoning_effort` (reasoning models only): a low effort keeps GPT-5 fast and cheap.
+    Never sampling parameters (temperature etc.): reasoning models reject them."""
+    if not model_name.startswith("openai:"):
+        return {}
+    settings = get_settings()
+    out: dict[str, Any] = {"openai_prompt_cache_key": prompt_cache_key(agent_name)}
+    effort = (settings.reasoning_effort_compose if agent_name == "compose"
+              else settings.reasoning_effort_extract).strip().lower()
+    if effort and reasons(model_name):
+        out["openai_reasoning_effort"] = effort
+    return out
+
+
+def _cost(model_name: str, tokens_in: int, tokens_out: int, tokens_cached: int = 0) -> float | None:
+    """`tokens_in` includes the cached ones (OpenAI's prompt_tokens does); those are billed at the cached price."""
     if model_name == OFFLINE:
         return 0.0
     price = PRICES_PER_MTOK.get(model_name.split(":", 1)[-1])
     if not price:
         return None
-    return round(tokens_in / 1e6 * price[0] + tokens_out / 1e6 * price[1], 6)
+    cached = min(tokens_cached, tokens_in)
+    return round(((tokens_in - cached) * price[0] + cached * price[1] + tokens_out * price[2]) / 1e6, 6)
 
 
 async def run_agent(agent: Agent, model_name: str, payload: dict[str, Any], *, timeout_s: float,
                     output_tokens_limit: int) -> tuple[Any, ModelCall]:
     """One AI call with a hard timeout and a one-request budget. Raises
     TimeoutError / pydantic_ai errors; callers turn those into the template."""
+    if reasons(model_name):
+        # Reasoning tokens count as output: the step's own budget is for the answer (stream G).
+        output_tokens_limit += REASONING_HEADROOM_TOKENS
     started = time.perf_counter()
     async with asyncio.timeout(timeout_s):
         result = await agent.run(
+            # The payload is the only per-call text and comes after the static instructions, so every call's
+            # prompt starts with the same prefix and OpenAI's prompt cache can serve it (stream G).
             json.dumps(payload, default=str, ensure_ascii=False),
             usage_limits=UsageLimits(request_limit=2, output_tokens_limit=output_tokens_limit),
+            model_settings=model_settings(agent.name or "", model_name) or None,
         )
     usage = result.usage
+    tokens_in, tokens_out, cached = usage.input_tokens or 0, usage.output_tokens or 0, usage.cache_read_tokens or 0
     call = ModelCall(model=model_name, ms=round((time.perf_counter() - started) * 1000),
-                     input_tokens=usage.input_tokens or 0, output_tokens=usage.output_tokens or 0,
-                     cost_usd=_cost(model_name, usage.input_tokens or 0, usage.output_tokens or 0))
+                     input_tokens=tokens_in, output_tokens=tokens_out, cached_input_tokens=cached,
+                     cost_usd=_cost(model_name, tokens_in, tokens_out, cached))
     return result.output, call
