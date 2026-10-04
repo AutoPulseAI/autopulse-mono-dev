@@ -591,8 +591,15 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
     if kind == "expect_outbox":
         lead = ctx.lead(args["lead"])
         await asyncio.sleep(float(args.get("settle_s", 1)))
-        rows = await dealer_scoped_db(lead["dealer_id"]).collection(DEV_OUTBOX_COLLECTION).find(
-            {"lead_id": lead["lead_id"], "channel": args["channel"]}).to_list(None)
+        if get_settings().channel_driver == "fake":
+            rows = await dealer_scoped_db(lead["dealer_id"]).collection(DEV_OUTBOX_COLLECTION).find(
+                {"lead_id": lead["lead_id"], "channel": args["channel"]}).to_list(None)
+        else:
+            # Against `make crm-local` (CHANNEL_DRIVER=platform; `make crm-scenarios`) there is no fake driver:
+            # what left is every message the sender saw go out (the CRM's own stubbed provider took it).
+            rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).find(
+                {"lead_id": lead["lead_id"], "channel": args["channel"], "direction": "outbound",
+                 "status": "sent"}).to_list(None)
         if len(rows) != int(args["count"]):
             raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected {args['count']}")
         if "contains" in args and rows and not any(args["contains"].lower() in r["text"].lower() for r in rows):
