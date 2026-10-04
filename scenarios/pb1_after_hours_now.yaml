@@ -1,8 +1,8 @@
 name: After hours, the customer carries on now
 stage: 401
-description: 'MASTER_PLAN_3 B1. A website lead at 23:00 dealer time gets "we''re closed; I can help now, or the team can pick this up when we open. Which would you like?" and nothing else asked. The customer says "now" and the normal conversation carries on at 23:00 (decision 56). A lead during opening hours gets no choice.'
+description: 'MASTER_PLAN_3 B1. A website lead at 19:30 dealer time (closed, and still inside the customer''s 8:00-21:00 texting hours; PLAN_4 stream X1 holds a first text later than that until 8:00) gets "we''re closed; I can help now, or the team can pick this up when we open. Which would you like?" and nothing else asked. The customer says "now" and the normal conversation carries on that evening (decision 56). A lead during opening hours gets no choice.'
 steps:
-  - advance_clock: {dealer: A, to: "Tue 23:00"}
+  - advance_clock: {dealer: A, to: "Tue 19:30"}
   - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Nina Night, comments: "Hi, I want a new Toyota RAV4", send_event: false}
   - set_contact: {lead: n, zip: "10001"}
   - send_lead_created: {lead: n}

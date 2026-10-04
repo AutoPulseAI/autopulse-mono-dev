@@ -271,7 +271,7 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
                 "detail": f"{what}, missing {', '.join(missing)}: CONSENT_REVIEW_REQUIRED"}
     missing = "not a follow-up on their own inquiry" if campaign else "no inquiry of their own"
     return {"status": "none", "source": None, "evidence_id": None,
-            "detail": f"no text consent (no platform opt-in flag, {missing})"}
+            "detail": f"no text consent (no recorded consent or opt-in from the customer, {missing})"}
 
 
 async def _marketing_sms_sent_recently(db: DealerScopedDatabase, customer_id: str | None, to: str | None,

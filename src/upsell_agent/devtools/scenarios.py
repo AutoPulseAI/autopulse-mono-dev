@@ -54,7 +54,8 @@ Steps (one key per step):
                       another dealer's); only_loaded = nothing else was given; loosened = the loosening steps,
                       in order; colour_sent = the colour spelling sent to /api/car
   compare_inventory:  {dealers: [A, B]}   stub vs live /api/car for the dev stock (needs the platform)
-  set_contact:        {lead, source?, dealervault?: bool, sms_opt_in?: bool|null, zip?, comments?}   the platform
+  set_contact:        {lead, source?, dealervault?: bool, sms_opt_in?: bool|null, zip?, comments?,
+                       consent_record?: true (a lead provider's complete consent record on the lead)}   the platform
                       lead / customer as the send check reads them (MASTER_PLAN_3 C1); a zip is a DealerVault deal
                       row (removed after the scenario). Use new_lead's send_event: false, then send_lead_created
   expect_origin:      {lead, origin: inbound|outbound, timeout_s}   the lead's origin as the last turn saved it
@@ -214,13 +215,21 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
     )
 
     flt: dict[str, Any] = {}
-    if args.get("kind") in (KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
+    if args.get("kind") in ("first_reply_held", KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                             KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, *APPOINTMENT_KINDS,
                             *SOLD_LIFECYCLE_KINDS):  # MASTER_PLAN_4 (stream A3)
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
         flt.update(CHANNEL_SWITCHES)
     return flt
+
+
+def sent_by_ai_filter(lead_id: str, channel: str) -> dict[str, Any]:
+    """The lead's messages the AI itself sent on `channel`. The CRM history copied into the AI's thread
+    (agent/history_sync.py: n8n, staff and campaign messages, `imported: True`) also has status "sent", and is not
+    something the AI sent: a shadow dealer's lead has n8n's reply there and must still count 0 (PLAN_4 stream V)."""
+    return {"lead_id": lead_id, "channel": channel, "direction": "outbound", "status": "sent",
+            "imported": {"$ne": True}}
 
 
 def _after_hours_choice(state: dict) -> str | None:
@@ -627,8 +636,7 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             # Against `make crm-local` (CHANNEL_DRIVER=platform; `make crm-scenarios`) there is no fake driver:
             # what left is every message the sender saw go out (the CRM's own stubbed provider took it).
             rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).find(
-                {"lead_id": lead["lead_id"], "channel": args["channel"], "direction": "outbound",
-                 "status": "sent"}).to_list(None)
+                sent_by_ai_filter(lead["lead_id"], args["channel"])).to_list(None)
         if len(rows) != int(args["count"]):
             raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected {args['count']}")
         if "contains" in args and rows and not any(args["contains"].lower() in r["text"].lower() for r in rows):
@@ -899,6 +907,17 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             lead_set.update(source=args["source"], lead_source=args["source"])
         if "comments" in args:
             lead_set.update({"comments": args["comments"], "data.comments": args["comments"]})
+        if args.get("consent_record"):
+            # A lead provider's complete consent record (TCPA PDF §6; channels/consent.lead_provider_consent): the
+            # disclosure the customer saw, its version, when they agreed, and the phone they agreed for.
+            row = await db[PLATFORM_LEADS_COLLECTION].find_one({"_id": ObjectId(lead["lead_id"])}, {"phone": 1})
+            lead_set["tcpa_consent"] = {
+                "opted_in": True, "provider": "Scenario Leads", "phone": (row or {}).get("phone"),
+                "disclosure_text": "By submitting this form I agree to receive marketing text messages from the "
+                                   "dealer at the number provided. Consent is not a condition of purchase.",
+                "disclosure_version": "scenario-2026-10", "consent_timestamp": clock.now().isoformat(),
+                "source_url": "https://leads.example.test/form", "permitted_channels": ["sms"],
+                "evidence_id": f"scenario-cert-{lead['lead_id']}"}
         if lead_set:
             await db[PLATFORM_LEADS_COLLECTION].update_one({"_id": ObjectId(lead["lead_id"])}, {"$set": lead_set})
         customer_set: dict[str, Any] = {}
