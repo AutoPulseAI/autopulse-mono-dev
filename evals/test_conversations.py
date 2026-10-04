@@ -13,7 +13,7 @@ scored on:
 - Plain replies: every reply at a reading grade of 8 or below, no internal terms.
 
 - Default (MODEL_EXTRACT/MODEL_COMPOSE=offline): the pipeline and the offline model.
-- Real models:  MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o OPENAI_API_KEY=... pytest evals
+- Real models:  MODEL_EXTRACT=openai:gpt-5-mini MODEL_COMPOSE=openai:gpt-5-mini OPENAI_API_KEY=... pytest evals
 """
 
 import asyncio

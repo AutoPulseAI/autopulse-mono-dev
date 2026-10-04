@@ -15,7 +15,7 @@ and is scored on:
 
 - Default (MODEL_EXTRACT/MODEL_COMPOSE=offline): checks the pipeline and the
   offline model.
-- Real models:  MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o OPENAI_API_KEY=... pytest evals
+- Real models:  MODEL_EXTRACT=openai:gpt-5-mini MODEL_COMPOSE=openai:gpt-5-mini OPENAI_API_KEY=... pytest evals
   Skipped automatically when the key is missing.
 """
 
