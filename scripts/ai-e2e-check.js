@@ -662,10 +662,17 @@ async function crmLocal() {
   // --- G. Photos and notes through the CRM -----------------------------------------------------------
   const target = created.autotrader;
   const photoUrl = withPhotos[0]?.media?.photo_links?.[0] || 'https://placehold.co/600x400/jpg';
-  const send = (channel, to, key) => fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', headers: internal,
-    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), customer_id: String(target.lead.customer_id || ''),
-      channel, to, text: 'Here is a photo of the F-150 Lariat.', subject: 'Your F-150 Lariat', idempotency_key: key,
-      media_urls: [photoUrl] }) });
+  // PLAN_4 stream X1 item 5: the endpoint needs the AI send check's ALLOW for exactly this send; this check stands
+  // in for the AI's Sender, so it writes the decision row the Sender would have written.
+  const send = async (channel, to, key) => {
+    const decision = await db.collection('ai_compliance_log').insertOne({ dealer_id: DEMO_DEALER_ID,
+      lead_id: String(target.lead._id), channel, to, decision: 'ALLOW', purpose: 'reply', source: 'e2e_check',
+      request_id: key, at: new Date(), logged_at: new Date() });
+    return fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', headers: internal,
+      body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), customer_id: String(target.lead.customer_id || ''),
+        channel, to, text: 'Here is a photo of the F-150 Lariat.', subject: 'Your F-150 Lariat', idempotency_key: key,
+        media_urls: [photoUrl], compliance_decision_id: String(decision.insertedId) }) });
+  };
   const mms = await send('sms', target.phone, `e2e-${run}:sms`).then(jsonOf);
   const mmsStub = await db.collection('dev_provider_outbox').findOne({ provider_id: mms.provider_id });
   const mmsRecord = mms.id ? await Email.findById(mms.id).lean() : null;
@@ -680,6 +687,11 @@ async function crmLocal() {
   const noAuth = await fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', body: '{}',
     headers: { 'Content-Type': 'application/json' } });
   check('G4. the send endpoint rejects calls without the shared secret', noAuth.status === 401, `HTTP ${noAuth.status}`);
+  const noDecision = await fetch(`${PLATFORM}/api/internal/ai/messages/send`, { method: 'POST', headers: internal,
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), channel: 'sms', to: target.phone,
+      text: 'x', idempotency_key: `e2e-${run}:no-decision` }) });
+  check('G4b. the send endpoint refuses a send with no compliance decision', noDecision.status === 422,
+    `HTTP ${noDecision.status}`);
   const noted = await fetch(`${PLATFORM}/api/internal/ai/leads/notes`, { method: 'POST', headers: internal,
     body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), kind: 'service_request',
       text: 'Service request: oil change, prefers Tuesday morning.' }) }).then(jsonOf);
