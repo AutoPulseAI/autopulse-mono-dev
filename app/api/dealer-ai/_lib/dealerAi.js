@@ -16,6 +16,9 @@ import { loadAuthenticatedUser } from "@lib/apiAuth";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import User from "@models/User";
 import Lead from "@models/Lead";
+import "@models/Role";
+import "@models/Permission";
+import { assignedOnlyScope, filterRowsToAssigned } from "@lib/ai/assignedScope";
 
 const AI_TIMEOUT_MS = 8_000;
 
@@ -55,6 +58,28 @@ export async function requireLeadAccess(req, params) {
     return { error: jsonError("You don't have access to this lead.", 403) };
   }
   return { user, lead, leadId: String(lead._id), dealerId: String(lead.dealer_id) };
+}
+
+// --- Assigned-only staff (agentic-upsell MASTER_PLAN_4 stream R) ---------------------------------------------
+// Staff with "View Assigned Leads" but not "Manage Leads" see only their own leads (as app/api/leads/route.js
+// does), so the call tasks and AI alerts they get are only for leads assigned to them. The pure rule and the
+// filter live in @lib/ai/assignedScope (tested by the CRM's node tests).
+export async function assignedOnlyUserId(user) {
+  if (!user?.parent_id) return null; // the dealer account itself, admins, vendors: everything
+  const full = await User.findById(user._id)
+    .select("parent_id role")
+    .populate({ path: "role", populate: { path: "permissions" } })
+    .lean();
+  return assignedOnlyScope(full);
+}
+
+// The rows whose lead is assigned to `userId` (null: every row).
+export async function keepAssignedRows(dealerId, userId, rows) {
+  if (!userId) return rows;
+  const ids = [...new Set(rows.map((r) => r.lead_id).filter((id) => mongoose.isValidObjectId(id)))];
+  const leads = ids.length
+    ? await Lead.find({ _id: { $in: ids }, dealer_id: String(dealerId) }).select("assigned_to").lean() : [];
+  return filterRowsToAssigned(rows, leads, userId);
 }
 
 // Who did it, for the AI service's audit fields ("closed_by", "handled by").

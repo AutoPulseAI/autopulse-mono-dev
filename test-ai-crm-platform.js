@@ -26,6 +26,7 @@ import {
 import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib/providerStub.js';
 import { aiOwnsCustomerMessages } from './app/lib/appointmentReminderService.js';
 import { BookingConflictError, bookingConflictFrom, slotLabel, throwIfStatusFailed } from './app/lib/bookingConflict.js';
+import { assignedOnlyScope, filterRowsToAssigned } from './app/lib/ai/assignedScope.js';
 
 const URI = process.env.AI_TEST_MONGODB_URI_CRM || 'mongodb://localhost:27018/pulse_ai_crm_platform_test';
 const DEALER = '66f0000000000000000000d1';
@@ -385,6 +386,20 @@ maybe('a stubbed send is written to the dev outbox, with its media', async () =>
   const id = await recordStubSend({ channel: 'sms', to: '+15557654321', text: 'hi', media_urls: ['https://cdn.test/a.jpg'] });
   const row = await mongoose.connection.collection('dev_provider_outbox').findOne({ provider_id: id });
   assert.deepEqual(row.media_urls, ['https://cdn.test/a.jpg']);
+});
+
+// Stream R: "View Assigned Leads" staff see only their own leads' call tasks and AI alerts.
+test('assigned-only staff get only the tasks and alerts of leads assigned to them', () => {
+  const perms = (...names) => ({ permissions: names.map((permission_name) => ({ permission_name })) });
+  const sam = { _id: 'u-sam', parent_id: DEALER, role: perms('View Assigned Leads') };
+  assert.equal(assignedOnlyScope(sam), 'u-sam');
+  assert.equal(assignedOnlyScope({ ...sam, role: perms('View Assigned Leads', 'Manage Leads') }), null);
+  assert.equal(assignedOnlyScope({ _id: DEALER, role: perms('View Assigned Leads') }), null); // the dealer account
+  assert.equal(assignedOnlyScope({ ...sam, role: null }), null); // no lead permission at all: unchanged
+  const rows = [{ lead_id: 'a', id: 1 }, { lead_id: 'b', id: 2 }, { lead_id: 'c', id: 3 }, { lead_id: 'a', id: 4 }];
+  const leads = [{ _id: 'a', assigned_to: 'u-sam' }, { _id: 'b', assigned_to: 'u-maya' }, { _id: 'c' }];
+  assert.deepEqual(filterRowsToAssigned(rows, leads, 'u-sam').map((r) => r.id), [1, 4]);
+  assert.equal(filterRowsToAssigned(rows, leads, null).length, 4);
 });
 
 // Stream R: booking capacity from the AI Settings page.

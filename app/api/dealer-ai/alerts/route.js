@@ -2,9 +2,13 @@
 //   GET /api/dealer-ai/alerts[?include_handled=1][&count_only=1][&dealer_id=]
 // Handoffs, call requests, bad contact details, possible opt-outs, "not
 // interested" reasons, bookings the AI made... from the AI service's lead state.
+// Staff with "View Assigned Leads" but not "Manage Leads" get only alerts for
+// leads assigned to them, and their count is counted from those (stream R).
 
 import { NextResponse } from "next/server";
-import { aiServiceError, callAiService, leadSummaries, requireDealerSession } from "../_lib/dealerAi";
+import {
+  aiServiceError, assignedOnlyUserId, callAiService, keepAssignedRows, leadSummaries, requireDealerSession,
+} from "../_lib/dealerAi";
 
 export async function GET(req) {
   const url = new URL(req.url);
@@ -16,11 +20,14 @@ export async function GET(req) {
     query: { dealer_id: session.dealerId, include_handled: includeHandled ? "true" : "false" },
   });
   if (!result.ok) return aiServiceError(result);
-  const unhandledCount = result.body?.unhandled_count ?? 0;
+  const assignedTo = await assignedOnlyUserId(session.user);
+  const notices = await keepAssignedRows(session.dealerId, assignedTo, result.body?.notices || []);
+  const unhandledCount = assignedTo
+    ? notices.filter((n) => !n.handled).length
+    : (result.body?.unhandled_count ?? 0);
   if (url.searchParams.get("count_only") === "1") {
     return NextResponse.json({ unhandled_count: unhandledCount });
   }
-  const notices = result.body?.notices || [];
   const leads = await leadSummaries(session.dealerId, notices.map((n) => n.lead_id));
   return NextResponse.json({
     unhandled_count: unhandledCount,
