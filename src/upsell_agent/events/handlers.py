@@ -392,7 +392,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         request = SendRequest(
             dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
             channel=channel, text=text, subject=subject, shadow=event.shadow, event_received_at=received_at,
-            purpose=purpose, is_reply=True)
+            purpose=purpose, is_reply=True, template_id=f"template:{action}")
         async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                         "text": request.text, "subject": request.subject}) as span:
             sent = await deps.sender.send(request)

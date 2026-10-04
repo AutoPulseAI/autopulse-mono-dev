@@ -105,3 +105,24 @@ Tests: `tests/unit/test_x1_dnd.py` (3 of 4 failed before; the 4th checks an unre
 Tests: `tests/unit/test_x1_calls.py` (6, all failed before: new API / behaviour), the KY transactional assertion.
 For counsel: whether transactional texts (appointment confirmations) really need the state rows (we apply them,
 the stricter reading), and whether the state caps are per subject (we count every marketing text and call).
+
+## Item 8: audit record completeness (§11) and the lead provider's consent object (§6)
+
+- `ai_compliance_log` rows now also carry `lead_source` (+ `origin_rule`), `consent_text_version` (with
+  `consent_evidence_id`), top-level `rules_version`, `message_id` (the `ai_messages` row), `template_id`
+  (`template:<trigger>` / `template:<action>` when a template wrote it, else None), `opt_out_event_id` (the
+  `ai_consent` entry that blocked it), and `delivery` {status, provider_id, updated_at, events[]}: written by the
+  Sender after the send ("sent" / "failed") and updated by every provider callback (`channels/delivery.py` →
+  `sender.record_delivery`, matched by the send's idempotency key). Only `delivery` is ever updated; the decision
+  fields stay add-only. Jurisdiction, local time, frequency, decision, reason and rule were already there.
+- `channels/consent.lead_provider_consent`: the provider's consent object (lead `tcpa_consent` / `consent` /
+  `lead_consent`, top level or under `data`; aliases normalised; the raw object kept) is stored whole on the
+  `ai_consent` entry with `consent_text_version` and `source_url`. It counts as text consent only when complete:
+  disclosure text, disclosure version, consent time, the phone we'd text, and SMS among the permitted channels if
+  channels are given. Anything less, or AutoTrader's bare `TCPAOptIn: true` line, is CONSENT_REVIEW_REQUIRED (with
+  what is missing in the reason). `opted_in: false` is an explicit no.
+- `compliance/origin._source` no longer repeats a value present in both `source` and `lead_source`.
+
+Tests: `tests/unit/test_x1_audit.py` (8; all failed before). Open: the CRM lead ingestion (ADF / provider feeds)
+must put the provider's consent object on the lead under one of those keys; today only AutoTrader's comment line
+arrives, so provider leads stay at REVIEW for campaigns (AI follow-ups on an inbound lead use the own-inquiry rule).

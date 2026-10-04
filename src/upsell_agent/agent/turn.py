@@ -231,6 +231,8 @@ async def run_turn(
                 shadow=shadow, event_received_at=event_received_at, is_reply=is_reply,
                 purpose=purpose,  # decision 136; PLAN_4 stream X1 item 1
                 media_urls=photo.urls,
+                # PLAN_4 stream X1 item 8: which template, for the audit row (None: the AI wrote it).
+                template_id=f"template:{trigger}" if result.get("used_template") else None,
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject,

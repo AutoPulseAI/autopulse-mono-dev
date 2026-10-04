@@ -204,6 +204,72 @@ def lead_form_consent(lead: dict | None) -> tuple[bool, str] | None:
     return None
 
 
+# --- Lead-provider consent evidence (PLAN_4 stream X1 item 8, TCPA PDF §6) ---------------------------------
+#
+# A lead provider's consent is kept as the whole object it sent, never reduced to a boolean. Read from the lead's
+# `tcpa_consent` / `consent` / `lead_consent` (top level or under `data`), the keys normalised below; AutoTrader's
+# `TCPAOptIn: true|false` comment line is the minimal form (no disclosure, time or URL).
+_PROVIDER_KEYS = ("tcpa_consent", "consent", "lead_consent")
+_ALIASES: dict[str, tuple[str, ...]] = {
+    "opted_in": ("opted_in", "opt_in", "optin", "tcpa_opt_in", "consented", "consent_given", "granted"),
+    "disclosure_text": ("disclosure_text", "disclosure", "consent_text", "consent_language", "language"),
+    "disclosure_version": ("disclosure_version", "text_version", "version", "consent_text_version"),
+    "consent_timestamp": ("consent_timestamp", "timestamp", "consented_at", "given_at", "captured_at"),
+    "source_url": ("source_url", "url", "form_url", "page_url"),
+    "permitted_channels": ("permitted_channels", "channels"),
+    "phone": ("phone", "phone_number", "consented_phone"),
+    "seller": ("seller", "consenting_seller", "dealer", "seller_name"),
+    "provider": ("provider", "lead_provider", "vendor"),
+    "evidence_id": ("evidence_id", "consent_id", "certificate", "trustedform_cert_url", "jornaya_lead_id"),
+}
+# What a provider's opt-in needs before it can count as text consent; anything less is CONSENT_REVIEW_REQUIRED.
+REQUIRED_PROVIDER_FIELDS = ("disclosure_text", "disclosure_version", "consent_timestamp", "phone")
+
+
+def _truthy(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "yes", "y", "1"):
+        return True
+    if isinstance(value, str) and value.strip().lower() in ("false", "no", "n", "0"):
+        return False
+    return None
+
+
+def lead_provider_consent(lead: dict | None) -> dict[str, Any] | None:
+    """The lead provider's consent evidence as one object ({opted_in, disclosure_text, disclosure_version,
+    consent_timestamp, source_url, permitted_channels, phone, seller, provider, evidence_id, format, raw}), or
+    None when the lead carries none."""
+    lead = lead or {}
+    source = " ".join(str(lead.get(k) or "") for k in ("source", "lead_source")).strip() or None
+    for holder in (lead, lead.get("data") or {}):
+        for key in _PROVIDER_KEYS:
+            obj = holder.get(key)
+            if isinstance(obj, dict) and obj:
+                out: dict[str, Any] = {"format": "object", "raw": dict(obj)}
+                for field, names in _ALIASES.items():
+                    out[field] = next((obj[n] for n in names if obj.get(n) not in (None, "")), None)
+                out["opted_in"] = _truthy(out["opted_in"])
+                out["provider"] = out["provider"] or source
+                return out
+    if form := lead_form_consent(lead):
+        return {"format": "comment_line", "opted_in": form[0], "quote": form[1], "provider": source,
+                **{f: None for f in ("disclosure_text", "disclosure_version", "consent_timestamp", "source_url",
+                                     "permitted_channels", "phone", "seller", "evidence_id")}}
+    return None
+
+
+def missing_provider_evidence(evidence: dict[str, Any], to: str | None) -> list[str]:
+    """What a provider's opt-in lacks before it counts for texts to `to`."""
+    missing = [f for f in REQUIRED_PROVIDER_FIELDS if not evidence.get(f)]
+    if evidence.get("phone") and to and not _same_phone(str(evidence["phone"]), to):
+        missing.append("phone matching the number we'd text")
+    channels = evidence.get("permitted_channels")
+    if channels and "sms" not in [str(c).lower() for c in (channels if isinstance(channels, list) else [channels])]:
+        missing.append("sms among the permitted channels")
+    return missing
+
+
 def phone_opt_in(customer: dict | None, to: str | None) -> tuple[bool | None, dict | None]:
     """The platform's `sms_opt_in` flag on the phone we'd text: (flag, entry)."""
     for phone in (customer or {}).get("phones") or []:

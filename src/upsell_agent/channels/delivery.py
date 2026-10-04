@@ -100,6 +100,10 @@ async def apply_delivery_status(
     )
     result.applied = True
     result.detail = f"{row['channel']} message is {status}"
+    # PLAN_4 stream X1 item 8: the provider's result on the send's audit row too.
+    from upsell_agent.channels.sender import record_delivery
+    await record_delivery(db, None, status, provider_id=row.get("provider_id"), error=error,
+                          request_id=row.get("idempotency_key"))
 
     if row.get("provider_id") and status in PLATFORM_STATUSES:
         try:

@@ -111,6 +111,8 @@ class Decision:
     frequency: dict[str, Any] = field(default_factory=dict)
     checks: list[dict[str, Any]] = field(default_factory=list)
     log_id: str | None = None
+    # PLAN_4 stream X1 item 8: the opt-out entry that decided it (BLOCK) or that a reply went out despite.
+    opt_out_event_id: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -250,11 +252,22 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
             return {"status": "granted", "source": "own_inquiry", "evidence_id": f"inquiry:{lead_id}",
                     "detail": f"follow-up on the customer's own inquiry ({why}), within {INQUIRY_DAYS} days"}
 
-    form = consent.lead_form_consent(lead)
-    if form and form[0]:
-        return {"status": "review_required", "source": "lead_form", "evidence_id": f"lead_form:{lead_id}",
-                "detail": f"lead form says {form[1]!r}, with no disclosure wording, time or source: "
-                          "CONSENT_REVIEW_REQUIRED"}
+    # PLAN_4 stream X1 item 8 (TCPA PDF §6): the provider's consent object, kept whole. Complete (disclosure,
+    # its version, the time, the phone we'd text) it counts; anything less is CONSENT_REVIEW_REQUIRED.
+    provider = consent.lead_provider_consent(lead)
+    if provider and provider.get("opted_in"):
+        missing = consent.missing_provider_evidence(provider, to)
+        evidence_id = f"lead_form:{lead_id}" if provider["format"] == "comment_line" else f"lead_provider:{lead_id}"
+        if not missing:
+            return {"status": "granted", "source": "lead_provider", "evidence_id": evidence_id,
+                    "text_version": provider.get("disclosure_version"), "evidence": provider,
+                    "detail": f"the lead provider's consent record ({provider.get('provider')}, disclosure "
+                              f"{provider.get('disclosure_version')}, given {provider.get('consent_timestamp')})"}
+        what = (f"lead form says {provider.get('quote')!r}" if provider["format"] == "comment_line"
+                else f"the lead provider's consent ({provider.get('provider')})")
+        return {"status": "review_required", "source": "lead_provider", "evidence_id": evidence_id,
+                "text_version": provider.get("disclosure_version"), "missing": missing,
+                "detail": f"{what}, missing {', '.join(missing)}: CONSENT_REVIEW_REQUIRED"}
     missing = "not a follow-up on their own inquiry" if campaign else "no inquiry of their own"
     return {"status": "none", "source": None, "evidence_id": None,
             "detail": f"no text consent (no platform opt-in flag, {missing})"}
@@ -287,6 +300,8 @@ async def can_contact(
     source: str = "ai",
     request_id: str | None = None,
     record: bool = True,
+    message_id: str | None = None,
+    template_id: str | None = None,
 ) -> Decision:
     """`campaign`: a platform campaign text (the customer's own inquiry
     doesn't cover it). `source` says who is asking (ai_reply, ai_followup,
@@ -314,7 +329,8 @@ async def can_contact(
     if record:
         decision.log_id = await _log(db, decision, customer_id=customer_id, lead_id=lead_id, channel=channel,
                                      purpose=purpose, is_reply=is_reply, at=at, to=to, source=source,
-                                     request_id=request_id, campaign=campaign)
+                                     request_id=request_id, campaign=campaign, message_id=message_id,
+                                     template_id=template_id)
     return decision
 
 
@@ -345,10 +361,12 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         return Decision("BLOCK", f"{address} is marked invalid (wrong person, bad number or hard bounce)",
                         "invalid_contact")
     check("invalid_contact", True, f"{channel} address not marked invalid")
-    opted_out = await consent.is_opted_out(db, customer_id, channel, address)
+    opt_out_entry = await consent.latest_opt_out(db, customer_id, channel, address)
+    opted_out = bool(opt_out_entry and opt_out_entry["consent_status"] == "opted_out")
     if opted_out and purpose != "opt_out_confirmation" and not is_reply:
         check("opt_out", False, f"the customer opted out of {channel}")
-        return Decision("BLOCK", f"the customer opted out of {channel}", "opted_out")
+        return Decision("BLOCK", f"the customer opted out of {channel}", "opted_out",
+                        opt_out_event_id=str(opt_out_entry["_id"]))
     check("opt_out", True,
           "opt-out confirmation (allowed once)" if opted_out and purpose == "opt_out_confirmation"
           else f"opted out of {channel}, but this replies to the customer's own message (decision 136)"
@@ -370,12 +388,20 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     marketing_sms = purpose == "marketing" and channel == "sms" and not is_reply
     lead_response_sms = purpose == "lead_response" and channel == "sms"
     # 4. An explicit no (marketing texts and the first message on a lead; a reply still goes out).
-    form = consent.lead_form_consent(lead)
-    if form and customer_id:
+    provider = consent.lead_provider_consent(lead)
+    form = (provider["opted_in"], provider.get("quote") or "the lead provider's consent record") \
+        if provider and provider.get("opted_in") is not None else None
+    if provider and customer_id:
+        # PLAN_4 stream X1 item 8: the whole evidence object, its disclosure version and source URL (TCPA PDF §6).
+        complete = provider.get("opted_in") and not consent.missing_provider_evidence(provider, to)
         await consent.record_consent(
             db, customer_id=customer_id, channel="sms", consent_type="marketing_consent",
-            status="review_required" if form[0] else "denied", source="lead_form", lead_id=lead_id,
-            evidence_id=f"lead_form:{lead_id}", evidence={"quote": form[1], "lead_source": origin.source})
+            status="denied" if provider.get("opted_in") is False else "granted" if complete else "review_required",
+            source="lead_form" if provider["format"] == "comment_line" else "lead_provider", lead_id=lead_id,
+            evidence_id=(f"lead_form:{lead_id}" if provider["format"] == "comment_line"
+                         else f"lead_provider:{lead_id}"),
+            evidence={**provider, "lead_source": origin.source}, text_version=provider.get("disclosure_version"),
+            source_url=provider.get("source_url"), address=consent.address_key("sms", provider.get("phone")))
     if marketing_sms or lead_response_sms:
         flag, _ = consent.phone_opt_in(customer, to)
         if flag is False:
@@ -538,12 +564,21 @@ def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateR
 
 async def _log(db: DealerScopedDatabase, decision: Decision, *, customer_id: str | None, lead_id: str | None,
                channel: str, purpose: str, is_reply: bool, at: datetime, to: str | None, source: str,
-               request_id: str | None, campaign: bool) -> str:
+               request_id: str | None, campaign: bool, message_id: str | None = None,
+               template_id: str | None = None) -> str:
+    """One add-only row per decision with the TCPA PDF §11 audit fields. `delivery` is filled in afterwards from
+    the send and the provider's callback (channels/sender.py, channels/delivery.py: record_delivery); nothing
+    else on the row is ever changed."""
     zones = decision.zone.get("zones") or []
     doc = {
         "at": at, "logged_at": clock.now(), "customer_id": customer_id, "lead_id": lead_id, "channel": channel,
         "to": to, "purpose": purpose, "is_reply": is_reply, "campaign": campaign, "source": source,
         "request_id": request_id, "origin": decision.origin.get("origin"),
+        # PLAN_4 stream X1 item 8: lead source, disclosure version, message / template, the opt-out event.
+        "lead_source": decision.origin.get("source"), "origin_rule": decision.origin.get("rule"),
+        "message_id": message_id, "template_id": template_id, "opt_out_event_id": decision.opt_out_event_id,
+        "consent_text_version": decision.consent.get("text_version"),
+        "rules_version": state_hours.RULES_VERSION, "delivery": {"status": None},
         "consent_evidence_id": decision.consent.get("evidence_id"), "consent": decision.consent,
         "jurisdiction": {"zones": zones, "state": decision.zone.get("state"), "method": decision.zone.get("method"),
                          # MASTER_PLAN_4 F1: which states' rows applied, and the table's version.
