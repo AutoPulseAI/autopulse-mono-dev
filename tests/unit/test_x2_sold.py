@@ -150,3 +150,40 @@ async def test_closed_lost_on_a_delivered_lead_is_refused_and_pauses_nothing(mon
     state = await _state(mongo, created)
     assert state["stage"] == "sold_delivered" and state["status"] == "active"
     assert await _pending(mongo, created, "post_delivery_checkin")  # the ownership lifecycle carries on
+
+
+# --- Item 14: reading the customer's replies ---------------------------------------------------------------------
+
+@pytest.mark.parametrize(("text", "answer"), [
+    ("Yes, Tuesday later in the afternoon works", "yes"),
+    ("Yes please", "yes"),
+    ("Sure, Saturday morning works for me", "yes"),
+    ("That works", "yes"),
+    ("ok but I have a question about the screen", "other"),
+    ("I have a quick question first", "other"),
+    ("Maybe later", "later"),
+    ("Not right now, thanks", "later"),
+    ("No thanks", "later"),
+    ("Later", "later"),
+    ("I'll let you know", "later"),
+    ("What does the first service include?", "other"),
+])
+def test_the_answer_to_a_service_offer(text, answer):
+    from upsell_agent.agent import sold_delivered
+    assert sold_delivered.classify_service_answer(text) == answer
+
+
+@pytest.mark.parametrize(("text", "route"), [
+    ("When can I pick it up?", "human"),
+    ("when can i pick her up", "human"),
+    ("Can I come get it tomorrow?", "human"),
+    ("When is it ready for pickup?", "human"),
+    ("I have a question about the color", "ai"),
+    ("Yes, I have", "documents_confirmed"),
+    ("I did, sent everything last week", "documents_confirmed"),
+    ("I've sent my insurance card", "info"),
+    ("Thanks!", "ai"),
+])
+def test_the_sold_pending_router_reads_delivery_questions_and_real_answers(text, route):
+    from upsell_agent.agent import sold_pending
+    assert sold_pending.classify_reply(text, documents_asked=True)[0] == route

@@ -79,3 +79,8 @@ the fix.
   the ownership lifecycle carries on. Tests: `test-ai-crm-platform.js` (statusChangeError),
   `test_x2_sold.py::test_closed_lost_on_a_delivered_lead_*`. (Pre-existing ESLint unused-var errors in the status
   route, lines 167/443/569/723, are not from this change.)
+- **14. Reply reading.** `sold_delivered.classify_service_answer`: "later" is a decline only when it isn't a time
+  ("Yes, Tuesday later in the afternoon works" -> yes, the words kept as the request's notes); "works", "that
+  works" read as yes; "ok but I have a question..." / "a quick question" -> other (the AI answers). SOLD PENDING
+  router: "When can I pick it up?", "come get it" -> escalated to the salesperson; "I have a question about the
+  color" no longer reads as "I have [provided everything]". Table tests in `test_x2_sold.py` (7 rows failed before).

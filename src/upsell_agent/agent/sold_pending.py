@@ -219,6 +219,8 @@ _NEEDS_HUMAN = re.compile(
     r"title|registration|register|plates?|tags?|dmv|paperwork|contract|sign(?:ing)?|"
     r"trade[- ]?in|my trade|payoff|insurance|insur\w*|warranty|gap|"
     r"deliver\w*|pick(?:\s|-)?up|ready|when (?:can|will|do) i (?:get|have)|eta|how long|status|"
+    # Stream X2: "When can I pick it up?", "can I come get it", "when do I get my car".
+    r"pick (?:it|her|him|them|the \w+|my \w+) up|(?:come|coming) (?:get|grab) (?:it|her|him|my \w+)|"
     r"manager|salesperson|sales ?(?:man|rep)|refund|deposit|price|cancel)\b", re.IGNORECASE)
 # "Customer provides requested information" (§9): they sent or did something for the deal.
 _PROVIDES_INFO = re.compile(
@@ -227,7 +229,9 @@ _PROVIDES_INFO = re.compile(
     r"my (?:insurance|license|licence|pay ?stubs?|proof of \w+) (?:is|are)\b)", re.IGNORECASE)
 # The customer says they've given the salesperson everything (answers week 1's question).
 _ALL_PROVIDED = re.compile(
-    r"\b(yes|yep|yeah|all set|all good|already (?:did|sent|provided|gave)|i (?:did|have)|"
+    # Stream X2: "I have a question about the color" is not "I have (provided everything)".
+    r"\b(yes|yep|yeah|all set|all good|already (?:did|sent|provided|gave)|"
+    r"i (?:did|have)\b(?!\s+(?:a|an|one|some|another|any|more|questions?|concerns?|no)\b)|"
     r"provided everything|sent everything|gave (?:them|him|her) everything|everything(?:'s| is) (?:in|done|sent))\b",
     re.IGNORECASE)
 

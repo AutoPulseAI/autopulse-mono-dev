@@ -255,16 +255,26 @@ def classify_ownership_answer(text: str) -> str:
     return "other"
 
 
-_SERVICE_LATER = re.compile(r"\b(later|not (?:yet|now|right now)|no thanks|no thank you|maybe (?:later|another)|"
-                            r"i'?ll let you know|not at the moment|nah|^no\b)", re.IGNORECASE)
+# Stream X2: "later" is a decline only when it isn't a time of day / week ("Tuesday later in the afternoon works" is
+# a yes with a preferred time).
+_SERVICE_LATER = re.compile(r"\b(later\b(?!\s+(?:in|on|this|that|today|tonight|tomorrow|next|at|around|than)\b)|"
+                            r"not (?:yet|now|right now)|no thanks|no thank you|maybe (?:later|another)|"
+                            r"i'?ll let you know|not at the moment|nah|some other time)|^\s*no\b", re.IGNORECASE)
 _SERVICE_YES = re.compile(r"^\s*(y|yes|yep|yeah|sure|please|ok(?:ay)?|sounds good|let'?s do it|book it|"
-                          r"schedule it)\b|\b(set (?:it|that) up|get (?:it|me) (?:in|scheduled|booked))\b",
+                          r"schedule it)\b|\b(set (?:it|that) up|get (?:it|me) (?:in|scheduled|booked)|"
+                          r"(?:that |this |it )?works(?: for me)?|i'?m in|count me in)\b",
                           re.IGNORECASE)
+# "ok but I have a question about the screen": a question, not an acceptance.
+_SERVICE_QUESTION = re.compile(r"\b(?:a|one|some|quick) questions?\b|^\s*(?:ok(?:ay)?|sure|yes)\s*,?\s+but\b",
+                               re.IGNORECASE)
 
 
 def classify_service_answer(text: str) -> str:
-    """"yes" / "later" / "other" to a service offer (§4: "LATER/NOT YET -> do not pressure")."""
+    """"yes" / "later" / "other" to a service offer (§4: "LATER/NOT YET -> do not pressure"). A yes may carry the
+    customer's preferred day and time (kept as the request's notes); a question is "other" (the AI answers it)."""
     body = (text or "").strip()
+    if _SERVICE_QUESTION.search(body):
+        return "other"
     if _SERVICE_LATER.search(body):
         return "later"
     if _SERVICE_YES.search(body):
