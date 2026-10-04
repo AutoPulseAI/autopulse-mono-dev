@@ -146,19 +146,26 @@ CONTINUE_ASK = "Thanks, {name}. {question}"
 # Spanish fallback never asks: it notes their message, or takes the question to the team.
 CONTINUE_CHECKING_ES = "Gracias, {name}. Voy a consultarlo con el equipo, y alguien le responderá muy pronto."
 CONTINUE_NOTED_ES = "Gracias, {name}. Ya tomé nota."
+FIRST_REPLY_ES = "Hola {name}, gracias por comunicarse con nosotros. Un miembro de nuestro equipo le responderá muy pronto."
 _SIGN_OFF_ES = "\n\nGracias,\nEl equipo de atención al cliente"
 
 
-def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None) -> dict[str, Any]:
+def _upper_first(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None, *,
+                          first: bool = False) -> dict[str, Any]:
     """The template for a reply after the first one (agent/nodes/template_reply.py), from Decide's own plan."""
     decision = decision or {}
     name = first_name(full_name)
     asks = [a for a in decision.get("asks") or [] if a.get("question")][:1]
     promises: list[str] = []
     if decision.get("reply_language") == "Spanish":
-        line = (CONTINUE_CHECKING_ES if decision.get("answer_questions") else CONTINUE_NOTED_ES).format(name=name)
+        line = (FIRST_REPLY_ES if first else CONTINUE_CHECKING_ES if decision.get("answer_questions")
+                else CONTINUE_NOTED_ES).format(name=name)
         return {"sms_text": line, "email_subject": "Seguimiento",
-                "email_body": f"Hola {name},\n\n{line.split('. ', 1)[1]}" + _SIGN_OFF_ES, "template": "continue",
+                "email_body": f"Hola {name},\n\n{_upper_first(line.split(', ' if first else '. ', 1)[1])}" + _SIGN_OFF_ES, "template": "continue",
                 "asks": {"sms": [], "email": []},
                 "promises": [TEMPLATE_PROMISE] if decision.get("answer_questions") else []}
     if decision.get("answer_questions"):

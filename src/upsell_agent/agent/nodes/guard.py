@@ -181,6 +181,13 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
     known += [visit[k] for k in ("display", "slot_taken", "time_not_open") if visit.get(k)]
+    # Stream Q: the times our earlier reply offered (still on the table while they answer) and a service visit's
+    # requested day - both real, but neither is in this turn's visit_offer, so the reply that mentioned them again
+    # ("I have 2:00 PM or 3:00 PM Tuesday") was rejected as inventing numbers.
+    earlier_visit = ((pack.get("conversation") or {}).get("visit") or {})
+    known += [t.get("display") for t in earlier_visit.get("offered_times") or [] if t.get("display")]
+    known += [v.get("display") for v in (earlier_visit.get("pending_pick"), earlier_visit.get("service_request"),
+                                         visit.get("service_request")) if isinstance(v, dict) and v.get("display")]
     # The day the customer asked for, and the day offered instead when it had no open time (both real).
     known += [v for k in ("asked", "offered_day") if (v := (visit.get("day_request") or {}).get(k))]
     if next_action := (state.decision or {}).get("next_action"):

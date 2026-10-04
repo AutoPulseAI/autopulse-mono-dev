@@ -145,6 +145,19 @@ async def _dealer_local_display(when: datetime, dealer: DealerProfile) -> dict[s
 DAY_REQUEST_MAX_DAYS = 30
 
 
+_SAME_TIME = re.compile(r"\b(?:same time|same hour|that time works)\b", re.IGNORECASE)
+
+
+def _same_time_as(text: str, booking: dict[str, Any] | None) -> str:
+    """Stream Q: "Same time works" answering the new day's times, while moving a booking, means the booking's
+    own time on that day (seen: "Friday instead?" ... "Same time works" was answered with another time)."""
+    at = str((booking or {}).get("bookingTime") or "")
+    if not _SAME_TIME.search(text or "") or not re.fullmatch(r"\d{1,2}:\d{2}", at):
+        return text
+    hour, minute = (int(x) for x in at.split(":"))
+    return f"{(hour - 1) % 12 + 1}:{minute:02d} {'pm' if hour >= 12 else 'am'}"
+
+
 def _day_words(day: date) -> str:
     return f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}"
 
@@ -200,13 +213,16 @@ async def _visit_and_booking(
             visit_ctx = {"status": "cancelled", "display": None, "just_booked": False, "stopped": False,
                         "ask_contact": None, "cancelled_this_turn": True, "booking_id": result["booking_id"]}
         elif conversation.awaiting_visit_pick and conversation.visit and booking_tool.match_pick(
-                text, conversation.visit.offered_times, dealer, now).matched:
+                (pick_text := _same_time_as(text, active_booking)), conversation.visit.offered_times, dealer, now,
+                available=booking_tool.available_times(
+                    dealer, await booking_tool.existing_bookings(state.dealer_id, dealer, now), now,
+                    exclude_lead_id=lead_id)).matched:
             # MASTER_PLAN_3 C5 (Omnichannel PDF §8): the customer answered N to the day-before confirmation,
             # we offered new times, and this is their pick: the booking moves to it (the old confirmation and
             # no-show timers are replaced when the appointment is set again).
             existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
             available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
-            picked = booking_tool.match_pick(text, conversation.visit.offered_times, dealer, now,
+            picked = booking_tool.match_pick(pick_text, conversation.visit.offered_times, dealer, now,
                                              available=available).matched
             if picked and datetime.fromisoformat(picked["iso"]) in available:
                 when = datetime.fromisoformat(picked["iso"])

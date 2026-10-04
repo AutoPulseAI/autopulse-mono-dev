@@ -108,6 +108,10 @@ def _numbers(texts: Iterable[Any]) -> set[str]:
             found.add(_normalize_number(hour))
             if minute:
                 found.add(_normalize_number(minute))
+        # A clock time typed without a colon ("early like 730", "1030"): its hour and minutes.
+        for hour, minute in re.findall(r"(?<![\d$,.])(1[0-2]|[1-9])([0-5]\d)(?![\d,.])", str(text)):
+            if minute in ("00", "15", "30", "45"):
+                found.update({_normalize_number(hour), _normalize_number(minute)})
     return found
 
 
@@ -237,7 +241,9 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
 
     # MASTER_PLAN_4 D5/D6 (stream A4): recall / maintenance claims only from the outreach event's facts
     # (SOLD-DELIVERED PDF §5, §6, §12). Recall and "service due" claims are checked on every draft.
-    service = service_claims.check_service_claims(text, service_facts)
+    service = service_claims.check_service_claims(
+        text, service_facts, customer_said_recall=any(re.search(r"\brecall", t or "", re.IGNORECASE)
+                                                      for t in customer_texts))
     violations += service
 
     checks = {

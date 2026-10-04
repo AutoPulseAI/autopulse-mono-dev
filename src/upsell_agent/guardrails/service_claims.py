@@ -27,6 +27,12 @@ _RECALL_CLAIM = re.compile(
     r"\b(?:safety|open|active|outstanding|unrepaired|a|an|the|this|that|your|its)\s+(?:safety\s+)?recalls?\b"
     r"|\brecalls?\s+(?:on|for|notice|repair|campaign|affecting|that affects)\b|\bunder (?:a )?recall\b",
     re.IGNORECASE)
+# PLAN_4 stream Q: when the customer brought the recall up ("Got a recall letter for my 2020 Silverado"), talking
+# about THEIR recall ("the recall", "your recall notice") is answering them, not a claim. Saying the vehicle has
+# a recall (open / active / outstanding / unrepaired / "a safety recall on") still needs VIN-confirmed facts.
+_RECALL_STATUS_CLAIM = re.compile(
+    r"\b(?:open|active|outstanding|unrepaired)\s+(?:safety\s+)?recalls?\b|\b(?:has|have|there(?:'s| is))\s+"
+    r"(?:an?\s+)?(?:open\s+|active\s+)?(?:safety\s+)?recalls?\b|\bunder (?:a )?recall\b", re.IGNORECASE)
 _CAMPAIGN_NUMBER = re.compile(r"\b\d{2}[VEITC]\d{6}\b", re.IGNORECASE)
 _SERVICE_CAMPAIGN = re.compile(r"\b(?:service|manufacturer|factory|oem)\s+campaigns?\b", re.IGNORECASE)
 _SERVICE_DUE = re.compile(
@@ -60,14 +66,15 @@ def _covered(word: str, items: list[str]) -> bool:
     return any(k in item.lower() for item in items for k in keys)
 
 
-def check_service_claims(text: str, facts: dict[str, Any] | None) -> list[str]:
+def check_service_claims(text: str, facts: dict[str, Any] | None, *, customer_said_recall: bool = False) -> list[str]:
     """Violations, empty when the draft states only what `facts` support."""
     facts = facts or {}
     kind = facts.get("kind")
     violations: list[str] = []
 
     recall_ok = kind == "recall" and facts.get("vin_confirmed") is True
-    if _RECALL_CLAIM.search(text) and not recall_ok:
+    claim = _RECALL_STATUS_CLAIM if customer_said_recall else _RECALL_CLAIM
+    if claim.search(text) and not recall_ok:
         violations.append("claims a recall with no VIN-confirmed recall behind this message")
     named = {m.upper() for m in _CAMPAIGN_NUMBER.findall(text)}
     allowed = {str(facts.get("recall_id") or "").upper()} if recall_ok else set()

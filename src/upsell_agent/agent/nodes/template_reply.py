@@ -22,8 +22,9 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
                    mid_conversation: bool = False, decision: dict | None = None) -> dict:
     """The first-reply template, or (PLAN_4 stream Q) once the conversation has started, the continue template
     built from Decide's plan (agent/templates.render_continue_reply) - never "new or used?" out of the blue."""
-    draft = (render_continue_reply(customer_name, decision) if mid_conversation
-             else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
+    spanish = (decision or {}).get("reply_language") == "Spanish"
+    draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
+             if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
     draft["why"] = why
     return draft
 

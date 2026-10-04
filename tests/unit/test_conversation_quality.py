@@ -234,3 +234,40 @@ def test_the_grammar_rule_does_not_judge_spanish_by_english_rules():
     assert grammar_problems("a ellos. Es todo.", english=False) == ['a sentence starts with a lowercase letter ("a")']
     assert grammar_problems("We have a SUV and an hour.", english=True) == []
     assert grammar_problems("i can help.", english=True) == ['"i" instead of "I"']
+
+
+# --- Found in the first stream Q real run --------------------------------------------------------------------
+
+def test_talking_about_the_recall_the_customer_raised_is_not_a_recall_claim():
+    from upsell_agent.guardrails.service_claims import check_service_claims
+
+    reply = "Thanks for letting us know about the recall letter. The team will check the recall for your Silverado."
+    assert check_service_claims(reply, None, customer_said_recall=True) == []
+    assert check_service_claims(reply, None)  # nobody mentioned one: still a claim
+    assert check_service_claims("Your Silverado has an open recall.", None, customer_said_recall=True)
+
+
+def test_a_time_typed_without_a_colon_allows_its_numbers():
+    draft = {"sms_text": "Got it, I'll note 7:30 AM tomorrow.", "email_subject": "s", "email_body": "b"}
+    assert check_draft(draft, customer_texts=["early like 730"], known_values=[])["checks"]["no_invented_numbers"]
+
+
+def test_same_time_while_moving_a_booking_means_the_bookings_own_time():
+    from upsell_agent.agent.nodes.decide import _same_time_as
+
+    assert _same_time_as("Same time works", {"bookingTime": "15:00"}) == "3:00 pm"
+    assert _same_time_as("Same time works", {"bookingTime": "09:30"}) == "9:30 am"
+    assert _same_time_as("Friday at 4", {"bookingTime": "15:00"}) == "Friday at 4"
+    assert _same_time_as("Same time works", None) == "Same time works"
+
+
+def test_a_spanish_first_reply_fallback_is_in_spanish():
+    reply = render_continue_reply("Luis Hernandez", {"reply_language": SPANISH}, first=True)
+    assert reply["sms_text"].startswith("Hola Luis, gracias") and reply["email_body"].startswith("Hola Luis,\n\nGracias")
+
+
+def test_two_different_vehicles_of_the_same_year_and_model_are_not_a_repeat():
+    inv = [{"year": 2025, "model": "RAV4", "trim": "XLE Hybrid"}, {"year": 2025, "model": "RAV4", "trim": "LE"}]
+    draft = {"sms_text": "I have a 2025 Toyota RAV4 XLE Hybrid in white and a 2025 Toyota RAV4 LE in silver.",
+             "email_body": ""}
+    assert repeated_vehicle_name(draft, inv) == []

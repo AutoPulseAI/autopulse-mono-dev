@@ -13,6 +13,7 @@ wired into agent/nodes/guard.py. Each one was seen in the real-model runs (gpt-5
 """
 
 import re
+from collections import Counter
 from typing import Any
 
 _VERSIONS = (("SMS", "sms_text"), ("email", "email_body"))
@@ -43,21 +44,25 @@ def _sentences(text: str) -> list[str]:
 
 
 def repeated_vehicle_name(draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[str]:
-    """One sentence naming the same stock vehicle (year + model) twice."""
+    """One sentence naming the same stock vehicle (year, model and trim) more times than there are such
+    vehicles: "a new 2025 RAV4 XLE Hybrid in white, a new 2025 RAV4 LE in silver" names two different ones."""
     out = []
-    names = {(str(r.get("year") or ""), str(r.get("model") or "")) for r in inventory if r.get("model")}
+    names = Counter((str(r.get("year") or ""), str(r.get("model") or ""), str(r.get("trim") or ""))
+                    for r in inventory if r.get("model"))
     for name, key in _VERSIONS:
+        hit = None
         for sentence in _sentences(str(draft.get(key) or "")):
-            for year, model in names:
-                pattern = (rf"\b{re.escape(year)}\b[\w\s-]{{0,20}}?\b{re.escape(model)}\b" if year
-                           else rf"\b{re.escape(model)}\b")
-                if len(re.findall(pattern, sentence, re.IGNORECASE)) > 1:
-                    out.append(f"the {name} names the {year} {model} twice in one sentence ({sentence.strip()!r}): "
-                               "name it once, in natural words")
+            for (year, model, trim), stocked in names.items():
+                pattern = (rf"\b{re.escape(year)}\b[\w\s-]{{0,20}}?" if year else "") + rf"\b{re.escape(model)}\b"
+                pattern += rf"\s+{re.escape(trim)}\b" if trim else ""
+                if len(re.findall(pattern, sentence, re.IGNORECASE)) > stocked:
+                    hit = (f"the {name} names the {year} {model} twice in one sentence ({sentence.strip()!r}): "
+                           "name it once, in natural words")
                     break
-            else:
-                continue
-            break
+            if hit:
+                break
+        if hit:
+            out.append(hit)
     return out
 
 
@@ -68,7 +73,8 @@ _FEATURE = re.compile(
     rf"\b{_NUM}[- ]row\b|\bthird[- ]row\b|\b{_NUM}[- ](?:passenger|seat(?:er|s)?)\b|\bseats? (?:up to )?{_NUM}\b"
     r"|\bseating for\b|\b(?:awd|4wd|4x4|fwd|rwd)\b|\b(?:all|four|front|rear)[- ]wheel[- ]drive\b"
     r"|\b(?:sunroof|moonroof|panoramic roof|leather|heated seats?|cooled seats?|navigation|apple carplay|"
-    r"android auto|backup camera|blind[- ]spot|tow(?:ing)? capacity|tow package|v6|v8|turbo(?:charged)?)\b",
+    r"android auto|backup camera|blind[- ]spot|tow(?:ing)? capacity|tow package|v6|v8|turbo(?:charged)?|"
+    r"car seats?)\b",
     re.IGNORECASE)
 # A sentence that defers the feature to the team, or is about what the customer wants, makes no claim.
 _NO_CLAIM = re.compile(
