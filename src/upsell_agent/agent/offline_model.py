@@ -610,12 +610,12 @@ def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> st
     stock = (payload.get("context") or {}).get("inventory") or []
     theme = touch.get("theme")
     if theme == "vehicle_visual":
-        return f"I had another look at {it} for you. Anything you'd like to see or know about it?", []
+        return f"I took another look at {it} for you. Is there anything you'd like to see or know about it?", []
     if theme == "financing_help":
-        return ("Would you like a hand with financing or payment options? The team can walk you through "
+        return ("Would you like help with financing or payment options? The team can walk you through "
                 "what's possible."), []
     if theme == "trade_in":
-        return (f"Would you like the team to take a proper look at your {trade} while you're in?" if trade
+        return (f"Would you like the team to take a good look at your {trade} while you're in?" if trade
                 else "Do you have a car you'd want to put towards it? The team can take a look at it for you."), []
     if theme == "vehicle_value":
         if stock:
@@ -623,16 +623,16 @@ def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> st
             detail = " ".join(str(x) for x in (car.get("trim"), car.get("exterior_color")) if x)
             if detail:
                 return (f"The {car.get('year')} {car.get('make')} {car.get('model')} we have is the "
-                        f"{detail}. Worth a look?"), ([car["vin"]] if car.get("vin") else [])
+                        f"{detail}. Would you like to take a look?"), ([car["vin"]] if car.get("vin") else [])
         return f"Is there anything in particular you want to know about {it}?", []
     if theme == "appointment_value":
-        return (f"Coming in means the team can go through {it} with you properly, in one go. "
-                "What day would suit you?"), []
+        return (f"If you come in, the team can go through {it} with you in person, all at once. "
+                "What day works for you?"), []
     if theme == "direct_close":
         return f"Are you still thinking about {it}? I can hold a time for you - what day works?", []
     if theme == "price_or_offer":
-        return f"Still keeping an eye out for you on {it}. Would you like me to let you know what comes in?", []
-    return f"Just checking in about {it}, {name}. Anything I can help with?", []
+        return f"I'm still keeping an eye out for {it} for you. Would you like me to let you know what comes in?", []
+    return f"I'm just checking in about {it}, {name}. Is there anything I can help with?", []
 
 
 def _confirm_text(confirm: dict[str, Any]) -> str:
@@ -646,7 +646,7 @@ def _confirm_text(confirm: dict[str, Any]) -> str:
 # no approval, no trade value, no question.
 _BUCKET_LINES = {
     "credit": "Our team can walk you through your financing options and what you'd need to get started.",
-    "trade_in": "We'd be glad to take a proper look at your car and get you an accurate, in-person number.",
+    "trade_in": "We'd be glad to take a good look at your car and get you an accurate, in-person number.",
     "general": "",
 }
 
@@ -804,7 +804,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("reach_out"):
         # MASTER_PLAN_3 C3: a scheduled next step firing - not a reply, we're checking back as asked.
         # No greeting line: only the first reply of a conversation greets (the guard's rule).
-        body = f"Checking back in like you asked, {name}. " + body.removeprefix(opener).removeprefix("Thanks! ")
+        body = f"I'm checking back in, as you asked, {name}. " + body.removeprefix(opener).removeprefix("Thanks! ")
         why = "Checking back on the date the customer asked for. " + why
     if visit.get("just_booked"):
         # A booking was created (or moved) this turn (MASTER_PLAN_3 B5 item 7, architecture §15
@@ -818,7 +818,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         if wording == "requested":
             promises = [*promises, "The team will confirm the visit shortly."]
     elif visit.get("cancelled_this_turn"):
-        body = f"{f'{answered} ' if answered else ''}No problem, {name} - I've cancelled that. Happy to find another time whenever works."
+        body = f"{f'{answered} ' if answered else ''}No problem, {name} - I've canceled that. I'm happy to find another time whenever it works for you."
         why = "The customer cancelled their booking this turn."
     elif visit.get("ask_contact"):
         field_question = ("What's the best email for your confirmation?" if visit["ask_contact"] == "email"

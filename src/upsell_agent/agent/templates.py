@@ -49,14 +49,14 @@ _SIGN_OFF = "\n\nThanks,\nThe {team} Team"
 FIRST_REPLY: dict[LeadType, Template] = {
     LeadType.SALES: Template(
         sms=(
-            "Hi {name}, thanks for reaching out! We got your inquiry and our sales team will follow up "
-            "shortly. Are you looking at new or used?"
+            "Hi {name}, thanks for reaching out! We got your inquiry, and our sales team will follow up "
+            "shortly. Are you looking for a new or a used vehicle?"
         ),
         email_subject="Thanks for your inquiry",
         email_body=(
-            "Hi {name},\n\nThanks for reaching out! We received your inquiry and a member of our sales team "
-            "will follow up shortly.\n\nSo we can pull together the right options: are you looking at new or "
-            "used, and do you have a timeline in mind?" + _SIGN_OFF.format(team="Sales")
+            "Hi {name},\n\nThanks for reaching out! We received your inquiry, and a member of our sales team "
+            "will follow up shortly.\n\nSo we can pull together the right options, are you looking for a new or "
+            "a used vehicle, and do you have a timeline in mind?" + _SIGN_OFF.format(team="Sales")
         ),
         sms_asks=("interest.new_or_used",),
         email_asks=("interest.new_or_used", "interest.timeline"),
@@ -140,7 +140,7 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
 # timeout fired and staff haven't taken the lead over yet.
 HOLDING_REPLIES: dict[str, Template] = {
     "holding": Template(
-        sms="Thanks, {name}! I've passed this to the team and someone will reach out shortly.",
+        sms="Thanks, {name}! I've passed this to the team, and someone will reach out shortly.",
         email_subject="We've got your message",
         email_body=(
             "Hi {name},\n\nThanks for your message. I've passed it to the team, and someone will reach out "
