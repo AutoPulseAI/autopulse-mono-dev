@@ -271,3 +271,17 @@ async def test_a_booking_the_stage_missed_stops_the_cadence_touch(mongo):
     set_clock(touch["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
     fired = await followups.fire_due(_deps())
     assert not fired["results"].get("sent") and len(await _outbox(mongo, created)) == before
+
+
+
+# --- Item 8: positive outcomes only (Sales Lead Blueprint box 4) -------------------------------------------------------
+
+def test_the_sold_vehicle_fallback_leads_with_the_next_step_never_not_available():
+    import re
+
+    from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_TEXT
+    from upsell_agent.guardrails.draft_guard import _UNAVAILABLE_PATTERNS
+    text = SOLD_VEHICLE_FALLBACK_TEXT
+    assert not any(re.search(p, text, re.IGNORECASE) for p in _UNAVAILABLE_PATTERNS)
+    assert not re.search(r"\b(no longer|sold|unavailable|not available|gone)\b", text, re.IGNORECASE)
+    assert "options" in text and text.rstrip().endswith("?")  # alternatives, then the next step

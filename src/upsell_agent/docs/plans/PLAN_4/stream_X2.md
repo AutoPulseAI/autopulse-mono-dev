@@ -52,3 +52,7 @@ the fix.
   the touch is cancelled and the next one planned from now), an upcoming booking on the platform lead the stage
   missed, and at least one valid, permitted contact point. Tests: `test_a_reply_no_turn_answered_*`,
   `test_a_booking_the_stage_missed_*`.
+- **8. Positive outcomes only.** `templates.SOLD_VEHICLE_FALLBACK_TEXT` (sent when the vehicle a message named sold
+  before it went out) no longer says "no longer available": it leads with similar options and a next step, and
+  claims no stock it has not checked. Test: `test_the_sold_vehicle_fallback_leads_with_the_next_step_*`. (The guard
+  still allows a denial paired with an alternative in AI-written replies - decision D, unchanged.)

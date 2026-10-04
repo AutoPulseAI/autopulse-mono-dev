@@ -40,7 +40,10 @@ TEMPLATE_PROMISE = "A member of the team will follow up shortly."
 # the instruction to always write one, Compose left no stock-free version to
 # fall back to. Never the vehicle's own name-naming text - the whole point of
 # this text is to guarantee a sold vehicle is never sent, even in that gap.
-SOLD_VEHICLE_FALLBACK_TEXT = "Sorry for the wait - that one's no longer available, but the team can find you another option."
+# PLAN_4 stream X2 (Sales Lead Blueprint box 4, "POSITIVE OUTCOMES ONLY - never say a vehicle is not available"):
+# leads with the next step and the alternatives, never a flat "not available"; and claims no stock it hasn't checked.
+SOLD_VEHICLE_FALLBACK_TEXT = ("Thanks for your patience! The team is lining up a few similar options for you. "
+                              "When would be a good time to take a look?")
 SOLD_VEHICLE_FALLBACK_SUBJECT = "Update on your inquiry"
 
 
