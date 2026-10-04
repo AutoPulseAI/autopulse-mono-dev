@@ -274,7 +274,8 @@ async function ensureLateDealer() {
   if (mailbox) {
     const { _id, ...rest } = mailbox;
     await col('emailaccounts').insertOne({ ...rest, dealer_id: typeof mailbox.dealer_id === 'string' ? LATE_DEALER_ID
-      : new mongoose.Types.ObjectId(LATE_DEALER_ID), email: LATE_MAILBOX, cadence_check_dealer: true });
+      : new mongoose.Types.ObjectId(LATE_DEALER_ID), email: LATE_MAILBOX, email_address: LATE_MAILBOX,
+      cadence_check_dealer: true });
   }
   return User.findById(LATE_DEALER_ID).lean();
 }
@@ -397,13 +398,13 @@ async function scenario(t0) {
   // Appointments: staff book Thursday 14:00 (C, will say Y and not show) and Thursday 11:00 (N, says N, visits).
   const thu = localDate(await toLocal(3, '12:00', t0));
   const cBook = await staffStatus(L.c, { status: 'Appointment Booked', booking_date: thu, booking_time: '14:00' });
-  const nBook = await staffStatus(L.n, { status: 'Appointment Booked', booking_date: thu, booking_time: '11:00' });
+  const nBook = await staffStatus(L.n, { status: 'Appointment Booked', booking_date: thu, booking_time: '13:00' });
   const cAppt = await stageIs(L.c, 'appointment_set');
   await stageIs(L.n, 'appointment_set');
   await sleep(1000);
   const cSteps = await followups(L.c, null, { status: 'pending', kind: { $regex: '^appointment_' } });
-  check('4a. a booking made in the CRM plans the appointment messages: countdown, day-before confirmation, +1h check',
-    cBook.status === 200 && Boolean(cAppt)
+  check('4a. bookings made in the CRM plan the appointment messages the appointment messages: countdown, day-before confirmation, +1h check',
+    cBook.status === 200 && nBook.status === 200 && Boolean(cAppt)
       && cSteps.some((f) => f.kind === 'appointment_countdown' && localParts(f.due_at).weekday === 'Tue')
       && cSteps.some((f) => f.kind === 'appointment_confirm' && localParts(f.due_at).weekday === 'Wed')
       && cSteps.some((f) => f.kind === 'appointment_no_show_check' && localParts(f.due_at).hm === '15:00'),
@@ -512,7 +513,8 @@ async function scenario(t0) {
 
   // ---- Walk the first week, finishing each call task the way staff would ------------------------------------------
   for (let day = 1; day <= 7; day += 1) {
-    await walkTo(await toLocal(day, '10:30', t0));
+    // 11:10: the 10:00 touch's call task has opened at 11:00; staff work it, so the next touch starts a new timer.
+    await walkTo(await toLocal(day, '11:10', t0));
     await completeOpenCallTasks(L.a);
     if (day === 2) {
       // Wednesday: C says Y to the day-before confirmation, N says N.
@@ -523,9 +525,11 @@ async function scenario(t0) {
         `${cConfirm?.status} ${cConfirm && local(cConfirm.due_at)}: "${clip(cMsg?.sms?.text, 120)}"`);
       const cCount = (await followups(L.c, 'appointment_countdown'))[0];
       const cCountMsg = cCount && await bothChannels(L.c, cCount);
-      check('4d. the countdown message goes out Tuesday (text + email, with a vehicle photo)',
+      check('4d. the countdown message goes out Tuesday (text + email) with the client\'s wording',
         cCount?.status === 'sent' && cCountMsg.both && /Counting down to our meeting at/.test(cCountMsg.sms.text),
-        `${cCount && local(cCount.due_at)}: "${clip(cCountMsg?.sms?.text, 70)}" photo ${cCountMsg?.sms?.media_urls?.length ? 'yes' : 'no'}`);
+        `${cCount && local(cCount.due_at)}: "${clip(cCountMsg?.sms?.text, 70)}"`);
+      info('4d. countdown photo', cCountMsg?.sms?.media_urls?.length ? cCountMsg.sms.media_urls[0]
+        : 'GAP: no photo - the vehicle is only known by name (Touch 1 named it; no VIN shown yet), see stream_F.md');
       await replyAndWait(L.c, 'Y');
       const cState = await state(L.c);
       check('4e. "Y" marks the appointment confirmed and keeps Appointment Set',
@@ -538,7 +542,7 @@ async function scenario(t0) {
         `"${clip(nAnswer.at(-1)?.text, 120)}"`);
     }
     if (day === 3) {
-      // Thursday 10:30: N's customer walks in (before the 11:00 appointment): Sales Visit.
+      // Thursday 11:10: N's customer walks in (before the 13:00 appointment): Sales Visit.
       const visit = await staffStatus(L.n, { status: 'Visited', manager_outcome: 'Unsold' });
       await sleep(2000);
       const booking = await col('bookings').findOne({ lead_id: String(L.n.lead._id) });
@@ -552,8 +556,8 @@ async function scenario(t0) {
   const aTouches = (await followups(L.a, 'cadence_touch')).filter((f) => f.status === 'sent');
   const themes = ['vehicle_visual', 'financing_help', 'trade_in', 'vehicle_value', 'appointment_value', 'direct_close'];
   const themeWords = { vehicle_visual: /tacoma|photo|picture|look|color|colour|see it/i, financing_help: /financ|payment/i,
-    trade_in: /trade|apprais|driving now|current (car|vehicle)/i, vehicle_value: /feature|mile|trim|SR5|equipped|tacoma/i,
-    appointment_value: /visit|come in|stop by|appointment|in person|test drive/i,
+    trade_in: /trade|apprais|driving now|current (car|vehicle)|put (it )?towards/i, vehicle_value: /feature|mile|trim|SR5|equipped|tacoma/i,
+    appointment_value: /visit|come in|coming in|stop by|appointment|in person|test drive/i,
     direct_close: /still (considering|interested|thinking)|what day|which day|time works|set a time/i };
   const week = [];
   for (const n of [3, 4, 5, 6, 7, 8]) {
@@ -714,8 +718,11 @@ async function scenario(t0) {
   const ann2 = (await followups(L.sd2, 'ownership_anniversary'))[0];
   const annMsg = ann1 && await bothChannels(L.sd, ann1);
   check('5f. the ownership anniversary, year 1, goes out a year after delivery: "Do you still have your ...? Reply YES or NO"',
-    ann1?.status === 'sent' && ann1.year === 1 && dayDiff(t0, ann1.due_at) >= 365 && /Reply YES or NO/i.test(annMsg?.sms?.text || ''),
-    `${ann1?.status} ${ann1 && local(ann1.due_at)}: "${clip(annMsg?.sms?.text, 110)}" ${annMsg ? channels(annMsg.ok) : ''}`);
+    ann1?.status === 'sent' && ann1.year === 1 && dayDiff(t0, ann1.due_at) >= 365
+      && annMsg.ok.every((m) => /Reply YES or NO/i.test(m.text)) && Boolean(annMsg.email)
+      && annMsg.msgs.every((m) => m.status === 'sent' || /^BLOCK/.test(m.reason || '')),
+    `${ann1?.status} ${ann1 && local(ann1.due_at)}: "${clip(annMsg?.ok?.[0]?.text, 110)}"; `
+      + annMsg?.msgs.map((m) => `${m.channel} ${m.status}${m.reason ? ` (${clip(m.reason, 60)})` : ''}`).join(', '));
   await replyAndWait(L.sd, 'YES');
   const yes = await state(L.sd);
   const yesVehicle = await col('ai_vehicle_ownership').findOne({ lead_id: String(L.sd.lead._id) });
