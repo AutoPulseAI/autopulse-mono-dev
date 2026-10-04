@@ -91,6 +91,8 @@ async def test_a_hard_handoff_still_gets_a_holding_reply_and_staff_get_the_reque
     created = await _handed_off(mongo, "Customer asked for a person", soft=False)
     result = await _say(created, "Could I come Saturday at 11?")
     assert result["status"] == "holding_reply", result  # inside the 2-hour window, still answered
+    sent = await mongo["dev_outbox"].find_one({"lead_id": created["lead_id"]})
+    assert "request to come in" in sent["text"]
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["status"] == "handoff"
     assert "please book it" in state["staff_notice"]["text"] and "Saturday at 11" in state["staff_notice"]["text"]

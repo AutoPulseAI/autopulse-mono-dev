@@ -103,7 +103,11 @@ def eligible(profile: Profile, extraction: dict[str, Any]) -> bool:
                       or values.get("trade_in.model") or values.get("vehicle.model"))
     knows_when = bool(values.get("interest.timeline") or values.get("interest.needed_by")
                       or values.get("contact.best_time"))
-    return knows_what and knows_when
+    # PLAN_4 stream X3 item 2: a stated objective (payment target, budget, payoff) is a reason to come in by
+    # itself - "keep it under 400 a month" is answered with a visit built on it, not "I've made a note".
+    has_objective = bool(values.get("interest.monthly_payment") or values.get("interest.budget")
+                         or values.get("trade_in.payoff"))
+    return knows_what and (knows_when or has_objective)
 
 
 def _money(value: Any) -> str | None:

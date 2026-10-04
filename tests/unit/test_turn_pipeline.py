@@ -104,7 +104,10 @@ async def test_sales_lead_is_qualified_over_a_chat(mongo):
 async def test_trade_in_lead_qualifies_from_one_detailed_message(mongo):
     created = await _lead(lead_type="trade_in")
     log = await _turn(created, "It's a 2019 Honda Civic with 60,000 miles, good condition, I owe $8,000 on it")
-    assert log["outcome"] == "qualified"
+    # PLAN_4 stream X3 item 2: the payoff they gave is itself a reason to come in, so the fully answered lead is
+    # offered a visit built on it (before: "qualified" and passed to the team with no ask).
+    assert log["outcome"] == "offer_visit"
+    assert "$8,000 payoff" in log["summary"]["reply"]
     facts = await _facts(mongo, created)
     assert {p: facts[p]["value"] for p in ("trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage",
                                             "trade_in.condition", "trade_in.payoff")} == {

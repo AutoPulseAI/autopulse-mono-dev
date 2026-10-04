@@ -211,6 +211,12 @@ def _hold_decision(state: dict, request: str | None = None) -> tuple[str, str]:
     status, why = state["status"], state.get("status_reason")
     if status == "handoff":
         last = _aware(state.get("last_handoff_notice_at"))
+        # A request to book is always acknowledged; a question at most every HOLDING_REPLY_MIN_GAP, counted from
+        # the last holding reply (not from the handoff message itself); anything else every 2 hours.
+        if request == "booking":
+            last = None
+        elif request:
+            last = _aware(state.get("last_request_notice_at"))
         gap = after_handoff.HOLDING_REPLY_MIN_GAP if request else HOLDING_REPLY_EVERY
         if last and clock.now() - last < gap:
             return "saved_only", (f"The lead is with staff ({why or 'handed off'}); the customer was told at "
@@ -244,7 +250,8 @@ async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *,
 
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
                        rows: list[dict], action: str, reason: str, received_at: datetime | None,
-                       confirmation: str | None = None, reply: dict[str, Any] | None = None) -> dict[str, Any]:
+                       confirmation: str | None = None, reply: dict[str, Any] | None = None,
+                       holding_kind: str = "holding") -> dict[str, Any]:
     """Logs a turn for customer messages the AI doesn't answer, saying why,
     and sends the holding reply when that's the action. Marks the messages
     answered by this turn, so none is left without a reply or a reason."""
@@ -271,7 +278,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         elif action == "holding_reply":
             customer = await find_customer(db, event.customer_id)
             lead = await find_lead(db, lead_id)
-            draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
+            draft = render_holding_reply(holding_kind, (customer or {}).get("name") or (lead or {}).get("name"))
             text = draft["sms_text"] if channel == "sms" else draft["email_body"]
             subject, purpose = None if channel == "sms" else draft["email_subject"], "transactional"
         else:
@@ -479,7 +486,11 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                             request=request, rows=unanswered, took_back=False)
         action, reason = _hold_decision(state, request)
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
-                                  received_at=_parse_received_at(received_at))
+                                  received_at=_parse_received_at(received_at),
+                                  holding_kind="holding_booking" if request == "booking" else "holding")
+        if request and held.get("send_status") == "sent":
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"last_request_notice_at": clock.now()}})
         return {**held, "followups_cancelled": cancelled}
 
     answered = await _appointment_answer(db, event, deps, lead=lead, lead_id=lead_id, state=state,
