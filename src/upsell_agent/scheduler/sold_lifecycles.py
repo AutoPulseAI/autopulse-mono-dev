@@ -45,6 +45,7 @@ from typing import Any
 
 from upsell_agent import clock
 from upsell_agent.agent import lifecycle, ownership, service_events, sold_delivered, sold_pending
+from upsell_agent.agent.customer_key import lead_customer_id
 from upsell_agent.agent.templates import first_name as _first_name
 from upsell_agent.channels.sender import SendOutcome, SendRequest
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
@@ -175,7 +176,7 @@ async def on_stage_change(db: DealerScopedDatabase, lead_id: str, current: Any, 
 
     S = lifecycle.Stage
     lead = lead if lead is not None else await _lead(db, lead_id)
-    customer_id = customer_id or (str(lead["customer_id"]) if (lead or {}).get("customer_id") else None)
+    customer_id = customer_id or lead_customer_id(lead)
     now = clock.now()
     state = await _state(db, lead_id)
     out: dict[str, Any] = {}

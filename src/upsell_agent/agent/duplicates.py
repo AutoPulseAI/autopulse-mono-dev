@@ -99,6 +99,57 @@ async def link_duplicate(db: DealerScopedDatabase, lead_id: str, customer_id: st
     return {"duplicate_of": primary_id, "lead_id": lead_id}
 
 
+FINISHED_STAGES = _FINISHED
+
+
+async def release_linked(db: DealerScopedDatabase, primary_id: str) -> list[str]:
+    """PLAN_4 stream X3 item 8 (audit 4 C4): when the primary's workflow is over (closed, sold, opted out), its
+    linked duplicates are no longer "the same opportunity being worked elsewhere". The newest one still open in
+    the CRM becomes a working lead: unlinked, active, with a stage and its own cadence (no second greeting - the
+    customer already knows us); older ones are linked to it. An opted-out primary releases nothing to contact."""
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    primary = await states.find_one({"lead_id": primary_id}) or {}
+    linked = await states.find({"duplicate_of": primary_id}).to_list(None)
+    if not linked or primary.get("stage") == lifecycle.Stage.OPTED_OUT.value:
+        return []
+    linked.sort(key=lambda s: as_object_id(s["lead_id"]), reverse=True)
+    now = clock.now()
+    released: list[str] = []
+    new_primary: dict | None = None
+    for state in linked:
+        lead_id = state["lead_id"]
+        if new_primary is not None:
+            await states.update_one({"lead_id": lead_id}, {"$set": {
+                "duplicate_of": new_primary["lead_id"], "duplicate_linked_at": now,
+                "status_reason": f"Duplicate of lead {new_primary['lead_id']}: the AI works that lead"}})
+            continue
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+        words = str((lead or {}).get("fe_lead_status") or (lead or {}).get("lead_status") or "").strip().lower()
+        if not lead or words.startswith("closed") or words in ("sold", "dnd"):
+            await states.update_one({"lead_id": lead_id}, {"$set": {"duplicate_released_at": now},
+                                                           "$unset": {"duplicate_of": ""}})
+            continue
+        await states.update_one({"lead_id": lead_id}, {
+            "$set": {"status": "active", "status_reason": None, "status_at": now, "duplicate_released_at": now,
+                     "released_from": primary_id,
+                     "staff_notice": {"at": now, "kind": "duplicate_released",
+                                      "text": f"Lead {primary_id} from the same customer is finished, so the AI "
+                                              "now works this lead."}},
+            "$unset": {"duplicate_of": ""}})
+        customer_id = state.get("customer_id")
+        await lifecycle.apply(db, lead_id, [lifecycle.Event(
+            "lead_created", source="duplicate_released", reason=f"The primary lead {primary_id} finished")],
+            lead=lead, customer_id=customer_id)
+        if customer_id:
+            from upsell_agent.scheduler.followups import plan_cadence_touch
+            await plan_cadence_touch(db, lead_id=lead_id, customer_id=customer_id,
+                                     channel=((lead.get("data") or {}).get("channel") or "sms"),
+                                     turn_id=f"released-{lead_id}", lead=lead, first_contact_done=True)
+        new_primary = state
+        released.append(lead_id)
+    return released
+
+
 async def workflow_lead_id(db: DealerScopedDatabase, lead_id: str | None) -> str | None:
     """The lead whose workflow handles things for `lead_id`: itself, or its primary while that is open."""
     if not lead_id:

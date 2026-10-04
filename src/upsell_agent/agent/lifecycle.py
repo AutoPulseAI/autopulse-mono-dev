@@ -604,6 +604,10 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         out.update(await sold_lifecycles.on_stage_change(
             db, lead_id, current, new, event, lead=lead,
             customer_id=customer_id or state.get("customer_id")))
+        # PLAN_4 stream X3 item 8: a finished primary releases the duplicate leads linked to it.
+        from upsell_agent.agent import duplicates
+        if new.value in duplicates.FINISHED_STAGES and (released := await duplicates.release_linked(db, lead_id)):
+            out["released_duplicates"] = released
     return out
 
 

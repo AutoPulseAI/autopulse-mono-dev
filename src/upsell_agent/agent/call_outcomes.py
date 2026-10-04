@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from upsell_agent import clock
 from upsell_agent.agent import lifecycle
+from upsell_agent.agent.customer_key import lead_customer_id
 from upsell_agent.channels import consent, suppression
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
@@ -90,7 +91,7 @@ async def apply(db: DealerScopedDatabase, task: dict[str, Any], outcome: LeadOut
                 "reason": "booked through the CRM's booking flow" if outcome == "appointment"
                 else "no contact: the lead stays in its flow"}
     lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
-    customer_id = customer_id or (str(lead["customer_id"]) if lead and lead.get("customer_id") else None)
+    customer_id = customer_id or lead_customer_id(lead)
     customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one(
         {"_id": as_object_id(customer_id)}) if customer_id else None
     now = clock.now()

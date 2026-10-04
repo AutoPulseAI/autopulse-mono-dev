@@ -893,6 +893,21 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         pieces = [touch1["intro"], core, touch1.get("ending") or ""]
         body = " ".join(piece for piece in pieces if piece) + tail
         why = f"{touch1['why']} {why}"
+    referred = (payload.get("context") or {}).get("referred_vehicle") or {}
+    if referred.get("ambiguous"):
+        options = referred["ambiguous"]
+        body = "Which one did you mean: " + " or ".join(o["description"] for o in options) + "?"
+        vins = [o["vin"] for o in options][:2]
+        why = f"The customer's reference fits {len(options)} shown vehicles: asking which."
+        body_no_vehicles = None
+    elif referred.get("vin") and referred.get("in_stock"):
+        body = f"About {referred['description']}: {body}"
+        vins = [referred["vin"], *[v for v in vins if v != referred["vin"]]][:2]
+        why += f" The customer means {referred['description']}."
+    elif referred.get("vin"):
+        body = f"Sorry, {referred['description']} has just sold. The team will look for similar ones for you. {body}"
+        promises = [*promises, "The team will look for similar vehicles"]
+        why += " The vehicle the customer means has sold."
     if payload.get("quiet_hours"):
         body += " The team will pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."

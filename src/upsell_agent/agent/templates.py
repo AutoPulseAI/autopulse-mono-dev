@@ -201,6 +201,16 @@ HOLDING_REPLIES: dict[str, Template] = {
             "shortly." + _SIGN_OFF.format(team="Customer Care")
         ),
     ),
+    # PLAN_4 stream X3 item 4: the customer asked to book while a person owns the lead.
+    "holding_booking": Template(
+        sms="Thanks, {name}! I've passed your request to come in to the team, and someone will confirm the time "
+            "with you shortly.",
+        email_subject="We've got your request",
+        email_body=(
+            "Hi {name},\n\nThanks for your message. I've passed your request to come in to the team, and someone "
+            "will confirm the time with you shortly." + _SIGN_OFF.format(team="Customer Care")
+        ),
+    ),
     "still_waiting": Template(
         sms="Sorry for the wait, {name}. The team has your messages and will get back to you as soon as they can.",
         email_subject="Still on it",

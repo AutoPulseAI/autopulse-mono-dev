@@ -195,6 +195,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if visit_offer := (state.decision or {}).get("visit_offer"):
         # The times just offered (MASTER_PLAN_3 B4), built from real availability, not invented.
         known += [t.get("display") for t in visit_offer.get("times") or []]
+        # PLAN_4 stream X3 item 2: the visit reason is built in code from the customer's own amounts.
+        known.append(visit_offer.get("value_proposition"))
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
     known += [visit[k] for k in ("display", "slot_taken", "time_not_open") if visit.get(k)]
@@ -214,6 +216,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if person := human_contact.for_compose((state.decision or {}).get("human_contact")):
         # PLAN_4 stream H: the last 4 digits of the number on file, and when a person will call/text - all real.
         known += [person.get(k) for k in ("phone_last4", "call_when", "text_when") if person.get(k)]
+    if referred := pack.get("referred_vehicle"):
+        # PLAN_4 stream X3: the shown vehicle the customer refers back to, described from the fields it was shown
+        # with (its year stays sayable even once it has sold and is no longer in this turn's stock).
+        known += [referred.get("description"), *[o.get("description") for o in referred.get("ambiguous") or []]]
     inventory = pack.get("inventory") or []
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does

@@ -63,7 +63,8 @@ HELD_FROM_MODELS = frozenset({"budget", "inventory_query", "inventory_checked_at
 
 
 class PackMessage(BaseModel):
-    direction: Literal["inbound", "outbound"]
+    # "note": a staff member's internal note from the CRM (PLAN_4 stream X3 item 5) - never shown to the customer.
+    direction: Literal["inbound", "outbound", "note"]
     channel: str
     text: str
     at: str | None = None
@@ -71,6 +72,10 @@ class PackMessage(BaseModel):
     source: Literal["message", "lead_form"] = "message"
     # An outbound message re-sent on the other channel by the 24h switch.
     resend: bool = False
+    # PLAN_4 stream X3 item 5: who wrote a message the AI didn't (agent/history_sync.py): "staff", "staff_note",
+    # "crm" (an automated CRM / n8n message), "campaign", or "customer" for imported history. None: the AI / the
+    # customer in the AI's own thread.
+    author: str | None = None
 
 
 class PackBudget(BaseModel):
@@ -116,7 +121,8 @@ class ContextPack(BaseModel):
         return "\n".join(m.text for m in self.new_messages if m.text)
 
     def last_ai_message(self) -> PackMessage | None:
-        return next((m for m in reversed(self.working_memory) if m.direction == "outbound"), None)
+        return next((m for m in reversed(self.working_memory) if m.direction == "outbound"
+                     and m.author in (None, "ai")), None)
 
 
 def estimate_tokens(text: str) -> int:
@@ -167,7 +173,8 @@ def _iso(value: Any) -> str | None:
 
 def to_pack_message(row: dict[str, Any]) -> PackMessage:
     return PackMessage(direction=row["direction"], channel=row.get("channel") or "sms", text=message_text(row),
-                       at=_iso(row.get("sent_at") or row.get("created_at")), resend=bool(row.get("is_fallback")))
+                       at=_iso(row.get("sent_at") or row.get("created_at")), resend=bool(row.get("is_fallback")),
+                       author=row.get("author"))
 
 
 def _cap(message: PackMessage) -> tuple[PackMessage, bool]:

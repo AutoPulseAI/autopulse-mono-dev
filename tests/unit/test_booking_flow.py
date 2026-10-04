@@ -300,3 +300,39 @@ async def test_moving_a_booking_to_a_day_offers_that_days_times(mongo):
     await _say(created, "the first one")
     after = await _booking(mongo, created)
     assert after["_id"] == before["_id"] and after["bookingTime"] == visit["offered_times"][0]["time"]
+
+
+# --- PLAN_4 stream X3 item 3: offered times honour the day the customer asked for -------------------------
+# credit-1 (real gpt-5-mini run): "can I come in saturday?" -> "morning is better" -> "10 works" was answered
+# with "Tuesday at 1:00 PM, 2:00 PM, or 3:00 PM" and never booked.
+
+async def test_morning_then_a_bare_time_books_the_day_they_asked_for(mongo):
+    set_clock(MONDAY_NOON)
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "can I come in saturday?")
+    await _say(created, "morning is better")
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-10-10"}
+    assert all(t["time"] < "12:00" for t in visit["offered_times"]), visit["offered_times"]
+    await _say(created, "10 works")
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == "10:00"
+    assert str(booking["bookingDate"])[:10] in ("2026-10-10", "2026-10-09")  # dealer-local midnight in UTC
+
+
+async def test_a_bare_time_is_read_on_the_asked_day_even_if_that_offer_never_went_out(mongo):
+    # The Saturday offer was replaced by a template (not recorded), so the table still holds Tuesday's times.
+    set_clock(MONDAY_NOON)
+    created = await _lead()
+    await _offer(mongo, created)
+    tuesday = (await _state(mongo, created))["conversation"]["visit"]["offered_times"]
+    await _say(created, "can I come in saturday?")
+    state = await _state(mongo, created)
+    visit = {**state["conversation"]["visit"], "offered_times": tuesday}
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
+                                                     {"$set": {"conversation.visit": visit}})
+    await _say(created, "10 works")
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == "10:00"
+    assert str(booking["bookingDate"])[:10] in ("2026-10-10", "2026-10-09")

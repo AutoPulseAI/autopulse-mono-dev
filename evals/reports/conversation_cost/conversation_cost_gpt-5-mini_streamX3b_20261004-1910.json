@@ -1,0 +1,1859 @@
+{
+ "meta": {
+  "started": "2026-10-04T19:10:56.942611+00:00",
+  "model_extract": "openai:gpt-5-mini",
+  "model_compose": "openai:gpt-5-mini",
+  "budget_usd": 0.6,
+  "extract_timeout_s": 6.0,
+  "compose_timeout_s": 8.0,
+  "reasoning_effort": null,
+  "grammar_method": "off",
+  "spent_usd": 0.091614
+ },
+ "overall": {
+  "conversations": 2,
+  "customer_messages": 26,
+  "ai_replies": 28,
+  "turns_without_reply": 0,
+  "model_calls": 62,
+  "failed_calls": 0,
+  "calls_by_step": {
+   "extract": 28,
+   "compose": 28,
+   "retry": 6,
+   "summary": 0,
+   "other": 0
+  },
+  "tokens_in": 497297,
+  "tokens_cached": 253824,
+  "tokens_out": 12200,
+  "tokens_reasoning": 0,
+  "cache_hit_pct": 51.0,
+  "cost_usd": 0.091614,
+  "cost_unknown": false,
+  "cost_per_conversation": 0.045807,
+  "cost_per_reply": 0.003272,
+  "turn_ms_p50": 4559.0,
+  "turn_ms_p95": 7717.549999999999,
+  "call_ms_p50": 2144.5,
+  "call_ms_p95": 4296.399999999998,
+  "guard_retries": 6,
+  "fallbacks": 1,
+  "stock_searches": 14,
+  "inventory_queries": 52,
+  "booking_calls": 1,
+  "summary_runs": 0
+ },
+ "by_bucket": {
+  "credit": {
+   "conversations": 1,
+   "customer_messages": 14,
+   "ai_replies": 15,
+   "turns_without_reply": 0,
+   "model_calls": 33,
+   "failed_calls": 0,
+   "calls_by_step": {
+    "extract": 15,
+    "compose": 15,
+    "retry": 3,
+    "summary": 0,
+    "other": 0
+   },
+   "tokens_in": 275090,
+   "tokens_cached": 139648,
+   "tokens_out": 7081,
+   "tokens_reasoning": 0,
+   "cache_hit_pct": 50.8,
+   "cost_usd": 0.051514,
+   "cost_unknown": false,
+   "cost_per_conversation": 0.051514,
+   "cost_per_reply": 0.003434,
+   "turn_ms_p50": 4554.0,
+   "turn_ms_p95": 8719.199999999997,
+   "call_ms_p50": 2319.0,
+   "call_ms_p95": 5531.4,
+   "guard_retries": 3,
+   "fallbacks": 1,
+   "stock_searches": 13,
+   "inventory_queries": 51,
+   "booking_calls": 1,
+   "summary_runs": 0
+  },
+  "service": {
+   "conversations": 1,
+   "customer_messages": 12,
+   "ai_replies": 13,
+   "turns_without_reply": 0,
+   "model_calls": 29,
+   "failed_calls": 0,
+   "calls_by_step": {
+    "extract": 13,
+    "compose": 13,
+    "retry": 3,
+    "summary": 0,
+    "other": 0
+   },
+   "tokens_in": 222207,
+   "tokens_cached": 114176,
+   "tokens_out": 5119,
+   "tokens_reasoning": 0,
+   "cache_hit_pct": 51.4,
+   "cost_usd": 0.0401,
+   "cost_unknown": false,
+   "cost_per_conversation": 0.0401,
+   "cost_per_reply": 0.003085,
+   "turn_ms_p50": 4694.0,
+   "turn_ms_p95": 5856.799999999999,
+   "call_ms_p50": 2110.0,
+   "call_ms_p95": 3487.1999999999994,
+   "guard_retries": 3,
+   "fallbacks": 0,
+   "stock_searches": 1,
+   "inventory_queries": 1,
+   "booking_calls": 0,
+   "summary_runs": 0
+  }
+ },
+ "conversations": [
+  {
+   "id": "credit-1-capital-one-suv",
+   "bucket": "credit",
+   "source": "Capital One Auto Navigator",
+   "covers": [
+    "stock question",
+    "credit worry",
+    "payment",
+    "booking",
+    "short \"ok\""
+   ],
+   "turns": [
+    {
+     "index": 0,
+     "trigger": "lead_created",
+     "customer": "(lead form) Prequalified through Capital One. Looking for a reliable SUV.",
+     "replies": [
+      "Hello Denise, greetings from Sunrise Motors in Springfield, NJ. Thank you for getting in touch. I am excited to help you with your purchase. Are you looking for a new or a used vehicle? Tell me, what are you driving now?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 4772,
+       "cached_tokens": 4608,
+       "output_tokens": 142,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1823,
+       "cost_usd": 0.0004402,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7496,
+       "cached_tokens": 0,
+       "output_tokens": 262,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2439,
+       "cost_usd": 0.002398,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "ask",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4564,
+     "action": "ask",
+     "action_why": "Missing: New or used, Vehicle they want",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 1,
+     "trigger": "inbound_message",
+     "customer": "hi yes still looking",
+     "replies": [
+      "Thanks for the update, Denise. Glad you\u2019re still looking \u2014 are you interested in a new or a used SUV, and roughly how much would you like to spend or pay per month?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5078,
+       "cached_tokens": 4480,
+       "output_tokens": 95,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1316,
+       "cost_usd": 0.0004515,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7627,
+       "cached_tokens": 5504,
+       "output_tokens": 226,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2319,
+       "cost_usd": 0.00112035,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3650,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 2,
+     "trigger": "inbound_message",
+     "customer": "something like a rav4 or crv, used is fine",
+     "replies": [
+      "When are you hoping to get your next vehicle? A rough idea is fine, for example this week, next month, or if you\u2019re just looking for now. And do you have a vehicle you\u2019d like to trade in?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5295,
+       "cached_tokens": 4480,
+       "output_tokens": 161,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2170,
+       "cost_usd": 0.00063775,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8296,
+       "cached_tokens": 5504,
+       "output_tokens": 188,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2216,
+       "cost_usd": 0.0012116,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "ask",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 2,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV",
+      "inventory: car_type=used, body_type=SUV"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4404,
+     "action": "ask",
+     "action_why": "Missing: Timeline, Has a trade-in",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 3,
+     "trigger": "inbound_message",
+     "customer": "do you have any rav4s under 30k?",
+     "replies": [
+      "We have a few used Toyota RAV4s. A 2022 RAV4 XLE with 31,200 miles, a 2021 RAV4 LE with 44,800 miles, and a 2020 RAV4 Adventure with 52,000 miles. Roughly how much would you like to spend or pay per month so I can focus the search?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5539,
+       "cached_tokens": 4480,
+       "output_tokens": 88,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1560,
+       "cost_usd": 0.00055275,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8396,
+       "cached_tokens": 5504,
+       "output_tokens": 384,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 3867,
+       "cost_usd": 0.0016286,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8407,
+       "cached_tokens": 5504,
+       "output_tokens": 555,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 5423,
+       "cost_usd": 0.00197335,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 1,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 5,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV",
+      "inventory: car_type=used, body_type=SUV",
+      "inventory: vin=DEV77104D87E42D2C",
+      "inventory: vin=DEVEEBF40EF83AE07",
+      "inventory: vin=DEV77104D87E42D2C"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 10871,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [
+      "a trim not on the named vehicle(s): range"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "We have used Toyota RAV4s right now. I can look for ones under $30,000\u2014do you have a rough price or monthly payment in mind?",
+       "email": "Hello Denise,\n\nWe do have used Toyota RAV4s in our inventory. Do you have a rough price range or a monthly payment you prefer so I can narrow the options? \n\nThanks,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 4,
+     "trigger": "inbound_message",
+     "customer": "my credit isnt great, like 580. can i still get approved?",
+     "replies": [
+      "Thanks for asking, Denise. I can\u2019t promise approval, but the team will review options that work with a 580 credit score and explain next steps. When are you hoping to get your next vehicle? (A rough idea is fine.)"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5923,
+       "cached_tokens": 3456,
+       "output_tokens": 104,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1761,
+       "cost_usd": 0.00091115,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8766,
+       "cached_tokens": 5504,
+       "output_tokens": 256,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 5694,
+       "cost_usd": 0.0014651,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 2,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV",
+      "inventory: car_type=used, body_type=SUV"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 7470,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 5,
+     "trigger": "inbound_message",
+     "customer": "what would my monthly payment be on the blue one",
+     "replies": [
+      "I can help with that, Denise. I can\u2019t calculate a monthly payment here, but the team will run numbers based on your credit and give you real options. Would you like me to have the team check payment options for the blue 2022 Toyota RAV4 XLE and text you the results or call you?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6127,
+       "cached_tokens": 3456,
+       "output_tokens": 113,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1845,
+       "cost_usd": 0.00098015,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9058,
+       "cached_tokens": 5504,
+       "output_tokens": 432,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 5711,
+       "cost_usd": 0.0018901,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 6,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV",
+      "inventory: car_type=used, body_type=SUV",
+      "inventory: vin=DEV77104D87E42D2C",
+      "inventory: vin=DEV77104D87E42D2C",
+      "inventory: vin=DEV77104D87E42D2C"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 7570,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 6,
+     "trigger": "inbound_message",
+     "customer": "I can put maybe 2000 down",
+     "replies": [
+      "We can set up a time to come by so the team can show you RAV4s or CR-Vs that fit your $2,000 down payment. I have Tuesday at 1:00 PM, 2:00 PM, or 3:00 PM. Which time works best for you?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6417,
+       "cached_tokens": 2432,
+       "output_tokens": 86,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1525,
+       "cost_usd": 0.00122905,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9410,
+       "cached_tokens": 5504,
+       "output_tokens": 362,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 4319,
+       "cost_usd": 0.0018381,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "offer_visit",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 5861,
+     "action": "offer_visit",
+     "action_why": "Offering a visit (attempt 1 of 3, angle: primary_interest).",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 7,
+     "trigger": "inbound_message",
+     "customer": "I'd want to keep it under 400 a month",
+     "replies": [
+      "Thanks, Denise. Got it \u2014 keeping payments under $400 a month and $2,000 down. The team will review financing options that work with a 580 credit score and see what fits that payment. Would you like the team to text you the payment options or call you about them?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6979,
+       "cached_tokens": 3456,
+       "output_tokens": 56,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1299,
+       "cost_usd": 0.00107915,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9506,
+       "cached_tokens": 5504,
+       "output_tokens": 280,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2358,
+       "cost_usd": 0.0016981,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "partly_qualified",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3674,
+     "action": "partly_qualified",
+     "action_why": "Everything still missing was asked twice: Timeline, Has a trade-in",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 8,
+     "trigger": "inbound_message",
+     "customer": "no trade, my old car got repo'd honestly",
+     "replies": [
+      "Thanks for being honest, Denise. That helps. The team will review financing options that work with a 580 score and your $2,000 down to see if we can get payments under $400. Would you prefer the team to text you the payment options or call you?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7221,
+       "cached_tokens": 3456,
+       "output_tokens": 145,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1711,
+       "cost_usd": 0.00131765,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9817,
+       "cached_tokens": 5504,
+       "output_tokens": 325,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2738,
+       "cost_usd": 0.00186585,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4463,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 9,
+     "trigger": "inbound_message",
+     "customer": "will you guys run my credit a bunch of times? I don't want my score to drop more",
+     "replies": [
+      "Thanks, Denise. Let me check on that with the team, and someone will get back to you shortly."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7451,
+       "cached_tokens": 2432,
+       "output_tokens": 94,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1522,
+       "cost_usd": 0.00150355,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10451,
+       "cached_tokens": 5504,
+       "output_tokens": 300,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2566,
+       "cost_usd": 0.00197435,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10465,
+       "cached_tokens": 6528,
+       "output_tokens": 474,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 3691,
+       "cost_usd": 0.00209545,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "fallback",
+     "guard_retries": 1,
+     "fallback": true,
+     "fallback_reason": "guard rejected the draft twice",
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 7797,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [
+      "SMS must be 1-320 characters (is 329)",
+      "numbers the customer never gave us: 2022",
+      "vehicle(s) not in this turn's stock: DEV77104D87E42D2C",
+      "a trim not on the named vehicle(s): xle"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "I understand your concern, Denise. The team will only run the credit checks needed to find financing options and won\u2019t pull your credit multiple times without telling you. The team will work the numbers toward your $400/month target. Would you like to come by Tuesday at 1:00 PM, 2:00 PM, or 3:00 PM to go over options in person?",
+       "email": "Hello Denise,\n\nI understand your concern about credit pulls. The team will only run the checks needed to find financing options and will not run multiple checks without telling you. They will work the numbers toward your $400/month target and explain the options.\n\nWould you like to come by Tuesday at 1:00 PM, 2:00 PM, or 3:00 PM to go over options in person?\n\nThanks,\nSunrise Motors"
+      },
+      {
+       "sms": "I won\u2019t have the team run your credit multiple times without checking with you first. The team will confirm how many checks they need and explain the impact on your score. Would you like them to text or call with the payment options for the blue 2022 RAV4 XLE?",
+       "email": "Hello Denise,\n\nWe will not run your credit multiple times without asking you first. The team will confirm how many credit checks are needed and explain any impact on your score. Would you like the team to text you the payment options for the blue 2022 RAV4 XLE, or would you prefer a call?\n\nThank you,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 10,
+     "trigger": "inbound_message",
+     "customer": "ok",
+     "replies": [
+      "I understand. The team will confirm how many credit checks they run, and they will only run what\u2019s needed to find financing options. Would you like the team to text you the payment options or call you about them?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7671,
+       "cached_tokens": 0,
+       "output_tokens": 93,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1463,
+       "cost_usd": 0.00210375,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10671,
+       "cached_tokens": 5504,
+       "output_tokens": 287,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2506,
+       "cost_usd": 0.00200335,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3984,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 11,
+     "trigger": "inbound_message",
+     "customer": "can I come in saturday?",
+     "replies": [
+      "Saturday at 9:00 AM, 1:00 PM, or 4:00 PM are available. If you come in, the team can work the numbers toward your $400-a-month target. Which time on Saturday, September 26 works best for you?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8040,
+       "cached_tokens": 0,
+       "output_tokens": 95,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1523,
+       "cost_usd": 0.0022,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 11057,
+       "cached_tokens": 5504,
+       "output_tokens": 288,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2341,
+       "cost_usd": 0.00210185,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "offer_visit",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3879,
+     "action": "offer_visit",
+     "action_why": "The customer asked for Saturday, September 26: offering open times that day.",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 12,
+     "trigger": "inbound_message",
+     "customer": "morning is better",
+     "replies": [
+      "Saturday morning works. I can do Saturday at 9:00 AM, 10:00 AM, or 11:00 AM so the team can work the numbers toward your $400-a-month target. Which of those times on Saturday, September 26 works best for you?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8214,
+       "cached_tokens": 2432,
+       "output_tokens": 66,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1257,
+       "cost_usd": 0.0016383,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 11328,
+       "cached_tokens": 5504,
+       "output_tokens": 299,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2520,
+       "cost_usd": 0.0021916,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "offer_visit",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3792,
+     "action": "offer_visit",
+     "action_why": "The customer asked for Saturday, September 26 (morning): offering open times that day.",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 13,
+     "trigger": "inbound_message",
+     "customer": "10 works",
+     "replies": [
+      "Sounds good \u2014 I\u2019ve requested Saturday at 10:00 AM. The team will confirm the appointment shortly."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8450,
+       "cached_tokens": 2432,
+       "output_tokens": 88,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1565,
+       "cost_usd": 0.0017413,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10926,
+       "cached_tokens": 5504,
+       "output_tokens": 211,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2369,
+       "cost_usd": 0.0019151,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10941,
+       "cached_tokens": 5504,
+       "output_tokens": 221,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2423,
+       "cost_usd": 0.00193885,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "acknowledge",
+     "guard_retries": 1,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": true,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 1,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000",
+      "booking: create 2026-09-26 10:00"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 6378,
+     "action": "acknowledge",
+     "action_why": "Nothing to ask right now",
+     "guard_violations": [
+      "the SMS says the visit is booked/confirmed, but it's only pending"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "Got it \u2014 Saturday at 10:00 AM is set. The team will confirm and follow up with any details. See you then.",
+       "email": "Hello Denise,\n\nGot it \u2014 Saturday at 10:00 AM is set. The team will confirm and follow up with any details.\n\nThanks,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 14,
+     "trigger": "inbound_message",
+     "customer": "what do I need to bring?",
+     "replies": [
+      "The team will confirm exactly what to bring for your appointment, but generally bring your driver\u2019s license and a form of payment. The team will confirm any other documents they need before your visit."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8416,
+       "cached_tokens": 3456,
+       "output_tokens": 79,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1666,
+       "cost_usd": 0.0014844,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10879,
+       "cached_tokens": 5504,
+       "output_tokens": 226,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2875,
+       "cost_usd": 0.00193335,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 4,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: model=rav4 or crv, car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: car_type=used, body_type=SUV, price_range=0-2000",
+      "inventory: body_type=SUV, price_range=0-2000"
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4554,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    }
+   ],
+   "bucket_assigned": "credit",
+   "grammar": null,
+   "error": null
+  },
+  {
+   "id": "service-1-oil-change-reschedule",
+   "bucket": "service",
+   "source": "Website Service Request",
+   "covers": [
+    "vehicle details",
+    "price question",
+    "wait time",
+    "picking a time",
+    "rescheduling"
+   ],
+   "turns": [
+    {
+     "index": 0,
+     "trigger": "lead_created",
+     "customer": "(lead form) Need an oil change and tire rotation for my 2021 Camry",
+     "replies": [
+      "Hello Helen, greetings from Sunrise Motors in Springfield, NJ. Thank you for contacting our service team. I am happy to help you take care of your 2021 Camry. I can help with an oil change and tire rotation. What year, make and model is your vehicle? For example, a Toyota Camry and the year it was made. Also, about how many miles are on your vehicle? A rough number is fine."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 4773,
+       "cached_tokens": 2432,
+       "output_tokens": 141,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1873,
+       "cost_usd": 0.00092805,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7539,
+       "cached_tokens": 5504,
+       "output_tokens": 310,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 3369,
+       "cost_usd": 0.00126635,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "ask",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 5253,
+     "action": "ask",
+     "action_why": "Missing: Vehicle, Vehicle mileage",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 1,
+     "trigger": "inbound_message",
+     "customer": "Hi, yes I need to bring it in",
+     "replies": [
+      "Thanks, Helen. Glad you can bring it in for an oil change and tire rotation. Which day works best for you, and do you prefer morning or afternoon? The service team will confirm the exact time."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5142,
+       "cached_tokens": 2432,
+       "output_tokens": 125,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1848,
+       "cost_usd": 0.0009883,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7752,
+       "cached_tokens": 0,
+       "output_tokens": 281,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 3775,
+       "cost_usd": 0.0025,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "offer_visit",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 5634,
+     "action": "offer_visit",
+     "action_why": "Offering a service visit (attempt 1 of 3, angle: primary_interest): asking which day and time suit them - no times, no booking (MASTER_PLAN_4 F2).",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 2,
+     "trigger": "inbound_message",
+     "customer": "It's a 2021 Toyota Camry",
+     "replies": [
+      "Thanks, Helen. What time of day is best to reach you \u2014 mornings, evenings, or weekends? Also, about how many miles are on your 2021 Toyota Camry (a rough number is fine)?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5462,
+       "cached_tokens": 2432,
+       "output_tokens": 148,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2144,
+       "cost_usd": 0.0011143,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7980,
+       "cached_tokens": 5504,
+       "output_tokens": 228,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2557,
+       "cost_usd": 0.0012126,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "ask",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4711,
+     "action": "ask",
+     "action_why": "Missing: Best time to reach, Vehicle mileage",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 3,
+     "trigger": "inbound_message",
+     "customer": "About 41,000 miles",
+     "replies": [
+      "Thanks, Helen. Got your mileage of about 41,000 miles. The team will reach out to confirm a service time and any details."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5709,
+       "cached_tokens": 2432,
+       "output_tokens": 84,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1408,
+       "cost_usd": 0.00104805,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8096,
+       "cached_tokens": 5504,
+       "output_tokens": 240,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2778,
+       "cost_usd": 0.0012656,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "acknowledge",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4197,
+     "action": "acknowledge",
+     "action_why": "Nothing to ask right now",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 4,
+     "trigger": "inbound_message",
+     "customer": "Oil change and tire rotation",
+     "replies": [
+      "What time of day is best to reach you \u2014 mornings, evenings, or weekends? We ask so the service team can contact you when it suits you."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 5904,
+       "cached_tokens": 2432,
+       "output_tokens": 133,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1686,
+       "cost_usd": 0.0011948,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8328,
+       "cached_tokens": 5504,
+       "output_tokens": 176,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1885,
+       "cost_usd": 0.0011956,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8343,
+       "cached_tokens": 5504,
+       "output_tokens": 225,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2154,
+       "cost_usd": 0.00129735,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "ask",
+     "guard_retries": 1,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 5738,
+     "action": "ask",
+     "action_why": "Missing: Best time to reach",
+     "guard_violations": [
+      "the SMS greets the customer again (this isn't the first reply)"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "Hi Helen. What time of day is best to reach you \u2014 mornings, evenings, or weekends? The service team will use that to reach you when it suits you.",
+       "email": "Hello Helen,\n\nWhat time of day is best to reach you \u2014 mornings, evenings, or weekends? The service team will use that to contact you when it suits you.\n\nThank you,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 5,
+     "trigger": "inbound_message",
+     "customer": "How much does that cost?",
+     "replies": [
+      "Thanks, Helen. I can\u2019t confirm a price here \u2014 the team will confirm the cost for an oil change and tire rotation and any available options. The team will reach out to confirm a service time and the exact cost."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6053,
+       "cached_tokens": 2432,
+       "output_tokens": 77,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1237,
+       "cost_usd": 0.00112005,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8404,
+       "cached_tokens": 5504,
+       "output_tokens": 244,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2126,
+       "cost_usd": 0.0013506,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8419,
+       "cached_tokens": 5504,
+       "output_tokens": 266,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2659,
+       "cost_usd": 0.00139835,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 1,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 6035,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [
+      "the SMS greets the customer again (this isn't the first reply)"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "Hi Helen. The team will confirm the exact cost for an oil change and tire rotation for your 2021 Toyota Camry. They will reach out to you with the price and any details.",
+       "email": "Hello Helen,\n\nThanks for asking. The team will confirm the exact cost for an oil change and tire rotation for your 2021 Toyota Camry. They will reach out with the price and any other details shortly.\n\nBest regards,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 6,
+     "trigger": "inbound_message",
+     "customer": "How long will it take?",
+     "replies": [
+      "Thanks, Helen. The service team will confirm the exact time and the exact length of the visit, but typically an oil change and tire rotation take a couple of hours. The team will confirm a more precise estimate when they reach out."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6299,
+       "cached_tokens": 2432,
+       "output_tokens": 72,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1249,
+       "cost_usd": 0.00117155,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8655,
+       "cached_tokens": 5504,
+       "output_tokens": 174,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1890,
+       "cost_usd": 0.00127335,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "retry",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 8670,
+       "cached_tokens": 5504,
+       "output_tokens": 272,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2579,
+       "cost_usd": 0.0014731,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 1,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 5731,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [
+      "the SMS greets the customer again (this isn't the first reply)"
+     ],
+     "rejected_drafts": [
+      {
+       "sms": "Hi Helen. The team will confirm how long the oil change and tire rotation will take and give you an estimated time when they contact you.",
+       "email": "Hello Helen,\n\nThanks for asking. The team will confirm how long an oil change and tire rotation will take and will give you an estimated time when they contact you to schedule.\n\nThanks,\nSunrise Motors"
+      }
+     ]
+    },
+    {
+     "index": 7,
+     "trigger": "inbound_message",
+     "customer": "Can I wait there?",
+     "replies": [
+      "Yes, you can wait at the dealership. Would you like to drop the Camry off and wait, or leave your keys and come back later?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6551,
+       "cached_tokens": 2432,
+       "output_tokens": 81,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1529,
+       "cost_usd": 0.00125255,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9167,
+       "cached_tokens": 5504,
+       "output_tokens": 214,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2145,
+       "cost_usd": 0.00148135,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3685,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 8,
+     "trigger": "inbound_message",
+     "customer": "Do you have anything tomorrow morning?",
+     "replies": [
+      "Wednesday morning works. I passed your request for Wednesday, September 23 in the morning to our service team and they will confirm the exact time. Would you like to wait at the dealership or drop the Camry off and come back later?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 6727,
+       "cached_tokens": 2432,
+       "output_tokens": 83,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1220,
+       "cost_usd": 0.00130055,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9583,
+       "cached_tokens": 5504,
+       "output_tokens": 257,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2432,
+       "cost_usd": 0.00167135,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "answer",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 1,
+     "inventory_queries": 1,
+     "booking_calls": 0,
+     "tools": [
+      "inventory: "
+     ],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3668,
+     "action": "answer",
+     "action_why": "1 question(s) to answer",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 9,
+     "trigger": "inbound_message",
+     "customer": "8am",
+     "replies": [
+      "Thanks, Helen. Thanks for that \u2014 I passed your request for Wednesday, September 23 in the morning to our service team. The team will confirm the exact time and the cost. Would you like to wait at the dealership or drop the Camry off and come back later?"
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7051,
+       "cached_tokens": 2432,
+       "output_tokens": 91,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1334,
+       "cost_usd": 0.00139755,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9522,
+       "cached_tokens": 5504,
+       "output_tokens": 284,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2577,
+       "cost_usd": 0.0017101,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "partly_qualified",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3923,
+     "action": "partly_qualified",
+     "action_why": "Everything still missing was asked twice: Best time to reach",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 10,
+     "trigger": "inbound_message",
+     "customer": "Actually can we move it to Friday?",
+     "replies": [
+      "Got it, Helen \u2014 I moved your service request to Friday, September 25. The service team has your notes and will confirm the exact time and details."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7278,
+       "cached_tokens": 2432,
+       "output_tokens": 96,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1444,
+       "cost_usd": 0.0014643,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9754,
+       "cached_tokens": 5504,
+       "output_tokens": 190,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2110,
+       "cost_usd": 0.0015801,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "acknowledge",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 3566,
+     "action": "acknowledge",
+     "action_why": "Nothing to ask right now",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 11,
+     "trigger": "inbound_message",
+     "customer": "Same time",
+     "replies": [
+      "Got it, Helen. Thanks \u2014 I won\u2019t keep asking. If you need anything else about your Friday service request, just reply here and the team will follow up."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7454,
+       "cached_tokens": 2432,
+       "output_tokens": 91,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1705,
+       "cost_usd": 0.0014983,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 9920,
+       "cached_tokens": 5504,
+       "output_tokens": 218,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 2438,
+       "cost_usd": 0.0016776,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "acknowledge",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4155,
+     "action": "acknowledge",
+     "action_why": "Nothing to ask right now",
+     "guard_violations": [],
+     "rejected_drafts": []
+    },
+    {
+     "index": 12,
+     "trigger": "inbound_message",
+     "customer": "Thanks!",
+     "replies": [
+      "Thanks, Helen. Got your message \u2014 the team will follow up about your Friday service request if anything else is needed."
+     ],
+     "calls": [
+      {
+       "step": "extract",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 7603,
+       "cached_tokens": 2432,
+       "output_tokens": 25,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 1117,
+       "cost_usd": 0.00140355,
+       "ok": true,
+       "error": null
+      },
+      {
+       "step": "compose",
+       "model": "openai:gpt-5-mini",
+       "input_tokens": 10069,
+       "cached_tokens": 5504,
+       "output_tokens": 293,
+       "reasoning_tokens": 0,
+       "requests": 1,
+       "ms": 3566,
+       "cost_usd": 0.00186485,
+       "ok": true,
+       "error": null
+      }
+     ],
+     "outcome": "acknowledge",
+     "guard_retries": 0,
+     "fallback": false,
+     "fallback_reason": null,
+     "flag_human": false,
+     "after_hours": null,
+     "booked": false,
+     "stock_searches": 0,
+     "inventory_queries": 0,
+     "booking_calls": 0,
+     "tools": [],
+     "summary_runs": 0,
+     "no_reply_reason": null,
+     "ms": 4694,
+     "action": "acknowledge",
+     "action_why": "Nothing to ask right now",
+     "guard_violations": [],
+     "rejected_drafts": []
+    }
+   ],
+   "bucket_assigned": "none (service)",
+   "grammar": null,
+   "error": null
+  }
+ ]
+}

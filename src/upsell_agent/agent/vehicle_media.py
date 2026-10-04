@@ -211,7 +211,10 @@ def lead_vehicle_vin(lead: dict | None, lead_state: dict | None) -> str | None:
                   if isinstance(data.get("vehicle"), dict) else None):
         if isinstance(value, str) and value.strip():
             return value.strip()
-    shown = ((lead_state or {}).get("conversation") or {}).get("shown_vehicles") or []
+    conversation = (lead_state or {}).get("conversation") or {}
+    if conversation.get("focus_vin"):
+        return conversation["focus_vin"]  # the shown vehicle the customer referred to (PLAN_4 stream X3)
+    shown = conversation.get("shown_vehicles") or []
     return shown[-1].get("vin") if shown and isinstance(shown[-1], dict) else None
 
 

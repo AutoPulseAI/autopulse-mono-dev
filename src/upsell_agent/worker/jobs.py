@@ -228,9 +228,21 @@ async def sweep_prices(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await price_watch.sweep()
 
 
+async def reconcile_events(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """PLAN_4 stream X3 items 5-6: CRM leads and customer messages the AI never heard about, every 5 minutes
+    (scheduler/reconcile.py). Submitted through the normal, deduplicating event intake."""
+    from upsell_agent.events.intake import accept_event
+    from upsell_agent.scheduler.reconcile import reconcile
+    from upsell_agent.worker.queue import make_enqueue
+
+    enqueue = make_enqueue(ctx["worker"].queue)
+    return await reconcile(submit=lambda event_type, event: accept_event(event_type, event, enqueue))
+
+
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
              plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)
-             sweep_prices]  # PLAN_4 stream L
+             sweep_prices,  # PLAN_4 stream L
+             reconcile_events]  # PLAN_4 stream X3

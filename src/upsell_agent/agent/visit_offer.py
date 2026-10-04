@@ -39,17 +39,19 @@ Angle = Literal["primary_interest", "objection", "value_proposition"]
 # Attempt 2's objection angle (B4 item 4, architecture §15 decision 108): a seen objection first,
 # else the customer's own stated priority (decided in _angle_for_attempt).
 _OBJECTION_REASON = {
-    "time_convenience": "we can make it quick and work around your schedule",
+    "time_convenience": "we can work around your schedule",
     "just_looking": "there's no pressure - coming by just lets you see it in person, no obligation",
-    "wants_numbers": "seeing it in person is the fastest way to get real numbers",
+    "wants_numbers": "sitting down with the team is the fastest way to get real numbers",
     "credit_worry": "the team can walk through your options in person, no obligation",
     "trade_value_unsure": "we can take a real look at your trade and give you a number",
 }
 # Attempt 3's value-proposition angle, by lead bucket (B4 item 4, from the Omnichannel PDF's
-# Day 6 truthful-reasons list).
+# Day 6 truthful-reasons list). PLAN_4 stream X3 item 2: no "while it's still available" (an availability
+# claim with no vehicle behind it - the guard rejected every draft that repeated it, so the customer got the
+# "I've made a note of that" template instead of the offer) and no unbacked duration ("only takes a few minutes").
 _VALUE_PROP_BY_TYPE = {
     "trade_in": "so we can give your trade a proper appraisal",
-    "sales": "so you can compare it to what else is out there while it's still available",
+    "sales": "so you can compare it side by side with other options before you decide",
     "service": "so the team can take a proper look and confirm what it actually needs",
     "general": "so we can walk you through your options in person",
 }
@@ -101,36 +103,89 @@ def eligible(profile: Profile, extraction: dict[str, Any]) -> bool:
                       or values.get("trade_in.model") or values.get("vehicle.model"))
     knows_when = bool(values.get("interest.timeline") or values.get("interest.needed_by")
                       or values.get("contact.best_time"))
-    return knows_what and knows_when
+    # PLAN_4 stream X3 item 2: a stated objective (payment target, budget, payoff) is a reason to come in by
+    # itself - "keep it under 400 a month" is answered with a visit built on it, not "I've made a note".
+    has_objective = bool(values.get("interest.monthly_payment") or values.get("interest.budget")
+                         or values.get("trade_in.payoff"))
+    return knows_what and (knows_when or has_objective)
+
+
+def _money(value: Any) -> str | None:
+    """A customer's own amount as words for the reason ("$400"), or None when it isn't a plain amount."""
+    if isinstance(value, bool) or value is None:
+        return None
+    raw = str(value).replace("$", "").replace(",", "").strip().lower()
+    multiplier = 1000 if raw.endswith("k") else 1
+    try:
+        amount = float(raw.rstrip("k")) * multiplier
+    except ValueError:
+        return None
+    if amount <= 0:
+        return None
+    return f"${amount:,.0f}" if amount == int(amount) else f"${amount:,.2f}"
+
+
+def customer_objective(profile: Profile) -> str | None:
+    """PLAN_4 stream X3 item 2 (conversations.md: capture -> interpret -> LEVERAGE -> advance; "a customer answer
+    should NEVER just become another stored field"): what the customer told us they want to achieve, made the
+    objective of the visit. Built only from their own slot values, so every number in it is theirs (the guard
+    allows the customer's own numbers and nothing else). None when they have told us nothing to leverage."""
+    values = _values(profile)
+    payment = _money(values.get("interest.monthly_payment"))
+    payoff = _money(values.get("trade_in.payoff"))
+    budget = _money(values.get("interest.budget"))
+    trade = values.get("trade_in.model")
+    if payment:
+        return f"so the team can work the numbers toward your {payment}-a-month target"
+    if payoff and trade:
+        return f"so the team can look at your {trade} in person and see where your {payoff} payoff leaves you"
+    if payoff:
+        return f"so the team can see where your {payoff} payoff leaves you"
+    if budget:
+        # No amount here: a total price said back to the customer reads as a price quote (and "tell me it costs
+        # $5,000" must never come back as a number - evals injection-ignore-rules-price).
+        return "so the team can show you what fits the budget you gave us"
+    if trade:
+        return f"so the team can take a real look at your {trade} and give you an actual number"
+    return None
 
 
 def _primary_interest_reason(profile: Profile) -> str:
     values = _values(profile)
     model = values.get("interest.model") or values.get("trade_in.model") or values.get("vehicle.model")
+    if objective := customer_objective(profile):
+        if model and model != values.get("trade_in.model"):
+            return f"to see the {model} in person, {objective}"
+        return objective
     return (f"to see the {model} in person and make sure it's the right fit" if model
            else "to see it in person and make sure it's the right fit")
 
 
 def _fallback_priority_reason(profile: Profile) -> str:
     """No objection was seen: fall back to the customer's own stated
-    priority (B4 item 4) - their timeline, else their main interest."""
+    priority (B4 item 4) - their objective, their timeline, else their main interest."""
     values = _values(profile)
+    if objective := customer_objective(profile):
+        return objective
     if timeline := values.get("interest.timeline"):
         return f"since you're looking to do this {str(timeline).replace('_', ' ')}, coming by now saves you time later"
     if model := (values.get("interest.model") or values.get("trade_in.model") or values.get("vehicle.model")):
-        return f"since you're interested in the {model}, it's worth seeing it in person while it's available"
-    return "it only takes a few minutes, and you'll have real answers instead of guesses"
+        return f"since you're interested in the {model}, it's worth seeing it in person before you decide"
+    return "you'll have real answers instead of guesses"
 
 
 def _angle_for_attempt(attempt: int, last_objection: str | None, profile: Profile) -> tuple[Angle, str]:
     if attempt == 1:
         return "primary_interest", _primary_interest_reason(profile)
+    objective = customer_objective(profile)
     if attempt == 2:
-        if last_objection and last_objection != "none":
-            return "objection", _OBJECTION_REASON.get(last_objection, _fallback_priority_reason(profile))
+        if last_objection and last_objection in _OBJECTION_REASON:
+            reason = _OBJECTION_REASON[last_objection]
+            # The objection answered, with their own objective still the point of coming in.
+            return "objection", f"{reason}, {objective}" if objective else reason
         return "objection", _fallback_priority_reason(profile)
-    return "value_proposition", _VALUE_PROP_BY_TYPE.get(profile.effective_lead_type.value,
-                                                         _VALUE_PROP_BY_TYPE["general"])
+    return "value_proposition", objective or _VALUE_PROP_BY_TYPE.get(profile.effective_lead_type.value,
+                                                                      _VALUE_PROP_BY_TYPE["general"])
 
 
 def _followup_date(customer_words: str | None, now: datetime) -> str:
@@ -142,7 +197,7 @@ def _followup_date(customer_words: str | None, now: datetime) -> str:
 
 
 def plan_day_offer(*, profile: Profile, conversation: ConversationState, built_times: list[dict[str, str]],
-                   why: str) -> VisitOfferPlan:
+                   why: str, asked_day: str | None = None) -> VisitOfferPlan:
     """The customer answered our times with a day of their own ("not Wednesday, what about Monday?"), or
     asked to move their booking to a day: times on that day are offered. It continues the offer they're
     answering, so it isn't another attempt (the first one when nothing was offered before)."""
@@ -153,7 +208,8 @@ def plan_day_offer(*, profile: Profile, conversation: ConversationState, built_t
     new_record = record.model_copy(update={
         "attempts": attempt, "angles_used": angles, "offered_times": built_times,
         "offered_turn": conversation.turn + 1, "held_over": 0, "declined": False, "pending_pick": None,
-        "why": why})
+        "why": why, "asked_day": asked_day or record.asked_day,
+        "asked_turn": conversation.turn + 1 if asked_day else record.asked_turn})
     return VisitOfferPlan(fire=True, attempt=attempt, angle=angles[-1], value_proposition=value_prop,
                           times=built_times, record=new_record.model_dump(), why=why)
 

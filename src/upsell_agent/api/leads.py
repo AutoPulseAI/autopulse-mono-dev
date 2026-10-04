@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from upsell_agent import clock
 from upsell_agent.agent import cadence, lead_bucket, lifecycle
+from upsell_agent.agent.customer_key import lead_customer_id
 from upsell_agent.api.auth import require_internal_auth
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
@@ -51,7 +52,7 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
     lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
     if lead is None:
         return None
-    customer_id = str(lead.get("customer_id") or "")
+    customer_id = lead_customer_id(lead, dealer_id) or ""
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
     profile = build_profile(
         lead_type_for(lead),

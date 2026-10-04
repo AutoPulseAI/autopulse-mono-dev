@@ -263,7 +263,8 @@ class LivePlatformClient:
         unchanged - without it a date/time change is silently ignored
         (route.js, checked against the running code, B5 item 3)."""
         body = await self._post("/api/booking", {
-            "bookingId": payload["booking_id"], "booking_status": payload["booking_status"],
+            # dealer_id: the CRM checks the booking is this dealer's (PLAN_4 stream X3 item 11).
+            "dealer_id": dealer_id, "bookingId": payload["booking_id"], "booking_status": payload["booking_status"],
             **({"booking_date": payload["booking_date"]} if payload.get("booking_date") else {}),
             **({"booking_time": payload["booking_time"]} if payload.get("booking_time") else {}),
             **({"showed": payload["showed"]} if isinstance(payload.get("showed"), bool) else {}),

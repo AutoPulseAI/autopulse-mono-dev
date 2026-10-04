@@ -40,12 +40,12 @@ from typing import Any
 from bson import ObjectId
 
 from upsell_agent import clock
+from upsell_agent.agent.customer_key import find_customer_leads
 from upsell_agent.integrations.mongodb import (
     AI_CUSTOMER_STATUS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_VEHICLE_OWNERSHIP_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
     as_object_id,
@@ -107,8 +107,10 @@ def customer_status_rule(*, open_opportunities: int, owned_vehicles: int, unknow
             have.append(f"{owned_vehicles} currently owned vehicle" + ("" if owned_vehicles == 1 else "s"))
         return CUSTOMER_ACTIVE, "ACTIVE: " + " and ".join(have)
     if unknown_ownership:
-        return previous or CUSTOMER_ACTIVE, ("no open lead and no confirmed owned vehicle, but a vehicle's ownership "
-                                             "is unknown - unknown ownership is not zero ownership (§9)")
+        # PLAN_4 stream X3 item 8: unknown now always has a deal behind it, so it reads as ACTIVE whatever the
+        # status was before (it used to keep a previous INACTIVE).
+        return CUSTOMER_ACTIVE, ("no open lead and no confirmed owned vehicle, but a vehicle's ownership "
+                                 "is unknown - unknown ownership is not zero ownership (§9)")
     return CUSTOMER_INACTIVE, "INACTIVE: no open lead/opportunity and no currently owned vehicle"
 
 
@@ -123,8 +125,7 @@ async def recalculate_customer_status(db: DealerScopedDatabase, customer_id: str
     if not customer_id:
         return None
     customer_id = str(customer_id)
-    leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"customer_id": {"$in": _cid_values(customer_id)}}).to_list(None)
+    leads = await find_customer_leads(db, customer_id)
     lead_ids = [str(lead["_id"]) for lead in leads]
     states = {s["lead_id"]: s for s in await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": lead_ids}}).to_list(None)} if lead_ids else {}
@@ -147,7 +148,10 @@ async def recalculate_customer_status(db: DealerScopedDatabase, customer_id: str
         {"customer_id": {"$in": _cid_values(customer_id)}}).to_list(None) if d.get("vin")}
     # Unknown, not zero (§9): no ownership record at all (we have never known what they drive), or a DealerVault
     # deal for a vehicle we have no ownership answer about. Only confirmed answers can add up to zero.
-    unknown = not records or bool(deal_vins - answered_vins)
+    # PLAN_4 stream X3 item 8 (audit 4 C5): "no ownership record at all" used to count as unknown, so a customer
+    # who never bought (only closed leads, nothing owned, no deal) stayed ACTIVE for good. Unknown now needs a
+    # reason to think they own something: a deal for a vehicle we have no answer about.
+    unknown = bool(deal_vins - answered_vins)
     statuses = db.collection(AI_CUSTOMER_STATUS_COLLECTION)
     previous = await statuses.find_one({"customer_id": customer_id}) or {}
     status, why = customer_status_rule(open_opportunities=open_count, owned_vehicles=owned,
@@ -391,8 +395,7 @@ async def customer_view(dealer_id: str, customer_id: str) -> dict[str, Any]:
     row = await db.collection(AI_CUSTOMER_STATUS_COLLECTION).find_one({"customer_id": str(customer_id)})
     records = await db.collection(AI_VEHICLE_OWNERSHIP_COLLECTION).find({"customer_id": str(customer_id)}).to_list(None)
     records.sort(key=lambda r: _aware(r.get("created_at")) or datetime.min.replace(tzinfo=UTC))
-    leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"customer_id": {"$in": _cid_values(str(customer_id))}}).to_list(None)
+    leads = await find_customer_leads(db, str(customer_id))
     lead_ids = [str(lead["_id"]) for lead in leads]
     states = {s["lead_id"]: s for s in await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": lead_ids}}).to_list(None)} if lead_ids else {}

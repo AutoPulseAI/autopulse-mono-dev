@@ -28,6 +28,7 @@ from upsell_agent.worker.jobs import (
     close_expired_leads,
     fire_due_followups,
     plan_birthdays,
+    reconcile_events,
     sweep_maintenance,
     sweep_prices,
     sweep_recalls,
@@ -108,7 +109,9 @@ def settings() -> dict[str, Any]:
                       # MASTER_PLAN_4 D7 (stream A3): birthdays whose DealerVault date arrived late, daily.
                       CronJob(plan_birthdays, cron="17 6 * * *", timeout=600),
                       # PLAN_4 stream L: price snapshots for verified price drops, every 6 hours.
-                      CronJob(sweep_prices, cron="53 */6 * * *", timeout=900)],
+                      CronJob(sweep_prices, cron="53 */6 * * *", timeout=900),
+                      # PLAN_4 stream X3: leads / messages the AI never heard about (scheduler/reconcile.py).
+                      CronJob(reconcile_events, cron="*/5 * * * *", timeout=600)],
         # SAQ's sweep re-delivers a job it moved to "active" but never started
         # (seen twice in 300 during the Stage 12 burst test: a reply waited
         # 30-40s). Every 10s instead of 60s bounds that wait; a re-delivered

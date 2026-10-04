@@ -47,6 +47,7 @@ thank-you after "later" asks nothing.
 Every rule's result is returned too, so the Debug UI can show why.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -67,8 +68,24 @@ PARKED_FOR_REPLIES = 3
 # Upset is a handoff signal only when this sure (MASTER_PLAN_2 Phase 4): one
 # ambiguous message isn't enough. Frustration with the bot itself never is.
 UPSET_HANDOFF_CONFIDENCE = 0.8
+# PLAN_4 stream X3 item 4: 0.80 alone was borderline (trade-2: "Because I'm busy and don't want to waste a trip for a
+# lowball" was handed off as "clearly upset"). Upset hands off at 0.80 only with clear words of upset in the
+# customer's own message (upset_words), or on the model's word alone from this much.
+UPSET_ALONE_CONFIDENCE = 0.95
+_UPSET_WORDS = re.compile(
+    r"\b(?:ridiculous|unacceptable|furious|angry|pissed|livid|outraged|disgusted|fed up|sick of|"
+    r"worst|terrible|horrible|awful|scam|scammed|rip(?:ped)?[- ]?off|lied|lying|liars?|"
+    r"complain(?:t)?|lawyer|attorney|sue\b|report you|bbb|manager now|"
+    r"wtf|f+u+c+k\w*|shit\w*|damn|crap|bs\b|bullshit|stop wasting my time|waste of (?:my )?time)",
+    re.IGNORECASE)
 # Urgent is a handoff signal at the same bar (MASTER_PLAN_3 B0.13 decision 26, built in B4 item 8).
 URGENT_HANDOFF_CONFIDENCE = 0.8
+
+
+def upset_words(text: str) -> bool:
+    """Clear words of upset in the customer's own message (PLAN_4 stream X3 item 4)."""
+    return bool(_UPSET_WORDS.search(text or "")) or bool(re.search(r"[!?]{3,}", text or "")) or bool(
+        re.search(r"(?:\b[A-Z]{2,}\b[\s,.!?]+){3,}[A-Z]*", (text or "") + " "))  # shouting: 3+ words in capitals
 
 
 @dataclass
@@ -118,10 +135,14 @@ class Flags:
     human_contact: str | None = None
     # Times each pending value (by fact id) was already asked to be confirmed (agent/conversation.py confirms).
     confirms: dict[str, int] = field(default_factory=dict)
+    # PLAN_4 stream X3 item 4: the customer's own message has clear words of upset (upset_words()). Defaults to
+    # True for callers that only have the model's reading.
+    upset_words: bool = True
 
     @property
     def clearly_upset(self) -> bool:
-        return self.upset and self.upset_confidence >= UPSET_HANDOFF_CONFIDENCE
+        return self.upset and (self.upset_confidence >= UPSET_ALONE_CONFIDENCE or (
+            self.upset_confidence >= UPSET_HANDOFF_CONFIDENCE and self.upset_words))
 
     @property
     def clearly_urgent(self) -> bool:

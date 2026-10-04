@@ -104,6 +104,10 @@ class VisitState(BaseModel):
     service_ask: bool = False
     # The service request passed to the team ({requested, display, notes, at}); no booking is made.
     service_request: dict[str, Any] | None = None
+    # PLAN_4 stream X3 item 3: the day the customer last asked to come in (ISO date), so "morning is better" and
+    # "10 works" are read on THAT day, not on whatever day an earlier offer named.
+    asked_day: str | None = None
+    asked_turn: int = 0
 
 
 class NotInterestedState(BaseModel):
@@ -128,6 +132,14 @@ class ShownVehicle(BaseModel):
     vin: str
     turn: int = 0
     channel: str | None = None
+    # PLAN_4 stream X3: the fields it was shown with, so "the silver one" / "the Tacoma" can be resolved later
+    # (agent/vehicle_reference.py), even after it sold.
+    year: int | None = None
+    make: str | None = None
+    model: str | None = None
+    trim: str | None = None
+    exterior_color: str | None = None
+    miles: int | None = None
 
 
 class ConversationState(BaseModel):
@@ -140,6 +152,9 @@ class ConversationState(BaseModel):
     after_hours: AfterHoursChoice | None = None
     visit: VisitState | None = None
     shown_vehicles: list[ShownVehicle] = Field(default_factory=list)
+    # PLAN_4 stream X3: the shown vehicle the customer last referred to ("the silver one"), for the photo and
+    # the messages written in code (agent/vehicle_media.py lead_vehicle_vin).
+    focus_vin: str | None = None
     not_interested: NotInterestedState | None = None
     human_contact: HumanContactState | None = None
     # PLAN_4 stream Q: how many replies asked the customer to confirm each pending value, by its fact id (a new
@@ -242,6 +257,8 @@ def after_turn(
     human_contact: dict | None = None,
     confirmed_fact: str | None = None,
     used_fallback: bool = False,
+    shown_details: dict[str, dict] | None = None,
+    focus_vin: str | None = None,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -283,8 +300,12 @@ def after_turn(
         shown = {v.vin for v in updated.shown_vehicles}
         for vin in shown_vins or []:
             if vin and vin not in shown:
-                updated.shown_vehicles.append(ShownVehicle(vin=vin, turn=updated.turn, channel=channel))
+                detail = {k: v for k, v in ((shown_details or {}).get(vin) or {}).items()
+                          if k in ("year", "make", "model", "trim", "exterior_color", "miles")}
+                updated.shown_vehicles.append(ShownVehicle(vin=vin, turn=updated.turn, channel=channel, **detail))
                 shown.add(vin)
+        if focus_vin:
+            updated.focus_vin = focus_vin
         updated.last_topic = _topic(action, asked_slots, used_template)
         if after_hours is not None:
             updated.after_hours = AfterHoursChoice.model_validate(after_hours)

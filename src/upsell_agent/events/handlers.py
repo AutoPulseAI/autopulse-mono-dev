@@ -16,7 +16,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import duplicates, human_contact, lifecycle
+from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
+from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -39,10 +40,8 @@ from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
-    as_object_id,
     dealer_scoped_db,
 )
 from upsell_agent.learning import touches
@@ -310,9 +309,7 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
     db = dealer_scoped_db(event.dealer_id)
     lead_id = event.lead_id
     if not lead_id:
-        latest = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-            {"customer_id": {"$in": [event.customer_id, as_object_id(event.customer_id)]}}
-        ).sort("_id", -1).to_list(1)
+        latest = sorted(await find_customer_leads(db, event.customer_id), key=lambda row: row["_id"], reverse=True)
         lead_id = str(latest[0]["_id"]) if latest else None
     # MASTER_PLAN_3 C6: a customer's message belongs to the lead the AI works, never to a linked duplicate.
     lead_id = await duplicates.workflow_lead_id(db, lead_id)
@@ -340,12 +337,20 @@ def _aware(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
 
 
-def _hold_decision(state: dict) -> tuple[str, str]:
-    """(action, reason) for customer messages on a lead the AI doesn't answer."""
+def _hold_decision(state: dict, request: str | None = None) -> tuple[str, str]:
+    """(action, reason) for customer messages on a lead the AI doesn't answer. `request` (PLAN_4 stream X3 item 4):
+    the customer asked to book or asked a question - they get a holding reply even inside the 2-hour window."""
     status, why = state["status"], state.get("status_reason")
     if status == "handoff":
         last = _aware(state.get("last_handoff_notice_at"))
-        if last and clock.now() - last < HOLDING_REPLY_EVERY:
+        # A request to book is always acknowledged; a question at most every HOLDING_REPLY_MIN_GAP, counted from
+        # the last holding reply (not from the handoff message itself); anything else every 2 hours.
+        if request == "booking":
+            last = None
+        elif request:
+            last = _aware(state.get("last_request_notice_at"))
+        gap = after_handoff.HOLDING_REPLY_MIN_GAP if request else HOLDING_REPLY_EVERY
+        if last and clock.now() - last < gap:
             return "saved_only", (f"The lead is with staff ({why or 'handed off'}); the customer was told at "
                                   f"{last:%H:%M} UTC that the team will reach out (at most one holding reply "
                                   f"every {HOLDING_REPLY_EVERY.total_seconds() / 3600:g} hours). Saved for staff.")
@@ -355,9 +360,30 @@ def _hold_decision(state: dict) -> tuple[str, str]:
     return "saved_only", f"The customer opted out ({why or 'opted out'}). Nothing is sent."
 
 
+async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *, lead_id: str, customer_id: str,
+                                    request: str, rows: list[dict], took_back: bool, why: str | None = None) -> None:
+    """A staff notice and a CRM note with what the customer asked after the handoff (PLAN_4 stream X3 item 4)."""
+    from upsell_agent.agent import crm_notes
+
+    said = " / ".join(str(r.get("text") or "") for r in rows)[:600]
+    if took_back:
+        text = (f"The customer asked to book after the handoff ({why or 'handed off'}): the AI took the lead back "
+                f"to book it. They wrote: \"{said}\"")
+    elif request == "booking":
+        text = f"The customer asked to book while the lead is with staff - please book it: \"{said}\""
+    else:
+        text = f"The customer asked a question while the lead is with staff - please answer: \"{said}\""
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+        "staff_notice": {"at": clock.now(), "kind": f"after_handoff_{request}", "text": text}}})
+    await crm_notes.write(db, lead_id=lead_id, kind="after_handoff", text=text,
+                          key=f"after-handoff-{rows[-1]['_id']}", platform=getattr(deps, "platform", None),
+                          customer_id=customer_id)
+
+
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
                        rows: list[dict], action: str, reason: str, received_at: datetime | None,
-                       confirmation: str | None = None, reply: dict[str, Any] | None = None) -> dict[str, Any]:
+                       confirmation: str | None = None, reply: dict[str, Any] | None = None,
+                       holding_kind: str = "holding") -> dict[str, Any]:
     """Logs a turn for customer messages the AI doesn't answer, saying why,
     and sends the holding reply when that's the action. Marks the messages
     answered by this turn, so none is left without a reply or a reason."""
@@ -384,7 +410,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         elif action == "holding_reply":
             customer = await find_customer(db, event.customer_id)
             lead = await find_lead(db, lead_id)
-            draft = render_holding_reply("holding", (customer or {}).get("name") or (lead or {}).get("name"))
+            draft = render_holding_reply(holding_kind, (customer or {}).get("name") or (lead or {}).get("name"))
             text = draft["sms_text"] if channel == "sms" else draft["email_body"]
             subject, purpose = None if channel == "sms" else draft["email_subject"], "transactional"
         else:
@@ -414,6 +440,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
     from upsell_agent.scheduler.sold_lifecycles import ROUTER_ACTIONS  # MASTER_PLAN_4 (stream A3)
 
     outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation", "wrong_number",
+                                   "auto_reply",
                                    *APPOINTMENT_ACTIONS, *ROUTER_ACTIONS) else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
@@ -438,6 +465,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     if not unanswered:
         return {"status": "already_answered", "reason": "an earlier turn answered this message"}
 
+    if event.auto_reply or all(auto_reply.is_auto_reply(m["text"]) for m in unanswered):
+        # PLAN_4 stream X3 item 10: an out-of-office / auto-responder. No reply (no loop with a bot), not contact
+        # (no stage change, call tasks and the channel switch stay), only a record of why.
+        await db.collection(AI_MESSAGES_COLLECTION).update_many(
+            {"_id": {"$in": [m["_id"] for m in unanswered]}}, {"$set": {"auto_reply": True}})
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="auto_reply",
+                                  reason="An auto-responder (out of office / automatic reply), not the customer: "
+                                         "no reply, not counted as contact.",
+                                  received_at=_parse_received_at(received_at))
+        return {**held, "status": "auto_reply"}
+
     # Step 1, before anything can fail: the customer replied, so no channel switch.
     cancelled = await _cancel_pending_followups(db, lead_id, channel_switches_only=True)
 
@@ -446,6 +484,14 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"last_inbound_at": event.received_at}}
     )
+    if (not state.get("stage") and not state.get("last_turn_at") and not state.get("duplicate_of")
+            and not event.shadow):
+        # PLAN_4 stream X3 item 5: the AI first sees this lead through a reply (it was open before the dealer went
+        # live, or its lead-created event was lost). Its stage and opportunity clock start from the CRM lead's own
+        # creation date, so its cadence and its Day-91 close follow from where it stands, not from today.
+        await lifecycle.apply(db, lead_id, [lifecycle.Event("lead_created", source="first_seen_on_reply")],
+                              lead=lead, customer_id=event.customer_id)
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or state
 
     # Opt-outs, handled in code with no AI (architecture §5 step 3,
     # MASTER_PLAN_3 C1 item 3). A keyword stops its channel and the carrier
@@ -544,6 +590,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         # MASTER_PLAN_3 C2: contact within the 60 minutes (or while the task was open): no call needed.
         await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True, keep_requested=True)
 
+    if (state["status"] == "handoff" and not event.shadow and after_handoff.is_soft_handoff(state)
+            and after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) == "booking"):
+        # PLAN_4 stream X3 item 4: the handoff needed no person's decision (an unsafe draft, or read as upset) and
+        # the customer now asks to book: the AI takes the lead back and books it; staff are told.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+            "status": "active", "status_reason": None, "status_at": clock.now(), "resumed_at": clock.now(),
+            "handoff_soft": None}})
+        await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id, request="booking",
+                                        rows=unanswered, took_back=True, why=state.get("status_reason"))
+        state = {**state, "status": "active", "status_reason": None}
+
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
         # doesn't reply, and these aren't answered later on resume either.
@@ -553,9 +610,18 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             await lifecycle.apply(db, lead_id, [lifecycle.Event("customer_replied", source="customer_reply",
                                                                 reason=f"The customer replied: {why}")],
                                   lead=lead, customer_id=event.customer_id)
-        action, reason = _hold_decision(state)
+        request = after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) \
+            if state["status"] == "handoff" else None
+        if request and not event.shadow:
+            await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id,
+                                            request=request, rows=unanswered, took_back=False)
+        action, reason = _hold_decision(state, request)
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
-                                  received_at=_parse_received_at(received_at))
+                                  received_at=_parse_received_at(received_at),
+                                  holding_kind="holding_booking" if request == "booking" else "holding")
+        if request and held.get("send_status") == "sent":
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"last_request_notice_at": clock.now()}})
         return {**held, "followups_cancelled": cancelled}
 
     answered = await _appointment_answer(db, event, deps, lead=lead, lead_id=lead_id, state=state,
@@ -715,7 +781,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     final_event = outcome_event or stage_event
     if stage_event:
         lead = await find_lead(db, event.lead_id)
-        customer_id = str((lead or {}).get("customer_id") or "") or None
+        customer_id = lead_customer_id(lead, db.dealer_id)
         prior = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
         detail: dict[str, Any] = {}
         if stage_event == "appointment_set":
@@ -757,7 +823,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                                                   "resumed_at": clock.now()}})
         if (stage_change or {}).get("cadence_started"):
             lead = lead if stage_event else await find_lead(db, event.lead_id)
-            customer_id = str((lead or {}).get("customer_id") or "") or None
+            customer_id = lead_customer_id(lead, db.dealer_id)
             if customer_id:
                 extra["cadence_touch"] = await plan_cadence_touch(
                     db, lead_id=event.lead_id, customer_id=customer_id,
@@ -791,7 +857,8 @@ async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | No
         return {"status": "not_needed", "reason": f"the lead is at {lifecycle.label(stage) or 'no stage'}, "
                                                   "not waiting on an appointment"}
     lead = await find_lead(db, event.lead_id)
-    customer_id = str((lead or {}).get("customer_id") or state.get("customer_id") or "") or None
+    customer_id = (str((lead or {}).get("customer_id") or "") or state.get("customer_id")
+                   or lead_customer_id(lead, db.dealer_id))
     if not customer_id:
         return {"status": "not_needed", "reason": "no customer on the lead"}
     channel = ((lead or {}).get("data") or {}).get("channel") or "sms"

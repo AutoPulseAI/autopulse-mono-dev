@@ -35,6 +35,7 @@ LABELS = {
     "bad_contact": "Contact problem",
     "text_consent_missing": "Email only - no text consent",
     "call_escalation": "Requested call not made in 5 minutes",  # PLAN_4 stream X2
+    "after_handoff": "Customer wrote after the handoff",
 }
 MAX_TEXT = 1500
 
