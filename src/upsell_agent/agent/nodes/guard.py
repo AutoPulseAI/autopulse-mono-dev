@@ -284,6 +284,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
             draft, customer_texts=customer_texts,
             allowed=[t for t in (dealer_layer.get("name"), dealer_layer.get("agent_name"), state.customer_name) if t]),
     }
+    if (getattr(ctx, "lead_state", None) or {}).get("stage") == "sold_pending":
+        # PLAN_4 stream X2 (SOLD PENDING PDF §7, §12): an AI-written reply on a Sold Pending lead never blames the
+        # customer for a delay nor states a document, date, approval or financing status (sold_pending.py) - checked
+        # in code, not only asked of the model.
+        from upsell_agent.agent.sold_pending import guardrail_problems
+        sold = guardrail_problems(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n"
+                                  f"{draft.get('email_body', '')}")
+        wording["sold_pending_no_delay_or_invented_status"] = [
+            "Sold Pending: implies a delay or states an unverified document / date / approval / financing status ("
+            + ", ".join(sold) + ")"] if sold else []
     for check, problems in wording.items():
         result["checks"][check] = not problems
         if problems:

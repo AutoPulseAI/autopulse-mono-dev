@@ -187,3 +187,37 @@ def test_the_answer_to_a_service_offer(text, answer):
 def test_the_sold_pending_router_reads_delivery_questions_and_real_answers(text, route):
     from upsell_agent.agent import sold_pending
     assert sold_pending.classify_reply(text, documents_asked=True)[0] == route
+
+
+# --- Item 15: the SOLD PENDING rule is enforced on AI-written replies, not only on fixed messages ------------------
+
+async def _guard_reply(text: str, stage: str) -> dict:
+    from types import SimpleNamespace
+
+    from upsell_agent.agent.nodes.guard import guard
+    from upsell_agent.agent.state import AgentState
+    from upsell_agent.observability.trace import MemoryTraceSink, NodeSpan, TurnTracer
+    state = AgentState(dealer_id="d", customer_id="c", trigger="inbound_message", customer_text="any news?",
+                       draft={"sms_text": text, "email_subject": "Your purchase", "email_body": text})
+    tracer = TurnTracer(sink=MemoryTraceSink(), dealer_id="d", lead_id=None, customer_id="c", trigger="t",
+                        channel="sms", store_prompts=False)
+    ctx = SimpleNamespace(tracer=tracer, lead_state={"stage": stage})
+    return (await guard(state, NodeSpan(), ctx))["guard_result"]
+
+
+@pytest.mark.parametrize("text", [
+    "Good news, your car will be delivered on Friday!",
+    "Your financing was approved, so we just need your pay stubs.",
+    "We're still missing your proof of insurance - that's what is holding things up.",
+])
+async def test_an_ai_reply_on_a_sold_pending_lead_never_invents_a_status_or_blames_a_delay(text):
+    result = await _guard_reply(text, "sold_pending")
+    assert result["passed"] is False and result["checks"]["sold_pending_no_delay_or_invented_status"] is False
+
+
+async def test_a_plain_sold_pending_reply_passes_and_other_stages_are_not_affected():
+    ok = await _guard_reply("Thanks for checking in! Your salesperson will confirm the next steps with you.",
+                            "sold_pending")
+    assert ok["checks"]["sold_pending_no_delay_or_invented_status"] is True
+    other = await _guard_reply("Your financing was approved.", "contact_made_no_next_action")
+    assert "sold_pending_no_delay_or_invented_status" not in other["checks"]

@@ -84,3 +84,8 @@ the fix.
   works" read as yes; "ok but I have a question..." / "a quick question" -> other (the AI answers). SOLD PENDING
   router: "When can I pick it up?", "come get it" -> escalated to the salesperson; "I have a question about the
   color" no longer reads as "I have [provided everything]". Table tests in `test_x2_sold.py` (7 rows failed before).
+- **15. SOLD PENDING guardrail on AI-written replies.** The Guard node runs `sold_pending.guardrail_problems` on
+  every draft for a Sold Pending lead (check `sold_pending_no_delay_or_invented_status`): a delay/blame phrase or
+  an unverified delivery date / document / approval / financing status -> one rewrite, then the template. Decide no
+  longer drops the Sold Pending hold when another hold (a possible opt-out) applies - both go to Compose.
+  Tests: `test_x2_sold.py::test_an_ai_reply_on_a_sold_pending_lead_*`, `test_a_plain_sold_pending_reply_*`.

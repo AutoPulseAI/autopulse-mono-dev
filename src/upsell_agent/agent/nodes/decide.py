@@ -569,7 +569,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # MASTER_PLAN_4 D2/D4 (stream A3): a Sold Pending / Sold - Delivered customer gets answers only - no asks, no
     # visit offer, no pitch - under that workflow's guardrails (agent/sold_pending.reply_hold).
     sold_hold = reply_hold((ctx.lead_state or {}).get("stage"))
-    hold = hold or sold_hold
+    # Stream X2: both apply when both are there (a possible opt-out on a Sold Pending lead keeps its guardrails).
+    hold = f"{hold}; and {sold_hold}" if hold and sold_hold else (hold or sold_hold)
     pack = state.context_pack or {}
     now = clock.now()
     text = state.customer_text or state.inbound_text
