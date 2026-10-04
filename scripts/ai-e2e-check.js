@@ -428,10 +428,19 @@ async function crmLocal() {
     check('A6. the AI reads the dealer profile / hours from the CRM record', true, JSON.stringify(profile).slice(0, 120));
   }
 
+  // A first text now waits for the customer's allowed hours (compliance, PLAN_4 stream X1), so the check runs
+  // at a known weekday midday at the dealer instead of whenever it happens to be started.
+  await fetch(`${AI}/dev/clock/reset`, { method: 'POST' });
+  await fetch(`${AI}/dev/clock/to-dealer-time`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, time: '11:00', weekdays_only: true }) });
+
   // --- B. A new lead per source bucket ---------------------------------------------------------
   const created = {};
   for (const [i, spec] of DEMO_LEADS.entries()) {
-    const phone = `+1555${String(i)}${run.slice(-6)}`;
+    // An Illinois number (217, the demo dealer's area code; 555 exchange so it can never be a real phone): the
+    // send check needs the customer's state, and a number with no state gets only the strictest hours.
+    const phone = `+1217555${String(i)}${run.slice(-3)}`;
+    await db.collection('ai_consent').deleteMany({ address: phone }); // a number reused from an earlier run
     const email = `e2e-${spec.key}-${run}@example.test`;
     await queueLead(dealer, { name: spec.name, phone, email, source: spec.source,
       lead_source: spec.source, followup_preference: spec.channel, comments: `${spec.comments} (${run})` });
@@ -731,6 +740,7 @@ async function crmLocal() {
     check('end-to-end run', false, error.message);
   })
   .finally(async () => {
+    if (CRM_LOCAL) await fetch(`${AI}/dev/clock/reset`, { method: 'POST' }).catch(() => {});
     await mongoose.disconnect().catch(() => {});
     const failed = results.filter((r) => !r.ok).length;
     console.log(`\n${results.length - failed}/${results.length} checks passed`);

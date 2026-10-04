@@ -113,8 +113,10 @@ function slug(name) {
 // Stable 555 numbers per name (E.164 on leads, 10 digits on customers, like the platform).
 function phoneFor(name) {
   let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 10_000_000;
-  return `555${String(hash).padStart(7, '0')}`;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 10_000;
+  // Illinois (217, the demo dealer's area code) with the 555 exchange: never a real phone, and the AI's send check
+  // can tell the customer's state (a number with no state gets only the strictest contact hours).
+  return `217555${String(hash).padStart(4, '0')}`;
 }
 
 function photo(vin, n) {
