@@ -331,6 +331,8 @@ async function scenario(t0) {
   L.lost = await newLead('lost', { name: 'Lola Lost', comments: 'Interested in the 2021 Honda Civic LX.' });
   L.sd = await newLead('sd', { name: 'Dana Delivered', comments: 'Interested in the 2025 Toyota RAV4 XLE Hybrid.' });
   L.sd2 = await newLead('sd2', { name: 'Ned Nolonger', comments: 'Interested in the 2023 Chrysler Pacifica Touring.' });
+  L.mv = await newLead('mv', { name: 'Mia Mover', comments: 'Interested in the 2023 Tesla Model Y Long Range.' });
+  L.cx = await newLead('cx', { name: 'Cole Cancel', comments: 'Interested in the 2020 Chevrolet Silverado LT.' });
   for (const l of Object.values(L)) await quiet(firstReply(l));
 
   // ---- 1a. Touch 1 ------------------------------------------------------------------------------------------------
@@ -412,6 +414,40 @@ async function scenario(t0) {
   const cCadence = await followups(L.c, 'cadence_touch', { status: 'pending' });
   check('4b. Appointment Set stops the Short-Term cadence (no touch queued)', cCadence.length === 0,
     `${cCadence.length} pending cadence touch(es)`);
+
+  // ---- 4k-4m. The 15-minute details message (stream R): sent, re-sent after a move, not for a cancelled one -----------
+  const detailsRe = (first, at) => new RegExp(`^${first}, we are all set to meet on Thursday, \\w+ \\d+ at ${at} at `
+    + 'Autopulse Demo Motors, 500 Lakeshore Blvd.*Please make sure to call or text us if anything changes at '
+    + '[-()+ 0-9]*555[-() ]*010[- ]*0100\\. Looking forward to assisting you!$', 's');
+  const mvBook = await staffStatus(L.mv, { status: 'Appointment Booked', booking_date: thu, booking_time: '15:00' });
+  const cxBook = await staffStatus(L.cx, { status: 'Appointment Booked', booking_date: thu, booking_time: '16:00' });
+  const cxBooking = await waitFor('the cx booking', () => col('bookings').findOne({ lead_id: String(L.cx.lead._id) }))
+    .catch(() => null);
+  const cxCancel = cxBooking ? await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: staffHeaders,
+    body: JSON.stringify({ bookingId: String(cxBooking._id), booking_status: 'cancelled' }) }) : null;
+  const bookedAt = await aiNow();
+  await walkTo(new Date(bookedAt.getTime() + 20 * 60_000));
+  const cDet = (await followups(L.c, 'appointment_details'))[0];
+  const cDetMsg = cDet && await bothChannels(L.c, cDet);
+  check('4k. 15 minutes after a staff booking: the details message on text AND email, in the client\'s words',
+    cDet?.status === 'sent' && cDetMsg.both && detailsRe('Carl', '2:00 PM').test(cDetMsg.sms.text.trim())
+      && Math.abs(cDet.due_at - cDet.created_at - 15 * 60_000) < 60_000,
+    `${cDet?.status} ${cDet && local(cDet.due_at)} (planned ${cDet && local(cDet.created_at)}): "${clip(cDetMsg?.sms?.text, 200)}"`);
+  const mvMove = await staffStatus(L.mv, { status: 'Appointment Booked', booking_date: thu, booking_time: '17:00' });
+  const movedAt = await aiNow();
+  await walkTo(new Date(movedAt.getTime() + 20 * 60_000));
+  const mvDet = (await followups(L.mv, 'appointment_details')).filter((f) => f.status === 'sent');
+  const mvTexts = [];
+  for (const f of mvDet) mvTexts.push((await bothChannels(L.mv, f)));
+  check('4l. the appointment moved after the details went: the new details go out too (text + email), with the new time',
+    mvBook.status === 200 && mvMove.status === 200 && mvTexts.length === 2 && mvTexts.every((m) => m.both)
+      && detailsRe('Mia', '3:00 PM').test(mvTexts[0].sms.text.trim()) && detailsRe('Mia', '5:00 PM').test(mvTexts[1].sms.text.trim()),
+    `HTTP ${mvBook.status}/${mvMove.status}: ${mvTexts.map((m) => `"${clip(m.sms?.text, 60)}"`).join(' then ')}`);
+  const cxDet = await followups(L.cx, 'appointment_details');
+  const cxSent = (await outbound(L.cx, { status: 'sent' })).filter((m) => /we are all set to meet/.test(m.text));
+  check('4m. a booking cancelled within the 15 minutes gets no details message',
+    cxBook.status === 200 && cxCancel?.ok && cxSent.length === 0,
+    `HTTP ${cxBook.status}, cancel HTTP ${cxCancel?.status}; details step(s): ${cxDet.map((f) => `${f.status} (${clip(f.reason, 50)})`).join(', ') || 'none'}`);
 
   // ---- 2pm-ish: after Touch 2 ---------------------------------------------------------------------------------------
   await completeOpenCallTasks(L.a);
@@ -641,6 +677,10 @@ async function scenario(t0) {
     cClose?.status && cClose.status !== 'pending' && cNow?.stage === 'contact_made_no_next_action'
       && (await followups(L.c, 'cadence_touch')).some((f) => f.created_at >= cClose.due_at),
     `${cNow?.stage_label}; close step ${cClose?.status} ${cClose && local(cClose.due_at)}`);
+
+  const cxShow = (await outbound(L.cx, { status: 'sent' })).filter((m) => /looking for you in the showroom|Counting down|confirming our meeting/i.test(m.text));
+  check('4n. the cancelled appointment gets no countdown, confirmation or no-show messages',
+    cxShow.length === 0, `${cxShow.length} appointment message(s): ${cxShow.map((m) => `"${clip(m.text, 40)}"`).join(', ')}`);
 
   // ---- 5. Unsold, Sold Pending, Sold Delivered so far ---------------------------------------------------------------
   const unNow = await state(L.un);
