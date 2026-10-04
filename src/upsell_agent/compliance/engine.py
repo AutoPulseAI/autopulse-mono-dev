@@ -49,6 +49,7 @@ Every decision is added to `ai_compliance_log` (never edited, kept 5 years)
 with what was checked, unless `record=False` (planning a due time).
 """
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any, Literal
@@ -178,6 +179,31 @@ def _is_dnd(lead: dict | None) -> bool:
     lead = lead or {}
     return any(str(lead.get(k) or "").strip().lower() in DND_STATUSES
                for k in ("fe_lead_status", "lead_status", "status"))
+
+
+_DND_PATTERN = {"$regex": r"^\s*(dnd|do not disturb|do not contact)\s*$", "$options": "i"}
+
+
+async def _dnd_elsewhere(db: DealerScopedDatabase, lead: dict | None, customer: dict | None,
+                         customer_id: str | None) -> dict | None:
+    """PLAN_4 stream X1 item 6: a DND staff set on ANY of this dealer's leads for the same customer, phone or email
+    suppresses the customer everywhere at this dealer - a new web lead, a re-import with a new customer id. Returns
+    that lead, or None."""
+    who: list[dict[str, Any]] = []
+    if customer_id:
+        who.append({"customer_id": {"$in": [customer_id, as_object_id(customer_id)]}})
+    phones = {consent.address_key("sms", p) for p in consent.recipient_candidates(lead, customer, "sms")} - {None}
+    for phone in phones:
+        digits = "".join(c for c in phone if c.isdigit())[-10:]
+        who.append({"phone": {"$regex": f"{digits}$"}})
+    emails = {consent.address_key("email", e) for e in consent.recipient_candidates(lead, customer, "email")} - {None}
+    for email in emails:
+        who.append({"email": {"$regex": f"^\\s*{re.escape(email)}\\s*$", "$options": "i"}})
+    if not who:
+        return None
+    status = {"$or": [{k: _DND_PATTERN} for k in ("fe_lead_status", "lead_status", "status")]}
+    return await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"$and": [{"$or": who}, status]},
+                                                                  projection={"_id": 1})
 
 
 def _lead_created(lead: dict | None) -> datetime | None:
@@ -333,6 +359,11 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     if _is_dnd(lead):
         check("do_not_contact", False, "staff set the lead to DND")
         return Decision("BLOCK", "the lead is on the dealer's do-not-contact list (DND)", "do_not_contact")
+    if other := await _dnd_elsewhere(db, lead, customer, customer_id):
+        check("do_not_contact", False, f"staff set another lead of this customer / phone / email to DND "
+                                       f"({other['_id']})")
+        return Decision("BLOCK", "the customer is on the dealer's do-not-contact list (DND on another of their "
+                                 "leads)", "do_not_contact")
     check("do_not_contact", True, "not on the dealer's do-not-contact list")
 
     marketing_sms = purpose == "marketing" and channel == "sms" and not is_reply

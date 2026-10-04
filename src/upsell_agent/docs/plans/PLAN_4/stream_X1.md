@@ -79,3 +79,12 @@ AI follow-up consent (`_customer_wrote`, unchanged here; the audit flagged it).
 
 Tests: `test_compliance.py::test_platform_opt_in_flag_is_not_marketing_consent` (new; ALLOW before), campaign-queue
 tests now use a customer START as the real consent.
+
+## Item 6: dealer DND carries to the customer, phone and email
+
+`compliance/engine.py` `_dnd_elsewhere`: after the lead's own DND, any of the dealer's leads with the same
+customer id, the same phone (last 10 digits) or the same email (case-insensitive) in DND / Do Not Disturb / Do Not
+Contact blocks every channel and purpose (as the lead's own DND always did), so a new web lead and a re-import under
+a new customer id are both suppressed. Dealer-scoped like everything else (no cross-dealer suppression).
+
+Tests: `tests/unit/test_x1_dnd.py` (3 of 4 failed before; the 4th checks an unrelated customer is unaffected).
