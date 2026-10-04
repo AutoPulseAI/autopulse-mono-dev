@@ -252,6 +252,9 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     AI_CALL_TASKS_COLLECTION: [
         ([("dealer_id", 1), ("status", 1), ("opened_at", -1)], {}),
         ([("dealer_id", 1), ("lead_id", 1), ("status", 1)], {}),
+        # PLAN_4 stream T: the every-minute missed sweep (cross-dealer) and the per-agent missed count.
+        ([("status", 1), ("due_by", 1)], {}),
+        ([("dealer_id", 1), ("missed_at", -1)], {"sparse": True}),
     ],
     # MASTER_PLAN_4 D3 (stream A3).
     AI_VEHICLE_OWNERSHIP_COLLECTION: [
