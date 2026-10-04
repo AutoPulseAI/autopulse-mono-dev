@@ -424,6 +424,31 @@ async def test_day_3_service_yes_is_a_request_with_notes_never_a_booking(mongo):
 
 
 @pytestmark_flow
+async def test_an_anniversary_without_text_consent_goes_by_email_and_tells_staff_why(mongo):
+    """Stream S (stream F's finding): a year on, the customer's own enquiry no longer counts as text consent and
+    there is no opt-in flag, so only the email goes. The consent rule is unchanged; staff get the reason once."""
+    from upsell_agent.integrations.mongodb import PLATFORM_CUSTOMERS_COLLECTION, as_object_id
+
+    created = await _new_lead()
+    await mongo[PLATFORM_CUSTOMERS_COLLECTION].update_one(
+        {"_id": as_object_id(created["customer_id"])}, {"$unset": {"phones.0.sms_opt_in": ""}})
+    await _staff(created, "Sold Delivered")
+    await _fire(mongo, created, "post_delivery_checkin")
+    assert "text_consent_notice_at" not in await _state(mongo, created)  # 3 days on: the enquiry still counts
+    before = len(await _outbox(mongo, created))
+    doc = await _fire(mongo, created, "ownership_anniversary")
+    assert doc["status"] == "sent"
+    sent = (await _outbox(mongo, created))[before:]
+    assert [m["channel"] for m in sent] == ["email"] and "Reply YES or NO" in sent[0]["text"]
+    state = await _state(mongo, created)
+    notice = state["staff_notice"]
+    assert notice["kind"] == "text_consent_missing" and "email only" in notice["text"]
+    assert "written consent" in notice["text"] and "established business relationship" in notice["text"]
+    assert state["text_consent_notice_at"]
+    assert [d["year"] for d in await _pending(mongo, created, "ownership_anniversary")] == [2]
+
+
+@pytestmark_flow
 async def test_day_3_later_is_never_pressured(mongo):
     created = await _new_lead()
     await _staff(created, "Sold Delivered")
