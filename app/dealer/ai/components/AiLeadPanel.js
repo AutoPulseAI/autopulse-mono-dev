@@ -18,6 +18,7 @@ import {
   AI_MODE_LABELS, CHANNEL_LABELS, aiFetch, alertKind, formatDate, formatDateTime, fromNow, stageLabel, stageVariant,
 } from "./aiShared";
 import { vehicleTypeText } from "@lib/ai/aiInsights";
+import RecallsSection from "./RecallsSection";
 
 const OPPORTUNITY_DAYS = 91;
 const HISTORY_SHOWN = 5;
@@ -299,6 +300,8 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
               {EXTRA_SECTIONS.map(([key, title]) => (
                 <ExtraSection key={key} title={title} data={profile[key] || life[key]} />
               ))}
+              {/* PLAN_4 stream X2: confirm / close a recall for a delivered vehicle's VIN. */}
+              {profile?.ownership?.vehicles?.some((v) => v?.vin) && <RecallsSection leadId={leadId} />}
 
               {history.length > 0 && (
                 <Section title="Recent history" icon="fa-clock-rotate-left">

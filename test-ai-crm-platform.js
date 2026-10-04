@@ -22,6 +22,7 @@ import {
   markLeadDndFromAi, statusChangeError,
   validateClosedStatusPayload, validateDndPayload, validateNotePayload,
 } from './app/lib/ai/aiDnd.js';
+import { leadVins, recallRequest } from './app/lib/ai/aiRecalls.js';
 import { cancelBookingsForStatusChange } from './app/lib/ai/aiStaff.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
@@ -583,4 +584,24 @@ test('a Sold Delivered lead cannot be closed as lost (it closes as No Longer Own
   assert.equal(statusChangeError('Sold Pending', 'Closed - Lost'), null); // a pending deal can fall through
   assert.equal(statusChangeError('Sold Delivered', 'DND'), null);
   assert.equal(statusChangeError(undefined, 'Closed - Lost'), null);
+});
+
+// --- PLAN_4 stream X2 item 11: staff confirm / close a recall from the AI panel ----------------------------------
+
+test('recall actions: only a VIN on the lead, confirm or close with a reason, sent to the AI endpoints', () => {
+  const VIN = '1HGCM82633A004352';
+  const profile = { ownership: { vehicles: [{ vin: VIN.toLowerCase() }, { vin: null }, { vin: 'short' }] } };
+  assert.deepEqual(leadVins(profile), [VIN]);
+  assert.deepEqual(leadVins(null), []);
+  const ctx = { dealerId: 'd1', by: 'Sam Staff', vins: [VIN] };
+  assert.deepEqual(recallRequest({ action: 'confirm', vin: VIN, recall_id: '24v123' }, ctx),
+    { path: `/v1/vehicles/${VIN}/recalls/24V123/confirm`, body: { dealer_id: 'd1', by: 'Sam Staff', note: undefined } });
+  const closed = recallRequest({ action: 'close', vin: VIN, recall_id: '24V123', reason: 'completed', note: ' RO 55 ' },
+    ctx);
+  assert.equal(closed.path, `/v1/vehicles/${VIN}/recalls/24V123/close`);
+  assert.deepEqual(closed.body, { dealer_id: 'd1', by: 'Sam Staff', note: 'RO 55', reason: 'completed' });
+  assert.equal(recallRequest({ action: 'close', vin: VIN, recall_id: '24V123' }, ctx).status, 400);
+  assert.equal(recallRequest({ action: 'confirm', vin: '2HGCM82633A004352', recall_id: '24V123' }, ctx).status, 403);
+  assert.equal(recallRequest({ action: 'delete', vin: VIN, recall_id: '24V123' }, ctx).status, 400);
+  assert.equal(recallRequest({ action: 'confirm', vin: VIN, recall_id: '' }, ctx).status, 400);
 });
