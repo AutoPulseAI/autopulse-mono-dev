@@ -47,3 +47,8 @@ the fix.
   `appointment.confirmed = true` (`confirmed_by: staff`) and cancels the pending day-before Y/N; the confirm step
   also re-checks `appointment.confirmed` before sending, and a re-plan for the same time keeps the confirmation.
   Tests: `test_x2_workflow.py::test_staff_confirming_the_booking_*`, `test-ai-layer.js` bookingChangeKind table.
+- **7. Pre-send re-check for cadence touches.** `_cadence_touch_rechecks` adds, beyond status/stage/dealer/send
+  check: a meaningful customer message since the touch was planned that no turn answered (the reply turn failed -
+  the touch is cancelled and the next one planned from now), an upcoming booking on the platform lead the stage
+  missed, and at least one valid, permitted contact point. Tests: `test_a_reply_no_turn_answered_*`,
+  `test_a_booking_the_stage_missed_*`.

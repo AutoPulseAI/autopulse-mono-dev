@@ -1626,6 +1626,38 @@ async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, aft
         "booking_id": doc.get("booking_id"), "reason": None})
 
 
+async def _cadence_touch_rechecks(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, bool, str]]:
+    """Stream X2 (Omnichannel PDF §2, §11 "query current state before any queued action"): beyond the stage, a
+    cadence touch re-reads the customer's latest message, the platform booking and the contact points themselves,
+    so a touch whose reply turn failed, a booking the stage missed or a lead with nothing left to contact can't
+    fire a stale touch."""
+    from upsell_agent.channels import suppression
+    from upsell_agent.tools.booking_tool import find_active_booking
+
+    since = doc.get("created_at")
+    inbound = await db.collection(AI_MESSAGES_COLLECTION).find(
+        {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gt": since}}).to_list(None) \
+        if since else []
+    # Only a message no turn has answered: a reply turn that ran already replaced this touch, and an opt-out or a
+    # message held for staff is handled (and re-checked) elsewhere.
+    replied = [m for m in inbound if not m.get("answered_turn_id") and lifecycle.is_meaningful_reply(m.get("text"))[0]]
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(doc["lead_id"])})
+    booking = await find_active_booking(db.dealer_id, lead)
+    upcoming = False
+    if booking is not None:
+        at = appointment.appointment_at(tz=(await dealer_profile(db.dealer_id)).tz, booking=booking)
+        upcoming = at is None or at >= clock.now() - appointment.NO_SHOW_AFTER
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    reachable = await suppression.contactable_channels(db, doc["customer_id"], lead, customer)
+    return [
+        ("no_reply_since", not replied, "the customer wrote since this touch was planned" if replied
+         else "no reply since it was planned"),
+        ("no_active_booking", not upcoming, "the lead has an appointment booked" if upcoming else "no appointment"),
+        ("contactable", bool(reachable), "no valid, permitted text or email left" if not reachable
+         else f"contactable on {', '.join(reachable)}"),
+    ]
+
+
 async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """A Short-Term / extended cadence touch is due (MASTER_PLAN_3 C4). Checks
     the lead is still being worked, then runs a whole AI turn that writes the
@@ -1651,9 +1683,11 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CADENCE_TOUCH),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
+            *await _cadence_touch_rechecks(db, doc),
         ]
         failed = [c for c in checks if not c[1]]
         check = None
+        replan = any(c[0] == "no_reply_since" for c in failed) and len(failed) == 1
         if not failed:
             # The preferred channel, or the other when only that one is allowed (decision 155).
             channel_now, check = await _permitted_channel(
@@ -1672,6 +1706,12 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         reason = failed[0][2]
         await _close(db, doc, "cancelled", reason=reason)
         await _log(db, tracer, "cadence_touch_cancelled", {"followup_id": touch_id, "reason": reason})
+        if replan:
+            # The customer wrote after this touch was planned and no reply turn replaced it (it failed or is still
+            # to run): the next touch is planned from now instead (the cadence never stops on it).
+            await plan_cadence_touch(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+                                     channel=doc["to_channel"], turn_id=f"cadence-recheck-{touch_id}",
+                                     first_contact_done=True)
         return "cancelled"
     if check.outcome == "HOLD" and check.until:
         await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(

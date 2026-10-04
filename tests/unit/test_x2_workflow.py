@@ -224,3 +224,50 @@ async def test_staff_confirming_the_booking_in_the_crm_confirms_the_appointment_
     set_clock(datetime(2026, 10, 8, 18, 0, tzinfo=NY))  # Thursday evening, after the day-before slot
     await followups.fire_due(_deps())
     assert not any("Please reply Y for Yes" in m["text"] for m in await _outbox(mongo, created))
+
+
+
+# --- Item 7: the cadence touch's own pre-send re-check ---------------------------------------------------------------
+
+async def _due_touch(mongo, created) -> dict:
+    [touch] = await _pending(mongo, created, "cadence_touch")
+    return touch
+
+
+@flow
+async def test_a_reply_no_turn_answered_stops_the_stale_touch_and_the_cadence_goes_on(mongo):
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION
+    created = await _new_lead()
+    touch = await _due_touch(mongo, created)
+    # The customer wrote, but the reply turn failed: nothing replaced the queued touch.
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({
+        "dealer_id": DEALER, "lead_id": created["lead_id"], "customer_id": created["customer_id"], "direction": "inbound",
+        "channel": "sms", "text": "Is it still available in blue?", "created_at": clock.now() + timedelta(minutes=5),
+        "answered_turn_id": None})
+    before = len(await _outbox(mongo, created))
+    set_clock(touch["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    fired = await followups.fire_due(_deps())
+    assert fired["results"].get("cancelled") and not fired["results"].get("sent")
+    assert len(await _outbox(mongo, created)) == before
+    assert len(await _pending(mongo, created, "cadence_touch")) == 1  # planned again, from now
+
+
+@flow
+async def test_a_booking_the_stage_missed_stops_the_cadence_touch(mongo):
+    from upsell_agent.integrations.mongodb import (
+        PLATFORM_BOOKINGS_COLLECTION,
+        PLATFORM_LEADS_COLLECTION,
+        as_object_id,
+    )
+    created = await _new_lead()
+    touch = await _due_touch(mongo, created)
+    when = clock.now() + timedelta(days=5)
+    booking = await mongo[PLATFORM_BOOKINGS_COLLECTION].insert_one({
+        "dealer_id": DEALER, "lead_id": created["lead_id"], "booking_status": "pending",
+        "bookingDate": datetime(when.year, when.month, when.day, tzinfo=NY).astimezone(UTC), "bookingTime": "10:00"})
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                     {"$set": {"data.bookingId": str(booking.inserted_id)}})
+    before = len(await _outbox(mongo, created))
+    set_clock(touch["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    fired = await followups.fire_due(_deps())
+    assert not fired["results"].get("sent") and len(await _outbox(mongo, created)) == before
