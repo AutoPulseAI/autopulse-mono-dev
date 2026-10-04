@@ -16,6 +16,8 @@
 import { Queue, UnrecoverableError } from 'bullmq';
 import Redis from 'ioredis';
 
+import { storeUndeliveredEvent } from './aiOutbox.js';
+
 // booking-changed: staff cancelled or moved a booking (PLAN_4 stream S, aiStaff.notifyAiOfBookingChange).
 export const AI_EVENT_TYPES = Object.freeze(['lead-created', 'inbound-message', 'lead-paused', 'lead-resumed',
   'booking-changed']);
@@ -117,6 +119,7 @@ async function defaultEnqueueRetry(type, payload) {
 export async function sendAiEvent(type, payload, {
   post = postAiEvent,
   enqueueRetry = defaultEnqueueRetry,
+  storeUndelivered = storeUndeliveredEvent,
   logger = console,
 } = {}) {
   try {
@@ -133,7 +136,15 @@ export async function sendAiEvent(type, payload, {
       logger.warn?.('[ai] event delivery failed; queued for retry', { type, event_id: payload?.event_id, error: error?.message });
       return { status: 'queued_for_retry', error: error?.message };
     } catch (queueError) {
-      logger.error?.('[ai] event LOST: delivery and retry queue both failed', {
+      // PLAN_4 stream X3 item 6: kept in MongoDB and replayed later (aiOutbox.js), not lost.
+      const stored = await storeUndelivered(type, payload, { reason: error?.message, logger });
+      if (stored) {
+        logger.warn?.('[ai] event delivery and retry queue failed; stored for replay', {
+          type, event_id: payload?.event_id, error: error?.message, queue_error: queueError?.message,
+        });
+        return { status: 'stored_for_replay', error: error?.message };
+      }
+      logger.error?.('[ai] event LOST: delivery, retry queue and outbox all failed', {
         type, event_id: payload?.event_id, error: error?.message, queue_error: queueError?.message,
       });
       return { status: 'lost', error: error?.message };
@@ -143,12 +154,18 @@ export async function sendAiEvent(type, payload, {
 
 // BullMQ processor for the retry queue (registered in app/worker/worker.js).
 // Throwing makes BullMQ retry; UnrecoverableError stops the retries.
-export async function processAiEventRetryJob(job, { post = postAiEvent } = {}) {
+// PLAN_4 stream X3 item 6: the last failed attempt stores the event for replay (aiOutbox.js) instead of
+// leaving it as a failed BullMQ job nobody looks at.
+export async function processAiEventRetryJob(job, { post = postAiEvent, storeUndelivered = storeUndeliveredEvent } = {}) {
   const { type, payload } = job.data;
   try {
     return await post(type, payload);
   } catch (error) {
     if (error?.retryable === false) throw new UnrecoverableError(error.message);
+    const attempts = job.opts?.attempts ?? AI_EVENT_RETRY_OPTIONS.attempts;
+    if ((job.attemptsMade ?? 0) + 1 >= attempts) {
+      await storeUndelivered(type, payload, { reason: error?.message });
+    }
     throw error;
   }
 }
