@@ -34,6 +34,7 @@ LABELS = {
     "not_interested": "Not interested",
     "bad_contact": "Contact problem",
     "text_consent_missing": "Email only - no text consent",
+    "call_escalation": "Requested call not made in 5 minutes",  # PLAN_4 stream X2
 }
 MAX_TEXT = 1500
 

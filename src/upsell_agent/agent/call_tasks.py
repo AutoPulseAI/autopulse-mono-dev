@@ -51,6 +51,18 @@ from upsell_agent.integrations.mongodb import (
 CONNECTION_WINDOW = timedelta(minutes=60)
 OPEN, COMPLETED, DISMISSED, CANCELLED = "open", "completed", "dismissed", "cancelled"
 MISSED = "missed"  # stream T: not completed by the end of its window / the agent's day
+# Stream X2 (Sales Lead Blueprint box 8: "Requests phone call -> call within 5 minutes (business hours)"): a call
+# the customer asked for, opened while the dealership is open, is due this soon. Not made by then: the team is
+# alerted (staff notice + CRM note) and the task stays open until the end of the agent's day.
+REQUESTED_CALL_SLA = timedelta(minutes=5)
+
+
+async def _requested_due(db: DealerScopedDatabase, now: datetime) -> dict[str, Any]:
+    profile = await dealer_profile(db.dealer_id)
+    if not profile.is_open(now):
+        return {}
+    return {"due_by": now + REQUESTED_CALL_SLA, "sla_due_by": now + REQUESTED_CALL_SLA,
+            "day_due_by": await end_of_agent_day(db.dealer_id, now)}
 OUTCOMES = {"connected", "no_answer", "voicemail", "wrong_number", "other"}
 
 
@@ -70,7 +82,8 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     if existing:
         if requested and not existing.get("requested"):
             await tasks.update_one({"_id": existing["_id"]}, {"$set": {"requested": True, "reason": reason,
-                                                                        "phone": phone}})
+                                                                        "phone": phone,
+                                                                        **await _requested_due(db, clock.now())}})
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
                 "staff_notice": {"at": clock.now(), "kind": "call_task", "text": text, "reason": reason}}})
             existing = {**existing, "requested": True, "reason": reason, "phone": phone}
@@ -81,7 +94,8 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
            "timer_started_at": created_at, "opened_at": now, "created_at": now, "requested": requested,
            # stream T: who should call, and when it counts as missed.
            "source": "connection_timer", "assigned_to": await assigned_agent(db, lead_id),
-           "due_by": await end_of_agent_day(db.dealer_id, now), **(extra or {})}
+           "due_by": await end_of_agent_day(db.dealer_id, now),
+           **(await _requested_due(db, now) if requested else {}), **(extra or {})}
     inserted = await tasks.insert_one(doc)
     doc["_id"] = inserted.inserted_id
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
@@ -159,11 +173,17 @@ async def mark_missed(now: datetime | None = None, *, limit: int = 1000) -> int:
     existed are left alone."""
     now = now or clock.now()
     rows = await get_db()[AI_CALL_TASKS_COLLECTION].find(
-        {"status": OPEN, "due_by": {"$lte": now}}, projection={"dealer_id": 1, "lead_id": 1, "due_by": 1}
+        {"status": OPEN, "due_by": {"$lte": now}},
+        projection={"dealer_id": 1, "lead_id": 1, "due_by": 1, "sla_due_by": 1, "day_due_by": 1, "escalated_at": 1,
+                    "customer_name": 1, "phone": 1}
     ).to_list(limit)
     count = 0
     for row in rows:
         db = dealer_scoped_db(row["dealer_id"])
+        day_end = _aware(row.get("day_due_by"))
+        if row.get("sla_due_by") and not row.get("escalated_at") and day_end and day_end > now:
+            await _escalate_requested(db, row, now)
+            continue
         result = await db.collection(AI_CALL_TASKS_COLLECTION).update_one(
             {"_id": row["_id"], "status": OPEN},
             {"$set": {"status": MISSED, "missed_at": now, "closed_at": now,
@@ -177,6 +197,25 @@ async def mark_missed(now: datetime | None = None, *, limit: int = 1000) -> int:
         await state.update_one({"lead_id": row["lead_id"], "call_task.id": str(row["_id"])},
                                {"$unset": {"call_task": ""}})
     return count
+
+
+async def _escalate_requested(db: DealerScopedDatabase, row: dict[str, Any], now: datetime) -> None:
+    """Stream X2: the customer's requested call wasn't made within REQUESTED_CALL_SLA. It stays open (the call is
+    still owed) until the end of the agent's day; the team is told now, on the AI panel and in the CRM."""
+    result = await db.collection(AI_CALL_TASKS_COLLECTION).update_one(
+        {"_id": row["_id"], "status": OPEN, "escalated_at": None},
+        {"$set": {"escalated_at": now, "due_by": row["day_due_by"], "sla_missed": True}})
+    if not result.modified_count:
+        return
+    minutes = int(REQUESTED_CALL_SLA.total_seconds() // 60)
+    who, phone = row.get("customer_name") or "The customer", row.get("phone")
+    text = (f"Escalation: {who} asked for a phone call and nobody has called"
+            f"{' ' + phone if phone else ''} within {minutes} minutes. Please call now.")
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": row["lead_id"]}, {"$set": {
+        "staff_notice": {"at": now, "kind": "call_escalation", "text": text}}})
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=row["lead_id"], kind="call_escalation", text=text,
+                          key=f"call_escalation:{row['_id']}")
 
 
 async def missed_by_agent(db: DealerScopedDatabase, *, since: datetime | None = None) -> list[dict[str, Any]]:

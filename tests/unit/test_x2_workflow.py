@@ -166,3 +166,33 @@ async def test_the_visit_follow_up_goes_on_text_and_email_and_starts_the_call_ch
     await followups.fire_due(_deps())
     assert {m["channel"] for m in (await _outbox(mongo, created))[before:]} == {"sms", "email"}
     assert len(await _pending(mongo, created, "call_task")) == 1
+
+
+
+# --- Item 4: "call within 5 minutes" during business hours (Sales Lead Blueprint box 8) ---------------------------
+
+@flow
+async def test_a_requested_call_is_due_in_5_minutes_and_escalates_when_it_isnt_made(mongo):
+    from upsell_agent.agent import call_tasks, crm_notes
+    from upsell_agent.integrations.mongodb import AI_CALL_TASKS_COLLECTION, dealer_scoped_db
+    created = await _new_lead()
+    db = dealer_scoped_db(DEALER)
+    now = clock.now()
+    task = await call_tasks.open_task(db, lead_id=created["lead_id"], customer_id=created["customer_id"],
+                                      phone="+15550100001", customer_name="Maria Test", reason="asked for a call",
+                                      source_turn_id=None, followup_id=None, created_at=now, requested=True)
+    assert abs(task["due_by"] - (now + timedelta(minutes=5))) < timedelta(seconds=2)
+    assert await call_tasks.mark_missed(now + timedelta(minutes=4)) == 0
+    assert await call_tasks.mark_missed(now + timedelta(minutes=6)) == 0  # escalated, not missed: still owed
+    row = await mongo[AI_CALL_TASKS_COLLECTION].find_one({"_id": task["_id"]})
+    assert row["status"] == "open" and row["escalated_at"] and row["sla_missed"] is True
+    state = await _state(mongo, created)
+    assert state["staff_notice"]["kind"] == "call_escalation" and "5 minutes" in state["staff_notice"]["text"]
+    note = await mongo[crm_notes.AI_CRM_NOTES_COLLECTION].find_one({"key": f"call_escalation:{task['_id']}"})
+    assert note and note["status"] == "written" and "Requested call not made" in note["text"]
+    # The ordinary 60-minute task keeps the end of the agent's day.
+    other = await _new_lead()
+    plain = await call_tasks.open_task(db, lead_id=other["lead_id"], customer_id=other["customer_id"],
+                                       phone="+15550100002", customer_name=None, reason="no contact",
+                                       source_turn_id=None, followup_id=None, created_at=now)
+    assert plain["due_by"] > now + timedelta(hours=1) and "sla_due_by" not in plain

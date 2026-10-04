@@ -35,3 +35,9 @@ the fix.
   audit 3 race where a SOLD PENDING timer opened after Sold Delivered). The workday cap (stream T) still applies
   at fire time. Already covered before: SOLD PENDING touches, the specific follow-up check-back, Touch 1, cadence.
   Birthday / anniversary never start one. Tests: `test_x2_workflow.py::test_the_confirmation_*`, `*visit_follow_up*`.
+- **4. "Call within 5 minutes" (blueprint box 8).** `agent/call_tasks.py`: a customer-requested call task opened
+  while the dealership is open gets `due_by = now + 5 min` (`REQUESTED_CALL_SLA`). When `mark_missed` reaches it
+  still open, it is *escalated* instead of missed: `escalated_at`, `sla_missed`, a `call_escalation` staff notice
+  and a CRM note ("Requested call not made in 5 minutes"); the task stays open until the end of the agent's day,
+  then is missed as before. Requested tasks opened outside hours open at calling hours and get the 5 minutes then.
+  Test: `test_x2_workflow.py::test_a_requested_call_is_due_in_5_minutes_and_escalates_when_it_isnt_made`.
