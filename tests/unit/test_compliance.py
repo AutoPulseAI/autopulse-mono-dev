@@ -372,9 +372,10 @@ async def test_possible_opt_out_opens_a_review_with_a_plain_reply(mongo, dealers
     assert await consent.open_review(db, created["customer_id"])
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["staff_notice"]["kind"] == "possible_opt_out"
-    # Marketing stops; a transactional text doesn't.
+    # Marketing stops, and (PLAN_4 stream X1 item 3) so does every other automated text; a reply still goes.
     assert (await _check(created)).outcome == "REVIEW"
-    assert (await _check(created, purpose="transactional")).outcome == "ALLOW"
+    assert (await _check(created, purpose="transactional")).outcome == "REVIEW"
+    assert (await _check(created, purpose="reply", is_reply=True)).outcome == "ALLOW"
 
     # The customer writes again with something that isn't an opt-out: resolved.
     await handlers.handle_inbound_message(_inbound(created, "Actually, is the CR-V still there?"), _deps())

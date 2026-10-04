@@ -45,3 +45,17 @@ Now (`compliance/engine.py`, `events/handlers.py`, `agent/turn.py`):
 
 Tests: `tests/unit/test_x1_first_reply.py` (P1, P2, CSV import, consumer inquiry ALLOW, 23:30 held then sent at
 8:00 with the choice, after closing inside the window, customer writes first, open review). 7 of 8 failed before.
+
+## Item 3: an open REVIEW stops every automated send; it isn't cleared just because the customer wrote
+
+- `compliance/engine.py` rule 6: an open review now stops everything the system starts (marketing, the first
+  message, transactional: the countdown with its photo, no-show follow-ups, sold-pending touches). A reply to the
+  customer's own message still goes (rule 5 comes first), as does the holding reply on a handed-off lead.
+- `events/handlers.py` no longer resolves the review on any new customer message. `agent/turn.py`
+  `_resolve_review_if_answered` resolves it (source `customer_answered_review`) only when Extract saw no possible
+  opt-out in the new message and `opt_out.answers_review` says it clearly engages: real words (3+, or a 2-word
+  question), not a bare "ok"/"why", none of the stop / remove / "too many" / "not interested" vocabulary. Otherwise
+  it stays open for staff (DND) or an admin resume (`handle_lead_resumed`, unchanged).
+
+Tests: `tests/unit/test_x1_review.py` (failed before: import + behaviour); `test_compliance.py` review test updated
+(transactional under review is now REVIEW).

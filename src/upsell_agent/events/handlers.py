@@ -533,11 +533,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             # message is answered (decision 138).
             await _opt_back_in(db, event, lead, customer, lead_id, state, opt_in, message)
 
-    # A possible opt-out under review is resolved by the customer writing
-    # again with something that isn't one (decision 72). This message may
-    # open a new review in its own turn.
-    await _resolve_review(db, event.customer_id, lead_id, "customer_wrote_again",
-                          {"message": unanswered[-1]["text"]})
+    # A possible opt-out under review is no longer resolved just because the customer wrote again (PLAN_4 stream
+    # X1 item 3): the AI turn resolves it only on a clearly non-opt-out message that answers it
+    # (agent/turn.py _resolve_review_if_answered); otherwise staff or an admin resume do (decision 72).
 
     meaningful_now, _ = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
     if meaningful_now and not event.shadow:

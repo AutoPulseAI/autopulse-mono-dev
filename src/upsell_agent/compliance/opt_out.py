@@ -212,6 +212,25 @@ def detect_opt_in(text: str) -> OptIn | None:
     return None
 
 
+# Words that keep a possible opt-out open (PLAN_4 stream X1 item 3): the customer may still be asking us to stop.
+_REVIEW_DOUBT = re.compile(
+    r"\b(?:stop|stopp\w*|unsub\w*|remove|quit|cancel|opt|end|enough|spam\w*|block\w*|harass\w*|annoy\w*|"
+    r"bother\w*|leave|alone|too\s+(?:many|much|often)|so\s+(?:many|much)|keep\s+(?:texting|messaging|calling|emailing)|who\s+is\s+this|"
+    r"wrong\s+(?:number|person)|lawyer|report|complain\w*|not\s+interested|no\s+thanks|nope)\b")
+_BARE = re.compile(r"^(?:ok(?:ay)?|k|kk|yes|yeah|yep|no|nah|sure|fine|thanks|thank\s+you|ty|hm+|what|huh|why|lol)$")
+
+
+def answers_review(text: str) -> bool:
+    """A message that clearly isn't an opt-out and engages with the conversation, so it can resolve an open
+    review (decision 72): at least three words (or a question of two), none of the stop / remove / "too many"
+    vocabulary, not a bare "ok" or "why"."""
+    lowered = _normalize(text)
+    words = lowered.split()
+    if not words or _BARE.match(lowered) or _REVIEW_DOUBT.search(lowered) or detect_opt_out(text, "sms"):
+        return False
+    return len(words) >= 3 or ("?" in (text or "") and len(words) >= 2)
+
+
 def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
     """The customer's message as an opt-out, or None. `channel` is the one
     it arrived on (a keyword stops that channel)."""

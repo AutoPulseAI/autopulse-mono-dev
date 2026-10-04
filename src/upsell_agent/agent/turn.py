@@ -334,6 +334,8 @@ async def run_turn(
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
+        if not review and trigger == "inbound_message":
+            await _resolve_review_if_answered(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
             outcome = "template_reply"
@@ -687,6 +689,32 @@ async def _open_review_if_possible_opt_out(db: DealerScopedDatabase, lead_id: st
                                    "text": f"Possible opt-out, please review: {text!r}. Marketing is stopped "
                                            "until the customer writes again or the AI is resumed; set the "
                                            "lead to DND if it was an opt-out."}}})
+    return True
+
+
+async def _resolve_review(db: DealerScopedDatabase, lead_id: str, customer_id: str, text: str,
+                          channel: str) -> None:
+    await consent.record_consent(db, customer_id=customer_id, channel="all", consent_type="review",
+                                 status="resolved", source="customer_answered_review", lead_id=lead_id,
+                                 evidence={"message": text, "channel": channel})
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                             {"$set": {"compliance_review": None}})
+
+
+async def _resolve_review_if_answered(db: DealerScopedDatabase, lead_id: str | None, customer_id: str,
+                                      result: dict[str, Any], text: str, channel: str) -> bool:
+    """PLAN_4 stream X1 item 3 (decision 72): an open review is resolved by the customer only with a message that
+    clearly isn't an opt-out and answers it (opt_out.answers_review: real words, no stop / remove / "too many"
+    vocabulary, not a bare "ok"), and only when Extract saw no sign of an opt-out in it. Anything else leaves it
+    open for staff (DND) or an admin resume."""
+    from upsell_agent.compliance.opt_out import answers_review
+
+    if not lead_id or not await consent.open_review(db, customer_id):
+        return False
+    extraction = result.get("extraction") or {}
+    if extraction.get("possible_opt_out") or not answers_review(text):
+        return False
+    await _resolve_review(db, lead_id, customer_id, text, channel)
     return True
 
 

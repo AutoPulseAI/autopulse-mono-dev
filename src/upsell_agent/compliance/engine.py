@@ -383,8 +383,9 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                                  "out, asks nothing, and says the team picks up at 8:00", "reply_quiet_hours",
                         quiet_hours=True, resume_at=resume, zone=zone.as_dict())
 
-    # 6. An open review stops marketing and the first message on a lead.
-    if purpose in ("marketing", "lead_response") and customer_id and (review := await consent.open_review(db, customer_id)):
+    # 6. An open review stops everything the system starts (PLAN_4 stream X1 item 3: transactional too - the
+    # countdown with its photo, the no-show follow-up); only a reply to the customer's own message goes (rule 5).
+    if customer_id and (review := await consent.open_review(db, customer_id)):
         quote = (review.get("evidence") or {}).get("message")
         check("review", False, f"possible opt-out awaiting review: {quote!r}")
         return Decision("REVIEW", f"possible opt-out awaiting review ({quote!r})", "review_open",
