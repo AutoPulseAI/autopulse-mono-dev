@@ -322,6 +322,18 @@ async def find_active_booking(dealer_id: str, lead: dict | None) -> dict[str, An
     return row
 
 
+async def booking_cancelled(dealer_id: str, lead: dict | None) -> bool:
+    """The lead's own booking (`data.bookingId`) exists and is cancelled on the platform. The lead keeps its
+    booking date/time fields after a cancel on the CRM's booking screen (PUT /api/booking, which tells the AI
+    nothing), so those must not be read as a standing appointment (stream F)."""
+    booking_id = ((lead or {}).get("data") or {}).get("bookingId")
+    if not booking_id:
+        return False
+    row = await get_db()[PLATFORM_BOOKINGS_COLLECTION].find_one(
+        {"_id": as_object_id(str(booking_id)), "dealer_id": dealer_id})
+    return bool(row) and row.get("booking_status") == "cancelled"
+
+
 async def ensure_booking(platform: PlatformClient, *, dealer_id: str, dealer: DealerProfile, lead: dict | None,
                          lead_id: str, customer_name: str, email: str, phone: str, when: datetime,
                          notes: str | None) -> dict[str, Any]:

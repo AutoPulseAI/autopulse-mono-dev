@@ -496,6 +496,28 @@ async def test_the_pre_send_recheck_stops_a_step_whose_appointment_moved(mongo):
 
 
 @pytestmark_flow
+async def test_a_booking_cancelled_on_the_crm_screen_sends_nothing_and_goes_back_to_follow_up(mongo):
+    """Stream F (crm-cadence-check 4m/4n): staff cancel on the CRM's booking screen (PUT /api/booking, which tells
+    the AI nothing). The lead keeps its booking date/time fields; they must not count as a standing appointment."""
+    created, booking = await _booked_friday(mongo)
+    appt = datetime.combine(booking["bookingDate"].replace(tzinfo=UTC).astimezone(NY).date(),
+                            datetime.strptime(booking["bookingTime"], "%H:%M").time(), tzinfo=NY)
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])}, {"$set": {
+        "booking": {"booking_at": appt.astimezone(UTC), "booking_time": booking["bookingTime"]}}})
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]},
+                                                         {"$set": {"booking_status": "cancelled"}})
+    before = len(await _outbox(mongo, created))
+    step = (await _steps(mongo, created))[0]
+    set_clock(step["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    fired = await followups.fire_due(_deps())
+    assert "sent" not in fired["results"] and len(await _outbox(mongo, created)) == before
+    assert await _steps(mongo, created) == []
+    assert (await _state(mongo, created))["stage"] == "contact_made_no_next_action"
+    assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
+
+
+@pytestmark_flow
 async def test_opting_out_of_every_channel_cancels_the_appointment_messages(mongo):
     created, _ = await _booked_friday(mongo)
     await _say(created, "STOP")

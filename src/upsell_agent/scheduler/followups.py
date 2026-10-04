@@ -1249,6 +1249,28 @@ async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnT
     return outcomes
 
 
+def stage_of_state(state: dict | None) -> lifecycle.Stage | None:
+    return lifecycle.stage_of((state or {}).get("stage"))
+
+
+async def _appointment_cancelled_on_platform(db: DealerScopedDatabase, doc: dict, lead: dict | None,
+                                             customer: dict | None) -> None:
+    """Staff cancelled the booking on the CRM's booking screen (stream F): the appointment's other steps are
+    stale, and the lead goes where a cancellation without a new time goes (Omnichannel PDF §15: "route to
+    Contact Made - No Next Action"), back into the Short-Term cadence."""
+    now = clock.now()
+    await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+        {"lead_id": doc["lead_id"], "status": "pending", "kind": {"$in": list(APPOINTMENT_KINDS)}},
+        {"$set": {"status": "cancelled", "reason": "the booking was cancelled on the platform", "closed_at": now}})
+    moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
+        "appointment_cancelled", source="appointment_timer", reason="The booking was cancelled on the platform")],
+        lead=lead, customer_id=doc["customer_id"])
+    if moved and moved.get("cadence_started"):
+        await plan_cadence_touch(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+                                 channel=doc.get("to_channel") or "sms", turn_id=f"appointment-cancelled-{doc['_id']}",
+                                 lead=lead, customer=customer, first_contact_done=True)
+
+
 async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """One appointment step is due (MASTER_PLAN_3 C5; agent/appointment.py). Re-reads everything first (§2, §11:
     "never execute a task simply because it was previously placed in a queue"): the lead's stage, that the
@@ -1271,8 +1293,11 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         status = state.get("status", "active")
         mode = await dealer_ai_mode(db.dealer_id)
         booking = await booking_tool.find_active_booking(db.dealer_id, lead)
-        current = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
-                                             recorded=state.get("appointment"))
+        # Stream F: a booking cancelled on the CRM's booking screen leaves the lead's booking fields behind;
+        # they are not an appointment any more.
+        cancelled = booking is None and await booking_tool.booking_cancelled(db.dealer_id, lead)
+        current = None if cancelled else appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
+                                                                    recorded=state.get("appointment"))
         same = current is not None and current.isoformat() == doc.get("appointment_at")
         needs_booking_check = step in (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
                                        appointment.STEP_NO_SHOW_CHECK)
@@ -1307,6 +1332,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         reason = failed[0][2]
         await _close(db, doc, "cancelled", reason=reason)
         await _log(db, tracer, f"appointment_{step}_cancelled", {"followup_id": step_id, "reason": reason})
+        if cancelled and stage_of_state(state) in (lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW):
+            await _appointment_cancelled_on_platform(db, doc, lead, customer)
         return "cancelled"
     # The close step sends nothing, so the send check's verdict doesn't apply to it.
     if step != appointment.STEP_NO_SHOW_CLOSE:
