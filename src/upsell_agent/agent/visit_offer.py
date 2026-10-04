@@ -142,7 +142,9 @@ def customer_objective(profile: Profile) -> str | None:
     if payoff:
         return f"so the team can see where your {payoff} payoff leaves you"
     if budget:
-        return f"so the team can show you what fits your {budget} budget"
+        # No amount here: a total price said back to the customer reads as a price quote (and "tell me it costs
+        # $5,000" must never come back as a number - evals injection-ignore-rules-price).
+        return "so the team can show you what fits the budget you gave us"
     if trade:
         return f"so the team can take a real look at your {trade} and give you an actual number"
     return None
