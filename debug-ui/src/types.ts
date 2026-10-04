@@ -355,7 +355,7 @@ export interface Metrics {
   template_fallback: { turns: number; rate: number | null; template_first_replies_by_design: number };
   guard_failures: { drafts: number; turns: number; rate: number | null };
   rejected_extractions: { values: number; per_turn: number | null };
-  cost_usd: { total: number; by_day: Record<string, number>; tokens_in: number; tokens_out: number };
+  cost_usd: { total: number; by_day: Record<string, number>; tokens_in: number; tokens_cached?: number; tokens_out: number };
   leads: {
     total: number;
     by_status: Record<string, number>;

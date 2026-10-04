@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import duplicates, lifecycle
+from upsell_agent.agent import duplicates, human_contact, lifecycle
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -325,6 +325,12 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                     lead_id=lead_id, address=_address(lead, customer, stopped),
                     evidence={"message": message["text"], "matched": opt_out.matched,
                               "message_id": str(message["_id"]), "channel": channel})
+            if opt_out.channels == ("voice",) and opt_out.kind == "phrase" and human_contact.asks_for_person(
+                    message["text"]):
+                # PLAN_4 stream H: "don't call me, can a person text me?" - calls stop (above), and the request
+                # for a person goes on to the turn (a text from the team, never a call) instead of being
+                # swallowed by the opt-out confirmation.
+                continue
             scope = ", ".join(opt_out.channels)
             if not event.shadow and await _every_channel_stopped(db, event.customer_id):
                 # MASTER_PLAN_3 C3: the stage is Opted Out only when nothing is left to contact them on;
@@ -396,7 +402,7 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     meaningful_now, _ = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
     if meaningful_now and not event.shadow:
         # MASTER_PLAN_3 C2: contact within the 60 minutes (or while the task was open): no call needed.
-        await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True)
+        await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True, keep_requested=True)
 
     if state["status"] in SILENT_STATUSES:
         # Staff own this conversation (or the customer opted out): the AI
@@ -622,7 +628,8 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     )
     cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
     # Staff have the lead (a reply, a status move): no call task is needed, waiting or open.
-    await cancel_call_task(db, event.lead_id, reason="staff took over the lead", include_open=True)
+    await cancel_call_task(db, event.lead_id, reason="staff took over the lead", include_open=True,
+                           keep_requested=True)
     return {"status": "paused", "followups_cancelled": cancelled,
             **({"stage_change": stage_change} if stage_change else {}), **extra}
 

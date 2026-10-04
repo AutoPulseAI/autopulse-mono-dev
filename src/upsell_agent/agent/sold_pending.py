@@ -176,8 +176,8 @@ def render_touch(touch_number: int, *, first_name: str | None, dealership: str |
         body = (f"{hi}, thanks again for choosing us for {car}! Just checking in: have you been able to provide "
                 "everything your salesperson requested? And do you have any questions about your purchase?")
     elif theme == "support_check_in":
-        body = (f"{hi}, checking in from {team}. Is there anything you need from your salesperson or from us, "
-                "and have any questions come up about your purchase?")
+        body = (f"{hi}, checking in from {team}. Is there anything you need from your salesperson or from us? "
+                "Have any questions come up about your purchase?")
     elif theme == "purchase_vehicle_check_in":
         body = (f"{hi}, if you have any questions about {car} or about the purchase process, we're happy to help. "
                 "Is there anything we can answer for you?")

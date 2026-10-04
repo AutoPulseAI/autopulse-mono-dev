@@ -1,0 +1,14 @@
+name: A staff call outcome reaches the AI
+stage: 405
+description: PLAN_4 stream H. The customer asks for a call; staff call and record "agreed a specific follow-up" for the AI to own. The lead moves to Contact Made - Specific Follow-Up with the AI's dated next step (the same structure as "call me Friday"), goes back to the AI from the handoff, and the check-back is scheduled at the agreed time.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: o, dealer: A, lead_type: sales, channel: sms, name: Omar Outcome, comments: "Interested in a used RAV4"}
+  - wait_turns: {lead: o, count: 1, timeout_s: 20}
+  - reply: {lead: o, text: "Can someone call me?"}
+  - wait_turns: {lead: o, count: 2, timeout_s: 20}
+  - expect_call_task: {lead: o, status: open}
+  - call_outcome: {lead: o, outcome: connected, lead_outcome: specific_followup, follow_up: {date: "+3d", time: "15:00", channel: sms, owner: ai, notes: "Numbers on the RAV4"}}
+  - expect_call_task: {lead: o, status: completed}
+  - expect_lead: {lead: o, status: active, stage: contact_made_specific_followup, next_action: true}
+  - expect_followup: {lead: o, kind: next_action, status: pending, due_local: "15:00"}

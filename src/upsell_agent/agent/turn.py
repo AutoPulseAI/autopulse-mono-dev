@@ -25,7 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, lead_bucket, lifecycle, service_request
+from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -273,6 +273,15 @@ async def run_turn(
                         + ("" if check["hours_from_record"] else ", default hours") + "). If nobody has taken "
                         "the lead over by then, the customer gets one more holding reply and staff get an alert.")
                     span.edge_label = "staff check"
+                    # PLAN_4 stream H: the customer chose a call or a text from a person - staff get the call
+                    # task (now, or at the next calling time) or the "wants a text" notice.
+                    person = await human_contact.act_after_send(
+                        db, decision, lead_id=lead_id, customer_id=customer_id,
+                        customer_name=(customer or {}).get("name") or (lead or {}).get("name"),
+                        turn_id=tracer.turn_id)
+                    if person:
+                        span.output = {**(span.output or {}), "human_contact": person}
+                        span.reasoning.append(f"Speak to a person ({person['mode']}): {person['reason']}.")
                 after_hours = await _after_hours_followup(db, decision, sent, lead_id=lead_id, lead=lead,
                                                           customer=customer, customer_id=customer_id,
                                                           channel=channel, turn_id=tracer.turn_id, shadow=shadow)
@@ -304,6 +313,7 @@ async def run_turn(
             # MASTER_PLAN_4 F2: a service visit is requested, not booked - the team gets the request and notes.
             await service_request.notify_team(db, deps.platform, dealer_id=dealer_id, lead_id=lead_id,
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
+            await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
 
         if result.get("used_template") and not result.get("used_fallback"):
@@ -324,6 +334,8 @@ async def run_turn(
             "required": {"filled": decision.get("required_filled"), "total": decision.get("required_total")},
             "ai_calls": ctx.ai_calls,
             "tokens_in": sum(c.get("tokens_in") or 0 for c in calls),
+            # Stream G: the part of tokens_in served from OpenAI's prompt cache (billed at the cached price).
+            "tokens_cached": sum(c.get("tokens_cached") or 0 for c in calls),
             "tokens_out": sum(c.get("tokens_out") or 0 for c in calls),
             "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 6),
             "campaign_id": (result.get("campaign") or {}).get("campaign_id"),
@@ -571,6 +583,22 @@ async def _visit_followup_schedule(db: DealerScopedDatabase, decision: dict[str,
     return None
 
 
+async def _note_not_interested(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                               decision: dict[str, Any], turn_id: str) -> None:
+    """MASTER_PLAN_4 (stream R): the customer is no longer interested and the lead goes to a person - the reason, in
+    their own words, as a staff note in the CRM conversation (agent/crm_notes.py)."""
+    info = decision.get("not_interested") or {}
+    if not lead_id or info.get("mode") != "handoff":
+        return
+    from upsell_agent.agent import crm_notes
+    reason = info.get("reason")
+    text = (f"The customer says they're no longer interested. Their reason: {reason!r}." if reason else
+            "The customer says they're no longer interested and gave no reason after being asked.")
+    await crm_notes.write(db, lead_id=lead_id, kind="not_interested", platform=platform, customer_id=customer_id,
+                          key=f"{turn_id}:not_interested",
+                          text=text + " The AI has stopped following up; a person decides whether to close the lead.")
+
+
 async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[str, Any]) -> None:
     """The team is told of every booking, move or cancel (B5 item 6), with
     the known-gap notes (architecture §15 decisions 58-59: old reminders and
@@ -742,6 +770,15 @@ def _after_hours_record(result: dict[str, Any]) -> dict | None:
     return plan.get("record")
 
 
+def _human_contact_record(result: dict[str, Any]) -> dict | None:
+    """PLAN_4 stream H: the call-or-text state as this turn leaves it. An offer only counts when the AI-written
+    reply (which carries the question) went out, not a template - the same rule as _after_hours_record."""
+    plan = (result.get("decision") or {}).get("human_contact") or {}
+    if plan.get("mode") == human_contact.OFFER and result.get("used_template"):
+        return None
+    return plan.get("record")
+
+
 def _visit_record(result: dict[str, Any]) -> dict | None:
     """The visit-offer state as this turn leaves it (MASTER_PLAN_3 B4/B5). An
     offer only counts when the AI-written reply (which carries it) went out,
@@ -779,6 +816,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
+        human_contact=_human_contact_record(result),
     )
     fields: dict[str, Any] = {"conversation": conversation.model_dump(mode="json"), "last_turn_at": clock.now()}
     if sent is not None:

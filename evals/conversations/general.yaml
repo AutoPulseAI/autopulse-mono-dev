@@ -1,0 +1,71 @@
+# General sales bucket (agent/lead_bucket.py BUCKET_SOURCES "general"): CarGurus, AutoTrader, Facebook.
+- id: general-1-cargurus-rav4-reschedule
+  bucket: general
+  source: CarGurus
+  lead_type: sales
+  channel: sms
+  name: Jordan Price
+  start: "Tue 10:00"
+  comments: Is the 2022 Toyota RAV4 XLE still available?
+  covers: [availability, vehicle details, price, fees, a second vehicle, booking, rescheduling]
+  messages:
+    - Hi! Is it still available?
+    - What's the mileage on it?
+    - Does it have AWD?
+    - What's your best price?
+    - Are there any dealer fees?
+    - I'm also looking at a CR-V somewhere else
+    - Do you have the CR-V EX too?
+    - Can I test drive both?
+    - Thursday afternoon
+    - 3pm
+    - Something came up, can we do Friday instead?
+    - Same time works
+    - Will someone be there to meet me?
+
+- id: general-2-autotrader-not-interested
+  bucket: general
+  source: AutoTrader
+  lead_type: sales
+  channel: sms
+  name: Tyler Brooks
+  start: "Tue 10:00"
+  comments: Interested in the Ford Mustang GT
+  covers: ['"who is this"', '"not interested" then a reason', price match, another vehicle, opt-out wording]
+  messages:
+    - who is this?
+    - oh right, the mustang
+    - not interested anymore
+    - found one cheaper somewhere else
+    - it was like 3k less
+    - a 2021 with similar miles
+    - would you price match?
+    - what about the convertible, is it new?
+    - how much is it
+    - eh probably too expensive
+    - i'll think about it
+    - stop texting me so much
+
+- id: general-3-facebook-family-human
+  bucket: general
+  source: Facebook Marketplace
+  lead_type: sales
+  channel: sms
+  name: Angela Morris
+  start: "Tue 10:00"
+  comments: Looking for a minivan for my family
+  covers: [stock questions, "can I talk to a person", short "ok", call preference, weekend booking]
+  messages:
+    - Hi, we have 3 kids and need something bigger
+    - Minivan or 3 row SUV
+    - What do you have?
+    - Is the Pacifica a hybrid?
+    - How about the Highlander?
+    - We need it to fit 3 car seats
+    - Can I talk to a person please?
+    - ok
+    - I'd prefer a call over texting
+    - My husband needs to see it too
+    - Weekends only for us
+    - Saturday at 10
+    - Great

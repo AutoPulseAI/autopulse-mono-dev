@@ -134,7 +134,7 @@ def test_touch_1_opening_is_the_clients_required_text():
 def test_touch_1_opening_never_invents_what_the_dealer_record_lacks():
     text = cadence.touch1_intro(customer_first_name="Maria", agent_name=None, dealership="ABC Toyota",
                                 city=None, state_code=None, vehicle=None)
-    assert text == ("Hello Maria from ABC Toyota. Thank you for getting in touch. "
+    assert text == ("Hello Maria, greetings from ABC Toyota. Thank you for getting in touch. "
                     "I am excited to help you with your purchase.")
     assert "this is" not in text
 
@@ -206,7 +206,7 @@ async def test_touch_1_has_the_required_structure_and_ending(mongo):
     created = await _new_lead()
     [first] = await _outbox(mongo, created)
     text = first["text"]
-    assert text.startswith("Hello Maria from Sunrise Motors in Springfield, NJ. Thank you for your interest in our")
+    assert text.startswith("Hello Maria, greetings from Sunrise Motors in Springfield, NJ. Thank you for your interest in our")
     assert "I am excited to help you with your purchase." in text
     assert text.endswith("Tell me, what are you driving now?") and len(text) <= 480
     assert "this is" not in text  # no agent name on the dealer record, so none is claimed

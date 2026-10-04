@@ -1,0 +1,75 @@
+# Trade-in bucket (agent/lead_bucket.py BUCKET_SOURCES "trade_in"): KBB, TrueCar SELL My Car, AccuTrade.
+- id: trade-1-kbb-accord-equity
+  bucket: trade_in
+  source: KBB Instant Cash Offer
+  lead_type: trade_in
+  channel: sms
+  name: Marcus Bell
+  start: "Tue 10:00"
+  comments: 2019 Honda Accord EX, 48,000 miles. KBB offer $17,200.
+  covers: [trade details, payoff, stock question for the next car, booking an appraisal, short "yes"]
+  messages:
+    - Hi, yes I got the KBB offer
+    - Will you honor the 17,200?
+    - It's the EX trim, silver
+    - 48k miles, one owner, no accidents
+    - There's a small scratch on the rear bumper
+    - I still owe about 9,000 on it
+    - Payoff is with Honda Financial
+    - I'd probably want a newer SUV with the equity
+    - Do you have a 2025 RAV4 hybrid?
+    - What color is it?
+    - Can I bring the Accord in for an appraisal this week?
+    - Wednesday after work, like 6pm?
+    - "yes"
+    - Do I need to bring the title?
+
+- id: trade-2-truecar-sell-only-objection
+  bucket: trade_in
+  source: TrueCar SELL My Car
+  lead_type: trade_in
+  channel: sms
+  name: Kelly Hughes
+  start: "Tue 10:00"
+  comments: Want to sell my 2017 Jeep Wrangler
+  covers: [sell only, price objection, '"not interested" then a reason', booking then rescheduling]
+  messages:
+    - I just want to sell my car, not buy anything
+    - 2017 Wrangler Unlimited Sahara
+    - about 72000 miles
+    - Black, soft top and hard top both
+    - How much will you give me for it?
+    - Carvana offered me 24k
+    - Honestly that's the number to beat
+    - Not interested in coming in if you can't match it
+    - Because I'm busy and don't want to waste a trip for a lowball
+    - Fine, what would the appraisal involve?
+    - How long does it take?
+    - Could I come Saturday at 11?
+    - Actually make it Friday at 4 instead
+    - ok thanks
+
+# The system has no Spanish support (no language setting or Spanish prompt): this conversation measures
+# what a Spanish-speaking customer gets today.
+- id: trade-3-accutrade-spanish
+  bucket: trade_in
+  source: AccuTrade
+  lead_type: trade_in
+  channel: sms
+  name: Luis Hernandez
+  start: "Tue 10:00"
+  comments: Quiero vender mi carro
+  covers: [Spanish-speaking customer (unsupported), trade details, stock question, booking]
+  messages:
+    - Hola, ¿hablan español?
+    - Tengo un Nissan Altima 2016
+    - Tiene como 110 mil millas
+    - Está en buenas condiciones, solo un golpe pequeño en la puerta
+    - ¿Cuánto me pueden dar?
+    - También quiero ver una camioneta
+    - ¿Tienen una Toyota Tacoma?
+    - ¿De qué color es?
+    - Todavía debo 4 mil en el Altima
+    - ¿Puedo ir el sábado en la mañana?
+    - A las 11
+    - Gracias

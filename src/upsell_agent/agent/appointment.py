@@ -13,9 +13,14 @@ staff booked it) these messages go out, all on text AND email together
     +24 hours, no reply               "How did everything go when you came in? Did you get a chance to stop by?"
     +24 hours, no reply               back to Contact Made - No Next Action, into the cadence (§9 step 3)
 
-**Not built:** the client's 15-minute details message (§7). The platform's own
-booking confirmation already goes out the moment a booking is created, so ours
-would double it. Open with the client (scope Q13).
+    15 minutes after it's set / moved  "{first}, we are all set to meet on {date} at {time} at {dealership},
+                                       {address}. Please make sure to call or text us if anything changes at
+                                       {ai_agent_phone}. Looking forward to assisting you!" (§7)
+
+MASTER_PLAN_4 (stream R): the 15-minute details message is built now. It was left out while the platform sent
+its own booking confirmation; the CRM's confirmations are off for AI dealers (stream C1), so this is the
+customer's only confirmation. Sent once per appointment time (a move sends it again for the new time), and
+for a same-day appointment only while it is still useful (DETAILS_MIN_LEAD before the meeting).
 
 **Photos (MASTER_PLAN_4 F3):** the countdown and the +1h message call for a
 vehicle photo. scheduler/followups.py attaches the photo of the vehicle the lead
@@ -45,7 +50,12 @@ NO_SHOW_CLOSE_AFTER = timedelta(hours=24)
 # nonsensical day-before confirmation", §7).
 MIN_CONFIRM_LEAD = timedelta(hours=2)
 MAX_COUNTDOWNS = 6
+# MASTER_PLAN_4 (stream R): the details message goes this long after the appointment is set or moved ("allowing
+# time for correction", §7), and only while the appointment is at least DETAILS_MIN_LEAD away.
+DETAILS_AFTER = timedelta(minutes=15)
+DETAILS_MIN_LEAD = timedelta(minutes=30)
 
+STEP_DETAILS = "details"
 STEP_CONFIRM = "confirm"
 STEP_COUNTDOWN = "countdown"
 STEP_NO_SHOW_CHECK = "no_show_check"
@@ -141,6 +151,20 @@ def plan_steps(appt_at: datetime, *, now: datetime, tz) -> list[Step]:
     return sorted(steps, key=lambda s: s.due_at)
 
 
+def details_step(appt_at: datetime, *, now: datetime) -> Step | None:
+    """The 15-minute details message (§7, stream R), or None when the appointment is too close for it to help
+    (a same-day booking for the next half hour: the customer is on their way)."""
+    due = now + DETAILS_AFTER
+    if due > appt_at - DETAILS_MIN_LEAD:
+        return None
+    return Step(STEP_DETAILS, due, "15 minutes after the appointment was set: the details, allowing time to correct")
+
+
+def details_still_useful(appt_at: datetime | None, *, now: datetime) -> bool:
+    """At send time: a details message held past the point where it helps is dropped, not sent late."""
+    return appt_at is not None and now <= appt_at - timedelta(minutes=15)
+
+
 # --- The customer's answer to the day-before message (§8) ---------------------------------------------------
 
 _YES = re.compile(r"^\s*(?:y|yes|yep|yeah|yup|yea|sure|ok|okay|k|confirmed?|that works|works for me|"
@@ -179,13 +203,25 @@ def _when(appt: datetime) -> tuple[str, str]:
 
 
 def render_message(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
-                   appt: datetime | None, model: str | None = None) -> dict[str, str]:
+                   appt: datetime | None, model: str | None = None, address: str | None = None,
+                   agent_phone: str | None = None) -> dict[str, str]:
     """{sms_text, email_subject, email_body} for one appointment step, in the client's words (Omnichannel
     PDF §7, §9). A name the record doesn't have is left out rather than invented."""
     first = _first(customer_name)
     place = dealership or "the dealership"
     day, at = _when(appt) if appt else ("", "")
-    if step == STEP_COUNTDOWN:
+    if step == STEP_DETAILS:
+        # §7 word for word; a missing name, address or phone is left out with its own words, never invented.
+        from upsell_agent.agent.templates import FALLBACK_NAME
+        known = first if first != FALLBACK_NAME else None
+        where = f"{place}, {address}" if address else place
+        opening = f"{known}, we are all set" if known else "We are all set"
+        call = (f"Please make sure to call or text us if anything changes at {agent_phone}." if agent_phone
+                else "Please make sure to call or text us if anything changes.")
+        text = f"{opening} to meet on {day} at {at} at {where}. {call} Looking forward to assisting you!"
+        subject = f"Your appointment at {place}"
+        return {"sms_text": text, "email_subject": subject, "email_body": f"{text}\n\nThanks,\n{place}"}
+    elif step == STEP_COUNTDOWN:
         text = f"Counting down to our meeting at {place}!"
         subject = "Counting down to our meeting"
     elif step == STEP_CONFIRM:
@@ -215,7 +251,7 @@ def reply_text(kind: str, *, customer_name: str | None, appt: datetime | None,
     first = _first(customer_name)
     day, at = _when(appt) if appt else ("", "")
     if kind == "confirmed":
-        return f"Perfect, thank you {first}! See you {day} at {at}."
+        return f"Perfect, thank you, {first}! See you {day} at {at}."
     if kind == "clarify":
         return "Just to be sure, does that time still work? Please reply Y for Yes or N for No."
     if kind == "reschedule":

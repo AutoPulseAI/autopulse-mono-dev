@@ -63,7 +63,7 @@ class Theme:
 # Days 2-7, in the client's own order (Omnichannel PDF §3).
 DAY_THEMES: list[Theme] = [
     Theme("vehicle_visual", "Vehicle visual",
-          "Show them the vehicle they asked about and ask one simple question about it (colour, trim, "
+          "Show them the vehicle they asked about and ask one simple question about it (color, trim, "
           "whether they want to see it in person). Use only what the inventory records say.", extended=True),
     Theme("financing_help", "Financing help",
           "Ask whether they'd like help with financing or payment options. Never state a rate, a term, a "
@@ -297,6 +297,9 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     if dealership:
         where = ", ".join(x for x in (city, state_code) if x)
         place = f" from {dealership}" + (f" in {where}" if where else "")
+        if customer_first_name and not agent_name:
+            # Stream G (grammar): "Hello Maria from ABC Toyota." reads as if Maria were from ABC Toyota.
+            place = f", greetings{place}"
     thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
               else " Thank you for getting in touch.")
     return f"{who}{speaker}{place}.{thanks} I am excited to help you with your purchase."

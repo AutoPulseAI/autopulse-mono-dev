@@ -1,0 +1,75 @@
+# Credit bucket (agent/lead_bucket.py BUCKET_SOURCES "credit"): Capital One, 700Credit, Credit Application.
+# Fields: see evals/conversation_cost.py (load_conversations).
+- id: credit-1-capital-one-suv
+  bucket: credit
+  source: Capital One Auto Navigator
+  lead_type: sales
+  channel: sms
+  name: Denise Carter
+  start: "Tue 10:00"
+  comments: Prequalified through Capital One. Looking for a reliable SUV.
+  covers: [stock question, credit worry, payment, booking, short "ok"]
+  messages:
+    - hi yes still looking
+    - something like a rav4 or crv, used is fine
+    - do you have any rav4s under 30k?
+    - my credit isnt great, like 580. can i still get approved?
+    - what would my monthly payment be on the blue one
+    - I can put maybe 2000 down
+    - I'd want to keep it under 400 a month
+    - no trade, my old car got repo'd honestly
+    - will you guys run my credit a bunch of times? I don't want my score to drop more
+    - ok
+    - can I come in saturday?
+    - morning is better
+    - 10 works
+    - what do I need to bring?
+
+- id: credit-2-700credit-truck-typos
+  bucket: credit
+  source: 700Credit
+  lead_type: sales
+  channel: sms
+  name: Ray Dominguez
+  start: "Tue 10:00"
+  comments: Need financing for a work truck
+  covers: [typo-heavy customer, stock question, bankruptcy worry, trade details, call request]
+  messages:
+    - hey yeah i need a truk for work asap
+    - f150 or silverado wichever is cheeper
+    - do u have any in stok rite now
+    - whats the price on the red one
+    - i got a ch 7 bankrupcy dischargd last yr will that b a problem
+    - im self employed so no paystubs just bank statemnts
+    - can i get aproved today??
+    - how much down do i need
+    - i can do like 3k
+    - payment under 550 a month
+    - i got a 2012 tacoma to trade but it has a bad tranny
+    - like 190k miles
+    - can sumone just call me im driving alot
+    - after 5 is best
+
+- id: credit-3-credit-app-after-hours
+  bucket: credit
+  source: Credit Application
+  lead_type: sales
+  channel: sms
+  name: Priya Nair
+  start: "Tue 21:40"
+  comments: Submitted a credit app online. Want a reliable used sedan for commuting.
+  covers: [after-hours start, first-time buyer, cosigner, talk to a person, picking a day]
+  messages:
+    - Hi, sorry for texting so late
+    - Tomorrow is fine
+    - I'm looking at a Camry or Accord, used
+    - Is the 2021 Camry still there?
+    - How many miles does it have?
+    - I'm a first time buyer, no credit history at all
+    - Do I need a cosigner?
+    - My mom could cosign if needed
+    - Budget is around 20k total
+    - Honestly I'm nervous about this whole process
+    - Can I talk to a person tomorrow?
+    - Around lunch time
+    - Thursday at 12 would work

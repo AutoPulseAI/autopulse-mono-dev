@@ -113,7 +113,8 @@ class LocalFallback:
 
     async def queue_service_outreach(self, dealer_id: str, event: dict[str, Any]) -> dict[str, Any]:
         await notify_staff(dealer_scoped_db(dealer_id), event.get("lead_id"), kind="service_outreach",
-                           text=event.get("summary") or "Service outreach is due for this customer's vehicle.")
+                           text=event.get("summary") or "Service outreach is due for this customer's vehicle.",
+                           key=event.get("event_key"))
         return {"status": "staff_notice", "reason": "ownership lifecycle (agent/ownership.py) not available"}
 
 
@@ -133,12 +134,18 @@ def ownership_port() -> OwnershipPort:
     return _ModulePort(module) if module is not None else _FALLBACK
 
 
-async def notify_staff(db: DealerScopedDatabase, lead_id: str | None, *, kind: str, text: str) -> None:
+async def notify_staff(db: DealerScopedDatabase, lead_id: str | None, *, kind: str, text: str,
+                       key: str | None = None) -> None:
     """The lead's staff notice (the same field the call tasks and handoffs use), when there is a lead."""
     if not lead_id:
         return
+    at = clock.now()
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
-        {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
+        {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": at, "kind": kind, "text": text}}})
+    # MASTER_PLAN_4 (stream R): the recall / maintenance notice in the CRM conversation too, once per event.
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind=kind, text=text,
+                          key=f"{kind}:{lead_id}:{key}" if key else f"{kind}:{lead_id}:{at.isoformat()}")
 
 
 # --- Events ------------------------------------------------------------------------------------------------
@@ -177,9 +184,9 @@ async def record_event(db: DealerScopedDatabase, vehicle: dict[str, Any], *, eve
         except Exception as exc:  # the event stays recorded; staff see it either way
             logger.exception("queue_service_outreach failed for %s", event_key)
             outcome = {"status": "error", "reason": repr(exc)}
-            await notify_staff(db, vehicle.get("lead_id"), kind="service_outreach", text=summary)
+            await notify_staff(db, vehicle.get("lead_id"), kind="service_outreach", text=summary, key=event_key)
     else:
-        await notify_staff(db, vehicle.get("lead_id"), kind=event_type.lower(), text=summary)
+        await notify_staff(db, vehicle.get("lead_id"), kind=event_type.lower(), text=summary, key=event_key)
         outcome = {"status": "staff_notice"}
     await db.collection(AI_SERVICE_EVENTS_COLLECTION).update_one(
         {"_id": result.inserted_id}, {"$set": {"status": outcome.get("status") or "queued", "outcome": outcome}})

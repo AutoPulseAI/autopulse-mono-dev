@@ -3,7 +3,7 @@ case through the configured models, with pass rates, template fallbacks, how
 often the guard accepted the first draft, reply time and cost per reply.
 
     python -m evals.report                      # offline model
-    MODEL_EXTRACT=openai:gpt-4o-mini MODEL_COMPOSE=openai:gpt-4o OPENAI_API_KEY=... python -m evals.report
+    MODEL_EXTRACT=openai:gpt-5-mini MODEL_COMPOSE=openai:gpt-5-mini OPENAI_API_KEY=... python -m evals.report
 
 Writes evals/reports/<date>-<models>.json and prints a summary. The pass/fail
 rules are the same metrics the eval gate uses (test_replies.py,

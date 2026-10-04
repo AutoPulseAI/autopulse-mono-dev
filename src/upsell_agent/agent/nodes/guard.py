@@ -13,16 +13,18 @@ a real, current booking's status (MASTER_PLAN_3 B5 item 7, architecture §15
 decision 60): never "booked"/"confirmed" for a merely-requested (pending)
 visit, and never any of those words with no active booking on the lead at
 all - "never claim a booking that doesn't exist" (B4's principle 4). And no
-link unless the customer asked for one (MASTER_PLAN_4 F3)."""
+link unless the customer asked for one (MASTER_PLAN_4 F3), and no mechanical
+grammar mistake (MASTER_PLAN_4 stream G, guardrails/grammar.py)."""
 
 import re
 from typing import Any
 
-from upsell_agent.agent import service_request
+from upsell_agent.agent import human_contact, service_request
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
+from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
 from upsell_agent.observability.trace import NodeSpan
@@ -84,6 +86,23 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if "which would you like" not in str(draft.get(key) or "").lower()]
+
+
+def mandated_wording(decision: dict[str, Any]) -> list[str]:
+    """The client's exact wording in this draft (stream G): Touch 1's opening and closing and a touch's fixed
+    text (Touch 2's "{FirstName}?"). Sent as written, so never grammar-checked."""
+    touch1, touch = decision.get("touch1") or {}, decision.get("touch") or {}
+    return [t for t in (touch1.get("intro"), touch1.get("ending"), touch.get("fixed_text")) if t]
+
+
+def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """Touch 1 opens with the client's required intro, word for word (MASTER_PLAN_3 C4). Stream G saw
+    gpt-5-mini put a "Hello Maria," salutation above it in the email, greeting the customer twice."""
+    intro = ((decision.get("touch1") or {}).get("intro") or "").strip()
+    if not intro:
+        return []
+    return [f"the {name} doesn't start with Touch 1's required opening" for name, key in
+            (("SMS", "sms_text"), ("email", "email_body")) if not str(draft.get(key) or "").lstrip().startswith(intro)]
 
 
 _CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then))\b", re.IGNORECASE)
@@ -148,6 +167,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # The date the customer asked us to get back to them (MASTER_PLAN_3 C3), worked out in code from
         # their own words (slots/dates.py), and its time: confirmed back to them, never invented.
         known += [next_action.get("display"), next_action.get("date"), next_action.get("time")]
+    if person := human_contact.for_compose((state.decision or {}).get("human_contact")):
+        # PLAN_4 stream H: the last 4 digits of the number on file, and when a person will call/text - all real.
+        known += [person.get(k) for k in ("phone_last4", "call_when", "text_when") if person.get(k)]
     inventory = pack.get("inventory") or []
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does
@@ -199,6 +221,17 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_links:
         result["passed"] = False
         result["violations"] += bad_links
+    not_first = touch1_not_first(state.decision or {}, state.draft or {})
+    result["checks"]["touch1_opening_first"] = not not_first
+    if not_first:
+        result["passed"] = False
+        result["violations"] += not_first
+    # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
+    bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}))
+    result["checks"]["grammar"] = not bad_grammar
+    if bad_grammar:
+        result["passed"] = False
+        result["violations"] += bad_grammar
     will_retry = not result["passed"] and state.retry_count < MAX_REWRITES
     result["next"] = "send" if result["passed"] else ("compose" if will_retry else "fallback")
 

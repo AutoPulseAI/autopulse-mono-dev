@@ -100,6 +100,7 @@ DECIDE_RULES: list[dict[str, str]] = [
     {"id": "stop", "label": "Customer opted out → stop"},
     {"id": "handoff", "label": "Asked for a person, clearly upset, urgent, declined 3x with a staff-only "
                               "question open, or not interested with a reason → hand off"},
+    {"id": "offer_human", "label": "Asked for a person, didn't say how → offer a call or a text, once"},
     {"id": "ask_why", "label": "Not interested, no reason given → ask why, once"},
     {"id": "clarify", "label": "Asked what we meant → re-explain"},
     {"id": "answer", "label": "Questions to answer → answer, then a visit offer or a follow-up (up to two)"},

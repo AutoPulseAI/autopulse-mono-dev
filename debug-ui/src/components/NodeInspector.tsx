@@ -172,6 +172,8 @@ function MetricsTab({ run }: { run: NodeRun }) {
     ["Attempt", run.attempt],
     ["Model", m.model ?? "— (plain code)"],
     ["Tokens in / out", m.tokens_in !== undefined ? `${m.tokens_in} / ${m.tokens_out}` : "—"],
+    // Stream G: the part of "tokens in" served from OpenAI's prompt cache, billed at the cached price.
+    ["Cached input", m.tokens_cached !== undefined ? `${m.tokens_cached} of ${m.tokens_in}` : "—"],
     ["Cost", m.cost_usd !== undefined ? `$${Number(m.cost_usd).toFixed(4)}` : "—"],
   ];
   return (

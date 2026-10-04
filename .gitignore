@@ -10,4 +10,5 @@ dist/
 build/
 .coverage
 htmlcov/
-evals/reports/
+evals/reports/*
+!evals/reports/conversation_cost/

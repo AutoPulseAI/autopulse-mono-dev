@@ -68,12 +68,12 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
     freshness_checked = freshness_caught_sold = 0
     inventory_query_ms: list[float] = []
     cost_by_day: dict[str, float] = {}
-    tokens = {"in": 0, "out": 0}
+    tokens = {"in": 0, "cached": 0, "out": 0}
     cursor = turns.find(in_window, projection={"nodes.node": 1, "nodes.status": 1, "nodes.output.passed": 1,
                                     "nodes.output.rejected": 1, "nodes.output.freshness_recheck": 1,
                                     "nodes.output.checks.grounded_in_real_stock": 1,
                                     "nodes.output.searched": 1, "nodes.ms": 1,
-                                    "summary.cost_usd": 1, "summary.tokens_in": 1,
+                                    "summary.cost_usd": 1, "summary.tokens_in": 1, "summary.tokens_cached": 1,
                                     "summary.tokens_out": 1, "created_at": 1})
     async for turn in cursor:
         failed_here = grounding_failed_here = 0
@@ -102,6 +102,7 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         day = turn["created_at"].strftime("%Y-%m-%d")
         cost_by_day[day] = round(cost_by_day.get(day, 0.0) + float(summary.get("cost_usd") or 0), 6)
         tokens["in"] += int(summary.get("tokens_in") or 0)
+        tokens["cached"] += int(summary.get("tokens_cached") or 0)
         tokens["out"] += int(summary.get("tokens_out") or 0)
 
     # Rolling-summary runs (MASTER_PLAN_2 Phase 3) are not turns but do cost.
@@ -111,6 +112,7 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
         day = run["created_at"].strftime("%Y-%m-%d")
         cost_by_day[day] = round(cost_by_day.get(day, 0.0) + float(summary.get("cost_usd") or 0), 6)
         tokens["in"] += int(summary.get("tokens_in") or 0)
+        tokens["cached"] += int(summary.get("tokens_cached") or 0)
         tokens["out"] += int(summary.get("tokens_out") or 0)
 
     # A 24h channel switch's own re-check (Phase 5 item 2) logs under its own
@@ -187,7 +189,8 @@ async def dealer_metrics(dealer_id: str, days: float = 7) -> dict[str, Any]:
                                "max": max(inventory_query_ms) if inventory_query_ms else None},
         "rejected_extractions": {"values": rejected, "per_turn": _rate(rejected, total)},
         "cost_usd": {"total": round(sum(cost_by_day.values()), 6), "by_day": dict(sorted(cost_by_day.items())),
-                     "tokens_in": tokens["in"], "tokens_out": tokens["out"]},
+                     "tokens_in": tokens["in"], "tokens_cached": tokens["cached"],
+                     "tokens_out": tokens["out"]},
         "leads": {"total": len(states), "by_status": by_status,
                   "qualified_rate": _rate(by_status.get("qualified", 0), len(states)),
                   "handoff_rate": _rate(by_status.get("handoff", 0), len(states)),

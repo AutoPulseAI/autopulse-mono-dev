@@ -138,7 +138,7 @@ TRIGGER_NEXT_ACTION = KIND_NEXT_ACTION
 NEXT_ACTION_REPLY_WINDOW = timedelta(hours=24)
 # MASTER_PLAN_3 C5 (Omnichannel PDF §7-§9): the appointment's own messages (agent/appointment.py), one scheduled
 # record per step. `step` says which.
-APPOINTMENT_STEPS = (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK,
+APPOINTMENT_STEPS = (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK,
                      appointment.STEP_NO_SHOW_FOLLOWUP, appointment.STEP_NO_SHOW_CLOSE)
 APPOINTMENT_KINDS = tuple(appointment.KIND_PREFIX + s for s in APPOINTMENT_STEPS)
 TRIGGER_APPOINTMENT = "appointment_step"
@@ -559,6 +559,12 @@ async def plan_appointment_timers(
     if appt_at is None:
         return {"created": 0, "reason": "No appointment time on record: nothing to schedule."}
     steps = appointment.plan_steps(appt_at, now=now, tz=profile.tz)
+    # MASTER_PLAN_4 (stream R): the 15-minute details message, once per appointment time - a re-plan for the same
+    # time (staff saving the status again) doesn't send it twice; a move sends it for the new time.
+    details_sent_for = state.get("appointment_details_sent_for")  # outside `appointment`, which a new set replaces
+    details = appointment.details_step(appt_at, now=now) if details_sent_for != appt_at.isoformat() else None
+    if details:
+        steps = sorted([details, *steps], key=lambda s: s.due_at)
     booking_id = str(booking["_id"]) if booking else (state.get("appointment") or {}).get("booking_id")
     created, skipped = [], []
     for step in steps:
@@ -598,6 +604,9 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
         return {"created": False, "reason": f"no call task at stage {stage}"}
     if await db.collection(AI_CALL_TASKS_COLLECTION).find_one({"lead_id": lead_id, "status": call_tasks.OPEN}):
         return {"created": False, "reason": "a call task is already open for staff"}
+    if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": "pending", "requested": True}):
+        return {"created": False, "reason": "the customer's own call request is already waiting for calling hours"}
     phone = await usable_recipient(db, lead, customer, "sms")
     if not phone:
         return {"created": False, "reason": "no valid phone to call"}
@@ -616,14 +625,17 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
             "superseded": superseded.modified_count}
 
 
-async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: str, include_open: bool = False) -> int:
-    """Contact happened: the waiting timer is cancelled (and, with `include_open`, a task already shown to staff)."""
+async def cancel_call_task(db: DealerScopedDatabase, lead_id: str, *, reason: str, include_open: bool = False,
+                           keep_requested: bool = False) -> int:
+    """Contact happened: the waiting timer is cancelled (and, with `include_open`, a task already shown to staff).
+    `keep_requested` (PLAN_4 stream H): a call the customer asked for is kept - waiting or open."""
+    keep = {"requested": {"$ne": True}} if keep_requested else {}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
-        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}},
+        {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby"]}, **keep},
         {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
     count = result.modified_count
     if include_open:
-        count += await call_tasks.cancel_open(db, lead_id, reason)
+        count += await call_tasks.cancel_open(db, lead_id, reason, keep_requested=keep_requested)
     return count
 
 
@@ -1262,7 +1274,7 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         current = appointment.appointment_at(tz=profile.tz, booking=booking, lead=lead,
                                              recorded=state.get("appointment"))
         same = current is not None and current.isoformat() == doc.get("appointment_at")
-        needs_booking_check = step in (appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
+        needs_booking_check = step in (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appointment.STEP_COUNTDOWN,
                                        appointment.STEP_NO_SHOW_CHECK)
         checks = [
             ("lead_active", status not in SILENT_STATUSES,
@@ -1273,6 +1285,10 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
              else "the appointment was moved or cancelled since"),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
+        if step == appointment.STEP_DETAILS:  # MASTER_PLAN_4 (stream R)
+            useful = appointment.details_still_useful(current, now=clock.now())
+            checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
+                           if useful else "too close to the appointment for the details message to help"))
         failed = [c for c in checks if not c[1]]
         check = None
         if not failed:
@@ -1330,7 +1346,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         text = appointment.render_message(
             step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
             agent_name=profile.agent_name, appt=appt_at,
-            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]))
+            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
+            address=profile.address, agent_phone=profile.agent_phone)
         # MASTER_PLAN_4 F3: the countdown and no-show step 1 show the vehicle this lead is about - its own
         # photo, a different one each countdown day where it has several (days left picks it). No vehicle on
         # record, or no usable photo: the client's text-only fallback, as before (§15).
@@ -1352,6 +1369,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         delivered = any(o.status in ("sent", "duplicate") for o in outcomes)
         if delivered:
             lead_state_fields["last_outbound_at"] = clock.now()
+        if step == appointment.STEP_DETAILS and delivered:  # MASTER_PLAN_4 (stream R): not again for this time
+            lead_state_fields["appointment_details_sent_for"] = doc.get("appointment_at")
         if step == appointment.STEP_CONFIRM and delivered:
             lead_state_fields["appointment.confirmation"] = {"status": "asked", "sent_at": clock.now(),
                                                              "asked_again": False}
@@ -1512,6 +1531,10 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
             lifecycle.stage_check(state, KIND_CALL_TASK),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
         ]
+        if doc.get("requested"):
+            # PLAN_4 stream H: the customer asked for this call. It waited only for calling hours: their later
+            # messages, the handoff to staff and the AI's mode don't cancel it. The stage and call rules still do.
+            checks = [lifecycle.stage_check(state, KIND_CALL_TASK)]
         failed = [c for c in checks if not c[1]]
         decision = None
         if not failed:
@@ -1542,10 +1565,16 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
         await _log(db, tracer, "call_task_suppressed", {"followup_id": task_id, "reason": decision.reason})
         return "suppressed"
     customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
+    requested = bool(doc.get("requested"))
+    who = (customer or {}).get("name") or "the customer"
     task = await call_tasks.open_task(
         db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], phone=doc["to"],
-        customer_name=(customer or {}).get("name"), reason="no contact within 60 minutes of the touch",
-        source_turn_id=doc.get("source_turn_id"), followup_id=task_id, created_at=doc["created_at"])
+        customer_name=(customer or {}).get("name"),
+        reason=doc.get("task_reason") or "no contact within 60 minutes of the touch",
+        source_turn_id=doc.get("source_turn_id"), followup_id=task_id, created_at=doc["created_at"],
+        requested=requested,
+        notice=(f"Please call {who} at {doc['to']}: they asked to speak with a person by phone, and it's calling "
+                "hours now." if requested else None))
     await _close(db, doc, "activated", reason="call task opened for staff", task_id=str(task["_id"]),
                  fired_at=clock.now())
     await _log(db, tracer, "call_task_opened", {"followup_id": task_id, "task_id": str(task["_id"]),

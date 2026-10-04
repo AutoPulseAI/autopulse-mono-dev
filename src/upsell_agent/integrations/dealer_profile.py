@@ -74,6 +74,9 @@ class DealerProfile:
     city: str | None = None
     state: str | None = None
     agent_name: str | None = None
+    # MASTER_PLAN_4 (stream R): {ai_agent_phone} in the 15-minute appointment message - the number the AI texts
+    # from (`sms_conversion_phone`, the dealer's Twilio number), so a reply reaches the conversation.
+    agent_phone: str | None = None
     # Sales appointment slots (client, 5 Oct 2026): one hour, up to 10 bookings each, unless the dealer record
     # says otherwise (`booking_capacity.sales`, the same setting the CRM's booking check reads,
     # aidmvcs-be-dev app/lib/bookingService.js). The AI books sales visits only; service visits are requests.
@@ -224,6 +227,7 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         # The CRM's Dealer Setup form saves the AI's name as `ai_bot_name` ("Bot Name"); `ai_agent_name` is
         # the older field our dev seed used.
         agent_name=str(info.get("ai_bot_name") or info.get("ai_agent_name") or "").strip() or None,
+        agent_phone=format_phone(info.get("sms_conversion_phone")),  # MASTER_PLAN_4 (stream R)
         **_sales_capacity(info),
     )
 

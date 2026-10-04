@@ -100,6 +100,35 @@ def test_the_clients_messages_word_for_word():
         "Did you get a chance to stop by?")
 
 
+def test_the_15_minute_details_message_word_for_word():
+    appt = datetime(2026, 10, 9, 10, tzinfo=NY)
+    msg = appointment.render_message("details", customer_name="Maria Lopez", dealership="ABC Toyota", agent_name=None,
+                                     appt=appt, address="12 Main St, Springfield, NJ 07081",
+                                     agent_phone="(555) 010-2000")
+    assert msg["sms_text"] == (
+        "Maria, we are all set to meet on Friday, October 9 at 10:00 AM at ABC Toyota, 12 Main St, Springfield, "
+        "NJ 07081. Please make sure to call or text us if anything changes at (555) 010-2000. "
+        "Looking forward to assisting you!")
+    assert msg["email_body"].startswith(msg["sms_text"]) and msg["email_subject"] == "Your appointment at ABC Toyota"
+
+
+def test_the_details_message_leaves_out_what_the_record_does_not_have():
+    appt = datetime(2026, 10, 9, 10, tzinfo=NY)
+    text = appointment.render_message("details", customer_name=None, dealership="ABC Toyota", agent_name=None,
+                                      appt=appt)["sms_text"]
+    assert text == ("We are all set to meet on Friday, October 9 at 10:00 AM at ABC Toyota. Please make sure to "
+                    "call or text us if anything changes. Looking forward to assisting you!")
+    assert "None" not in text and "there," not in text
+
+
+def test_the_details_message_is_planned_15_minutes_out_unless_the_meeting_is_too_close():
+    step = appointment.details_step(_tue(16), now=_tue(12))
+    assert step and step.step == "details" and step.due_at == _tue(12, 15)  # same day, still useful
+    assert appointment.details_step(_tue(12, 40), now=_tue(12)) is None  # on their way already
+    assert appointment.details_still_useful(_tue(16), now=_tue(15, 30))
+    assert not appointment.details_still_useful(_tue(16), now=_tue(15, 50))
+
+
 def test_a_missing_agent_name_is_left_out_not_invented():
     kw = {"customer_name": "Maria", "dealership": "ABC Toyota", "agent_name": None,
           "appt": datetime(2026, 10, 9, 10, tzinfo=NY)}
@@ -186,6 +215,11 @@ async def _booked_friday(mongo):
     return created, booking
 
 
+async def _scoped():
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    return dealer_scoped_db(DEALER)
+
+
 async def _fire(mongo, created, step: str) -> dict:
     """Moves the clock to the pending step's due time and fires it."""
     [doc] = [d for d in await _steps(mongo, created) if d["step"] == step][:1]
@@ -198,15 +232,60 @@ async def _fire(mongo, created, step: str) -> dict:
 async def test_booking_a_visit_plans_the_countdown_the_confirmation_and_the_no_show_check(mongo):
     created, booking = await _booked_friday(mongo)
     steps = await _steps(mongo, created)
-    assert [s["step"] for s in steps] == ["countdown", "countdown", "confirm", "no_show_check"]
+    assert [s["step"] for s in steps] == ["details", "countdown", "countdown", "confirm", "no_show_check"]
     state = await _state(mongo, created)
     assert state["stage"] == "appointment_set" and state["appointment"]["booking_id"] == str(booking["_id"])
     assert state["appointment"]["confirmed"] is False
 
 
 @pytestmark_flow
+async def test_the_details_message_goes_out_15_minutes_after_booking_on_text_and_email(mongo):
+    created, _ = await _booked_friday(mongo)
+    await mongo[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(DEALER)}, {"$set": {
+        "dealer_account_information.store_address": "12 Main St", "dealer_account_information.store_postal": "07081",
+        "dealer_account_information.sms_conversion_phone": "+15550102000"}})
+    from upsell_agent.integrations import dealer_profile as dp
+    dp._cache.clear()
+    details = next(s for s in await _steps(mongo, created) if s["step"] == "details")
+    assert abs(details["due_at"].replace(tzinfo=UTC) - datetime(2026, 10, 5, 12, 15, tzinfo=NY)) < timedelta(minutes=1)
+    before = len(await _outbox(mongo, created))
+    fired = await _fire(mongo, created, "details")
+    assert fired["results"] == {"sent": 1}
+    new = (await _outbox(mongo, created))[before:]
+    assert {m["channel"] for m in new} == {"sms", "email"}
+    sms = next(m for m in new if m["channel"] == "sms")["text"]
+    assert sms.startswith("Maria, we are all set to meet on Friday, October 9 at 10:00 AM at Sunrise Motors, "
+                          "12 Main St, Springfield, NJ 07081.")
+    assert "if anything changes at (555) 010-2000." in sms
+    assert (await _state(mongo, created))["appointment_details_sent_for"] == details["appointment_at"]
+
+
+@pytestmark_flow
+async def test_the_details_message_is_not_doubled_for_the_same_time_and_is_sent_again_after_a_move(mongo):
+    created, _ = await _booked_friday(mongo)
+    await _fire(mongo, created, "details")
+    replanned = await followups.plan_appointment_timers(
+        await _scoped(), lead_id=created["lead_id"], customer_id=created["customer_id"], turn_id="again")
+    assert "details" not in {s["step"] for s in replanned["steps"]}
+    booking = await _booking(mongo, created)
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {"bookingTime": "15:00"}})
+    moved = await followups.plan_appointment_timers(
+        await _scoped(), lead_id=created["lead_id"], customer_id=created["customer_id"], turn_id="moved")
+    assert "details" in {s["step"] for s in moved["steps"]}
+
+
+@pytestmark_flow
+async def test_cancelling_the_appointment_cancels_the_details_message(mongo):
+    created, _ = await _booked_friday(mongo)
+    await _say(created, "actually I can't make it, need to cancel")
+    assert not [d async for d in mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "kind": "appointment_details", "status": "pending"})]
+
+
+@pytestmark_flow
 async def test_the_countdown_goes_out_on_text_and_email_in_the_clients_words(mongo):
     created, _ = await _booked_friday(mongo)
+    await _fire(mongo, created, "details")  # the 15-minute details message goes first (stream R)
     before = len(await _outbox(mongo, created))
     fired = await _fire(mongo, created, "countdown")
     assert fired["results"] == {"sent": 1}
@@ -412,7 +491,8 @@ async def test_the_pre_send_recheck_stops_a_step_whose_appointment_moved(mongo):
     await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {"bookingTime": "15:00"}})
     set_clock(step["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
     fired = await followups.fire_due(_deps())
-    assert fired["results"].get("cancelled") == 1 and "sent" not in fired["results"]
+    # The countdown and the 15-minute details message (due earlier) were both for the old time.
+    assert fired["results"].get("cancelled") == 2 and "sent" not in fired["results"]
 
 
 @pytestmark_flow
