@@ -58,6 +58,7 @@ from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import (
     TRIGGER_CADENCE_TOUCH,
     TRIGGER_NEXT_ACTION,
+    TRIGGER_VISIT_FOLLOWUP,
     cancel_cadence_touch,
     cancel_resume,
     cancel_visit_followup,
@@ -394,11 +395,15 @@ async def _after_hours_followup(db: DealerScopedDatabase, decision: dict[str, An
 #: Turns whose message the client requires on every permitted channel at once (Omnichannel PDF p.10).
 #: The staff call task (C2) is a separate timer behind these, so that means text + email together. The dated
 #: check-back of Contact Made - Specific Follow-Up is one too (p.10 "Applies Everywhere Follow-Up Occurs").
-OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION})
+#: Stream X2: the dated fresh visit offer after a 3rd decline is a follow-up too (p.10 "Applies Everywhere").
+OMNICHANNEL_TRIGGERS = frozenset({TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION, TRIGGER_VISIT_FOLLOWUP})
 #: Turns whose sent message starts the 60-minute connection timer behind a staff call task (MASTER_PLAN_3 C2):
 #: Touch 1, every cadence touch and the specific follow-up's check-back (Global Human Call Task Escalation
 #: Rule, "Where This Rule Applies"), not a reply to something the customer just wrote.
-CALL_TASK_TRIGGERS = frozenset({"lead_created", TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION})
+#: Stream X2: the visit follow-up and the after-hours morning message are AI follow-ups as well (p.9-10); the
+#: appointment / no-show steps start theirs in scheduler/followups.py, SOLD PENDING in scheduler/sold_lifecycles.py.
+CALL_TASK_TRIGGERS = frozenset({"lead_created", TRIGGER_CADENCE_TOUCH, TRIGGER_NEXT_ACTION, TRIGGER_VISIT_FOLLOWUP,
+                                TRIGGER_RESUME})
 
 
 def _hold_cadence(decision: dict[str, Any]) -> str | None:

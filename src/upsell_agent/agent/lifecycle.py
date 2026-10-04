@@ -149,7 +149,9 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     "appointment_no_show_close": frozenset({Stage.NO_SHOW}),
     # MASTER_PLAN_3 C2: the staff call task behind the 60-minute connection timer follows the touches
     # it belongs to (the working stages; a call is also the dated step's own channel).
-    "call_task": WORKING | {Stage.SOLD_PENDING, Stage.SOLD_DELIVERED},
+    # Stream X2: also the appointment and no-show touches (Global Human Call Task Escalation Rule, "Where This Rule
+    # Applies"); entering those stages still cancels the call tasks the old stage left (cancel_stale_work).
+    "call_task": WORKING | {Stage.APPOINTMENT_SET, Stage.NO_SHOW, Stage.SOLD_PENDING, Stage.SOLD_DELIVERED},
     # PLAN_4 stream T (Omnichannel PDF §3 "Human call tasks - Days 1-7"): the morning and afternoon call tasks
     # run only while the lead has an eligible Short-Term status (scheduler/daily_call_tasks.py).
     "daily_call_task": SHORT_TERM,
@@ -474,10 +476,14 @@ async def cancel_stale_work(db: DealerScopedDatabase, lead_id: str, stage: Stage
         if keep:
             await followups.update_many({"_id": {"$in": keep}}, {"$set": {"long_horizon": True}})
         pending = [p for p in pending if p["_id"] not in keep]
-    if not kind_allowed("call_task", stage):
-        # An open call task is stale too (an appointment, a visit, an opt-out or a close came first).
+    if not kind_allowed("call_task", stage) or stage in (Stage.APPOINTMENT_SET, Stage.NO_SHOW):
+        # An open call task is stale too (an appointment, a visit, an opt-out or a close came first). Stream X2:
+        # the appointment stages start their own call timers after their own touches; the old stage's go.
         from upsell_agent.agent import call_tasks
         await call_tasks.cancel_open(db, lead_id, reason)
+        if kind_allowed("call_task", stage):
+            await followups.update_many({"lead_id": lead_id, "status": "pending", "kind": "call_task"},
+                                        {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
     elif not kind_allowed("daily_call_task", stage):
         # stream T: an open Days 1-7 call task is obsolete once the lead leaves Short-Term ("Status changed
         # first: cancel obsolete call task").

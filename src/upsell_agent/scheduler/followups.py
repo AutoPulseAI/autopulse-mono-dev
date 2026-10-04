@@ -144,6 +144,12 @@ APPOINTMENT_STEPS = (appointment.STEP_DETAILS, appointment.STEP_CONFIRM, appoint
                      appointment.STEP_NO_SHOW_FOLLOWUP, appointment.STEP_NO_SHOW_CLOSE)
 APPOINTMENT_KINDS = tuple(appointment.KIND_PREFIX + s for s in APPOINTMENT_STEPS)
 TRIGGER_APPOINTMENT = "appointment_step"
+# Stream X2: the appointment steps whose message starts the 60-minute call checkpoint ("Appointment and Appointment
+# No-Show text/email touches when human follow-up is appropriate", p.9): the day-before confirmation and the two
+# no-show messages. Not the 15-minute details (the customer has just booked) nor the countdown ("counting down to
+# our meeting" asks nothing a call would follow up).
+APPOINTMENT_CALL_TASK_STEPS = (appointment.STEP_CONFIRM, appointment.STEP_NO_SHOW_CHECK,
+                               appointment.STEP_NO_SHOW_FOLLOWUP)
 # MASTER_PLAN_3 C2 (Omnichannel PDF §2): the staff call task behind the 60-minute connection timer
 # (agent/call_tasks.py). It opens for staff only if nobody has made contact by then.
 KIND_CALL_TASK = "call_task"
@@ -1533,6 +1539,15 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         if step == appointment.STEP_CONFIRM and delivered:
             lead_state_fields["appointment.confirmation"] = {"status": "asked", "sent_at": clock.now(),
                                                              "asked_again": False}
+        if delivered and step in APPOINTMENT_CALL_TASK_STEPS:
+            # Stream X2 (audit probe P3): the 60-minute call checkpoint behind the appointment's confirmation and
+            # no-show touches (Global Human Call Task Escalation Rule; Omnichannel rule p.10). The workday cap and
+            # the call rules apply when it falls due.
+            fresh = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+            await plan_call_task(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
+                                 turn_id=f"appointment-{step}-{step_id}", lead=lead, customer=customer,
+                                 lead_state=fresh, sent_channels=[o.channel for o in outcomes
+                                                                  if o.status in ("sent", "duplicate")])
         if step in (appointment.STEP_NO_SHOW_CHECK, appointment.STEP_NO_SHOW_FOLLOWUP):
             # Sent or not, the no-show flow moves on (stream X2: it never strands the lead at No Show).
             await _continue_no_show(db, doc, await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
