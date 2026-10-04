@@ -95,6 +95,16 @@ def mandated_wording(decision: dict[str, Any]) -> list[str]:
     return [t for t in (touch1.get("intro"), touch1.get("ending"), touch.get("fixed_text")) if t]
 
 
+def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """Touch 1 opens with the client's required intro, word for word (MASTER_PLAN_3 C4). Stream G saw
+    gpt-5-mini put a "Hello Maria," salutation above it in the email, greeting the customer twice."""
+    intro = ((decision.get("touch1") or {}).get("intro") or "").strip()
+    if not intro:
+        return []
+    return [f"the {name} doesn't start with Touch 1's required opening" for name, key in
+            (("SMS", "sms_text"), ("email", "email_body")) if not str(draft.get(key) or "").lstrip().startswith(intro)]
+
+
 _CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then))\b", re.IGNORECASE)
 _REQUESTED_WORDING = re.compile(r"\brequested\b", re.IGNORECASE)
 
@@ -208,6 +218,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_links:
         result["passed"] = False
         result["violations"] += bad_links
+    not_first = touch1_not_first(state.decision or {}, state.draft or {})
+    result["checks"]["touch1_opening_first"] = not not_first
+    if not_first:
+        result["passed"] = False
+        result["violations"] += not_first
     # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
     bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}))
     result["checks"]["grammar"] = not bad_grammar

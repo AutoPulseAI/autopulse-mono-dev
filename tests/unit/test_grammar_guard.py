@@ -25,18 +25,18 @@ GOOD = [
     "An F-150 or a RAV4? Both are in stock.",
     "Is it available? Yes... and it's ready for a test drive.",
     # Real AI lines from the client's examples (docs/data/conversations.md).
-    "Hi John, this is Ava with ABC Toyota. I received your request regarding financing for the 2023 Toyota Camry. "
-    "I can help you with that. Are you planning to use a vehicle as a trade-in?",
+    ("Hi John, this is Ava with ABC Toyota. I received your request regarding financing for the 2023 Toyota Camry. "
+     "I can help you with that. Are you planning to use a vehicle as a trade-in?"),
     "Perfect. About how many miles are on the Altima, and do you still owe anything on it?",
-    "Great. I'll reserve 10:30 tomorrow for you. I'll note that you're bringing the 2018 Altima with "
-    "approximately 82,000 miles and about a $9,000 payoff so the team is prepared to evaluate it with you.",
+    ("Great. I'll reserve 10:30 tomorrow for you. I'll note that you're bringing the 2018 Altima with "
+     "approximately 82,000 miles and about a $9,000 payoff so the team is prepared to evaluate it with you."),
     "That's exactly why an in-person appraisal would be useful.",
     "Got it. And how would you describe the overall condition—any accidents, body damage or major mechanical issues?",
-    "Thank you. That helps us make sure we're looking at the appropriate maintenance for the vehicle's current "
-    "mileage. Have you had the 60,000-mile maintenance performed yet?",
+    ("Thank you. That helps us make sure we're looking at the appropriate maintenance for the vehicle's current "
+     "mileage. Have you had the 60,000-mile maintenance performed yet?"),
     # Real gpt-5-mini replies (stream G measurement, 4 Oct 2026).
-    "Hi Maria. About how many miles are on your trade-in? It can be a rough number. Also, how would you describe "
-    "its condition: excellent, good, fair, or poor? That helps us estimate its value for a trade-in.",
+    ("Hi Maria. About how many miles are on your trade-in? It can be a rough number. Also, how would you describe "
+     "its condition: excellent, good, fair, or poor? That helps us estimate its value for a trade-in."),
 ]
 
 BAD = [

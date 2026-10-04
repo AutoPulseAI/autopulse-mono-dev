@@ -875,8 +875,10 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     limit = TOUCH1_SMS_MAX if payload.get("touch1") else SMS_MAX
     sms = body if len(body) <= limit else body[: limit - 1].rsplit(" ", 1)[0] + "…"
     subject = f"Re: {campaign['name']}" if campaign else "Your inquiry"
+    # Touch 1's required opening already greets them: no second "Hi Maria," above it (stream G).
+    hi = "" if payload.get("touch1") else f"Hi {name},\n\n"
     result = {"sms_text": sms, "email_subject": subject,
-             "email_body": f"Hi {name},\n\n{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
+             "email_body": f"{hi}{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
              "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify", "ask_why")
              else [],
              "sms_vins": vins, "email_vins": vins}
@@ -889,13 +891,13 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("link_requested") and page:
             if len(f"{sms} Here's the link: {page}") <= limit:
                 result["sms_text"] = f"{sms} Here's the link: {page}"
-            result["email_body"] = f"Hi {name},\n\n{body} Here's the link: {page}\n\nThanks,\nThe Team"
+            result["email_body"] = f"{hi}{body} Here's the link: {page}\n\nThanks,\nThe Team"
             result["why"] += " They asked for the link, so the vehicle's own page is included."
     if body_no_vehicles:
         no_sms = body_no_vehicles if len(body_no_vehicles) <= limit else (
             body_no_vehicles[: limit - 1].rsplit(" ", 1)[0] + "…")
         result.update(sms_text_no_vehicles=no_sms, email_subject_no_vehicles=subject,
-                      email_body_no_vehicles=f"Hi {name},\n\n{body_no_vehicles}\n\nThanks,\nThe Team")
+                      email_body_no_vehicles=f"{hi}{body_no_vehicles}\n\nThanks,\nThe Team")
     return result
 
 

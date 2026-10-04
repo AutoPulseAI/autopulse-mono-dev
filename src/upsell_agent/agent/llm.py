@@ -297,7 +297,8 @@ Rules:
   start sms_text and email_body with touch1.intro word for word, then answer answer_questions, then any one
   item in asks, and end the message with touch1.ending word for word when it is given. The ending is the last
   thing in the message, always, whatever the action is - unless after_hours is "offer", whose question comes
-  after it. With touch1.ending null, don't ask what they drive: they've already told us.
+  after it. With touch1.ending null, don't ask what they drive: they've already told us. touch1.intro already
+  greets them, so the email has no separate salutation line before it (never "Hello Maria," then the intro).
 - touch (only when this message is a scheduled follow-up - MASTER_PLAN_3 C4, Omnichannel PDF §3-§4):
   touch.label and touch.instruction say what this one is about. Follow the instruction, keep it short and
   easy to answer, and don't repeat a question they have already answered. If touch.fixed_text is given, that
@@ -371,7 +372,9 @@ Rules:
   Do the same for email_vins with email_subject_no_vehicles / email_body_no_vehicles. Leave all three empty
   if the message names no vehicle.
 - If a campaign is given, the customer is replying to that campaign: acknowledge it naturally.
-- sms_text at most 320 characters (480 on the first reply, when touch1 is given). email_body: greeting, 2-4 short sentences, sign-off.
+- Always write both versions, whatever `channel` is (either may be sent; seen with gpt-5-mini: an email lead got an
+  empty sms_text). sms_text at most 320 characters (480 on the first reply, when touch1 is given), never empty.
+  email_body: greeting, 2-4 short sentences, sign-off.
 - Photos and links (MASTER_PLAN_4 F3): when a message names a vehicle, set sms_media_vin / email_media_vin to
   the vin it is mainly about - the dealership attaches that vehicle's own photo, if it has a good one. Never
   mention a photo, picture or attachment in the words (it may not be attached), and never write an image link.
