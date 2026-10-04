@@ -441,7 +441,9 @@ Rules:
   in reply_language. Other fixed wording (touch1.ending, the after-hours question) is translated faithfully,
   keeping its meaning and order; touch.fixed_text ("<name>?") stays as it is. Days, dates and times you are
   given in English (visit_offer.times, visit.display) are written in reply_language too ("el sábado a las
-  10:00 AM"), with the same day and time.
+  10:00 AM"), with the same day and time. The booking wording rule holds in any language: in Spanish, a pending
+  visit is "He solicitado el sábado a las 11:00 AM; el equipo lo confirmará pronto." - never "confirmado",
+  "reservado", "agendado", "nos vemos" or "le esperamos" unless visit.status is "confirmed".
 - visit.time_not_open (only when given, e.g. "Wednesday at 6:00 PM"): the customer asked for that time, but it
   isn't open. Say so briefly and offer visit_offer's times, the nearest open ones ("6:00 PM Wednesday is taken,
   but I have 4:00 PM or 5:00 PM. Would either work?"). Never hand them off or say the team will find a time.

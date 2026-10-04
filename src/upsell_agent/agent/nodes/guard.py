@@ -21,6 +21,7 @@ from typing import Any
 
 from upsell_agent.agent import human_contact, service_request
 from upsell_agent.agent.context import TurnContext
+from upsell_agent.agent.language import message_language
 from upsell_agent.agent.nodes.compose import just_captured
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import wants_link
@@ -111,6 +112,19 @@ def mandated_wording(decision: dict[str, Any]) -> list[str]:
     return [t for t in (touch1.get("intro"), touch1.get("ending"), touch.get("fixed_text")) if t]
 
 
+def not_in_reply_language(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """Stream Q: a customer writing in Spanish gets a Spanish reply (seen: "Luis, Saturday morning works. I can
+    offer Saturday at 9:00 AM ..." in the middle of a Spanish conversation). Touch 1's English intro is left out
+    of the check."""
+    language = decision.get("reply_language")
+    if not language:
+        return []
+    intro = ((decision.get("touch1") or {}).get("intro") or "")
+    return [f"the {name} isn't written in {language}, the customer's language" for name, key in
+            (("SMS", "sms_text"), ("email", "email_body"))
+            if message_language(str(draft.get(key) or "").replace(intro or "\0", " ")) == "English"]
+
+
 def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     """Touch 1 opens with the client's required intro, word for word (MASTER_PLAN_3 C4). Stream G saw
     gpt-5-mini put a "Hello Maria," salutation above it in the email, greeting the customer twice."""
@@ -123,7 +137,7 @@ def touch1_not_first(decision: dict[str, Any], draft: dict[str, Any]) -> list[st
 
 # Spanish too (stream Q, a reply in the customer's language): "nos vemos/veremos", "reservad@", "confirmad@",
 # "agendad@" claim a booking; "solicitad@" is the requested wording.
-_CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then)|nos (?:vemos|veremos)|reservad[oa]s?|"
+_CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then)|nos (?:vemos|veremos)|(?:te|le|lo|la) esperamos|reservad[oa]s?|"
                                 r"confirmad[oa]s?|agendad[oa]s?)\b", re.IGNORECASE)
 _REQUESTED_WORDING = re.compile(r"\b(requested|solicitad[oa]s?)\b", re.IGNORECASE)
 
@@ -205,7 +219,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
     result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory,
-                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") else SMS_MAX,
+                         # Three segments for Touch 1, and for a reply in Spanish (stream Q: the same message runs
+                         # about a fifth longer, and two over-length drafts handed a Spanish lead to staff).
+                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") or (
+                             state.decision or {}).get("reply_language") else SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
@@ -273,6 +290,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
             result["passed"] = False
             result["violations"] += problems
     # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
+    wrong_language = not_in_reply_language(state.decision or {}, draft)
+    result["checks"]["reply_language"] = not wrong_language
+    if wrong_language:
+        result["passed"] = False
+        result["violations"] += wrong_language
     bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}),
                                       english=not (state.decision or {}).get("reply_language"))
     result["checks"]["grammar"] = not bad_grammar

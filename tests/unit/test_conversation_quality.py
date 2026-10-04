@@ -283,6 +283,19 @@ def test_spanish_day_and_time_words_reach_the_booking_code():
                                       TUESDAY_NOON).part_words
 
 
+def test_a_spanish_conversation_gets_a_spanish_reply():
+    from upsell_agent.agent.nodes.guard import not_in_reply_language
+
+    english = {"sms_text": "Luis, Saturday morning works. Which time works best for you?",
+               "email_body": "Hola Luis,\n\nEl sábado en la mañana está bien. ¿Qué hora le conviene?"}
+    assert not_in_reply_language({"reply_language": SPANISH}, english) == [
+        "the SMS isn't written in Spanish, the customer's language"]
+    assert not_in_reply_language({}, english) == []
+    intro = "Hello Luis, greetings from Sunrise Motors. Thank you for getting in touch."
+    first = {"sms_text": intro + " ¿Qué año, marca y modelo es su carro?", "email_body": ""}
+    assert not_in_reply_language({"reply_language": SPANISH, "touch1": {"intro": intro}}, first) == []
+
+
 def test_spanish_booking_words_need_a_real_booking():
     from upsell_agent.agent.nodes.guard import invalid_booking_wording
 

@@ -34,6 +34,7 @@ from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.sold_pending import reply_hold
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
+from upsell_agent.agent.visit_offer import MAX_ATTEMPTS as MAX_VISIT_ATTEMPTS
 from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_day_offer, plan_visit
 from upsell_agent.agent.visit_offer import declines_visit as visit_declines
 from upsell_agent.agent.visit_offer import eligible as visit_eligible
@@ -345,7 +346,12 @@ async def _visit_and_booking(
         return visit_ctx, plan
 
     built_times: list[dict[str, str]] = []
-    if not hold and not after_hours_blocking and (slot_taken or buying_urgency or visit_eligible(profile, extraction)):
+    # Stream Q: three unanswered offers are enough (seen: "attempt 4 of 3" when the customer never picked nor
+    # declined); after that a visit is offered again only when they ask to come in.
+    offers_left = (not conversation.visit or conversation.visit.attempts < MAX_VISIT_ATTEMPTS
+                   or visit_wants_visit(extraction))
+    if not hold and not after_hours_blocking and (slot_taken or (
+            offers_left and (buying_urgency or visit_eligible(profile, extraction)))):
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         customer_zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
