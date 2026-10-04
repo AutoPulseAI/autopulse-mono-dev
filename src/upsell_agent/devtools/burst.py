@@ -22,6 +22,9 @@ Passes when:
 - every burst reply was written by the AI in its campaign's context (no
   template fallbacks - the first run found a guard bug this way).
 
+Run it inside texting hours (8:00-21:00 in the dealers' states; the dev clock can be moved): a new lead's first
+text outside them is held until the morning (PLAN_4 stream X1), so the other dealer's first replies can't be timed.
+
 For realistic turn times set OFFLINE_MODEL_LATENCY_MS on the worker (the Makefile
 target uses 1200 ms per model call, about what gpt-4o-mini / gpt-4o take).
 DEV only: it writes simulated leads for the dev dealers.
@@ -75,6 +78,9 @@ def _summary(values: list[float]) -> dict[str, Any]:
 async def _new_lead(dealer_id: str, name: str, enqueue) -> str:
     created = await simulate.create_lead(dealer_id, lead_type="sales", channel="sms", name=name,
                                          comments="Hi, is the RAV4 hybrid still available?")
+    # A phone in the dealer's own state: a number with no known state gets the strictest hours of any state,
+    # and its first text would be held (PLAN_4 stream X1), never measured.
+    await simulate.set_contact(dealer_id, created, local=True)
     await simulate.send_lead_created(dealer_id, created["lead_id"], created["customer_id"], "sms", enqueue)
     return created["lead_id"]
 
@@ -97,15 +103,24 @@ async def _campaign(dealer_id: str, count: int) -> tuple[list[dict[str, str]], s
         "_id": campaign_id, "name": "Burst test: spring RAV4 event", "description": "Book a test drive",
         "message_type": "sms", "dealer_id": ObjectId(dealer_id), "status": "completed", "dev_seed": True,
         "message_content": {"subject": "", "body": "Spring RAV4 event this weekend - reply to book a test drive!"}})
-    leads, links = [], []
+    leads, links, texts = [], [], []
+    sent_at = clock.now() - timedelta(hours=2)
     for i in range(count):
         created = await simulate.create_lead(dealer_id, lead_type="sales", channel="sms", name=f"Burst Customer {i}",
                                              comments="")
+        await simulate.set_contact(dealer_id, created, local=True)
         leads.append(created)
         links.append({"campaign_id": str(campaign_id), "name": "Burst test", "lead_id": ObjectId(created["lead_id"]),
-                      "dealer_id": dealer_id, "status": "sent", "dev_seed": True,
-                      "sent_at": clock.now() - timedelta(hours=2)})
+                      "dealer_id": dealer_id, "status": "sent", "dev_seed": True, "sent_at": sent_at})
+        # The campaign text in the CRM conversation, as the campaign worker records it. Without it these are
+        # leads nobody has written to, and the reconciliation sweep (PLAN_4 stream X3) rightly sends each one a
+        # first reply; with it they are open leads already contacted, which the sweep adopts without a message.
+        texts.append({"dealer_id": dealer_id, "lead_id": ObjectId(created["lead_id"]), "status": "sent",
+                      "communication_type": "sms", "campaign_id": str(campaign_id), "ai_generated": False,
+                      "mail_content": "Spring RAV4 event this weekend - reply to book a test drive!",
+                      "timestamp": sent_at, "date": sent_at, "dev_seed": True})
     await get_db()["campaignleads"].insert_many(links)
+    await get_db()["emails"].insert_many(texts)
     return leads, str(campaign_id)
 
 
@@ -168,7 +183,8 @@ async def run_burst(enqueue, redis, *, replies: int, seconds: float, probes: int
 
     turn_docs = await turns.find({"lead_id": {"$in": lead_ids}, "trigger": "inbound_message"}).to_list(None)
     outbound = await dealer_scoped_db(burst_dealer).collection(AI_MESSAGES_COLLECTION).find(
-        {"lead_id": {"$in": lead_ids}, "direction": "outbound", "is_fallback": {"$ne": True}}).to_list(None)
+        {"lead_id": {"$in": lead_ids}, "direction": "outbound", "is_fallback": {"$ne": True},
+         "imported": {"$ne": True}}).to_list(None)  # not the campaign text copied in from the CRM (history sync)
     by_status: dict[str, int] = {}
     for row in outbound:
         by_status[row["status"]] = by_status.get(row["status"], 0) + 1
