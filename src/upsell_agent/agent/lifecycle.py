@@ -552,6 +552,12 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
     if new != current:
         cancelled = await cancel_stale_work(db, lead_id, new, reason=f"stage changed to {STAGE_LABELS[new]}")
     out.update(stage=new.value, label=STAGE_LABELS[new], cancelled=cancelled)
+    if new != current and new in CLOSED_STAGES:
+        # PLAN_4 stream S: the AI's own closing (Day 91, No Longer Owns) shows as the CRM lead's status too.
+        from upsell_agent.agent import crm_status
+        if event.kind in crm_status.CRM_STATUS_FOR_EVENT:
+            out["crm_status"] = await crm_status.sync_closed(db, lead_id, event.kind, reason=result.reason,
+                                                             closed_at=now)
     if new != current:
         # MASTER_PLAN_4 D1/D8 (stream A3): a manager outcome starts exactly one lifecycle and stops the others, and
         # every lead opening or closing recalculates the customer's ACTIVE / INACTIVE status.
@@ -581,6 +587,9 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
                  {"day91_anchor": {"$exists": False}, "opportunity_created_at": {"$lte": cutoff}}]}
     ).to_list(limit)
     summary: dict[str, Any] = {"checked": len(rows), "closed": 0, "kept": 0}
+    # Closings the CRM couldn't take at an earlier sweep (stream S) are tried again first.
+    from upsell_agent.agent import crm_status
+    retried = await crm_status.retry_failed()
     for row in rows:
         dealer_id, lead_id = row.get("dealer_id"), row.get("lead_id")
         if not dealer_id or not lead_id:
@@ -595,4 +604,5 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
             summary["closed"] += 1
         else:
             summary["kept"] += 1
+    summary["crm_status_retry"] = retried
     return summary

@@ -16,7 +16,12 @@ from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender
 from upsell_agent.devtools import simulate
 from upsell_agent.events import handlers
-from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent, LeadPausedEvent
+from upsell_agent.events.models import (
+    BookingChangedEvent,
+    InboundMessageEvent,
+    LeadCreatedEvent,
+    LeadPausedEvent,
+)
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     DEV_OUTBOX_COLLECTION,
@@ -515,6 +520,50 @@ async def test_a_booking_cancelled_on_the_crm_screen_sends_nothing_and_goes_back
     assert (await _state(mongo, created))["stage"] == "contact_made_no_next_action"
     assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
         {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
+
+
+@pytestmark_flow
+async def test_a_crm_booking_cancel_event_cancels_the_steps_at_once(mongo):
+    """Stream S: PUT /api/booking (staff cancel) sends `booking-changed`; the steps go now, not when one falls
+    due, and the lead is back in follow-up with its next touch planned."""
+    created, booking = await _booked_friday(mongo)
+    assert await _steps(mongo, created)
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]},
+                                                         {"$set": {"booking_status": "cancelled"}})
+    before = len(await _outbox(mongo, created))
+    result = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="bc1", dealer_id=DEALER, lead_id=created["lead_id"], booking_id=str(booking["_id"]),
+        change="cancelled"), _deps())
+    assert result["status"] == "appointment_cancelled"
+    assert await _steps(mongo, created) == [] and len(await _outbox(mongo, created)) == before
+    assert (await _state(mongo, created))["stage"] == "contact_made_no_next_action"
+    assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
+    # A repeat of the event (or one for a lead no longer waiting on an appointment) changes nothing.
+    again = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="bc2", dealer_id=DEALER, lead_id=created["lead_id"], change="cancelled"), _deps())
+    assert again["status"] == "not_needed"
+
+
+@pytestmark_flow
+async def test_a_crm_booking_move_event_replans_the_steps_for_the_new_time(mongo):
+    """Stream S: staff move the booking from Friday 10:00 to Saturday 11:00 on the CRM's booking screen: the old
+    steps are superseded and new ones are timed from Saturday 11:00 at once."""
+    created, booking = await _booked_friday(mongo)
+    old = await _steps(mongo, created)
+    friday = booking["bookingDate"]
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {
+        "bookingDate": friday + timedelta(days=1), "bookingTime": "11:00"}})
+    result = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="bm1", dealer_id=DEALER, lead_id=created["lead_id"], booking_id=str(booking["_id"]),
+        change="moved"), _deps())
+    assert result["status"] == "appointment_replanned"
+    new = await _steps(mongo, created)
+    assert new and {d["_id"] for d in new}.isdisjoint({d["_id"] for d in old})
+    appt = datetime.fromisoformat(new[-1]["appointment_at"]).astimezone(NY)
+    assert (appt.weekday(), appt.hour, appt.minute) == (5, 11, 0)
+    assert new[-1]["step"] == "no_show_check" and new[-1]["due_at"].replace(tzinfo=UTC) == appt + timedelta(hours=1)
+    assert (await _state(mongo, created))["stage"] == "appointment_set"
 
 
 @pytestmark_flow

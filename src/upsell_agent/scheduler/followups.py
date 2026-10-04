@@ -1253,22 +1253,25 @@ def stage_of_state(state: dict | None) -> lifecycle.Stage | None:
     return lifecycle.stage_of((state or {}).get("stage"))
 
 
-async def _appointment_cancelled_on_platform(db: DealerScopedDatabase, doc: dict, lead: dict | None,
-                                             customer: dict | None) -> None:
+async def appointment_cancelled_on_platform(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
+                                            lead: dict | None, customer: dict | None, channel: str | None,
+                                            turn_id: str, source: str = "appointment_timer") -> dict[str, Any] | None:
     """Staff cancelled the booking on the CRM's booking screen (stream F): the appointment's other steps are
     stale, and the lead goes where a cancellation without a new time goes (Omnichannel PDF §15: "route to
-    Contact Made - No Next Action"), back into the Short-Term cadence."""
+    Contact Made - No Next Action"), back into the Short-Term cadence. Called when a step falls due (stream F)
+    and at once when the CRM sends `booking-changed` (stream S)."""
     now = clock.now()
     await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
-        {"lead_id": doc["lead_id"], "status": "pending", "kind": {"$in": list(APPOINTMENT_KINDS)}},
+        {"lead_id": lead_id, "status": "pending", "kind": {"$in": list(APPOINTMENT_KINDS)}},
         {"$set": {"status": "cancelled", "reason": "the booking was cancelled on the platform", "closed_at": now}})
-    moved = await lifecycle.apply(db, doc["lead_id"], [lifecycle.Event(
-        "appointment_cancelled", source="appointment_timer", reason="The booking was cancelled on the platform")],
-        lead=lead, customer_id=doc["customer_id"])
+    moved = await lifecycle.apply(db, lead_id, [lifecycle.Event(
+        "appointment_cancelled", source=source, reason="The booking was cancelled on the platform")],
+        lead=lead, customer_id=customer_id)
     if moved and moved.get("cadence_started"):
-        await plan_cadence_touch(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
-                                 channel=doc.get("to_channel") or "sms", turn_id=f"appointment-cancelled-{doc['_id']}",
-                                 lead=lead, customer=customer, first_contact_done=True)
+        moved["cadence_touch"] = await plan_cadence_touch(
+            db, lead_id=lead_id, customer_id=customer_id, channel=channel or "sms", turn_id=turn_id,
+            lead=lead, customer=customer, first_contact_done=True)
+    return moved
 
 
 async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
@@ -1333,7 +1336,9 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         await _close(db, doc, "cancelled", reason=reason)
         await _log(db, tracer, f"appointment_{step}_cancelled", {"followup_id": step_id, "reason": reason})
         if cancelled and stage_of_state(state) in (lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW):
-            await _appointment_cancelled_on_platform(db, doc, lead, customer)
+            await appointment_cancelled_on_platform(
+                db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], lead=lead, customer=customer,
+                channel=doc.get("to_channel"), turn_id=f"appointment-cancelled-{doc['_id']}")
         return "cancelled"
     # The close step sends nothing, so the send check's verdict doesn't apply to it.
     if step != appointment.STEP_NO_SHOW_CLOSE:

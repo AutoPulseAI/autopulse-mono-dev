@@ -21,6 +21,7 @@ from upsell_agent.agent import lifecycle, maintenance, recalls, summary
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
+    BookingChangedEvent,
     InboundMessageEvent,
     LeadCreatedEvent,
     LeadPausedEvent,
@@ -110,6 +111,18 @@ async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], **_:
     return await handlers.handle_lead_paused(LeadPausedEvent.model_validate(event), ctx.get("deps"))
 
 
+async def handle_booking_changed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                                 busy_attempt: int = 0) -> dict[str, Any]:
+    """Staff cancelled or moved the booking in the CRM (stream S): under the lead's lock, so it never races a
+    turn or a due appointment step for the same lead."""
+    parsed = BookingChangedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_booking_changed", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_booking_changed(parsed, ctx.get("deps")),
+    )
+
+
 async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await handlers.handle_lead_resumed(LeadResumedEvent.model_validate(event))
 
@@ -175,6 +188,7 @@ async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]
 
 
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
+             handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
              plan_birthdays]  # MASTER_PLAN_4 D7 (stream A3)
