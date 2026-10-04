@@ -124,6 +124,10 @@ const aiServiceEnv = {
   PYDANTIC_AI_NO_BANNER: '1',
   // Never spend paid Vehicle Databases credits from the local stack (scenarios/e2e/seed run many leads).
   VEHICLE_DATABASES_ENABLED: process.env.CRM_LOCAL_VEHICLE_DATABASES_ENABLED || 'false',
+  // The morning / afternoon send-time split (stream L) puts a lead's Day 2-90 touches at 10:00 or 15:00 by
+  // chance; the scenarios, the cadence check and a demo need the same time every run. CRM_LOCAL_SEND_TIME_AB=true
+  // turns it on here.
+  SEND_TIME_AB: process.env.CRM_LOCAL_SEND_TIME_AB || 'false',
 };
 
 const N8N_TRIPWIRE_PORT = Number(config.n8nPort);
