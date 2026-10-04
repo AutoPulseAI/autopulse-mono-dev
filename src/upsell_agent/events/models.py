@@ -36,6 +36,8 @@ class InboundMessageEvent(BaseEvent):
     text: str
     received_at: datetime
     shadow: bool = False
+    # PLAN_4 stream X3 item 10: the CRM saw auto-responder headers on this email (agent/auto_reply.py).
+    auto_reply: bool = False
 
 
 class LeadPausedEvent(BaseEvent):

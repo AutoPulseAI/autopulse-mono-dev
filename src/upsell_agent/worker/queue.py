@@ -12,8 +12,10 @@ from saq import Queue
 from upsell_agent.config import Settings
 
 # Generous per-job timeout: a turn is capped at 20s by its own deadline
-# (architecture §7); this only stops a truly stuck job holding a worker slot.
-JOB_TIMEOUT_S = 60
+# (architecture §7); this only stops a truly stuck job holding a worker slot. PLAN_4 stream X3 item 10: above the
+# worst real turn (model calls plus three 15 s send attempts), so a slow send is not killed mid-call and left
+# `unknown`; the lead lock is kept alive by its heartbeat meanwhile (worker/locks.py).
+JOB_TIMEOUT_S = 180
 
 
 class Enqueue(Protocol):

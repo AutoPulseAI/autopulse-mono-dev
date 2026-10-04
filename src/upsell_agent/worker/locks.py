@@ -14,11 +14,25 @@ Both raise `Busy` instead of waiting; the worker re-queues the job a couple
 of seconds later (worker/jobs.py).
 """
 
+import asyncio
+import contextlib
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
+
+logger = logging.getLogger(__name__)
+
+# PLAN_4 stream X3 item 10: the lock is extended while its turn runs (a heartbeat every third of the TTL), so a
+# slow turn never loses it mid-job and lets a second turn for the same lead start.
+_EXTEND_IF_OWNER = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('pexpire', KEYS[1], ARGV[2])
+end
+return 0
+"""
 
 _RELEASE_IF_OWNER = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
@@ -56,11 +70,27 @@ def dealer_inflight_key(dealer_id: str) -> str:
 async def lead_lock(client: redis.Redis, dealer_id: str, lead_id: str, ttl_s: float) -> AsyncIterator[None]:
     key = lead_lock_key(dealer_id, lead_id)
     token = uuid.uuid4().hex
-    if not await client.set(key, token, nx=True, px=int(ttl_s * 1000)):
+    ttl_ms = int(ttl_s * 1000)
+    if not await client.set(key, token, nx=True, px=ttl_ms):
         raise Busy(f"lead {lead_id} already has a turn running")
+
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(ttl_s / 3)
+            try:
+                if not await client.eval(_EXTEND_IF_OWNER, 1, key, token, ttl_ms):
+                    logger.warning("lead lock %s was lost while its turn ran", key)
+                    return
+            except Exception as exc:  # noqa: BLE001 - a Redis blip must not kill the turn; the next beat retries
+                logger.warning("lead lock %s heartbeat failed: %r", key, exc)
+
+    beat = asyncio.create_task(heartbeat())
     try:
         yield
     finally:
+        beat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beat
         await client.eval(_RELEASE_IF_OWNER, 1, key, token)
 
 

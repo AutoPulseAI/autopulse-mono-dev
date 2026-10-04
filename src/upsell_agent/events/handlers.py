@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import after_handoff, duplicates, human_contact, lifecycle
+from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
@@ -301,6 +301,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
     from upsell_agent.scheduler.sold_lifecycles import ROUTER_ACTIONS  # MASTER_PLAN_4 (stream A3)
 
     outcome = action if action in ("holding_reply", "opted_out", "opted_in", "opt_out_confirmation", "wrong_number",
+                                   "auto_reply",
                                    *APPOINTMENT_ACTIONS, *ROUTER_ACTIONS) else "saved_only"
     log = await tracer.finish(outcome, {
         "action": action, "reason": reason, "reply": sent and request.text, "send_status": sent and sent.status,
@@ -324,6 +325,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     unanswered.sort(key=lambda m: m["created_at"])
     if not unanswered:
         return {"status": "already_answered", "reason": "an earlier turn answered this message"}
+
+    if event.auto_reply or all(auto_reply.is_auto_reply(m["text"]) for m in unanswered):
+        # PLAN_4 stream X3 item 10: an out-of-office / auto-responder. No reply (no loop with a bot), not contact
+        # (no stage change, call tasks and the channel switch stay), only a record of why.
+        await db.collection(AI_MESSAGES_COLLECTION).update_many(
+            {"_id": {"$in": [m["_id"] for m in unanswered]}}, {"$set": {"auto_reply": True}})
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="auto_reply",
+                                  reason="An auto-responder (out of office / automatic reply), not the customer: "
+                                         "no reply, not counted as contact.",
+                                  received_at=_parse_received_at(received_at))
+        return {**held, "status": "auto_reply"}
 
     # Step 1, before anything can fail: the customer replied, so no channel switch.
     cancelled = await _cancel_pending_followups(db, lead_id, channel_switches_only=True)
