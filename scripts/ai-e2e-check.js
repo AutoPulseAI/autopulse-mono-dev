@@ -484,13 +484,21 @@ async function crmLocal() {
 
   // --- D. Booking through /api/booking ------------------------------------------------------------
   const tz = info.time_zone;
+  // Repeatable (stream S): fillers an interrupted run left behind are removed, and the day is one whose
+  // 11:00-13:59 hours hold no active booking at all (sales or service), so every count below starts from zero.
+  // This run's own bookings are cancelled at the end (they would otherwise take the day from the next run).
+  await Booking.deleteMany({ dealer_id: DEMO_DEALER_ID, notes: 'e2e filler' });
+  const busyDays = new Set((await Booking.find({ dealer_id: DEMO_DEALER_ID,
+    booking_status: { $in: ['pending', 'confirmed'] }, bookingTime: /^1[123]:/ }).select('bookingDate').lean())
+    .map((b) => new Date(b.bookingDate).toLocaleDateString('en-CA', { timeZone: tz })));
   const day = await (async () => {
-    for (let ahead = 4; ahead < 12; ahead += 1) {
+    for (let ahead = 4; ahead < 40; ahead += 1) {
       const date = new Date(Date.now() + ahead * 86_400_000).toLocaleDateString('en-CA', { timeZone: tz });
+      if (busyDays.has(date)) continue;
       const slots = await fetch(`${PLATFORM}/api/booking?dealer_id=${DEMO_DEALER_ID}&date=${date}`).then(jsonOf);
       if (slots.slots?.find((s) => s.time === '11:00' && s.available)) return date;
     }
-    throw new Error('no free 11:00 slot in the next days');
+    throw new Error('no day with free 11:00-13:00 slots in the next weeks');
   })();
   const bookingBody = (entry, time = '11:00') => JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(entry.lead._id),
     customerName: entry.lead.name, email: entry.email, phone: entry.phone, bookingDate: day, bookingTime: time,
@@ -573,6 +581,27 @@ async function crmLocal() {
   await Booking.deleteOne({ _id: serviceFiller._id });
   const fetched = await fetch(`${PLATFORM}/api/booking?booking_id=${bookingId}`, { headers: internal }).then(jsonOf);
   check('D10. GET /api/booking returns the booking to the AI service', fetched.booking?.bookingTime === '12:00');
+  // Stream S: a staff move / cancel on the booking screen (PUT /api/booking) reaches the AI at once.
+  const staffSteps = () => db.collection('scheduled_followups').find({ lead_id: String(created.website.lead._id),
+    status: 'pending', kind: /^appointment_/ }).toArray();
+  const staffMoved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ bookingId: String(staffBooking._id), booking_time: '14:00' }) });
+  const replanned = await waitFor('the AI to re-plan the appointment steps for 14:00', async () => {
+    const steps = await staffSteps();
+    return steps.length && steps.every((d) => new Date(d.appointment_at).toLocaleTimeString('en-GB',
+      { timeZone: tz, hour: '2-digit', minute: '2-digit' }) === '14:00') ? steps : null;
+  }).catch(() => null);
+  check('D11. staff moving a booking on the booking screen re-plans the AI\'s appointment steps at once',
+    staffMoved.ok && Boolean(replanned), `HTTP ${staffMoved.status}, ${replanned?.length ?? 0} step(s) for 14:00`);
+  const staffCancelled = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ bookingId: String(staffBooking._id), booking_status: 'cancelled' }) });
+  const backToFollowUp = await waitFor('the AI to drop the cancelled appointment', async () => {
+    const s = await state(created.website.lead._id);
+    return s?.stage !== 'appointment_set' && !(await staffSteps()).length ? s : null;
+  }).catch(() => null);
+  check('D12. staff cancelling a booking cancels the AI\'s appointment steps at once (back to follow-up)',
+    staffCancelled.ok && backToFollowUp?.stage === 'contact_made_no_next_action',
+    `HTTP ${staffCancelled.status}, stage ${backToFollowUp?.stage_label}`);
 
   // --- E. Staff: Visited + Sold Pending, then Closed - Lost -----------------------------------------
   const visited = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
@@ -654,6 +683,34 @@ async function crmLocal() {
     body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(target.lead._id), kind: 'service_request',
       text: 'Service request: oil change, prefers Tuesday morning.' }) }).then(jsonOf);
   check('G5. the AI can leave an internal note on the lead', noted.created === true);
+
+  // --- H. The AI's own closings as the CRM status (stream S) ---------------------------------------
+  const closing = (leadId, status, closedAt = new Date()) => fetch(`${PLATFORM}/api/internal/ai/leads/status`, {
+    method: 'POST', headers: internal, body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, lead_id: String(leadId), status,
+      reason: 'Day 91 reached with no superseding outcome', closed_at: closedAt.toISOString() }) });
+  const keptSold = await closing(delivered2.lead._id, 'Closed - Lost').then(jsonOf);
+  check('H1. the AI\'s Day 91 close never replaces a staff status (Sold Delivered stays)',
+    keptSold.updated === false && keptSold.reason === 'staff_status_kept'
+      && (await Lead.findById(delivered2.lead._id).lean()).fe_lead_status === 'Sold Delivered', JSON.stringify(keptSold));
+  const stale = await closing(target.lead._id, 'Closed - Lost', new Date(Date.now() - 365 * 86_400_000)).then(jsonOf);
+  const closedByAi = await closing(target.lead._id, 'Closed - Lost').then(jsonOf);
+  const closedLead = await Lead.findById(target.lead._id).lean();
+  check('H2. the AI\'s Day 91 close shows as Closed - Lost on the CRM lead, unless staff changed it since',
+    (stale.updated ? closedByAi.reason === 'already' : stale.reason === 'staff_changed_it_after' && closedByAi.updated)
+      && closedLead.fe_lead_status === 'Closed - Lost' && closedLead.status_source === 'ai',
+    `stale: ${stale.reason || 'applied'}; now: ${closedLead.fe_lead_status}`);
+  const noLongerOwns = await closing(delivered2.lead._id, 'Closed - No Longer Owns').then(jsonOf);
+  const readOnly = await fetch(`${PLATFORM}/api/conversations/lead/status`, { method: 'PUT', headers: staff,
+    body: JSON.stringify({ id: String(target.lead._id), status: 'Closed - No Longer Owns' }) });
+  check('H3. Closed - No Longer Owns is set by the AI on a Sold Delivered lead only; staff cannot pick it',
+    noLongerOwns.updated === true && readOnly.status === 400
+      && (await Lead.findById(delivered2.lead._id).lean()).fe_lead_status === 'Closed - No Longer Owns',
+    `AI: ${JSON.stringify(noLongerOwns)}, staff: HTTP ${readOnly.status}`);
+
+  // Leave the day's slots free for the next run (stream S): the fillers go, this run's bookings are cancelled.
+  await Booking.deleteMany({ dealer_id: DEMO_DEALER_ID, notes: 'e2e filler' });
+  await Booking.updateMany({ _id: { $in: [bookingId, serviceBookingId, staffBooking?._id].filter(Boolean) },
+    booking_status: { $in: ['pending', 'confirmed'] } }, { $set: { booking_status: 'cancelled' } });
 }
 
 (CRM_LOCAL ? crmLocal() : main())
