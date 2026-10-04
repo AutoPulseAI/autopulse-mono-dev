@@ -581,6 +581,11 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
                                         "asked_at": now, "status": "offered", "facts": doc.get("facts"),
                                         "event_type": doc.get("event_type"), "offer": doc.get("offer")}
     outcomes = await _send_both(db, deps, tracer, doc, text, PURPOSE[kind])
+    # PLAN_4 stream L: a lifecycle message is a touch (learning/touches.py).
+    from upsell_agent.learning import touches
+    await touches.record_touch(db, touch_id=f"{doc['kind']}-{doc['_id']}", lead_id=doc["lead_id"],
+                               customer_id=doc["customer_id"], kind=kind, outcomes=outcomes,
+                               theme=(doc.get("touch") or {}).get("theme") or doc.get("outreach_kind"))
     delivered = any(o.status in ("sent", "duplicate") for o in outcomes)
     if not delivered and any(o.status == "held" for o in outcomes):
         await _requeue(db, doc, now + timedelta(seconds=30), "held by the send check at send time; checking again")

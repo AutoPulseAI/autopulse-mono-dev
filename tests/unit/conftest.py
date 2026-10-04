@@ -10,6 +10,9 @@ os.environ["MODEL_EXTRACT"] = "offline"
 os.environ["MODEL_COMPOSE"] = "offline"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
+# PLAN_4 stream L: the morning / afternoon send-time test moves cadence touches off the fixed 10:00 that the
+# schedule tests check; tests of the test itself turn it on (tests/unit/test_learning.py).
+os.environ["SEND_TIME_AB"] = "false"
 
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -20,6 +23,7 @@ from mongomock_motor import AsyncMongoMockClient
 from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations import dealer_profile, mongodb
+from upsell_agent.learning import optimizer
 from upsell_agent.tools import inventory_tool
 
 
@@ -42,6 +46,7 @@ def reset_clock():
     clock.set_offset(0)
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
+    optimizer.clear_cache()
     yield
     clock.set_offset(0)
     dealer_profile.clear_cache()

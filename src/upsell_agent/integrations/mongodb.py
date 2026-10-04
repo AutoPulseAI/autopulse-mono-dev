@@ -132,6 +132,10 @@ class DealerScopedCollection:
     async def count_documents(self, filter: dict | None = None, **kwargs) -> int:
         return await self._collection.count_documents(self._scoped_filter(filter), **kwargs)
 
+    def aggregate(self, pipeline: list[dict], **kwargs):
+        """PLAN_4 stream L (learning/): the pipeline always starts by matching this dealer."""
+        return self._collection.aggregate([{"$match": self._scoped_filter(None)}, *pipeline], **kwargs)
+
 
 class DealerScopedDatabase:
     """Hand one of these to any code that needs to read/write per-dealer
@@ -197,6 +201,11 @@ AI_SERVICE_EVENTS_COLLECTION = "ai_service_events"
 # vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
 AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
 AI_CUSTOMER_STATUS_COLLECTION = "ai_customer_status"
+# PLAN_4 stream L (learning/): one row per outbound AI touch with its context, the variants it was given and
+# what the customer did after it (blueprint box 5); one price history per (dealer, VIN) for verified price
+# drops (learning/price_watch.py).
+AI_TOUCHES_COLLECTION = "ai_touches"
+AI_PRICE_SNAPSHOTS_COLLECTION = "ai_price_snapshots"
 # DEV only: where the fake channel driver "sends" to (channels/fake.py).
 DEV_OUTBOX_COLLECTION = "dev_outbox"
 
@@ -292,6 +301,19 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     ],
     DEV_OUTBOX_COLLECTION: [
         ([("dealer_id", 1), ("lead_id", 1), ("created_at", 1)], {}),
+    ],
+    # PLAN_4 stream L.
+    AI_TOUCHES_COLLECTION: [
+        ([("dealer_id", 1), ("touch_id", 1)], {"unique": True}),
+        # Outcome attribution: the lead's latest touch before a reply / booking / opt-out.
+        ([("dealer_id", 1), ("lead_id", 1), ("sent_at", -1)], {}),
+        # The report and the learning's counts (per dealer, and platform-wide for the prior).
+        ([("dealer_id", 1), ("kind", 1), ("sent_at", -1)], {}),
+        ([("kind", 1), ("sent_at", -1)], {}),
+    ],
+    AI_PRICE_SNAPSHOTS_COLLECTION: [
+        ([("dealer_id", 1), ("vin", 1)], {"unique": True}),
+        ([("dealer_id", 1), ("in_stock", 1), ("drop.verified_at", -1)], {}),
     ],
     # MASTER_PLAN_4 D5/D6 (stream A4).
     AI_SERVICE_VEHICLES_COLLECTION: [

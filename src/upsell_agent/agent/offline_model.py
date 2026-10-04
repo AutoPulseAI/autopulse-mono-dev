@@ -632,6 +632,11 @@ def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> st
     if theme == "direct_close":
         return f"Are you still thinking about {it}? I can hold a time for you - what day works?", []
     if theme == "price_or_offer":
+        # PLAN_4 stream L: a verified price drop on a vehicle loaded this turn (learning/price_watch.py).
+        if car := next((c for c in stock if (c.get("price_drop") or {}).get("price") and c.get("vin")), None):
+            title = " ".join(str(x) for x in (car.get("year"), car.get("make"), car.get("model")) if x)
+            return (f"Good news - the price on the {title} just came down to ${car['price_drop']['price']:,}. "
+                    "Would you like to come take a look?"), [car["vin"]]
         return f"I'm still keeping an eye out for {it} for you. Would you like me to let you know what comes in?", []
     return f"I'm just checking in about {it}, {name}. Is there anything I can help with?", []
 

@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # TRADE or GENERAL is put in that lead bucket (agent/lead_bucket.py), and the keyword isn't treated
     # as the customer's question. A testing aid only: off for real dealers.
     demo_bucket_keywords: bool = Field(default=False, alias="DEMO_BUCKET_KEYWORDS")
+    # PLAN_4 stream L (learning/optimizer.py; blueprint box 5): pick the Days 8-90 angle and the wording variant
+    # of each cadence touch from observed response rates (Thompson sampling, platform prior, minimum sample).
+    # Off: today's fixed order and the original wording. SEND_TIME_AB: Day 2-90 touches are also split between
+    # a morning and an afternoon send (both still held to the dealer's hours and the customer's window).
+    learning_enabled: bool = Field(default=True, alias="LEARNING_ENABLED")
+    send_time_ab: bool = Field(default=True, alias="SEND_TIME_AB")
 
     # MASTER_PLAN_4 F3: a vehicle's photo goes out as MMS on SMS (inline in email whatever this says). The
     # client wants the image, not the link (conversation_6), so it's on by default; a dealer record's
