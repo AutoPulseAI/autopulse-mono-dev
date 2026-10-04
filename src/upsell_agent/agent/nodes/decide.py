@@ -181,6 +181,34 @@ async def _times_for_day(ctx: TurnContext, state: AgentState, dealer: DealerProf
     return built, info
 
 
+# How many replies after the customer asked for a day their bare times still mean that day.
+ASKED_DAY_REPLIES = 2
+
+
+def _live_asked_day(conversation: ConversationState, dealer: DealerProfile, now: datetime) -> str | None:
+    """The day the customer asked for (PLAN_4 stream X3 item 3), while it is still today or later and was asked
+    within the last couple of replies (an old request doesn't turn a later "3pm" into a booking)."""
+    visit = conversation.visit
+    asked = visit.asked_day if visit else None
+    if not asked or conversation.turn - visit.asked_turn > ASKED_DAY_REPLIES:
+        return None
+    try:
+        day = date.fromisoformat(asked)
+    except ValueError:
+        return None
+    return asked if day >= now.astimezone(dealer.tz).date() else None
+
+
+def _part_on_known_day(text: str, asked_day: str | None, offered: list[dict[str, str]], dealer: DealerProfile,
+                       now: datetime) -> booking_tool.DayRequest | None:
+    """"Morning is better" with no day named: that part of the day they asked for, else of the day we offered."""
+    part, words = booking_tool.part_of_day(text)
+    day = asked_day or (offered[0]["date"] if offered else None)
+    if part is None or not day or booking_tool.bare_time(text):
+        return None
+    return booking_tool.DayRequest(day=date.fromisoformat(day), part=part, part_words=words)
+
+
 def _day_offer_why(info: dict[str, Any]) -> str:
     asked = info["asked"] + (f" ({info['part']})" if info.get("part") else "")
     if info["on_that_day"]:
@@ -240,7 +268,7 @@ async def _visit_and_booking(
             if built:
                 visit_ctx["day_request"] = info
                 return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
-                                                 why=_day_offer_why(info))
+                                                 why=_day_offer_why(info), asked_day=request.day.isoformat())
         elif _RESCHEDULE_HINT.search(text):
             from upsell_agent.slots.dates import resolve as resolve_date
             resolved = resolve_date(text, now.astimezone(dealer.tz))
@@ -271,19 +299,22 @@ async def _visit_and_booking(
     # No active booking: is the customer's message a pick against what we just offered, or the
     # email/phone we asked for to book a time they already picked?
     pending = conversation.visit.pending_pick if conversation.visit else None
+    asked_day = _live_asked_day(conversation, dealer, now)
     slot_taken = False
     # B5 item 8: a visit request that names its own time ("can I come see it tomorrow at 10?"),
     # at any hour, has that time checked and booked straight away.
     asks_for_a_time = visit_wants_visit(extraction)
-    if (pending or asks_for_a_time or (conversation.awaiting_visit_pick and conversation.visit)) and not hold \
-            and not after_hours_blocking:
+    # PLAN_4 stream X3 item 3: a bare time or a part of the day after they asked for a day is about that day.
+    about_asked_day = bool(asked_day and (booking_tool.bare_time(text) or booking_tool.part_of_day(text)[0]))
+    if (pending or asks_for_a_time or about_asked_day or (conversation.awaiting_visit_pick and conversation.visit)) \
+            and not hold and not after_hours_blocking:
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         picked = pending
         offered = conversation.visit.offered_times if conversation.awaiting_visit_pick and conversation.visit else []
         wanted = None
-        if offered or asks_for_a_time:
-            pick = booking_tool.match_pick(text, offered, dealer, now, available=available)
+        if offered or asks_for_a_time or asked_day:
+            pick = booking_tool.match_pick(text, offered, dealer, now, available=available, prefer_day=asked_day)
             picked, wanted = pick.matched or pending, pick.wanted
         if not picked and wanted and not visit_declines(extraction):
             # Stream Q: they named a time that isn't open ("Wednesday after work, like 6pm?", "3pm"): the open
@@ -294,18 +325,25 @@ async def _visit_and_booking(
             if built:
                 shown = await _dealer_local_display(wanted, dealer)
                 visit_ctx["time_not_open"] = shown["display"]
+                wanted_day = wanted.astimezone(dealer.tz).date()
+                if built[0]["date"] != wanted_day.isoformat():
+                    # PLAN_4 stream X3 item 3: never move to another day without saying why.
+                    visit_ctx["day_request"] = {"asked": _day_words(wanted_day), "part": None, "on_that_day": False,
+                                                "offered_day": _day_words(date.fromisoformat(built[0]["date"]))}
                 return visit_ctx, plan_day_offer(
-                    profile=profile, conversation=conversation, built_times=built,
+                    profile=profile, conversation=conversation, built_times=built, asked_day=wanted_day.isoformat(),
                     why=f"The customer asked for {shown['display']}, which isn't open: offering the nearest open times.")
         if not picked and not pending and not visit_declines(extraction) and (
-                request := booking_tool.preferred_day(text, dealer, now)):
+                request := booking_tool.preferred_day(text, dealer, now) or _part_on_known_day(
+                    text, asked_day, offered, dealer, now)):
             # A day but no time, answering our times or asking to come in ("not Wednesday, what about
             # Monday?", "can I come Monday afternoon?"): offer that day's open times, not the earliest ones.
+            # PLAN_4 stream X3 item 3: "morning is better" after asking for Saturday is Saturday morning.
             built, info = await _times_for_day(ctx, state, dealer, now, request)
             if built:
                 visit_ctx["day_request"] = info
                 return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
-                                                 why=_day_offer_why(info))
+                                                 why=_day_offer_why(info), asked_day=request.day.isoformat())
         if picked and datetime.fromisoformat(picked["iso"]) not in available:
             # B5 item 3: taken since we offered it - fresh times instead, not a booking.
             slot_taken = True

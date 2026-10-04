@@ -315,12 +315,13 @@ def _fresh_pick(candidate: datetime, dealer: DealerProfile, available: list[date
 
 
 def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
-               *, available: list[datetime] | None = None) -> PickResult:
+               *, available: list[datetime] | None = None, prefer_day: str | None = None) -> PickResult:
     """"the second one", "Saturday 10 works", "after 5 tomorrow" -> one of
     `offered`, or (when it names a real, free time that wasn't offered) a
     freshly built entry for it (B5 item 2). Uses Plan 2's date resolver
     (slots/dates.py) for anything that isn't an ordinal; the model never
-    does this matching."""
+    does this matching. `prefer_day` (ISO date): the day the customer asked for
+    (PLAN_4 stream X3 item 3) - a time with no day ("10 works") is read on it first."""
     from upsell_agent.slots.dates import resolve as resolve_date
 
     if m := _ORDINAL_RE.search(text):
@@ -336,10 +337,10 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
     if resolved is None:
         # A time with no day answers the times we offered: the first offered day that has it open (else the
         # first offered day, for the nearest open times).
-        at = bare_time(text) if offered else None
+        at = bare_time(text) if offered or prefer_day else None
         if at is None:
             return PickResult()
-        days = list(dict.fromkeys(o["date"] for o in offered))
+        days = list(dict.fromkeys([*([prefer_day] if prefer_day else []), *(o["date"] for o in offered)]))
         for day_iso in days:
             exact = next((o for o in offered if o["date"] == day_iso and o["time"] == at.strftime("%H:%M")), None)
             if exact:

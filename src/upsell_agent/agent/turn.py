@@ -791,12 +791,17 @@ def _human_contact_record(result: dict[str, Any]) -> dict | None:
     return plan.get("record")
 
 
-def _visit_record(result: dict[str, Any]) -> dict | None:
+def _visit_record(result: dict[str, Any], lead_state: dict | None = None) -> dict | None:
     """The visit-offer state as this turn leaves it (MASTER_PLAN_3 B4/B5). An
     offer only counts when the AI-written reply (which carries it) went out,
-    not a template - the same rule as _after_hours_record."""
+    not a template - the same rule as _after_hours_record. The day the customer
+    asked for is theirs, not ours, so it is kept even then (PLAN_4 stream X3 item 3)."""
     plan = (result.get("decision") or {}).get("visit_plan") or {}
     if plan.get("fire") and result.get("used_template"):
+        record = plan.get("record") or {}
+        current = ((lead_state or {}).get("conversation") or {}).get("visit")
+        if record.get("asked_day") and current is not None:
+            return {**current, "asked_day": record["asked_day"], "asked_turn": record.get("asked_turn") or 0}
         return None
     return plan.get("record")
 
@@ -824,7 +829,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         used_template=bool(result.get("used_template")),
         promises=list(draft.get("promises") or []),
         after_hours=_after_hours_record(result),
-        visit=_visit_record(result),
+        visit=_visit_record(result, lead_state),
         shown_vins=list((draft.get("sms_vins") if channel == "sms" else draft.get("email_vins")) or []),
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),

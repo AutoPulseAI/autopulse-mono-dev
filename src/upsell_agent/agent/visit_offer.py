@@ -191,7 +191,7 @@ def _followup_date(customer_words: str | None, now: datetime) -> str:
 
 
 def plan_day_offer(*, profile: Profile, conversation: ConversationState, built_times: list[dict[str, str]],
-                   why: str) -> VisitOfferPlan:
+                   why: str, asked_day: str | None = None) -> VisitOfferPlan:
     """The customer answered our times with a day of their own ("not Wednesday, what about Monday?"), or
     asked to move their booking to a day: times on that day are offered. It continues the offer they're
     answering, so it isn't another attempt (the first one when nothing was offered before)."""
@@ -202,7 +202,8 @@ def plan_day_offer(*, profile: Profile, conversation: ConversationState, built_t
     new_record = record.model_copy(update={
         "attempts": attempt, "angles_used": angles, "offered_times": built_times,
         "offered_turn": conversation.turn + 1, "held_over": 0, "declined": False, "pending_pick": None,
-        "why": why})
+        "why": why, "asked_day": asked_day or record.asked_day,
+        "asked_turn": conversation.turn + 1 if asked_day else record.asked_turn})
     return VisitOfferPlan(fire=True, attempt=attempt, angle=angles[-1], value_proposition=value_prop,
                           times=built_times, record=new_record.model_dump(), why=why)
 

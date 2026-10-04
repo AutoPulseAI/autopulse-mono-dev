@@ -104,6 +104,10 @@ class VisitState(BaseModel):
     service_ask: bool = False
     # The service request passed to the team ({requested, display, notes, at}); no booking is made.
     service_request: dict[str, Any] | None = None
+    # PLAN_4 stream X3 item 3: the day the customer last asked to come in (ISO date), so "morning is better" and
+    # "10 works" are read on THAT day, not on whatever day an earlier offer named.
+    asked_day: str | None = None
+    asked_turn: int = 0
 
 
 class NotInterestedState(BaseModel):
