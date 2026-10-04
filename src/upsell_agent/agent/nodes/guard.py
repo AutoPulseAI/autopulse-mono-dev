@@ -195,6 +195,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if visit_offer := (state.decision or {}).get("visit_offer"):
         # The times just offered (MASTER_PLAN_3 B4), built from real availability, not invented.
         known += [t.get("display") for t in visit_offer.get("times") or []]
+        # PLAN_4 stream X3 item 2: the visit reason is built in code from the customer's own amounts.
+        known.append(visit_offer.get("value_proposition"))
     visit = (state.decision or {}).get("visit") or {}
     # The booking's own time, or the picked time that was just taken (MASTER_PLAN_3 B5), both real.
     known += [visit[k] for k in ("display", "slot_taken", "time_not_open") if visit.get(k)]
