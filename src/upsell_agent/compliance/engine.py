@@ -55,6 +55,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from upsell_agent import clock
+from upsell_agent.agent.customer_key import lead_customer_id
 from upsell_agent.channels import consent
 from upsell_agent.compliance import state_hours
 from upsell_agent.compliance.customer_zone import customer_zone
@@ -269,8 +270,8 @@ async def can_contact(
     db = dealer_scoped_db(dealer_id)
     at = _aware(at or clock.now())
     lead = lead if lead is not None else await _find(db, PLATFORM_LEADS_COLLECTION, lead_id)
-    if not customer_id and lead and lead.get("customer_id"):
-        customer_id = str(lead["customer_id"])
+    if not customer_id and lead:
+        customer_id = lead_customer_id(lead)
     customer = customer if customer is not None else await _find(db, PLATFORM_CUSTOMERS_COLLECTION, customer_id)
     if to is None and channel in ("sms", "email"):
         to = await consent.usable_recipient(db, lead, customer, channel)  # type: ignore[arg-type]

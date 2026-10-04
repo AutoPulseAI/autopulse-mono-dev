@@ -18,11 +18,10 @@ from typing import Any
 from bson import ObjectId
 
 from upsell_agent import clock
+from upsell_agent.agent.customer_key import find_customer_leads
 from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     DealerScopedDatabase,
-    as_object_id,
     get_db,
 )
 
@@ -37,8 +36,7 @@ def _aware(value: datetime | None) -> datetime | None:
 
 async def find_campaign_context(db: DealerScopedDatabase, *, customer_id: str) -> dict[str, Any] | None:
     now = clock.now()
-    leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"customer_id": {"$in": [customer_id, as_object_id(customer_id)]}}).to_list(None)
+    leads = await find_customer_leads(db, customer_id)
     lead_ids = [lead["_id"] for lead in leads]
     if not lead_ids:
         return None

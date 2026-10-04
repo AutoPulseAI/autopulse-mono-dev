@@ -22,6 +22,7 @@ Every decision is added to the compliance log (channel `voice`, purpose
 from datetime import datetime
 
 from upsell_agent import clock
+from upsell_agent.agent.customer_key import lead_customer_id
 from upsell_agent.channels import consent
 from upsell_agent.compliance import engine, state_hours
 from upsell_agent.integrations.dealer_profile import dealer_profile
@@ -39,8 +40,8 @@ async def can_call(*, dealer_id: str, customer_id: str | None, lead_id: str, at:
     db = dealer_scoped_db(dealer_id)
     at = engine._aware(at or clock.now())
     lead = await engine._find(db, PLATFORM_LEADS_COLLECTION, lead_id)
-    if not customer_id and lead and lead.get("customer_id"):
-        customer_id = str(lead["customer_id"])
+    if not customer_id and lead:
+        customer_id = lead_customer_id(lead)
     customer = await engine._find(db, PLATFORM_CUSTOMERS_COLLECTION, customer_id)
     checks: list[dict] = []
 

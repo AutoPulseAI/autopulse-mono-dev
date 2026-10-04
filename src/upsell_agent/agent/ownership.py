@@ -40,12 +40,12 @@ from typing import Any
 from bson import ObjectId
 
 from upsell_agent import clock
+from upsell_agent.agent.customer_key import find_customer_leads
 from upsell_agent.integrations.mongodb import (
     AI_CUSTOMER_STATUS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
     AI_VEHICLE_OWNERSHIP_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
     as_object_id,
@@ -123,8 +123,7 @@ async def recalculate_customer_status(db: DealerScopedDatabase, customer_id: str
     if not customer_id:
         return None
     customer_id = str(customer_id)
-    leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"customer_id": {"$in": _cid_values(customer_id)}}).to_list(None)
+    leads = await find_customer_leads(db, customer_id)
     lead_ids = [str(lead["_id"]) for lead in leads]
     states = {s["lead_id"]: s for s in await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": lead_ids}}).to_list(None)} if lead_ids else {}
@@ -391,8 +390,7 @@ async def customer_view(dealer_id: str, customer_id: str) -> dict[str, Any]:
     row = await db.collection(AI_CUSTOMER_STATUS_COLLECTION).find_one({"customer_id": str(customer_id)})
     records = await db.collection(AI_VEHICLE_OWNERSHIP_COLLECTION).find({"customer_id": str(customer_id)}).to_list(None)
     records.sort(key=lambda r: _aware(r.get("created_at")) or datetime.min.replace(tzinfo=UTC))
-    leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"customer_id": {"$in": _cid_values(str(customer_id))}}).to_list(None)
+    leads = await find_customer_leads(db, str(customer_id))
     lead_ids = [str(lead["_id"]) for lead in leads]
     states = {s["lead_id"]: s for s in await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": lead_ids}}).to_list(None)} if lead_ids else {}

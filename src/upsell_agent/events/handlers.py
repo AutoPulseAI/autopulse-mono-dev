@@ -17,6 +17,7 @@ from typing import Any
 
 from upsell_agent import clock
 from upsell_agent.agent import duplicates, human_contact, lifecycle
+from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -39,10 +40,8 @@ from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
-    PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
-    as_object_id,
     dealer_scoped_db,
 )
 from upsell_agent.learning import touches
@@ -178,9 +177,7 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
     db = dealer_scoped_db(event.dealer_id)
     lead_id = event.lead_id
     if not lead_id:
-        latest = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-            {"customer_id": {"$in": [event.customer_id, as_object_id(event.customer_id)]}}
-        ).sort("_id", -1).to_list(1)
+        latest = sorted(await find_customer_leads(db, event.customer_id), key=lambda row: row["_id"], reverse=True)
         lead_id = str(latest[0]["_id"]) if latest else None
     # MASTER_PLAN_3 C6: a customer's message belongs to the lead the AI works, never to a linked duplicate.
     lead_id = await duplicates.workflow_lead_id(db, lead_id)
@@ -584,7 +581,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     final_event = outcome_event or stage_event
     if stage_event:
         lead = await find_lead(db, event.lead_id)
-        customer_id = str((lead or {}).get("customer_id") or "") or None
+        customer_id = lead_customer_id(lead, db.dealer_id)
         prior = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
         detail: dict[str, Any] = {}
         if stage_event == "appointment_set":
@@ -622,7 +619,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                                                   "resumed_at": clock.now()}})
         if (stage_change or {}).get("cadence_started"):
             lead = lead if stage_event else await find_lead(db, event.lead_id)
-            customer_id = str((lead or {}).get("customer_id") or "") or None
+            customer_id = lead_customer_id(lead, db.dealer_id)
             if customer_id:
                 extra["cadence_touch"] = await plan_cadence_touch(
                     db, lead_id=event.lead_id, customer_id=customer_id,
@@ -656,7 +653,8 @@ async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | No
         return {"status": "not_needed", "reason": f"the lead is at {lifecycle.label(stage) or 'no stage'}, "
                                                   "not waiting on an appointment"}
     lead = await find_lead(db, event.lead_id)
-    customer_id = str((lead or {}).get("customer_id") or state.get("customer_id") or "") or None
+    customer_id = (str((lead or {}).get("customer_id") or "") or state.get("customer_id")
+                   or lead_customer_id(lead, db.dealer_id))
     if not customer_id:
         return {"status": "not_needed", "reason": "no customer on the lead"}
     channel = ((lead or {}).get("data") or {}).get("channel") or "sms"
