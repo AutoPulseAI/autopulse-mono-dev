@@ -571,12 +571,12 @@ async function crmLocal() {
   check('D8. the AI was told about the staff booking (stage Appointment Set)', Boolean(staffStage));
   const serviceBookingId = serviceOkBody.bookingId;
   const moved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
-    body: JSON.stringify({ bookingId, booking_status: 'confirmed', booking_time: '12:00' }) });
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, bookingId, booking_status: 'confirmed', booking_time: '12:00' }) });
   check('D9. moving a sales booking to an hour with room is allowed (12:00 has 1 of 10)', moved.ok, `HTTP ${moved.status}`);
   const serviceFiller = await Booking.create({ dealer_id: DEMO_DEALER_ID, lead_id: `e2e-filler-${fillerRun}-svc`,
     customerName: 'Service filler', bookingDate: bookingDay, bookingTime: '13:00', appointment_type: 'service', notes: 'e2e filler' });
   const serviceMoved = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
-    body: JSON.stringify({ bookingId: serviceBookingId, booking_time: '13:00' }) });
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, bookingId: serviceBookingId, booking_time: '13:00' }) });
   check('D9b. moving a service booking onto a taken service hour is refused (409)', serviceMoved.status === 409,
     `HTTP ${serviceMoved.status}: ${(await jsonOf(serviceMoved)).message}`);
   await Booking.deleteOne({ _id: serviceFiller._id });
@@ -616,7 +616,7 @@ async function crmLocal() {
   }).catch(() => null);
   check('E2. the AI\'s stage follows: Sold Pending', Boolean(soldPending), soldPending?.stage_label);
   const showed = await fetch(`${PLATFORM}/api/booking`, { method: 'PUT', headers: internal,
-    body: JSON.stringify({ bookingId, booking_status: 'completed', showed: true }) });
+    body: JSON.stringify({ dealer_id: DEMO_DEALER_ID, bookingId, booking_status: 'completed', showed: true }) });
   check('E3. the booking records that the customer showed', showed.ok && (await Booking.findById(bookingId).lean()).showed === true);
   const list = await fetch(`${PLATFORM}/api/leads?dealer_id=${DEMO_DEALER_ID}&limit=50`, { headers: staff }).then(jsonOf);
   const row = (list.data || []).find((l) => String(l._id) === String(sms.lead._id));

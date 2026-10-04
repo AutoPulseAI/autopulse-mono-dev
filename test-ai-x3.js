@@ -14,6 +14,7 @@ import {
   notifyAiOfNewLead,
 } from './app/lib/ai/aiDispatch.js';
 import { AiEventError, processAiEventRetryJob, sendAiEvent } from './app/lib/ai/aiEvents.js';
+import { aiMayChangeBooking } from './app/lib/ai/aiOwnership.js';
 import { AI_OUTBOX_MAX_AGE_MS, replayAiOutbox, storeUndeliveredEvent } from './app/lib/ai/aiOutbox.js';
 
 const DEALER = '64b000000000000000000001';
@@ -180,4 +181,14 @@ test('auto-reply headers mark the inbound event so the AI does not answer an out
   const normal = buildInboundMessageEvent({ emailRecord: { _id: 'e8', mail_content: 'hi' }, lead, dealerId: DEALER,
     channel: 'email' });
   assert.equal('auto_reply' in normal, false, 'the payload is unchanged for ordinary messages');
+});
+
+// --- Item 11: dealer ownership on internal calls -----------------------------------
+
+test('the AI may change a booking only when it names the booking\'s own dealer', () => {
+  const booking = { dealer_id: DEALER };
+  assert.equal(aiMayChangeBooking({ kind: 'ai' }, booking, DEALER), true);
+  assert.equal(aiMayChangeBooking({ kind: 'ai' }, booking, '64b000000000000000000002'), false);
+  assert.equal(aiMayChangeBooking({ kind: 'ai' }, booking, undefined), false, 'no dealer named: refused');
+  assert.equal(aiMayChangeBooking({ kind: 'staff' }, booking, undefined), true, 'staff rules are unchanged');
 });
