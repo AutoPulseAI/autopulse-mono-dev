@@ -158,9 +158,11 @@ class RunContext:
 
 async def _turns(lead: dict[str, str]) -> list[dict]:
     """The lead's turns, oldest first. Rolling-summary runs are background
-    work, not turns, so they're left out."""
+    work, not turns, so they're left out. So are the Days 1-7 staff call tasks (stream T): their records fall due
+    on the clock, next to the conversation, and say nothing to the customer (stream S: one landing between a
+    reply and its answer made `wait_turns` / `expect_turn` read the wrong turn)."""
     cursor = dealer_scoped_db(lead["dealer_id"]).collection(AI_TURN_LOG_COLLECTION).find(
-        {"lead_id": lead["lead_id"], "trigger": {"$ne": "summary"}})
+        {"lead_id": lead["lead_id"], "trigger": {"$nin": ["summary", "daily_call_task"]}})
     return sorted(await cursor.to_list(None), key=lambda t: t["created_at"])
 
 
