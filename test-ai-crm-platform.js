@@ -360,6 +360,17 @@ maybe('the AI can leave an internal note on a lead of its dealer', async () => {
     { Lead, Email })).found, false);
 });
 
+maybe('an AI note with an idempotency key is written once', async () => {
+  await seedDealerAndLead();
+  const body = { dealer_id: DEALER, lead_id: LEAD, text: 'SOLD PENDING: the customer asks for a person',
+    kind: 'sold_pending_escalation', idempotency_key: 'notice:abc' };
+  const first = await addAiLeadNote(body, { Lead, Email });
+  const again = await addAiLeadNote(body, { Lead, Email });
+  assert.deepEqual([first.created, again.created, again.id], [true, false, first.id]);
+  assert.equal(await Email.countDocuments({ lead_id: LEAD, is_note: true }), 1);
+  assert.ok(validateNotePayload({ ...body, idempotency_key: 5 }).errors.length);
+});
+
 maybe('the lead list carries the AI stage, read only', async () => {
   await mongoose.connection.collection('ai_lead_state').insertOne({ dealer_id: DEALER, lead_id: LEAD,
     stage: 'sold_pending', stage_label: 'Sold Pending', status: 'paused' });

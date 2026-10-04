@@ -34,6 +34,9 @@ export function validateNotePayload(body) {
   const { errors } = validateDndPayload({ ...body, reason: undefined });
   if (typeof body?.text !== 'string' || !body.text.trim()) errors.push('text is required');
   if (body?.kind != null && typeof body.kind !== 'string') errors.push('kind must be a string');
+  if (body?.idempotency_key != null && (typeof body.idempotency_key !== 'string' || body.idempotency_key.length > 200)) {
+    errors.push('idempotency_key must be a string (max 200)');
+  }
   return { errors };
 }
 
@@ -41,13 +44,21 @@ export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() 
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id').lean();
   if (!lead) return { found: false };
   const at = now();
+  // MASTER_PLAN_4 (stream R): one note per AI notice - a retried call with the same idempotency_key returns
+  // the note already written instead of a second one.
+  const messageId = body.idempotency_key
+    ? `note_ai_${body.lead_id}_${body.idempotency_key}` : `note_ai_${body.lead_id}_${at.getTime()}`;
+  if (body.idempotency_key) {
+    const existing = await Email.findOne({ message_id: messageId, dealer_id: String(body.dealer_id) }).select('_id').lean();
+    if (existing) return { found: true, id: String(existing._id), created: false };
+  }
   const note = await Email.create({
     sender: 'AutoPulse AI', recipient: 'staff', subject: 'Lead Note', mail_content: body.text.trim().slice(0, 5000),
     dealer_id: String(body.dealer_id), lead_id: lead._id, status: 'sent', communication_type: 'note', is_note: true,
-    internal_use: true, message_id: `note_ai_${body.lead_id}_${at.getTime()}`, timestamp: at, date: at,
+    internal_use: true, message_id: messageId, timestamp: at, date: at,
     ai_generated: true, ai_note_kind: body.kind || null,
   });
-  return { found: true, id: String(note._id) };
+  return { found: true, id: String(note._id), created: true };
 }
 
 export async function markLeadDndFromAi(body, {
