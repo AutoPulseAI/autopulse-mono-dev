@@ -20,7 +20,7 @@ import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayl
 import { addAiLeadNote, markLeadDndFromAi, validateDndPayload, validateNotePayload } from './app/lib/ai/aiDnd.js';
 import { attachAiStages } from './app/lib/ai/aiStage.js';
 import {
-  appointmentTypeFor, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
+  appointmentTypeFor, bookingCapacityUpdate, bookingCapacityView, capacitySettings, checkBookingSlot, checkSlot, nextAvailableSlot, normalizeAppointmentType, keepsPlaceInSlot, markLeadBookingShowed, normalizeBookingTime,
   openingHours, slotsForDay, upsertLeadBooking,
 } from './app/lib/bookingService.js';
 import { isProviderSendStubbed, recordStubSend, stubProviderId } from './app/lib/providerStub.js';
@@ -385,6 +385,24 @@ maybe('a stubbed send is written to the dev outbox, with its media', async () =>
   const id = await recordStubSend({ channel: 'sms', to: '+15557654321', text: 'hi', media_urls: ['https://cdn.test/a.jpg'] });
   const row = await mongoose.connection.collection('dev_provider_outbox').findOne({ provider_id: id });
   assert.deepEqual(row.media_urls, ['https://cdn.test/a.jpg']);
+});
+
+// Stream R: booking capacity from the AI Settings page.
+test('booking capacity: defaults shown, valid values saved where the booking check reads them, bad ones refused', () => {
+  const view = bookingCapacityView({ dealer_account_information: {} });
+  assert.deepEqual([view.sales.max_per_slot, view.sales.slot_minutes, view.service.max_per_slot, view.service.slot_minutes],
+    [10, 60, 1, 60]);
+  const ok = bookingCapacityUpdate({ sales: { max_per_slot: 4, slot_minutes: 30 }, service: { max_per_slot: 2 } });
+  assert.deepEqual(ok, { errors: [], set: {
+    'dealer_account_information.booking_capacity.sales.max_per_slot': 4,
+    'dealer_account_information.booking_capacity.sales.slot_minutes': 30,
+    'dealer_account_information.booking_capacity.service.max_per_slot': 2 } });
+  const dealer = { dealer_account_information: { booking_capacity: { sales: { max_per_slot: 4, slot_minutes: 30 } } } };
+  assert.deepEqual(capacitySettings(dealer, 'sales'), { appointmentType: 'sales', maxPerSlot: 4, slotMinutes: 30 });
+  for (const bad of [{ sales: { max_per_slot: 0 } }, { sales: { max_per_slot: 51 } }, { service: { slot_minutes: 10 } },
+    { service: { slot_minutes: 241 } }, { sales: { max_per_slot: 2.5 } }, { parts: { max_per_slot: 1 } }, {}, null]) {
+    assert.ok(bookingCapacityUpdate(bad).errors.length, JSON.stringify(bad));
+  }
 });
 
 // Stream R: a full slot shows the same way in every staff booking screen, with a one-click next slot.
