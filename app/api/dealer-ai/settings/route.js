@@ -1,6 +1,11 @@
 // The AI Settings page (app/dealer/ai/settings).
 //   GET /api/dealer-ai/settings[?dealer_id=]
-//   PUT /api/dealer-ai/settings  { ai_mode?: "off" | "shadow" | "live", mms_enabled?: boolean, dealer_id? }
+//   PUT /api/dealer-ai/settings  { ai_mode?: "off" | "shadow" | "live", mms_enabled?: boolean, dealer_id?,
+//                                  booking_capacity?: { sales?: {max_per_slot?, slot_minutes?}, service?: {...} } }
+//
+// booking_capacity (stream R): appointments per slot and slot length, per type, saved to
+// dealer_account_information.booking_capacity - read by the CRM's booking check (app/lib/bookingService.js
+// capacitySettings) and by the AI (agentic-upsell integrations/dealer_profile.py). 1-50 per slot, 15-240 minutes.
 //
 // ai_mode is the same per-dealer switch as the admin route (app/api/admin/ai-mode),
 // with the same side effects: the cache is cleared, and going live clears the
@@ -20,6 +25,7 @@ import FollowUpJob from "@models/FollowUpJob";
 import "@models/Role";
 import "@models/Permission";
 import { jsonError, requireDealerSession, staffName } from "../_lib/dealerAi";
+import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const SETTINGS_PERMISSION = "Manage Follow-up setting";
@@ -43,6 +49,7 @@ function describe(dealer) {
     // The AI falls back to Monday-Saturday 9:00 AM-6:00 PM (for its own timing only,
     // never told to customers) when no day is marked open.
     hours_on_record: hours.some((h) => h.open),
+    booking_capacity: bookingCapacityView(dealer), // stream R
   };
 }
 
@@ -91,6 +98,11 @@ export async function PUT(req) {
   if (body.mms_enabled !== undefined) {
     if (typeof body.mms_enabled !== "boolean") return jsonError("mms_enabled must be true or false", 422);
     set.ai_mms_enabled = body.mms_enabled;
+  }
+  if (body.booking_capacity !== undefined) {
+    const capacity = bookingCapacityUpdate(body.booking_capacity);
+    if (capacity.errors.length) return jsonError(capacity.errors.join("; "), 422);
+    Object.assign(set, capacity.set);
   }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 

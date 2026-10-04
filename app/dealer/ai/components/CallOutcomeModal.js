@@ -3,10 +3,13 @@
 // and what it means for the lead. It can't be closed without an answer.
 //
 //   appointment        -> the CRM's own booking flow (PUT /api/conversations/lead/status,
-//                         "Appointment Booked" + date/time, same as the Update Status modal)
-//   opted out          -> the lead is set to DND through the same route
-//   specific follow-up -> date, time, channel and notes, saved as an internal note
-//   no next step / no contact -> recorded on the call task and the note
+//                         "Appointment Booked" + date/time + appointment type, same as the Update Status modal)
+//   specific follow-up -> date, time, channel, owner (AI or a person) and notes: the AI's dated next step
+//   no next step       -> Contact Made - No Next Action; the AI's Short-Term cadence carries on
+//   no contact         -> recorded; the lead stays in its flow
+//   wrong number       -> the AI marks that phone invalid (never texted or called again)
+//   opted out          -> the AI's consent records (every channel, or calls only); every channel also sets DND
+// The lead outcome goes to the AI service with the call result (PLAN_4 stream H).
 // Then an internal note summarising the call is added to the lead's conversation,
 // and the call task is completed (or dismissed) in the AI service.
 
@@ -19,13 +22,15 @@ const LEAD_OUTCOMES = [
   { value: "specific_followup", label: "Agreed a specific follow-up", needsContact: true },
   { value: "contact_no_action", label: "Spoke with them, no next step agreed", needsContact: true },
   { value: "no_contact", label: "Couldn't reach them", needsContact: false },
+  { value: "wrong_number", label: "Wrong number - don't use it again", needsContact: false, onlyFor: "wrong_number" },
   { value: "opted_out", label: "They asked us to stop contacting them", needsContact: null },
 ];
 const leadOutcomeLabel = (value) => LEAD_OUTCOMES.find((o) => o.value === value)?.label || value;
 
 const EMPTY = {
-  callOutcome: "", leadOutcome: "", bookingDate: "", bookingTime: "",
-  followDate: "", followTime: "", followChannel: "sms", followNotes: "", notes: "",
+  callOutcome: "", leadOutcome: "", bookingDate: "", bookingTime: "", appointmentType: "",
+  followDate: "", followTime: "", followChannel: "sms", followOwner: "ai", followNotes: "", notes: "",
+  optOutScope: "all",
 };
 
 export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCalled }) {
@@ -45,8 +50,9 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
   const connected = form.callOutcome === "connected";
   const leadOptions = useMemo(
-    () => LEAD_OUTCOMES.filter((o) => o.needsContact === null || o.needsContact === connected),
-    [connected],
+    () => LEAD_OUTCOMES.filter((o) => (o.needsContact === null || o.needsContact === connected)
+      && (!o.onlyFor || o.onlyFor === form.callOutcome)),
+    [connected, form.callOutcome],
   );
 
   // Picking a call outcome resets a lead outcome that no longer fits.
@@ -75,8 +81,10 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
     if (form.leadOutcome === "appointment") parts.push(`Appointment: ${form.bookingDate} at ${form.bookingTime}.`);
     if (form.leadOutcome === "specific_followup") {
       parts.push(`Follow up on ${form.followDate}${form.followTime ? ` at ${form.followTime}` : ""} by `
-        + `${CHANNEL_LABELS[form.followChannel] || form.followChannel}${form.followNotes.trim() ? `: ${form.followNotes.trim()}` : "."}`);
+        + `${CHANNEL_LABELS[form.followChannel] || form.followChannel} (${form.followOwner === "ai" ? "the AI" : "staff"})`
+        + `${form.followNotes.trim() ? `: ${form.followNotes.trim()}` : "."}`);
     }
+    if (form.leadOutcome === "opted_out" && form.optOutScope === "voice") parts.push("Calls only: texts and emails carry on.");
     if (form.notes.trim()) parts.push(`Notes: ${form.notes.trim()}`);
     return parts.join(" ");
   };
@@ -97,8 +105,11 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
     try {
       // 1. The lead outcome, through the CRM's existing flows.
       if (!dismissMode && form.leadOutcome === "appointment") {
-        await updateLeadStatus("Appointment Booked", { booking_date: form.bookingDate, booking_time: form.bookingTime });
-      } else if (!dismissMode && form.leadOutcome === "opted_out") {
+        await updateLeadStatus("Appointment Booked", {
+          booking_date: form.bookingDate, booking_time: form.bookingTime,
+          ...(form.appointmentType ? { appointment_type: form.appointmentType } : {}),
+        });
+      } else if (!dismissMode && form.leadOutcome === "opted_out" && form.optOutScope === "all") {
         await updateLeadStatus("DND");
       }
       // 2. An internal note on the lead, so the call shows in its conversation.
@@ -113,7 +124,16 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
         method: "POST",
         body: JSON.stringify(dismissMode
           ? { action: "dismiss", note, dealer_id: dealerId }
-          : { action: "complete", outcome: form.callOutcome, note, dealer_id: dealerId }),
+          : {
+            action: "complete", outcome: form.callOutcome, note, dealer_id: dealerId,
+            // What the call means for the lead reaches the AI (dated next step, cadence, invalid phone, consent).
+            lead_outcome: form.leadOutcome,
+            follow_up: form.leadOutcome === "specific_followup" ? {
+              date: form.followDate, time: form.followTime || null, channel: form.followChannel,
+              owner: form.followOwner, notes: form.followNotes.trim() || null,
+            } : null,
+            opt_out_scope: form.optOutScope,
+          }),
       });
       onDone?.();
     } catch (err) {
@@ -176,6 +196,14 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
                   <Form.Label>Appointment time</Form.Label>
                   <Form.Control type="time" value={form.bookingTime} onChange={set("bookingTime")} />
                 </Col>
+                <Col sm={6}>
+                  <Form.Label>Appointment type</Form.Label>
+                  <Form.Select value={form.appointmentType} onChange={set("appointmentType")}>
+                    <option value="">From the lead</option>
+                    <option value="sales">Sales (up to 10 per hour)</option>
+                    <option value="service">Service (1 per hour)</option>
+                  </Form.Select>
+                </Col>
                 <Col xs={12}>
                   <small className="text-secondary-light">
                     The appointment is booked the same way as &quot;Update Status&quot; - &quot;Appointment Booked&quot;.
@@ -203,6 +231,15 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
                   </Form.Select>
                 </Col>
                 <Col xs={12}>
+                  <Form.Label>Who follows up</Form.Label>
+                  <div>
+                    <Form.Check inline type="radio" name="follow-owner" id="follow-owner-ai" label="The AI checks back"
+                      value="ai" checked={form.followOwner === "ai"} onChange={set("followOwner")} />
+                    <Form.Check inline type="radio" name="follow-owner" id="follow-owner-human" label="I will"
+                      value="human" checked={form.followOwner === "human"} onChange={set("followOwner")} />
+                  </div>
+                </Col>
+                <Col xs={12}>
                   <Form.Label>What was agreed</Form.Label>
                   <Form.Control as="textarea" rows={2} value={form.followNotes} onChange={set("followNotes")}
                     placeholder="e.g. Call back after payday to talk numbers on the 2024 Tacoma" />
@@ -211,9 +248,21 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
             )}
 
             {form.leadOutcome === "opted_out" && (
-              <Alert variant="warning" className="py-2">
-                The lead will be set to DND, which stops the AI and all automated messages to this customer.
-              </Alert>
+              <>
+                <Form.Group className="mb-2">
+                  <Form.Check type="radio" name="opt-out-scope" id="opt-out-all" value="all"
+                    label="Stop all contact (text, email and calls)" checked={form.optOutScope === "all"}
+                    onChange={set("optOutScope")} />
+                  <Form.Check type="radio" name="opt-out-scope" id="opt-out-voice" value="voice"
+                    label="Just don't call them (texts and emails carry on)" checked={form.optOutScope === "voice"}
+                    onChange={set("optOutScope")} />
+                </Form.Group>
+                <Alert variant="warning" className="py-2">
+                  {form.optOutScope === "all"
+                    ? "The lead will be set to DND, and the AI records the opt-out on every channel."
+                    : "The AI records that they don't want calls: no more call tasks for them."}
+                </Alert>
+              </>
             )}
 
             <Form.Group>

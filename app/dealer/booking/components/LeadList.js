@@ -10,6 +10,7 @@ import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "../../leads/components/LeadDetailsSidebar";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import moment from "moment-timezone";
+import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, compact = false, ...props }, ref) => {
@@ -660,7 +661,8 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to update status");
+      // A full slot keeps the modal open with "Book {next available}" (stream R, app/lib/bookingConflict.js).
+      await throwIfStatusFailed(response, extra);
 
       setLeads(prev => prev.map(l =>
         l._id === selectedLead._id ? { ...l, status: newStatus } : l
@@ -668,6 +670,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       showAlert("Status updated successfully");
       handleCloseStatusModal();
     } catch (err) {
+      if (err?.slotConflict) throw err; // shown in the StatusModal (stream R)
       console.error("Error updating status:", err);
       showAlert("Failed to update status", "danger");
     }

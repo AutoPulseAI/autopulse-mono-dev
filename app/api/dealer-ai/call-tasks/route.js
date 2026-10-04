@@ -5,7 +5,9 @@
 // lead's stage and last AI touch (AI service) and name / vehicle (CRM lead).
 
 import { NextResponse } from "next/server";
-import { aiServiceError, callAiService, jsonError, leadSummaries, requireDealerSession } from "../_lib/dealerAi";
+import {
+  aiServiceError, assignedOnlyUserId, callAiService, jsonError, keepAssignedRows, leadSummaries, requireDealerSession,
+} from "../_lib/dealerAi";
 
 const VIEWS = ["open", "upcoming", "done"];
 
@@ -18,7 +20,9 @@ export async function GET(req) {
 
   const result = await callAiService("/v1/staff/call-tasks", { query: { dealer_id: session.dealerId, view } });
   if (!result.ok) return aiServiceError(result);
-  const tasks = Array.isArray(result.body) ? result.body : [];
+  // Stream R: "View Assigned Leads" staff (without "Manage Leads") get only their own leads' tasks.
+  const tasks = await keepAssignedRows(session.dealerId, await assignedOnlyUserId(session.user),
+    Array.isArray(result.body) ? result.body : []);
   const leads = await leadSummaries(session.dealerId, tasks.map((t) => t.lead_id));
   return NextResponse.json({
     view,

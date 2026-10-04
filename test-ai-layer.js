@@ -392,3 +392,30 @@ test('FollowUpJobs belong to the AI only for live dealers', async () => {
     assert.equal(await aiOwnsFollowUps(DEALER, { getMode: async () => mode }), owned);
   }
 });
+
+// --- Call outcomes reach the AI (PLAN_4 stream H) ----------------------------------------------
+
+test('a call outcome is shaped for the AI: follow-up, opt-out scope, and checks', async () => {
+  const { callTaskResolution, followUpFor } = await import('./app/lib/ai/aiCallOutcome.js');
+  const ctx = { dealerId: DEALER, by: 'Sam Staff' };
+  const built = callTaskResolution({ action: 'complete', outcome: 'connected', lead_outcome: 'specific_followup',
+    follow_up: { date: '2026-10-09', time: '15:30', channel: 'voice', owner: 'human', notes: 'numbers' } }, ctx);
+  assert.equal(built.action, 'complete');
+  assert.deepEqual(built.body.follow_up, { date: '2026-10-09', time: '15:30', channel: 'voice', owner: 'human',
+    notes: 'numbers' });
+  assert.equal(built.body.lead_outcome, 'specific_followup');
+  assert.equal(callTaskResolution({ action: 'complete', outcome: 'connected', lead_outcome: 'specific_followup',
+    follow_up: {} }, ctx).status, 422);
+  assert.equal(followUpFor({ date: '2026-10-09', time: '3pm' }).error, 'The follow-up time must be HH:MM.');
+  assert.equal(followUpFor({ date: '2026-10-09' }).value.owner, 'ai');
+  const voice = callTaskResolution({ action: 'complete', outcome: 'connected', lead_outcome: 'opted_out',
+    opt_out_scope: 'voice' }, ctx);
+  assert.equal(voice.body.opt_out_scope, 'voice');
+  assert.equal(callTaskResolution({ action: 'complete', outcome: 'wrong_number', lead_outcome: 'wrong_number' }, ctx)
+    .body.opt_out_scope, 'all');
+  assert.equal(callTaskResolution({ action: 'complete', outcome: 'connected', lead_outcome: 'nope' }, ctx).status, 422);
+  // A dismissal carries no lead outcome.
+  assert.equal(callTaskResolution({ action: 'dismiss', note: 'x', lead_outcome: 'opted_out' }, ctx).body.lead_outcome,
+    undefined);
+  assert.equal(callTaskResolution({ action: 'complete' }, ctx).status, 422);
+});

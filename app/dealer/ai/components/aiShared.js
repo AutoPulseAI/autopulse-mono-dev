@@ -104,6 +104,8 @@ export const ALERT_KINDS = {
   handoff: { label: "Handed to staff", icon: "fa-hand", variant: "danger" },
   no_staff_response: { label: "No staff response", icon: "fa-triangle-exclamation", variant: "danger" },
   call_requested: { label: "Call requested", icon: "fa-phone", variant: "primary" },
+  // PLAN_4 stream H: the customer asked for a person and chose a text over a call.
+  text_requested: { label: "Wants a text from a person", icon: "fa-comment-sms", variant: "primary" },
   call_task: { label: "Call task open", icon: "fa-phone-arrow-up-right", variant: "primary" },
   do_not_call: { label: "Do not call", icon: "fa-phone-slash", variant: "danger" },
   service_request: { label: "Service request", icon: "fa-screwdriver-wrench", variant: "info" },
