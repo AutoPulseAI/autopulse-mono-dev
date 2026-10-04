@@ -65,7 +65,7 @@ def listing_price(listing: dict[str, Any]) -> int | None:
         value = float(listing.get("price") or 0)
     except (TypeError, ValueError):
         return None
-    return int(round(value)) if value > 0 else None
+    return round(value) if value > 0 else None
 
 
 def vehicle_price(doc: dict[str, Any]) -> int | None:

@@ -28,7 +28,6 @@ from upsell_agent.agent.turn import (
 from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
-from upsell_agent.learning import touches
 from upsell_agent.events.models import (
     InboundMessageEvent,
     LeadCreatedEvent,
@@ -45,6 +44,7 @@ from upsell_agent.integrations.mongodb import (
     as_object_id,
     dealer_scoped_db,
 )
+from upsell_agent.learning import touches
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,

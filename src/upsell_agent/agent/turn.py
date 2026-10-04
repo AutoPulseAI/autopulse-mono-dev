@@ -27,7 +27,6 @@ from zoneinfo import ZoneInfo
 from upsell_agent import clock
 from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
-from upsell_agent.learning import touches
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
 from upsell_agent.agent.graph import build_graph
@@ -53,6 +52,7 @@ from upsell_agent.integrations.mongodb import (
     dealer_scoped_db,
 )
 from upsell_agent.integrations.platform_client import PlatformClient, StubPlatformClient
+from upsell_agent.learning import touches
 from upsell_agent.observability.trace import NullTraceSink, TraceSink, TurnTracer
 from upsell_agent.observability.tracing import turn_trace
 from upsell_agent.scheduler.followups import (

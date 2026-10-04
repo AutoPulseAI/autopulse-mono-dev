@@ -146,7 +146,7 @@ async def record_touch(db: DealerScopedDatabase, *, touch_id: str, lead_id: str 
             {"touch_id": touch_id}, {"$setOnInsert": row, "$addToSet": {"channels": {"$each": channels}}},
             upsert=True)
         return True
-    except Exception:  # noqa: BLE001 - tracking never stops a message
+    except Exception:
         logger.exception("Couldn't record touch %s for lead %s", touch_id, lead_id)
         return False
 
@@ -190,7 +190,7 @@ async def on_customer_reply(db: DealerScopedDatabase, lead_id: str | None, *, te
                   "meaningful_reply": meaningful and delta <= REPLY_WINDOW}
         await touches.update_one({"_id": touch["_id"], "replied_at": None}, {"$set": fields})
         return {**touch, **fields}
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Couldn't attribute a reply on lead %s", lead_id)
         return None
 
@@ -218,7 +218,7 @@ async def on_stage_change(db: DealerScopedDatabase, lead_id: str | None, stage: 
                 await touches.update_one({"_id": rows[0]["_id"]}, {"$set": {"showed_at": at}})
         elif stage == Stage.OPTED_OUT:
             await on_opt_out(db, lead_id=lead_id, customer_id=None, channel="all", at=at)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Couldn't attribute stage %s on lead %s", stage, lead_id)
 
 
@@ -234,5 +234,5 @@ async def on_opt_out(db: DealerScopedDatabase, *, lead_id: str | None, customer_
         if touch and not touch.get("opted_out_at"):
             await db.collection(AI_TOUCHES_COLLECTION).update_one(
                 {"_id": touch["_id"]}, {"$set": {"opted_out_at": at, "opted_out_channel": channel}})
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Couldn't attribute an opt-out on lead %s / customer %s", lead_id, customer_id)

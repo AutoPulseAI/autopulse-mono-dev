@@ -231,19 +231,19 @@ async def plan(db: DealerScopedDatabase, planned: cadence.PlannedTouch, *, lead_
                                                 lead_state=lead_state, tz=tz, now=now,
                                                 learning=settings.learning_enabled,
                                                 send_time_ab=settings.send_time_ab)
-    except Exception:  # noqa: BLE001 - learning never stops a touch
+    except Exception:
         logger.exception("Learning failed for lead %s; using the standard plan", lead_id)
         learned, extra = planned, {}
     return learned, touch_dict(learned, extra)
 
 
-async def recheck_price_drop(db: DealerScopedDatabase, touch: dict[str, Any]) -> dict[str, Any]:
+async def recheck_price_drop(db: DealerScopedDatabase, touch: dict[str, Any], settings: Any = None) -> dict[str, Any]:
     """When the touch fires: a price-drop touch re-reads the vehicle fresh. If the drop no longer holds at
     that price, the touch keeps its angle but loses the price (the angle's own no-price wording)."""
     drop = touch.get("price_drop")
     if not drop:
         return touch
-    fresh = await price_watch.reverify(db, drop, get_inventory_source(get_settings()))
+    fresh = await price_watch.reverify(db, drop, get_inventory_source(settings or get_settings()))
     if fresh:
         return {**touch, "price_drop": price_watch.for_touch(fresh), "price_checked": True}
     out = {k: v for k, v in touch.items() if k != "price_drop"}

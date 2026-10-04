@@ -85,7 +85,6 @@ from upsell_agent.compliance.engine import can_contact
 from upsell_agent.config import get_settings
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
-from upsell_agent.learning import optimizer, touches
 from upsell_agent.integrations.mongodb import (
     AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
@@ -99,6 +98,7 @@ from upsell_agent.integrations.mongodb import (
     dealer_scoped_db,
     get_db,
 )
+from upsell_agent.learning import optimizer, touches
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler.contact_window import (
     add_business_minutes,
@@ -1521,7 +1521,7 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         return "suppressed"
 
     # PLAN_4 stream L: a price-drop touch re-checks the drop on a fresh read; lapsed, it loses the price.
-    touch = await optimizer.recheck_price_drop(db, touch)
+    touch = await optimizer.recheck_price_drop(db, touch, deps.config)
     # The turn reads the theme from here (agent/nodes/decide.py) and clears it when it's done.
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": doc["lead_id"]}, {"$set": {"pending_touch": touch}})

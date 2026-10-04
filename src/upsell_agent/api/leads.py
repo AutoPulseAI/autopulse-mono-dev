@@ -88,8 +88,12 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value,
                  # MASTER_PLAN_4 A1: the sales bucket (blueprint §2) and the one it started in, for reporting.
-                 "bucket": state.get("bucket"), "original_bucket": state.get("original_bucket")},
+                 "bucket": state.get("bucket"), "original_bucket": state.get("original_bucket"),
+                 # PLAN_4 stream L: new / used now, and the first classification (kept for reporting).
+                 "vehicle_type": state.get("vehicle_type"),
+                 "original_vehicle_type": state.get("original_vehicle_type")},
         "bucket": lead_bucket.for_api(state),
+        "vehicle_type": lead_bucket.vehicle_type_for_api(state),
         # MASTER_PLAN_4 F2: service visits passed to the team as requests (never booked in this SOW).
         "service_requests": [{**r, "noticed_at": _iso(r.get("noticed_at"))} for r in state.get("service_requests") or []],
         # MASTER_PLAN_3 C3: where the lead stands in the client's workflow (agent/lifecycle.py), its
