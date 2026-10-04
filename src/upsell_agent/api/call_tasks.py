@@ -14,11 +14,13 @@ Debug UI and as the lead's staff notice.
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from upsell_agent.agent import call_outcomes, call_tasks
 from upsell_agent.api.auth import require_internal_auth
+from upsell_agent.compliance.call_check import call_window, can_call
 from upsell_agent.integrations.mongodb import AI_CALL_TASKS_COLLECTION, dealer_scoped_db
 
 router = APIRouter(prefix="/v1/call-tasks", tags=["call-tasks"], dependencies=[Depends(require_internal_auth)])
@@ -53,7 +55,30 @@ async def list_tasks(dealer_id: str = Query(...), status: str | None = Query("op
     flt: dict[str, Any] = {**({"status": status} if status else {}), **({"lead_id": lead_id} if lead_id else {})}
     rows = await dealer_scoped_db(dealer_id).collection(AI_CALL_TASKS_COLLECTION).find(flt).sort(
         "opened_at", -1).to_list(200)
-    return [view(r) for r in rows]
+    out = []
+    for row in rows:
+        if row.get("status") == call_tasks.OPEN:
+            # PLAN_4 stream X1 item 7: re-checked now, as staff are about to dial (not only when it opened).
+            row = {**row, "call_window": await call_window(dealer_id=dealer_id, customer_id=row.get("customer_id"),
+                                                           lead_id=row["lead_id"])}
+        out.append(view(row))
+    return out
+
+
+@router.get("/{task_id}/check")
+async def check_before_dialling(task_id: str, dealer_id: str = Query(...)) -> dict[str, Any]:
+    """PLAN_4 stream X1 item 7: the call check at the moment of dialling (logged), with "do not call before /
+    after". The platform's click-to-call asks this first."""
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=404, detail="no call task with that id")
+    db = dealer_scoped_db(dealer_id)
+    task = await db.collection(AI_CALL_TASKS_COLLECTION).find_one({"_id": ObjectId(task_id)})
+    if task is None:
+        raise HTTPException(status_code=404, detail="no call task with that id")
+    decision = await can_call(dealer_id=dealer_id, customer_id=task.get("customer_id"), lead_id=task["lead_id"],
+                              request_id=f"dial:{task_id}")
+    window = await call_window(dealer_id=dealer_id, customer_id=task.get("customer_id"), lead_id=task["lead_id"])
+    return {k: _iso(v) for k, v in {**window, "log_id": decision.log_id}.items()}
 
 
 async def _resolve(task_id: str, body: Resolution, status: str) -> dict[str, Any]:

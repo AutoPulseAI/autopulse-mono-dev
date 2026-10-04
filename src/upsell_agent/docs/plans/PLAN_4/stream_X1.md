@@ -88,3 +88,20 @@ Contact blocks every channel and purpose (as the lead's own DND always did), so 
 a new customer id are both suppressed. Dealer-scoped like everything else (no cross-dealer suppression).
 
 Tests: `tests/unit/test_x1_dnd.py` (3 of 4 failed before; the 4th checks an unrelated customer is unaffected).
+
+## Item 7: transactional texts follow the state table; call tasks re-checked and windowed; calls count to caps
+
+- `compliance/engine.py`: transactional texts now use the customer's state row(s) (KY 10:00, TX Sunday noon, the
+  Sunday / holiday bans) instead of a flat 8:00-21:00. Replies to the customer's own message keep their exemption.
+  `test_state_hours.py` KY test now expects a transactional HOLD to 10:00 (it asserted ALLOW before).
+- Call tasks (`compliance/call_check.py call_window`, `agent/call_tasks.open_task`, `api/call_tasks.py`): every
+  task stores `call_window` {can_call_now, do_not_call_before, do_not_call_after, window, states} from the state's
+  live-call row, 8:00-21:00 and the dealer's hours. `GET /v1/call-tasks` recomputes it live for open tasks, and the
+  new `GET /v1/call-tasks/{id}/check?dealer_id=` runs (and logs) the call check at the moment of dialling: the
+  CRM's click-to-call should call it first (CRM UI change not made here).
+- FL / OK / MD "3 per 24 hours": completed call tasks (outcome connected / no_answer / voicemail / other) count with
+  marketing texts, in `can_call` (a 4th contact is HELD) and in the engine's state-cap check for texts.
+
+Tests: `tests/unit/test_x1_calls.py` (6, all failed before: new API / behaviour), the KY transactional assertion.
+For counsel: whether transactional texts (appointment confirmations) really need the state rows (we apply them,
+the stricter reading), and whether the state caps are per subject (we count every marketing text and call).

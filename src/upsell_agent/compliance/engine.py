@@ -62,6 +62,7 @@ from upsell_agent.compliance.customer_zone import customer_zone
 from upsell_agent.compliance.origin import LeadOrigin, lead_origin
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
 from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
     AI_COMPLIANCE_LOG_COLLECTION,
     AI_MESSAGES_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
@@ -446,7 +447,10 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     profile = await dealer_profile(dealer_id)
     window = MARKETING_WINDOW if purpose == "marketing" else TRANSACTIONAL_WINDOW
     # MASTER_PLAN_4 F1: marketing follows the customer's state's own row(s) (client's TCPA tables, 1 Oct).
-    rules = state_hours.rules_for(state_hours.zone_states(zone)) if purpose in CAPPED_PURPOSES else None
+    # PLAN_4 stream X1 item 7: transactional texts follow the state rows too (state windows apply to every
+    # automated text; replies to the customer's own message keep their exemption, rule 5).
+    rules = (state_hours.rules_for(state_hours.zone_states(zone))
+             if purpose in (*CAPPED_PURPOSES, "transactional") else None)
     earliest = at
     frequency: dict[str, Any] = {}
     if purpose in CAPPED_PURPOSES:
@@ -459,7 +463,11 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                   f"{len(recent)} marketing texts in the last 24 hours (cap {MARKETING_SMS_CAP})")
         else:
             check("frequency", True, f"{len(recent)} of {MARKETING_SMS_CAP} marketing texts in the last 24 hours")
-        earliest = _state_caps(check, frequency, rules or [], recent, at, earliest)
+        # PLAN_4 stream X1 item 7: the state's own cap (FL / OK / MD "3 per 24 hours") counts staff calls too.
+        calls = await calls_recently(db, customer_id, at) if state_hours.caps(rules or []) else []
+        if calls:
+            frequency["calls_last_24h"] = len(calls)
+        earliest = _state_caps(check, frequency, rules or [], sorted(recent + calls), at, earliest)
 
     window_text = state_hours.describe(rules) if rules else f"{window[0]:%H:%M}-{window[1]:%H:%M}"
     ok_customer = state_hours.allowed(at, zone.zones, rules) if rules else in_window(at, zone.zones, window)
@@ -492,6 +500,21 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                     frequency=frequency)
 
 
+# Call outcomes that mean a person actually dialled (a dismissed task is no call).
+DIALLED_OUTCOMES = ("connected", "no_answer", "voicemail", "other", None)
+
+
+async def calls_recently(db: DealerScopedDatabase, customer_id: str | None, at: datetime) -> list[datetime]:
+    """Staff calls to this customer recorded in the last 24 hours (a completed call task: PLAN_4 stream X1 item 7),
+    for the states whose cap counts calls and texts together."""
+    if not customer_id:
+        return []
+    rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
+        {"customer_id": customer_id, "status": "completed", "outcome": {"$in": list(DIALLED_OUTCOMES)},
+         "closed_at": {"$gt": at - CAP_PERIOD, "$lte": at}}, projection={"closed_at": 1}).to_list(None)
+    return sorted(_aware(r["closed_at"]) for r in rows)
+
+
 def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateRule], recent: list[datetime],
                 at: datetime, earliest: datetime) -> datetime:
     """A state row's own cap (MASTER_PLAN_4 F1), on top of the 3-in-24h one
@@ -503,13 +526,13 @@ def _state_caps(check, frequency: dict[str, Any], rules: list[state_hours.StateR
         if len(inside) < count:
             continue
         free = inside[-count] + period
-        check("state_frequency", False, f"{len(inside)} marketing texts in the last {period} (the state's cap "
-                                        f"is {count})")
+        check("state_frequency", False, f"{len(inside)} marketing texts and calls in the last {period} (the "
+                                        f"state's cap is {count})")
         if free > earliest:
             earliest = free
             hours = int(period.total_seconds() // 3600)
             frequency.update(free_at=free.isoformat(),
-                             cap_text=f"{count} marketing texts in {hours} hours (the state's own cap)")
+                             cap_text=f"{count} texts and calls in {hours} hours (the state's own cap)")
     return earliest
 
 
