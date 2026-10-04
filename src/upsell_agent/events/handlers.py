@@ -54,6 +54,7 @@ from upsell_agent.scheduler.followups import (
     cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
+    replan_workflow,
     staff_no_show,
 )
 
@@ -750,4 +751,7 @@ async def handle_lead_resumed(event: LeadResumedEvent) -> dict[str, Any]:
          "$setOnInsert": {"lead_id": event.lead_id, "created_at": clock.now()}},
         upsert=True,
     )
-    return {"status": "active"}
+    # PLAN_4 stream X2 (audit 1 blocker): the pause cancelled the lead's pending work; the AI has it again, so the
+    # workflow of its current stage is planned again (cadence continued, not restarted; Day 91 clock untouched).
+    replanned = await replan_workflow(db, event.lead_id, reason="staff resumed the AI")
+    return {"status": "active", "replanned": replanned}

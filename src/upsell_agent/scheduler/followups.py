@@ -569,6 +569,12 @@ async def plan_appointment_timers(
     if appt_at is None:
         return {"created": 0, "reason": "No appointment time on record: nothing to schedule."}
     steps = appointment.plan_steps(appt_at, now=now, tz=profile.tz)
+    # Stream X2: an appointment already confirmed (the customer's Y, or staff in the CRM) for this same time keeps
+    # its confirmation and gets no day-before Y / N; a move to a new time asks again.
+    recorded = state.get("appointment") or {}
+    confirmed = bool(recorded.get("confirmed")) and recorded.get("at") == appt_at.isoformat()
+    if confirmed:
+        steps = [s for s in steps if s.step != appointment.STEP_CONFIRM]
     # MASTER_PLAN_4 (stream R): the 15-minute details message, once per appointment time - a re-plan for the same
     # time (staff saving the status again) doesn't send it twice; a move sends it for the new time.
     details_sent_for = state.get("appointment_details_sent_for")  # outside `appointment`, which a new set replaces
@@ -597,8 +603,8 @@ async def plan_appointment_timers(
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id},
         {"$set": {"appointment.at": appt_at.isoformat(), "appointment.booking_id": booking_id,
-                  "appointment.confirmed": False, "appointment.confirmation": None,
-                  "appointment.planned_at": now}})
+                  "appointment.planned_at": now,
+                  **({} if confirmed else {"appointment.confirmed": False, "appointment.confirmation": None})}})
     return {"created": len(created), "steps": created, "skipped": skipped, "appointment_at": appt_at.isoformat(),
             "reason": f"{len(created)} appointment step(s) planned for {appt_at:%a %b %d %H:%M}."}
 
@@ -665,6 +671,79 @@ async def cancel_visit_followup(db: DealerScopedDatabase, lead_id: str, *, reaso
         {"lead_id": lead_id, "status": "pending", "kind": KIND_VISIT_FOLLOWUP},
         {"$set": {"status": "cancelled", "reason": reason, "closed_at": clock.now()}})
     return result.modified_count
+
+
+async def replan_workflow(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> dict[str, Any]:
+    """PLAN_4 stream X2 (audit 1 blocker): the AI has the lead again (staff resumed it after a pause, which cancelled
+    the lead's pending work). Re-plans what the lead's CURRENT stage runs, without touching the stage or the Day 91
+    clock (no lifecycle.apply):
+
+    - Short-Term / extended: the cadence continues from where it was (`cadence` state kept: touch number, themes,
+      last touch - so no second touch on a day that already had one, agent/cadence.py). A pending name nudge is
+      skipped: a person has been talking to the customer. The Days 1-7 call tasks restart with it.
+    - Specific Follow-Up: the customer's dated next step, re-planned from `next_action` (due now if its date passed).
+    - Appointment Set: the appointment's steps from now (a confirmed appointment keeps its confirmation).
+    - Appointment No Show: the next no-show step (the +24h message if it never went, else the close).
+    - Sold Pending / Sold - Delivered: their touches survive a pause; re-planned only if none is pending.
+    Idempotent: each planner supersedes its own older pending record."""
+    from upsell_agent.scheduler import sold_lifecycles
+
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+    stage = lifecycle.stage_of(state.get("stage"))
+    customer_id = str(state.get("customer_id") or "") or None
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+    customer_id = customer_id or (str(lead["customer_id"]) if (lead or {}).get("customer_id") else None)
+    out: dict[str, Any] = {"stage": stage.value if stage else None}
+    if stage is None or not customer_id:
+        return {**out, "replanned": False, "reason": "no stage or no customer on the lead"}
+    channel = ((lead or {}).get("data") or {}).get("channel") or "sms"
+    channel = "email" if channel == "email" else "sms"
+    turn_id = f"replan-{lead_id}-{int(clock.now().timestamp())}"
+    pending = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    S = lifecycle.Stage
+    if stage in lifecycle.SHORT_TERM:
+        cad = cadence.CadenceState.load(state)
+        if cad.started_at is not None and cad.touch_number <= 2 and state.get("last_outbound_at"):
+            # The name nudge is for a customer nobody has spoken to; staff just have.
+            cad = cadence.after_reply(cad)
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                                     {"$set": {"cadence": cad.as_dict()}})
+            state = {**state, "cadence": cad.as_dict()}
+        out["cadence_touch"] = await plan_cadence_touch(
+            db, lead_id=lead_id, customer_id=customer_id, channel=channel, turn_id=turn_id, lead=lead,
+            lead_state=state, first_contact_done=bool(state.get("last_outbound_at")))
+    elif stage == S.SPECIFIC_FOLLOWUP and (state.get("next_action") or {}).get("date"):
+        if not await pending.find_one({"lead_id": lead_id, "status": "pending",
+                                       "kind": {"$in": [KIND_NEXT_ACTION, KIND_NEXT_ACTION_CHECK]}}):
+            na = {k: v for k, v in state["next_action"].items() if k != "entered_at"}
+            out["next_action"] = await plan_next_action(
+                db, lead_id=lead_id, customer_id=customer_id, channel=na.get("channel") or channel,
+                turn_id=turn_id, next_action=na, lead=lead)
+    elif stage == S.APPOINTMENT_SET:
+        out["appointment_timers"] = await plan_appointment_timers(
+            db, lead_id=lead_id, customer_id=customer_id, lead=lead, channel=channel, turn_id=turn_id)
+    elif stage == S.NO_SHOW:
+        if not await pending.find_one({"lead_id": lead_id, "status": "pending",
+                                       "kind": {"$in": list(APPOINTMENT_KINDS)}}):
+            followup_sent = await pending.find_one({"lead_id": lead_id, "status": "sent",
+                                                    "kind": appointment.KIND_PREFIX + appointment.STEP_NO_SHOW_FOLLOWUP})
+            appt = state.get("appointment") or {}
+            base = {"lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id, "to_channel": channel,
+                    "appointment_at": appt.get("at"), "booking_id": appt.get("booking_id")}
+            step = appointment.STEP_NO_SHOW_CLOSE if followup_sent else appointment.STEP_NO_SHOW_FOLLOWUP
+            await _plan_no_show_step(db, base, step,
+                                     appointment.NO_SHOW_CLOSE_AFTER if followup_sent else timedelta(0))
+            out["no_show_step"] = step
+    elif stage in (S.SOLD_PENDING, S.SOLD_DELIVERED):
+        if not await pending.find_one({"lead_id": lead_id, "status": "pending",
+                                       "kind": {"$in": list(SOLD_LIFECYCLE_KINDS)}}):
+            if stage == S.SOLD_PENDING:
+                out["sold_pending_touch"] = await sold_lifecycles.plan_sold_pending_touch(
+                    db, lead_id=lead_id, customer_id=customer_id, lead=lead)
+            else:
+                out["ownership"] = await sold_lifecycles.start_ownership(db, lead_id=lead_id, customer_id=customer_id,
+                                                                         lead=lead)
+    return {**out, "replanned": True, "reason": reason}
 
 
 # --- Fire ---------------------------------------------------------------------
