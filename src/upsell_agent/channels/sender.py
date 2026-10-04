@@ -211,7 +211,7 @@ class Sender:
                     OutboundMessage(
                         dealer_id=req.dealer_id, lead_id=req.lead_id, customer_id=req.customer_id,
                         channel=req.channel, to=to, text=req.text, subject=req.subject, idempotency_key=key,
-                        media_urls=tuple(media),
+                        media_urls=tuple(media), compliance_decision_id=check.log_id,
                     )
                 )
             except ChannelSendError as exc:

@@ -167,3 +167,20 @@ calls, and how NJ's "unsolicited" reads for a dealer's follow-ups.
 - Whether a customer's request for a dated contact is itself enough for a text then (today: email if no consent).
 - State caps counted across all subjects (texts and calls together), not per subject.
 - State holidays, IN / ME automated rows, NJ ban: as above. National / state DNC lists: not used (client Q19).
+
+## Item 5: the CRM's internal send endpoint is no longer a force-send
+
+`aidmvcs-be-dev/app/lib/ai/aiSend.js`, `app/api/internal/ai/messages/send/route.js`; AI side `channels/base.py`,
+`channels/sender.py`, `channels/platform.py`.
+
+- The AI's Sender puts the send check's ALLOW id (`ai_compliance_log._id`) on the outbound message; the platform
+  driver sends it as `compliance_decision_id`.
+- The CRM refuses (422, `retryable: false`, `compliance: true`; nothing sent or recorded) when: the id is missing
+  or malformed; the lead is DND; `to` is not the lead's (or its customer's) phone / email; or the decision row
+  (looked up in `ai_compliance_log`, same database) is missing, not ALLOW, for another dealer / lead / channel /
+  recipient, or older than 30 minutes. The lead must already belong to the dealer (404 otherwise, as before).
+- The id is stored on the Email row as `ai_compliance_decision_id`.
+
+Tests: `test-ai-crm-platform.js` (2 new: the pure checks and the refusals against MongoDB; existing send tests now
+pass a decision id; 4 failed before the tests were updated), `test_platform_channel.py` asserts the id is sent.
+`make platform-test`: 110 pass.
