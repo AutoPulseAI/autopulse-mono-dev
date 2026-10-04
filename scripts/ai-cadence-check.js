@@ -390,7 +390,11 @@ async function scenario(t0) {
   const lostQueued = await followups(L.lost, 'cadence_touch', { status: 'pending' });
   const lost = await staffStatus(L.lost, { status: 'Closed - Lost' });
   const lostState = await stageIs(L.lost, 'closed_lost');
-  const lostAfter = await followups(L.lost, null, { status: 'pending' });
+  // The stage is written a moment before the stale work is cancelled (same handler): give it that moment.
+  const lostAfter = await waitFor('the Closed - Lost lead to have nothing pending', async () => {
+    const rows = await followups(L.lost, null, { status: 'pending' });
+    return rows.length ? null : rows;
+  }, 10_000).catch(async () => followups(L.lost, null, { status: 'pending' }));
   check('5h. Closed - Lost stops the lead: the queued touch is cancelled, nothing left pending',
     lost.status === 200 && Boolean(lostState) && lostQueued.length >= 1 && lostAfter.length === 0,
     `HTTP ${lost.status}, ${lostQueued.length} queued before, ${lostAfter.length} pending after`);
