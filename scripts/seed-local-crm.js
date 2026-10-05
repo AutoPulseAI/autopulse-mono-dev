@@ -146,13 +146,15 @@ export function assertLocal(uri) {
 
 async function reset(db) {
   const dealerFilter = { $in: [DEMO_DEALER_ID, new mongoose.Types.ObjectId(DEMO_DEALER_ID)] };
-  for (const name of ['users', 'emailaccounts', 'vehicles', 'customers', 'deals', 'leads', 'bookings', 'roles', 'permissions']) {
+  for (const name of ['users', 'emailaccounts', 'vehicles', 'customers', 'deals', 'leads', 'bookings', 'roles', 'permissions', 'serviceappointments']) {
     await db.collection(name).deleteMany(SEED_TAG);
   }
   await db.collection('leads').deleteMany({ dealer_id: DEMO_DEALER_ID });
   await db.collection('customers').deleteMany({ dealer_id: DEMO_DEALER_ID });
   await db.collection('emails').deleteMany({ dealer_id: DEMO_DEALER_ID });
   await db.collection('bookings').deleteMany({ dealer_id: DEMO_DEALER_ID });
+  await db.collection('deals').deleteMany({ dealer_id: DEMO_DEALER_ID });
+  await db.collection('serviceappointments').deleteMany({ dealer_id: DEMO_DEALER_ID });
   await db.collection('followupjobs').deleteMany({ dealer_id: DEMO_DEALER_ID });
   await db.collection('appointmentreminders').deleteMany({ dealer_id: dealerFilter });
   for (const name of ['ai_lead_state', 'ai_messages', 'ai_turn_log', 'ai_events', 'ai_consent', 'scheduled_followups',

@@ -41,6 +41,8 @@ export async function recordStubSend(entry) {
   } catch (error) {
     console.warn('[provider-stub] could not record stub send', error?.message);
   }
-  console.log(`[provider-stub] ${entry.channel} to ${entry.to} NOT sent (PROVIDER_SEND_STUB) id=${providerId}`);
+  const otpMatch = (entry.text || entry.html || entry.subject || '').match(/\b\d{4}\b/);
+  const otpInfo = otpMatch ? ` [OTP CODE: ${otpMatch[0]}]` : '';
+  console.log(`[provider-stub] ${entry.channel} to ${entry.to}${otpInfo} NOT sent (PROVIDER_SEND_STUB) id=${providerId}`);
   return providerId;
 }
