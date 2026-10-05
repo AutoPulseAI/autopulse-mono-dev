@@ -1,5 +1,4 @@
 name: No show, follow-up, then back to follow-up
-stage: 305
 description: 'MASTER_PLAN_3 C5 (Omnichannel PDF §9). No visit by appointment time + 1 hour makes the lead No Show and sends the showroom message on text and email; 24h later the "how did it go" message; 24h after that it returns to Contact Made - No Next Action with a fresh cadence (no introduction, no name nudge).'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

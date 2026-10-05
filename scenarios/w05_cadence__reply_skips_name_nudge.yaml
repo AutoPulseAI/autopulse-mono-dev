@@ -1,5 +1,4 @@
 name: A reply skips the name nudge
-stage: 304
 description: The name nudge is for silence. A customer who answers within the 3 hours never gets "Name?" - the lead becomes Contact Made and the next touch is Day 2's, not the nudge.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

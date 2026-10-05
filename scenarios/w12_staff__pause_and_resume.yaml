@@ -1,5 +1,4 @@
 name: Pause stops replies, resume brings them back
-stage: 2
 description: A paused lead saves the customer's message without a reply; after resume the AI answers again.
 steps:
   - new_lead: {as: p, dealer: A, lead_type: service, channel: sms, name: Pause Test, comments: "Need an oil change"}

@@ -1,5 +1,4 @@
 name: '"Not Tuesday, what about Thursday?" gets Thursday''s times'
-stage: 405
 description: 'MASTER_PLAN_3 B5 day requests. Answering the times we offered with a day of their own (no time) gets open times on that day, spread across it, in the same offer (not another attempt) and never "the team will confirm"; a day the dealership is shut gets the next open day, said plainly; picking one books it.'
 steps:
   - advance_clock: {dealer: A, to: "Mon 12:00"}

@@ -1,5 +1,4 @@
 name: Day 91 closes the lead as Closed - Lost
-stage: 303
 description: A lead still in Short-Term follow-up on Day 91 closes as Closed - Lost (client, 1 Oct 2026). The lead closes, not the customer. A new lead from the same customer starts its own workflow.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

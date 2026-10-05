@@ -1,5 +1,4 @@
 name: A second lead for the same customer is linked, not worked
-stage: 306
 description: The same customer submits a second lead. Only the first runs the AI workflow; the second is linked to it with no first reply of its own, and the customer's messages go to the first lead.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

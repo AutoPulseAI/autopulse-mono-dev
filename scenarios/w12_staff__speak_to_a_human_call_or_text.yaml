@@ -1,5 +1,4 @@
 name: '"Speak to a human" offers a call or a text'
-stage: 404
 description: PLAN_4 stream H (client action item, Friday meeting). A customer who asks for a person without saying how gets one warm reply offering a call at the number on file (last 4 digits only) or a text from a team member, and nothing else. "A call please" opens a staff call task straight away ("Customer asked for a call") and hands the lead to staff; their later "thanks" doesn't cancel it. A second customer who already said how ("have a person text me") skips the question - staff get a "wants a text" notice and no call task.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

@@ -1,5 +1,4 @@
 name: A lead form that says no is never texted; everything goes by email
-stage: 301
 description: MASTER_PLAN_3 B3 (built in C1); PLAN_4 stream X1 item 1. An AutoTrader lead with "TCPAOptIn false" gets no text at all - the first message on a lead is a lead response, not a reply, so the form's explicit no applies to it - and its first reply goes by email instead. The cadence then carries on by email alone - the text half of each touch is blocked (Omnichannel PDF p.10, "continue every remaining permitted channel") - and never sends a marketing text.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

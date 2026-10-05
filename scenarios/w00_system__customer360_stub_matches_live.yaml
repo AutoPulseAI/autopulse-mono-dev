@@ -1,5 +1,4 @@
 name: Stub and live Customer 360 agree
-stage: 6
 description: For every seeded customer, the stub client (built from the local database) returns the same Customer 360 as the running platform. Needs `make ai-seed` and the platform running (`make dev-full`).
 steps:
   - compare_360: {dealers: [A, B]}

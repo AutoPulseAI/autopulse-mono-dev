@@ -1,5 +1,4 @@
 name: Nobody took the lead over in 30 business minutes
-stage: 102
 description: After a handoff, 30 business minutes pass with no staff action. The customer gets one "sorry for the wait" message and staff get an alert; the lead stays with staff. Two hours later a new message gets a holding reply.
 steps:
   # 11:30, not 10:00: dev customers have 555 phones and no address, so the send

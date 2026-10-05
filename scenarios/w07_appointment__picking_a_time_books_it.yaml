@@ -1,5 +1,4 @@
 name: Picking an offered time books the visit
-stage: 405
 description: 'MASTER_PLAN_3 B5. An offer, then "the second one": a pending booking is created on the platform (the dev stub writes it like POST /api/booking), the reply says it is requested and the team will confirm (never "booked" while pending), the team gets a notice, and the AI is not paused.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

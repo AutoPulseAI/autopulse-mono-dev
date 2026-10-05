@@ -1,5 +1,4 @@
 name: A sales lead is offered a visit, not handed to staff
-stage: 404
 description: 'MASTER_PLAN_3 B4. Once we know what they want (a new RAV4) and roughly when (this month), the reply offers 2-3 concrete visit times instead of asking about the trade-in or handing the lead to the team. Budget and trade-in can wait for the dealership (B0.12).'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

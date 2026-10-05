@@ -1,5 +1,4 @@
 name: Second guard failure uses the template
-stage: 3
 description: Every draft fails the guard, so after one rewrite the fallback template is used.
 steps:
   - new_lead: {as: f, dealer: B, lead_type: general, channel: sms, name: Fallback Scenario, comments: "hello"}

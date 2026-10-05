@@ -1,5 +1,4 @@
 name: A sales lead is qualified over a chat
-stage: 7
 description: The AI asks only for what is missing, two things at a time, until every required sales detail is collected, then marks the lead qualified.
 steps:
   - new_lead: {as: q, dealer: A, lead_type: sales, channel: sms, name: Quinn Scenario, comments: "Looking for a new Toyota RAV4"}

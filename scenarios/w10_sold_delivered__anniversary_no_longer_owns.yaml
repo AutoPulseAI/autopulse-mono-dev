@@ -1,5 +1,4 @@
 name: Ownership anniversary - customer no longer owns it
-stage: 407
 description: 'MASTER_PLAN_4 D7, D8 (SOLD-DELIVERED PDF §8-§9). A year after delivery the anniversary asks "Do you still have your RAV4? Reply YES or NO." NO closes the opportunity as Closed - No Longer Owns, the vehicle is NO_LONGER_OWNED and its reminders stop; the AI asks what they drive now, for how long, and where it is serviced, stored as a CUSTOMER_REPORTED vehicle (no trade pitch). The customer stays ACTIVE because they own the new car.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

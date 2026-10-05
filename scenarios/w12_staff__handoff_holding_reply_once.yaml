@@ -1,5 +1,4 @@
 name: A handed-off lead still gets an answer, once
-stage: 102
 description: The customer asks for a person, so the AI hands off and a staff check is scheduled. A plain message inside two hours is saved for staff with the reason on record, and the customer isn't told the same thing again. A question ("Hello?") is never met with silence - staff are told at once and the customer gets one holding reply (PLAN_4 stream X3 item 4) - and a second question inside 10 minutes is saved without another one.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

@@ -1,5 +1,4 @@
 name: A staff call outcome reaches the AI
-stage: 405
 description: PLAN_4 stream H. The customer asks for a call; staff call and record "agreed a specific follow-up" for the AI to own. The lead moves to Contact Made - Specific Follow-Up with the AI's dated next step (the same structure as "call me Friday"), goes back to the AI from the handoff, and the check-back is scheduled at the agreed time.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

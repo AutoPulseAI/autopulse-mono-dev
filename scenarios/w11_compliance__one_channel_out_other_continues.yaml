@@ -1,5 +1,4 @@
 name: A channel opted out never stops the other
-stage: 304
 description: A customer who texts STOP is opted out of texts only. The cadence carries on by email alone (Omnichannel PDF p.10, "continue every remaining permitted channel"), and the stage is not Opted Out.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

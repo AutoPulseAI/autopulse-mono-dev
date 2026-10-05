@@ -1,5 +1,4 @@
 name: A stock question is answered from real stock, or an honest promise
-stage: 203
 description: >
   Dealer B has one Toyota RAV4. "Do you have a Toyota RAV4?" gets an answer naming that real
   vehicle (Phase 3), and the guard accepts it on the first attempt (the grounding check, Phase 4,

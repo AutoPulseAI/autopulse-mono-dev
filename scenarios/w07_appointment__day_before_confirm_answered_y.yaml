@@ -1,5 +1,4 @@
 name: Day-before confirmation answered Y
-stage: 305
 description: 'MASTER_PLAN_3 C5 (Omnichannel PDF §7-§8). A visit booked for Thursday gets the day-before confirmation on Wednesday at 10:00 asking for Y or N. "Y" confirms the booking on the platform and the appointment; the lead stays Appointment Set.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

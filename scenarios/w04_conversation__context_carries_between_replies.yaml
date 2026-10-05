@@ -1,5 +1,4 @@
 name: Every turn reads one context pack
-stage: 101
 description: The AI's first reply, the customer's answer and their question all carry into the next turns' context pack - working memory, what was asked, open questions and promises.
 steps:
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.

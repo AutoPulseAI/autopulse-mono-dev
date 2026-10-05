@@ -1,0 +1,25 @@
+name: SOLD PENDING touches go weekly for 4 weeks, then every 2 weeks, with no end
+description: Scope Workflow 9. After Sold Pending, one touch a week for weeks 1-4 (documents, support, purchase, relationship), then every 2 weeks with no time limit. It never falls back into the new-lead cadence, and nothing closes it because of time.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: p, dealer: A, lead_type: sales, channel: sms, name: Pia Pending, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: p, count: 1, timeout_s: 20}
+  - staff_status: {lead: p, status: "Sold Pending"}
+  - expect_lead: {lead: p, stage: sold_pending, timeout_s: 20}
+  - expect_no_followup: {lead: p, kind: cadence_touch, status: pending}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 1, week: 1, phase: weekly}, timeout_s: 20}
+  - run_next: {lead: p, kind: sold_pending_touch}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 2, phase: weekly}, timeout_s: 30}
+  - run_next: {lead: p, kind: sold_pending_touch}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 3, phase: weekly}, timeout_s: 30}
+  - run_next: {lead: p, kind: sold_pending_touch}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 4, phase: weekly}, timeout_s: 30}
+  - run_next: {lead: p, kind: sold_pending_touch}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 5, phase: every_two_weeks}, timeout_s: 30}
+  - run_next: {lead: p, kind: sold_pending_touch}
+  - expect_followup: {lead: p, kind: sold_pending_touch, status: pending, touch: {touch_number: 6, phase: every_two_weeks}, timeout_s: 30}
+  # Every touch went by text and email.
+  - expect_outbox: {lead: p, channel: email, count: 5}
+  # Months on, still Sold Pending: only staff end it.
+  - advance_clock: {hours: 2400}
+  - expect_lead: {lead: p, stage: sold_pending, timeout_s: 20}

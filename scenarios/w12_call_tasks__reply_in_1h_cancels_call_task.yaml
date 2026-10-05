@@ -1,5 +1,4 @@
 name: A reply inside the hour cancels the call task
-stage: 302
 description: The customer answers 20 minutes after Touch 1, so there is no need to call. An hour on, no call task exists.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

@@ -1,5 +1,4 @@
 name: A hedged value is confirmed before it is used
-stage: 7
 description: 'A hedged "about 60,000 miles" is saved as needs-confirming, the AI asks to confirm it, and a "yes" makes it a filled slot.'
 steps:
   - new_lead: {as: c, dealer: B, lead_type: trade_in, channel: sms, name: Casey Scenario, comments: "Want to trade my car"}

@@ -1,5 +1,4 @@
 name: Profile is pre-filled from Customer 360
-stage: 7
 description: A service lead whose car is in the DMS gets its vehicle filled from the platform, so the AI only asks what is really missing.
 steps:
   - new_lead:

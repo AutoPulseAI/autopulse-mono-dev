@@ -1,5 +1,4 @@
 name: '"Thursday" becomes a real date'
-stage: 108
 description: With the dealer's clock on a Tuesday morning, "I need it by Thursday" is saved as Thursday's date (and a this-week timeline) and said back plainly; "next Friday" is confirmed with the actual date before it's used.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

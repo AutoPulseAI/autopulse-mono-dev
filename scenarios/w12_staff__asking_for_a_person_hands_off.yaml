@@ -1,5 +1,4 @@
 name: Asking for a person hands off
-stage: 3
 description: When the customer asks for a real person, Decide fires the hand-off rule.
 steps:
   - new_lead: {as: h, dealer: B, lead_type: sales, channel: sms, name: Handoff Scenario, comments: "Interested in a used truck"}

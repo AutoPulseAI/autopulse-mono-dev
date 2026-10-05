@@ -1,5 +1,4 @@
 name: Days 2-5 go out daily on text and email together
-stage: 304
 description: With no reply, one touch a day at 10:00 dealer time - vehicle visual, financing help, trade-in, a verified feature - each on text AND email (Omnichannel PDF §3, p.10). Never a second touch on the same day. A customer with no known ZIP, state or area code gets only the hours legal in every US zone, so 10:00 touches wait until 11:00 dealer time (New York).
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

@@ -1,5 +1,4 @@
 name: '"What do you mean?" gets the same question explained'
-stage: 107
 description: The AI asks about the trade-in's condition; the customer asks what that means. The reply explains it in plain words and asks the same question again, nothing new, and the customer's answer then fills it.
 steps:
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.

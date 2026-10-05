@@ -1,5 +1,4 @@
 name: A campaign text needs consent; the send check answers the campaign worker
-stage: 301
 description: MASTER_PLAN_3 B3 (built in C1), decision 66; PLAN_4 stream X1 items 4 and 8. The platform's campaign worker asks the send check through the shared queue. A DealerVault contact with no text consent is blocked (the report shows "Blocked"). The CRM's "SMS opt-in" flag alone is also blocked - the CRM sets it on any inbound text, so it is not consent to campaigns. Recorded consent is allowed - a lead provider's complete consent record (the disclosure, its version, the time, the phone), or the customer's own opt-in (START after a STOP). A lead-form "TCPAOptIn true" alone needs review. An allowed campaign at 21:00 is held to the next allowed time.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

@@ -1,5 +1,4 @@
 name: A question mid-flow is answered, then one ask
-stage: 105
 description: 'The rigid loop from manual testing: the AI had asked for a detail and the customer asks "so far what do u know about me?". The reply answers from the profile first, then asks exactly one thing.'
 steps:
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.

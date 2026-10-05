@@ -115,14 +115,16 @@ def test_reply_to_unknown_lead_is_404(client):
     assert res.status_code == 404
 
 
-def test_scenario_files_load_and_are_grouped_by_stage():
-    from upsell_agent.devtools.scenarios import load_scenarios, scenarios_dir
+def test_scenario_files_load_and_are_grouped_by_workflow():
+    from upsell_agent.devtools.scenarios import WORKFLOWS, load_scenarios, scenarios_dir
 
     assert scenarios_dir().exists(), "run pytest from the agentic-upsell directory"
     scenarios = load_scenarios()
-    assert {s["stage"] for s in scenarios} >= {1, 2, 3, 4, 6}
+    # Every workflow in the scope has scenarios, and every file name starts with a known workflow.
+    assert {s["workflow"] for s in scenarios} == set(WORKFLOWS)
     for s in scenarios:
         assert s["steps"], s["id"]
+        assert "__" in s["id"], f"{s['id']}: name it <workflow>_<area>__<what it shows>"
 
 
 @pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window

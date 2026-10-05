@@ -1,5 +1,4 @@
 name: '"Not yet" parks the visit offer and the conversation carries on'
-stage: 404
 description: 'MASTER_PLAN_3 B4 item 4. A decline is recorded (attempt 1 of 3) and the offer is parked for 3 replies; the next reply answers without offering again. After a 3rd decline the offer stops and a dated visit_followup is scheduled (unit-tested in test_booking_flow.py).'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

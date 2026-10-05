@@ -59,6 +59,10 @@ export const api = {
     post<{ now: string; offset_s: number; dealer_time: string }>("/clock/to-dealer-time",
       { dealer_id: dealerId, time, weekdays_only: true }),
   resetClock: () => post<{ now: string; offset_s: number }>("/clock/reset", {}),
+  // Jumps the clock to just after the next scheduled item (that lead's, or any) and fires it.
+  runNextDue: (dealerId: string, leadId?: string) =>
+    post<{ now: string; offset_s: number; ran: { id: string; kind: string; lead_id: string; due_at: string } }>(
+      "/clock/next-due", { dealer_id: dealerId, lead_id: leadId ?? null }),
   followups: (dealerId: string) => request<Followup[]>(`/followups?${q({ dealer_id: dealerId })}`),
   failSms: (dealerId: string, followupId: string) =>
     post<{ status: string }>(`/followups/${followupId}/fail-sms?${q({ dealer_id: dealerId })}`, {}),

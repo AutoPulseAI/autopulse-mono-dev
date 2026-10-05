@@ -1,5 +1,4 @@
 name: Switching a dealer off cancels its pending follow-ups
-stage: 10
 description: Right before firing, a cadence touch checks the dealer's AI mode again. The dealer is switched to off after the first reply, so the 3-hour name nudge is cancelled instead of sent (the Stage 13 rollback).
 steps:
   # Inside opening hours whatever day it really is (on a Sunday the nudge waited for Monday and never fell due).

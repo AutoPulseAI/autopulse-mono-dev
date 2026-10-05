@@ -1,5 +1,4 @@
 name: An email lead is answered by email
-stage: 4
 description: The first reply goes out on the channel the lead came in on, using the email version of the template.
 steps:
   - new_lead: {as: e, dealer: B, lead_type: trade_in, channel: email, name: Ellis Scenario, comments: "Want to trade my Civic"}

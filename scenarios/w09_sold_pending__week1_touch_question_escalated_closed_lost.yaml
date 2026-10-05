@@ -1,5 +1,4 @@
 name: SOLD PENDING weekly touches, router and Closed Lost
-stage: 402
 description: 'MASTER_PLAN_4 D2 (SOLD PENDING PDF §4-§9). Sold Pending starts its own cadence: the week-1 touch goes out the next day on text AND email, with the 60-minute call task behind it, then week 2 is planned. A delivery-date question is escalated to the salesperson (never answered with a guess) and the lead stays Sold Pending. Staff then set Closed Lost: every SOLD PENDING action stops.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

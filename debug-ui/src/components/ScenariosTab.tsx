@@ -4,45 +4,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Scenario } from "../types";
 
-// Stage names from MASTER_PLAN_1.md, for the progress headings.
-const STAGE_NAMES: Record<number, string> = {
-  1: "Local stack and foundations",
-  2: "Event intake",
-  3: "Debug UI",
-  4: "Sending and template first reply",
-  5: "Platform → AI wiring",
-  6: "Customer 360 check",
-  7: "Slot engine",
-  8: "AI turn pipeline",
-  9: "Campaign replies",
-  10: "24h channel switch",
-  11: "No double messaging and staff takeover",
-  12: "Real providers and hardening",
-  13: "Shadow and rollout",
-  // MASTER_PLAN_2 phases are stored as 100 + phase.
-  101: "Context builder and conversation state",
-  102: "Never silent",
-  103: "Rolling summary",
-  104: "Understanding the customer",
-  105: "Conversational Decide",
-  106: "Answer sources",
-  107: "Plain, explainable replies",
-  108: "Dates and time",
-  // MASTER_PLAN_3 Part A phases are stored as 200 + phase.
-  201: "Inventory read layer",
-  202: "Shopping criteria",
-  // MASTER_PLAN_3 Part C phases are stored as 300 + phase.
-  301: "Send check (compliance engine, with B2/B3)",
-  // MASTER_PLAN_3 Part B phases are stored as 400 + phase.
-  401: "After-hours first reply",
-  404: "The visit as the goal",
-  405: "Booking the visit",
+// Scenario files are named <workflow>_<area>__<what it shows> (the scope PDF's workflow numbers), so the
+// readable title comes from the file name and the group from its prefix.
+const readable = (id: string) => {
+  const [area, what] = id.replace(/^w\d+_/, "").split("__");
+  const text = (what ?? area).replace(/_/g, " ");
+  return { area: area.replace(/_/g, " "), what: text.charAt(0).toUpperCase() + text.slice(1) };
 };
-
-const stageLabel = (stage: number) =>
-  stage > 400 ? `Plan 3 · Phase B${stage - 400}`
-    : stage > 300 ? `Plan 3 · Phase C${stage - 300}`
-    : stage > 200 ? `Plan 3 · Phase A${stage - 200}` : stage > 100 ? `Plan 2 · Phase ${stage - 100}` : `Stage ${stage}`;
 
 export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -74,7 +42,7 @@ export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
     }
   };
 
-  const stages = Array.from(new Set(scenarios.map((s) => s.stage ?? 0))).sort((a, b) => a - b);
+  const workflows = Array.from(new Set(scenarios.map((s) => s.workflow))).sort();
   const passed = scenarios.filter((s) => s.last_run?.passed).length;
   const isRunning = (id: string) => running === "all" || (Array.isArray(running) && running.includes(id));
 
@@ -104,17 +72,25 @@ export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
         </button>
       </div>
 
-      {stages.map((stage) => {
-        const inStage = scenarios.filter((s) => (s.stage ?? 0) === stage);
+      {workflows.map((workflow) => {
+        const inStage = scenarios.filter((s) => s.workflow === workflow);
         const ok = inStage.filter((s) => s.last_run?.passed).length;
         return (
-          <section key={stage} className="mb-4">
+          <section key={workflow} className="mb-4">
             <div className="mb-1.5 flex items-center gap-2">
-              <span className="rounded bg-panel-2 px-1.5 text-[11px] font-bold text-muted">{stageLabel(stage)}</span>
-              <span className="text-[13px] font-semibold">{STAGE_NAMES[stage] ?? ""}</span>
+              <span className="rounded bg-panel-2 px-1.5 text-[11px] font-bold uppercase text-muted">{workflow}</span>
+              <span className="text-[13px] font-semibold">{inStage[0]?.workflow_name ?? ""}</span>
               <span className="ml-auto text-[11px] text-muted">
                 {ok}/{inStage.length} passing
               </span>
+              <button
+                type="button"
+                disabled={running !== null}
+                onClick={() => run(inStage.map((s) => s.id))}
+                className="rounded bg-panel-2 px-2 py-0.5 text-[11px] font-semibold disabled:opacity-50"
+              >
+                Run group
+              </button>
             </div>
             <div className="space-y-1.5">
               {inStage.map((s) => {
@@ -132,8 +108,11 @@ export function ScenariosTab({ onError }: { onError: (m: string) => void }) {
                         style={{ background: color }}
                       />
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen(open === s.id ? null : s.id)}>
-                        <div className="truncate text-[12px] font-semibold">{s.name}</div>
-                        <div className="truncate text-[11px] text-muted">{s.description}</div>
+                        <div className="truncate text-[12px] font-semibold">
+                          <span className="mr-1.5 rounded bg-panel-2 px-1 text-[10px] font-semibold text-muted">{readable(s.id).area}</span>
+                          {readable(s.id).what}
+                        </div>
+                        <div className="truncate text-[11px] text-muted">{s.name} · <span className="font-mono">{s.id}</span></div>
                       </button>
                       <span className="text-[11px] font-semibold uppercase" style={{ color }}>
                         {state}

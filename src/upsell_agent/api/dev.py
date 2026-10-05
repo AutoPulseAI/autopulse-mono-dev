@@ -372,6 +372,27 @@ async def clock_to_dealer_time(body: ToDealerTime, request: Request) -> dict:
     return {"now": clock.now().isoformat(), "offset_s": offset, "dealer_time": target.strftime("%a %H:%M")}
 
 
+class NextDue(BaseModel):
+    dealer_id: str
+    lead_id: str | None = None
+
+
+@router.post("/clock/next-due")
+async def clock_to_next_due(body: NextDue, request: Request) -> dict:
+    """Moves the dev clock to 1 minute after the next pending scheduled item (the lead's, or the dealer's) and fires
+    it, so testing a schedule is one click per step instead of working out how far to move the clock."""
+    nxt = await scenarios.next_pending_followup(body.dealer_id, body.lead_id)
+    if nxt is None:
+        raise HTTPException(status_code=404, detail="Nothing is scheduled")
+    due = nxt["due_at"].replace(tzinfo=UTC)
+    offset = await clock.advance(get_redis(), max(0.0, (due - clock.now()).total_seconds()) + 60)
+    await _fire_followups_now(request, "next-due")
+    await request.app.state.enqueue("close_expired_leads", key=f"close_expired_leads:dev:{uuid.uuid4().hex[:8]}")
+    return {"now": clock.now().isoformat(), "offset_s": offset, "ran": _json({"id": nxt["_id"], "kind": nxt["kind"],
+                                                                              "lead_id": nxt["lead_id"],
+                                                                              "due_at": nxt["due_at"]})}
+
+
 @router.post("/clock/reset")
 async def reset_clock() -> dict:
     await clock.reset(get_redis())
@@ -522,10 +543,11 @@ async def list_scenarios() -> list[dict]:
     out = []
     for s in scenarios.load_scenarios():
         run = runs.get(s["id"])
-        out.append({"id": s["id"], "name": s.get("name", s["id"]), "stage": s.get("stage"),
+        out.append({"id": s["id"], "name": s.get("name", s["id"]), "workflow": s["workflow"],
+                    "workflow_name": scenarios.WORKFLOWS.get(s["workflow"], s["workflow"]),
                     "description": s.get("description", ""), "steps": len(s.get("steps", [])),
                     "last_run": _json(run) if run else None})
-    return sorted(out, key=lambda s: (s["stage"] or 0, s["id"]))
+    return sorted(out, key=lambda s: s["id"])
 
 
 class RunScenarios(BaseModel):

@@ -1,5 +1,4 @@
 name: Replying first cancels the channel switch
-stage: 10
 description: The customer answers the SMS, so the email fallback waiting for it is cancelled (it only exists for a message that fails to deliver). The AI's answer to the reply gets its own.
 steps:
   - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rita Reply, comments: "Interested in a used Honda CR-V"}

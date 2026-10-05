@@ -1,5 +1,4 @@
 name: Staff statuses move the lead's stage
-stage: 303
 description: Staff setting "Appointment Booked" on the platform moves the lead to Appointment Set and does NOT pause the AI (it runs the appointment workflow for staff bookings too, decided 1 Oct 2026). "Visited" moves it to Sales Visit and pauses it, with every pending follow-up cancelled.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

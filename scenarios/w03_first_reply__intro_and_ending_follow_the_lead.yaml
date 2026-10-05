@@ -1,0 +1,18 @@
+name: The first reply's intro and closing question follow what the lead said
+description: Scope Workflow 3 (Touch 1). A lead with no vehicle gets "Thank you for getting in touch" instead of naming a vehicle, and ends with "Tell me, what are you driving now?". A lead that already mentions a trade-in is not asked what they drive. A service lead gets the service greeting and no sales question.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: blank, dealer: A, lead_type: sales, channel: sms, name: Zoe Zero, comments: "Hi, I'm looking to buy a car"}
+  - wait_turns: {lead: blank, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: blank, contains: "Thank you for getting in touch"}
+  - expect_last_sent: {lead: blank, excludes: "interest in our"}
+  - expect_last_sent: {lead: blank, contains: "Tell me, what are you driving now?"}
+
+  - new_lead: {as: trade, dealer: A, lead_type: sales, channel: sms, name: Ted Tradein, comments: "Interested in a new RAV4, I have a 2015 Honda Accord to trade in"}
+  - wait_turns: {lead: trade, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: trade, excludes: "what are you driving now"}
+
+  - new_lead: {as: service, dealer: A, lead_type: service, channel: sms, name: Sara Service, comments: "Need an oil change"}
+  - wait_turns: {lead: service, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: service, contains: "service team"}
+  - expect_last_sent: {lead: service, excludes: "what are you driving now"}

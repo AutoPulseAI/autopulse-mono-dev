@@ -1,5 +1,4 @@
 name: Day-before confirmation answered N
-stage: 305
 description: 'MASTER_PLAN_3 C5. "N" is never read as a confirmation: the AI offers new times at once. Picking one moves the same booking and re-plans the confirmation and no-show timers, so the old time can never produce a false No Show.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

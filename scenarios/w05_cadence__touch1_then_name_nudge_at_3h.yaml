@@ -1,5 +1,4 @@
 name: Touch 1 has the required structure, then the name nudge at 3 hours
-stage: 304
 description: The first reply opens with the client's required introduction and ends with "Tell me, what are you driving now?" (Omnichannel PDF §3). With no word back, Touch 2 goes out 3 hours later on text AND email - exactly the customer's first name and a question mark - and the lead becomes No Contact Made. The next touch (Day 2, a vehicle visual) is already waiting.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

@@ -1,5 +1,4 @@
 name: A wrong number is never texted again
-stage: 306
 description: The customer replies "wrong number". The phone is marked invalid for good, nothing is sent back, the team gets a notice, and the email address (a different contact point) is unaffected, so the lead is not suppressed.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

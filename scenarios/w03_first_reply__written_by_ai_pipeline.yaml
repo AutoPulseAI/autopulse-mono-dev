@@ -1,5 +1,4 @@
 name: First reply is written by the AI pipeline
-stage: 8
 description: A new lead's comments go through extract, validate, search_stock, decide, compose and guard, and the reply asks for the next missing details.
 steps:
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.

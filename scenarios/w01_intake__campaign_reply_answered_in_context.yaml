@@ -1,5 +1,4 @@
 name: A reply to a campaign is answered in its context
-stage: 9
 description: The dealer sent the customer a campaign; the customer's reply is recognised as a campaign reply and the AI's answer refers to the campaign. The campaign name has a model with digits (RAV4) - it must pass the guard, not fall back to the template.
 steps:
   - new_lead: {as: k, dealer: A, lead_type: service, channel: sms, name: Kim Scenario, comments: "", send_event: false}

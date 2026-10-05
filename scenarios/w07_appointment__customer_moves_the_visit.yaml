@@ -1,5 +1,4 @@
 name: A booked customer moves the visit
-stage: 405
 description: 'MASTER_PLAN_3 B5 item 5. After booking, "can we make it Wednesday at 11 instead?" moves the booking with PUT /api/booking (booking_status sent with it), the reply says it was moved, and the team notice carries the known gap: old platform reminders are not cleared on a move (decision 58).'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

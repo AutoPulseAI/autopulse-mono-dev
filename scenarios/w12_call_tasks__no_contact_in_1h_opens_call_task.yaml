@@ -1,5 +1,4 @@
 name: No contact in an hour opens a staff call task
-stage: 302
 description: Touch 1 goes out on text and email and starts the 60-minute connection timer. Nobody replies, so after an hour the call task opens for staff (the team gets a notice). Inside the hour nothing is shown.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

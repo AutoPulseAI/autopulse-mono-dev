@@ -1,5 +1,4 @@
 name: Every lead is inbound or outbound, and unknown is outbound
-stage: 301
 description: MASTER_PLAN_3 B2 (built in C1). A website-provider lead is inbound; a DealerVault contact, a campaign reply and a lead with no source are outbound.
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

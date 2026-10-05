@@ -28,14 +28,19 @@ Steps (one key per step):
   set_dealer_mode:    {dealer, mode: off|shadow|live}   on the platform dealer record (restored after the scenario)
   advance_clock:      {hours} or {dealer: A, to: "Tue 10:00"} (the next such time in that dealer's timezone)
                       moves the dev clock and fires due follow-ups (reset after the scenario)
+  run_next:           {lead, kind?: any}   moves the clock to 1 minute after the lead's next pending scheduled item
+                      (of that kind) and fires it: no hours to work out
   expect_followup:    {lead, status, kind: channel_switch|handoff_check|resume_at_opening|cadence_touch|appointment_<step>, to_channel?, count?,
-                       index: -1, timeout_s}
-                      one of the lead's scheduled items of that kind, oldest first (-1 = the latest)
+                       index: -1, timeout_s, touch?: {key: value}, year?}
+                      one of the lead's scheduled items of that kind, oldest first (-1 = the latest); touch: the
+                      cadence / SOLD PENDING touch it plans (theme, day, week, phase, ...)
+  expect_customer:    {lead, status: ACTIVE|INACTIVE, timeout_s}   the customer's status (SOLD-DELIVERED PDF §9)
   delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
   expect_outbox:      {lead, channel, count, contains?, settle_s}   what actually left through the fake driver
   expect_no_followup: {lead, kind: channel_switch, settle_s}   nothing of that kind was scheduled for the lead
   expect_lead:        {lead, status?, staff_alert?: bool, summary_contains?, after_hours?: offered|now|later,
-                       staff_notice?: <kind>, timeout_s}   the AI's state for the lead (after_hours: the
+                       staff_notice?: <kind>, fields?: {dotted.path: value}, timeout_s}   the AI's state for the lead
+                      (fields: any value on the lead state, e.g. bucket; after_hours: the
                        "now or when we open?" choice, MASTER_PLAN_3 B1)
   platform_reply:     {lead, text, by: n8n|staff}   the platform (n8n / staff) sent the customer this
   expect_shadow:      {lead, drafts, with_actual?}   the Shadow tab's pairs for this lead
@@ -54,7 +59,7 @@ Steps (one key per step):
                       another dealer's); only_loaded = nothing else was given; loosened = the loosening steps,
                       in order; colour_sent = the colour spelling sent to /api/car
   compare_inventory:  {dealers: [A, B]}   stub vs live /api/car for the dev stock (needs the platform)
-  set_contact:        {lead, source?, dealervault?: bool, sms_opt_in?: bool|null, zip?, comments?,
+  set_contact:        {lead, source?, dealervault?: bool, sms_opt_in?: bool|null, zip?, comments?, birth_date?: "YYYY-MM-DD",
                        consent_record?: true (a lead provider's complete consent record on the lead)}   the platform
                       lead / customer as the send check reads them (MASTER_PLAN_3 C1); a zip is a DealerVault deal
                       row (removed after the scenario). Use new_lead's send_event: false, then send_lead_created
@@ -123,11 +128,35 @@ def scenarios_dir() -> Path:
     return Path(os.environ.get("SCENARIOS_DIR", Path.cwd() / "scenarios"))
 
 
+# A scenario's file name says what it tests: `w05_cadence__touch1_then_name_nudge.yaml` is workflow 5 (the
+# scope PDF's numbering, docs/scope/scope.pdf), then what happens. w00 is the plumbing, w12 staff and call tasks.
+WORKFLOWS: dict[str, str] = {
+    "w00": "System: pipeline, safety net, rollout",
+    "w01": "Workflow 1 · Lead intake and classification",
+    "w02": "Workflow 2 · After-hours first contact",
+    "w03": "Workflow 3 · First reply (Touch 1)",
+    "w04": "Workflow 4 · Active conversation and the visit offer",
+    "w05": "Workflow 5 · No-reply cadence, Days 1-91",
+    "w06": "Workflow 6 · Reply router and dated next step",
+    "w07": "Workflow 7 · Appointment, confirmation and no-show",
+    "w08": "Workflow 8 · Sales Visit and manager outcome",
+    "w09": "Workflow 9 · SOLD PENDING",
+    "w10": "Workflow 10 · SOLD - DELIVERED and ownership",
+    "w11": "Workflow 11 · Compliance, opt-out and delivery problems",
+    "w12": "Staff: handoff, pause and call tasks",
+}
+
+
+def workflow_of(scenario_id: str) -> str:
+    return scenario_id.split("_", 1)[0]
+
+
 def load_scenarios() -> list[dict[str, Any]]:
     scenarios = []
     for path in sorted(scenarios_dir().glob("*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         data["id"] = path.stem
+        data["workflow"] = workflow_of(path.stem)
         scenarios.append(data)
     return scenarios
 
@@ -206,6 +235,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
         CHANNEL_SWITCHES,
         KIND_CADENCE_TOUCH,
         KIND_CALL_TASK,
+        KIND_DAILY_CALL_TASK,
         KIND_HANDOFF_CHECK,
         KIND_NEXT_ACTION,
         KIND_NEXT_ACTION_CHECK,
@@ -216,7 +246,8 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
 
     flt: dict[str, Any] = {}
     if args.get("kind") in ("first_reply_held", KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
-                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, *APPOINTMENT_KINDS,
+                            KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, KIND_DAILY_CALL_TASK,
+                            *APPOINTMENT_KINDS,
                             *SOLD_LIFECYCLE_KINDS):  # MASTER_PLAN_4 (stream A3)
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
@@ -230,6 +261,27 @@ def sent_by_ai_filter(lead_id: str, channel: str) -> dict[str, Any]:
     something the AI sent: a shadow dealer's lead has n8n's reply there and must still count 0 (PLAN_4 stream V)."""
     return {"lead_id": lead_id, "channel": channel, "direction": "outbound", "status": "sent",
             "imported": {"$ne": True}}
+
+
+def _path(doc: dict, dotted: str) -> Any:
+    """`a.b.c` in a nested document, or None."""
+    for part in dotted.split("."):
+        if not isinstance(doc, dict):
+            return None
+        doc = doc.get(part)
+    return doc
+
+
+async def next_pending_followup(dealer_id: str, lead_id: str | None = None, kind: str | None = None) -> dict | None:
+    """The earliest pending scheduled item (the lead's, or the dealer's), of `kind` when given. A standby is a
+    dormant fallback with no real due time, so it is never "next"."""
+    flt: dict[str, Any] = {"status": "pending"}
+    if lead_id:
+        flt["lead_id"] = lead_id
+    if kind and kind != "any":
+        flt["kind"] = kind
+    rows = await dealer_scoped_db(dealer_id).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(flt).to_list(None)
+    return min(rows, key=lambda r: r["due_at"]) if rows else None
 
 
 def _after_hours_choice(state: dict) -> str | None:
@@ -528,6 +580,38 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         await ctx.enqueue("close_expired_leads", key=f"close_expired_leads:scenario:{uuid.uuid4().hex[:8]}")
         return f"clock is now {clock.now():%Y-%m-%d %H:%M} UTC{detail}"
 
+    if kind == "run_next":
+        from upsell_agent.integrations.redis_client import get_redis
+
+        lead = ctx.lead(args["lead"])
+        nxt = await next_pending_followup(lead["dealer_id"], lead["lead_id"], args.get("kind"))
+        if nxt is None:
+            raise ScenarioFailed(f"nothing {args.get('kind', '')} pending for this lead")
+        due = nxt["due_at"].replace(tzinfo=UTC)
+        ctx.moved_clock = True
+        await clock.advance(get_redis(), max(0.0, (due - clock.now()).total_seconds()) + 60)
+        await ctx.enqueue("fire_due_followups", key=f"fire_due_followups:scenario:{uuid.uuid4().hex[:8]}")
+        await ctx.enqueue("close_expired_leads", key=f"close_expired_leads:scenario:{uuid.uuid4().hex[:8]}")
+        profile = await dealer_profile(lead["dealer_id"])
+        return f"ran {nxt['kind']} due {due.astimezone(profile.tz):%a %d %b %H:%M} dealer time"
+
+    if kind == "expect_customer":
+        from upsell_agent.integrations.mongodb import AI_CUSTOMER_STATUS_COLLECTION
+
+        lead = ctx.lead(args["lead"])
+        statuses = dealer_scoped_db(lead["dealer_id"]).collection(AI_CUSTOMER_STATUS_COLLECTION)
+
+        async def status():
+            row = await statuses.find_one({"customer_id": lead["customer_id"]}) or {}
+            return row if row.get("customer_status") == args["status"] else None
+
+        try:
+            row = await _wait(status, float(args.get("timeout_s", 10)), f"customer {args['status']}")
+        except ScenarioFailed:
+            row = await statuses.find_one({"customer_id": lead["customer_id"]}) or {}
+            raise ScenarioFailed(f"customer is {row.get('customer_status')!r}, expected {args['status']}") from None
+        return f"customer is {row['customer_status']}: {row.get('customer_status_reason')}"
+
     if kind == "expect_call_task":
         # MASTER_PLAN_3 C2: {lead, status: open | none | cancelled | completed | dismissed, timeout_s?}
         lead = ctx.lead(args["lead"])
@@ -584,6 +668,10 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             if index >= len(rows) or index < -len(rows):
                 return None
             last = rows[index]
+            if "touch" in args and any((last.get("touch") or {}).get(k) != v for k, v in args["touch"].items()):
+                return None
+            if "year" in args and last.get("year") != args["year"]:
+                return None
             return (last, len(rows)) if last["status"] == args["status"] else None
 
         try:
@@ -591,7 +679,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         except ScenarioFailed:
             rows = sorted(await followups.find({"lead_id": lead["lead_id"], **kind_filter}).to_list(None),
                           key=lambda r: r["created_at"])
-            seen = [f"{r['status']} ({r.get('reason')})" for r in rows]
+            seen = [f"{r['status']} ({r.get('reason')})" + (f" touch {r['touch']}" if "touch" in args and r.get("touch")
+                                                              else "") for r in rows]
             raise ScenarioFailed(f"expected follow-up [{args.get('index', -1)}] to be {args['status']}; "
                                  f"saw {seen or 'none'}") from None
         if "to_channel" in args and last["to_channel"] != args["to_channel"]:
@@ -671,7 +760,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 "stage" not in args or doc.get("stage") == args["stage"]) and (
                 "next_action" not in args or bool(doc.get("next_action")) == bool(args["next_action"])) and (
                 # MASTER_PLAN_3 C6: a lead linked to another lead's workflow.
-                "duplicate" not in args or bool(doc.get("duplicate_of")) == bool(args["duplicate"]))
+                "duplicate" not in args or bool(doc.get("duplicate_of")) == bool(args["duplicate"])) and all(
+                _path(doc, k) == v for k, v in (args.get("fields") or {}).items())
             return doc if ok else None
 
         try:
@@ -684,6 +774,7 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                                  f"{_after_hours_choice(doc)!r}, staff notice "
                                  f"{(doc.get('staff_notice') or {}).get('kind')!r}, visit attempts "
                                  f"{_visit(doc).get('attempts')!r} (declined {_visit(doc).get('declined')!r})"
+                                 + "".join(f", {k}={_path(doc, k)!r}" for k in (args.get("fields") or {}))
                                  ) from None
         alert = (doc.get("staff_alert") or {}).get("reason")
         covered = (doc.get("summary") or {}).get("messages")
@@ -925,6 +1016,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             customer_set["dealervault_upload"] = bool(args["dealervault"])
         if "sms_opt_in" in args:
             customer_set["phones.0.sms_opt_in"] = args["sms_opt_in"]
+        if "birth_date" in args:
+            customer_set["Birth Date"] = str(args["birth_date"])  # DealerVault's field (agent/sold_delivered.py)
         if customer_set:
             await db[PLATFORM_CUSTOMERS_COLLECTION].update_one({"_id": ObjectId(lead["customer_id"])},
                                                                {"$set": customer_set})
@@ -1060,7 +1153,7 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
         from upsell_agent.integrations.redis_client import get_redis
 
         await clock.reset(get_redis())
-    run = {"_id": scenario["id"], "name": scenario.get("name", scenario["id"]), "stage": scenario.get("stage"),
+    run = {"_id": scenario["id"], "name": scenario.get("name", scenario["id"]), "workflow": workflow_of(scenario["id"]),
            "passed": passed, "steps": results, "ms": round((time.perf_counter() - started) * 1000),
            "last_run_at": clock.now()}
     await get_db()[DEV_SCENARIO_RUNS_COLLECTION].replace_one({"_id": run["_id"]}, run, upsert=True)
@@ -1123,7 +1216,7 @@ async def _cli(only: list[str]) -> int:
         await close_mongo()
         await close_redis()
     for run in runs:
-        print(f"{'PASS' if run['passed'] else 'FAIL'}  stage {run['stage']}  {run['name']}  ({run['ms']} ms)")
+        print(f"{'PASS' if run['passed'] else 'FAIL'}  {run['_id']}  ({run['ms']} ms)")
         for step in run["steps"]:
             if step["status"] != "passed":
                 print(f"        {step['status']}: {step['step']} — {step['detail']}")

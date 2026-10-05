@@ -8,7 +8,7 @@ DEALER = "66f0000000000000000000c3"
 
 
 async def test_a_shadow_leads_copied_crm_history_is_not_counted_as_sent_by_the_ai(mongo):
-    """s13_shadow_dealer against crm-local counted 1 text "sent": n8n's own reply, which the history sync (X3
+    """w00_system__shadow_dealer_drafts_only (was s13_shadow_dealer) against crm-local counted 1 text "sent": n8n's own reply, which the history sync (X3
     item 5) copies into the AI's thread as `sent` + `imported`. The AI's own rows were both `shadow`."""
     rows = dealer_scoped_db(DEALER).collection(AI_MESSAGES_COLLECTION)
     base = {"lead_id": "L1", "channel": "sms", "direction": "outbound", "created_at": clock.now()}

@@ -1,5 +1,4 @@
 name: SOLD - DELIVERED Day-3 check-in and service request
-stage: 404
 description: 'MASTER_PLAN_4 D1, D3, D4 (SOLD-DELIVERED PDF §2-§4; client scope Q16). Sold Pending, then Sold Delivered: SOLD PENDING stops at once and the ownership lifecycle starts (Day-3 check-in and anniversary year 1 planned). On Day 3 the check-in offers the first recommended service in words (no interval invented). The customer says yes with a day: the service team gets a request with notes - nothing is booked.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

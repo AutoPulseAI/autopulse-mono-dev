@@ -1,5 +1,4 @@
 name: No white RAV4, so the search loosens colour
-stage: 202
 description: Dealer B has one RAV4, in silver. A lead asks for a used white Toyota RAV4. Search stock runs on the first turn (after Extract), reads the dealer's own colour spellings, finds no white one, loosens colour and loads the silver RAV4. The trace records the colour step. A follow-up in red is corrected to the dealer's own "RED" spelling before it's sent.
 steps:
   - add_stock:

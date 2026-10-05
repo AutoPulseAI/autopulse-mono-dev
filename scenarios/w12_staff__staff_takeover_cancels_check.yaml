@@ -1,5 +1,4 @@
 name: Staff taking the lead over cancels the staff check
-stage: 102
 description: Staff pause the handed-off lead (they replied from the conversation screen), so the staff check is cancelled and the customer's next message is saved for them with the reason on record.
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

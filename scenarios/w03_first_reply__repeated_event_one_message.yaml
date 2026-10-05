@@ -1,5 +1,4 @@
 name: A repeated event sends one message
-stage: 4
 description: The platform sending the same new-lead event twice produces exactly one message to the customer.
 steps:
   - new_lead: {as: d, dealer: A, lead_type: service, channel: sms, name: Dana Scenario, comments: "Brakes squeaking", send_event: false}

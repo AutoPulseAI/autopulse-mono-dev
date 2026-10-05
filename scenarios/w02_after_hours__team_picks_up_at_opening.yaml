@@ -1,5 +1,4 @@
 name: After hours, the team picks it up when the dealership opens
-stage: 401
 description: 'MASTER_PLAN_3 B1. A website lead at 19:30 (the dealer is closed, and it is still inside the customer''s 8:00-21:00 texting hours) is offered the choice and says "tomorrow is fine": a short thank-you with no questions, and a morning message due at 9:00 (the dealer opens, and it is 8:00+ in the customer''s New York time). At 9:00 the morning message goes out ("the team is in now", then the next questions), the choice becomes "now", and the team gets a notice. A lead at 23:00 is outside the texting hours: nothing is texted at night, and the first reply waits for 8:00 (PLAN_4 stream X1 item 1; blueprint box 0 "if within TCPA allowed hours").'
 steps:
   - advance_clock: {dealer: A, to: "Tue 19:30"}

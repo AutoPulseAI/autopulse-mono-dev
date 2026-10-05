@@ -1,5 +1,4 @@
 name: Dealer questions are answered from the dealer's own details
-stage: 106
 description: '"When are you open on Saturday?" is answered with the hours the dealer entered on the platform, and "Where are you located?" with its address. The guard accepts those numbers on the first draft.'
 steps:
   - new_lead: {as: h, dealer: A, lead_type: sales, channel: sms, name: Hal Hours, comments: "Hi, I saw your ad"}

@@ -1,5 +1,4 @@
 name: A customer who dodges is never asked the same thing twice in a row
-stage: 105
 description: The customer never answers. Each reply asks one detail, the least-asked first, never the one just asked; once every missing detail has been asked twice, the lead goes to the team as partly qualified and nothing more is asked.
 steps:
   - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dev Dodger, comments: "Hi, I saw your ad"}

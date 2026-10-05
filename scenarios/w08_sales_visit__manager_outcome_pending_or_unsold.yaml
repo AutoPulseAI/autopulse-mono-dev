@@ -1,5 +1,4 @@
 name: Manager outcome after a visit
-stage: 305
 description: 'MASTER_PLAN_3 C5 (Omnichannel PDF §10) + MASTER_PLAN_4 D1. Visited with the manager outcome Sold Pending stops the lead workflow and starts SOLD PENDING''s own cadence (the AI runs it). Visited with Unsold hands the lead back to the AI: Contact Made - No Next Action, a new cadence, and 90 more days of follow-up.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}

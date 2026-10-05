@@ -1,5 +1,4 @@
 name: A shadow dealer's leads get drafts, never messages
-stage: 13
 description: Dealer C is in shadow mode. The AI runs every turn and stores its draft as "shadow", but nothing is sent, nothing is recorded in the dealer's conversation, and no follow-up is scheduled. Each draft is shown next to what n8n actually sent.
 steps:
   - new_lead: {as: s, dealer: C, lead_type: sales, channel: sms, name: Shay Shadow, comments: "Is the Tacoma still available?"}

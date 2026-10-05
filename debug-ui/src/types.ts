@@ -330,7 +330,7 @@ export interface ScenarioStep {
 export interface ScenarioRun {
   id: string;
   name: string;
-  stage: number | null;
+  workflow: string;
   passed: boolean;
   steps: ScenarioStep[];
   ms: number;
@@ -340,7 +340,8 @@ export interface ScenarioRun {
 export interface Scenario {
   id: string;
   name: string;
-  stage: number | null;
+  workflow: string;
+  workflow_name: string;
   description: string;
   steps: number;
   last_run: ScenarioRun | null;

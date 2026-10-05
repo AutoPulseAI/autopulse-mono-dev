@@ -1,5 +1,4 @@
 name: An invented trim is rejected, then the rewrite is clean
-stage: 204
 description: >
   #badtrim (an offline-model-only dev hint) makes the first draft claim a trim not on the named
   vehicle. The grounding check (Phase 4) rejects it; the one allowed rewrite then sends a reply

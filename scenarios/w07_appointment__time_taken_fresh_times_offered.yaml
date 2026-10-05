@@ -1,5 +1,4 @@
 name: The chosen time was taken meanwhile, fresh times are offered
-stage: 405
 description: 'MASTER_PLAN_3 B5 item 3. Other customers fill the first offered time before our customer picks it (10 sales bookings per slot, client 5 Oct 2026). No booking is made; the reply says it was just taken and offers fresh times, without counting as another attempt.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}

@@ -1,5 +1,4 @@
 name: Same event twice runs one job
-stage: 2
 description: A lead-created event sent twice is queued once; the second is reported as a duplicate.
 steps:
   - new_lead: {as: dup, dealer: A, lead_type: sales, channel: sms, name: Dupe Test, comments: "Looking at a new RAV4", send_event: false}

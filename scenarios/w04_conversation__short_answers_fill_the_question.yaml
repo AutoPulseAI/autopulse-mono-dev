@@ -1,5 +1,4 @@
 name: Short replies answer what we asked
-stage: 104
 description: The AI asks new or used, and the customer just says "used"; a trade-in customer answers the year question with "2019". Each fills the slot that was asked, with the customer's own words as the quote.
 steps:
   - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Short, comments: "Hi, I saw your ad"}

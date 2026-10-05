@@ -1,5 +1,4 @@
 name: '"Can I come see it?" on the first reply gets times straight away'
-stage: 404
 description: 'MASTER_PLAN_3 B4. A buying signal (Extract''s wants_visit) makes the visit offer fire at once, before any qualifying questions.'
 steps:
   - advance_clock: {dealer: A, to: "Tue 12:00"}
