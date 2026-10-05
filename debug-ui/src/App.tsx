@@ -14,6 +14,7 @@ import { ModelsBanner } from "./components/ModelsBanner";
 import { SlotsPanel } from "./components/SlotsPanel";
 import { Timeline, TRIGGER_LABEL } from "./components/Timeline";
 import { outcomeColor } from "./components/ui";
+import { formatDateTime } from "./time";
 import { emptyView, reduce, reduceAll, type TurnView } from "./trace/reducer";
 import { useReplay } from "./trace/useReplay";
 import { useTraceStream } from "./trace/useTraceStream";
@@ -296,7 +297,20 @@ export default function App() {
             </aside>
 
             <section className="flex min-h-0 flex-col">
-              <TurnHeader view={view} mode={mode} />
+              <TurnHeader
+                view={view}
+                mode={mode}
+                onError={showError}
+                onClockMoved={() => {
+                  // Timers fire a moment after the clock moves; look again once they have.
+                  for (const ms of [1500, 4000]) {
+                    window.setTimeout(() => {
+                      void loadLeads();
+                      void loadLeadDetail();
+                    }, ms);
+                  }
+                }}
+              />
               <div className="min-h-0 flex-[3]">
                 <PipelineGraph pipeline={pipeline} view={view} selectedNode={selectedNode} onSelectNode={setSelectedNode} />
               </div>
@@ -361,7 +375,65 @@ export default function App() {
   );
 }
 
-function TurnHeader({ view, mode }: { view: TurnView; mode: "live" | "replay" }) {
+// The dev clock on the pipeline screen: move time forward without leaving the lead you are testing.
+function ClockBar({ onError, onMoved }: { onError: (m: string) => void; onMoved: () => void }) {
+  const [now, setNow] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setNow((await api.clock()).now);
+    } catch {
+      /* the main polling reports connection problems */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const t = window.setInterval(refresh, 3000);
+    return () => window.clearInterval(t);
+  }, [refresh]);
+
+  const move = async (seconds: number) => {
+    setBusy(true);
+    try {
+      await api.advanceClock(seconds);
+      await refresh();
+      onMoved();
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ml-auto flex items-center gap-1.5">
+      <span className="font-mono text-[11px] tabular-nums text-muted" title="Dev clock (UTC offset shown in your browser's zone)">
+        {now ? formatDateTime(now, true) : "clock…"}
+      </span>
+      {([["+30 min", 30 * 60], ["+1 hr", 3600], ["+24 hr", 24 * 3600]] as const).map(([label, seconds]) => (
+        <button
+          key={label}
+          type="button"
+          disabled={busy}
+          onClick={() => void move(seconds)}
+          className="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] font-semibold hover:bg-accent-soft disabled:opacity-50"
+          title={`Move the dev clock forward ${label.slice(1)}; due follow-ups, timers and call tasks fire`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TurnHeader({ view, mode, onError, onClockMoved }: {
+  view: TurnView;
+  mode: "live" | "replay";
+  onError: (m: string) => void;
+  onClockMoved: () => void;
+}) {
   return (
     <div className="flex h-9 items-center gap-3 border-b border-line bg-panel px-3 text-[12px]">
       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{mode === "live" ? "Live turn" : "Replay"}</span>
@@ -387,6 +459,7 @@ function TurnHeader({ view, mode }: { view: TurnView; mode: "live" | "replay" })
       ) : (
         <span className="text-muted">No turn yet. Create a lead or reply as the customer.</span>
       )}
+      <ClockBar onError={onError} onMoved={onClockMoved} />
     </div>
   );
 }
