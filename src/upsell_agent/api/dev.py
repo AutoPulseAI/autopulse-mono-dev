@@ -8,6 +8,7 @@ still scoped by dealer_id.
 
 import asyncio
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -47,6 +48,7 @@ from upsell_agent.scheduler.followups import CHANNEL_SWITCHES, KIND_CHANNEL_SWIT
 from upsell_agent.slots.policy import MAX_ASKS_PER_SLOT
 from upsell_agent.slots.schema import SCHEMA
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 
@@ -146,6 +148,11 @@ async def leads(dealer_id: str) -> list[dict]:
             "status_reason": state.get("status_reason"),
             # MASTER_PLAN_3 C3: the lifecycle stage (agent/lifecycle.py).
             "stage": state.get("stage"), "stage_label": state.get("stage_label"),
+            # MASTER_PLAN_4 A1: the sales bucket (blueprint §2) and the source that set it - not shown in the
+            # conversation itself, so two leads with the same opening message can look like they got different
+            # treatment for no visible reason, when really it's this.
+            "bucket": state.get("bucket"), "original_bucket": state.get("original_bucket"),
+            "source": lead.get("source") or lead.get("lead_source") or data.get("source") or data.get("provider"),
         })
     return out
 
@@ -552,18 +559,52 @@ async def list_scenarios() -> list[dict]:
 
 class RunScenarios(BaseModel):
     ids: list[str] | None = None
+    # Start the run and return at once; the Debug UI follows it on GET /scenarios/{id}/live.
+    background: bool = False
 
 
 _run_lock = asyncio.Lock()
+_background_runs: set[asyncio.Task] = set()
+
+
+async def _run_locked(request: Request, ids: list[str] | None) -> list[dict]:
+    async with _run_lock:
+        return await scenarios.run_all(request.app.state.enqueue, request.app.state.queue, ids)
+
+
+async def _run_in_background(enqueue: Any, queue: Any, ids: list[str] | None) -> None:
+    """A background run outlives its request, so it is given the queue itself, never the request."""
+    async with _run_lock:
+        try:
+            await scenarios.run_all(enqueue, queue, ids)
+        except Exception:
+            logger.exception("background scenario run failed")
 
 
 @router.post("/scenarios/run")
-async def run_scenarios(body: RunScenarios, request: Request) -> list[dict]:
+async def run_scenarios(body: RunScenarios, request: Request) -> list[dict] | dict:
     if _run_lock.locked():
         raise HTTPException(status_code=409, detail="A scenario run is already in progress")
-    async with _run_lock:
-        try:
-            runs = await scenarios.run_all(request.app.state.enqueue, request.app.state.queue, body.ids)
-        except scenarios.RealModelsRefused as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _json(runs)
+    try:
+        scenarios.check_models()  # refuse before starting, so a background run can still report it
+    except scenarios.RealModelsRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.background:
+        task = asyncio.create_task(_run_in_background(request.app.state.enqueue, request.app.state.queue, body.ids))
+        _background_runs.add(task)
+        task.add_done_callback(_background_runs.discard)
+        return {"status": "started", "ids": body.ids}
+    return _json(await _run_locked(request, body.ids))
+
+
+@router.get("/scenarios/running")
+async def scenario_running() -> dict:
+    return {"running": _run_lock.locked()}
+
+
+@router.get("/scenarios/{scenario_id}/live")
+async def scenario_live(scenario_id: str) -> dict:
+    doc = await get_db()[scenarios.DEV_SCENARIO_LIVE_COLLECTION].find_one({"_id": scenario_id})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="This scenario hasn't been run yet")
+    return _json(doc)

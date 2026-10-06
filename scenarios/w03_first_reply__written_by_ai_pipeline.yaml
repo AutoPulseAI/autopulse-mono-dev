@@ -1,6 +1,7 @@
 name: First reply is written by the AI pipeline
 description: A new lead's comments go through extract, validate, search_stock, decide, compose and guard, and the reply asks for the next missing details.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: a, dealer: A, lead_type: trade_in, channel: sms, name: Avery Scenario, comments: "I'd like to trade in my 2019 Honda Civic"}

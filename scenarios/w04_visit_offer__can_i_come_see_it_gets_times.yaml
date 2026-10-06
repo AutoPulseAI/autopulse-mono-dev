@@ -9,5 +9,5 @@ steps:
   - reply: {lead: b, text: "Can I come see it this weekend?"}
   - wait_turns: {lead: b, count: 2, timeout_s: 20}
   - expect_turn: {lead: b, outcome: offer_visit}
-  - expect_last_sent: {lead: b, contains: "Which one works?"}
+  - expect_last_sent: {lead: b, contains_any: ["which one works", "which time works", "what time works", "work for you", "works for you", "works best for you"]}
   - expect_lead: {lead: b, visit_attempts: 1}

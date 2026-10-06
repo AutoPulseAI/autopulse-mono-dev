@@ -1,6 +1,7 @@
 name: Same event twice runs one job
 description: A lead-created event sent twice is queued once; the second is reported as a duplicate.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: dup, dealer: A, lead_type: sales, channel: sms, name: Dupe Test, comments: "Looking at a new RAV4", send_event: false}
   - send_lead_created: {lead: dup, expect: queued}
   - send_lead_created: {lead: dup, expect: duplicate}

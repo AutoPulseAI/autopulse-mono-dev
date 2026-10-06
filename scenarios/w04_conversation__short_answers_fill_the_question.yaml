@@ -1,6 +1,7 @@
 name: Short replies answer what we asked
 description: The AI asks new or used, and the customer just says "used"; a trade-in customer answers the year question with "2019". Each fills the slot that was asked, with the customer's own words as the quote.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Short, comments: "Hi, I saw your ad"}
   - wait_turns: {lead: s, count: 1, timeout_s: 20}
   - expect_context: {lead: s, index: -1, new_messages: ["Hi, I saw your ad"]}

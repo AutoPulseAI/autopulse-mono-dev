@@ -1,6 +1,7 @@
 name: Nobody took the lead over in 30 business minutes
 description: After a handoff, 30 business minutes pass with no staff action. The customer gets one "sorry for the wait" message and staff get an alert; the lead stays with staff. Two hours later a new message gets a holding reply.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   # 11:30, not 10:00: dev customers have 555 phones and no address, so the send
   # check (MASTER_PLAN_3 C1) only texts them when it's 8:00+ in every US zone
   # (11:00 New York). The staff check is due at 12:00+ New York.

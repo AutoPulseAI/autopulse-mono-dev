@@ -1,6 +1,7 @@
 name: Every turn reads one context pack
 description: The AI's first reply, the customer's answer and their question all carry into the next turns' context pack - working memory, what was asked, open questions and promises.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Cora Context, comments: "Interested in a used Honda CR-V"}

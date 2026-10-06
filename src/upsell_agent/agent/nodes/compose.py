@@ -96,6 +96,24 @@ def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
     return changed
 
 
+def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None) -> bool:
+    """Touch 2's name nudge (decide.py plan_cadence_touch_context: "the client calls it non-negotiable",
+    Omnichannel PDF §3) is overwritten here rather than trusted to the model, the same reasoning as Touch 1's
+    intro (place_touch1_intro): seen live, 6 Oct 2026, gpt-5-mini wrote a full qualifying question instead of
+    "Nina?" even though Compose was told, in so many words, to send exactly that and nothing else. Any other
+    cadence touch with a fixed_text would get the same treatment; today only the name nudge has one. Changes
+    `draft` in place; returns whether it actually changed anything (for the trace)."""
+    if not fixed_text:
+        return False
+    changed = str(draft.get("sms_text") or "") != fixed_text
+    name = first_name(customer_first_name) or "there"
+    draft["sms_text"] = fixed_text
+    draft["email_subject"] = draft.get("email_subject") or "Your inquiry"
+    draft["email_body"] = f"Hi {name},\n\n{fixed_text}\n\nThanks,\nThe Team"
+    draft["promises"] = []
+    return changed
+
+
 def compose_payload(state: AgentState) -> dict[str, Any]:
     decision = state.decision or {}
     return {
@@ -141,10 +159,61 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
     }
 
 
+# DEV-only test tags (scenarios/, the Debug UI, a few unit tests), honoured here rather than inside any one
+# model, so the guard / rewrite / fallback / deadline paths run the same way whichever model is configured -
+# offline or real (previously only the offline stand-in understood them, so a scenario using one "passed" by
+# luck or failed outright once the AI service pointed at a real model). Never active outside ENVIRONMENT=DEV,
+# and nothing a real customer would plausibly type:
+#   #slow      compose never calls the model (a real one can't be told to hang on command) and goes straight
+#              through the same path a genuine timeout takes, so the turn's deadline sends the template.
+#   #retry     the real draft gets an invented offer stitched on, on attempt 1 only, so the guard sends it
+#              back once and the rewrite (attempt 2, no hint) passes clean.
+#   #fallback  the same invented offer is stitched on every attempt, so both fail the guard and the fallback
+#              template is used.
+#   #badtrim   the real draft gets a trim stitched on that isn't the named vehicle's real one, on attempt 1
+#              only, to exercise the grounding check the same way.
+DEV_HINT_OFFER = " Plus $500 off, guaranteed!"
+
+
+def _dev_hints(state: AgentState, ctx: TurnContext) -> tuple[bool, bool, bool, bool]:
+    """(slow, retry, fallback, badtrim): which dev tag, if any, the customer's own message carries."""
+    if not ctx.settings.is_dev:
+        return False, False, False, False
+    text = (state.customer_text or state.inbound_text or "").lower()
+    return "#slow" in text, "#retry" in text, "#fallback" in text, "#badtrim" in text
+
+
+def _apply_dev_hint(draft: dict[str, Any], payload: dict[str, Any], *, retry: bool, fallback: bool,
+                    badtrim: bool) -> str | None:
+    """Corrupts an otherwise-real draft in place so the guard has something true to catch. Returns a trace
+    line, or None if neither tag was present."""
+    attempt = payload["attempt"]
+    if fallback or (retry and attempt == 1):
+        for key in ("sms_text", "email_body"):
+            if draft.get(key):
+                draft[key] = draft[key].rstrip() + DEV_HINT_OFFER
+        return "Dev hint: an invented offer was added on purpose to exercise the guard."
+    if badtrim and attempt == 1 and draft.get("sms_vins"):
+        vin = draft["sms_vins"][0]
+        vehicle = next((v for v in (payload.get("context") or {}).get("inventory") or []
+                        if v.get("vin") == vin or v.get("source_id") == vin), None)
+        if vehicle:
+            real_trim = str(vehicle.get("trim") or "").strip().lower()
+            fake = "Limited" if real_trim != "limited" else "Sport"
+            for key in ("sms_text", "email_body"):
+                if draft.get(key):
+                    draft[key] = draft[key].rstrip() + f" It comes in the {fake} trim."
+            return f"Dev hint: claimed the {fake} trim, which isn't on this vehicle, to exercise the grounding check."
+    return None
+
+
 async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     model = ctx.settings.model_compose
     payload = compose_payload(state)
     span.metrics = {"model": model}
+    slow, retry, fallback, badtrim = _dev_hints(state, ctx)
+    if slow:
+        return _failed(span, f"no answer within {ctx.settings.compose_timeout_s}s (dev hint: #slow)")
     try:
         ctx.spend_ai_call()
         result, call = await run_agent(compose_agent(model), model, payload,
@@ -159,11 +228,17 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
+    nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name)
+    hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
     if placed:
         span.reasoning.append("Touch 1's required opening put first by code in the " + " and ".join(placed) + ".")
+    if nudged:
+        span.reasoning.append("The client's exact fixed wording put in by code, replacing the model's own draft.")
+    if hinted:
+        span.reasoning.append(hinted)
     if draft.get("promises"):
         span.reasoning.append("Promises the team: " + "; ".join(draft["promises"]))
     if payload["guard_feedback"]:

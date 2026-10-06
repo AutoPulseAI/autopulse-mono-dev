@@ -1,6 +1,7 @@
 name: A failed SMS switches to email straight away
 description: Twilio reports the first SMS as undelivered. The email version of it was waiting dormant (standby), so it goes out now. With the cadence running there is no 24h switch any more; this fallback is all that is left of it.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: f, dealer: A, lead_type: service, channel: sms, name: Fred Failed, comments: "Need an oil change"}
   - wait_turns: {lead: f, count: 1, timeout_s: 15}
   - expect_followup: {lead: f, status: standby, to_channel: email}

@@ -1,12 +1,17 @@
 name: A reply to a campaign is answered in its context
-description: The dealer sent the customer a campaign; the customer's reply is recognised as a campaign reply and the AI's answer refers to the campaign. The campaign name has a model with digits (RAV4) - it must pass the guard, not fall back to the template.
+description: >
+  The dealer sent the customer a campaign; the customer's reply is recognised as a campaign reply and the AI
+  answers in that context (it doesn't have to repeat the campaign's internal name back - a real reply just
+  helps with what the campaign offered). The campaign name has a model with digits (RAV4) - it must pass the
+  guard, not fall back to the template.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: k, dealer: A, lead_type: service, channel: sms, name: Kim Scenario, comments: "", send_event: false}
   - send_campaign: {lead: k, name: "Spring RAV4 Service Event", body: "20% off all maintenance this month - reply to book!", goal: "Book spring maintenance"}
   - reply: {lead: k, text: "Yes please, can I book an oil change?"}
   - wait_turns: {lead: k, count: 1, timeout_s: 15}
   - expect_turn: {lead: k, campaign_found: true, not_ran: [fallback]}
-  - expect_last_sent: {lead: k, contains: "Spring RAV4 Service Event"}
+  - expect_last_sent: {lead: k, contains_any: ["Spring RAV4 Service Event", "oil change", "book", "maintenance"]}
   - reply: {lead: k, text: "Saturday morning works"}
   - wait_turns: {lead: k, count: 2, timeout_s: 15}
   - expect_turn: {lead: k, campaign_found: false}

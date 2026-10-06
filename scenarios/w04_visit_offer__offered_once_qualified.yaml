@@ -9,5 +9,5 @@ steps:
   - reply: {lead: q, text: "My budget is $35,000 and I'd like to buy this month"}
   - wait_turns: {lead: q, count: 2, timeout_s: 20}
   - expect_turn: {lead: q, outcome: offer_visit}
-  - expect_last_sent: {lead: q, contains: "Which one works?"}
+  - expect_last_sent: {lead: q, contains_any: ["which one works", "which time works", "what time works", "work for you", "works for you", "works best for you"]}
   - expect_lead: {lead: q, visit_attempts: 1, visit_declined: false}

@@ -69,6 +69,10 @@ export interface Lead {
   // MASTER_PLAN_3 C3: where the lead stands in the client's workflow.
   stage?: string | null;
   stage_label?: string | null;
+  // MASTER_PLAN_4 A1: the sales bucket (word-track only, never the workflow) and the source that set it.
+  bucket?: string | null;
+  original_bucket?: string | null;
+  source?: string | null;
 }
 
 export interface ConversationItem {
@@ -325,6 +329,25 @@ export interface ScenarioStep {
   step: string;
   status: "passed" | "failed" | "skipped";
   detail: string;
+}
+
+export interface ScenarioLiveStep {
+  step: string;
+  status: "passed" | "failed" | "skipped" | "running" | "waiting";
+  detail: string;
+  args?: Record<string, unknown>;
+  ms?: number;
+  clock?: string;
+}
+
+// The run as it goes (GET /dev/scenarios/{id}/live).
+export interface ScenarioLive {
+  _id: string;
+  running: boolean;
+  started_at: string;
+  clock: string;
+  steps: ScenarioLiveStep[];
+  leads: { alias: string; lead_id: string; dealer_id: string; channel: string | null }[];
 }
 
 export interface ScenarioRun {

@@ -10,6 +10,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    // Docker Desktop on Windows doesn't deliver native file-change events across the bind mount
+    // (agentic-upsell/debug-ui -> /ui), so Vite never notices an edit and keeps serving its old
+    // transform. Polling instead makes it actually pick up changes.
+    watch: { usePolling: true, interval: 300 },
     proxy: {
       "/api": { target, changeOrigin: true, rewrite: (path) => path.replace(/^\/api/, "") },
     },

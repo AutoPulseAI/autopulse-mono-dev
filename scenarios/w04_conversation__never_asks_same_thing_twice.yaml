@@ -1,6 +1,7 @@
 name: A customer who dodges is never asked the same thing twice in a row
 description: The customer never answers. Each reply asks one detail, the least-asked first, never the one just asked; once every missing detail has been asked twice, the lead goes to the team as partly qualified and nothing more is asked.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dev Dodger, comments: "Hi, I saw your ad"}
   - wait_turns: {lead: d, count: 1, timeout_s: 20}
   - chat: {lead: d, messages: ["hmm", "not sure", "hmm", "maybe", "hmm", "idk", "hmm", "not sure", "hmm", "hmm"]}

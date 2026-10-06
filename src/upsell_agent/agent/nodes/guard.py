@@ -7,8 +7,14 @@ Also checked here: every question Decide gave was answered (MASTER_PLAN_2
 Phase 5), no version asks more than two questions (MASTER_PLAN_3 Bq,
 counted as question marks), an after-hours "offer" carries its choice
 question (MASTER_PLAN_3 B1: seen live, the real model sometimes dropped it),
-a reply after the first one doesn't open with a fresh greeting (seen live, 1
-Oct: "Hello, Test!" repeated mid-conversation), and booking wording matches
+a "later" (the reply when a customer chooses to wait for the team) and a
+"resume" (the morning message once the team is in) each say so, rather than
+a "later" reading like a response to a decline, or a "resume" opening cold
+with the next question as if no time had passed (MASTER_PLAN_3 B1: both
+seen live with a real model, 6 Oct 2026 - "tomorrow is fine" got "I won't
+keep asking - I understand", and the next morning got a budget question
+with no acknowledgment it was morning at all), a reply after the first one doesn't open with a fresh
+greeting (seen live, 1 Oct: "Hello, Test!" repeated mid-conversation), and booking wording matches
 a real, current booking's status (MASTER_PLAN_3 B5 item 7, architecture §15
 decision 60): never "booked"/"confirmed" for a merely-requested (pending)
 visit, and never any of those words with no active booking on the lead at
@@ -103,6 +109,44 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if "which would you like" not in str(draft.get(key) or "").lower()]
+
+
+# A resume message just needs to signal "we're available now" before it carries on - not literally "the team
+# is in now" (agent/llm.py's instruction to Compose), since a real model's own close paraphrase is fine; only
+# dropping the acknowledgment entirely (seen live, 6 Oct 2026: straight into a budget question) is the problem.
+_RESUME_PHRASES = ("team is in", "we're open", "we are open", "we're back", "we are back", "open now", "back open")
+
+
+def missing_resume_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """A "resume" (MASTER_PLAN_3 B1) is the morning message after a customer chose to wait for the team; it
+    must say so before doing anything else, not pick the conversation back up as if no time had passed."""
+    if ((decision.get("after_hours") or {}).get("mode")) != "resume":
+        return []
+    if decision.get("reply_language"):
+        # Stream Q: translated, so the English phrases above can't be checked here.
+        return []
+    return [f"the {name} doesn't say the team is in now before continuing" for name, key in
+            (("SMS", "sms_text"), ("email", "email_body"))
+            if not any(p in str(draft.get(key) or "").lower() for p in _RESUME_PHRASES)]
+
+
+# "later" just needs to say the team will pick this up - not the literal instruction wording (agent/llm.py),
+# a close paraphrase is fine; dropping it (seen live, 6 Oct 2026: "tomorrow is fine" got "I won't keep asking -
+# I understand", as if the customer had asked to be left alone rather than chosen to wait) is the problem.
+_LATER_PHRASES = ("pick this up", "pick it up", "when we open", "when the team opens", "team will", "team can",
+                  "team is", "reach out", "follow up", "get back to you", "touch base")
+
+
+def missing_later_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """A "later" (MASTER_PLAN_3 B1) is the reply when the customer chose to wait for the team; it must say the
+    team will pick this up, not read like a response to a decline or a request to stop asking."""
+    if ((decision.get("after_hours") or {}).get("mode")) != "later":
+        return []
+    if decision.get("reply_language"):
+        return []
+    return [f"the {name} doesn't say the team will pick this up" for name, key in
+            (("SMS", "sms_text"), ("email", "email_body"))
+            if not any(p in str(draft.get(key) or "").lower() for p in _LATER_PHRASES)]
 
 
 def mandated_wording(decision: dict[str, Any]) -> list[str]:
@@ -251,6 +295,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if missing_choice:
         result["passed"] = False
         result["violations"] += missing_choice
+    missing_resume = missing_resume_acknowledgment(state.decision or {}, state.draft or {})
+    result["checks"]["resume_says_team_is_in"] = not missing_resume
+    if missing_resume:
+        result["passed"] = False
+        result["violations"] += missing_resume
+    missing_later = missing_later_acknowledgment(state.decision or {}, state.draft or {})
+    result["checks"]["later_says_team_will_follow_up"] = not missing_later
+    if missing_later:
+        result["passed"] = False
+        result["violations"] += missing_later
     # The after-hours morning message is meant to open with a fresh greeting
     # ("Good morning, the team is in now") whatever the turn (MASTER_PLAN_3 B1
     # decision 95): exempt from the no-repeated-greeting check.

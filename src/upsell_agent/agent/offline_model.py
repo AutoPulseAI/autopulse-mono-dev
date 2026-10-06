@@ -7,11 +7,16 @@ on a machine with no model key, with the same code path, typed outputs,
 usage accounting and timeouts as a real model. What it is not: AI. It
 understands only the patterns below. Use a real model to judge reply quality.
 
-Dev hints, only honoured here (a real model ignores them):
-  #retry     the first draft contains an invented offer, so the guard sends it back once
-  #fallback  every draft contains an invented offer, so the template is used
-  #reject    extract returns one value whose quote isn't in the message (rejected by Validate)
-  #slow      the model takes 30s, so the turn deadline sends the template
+Dev hints:
+  #reject    extract returns one value whose quote isn't in the message (rejected by Validate) - honoured
+             only here; a real model doesn't make this particular mistake on command
+  #slow      this model (extract or compose) really does take 30s - honoured only here, since a real model
+             can't be told to hang; two unit tests need a genuine wait to race against the turn deadline and
+             Extract's own timeout (test_turn_pipeline.py). Compose has its own #slow (agent/nodes/compose.py)
+             that works with any model instead, by never calling it, for scenarios run against a real model.
+  #retry, #fallback, #badtrim
+             Compose's own hints (agent/nodes/compose.py), honoured there for any model - offline or real -
+             so a scenario using one behaves the same whichever MODEL_COMPOSE is configured
 """
 
 import asyncio
@@ -544,7 +549,7 @@ def _vehicle_phrase(record: dict[str, Any]) -> str:
     return name + (f" ({', '.join(extra)})" if extra else "")
 
 
-def _stock_answer(payload: dict[str, Any], *, bad_trim: bool = False) -> tuple[str, list[str], list[str]]:
+def _stock_answer(payload: dict[str, Any]) -> tuple[str, list[str], list[str]]:
     """A stock question answered from context.inventory alone (Phase 3 item 1):
     real vehicles if there are any, never a bare "no" otherwise."""
     inventory = (payload.get("context") or {}).get("inventory") or []
@@ -557,14 +562,10 @@ def _stock_answer(payload: dict[str, Any], *, bad_trim: bool = False) -> tuple[s
         return ("I'm not seeing a matching one right now, but I can have the team let you know the moment one comes in.",
                 [], ["The team will let you know when a matching vehicle comes in."])
     names = [_vehicle_phrase(r) for r in chosen]
-    if bad_trim:  # #badtrim (dev hint): a trim not on the named vehicle, to exercise the grounding check
-        fake = "Limited" if (chosen[0].get("trim") or "").lower() != "limited" else "Sport"
-        names[0] += f" in the {fake} trim"
     return (f"Good news - we have {'; and '.join(names)} in stock.", [r["vin"] for r in chosen], [])
 
 
-def _answers(questions: list[dict[str, str]], payload: dict[str, Any],
-            *, bad_trim: bool = False) -> tuple[str, list[str], list[str]]:
+def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[str, list[str], list[str]]:
     """One short sentence per kind of question, the promises they make, and
     the VINs of any vehicle named."""
     sentences: list[str] = []
@@ -574,7 +575,7 @@ def _answers(questions: list[dict[str, str]], payload: dict[str, Any],
     team = [q for q in questions if q["label"] == "restricted"]
     stock = [q for q in questions if q["label"] == "answerable" and is_stock_question(q["text"])]
     if stock:
-        text, vins, stock_promises = _stock_answer(payload, bad_trim=bad_trim)
+        text, vins, stock_promises = _stock_answer(payload)
         sentences.append(text)
         promises += stock_promises
     for q in (q for q in questions if q["label"] == "answerable" and q not in stock):
@@ -697,8 +698,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     dates = [c["display"] for c in payload.get("just_captured") or [] if c.get("kind") == "date"]
     if dates and action not in ("handoff", "confirm"):
         opener += f"Got it - {dates[0]}. "
-    bad_trim = "#badtrim" in text and attempt == 1  # dev hint: exercises the grounding check (Phase 4)
-    answered, promises, vins = _answers(questions, payload, bad_trim=bad_trim)
+    answered, promises, vins = _answers(questions, payload)
     # MASTER_PLAN_3 Phase 3 decision L: a stock-free version too, so the 24h
     # channel switch never resends a vehicle mention hours after it was checked.
     no_stock_payload = {**payload, "context": {**(payload.get("context") or {}), "inventory": []}}
@@ -914,10 +914,6 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     elif payload.get("hold_questions"):
         why += f" Nothing asked or offered: {payload['hold_questions']}."
 
-    if "#fallback" in text or ("#retry" in text and attempt == 1):
-        body += " Plus $500 off, guaranteed!"
-        why += " (Dev hint: an invented offer was added on purpose to exercise the guard.)"
-
     # The first reply carries the client's required opening, so it may use three segments (decision 152).
     limit = TOUCH1_SMS_MAX if payload.get("touch1") else SMS_MAX
     sms = body if len(body) <= limit else body[: limit - 1].rsplit(" ", 1)[0] + "…"
@@ -976,6 +972,11 @@ async def _respond(messages: list[ModelMessage], info: AgentInfo) -> ModelRespon
     payload = _payload(messages)
     tool = info.output_tools[0]
     if "#slow" in (payload.get("customer_text") or "").lower():
+        # Deliberately real (not a dev-hint short-circuit like Compose's own #slow, agent/nodes/compose.py):
+        # two unit tests race this against the turn's own deadline and Extract's per-node timeout
+        # (test_turn_pipeline.py), which needs a real wait to decide who wins. Only the offline model can be
+        # told to do this; a real model's Extract call just succeeds, and Compose's hint is what exercises
+        # the same deadline against a real model instead.
         await asyncio.sleep(30)
     elif latency_ms := get_settings().offline_model_latency_ms:
         await asyncio.sleep(latency_ms / 1000)

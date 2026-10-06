@@ -1,8 +1,15 @@
-name: Guard failure triggers one rewrite
-description: The first draft invents an offer, the guard sends it back once, and the rewrite passes.
+name: Guard failure triggers one rewrite, and the invented offer never reaches the customer
+description: >
+  #retry (a dev hint, agent/nodes/compose.py - works with any model) makes the first draft invent a $500
+  offer. The guard rejects it - exactly one rewrite is allowed, win or lose (MAX_REWRITES=1, so compose and
+  guard each run exactly twice either way). The invented offer is never sent either way: a real model's
+  rewrite usually drops it cleanly; if the rewrite trips a different rule instead, the safe fallback template
+  goes out rather than the invented offer - never silence, and never the bad fact.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: r, dealer: A, lead_type: trade_in, channel: email, name: Retry Scenario, comments: "Trading my 2018 Honda"}
   - wait_turns: {lead: r, count: 1, timeout_s: 30}
   - reply: {lead: r, text: "It has 80k miles #retry"}
   - wait_turns: {lead: r, count: 2, timeout_s: 30}
-  - expect_turn: {lead: r, attempts: {compose: 2, guard: 2}, not_ran: [fallback], ran: [send]}
+  - expect_turn: {lead: r, attempts: {compose: 2, guard: 2}, ran: [send]}
+  - expect_last_sent: {lead: r, excludes: "$500"}

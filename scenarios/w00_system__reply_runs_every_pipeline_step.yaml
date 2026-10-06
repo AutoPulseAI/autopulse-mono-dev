@@ -1,6 +1,7 @@
 name: A customer reply runs every pipeline step
 description: After the instant first reply, the customer's reply goes through all steps in order and ends by asking for the next missing details.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: m, dealer: A, lead_type: sales, channel: sms, name: Maria Scenario, comments: "Hi, looking at SUVs"}
   - wait_turns: {lead: m, count: 1, timeout_s: 30}
   - reply: {lead: m, text: "I want a new Toyota RAV4"}

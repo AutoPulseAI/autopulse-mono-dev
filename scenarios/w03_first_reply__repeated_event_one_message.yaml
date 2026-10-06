@@ -1,6 +1,7 @@
 name: A repeated event sends one message
 description: The platform sending the same new-lead event twice produces exactly one message to the customer.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: d, dealer: A, lead_type: service, channel: sms, name: Dana Scenario, comments: "Brakes squeaking", send_event: false}
   - send_lead_created: {lead: d, expect: queued}
   - send_lead_created: {lead: d, expect: duplicate}

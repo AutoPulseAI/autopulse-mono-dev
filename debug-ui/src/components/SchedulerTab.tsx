@@ -48,7 +48,7 @@ const APPOINTMENT_STEP: Record<string, string> = {
 };
 
 /** One line, in plain English, saying what this scheduled item does when it fires. */
-function whatItDoes(f: Followup, leadName: string): string {
+export function whatItDoes(f: Followup, leadName: string): string {
   const kind: string = f.kind;
   const first = leadName.split(" ")[0];
   const touch = f.touch as (Followup["touch"] & { week?: number; phase?: string }) | null | undefined;
@@ -79,7 +79,7 @@ function whatItDoes(f: Followup, leadName: string): string {
   }
 }
 
-function countdown(dueMs: number, nowMs: number): string {
+export function countdown(dueMs: number, nowMs: number): string {
   const s = Math.round((dueMs - nowMs) / 1000);
   if (s <= 0) return "due now";
   const d = Math.floor(s / 86400);

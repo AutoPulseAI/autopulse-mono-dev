@@ -1,9 +1,13 @@
-name: An invented trim is rejected, then the rewrite is clean
+name: An invented trim is rejected, and never reaches the customer
 description: >
-  #badtrim (an offline-model-only dev hint) makes the first draft claim a trim not on the named
-  vehicle. The grounding check (Phase 4) rejects it; the one allowed rewrite then sends a reply
-  that correctly names the real vehicle, with zero grounding rejections left after the rewrite.
+  #badtrim (a dev hint, agent/nodes/compose.py - works with any model) makes the first draft claim a trim
+  not on the named vehicle. The grounding check (Phase 4) rejects it - exactly one rewrite is allowed, win
+  or lose. The invented trim is never sent either way: a real model's rewrite usually also fixes itself
+  and sends a clean reply naming the real vehicle; if the rewrite trips a different rule instead (seen with
+  a real model: it asked one question too many), the safe fallback template goes out rather than the
+  invented trim - never silence, and never the bad fact.
 steps:
+  - advance_clock: {dealer: B, to: "Tue 10:00"}
   - add_stock:
       as: rav4
       dealer: B
@@ -14,4 +18,4 @@ steps:
   - reply: {lead: t, text: "#badtrim Do you have a Toyota RAV4?"}
   - wait_turns: {lead: t, count: 2, timeout_s: 20}
   - expect_turn: {lead: t, attempts: {compose: 2, guard: 2}}
-  - expect_last_sent: {lead: t, contains: "RAV4"}
+  - expect_last_sent: {lead: t, excludes: "Limited trim"}

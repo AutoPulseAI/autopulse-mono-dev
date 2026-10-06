@@ -157,6 +157,26 @@ def _upper_first(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
+# "resume" / "later" (MASTER_PLAN_3 B1): the one thing each must say, guaranteed - even the AI's rewrite can
+# drop it (seen live, 6 Oct 2026, gpt-5-mini: "tomorrow is fine" got "I won't keep asking", and the next
+# morning got a budget question with no acknowledgment it was morning at all). Same reasoning as Touch 1's
+# intro and the name nudge: this exact fact is too important to leave to a second model call that already
+# failed once (agent/nodes/guard.py's missing_resume_acknowledgment / missing_later_acknowledgment check for
+# it; this is what the customer gets if both of the AI's own attempts still missed it).
+def _after_hours_fallback(name: str, after_hours: dict[str, Any]) -> dict[str, Any] | None:
+    mode, opens_at = after_hours.get("mode"), after_hours.get("opens_at")
+    if mode == "resume":
+        line = f"Good morning, {name}! The team is in now."
+    elif mode == "later":
+        line = f"Thanks, {name}! The team will pick this up when we open" + (f" at {opens_at}" if opens_at else "") + "."
+    else:
+        return None
+    body_line = line.split("! ", 1)[1] if "! " in line else line
+    return {"sms_text": line, "email_subject": "Following up",
+            "email_body": f"Hi {name},\n\n{body_line}" + _SIGN_OFF.format(team="Customer Care"),
+            "template": "continue", "asks": {"sms": [], "email": []}, "promises": []}
+
+
 def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None, *,
                           first: bool = False) -> dict[str, Any]:
     """The template for a reply after the first one (agent/nodes/template_reply.py), from Decide's own plan."""
@@ -164,6 +184,9 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
     name = first_name(full_name)
     asks = [a for a in decision.get("asks") or [] if a.get("question")][:1]
     promises: list[str] = []
+    if decision.get("reply_language") != "Spanish" and (
+            ack := _after_hours_fallback(name, decision.get("after_hours") or {})):
+        return ack
     if decision.get("reply_language") == "Spanish":
         line = (FIRST_REPLY_ES if first else CONTINUE_CHECKING_ES if decision.get("answer_questions")
                 else CONTINUE_NOTED_ES).format(name=name)

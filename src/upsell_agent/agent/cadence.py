@@ -296,7 +296,8 @@ def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
 
 
 def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dealership: str | None,
-                 city: str | None, state_code: str | None, vehicle: str | None, service: bool = False) -> str:
+                 city: str | None, state_code: str | None, vehicle: str | None, service: bool = False,
+                 origin: str | None = None) -> str:
     """The client's required opening (Omnichannel PDF §3). Anything the dealer
     record doesn't have is left out rather than invented: with no agent name
     the message doesn't claim one, and with no vehicle on the lead it thanks
@@ -305,7 +306,15 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     `service` (PLAN_4 stream Q): the Omnichannel PDF is the SALES lead workflow, so its "Thank you for your
     interest in our {vehicle}. I am excited to help you with your purchase." doesn't fit a customer asking for
     service (seen: an oil-change request got "...help you with your purchase ... what are you driving now?").
-    A service lead gets the same greeting with a service sentence, and no closing question (touch1_ending)."""
+    A service lead gets the same greeting with a service sentence, and no closing question (touch1_ending).
+
+    `origin` (compliance/origin.py: "inbound" or "outbound", MASTER_PLAN_3 B2; fixed 6 Oct 2026): the client's
+    required text above is itself written for an inbound lead - a customer who contacted the dealer first. An
+    "outbound" lead (a DealerVault contact, a platform campaign, an unmapped source) never did, so "thank you
+    for getting in touch" / "for your interest" would be claiming something that didn't happen (TruthMode,
+    the blueprint's core principle: "every interaction is honest, transparent"), and reads like a reply to a
+    message the customer never sent. Only this one line changes; the required closing question, and every
+    other part of the structure, stay exactly as specified regardless of origin."""
     who = f"Hello {customer_first_name}" if customer_first_name else "Hello"
     speaker = f", this is {agent_name}" if agent_name else ""
     place = ""
@@ -319,6 +328,9 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
         care = f"your {vehicle}" if vehicle else "your vehicle"
         return (f"{who}{speaker}{place}. Thank you for contacting our service team. "
                 f"I am happy to help you take care of {care}.")
-    thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
-              else " Thank you for getting in touch.")
+    if origin == "outbound":
+        thanks = f" I wanted to reach out about our {vehicle}." if vehicle else " I wanted to reach out."
+    else:
+        thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
+                  else " Thank you for getting in touch.")
     return f"{who}{speaker}{place}.{thanks} I am excited to help you with your purchase."

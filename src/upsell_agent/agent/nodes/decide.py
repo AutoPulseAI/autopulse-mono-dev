@@ -509,20 +509,25 @@ def is_service_lead(profile: Profile) -> bool:
     return profile.lead_type == LeadType.SERVICE
 
 
-def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: str | None) -> dict[str, Any]:
+def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: str | None,
+                origin: str | None = None) -> dict[str, Any]:
     """Touch 1's required structure (Omnichannel PDF §3, MASTER_PLAN_3 C4):
     the client's opening, then the answers, then the mandatory closing
     question. Decision 34 (B1/B4 replacing the ending) is **reversed** by the
     client's own answer of 1 Oct 2026: the question is always asked, unless a
     trade-in is already indicated. It is one of the message's two questions,
-    so Compose gets at most one other ask alongside it."""
+    so Compose gets at most one other ask alongside it.
+
+    `origin` (6 Oct 2026): an outbound lead gets an opening line that doesn't claim they reached out first
+    (cadence.touch1_intro)."""
     service = is_service_lead(profile)
     ending = cadence.touch1_ending(_trade_in_known(profile), service=service)
     return {
         "intro": cadence.touch1_intro(
             customer_first_name=first_name(customer_first_name), agent_name=dealer.agent_name,
             dealership=dealer.name, city=dealer.city, state_code=dealer.state,
-            vehicle=_service_vehicle(profile) if service else _vehicle_of_interest(profile), service=service),
+            vehicle=_service_vehicle(profile) if service else _vehicle_of_interest(profile), service=service,
+            origin=origin),
         "ending": ending,
         "ending_slot": TOUCH1_ENDING_SLOT if ending else None,
         "why": ("The client's required Touch 1 structure: the opening, the answers, then "
@@ -703,7 +708,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         not_interested_reason=not_interested_reason,
     ))
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
-    touch1 = (plan_touch1(profile, dealer, state.customer_name)
+    touch1 = (plan_touch1(profile, dealer, state.customer_name,
+                         origin=((ctx.compliance or {}).get("origin") or {}).get("origin"))
               if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff", "offer_human")
               else None)
     if touch1:

@@ -50,14 +50,26 @@ class Settings(BaseSettings):
     # (burst tests, MASTER_PLAN_1 Stage 12). 0 = answer instantly.
     offline_model_latency_ms: int = Field(default=0, alias="OFFLINE_MODEL_LATENCY_MS")
 
-    # Per-turn limits (architecture §7). Hitting any of them sends the template.
-    # Stream G re-measured them on gpt-5-mini at the efforts above (4 Oct 2026, docs/plans/PLAN_4/stream_G.md):
-    # Extract 1.8-4.7 s, Compose 2.4-3.2 s per call (gpt-4o-mini/gpt-4o were about 1-2 s), so the old 3 s / 5 s /
-    # 8 s sent the template on ordinary turns. The first reply has room for Extract + Compose + one rewrite.
-    extract_timeout_s: float = Field(default=6.0, alias="EXTRACT_TIMEOUT_S")
-    compose_timeout_s: float = Field(default=8.0, alias="COMPOSE_TIMEOUT_S")
-    first_reply_deadline_s: float = Field(default=15.0, alias="FIRST_REPLY_DEADLINE_S")
-    reply_deadline_s: float = Field(default=20.0, alias="REPLY_DEADLINE_S")
+    # Per-turn limits (architecture §7). Hitting any of them sends the template - never silence, but also
+    # never a good answer thrown away for being a few seconds slow.
+    #
+    # 6 Oct 2026 (product decision, superseding the 29 Sept note below): a real campaign-reply turn fell back
+    # to the generic template because Extract alone took a bit over 8s - a correct, well-reasoned answer was
+    # discarded purely for being slow. Quality matters more than shaving seconds, so there is now one
+    # generous, loose budget for the WHOLE turn (extract, validate, search stock, decide, compose, one
+    # possible rewrite, send, schedule): 60s. EXTRACT_TIMEOUT_S / COMPOSE_TIMEOUT_S match it, so neither call
+    # cuts a turn short on its own - the one 60s turn deadline (below) is the only limit that actually binds
+    # in practice; the per-call figures exist only so a single hung call can't block forever outside a turn
+    # (a direct unit-test call to compose()/extract() with no outer wrapper).
+    #
+    # 29 Sept 2026: raised from the defaults (3.0 / 5.0) after the first-ever real OpenAI run measured actual
+    # latency - gpt-4o-mini Extract took 3.1-3.7s model time, gpt-4o Compose ~3.1s, both close to or over the
+    # old budgets. Stream G re-measured on gpt-5-mini (4 Oct 2026, docs/plans/PLAN_4/stream_G.md): Extract
+    # 1.8-4.7s, Compose 2.4-3.2s per call - still frequently over the 6s/8s this raised them to.
+    extract_timeout_s: float = Field(default=60.0, alias="EXTRACT_TIMEOUT_S")
+    compose_timeout_s: float = Field(default=60.0, alias="COMPOSE_TIMEOUT_S")
+    first_reply_deadline_s: float = Field(default=60.0, alias="FIRST_REPLY_DEADLINE_S")
+    reply_deadline_s: float = Field(default=60.0, alias="REPLY_DEADLINE_S")
     max_ai_calls_per_turn: int = Field(default=4, alias="MAX_AI_CALLS_PER_TURN")
     # Working memory in the context pack (MASTER_PLAN_2 Phase 1): the recent
     # conversation, word for word, up to about this many tokens. The last 6

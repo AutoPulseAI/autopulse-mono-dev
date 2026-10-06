@@ -194,6 +194,9 @@ def test_mark_sold_404s_for_an_unknown_vin(client):
 async def test_scenarios_refuse_to_run_with_real_models(monkeypatch):
     from upsell_agent.devtools import scenarios
 
+    # Real-model runs are opt-in; a developer's .env may have opted in.
+    monkeypatch.delenv("SCENARIOS_ALLOW_REAL_MODELS", raising=False)
+
     monkeypatch.setattr(scenarios, "get_settings", lambda: make_settings("DEV").model_copy(
         update={"model_extract": "openai:gpt-4o-mini", "model_compose": "openai:gpt-4o"}))
     with pytest.raises(scenarios.RealModelsRefused, match="MODEL_EXTRACT"):
@@ -202,6 +205,9 @@ async def test_scenarios_refuse_to_run_with_real_models(monkeypatch):
 
 def test_scenario_run_endpoint_refuses_real_models(client, monkeypatch):
     from upsell_agent.devtools import scenarios
+
+    # Real-model runs are opt-in; a developer's .env may have opted in.
+    monkeypatch.delenv("SCENARIOS_ALLOW_REAL_MODELS", raising=False)
 
     monkeypatch.setattr(scenarios, "get_settings", lambda: make_settings("DEV").model_copy(
         update={"model_extract": "openai:gpt-4o-mini", "model_compose": "openai:gpt-4o"}))

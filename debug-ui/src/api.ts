@@ -1,4 +1,4 @@
-import type { CallTask, ConversationItem, Dealer, Followup, Lead, ManagerOutcome, Metrics, Ping, Pipeline, RolloutCheck, Scenario, ScenarioRun, ShadowView, SlotsView, StaffStatusName, TurnDoc, TurnSummary, Verdict } from "./types";
+import type { CallTask, ConversationItem, Dealer, Followup, Lead, ManagerOutcome, Metrics, Ping, Pipeline, RolloutCheck, Scenario, ScenarioLive, ScenarioRun, ShadowView, SlotsView, StaffStatusName, TurnDoc, TurnSummary, Verdict } from "./types";
 
 // Everything goes through Vite's /api proxy to the AI service's /dev/* routes.
 const BASE = "/api/dev";
@@ -76,5 +76,9 @@ export const api = {
     post<{ status: string; vin: string }>(`/stock/${vin}/mark-sold?${q({ dealer_id: dealerId })}`, {}),
   scenarios: () => request<Scenario[]>("/scenarios"),
   runScenarios: (ids?: string[]) => post<ScenarioRun[]>("/scenarios/run", { ids: ids ?? null }),
+  // Starts the run and returns at once; follow it with scenarioLive.
+  startScenarios: (ids?: string[]) => post<{ status: string }>("/scenarios/run", { ids: ids ?? null, background: true }),
+  scenarioLive: (id: string) => request<ScenarioLive>(`/scenarios/${id}/live`),
+  scenarioRunning: () => request<{ running: boolean }>("/scenarios/running"),
   streamUrl: (dealerId: string) => `${BASE}/stream?${q({ dealer_id: dealerId })}`,
 };

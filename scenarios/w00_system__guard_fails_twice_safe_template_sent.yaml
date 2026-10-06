@@ -1,6 +1,7 @@
 name: Second guard failure uses the template
 description: Every draft fails the guard, so after one rewrite the fallback template is used.
 steps:
+  - advance_clock: {dealer: B, to: "Tue 10:00"}
   - new_lead: {as: f, dealer: B, lead_type: general, channel: sms, name: Fallback Scenario, comments: "hello"}
   - wait_turns: {lead: f, count: 1, timeout_s: 30}
   - reply: {lead: f, text: "hello again #fallback"}

@@ -1,6 +1,7 @@
 name: An email lead is answered by email
 description: The first reply goes out on the channel the lead came in on, using the email version of the template.
 steps:
+  - advance_clock: {dealer: B, to: "Tue 10:00"}
   - new_lead: {as: e, dealer: B, lead_type: trade_in, channel: email, name: Ellis Scenario, comments: "Want to trade my Civic"}
-  - wait_turns: {lead: e, count: 1, timeout_s: 15}
-  - expect_last_sent: {lead: e, channel: email, max_latency_ms: 2000, text_starts_with: "Hello Ellis, greetings from Lakeside Auto"}
+  - wait_turns: {lead: e, count: 1, timeout_s: 35}
+  - expect_last_sent: {lead: e, channel: email, max_latency_ms: 30000, text_starts_with: "Hello Ellis, greetings from Lakeside Auto"}

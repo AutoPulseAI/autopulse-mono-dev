@@ -14,7 +14,7 @@ The automatic tests are called **scenarios**. Each one creates fake leads, plays
 - **Run them all:** `make ai-scenarios`, or Debug UI → **Scenarios** → **Run all**.
 - **Run one workflow:** Debug UI → Scenarios → **Run group** next to that workflow.
 - **Run one test:** `docker exec autopulse-ai-api python -m upsell_agent.devtools.scenarios w05_cadence__day_91_closes_lead`.
-- **Before you run them:** the AI must use the offline model (no real AI calls, no cost). Start the AI with `AI_MODEL_EXTRACT=offline AI_MODEL_COMPOSE=offline docker compose --profile dev up -d ai-api ai-worker`. The runner refuses to start if it sees a real model.
+- **Before you run them:** the AI must use the offline model (no real AI calls, no cost). Run `make ai-offline` first, and `make ai-real` afterwards to go back to the real model (gpt-5-mini). The runner refuses to start on a real model unless `SCENARIOS_ALLOW_REAL_MODELS=true` is set in `agentic-upsell/.env` (then restart with `make ai-real`). Real-model runs cost money, and a few steps check exact wording written for the offline model, so some of those can fail even when the behaviour is right.
 - **Two tests need the CRM running** (`make dev-full`): `w00_system__customer360_stub_matches_live` and `w00_system__stock_search_stub_matches_live`. Without the CRM they fail with "not reachable". That is expected.
 
 | Prefix | Workflow |

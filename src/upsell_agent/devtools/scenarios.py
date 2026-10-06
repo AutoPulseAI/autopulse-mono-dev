@@ -19,7 +19,11 @@ Steps (one key per step):
                        not_ran?: [...], campaign_found?: bool}
   expect_turn_count:  {lead, count, settle_s}
   expect_messages:    {lead, direction: outbound, count, status?, settle_s}
-  expect_last_sent:   {lead, channel?, max_latency_ms?, text_starts_with?, contains?, excludes?, question_marks?}
+  expect_last_sent:   {lead, channel?, max_latency_ms?, text_starts_with?, contains?, contains_any?: [str, ...],
+                       excludes?, question_marks?}   contains_any passes if the text has any one of the list -
+                       use it for anything a real model can say several true ways (never for the client's own
+                       fixed wording, where exact text is the point); contains/excludes stay for one exact
+                       string, or a fact that has only one right way to say it (a name, a time, a VIN)
   expect_no_repeat_asks: {lead}   no two replies in a row asked for the same detail (MASTER_PLAN_2 Phase 5)
   expect_slots:       {lead, filled?: [paths], missing?: [paths], sources?: {path: platform|customer},
                        values?: {path: value}}
@@ -36,7 +40,7 @@ Steps (one key per step):
                       cadence / SOLD PENDING touch it plans (theme, day, week, phase, ...)
   expect_customer:    {lead, status: ACTIVE|INACTIVE, timeout_s}   the customer's status (SOLD-DELIVERED PDF §9)
   delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
-  expect_outbox:      {lead, channel, count, contains?, settle_s}   what actually left through the fake driver
+  expect_outbox:      {lead, channel, count, contains?, contains_any?: [str, ...], settle_s}   what actually left through the fake driver
   expect_no_followup: {lead, kind: channel_switch, settle_s}   nothing of that kind was scheduled for the lead
   expect_lead:        {lead, status?, staff_alert?: bool, summary_contains?, after_hours?: offered|now|later,
                        staff_notice?: <kind>, fields?: {dotted.path: value}, timeout_s}   the AI's state for the lead
@@ -119,6 +123,7 @@ from upsell_agent.integrations.mongodb import (
 from upsell_agent.worker.queue import Enqueue
 
 DEV_SCENARIO_RUNS_COLLECTION = "dev_scenario_runs"  # DEV only, not per dealer
+DEV_SCENARIO_LIVE_COLLECTION = "dev_scenario_live"  # the run in progress, step by step (Debug UI run screen)
 DEALER_ALIASES = {"A": simulate.DEV_DEALERS[0]["_id"], "B": simulate.DEV_DEALERS[1]["_id"],
                   "C": simulate.DEV_DEALERS[2]["_id"]}
 POLL_S = 0.25
@@ -492,6 +497,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             problems.append(f"text {str(last.get('text'))[:60]!r} does not start with {args['text_starts_with']!r}")
         if "contains" in args and args["contains"].lower() not in str(last.get("text", "")).lower():
             problems.append(f"text {str(last.get('text'))[:80]!r} does not mention {args['contains']!r}")
+        if "contains_any" in args and not any(p.lower() in str(last.get("text", "")).lower() for p in args["contains_any"]):
+            problems.append(f"text {str(last.get('text'))[:80]!r} says none of {args['contains_any']!r}")
         if "excludes" in args and args["excludes"].lower() in str(last.get("text", "")).lower():
             problems.append(f"text {str(last.get('text'))[:80]!r} mentions {args['excludes']!r}")
         if "question_marks" in args and str(last.get("text", "")).count("?") != int(args["question_marks"]):
@@ -730,6 +737,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected {args['count']}")
         if "contains" in args and rows and not any(args["contains"].lower() in r["text"].lower() for r in rows):
             raise ScenarioFailed(f"no {args['channel']} message mentions {args['contains']!r}")
+        if "contains_any" in args and rows and not any(
+                p.lower() in r["text"].lower() for r in rows for p in args["contains_any"]):
+            raise ScenarioFailed(f"no {args['channel']} message says any of {args['contains_any']!r}")
         return f"{len(rows)} {args['channel']} message(s) left" + (f" to {rows[-1]['to']}" if rows else "")
 
     if kind == "expect_no_followup":
@@ -940,8 +950,15 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             problems.append(f"searched is {inventory.get('searched')}")
         if inventory.get("error"):
             problems.append(f"the search failed: {inventory['error']}")
-        if "query" in args and inventory.get("query") != args["query"]:
-            problems.append(f"query {inventory.get('query')} != {args['query']}")
+        if "query" in args:
+            # A subset check, not equality: a real model's own extraction can accurately add a filter the
+            # scenario didn't name (e.g. body_type: SUV from "a used RAV4", which really is one) without that
+            # being wrong - the scenario is naming the filters that MUST be there, not the only ones allowed.
+            got = inventory.get("query") or {}
+            wrong = {k: got.get(k) for k, v in args["query"].items() if got.get(k) != v}
+            if wrong:
+                expected = {k: args["query"][k] for k in wrong}
+                problems.append(f"query has {wrong}, expected {expected} (full query: {got})")
         if len(loaded) < int(args.get("min_loaded", 0)):
             problems.append(f"{len(loaded)} vehicle(s) loaded, expected at least {args['min_loaded']}")
         if len(loaded) > MAX_LOADED:
@@ -1100,22 +1117,46 @@ async def _set_scenario_contact(dealer_id: str, created: dict[str, str], same_as
     await simulate.set_contact(dealer_id, created, same_as["lead_id"] if same_as else None, local=local)
 
 
+def _leads_view(ctx: RunContext) -> list[dict[str, Any]]:
+    return [{"alias": alias, "lead_id": lead["lead_id"], "dealer_id": lead["dealer_id"],
+             "channel": lead.get("channel")} for alias, lead in ctx.leads.items()]
+
+
+async def _save_live(scenario: dict[str, Any], ctx: RunContext, results: list[dict], started_at: Any,
+                     running: bool) -> None:
+    """The run as it goes, for the Debug UI's live run screen (GET /dev/scenarios/{id}/live)."""
+    ahead = []
+    for i, raw in enumerate(scenario.get("steps", [])[len(results):]):
+        (kind, args), = raw.items()
+        ahead.append({"step": kind, "status": "running" if i == 0 and running else "waiting", "detail": "",
+                      "args": args or {}})
+    await get_db()[DEV_SCENARIO_LIVE_COLLECTION].replace_one({"_id": scenario["id"]}, {
+        "_id": scenario["id"], "running": running, "started_at": started_at, "clock": clock.now(),
+        "steps": results + ahead, "leads": _leads_view(ctx)}, upsert=True)
+
+
 async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue | None) -> dict[str, Any]:
     ctx = RunContext(enqueue=enqueue, queue=queue)
     started = time.perf_counter()
+    started_at = clock.now()
     results, passed = [], True
+    await _save_live(scenario, ctx, results, started_at, running=True)
     for raw in scenario.get("steps", []):
         (kind, args), = raw.items()
         args = args or {}
         if not passed:
-            results.append({"step": kind, "status": "skipped", "detail": ""})
+            results.append({"step": kind, "status": "skipped", "detail": "", "args": args})
             continue
+        step_started = time.perf_counter()
         try:
             detail = await _step(ctx, kind, args)
-            results.append({"step": kind, "status": "passed", "detail": detail})
+            results.append({"step": kind, "status": "passed", "detail": detail, "args": args,
+                            "ms": round((time.perf_counter() - step_started) * 1000), "clock": clock.now()})
         except Exception as exc:  # noqa: BLE001 - a failing step fails the scenario, never the runner
             passed = False
-            results.append({"step": kind, "status": "failed", "detail": str(exc) or repr(exc)})
+            results.append({"step": kind, "status": "failed", "detail": str(exc) or repr(exc), "args": args,
+                            "ms": round((time.perf_counter() - step_started) * 1000), "clock": clock.now()})
+        await _save_live(scenario, ctx, results, started_at, running=True)
     if passed:
         # Every reply the scenario produced must be plain English (MASTER_PLAN_2 Phase 7).
         leaky = await _replies_with_jargon(ctx)
@@ -1153,6 +1194,7 @@ async def run_scenario(scenario: dict[str, Any], enqueue: Enqueue, queue: Queue 
         from upsell_agent.integrations.redis_client import get_redis
 
         await clock.reset(get_redis())
+    await _save_live(scenario, ctx, results, started_at, running=False)
     run = {"_id": scenario["id"], "name": scenario.get("name", scenario["id"]), "workflow": workflow_of(scenario["id"]),
            "passed": passed, "steps": results, "ms": round((time.perf_counter() - started) * 1000),
            "last_run_at": clock.now()}
@@ -1168,14 +1210,22 @@ class RealModelsRefused(Exception):
     customer message), not here."""
 
 
-async def run_all(enqueue: Enqueue, queue: Queue | None, only: list[str] | None = None) -> list[dict[str, Any]]:
+def check_models() -> None:
+    """Raises RealModelsRefused unless the models are offline or real-model runs are allowed."""
     settings = get_settings()
-    if settings.model_extract != OFFLINE or settings.model_compose != OFFLINE:
+    # Opt-in: SCENARIOS_ALLOW_REAL_MODELS=true (agentic-upsell/.env) runs them on the real models. Costs money, and
+    # steps that check exact wording were written for the offline model, so expect some of those to fail.
+    allow_real = os.environ.get("SCENARIOS_ALLOW_REAL_MODELS", "").lower() in ("1", "true", "yes")
+    if not allow_real and (settings.model_extract != OFFLINE or settings.model_compose != OFFLINE):
         raise RealModelsRefused(
             f"Refusing to run scenarios: MODEL_EXTRACT={settings.model_extract!r}, "
             f"MODEL_COMPOSE={settings.model_compose!r}. Scenarios call real AI models when these "
             "aren't 'offline' - set both to offline in agentic-upsell/.env and restart ai-api/ai-worker "
-            "(`make ai-restart`) before running scenarios.")
+            "(`make ai-offline`) before running scenarios, or set SCENARIOS_ALLOW_REAL_MODELS=true.")
+
+
+async def run_all(enqueue: Enqueue, queue: Queue | None, only: list[str] | None = None) -> list[dict[str, Any]]:
+    check_models()
     # Follow-ups check the dealer's AI mode on the platform's dealer record.
     await simulate.ensure_platform_dealers()
     runs = []

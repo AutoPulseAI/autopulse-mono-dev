@@ -1,6 +1,7 @@
 name: STOP opts the customer out
 description: A customer who texts STOP is opted out of texts and gets no reply to the STOP itself (the carrier confirms). A later message from them is still answered - an opt-out stops what we start, not the reply (MASTER_PLAN_3 decisions 136-137). With live Twilio that reply is refused until START (error 21610).
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Scenario, comments: "Just browsing"}
   - wait_turns: {lead: s, count: 1, timeout_s: 15}
   - reply: {lead: s, text: "STOP"}

@@ -1,6 +1,7 @@
 name: Profile is pre-filled from Customer 360
 description: A service lead whose car is in the DMS gets its vehicle filled from the platform, so the AI only asks what is really missing.
 steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead:
       as: p
       dealer: A
