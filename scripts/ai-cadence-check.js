@@ -32,7 +32,7 @@ import Email from '../app/models/Email.js';
 import Lead from '../app/models/Lead.js';
 import User from '../app/models/User.js';
 
-const MONGODB_URI = process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://localhost:27018/autopulse_local';
+const MONGODB_URI = process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://127.0.0.1:27018/autopulse_local';
 const PLATFORM = process.env.PLATFORM_URL || `http://localhost:${process.env.CRM_LOCAL_WEB_PORT || 3100}`;
 const AI = process.env.AI_URL || `http://localhost:${process.env.CRM_LOCAL_AI_PORT || 8110}`;
 const REDIS = { host: 'localhost', port: Number(process.env.CRM_LOCAL_REDIS_PORT || 6380),

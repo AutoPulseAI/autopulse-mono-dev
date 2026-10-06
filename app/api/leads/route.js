@@ -65,7 +65,12 @@ export async function GET(req) {
     }
     
     // Get all filter parameters
-    const dealerId = url.searchParams.get("dealer_id");
+    let dealerId = url.searchParams.get("dealer_id");
+    if (!dealerId && currentUser) {
+      dealerId = currentUser.type === "dealer"
+        ? currentUser._id.toString()
+        : (currentUser.parent_id ? currentUser.parent_id.toString() : null);
+    }
     const customerId = url.searchParams.get("customer_id");
     const assignmentFilter = url.searchParams.get("assignment"); // 'my', 'all', 'unassigned'
     const name = url.searchParams.get("name");

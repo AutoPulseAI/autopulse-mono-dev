@@ -68,7 +68,7 @@ if (!secret) {
 }
 
 const config = CRM_LOCAL ? {
-  mongodbUri: process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://localhost:27018/autopulse_local',
+  mongodbUri: process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://127.0.0.1:27018/autopulse_local',
   redisPort: process.env.CRM_LOCAL_REDIS_PORT || '6380',
   redisDb: process.env.CRM_LOCAL_REDIS_DB || '4',
   webPort: process.env.CRM_LOCAL_WEB_PORT || '3100',
@@ -76,7 +76,7 @@ const config = CRM_LOCAL ? {
   aiRedisUrl: process.env.CRM_LOCAL_AI_REDIS_URL || 'redis://localhost:6380/5',
   n8nPort: process.env.AI_DEV_N8N_PORT || '3998',
 } : {
-  mongodbUri: process.env.AI_DEV_MONGODB_URI || 'mongodb://localhost:27018/pulse',
+  mongodbUri: process.env.AI_DEV_MONGODB_URI || 'mongodb://127.0.0.1:27018/pulse',
   redisPort: process.env.AI_DEV_REDIS_PORT || '6380',
   redisDb: '0',
   webPort: process.env.AI_DEV_WEB_PORT || '3000',

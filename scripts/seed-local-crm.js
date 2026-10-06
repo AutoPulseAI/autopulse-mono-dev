@@ -37,7 +37,7 @@ import Lead from '../app/models/Lead.js';
 import User from '../app/models/User.js';
 import Vehicle from '../app/models/Vehicle.js';
 
-export const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27018/autopulse_local';
+export const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27018/autopulse_local';
 export const DEMO_DEALER_ID = '66f00000000000000000d0a1';
 export const DEMO_DEALER_SMS = '+15550100100';
 export const DEMO_MAILBOX = 'sales@demo-motors.autopulse.local';

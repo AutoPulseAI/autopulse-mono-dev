@@ -45,8 +45,8 @@ import User from '../app/models/User.js';
 // running `make crm-local` (its own database, ports and AI service).
 const CRM_LOCAL = process.argv.includes('--crm-local');
 const MONGODB_URI = CRM_LOCAL
-  ? (process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://localhost:27018/autopulse_local')
-  : (process.env.AI_DEV_MONGODB_URI || 'mongodb://localhost:27018/pulse');
+  ? (process.env.CRM_LOCAL_MONGODB_URI || 'mongodb://127.0.0.1:27018/autopulse_local')
+  : (process.env.AI_DEV_MONGODB_URI || 'mongodb://127.0.0.1:27018/pulse');
 const PLATFORM = process.env.PLATFORM_URL || `http://localhost:${CRM_LOCAL ? (process.env.CRM_LOCAL_WEB_PORT || 3100) : 3000}`;
 const REDIS = CRM_LOCAL
   ? { host: 'localhost', port: Number(process.env.CRM_LOCAL_REDIS_PORT || 6380), db: Number(process.env.CRM_LOCAL_REDIS_DB || 4) }
