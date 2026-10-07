@@ -1,0 +1,18 @@
+name: Ownership anniversary - the customer still owns it
+description: Scope Workflow 10. A year after delivery the anniversary asks whether they still have the vehicle. "Yes" keeps the opportunity SOLD - DELIVERED (it is never closed), thanks them, and next year's anniversary is planned. The customer stays ACTIVE.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: y, dealer: A, lead_type: sales, channel: sms, name: Yves Yes, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: y, count: 1, timeout_s: 20}
+  - staff_status: {lead: y, status: "Sold Delivered"}
+  - expect_lead: {lead: y, stage: sold_delivered, timeout_s: 20}
+  - expect_customer: {lead: y, status: ACTIVE}
+  - expect_followup: {lead: y, kind: ownership_anniversary, status: pending, year: 1, timeout_s: 20}
+  - run_next: {lead: y, kind: ownership_anniversary}
+  - expect_followup: {lead: y, kind: ownership_anniversary, status: sent, index: 0, timeout_s: 60}
+  - expect_followup: {lead: y, kind: ownership_anniversary, status: pending, year: 2, timeout_s: 20}
+  - reply: {lead: y, text: "Yes, still driving it"}
+  - expect_lead: {lead: y, stage: sold_delivered, timeout_s: 30}
+  - sleep: {seconds: 3}
+  - expect_last_sent: {lead: y, contains: "great to hear"}
+  - expect_customer: {lead: y, status: ACTIVE}

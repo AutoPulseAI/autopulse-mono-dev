@@ -1,0 +1,4 @@
+name: Stub and live stock searches agree
+description: For every dev dealer, the same stock searches through the stub (the local database) and the running platform's /api/car return the same vehicles with the same details. Needs `make ai-seed` and the platform running (`make dev-full`).
+steps:
+  - compare_inventory: {dealers: [A, B]}

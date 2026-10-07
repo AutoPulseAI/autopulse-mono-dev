@@ -1,0 +1,27 @@
+name: A cadence touch waits for the customer's 8:00 and the dealer's opening
+description: MASTER_PLAN_3 B0.5 and B3 (built in C1), shown on the cadence's 3-hour name nudge (C4). A New York dealer and a lead at 17:30 New York time, so the nudge falls due at 20:30. For a New York customer (ZIP) that is past 8:00-20:00, so it waits for the dealer to open at 9:00. For a Los Angeles customer (ZIP) 20:30 is still inside their window but the dealer is shut, and once it opens (6:00 in LA) the touch still waits for the customer's 8:00, which is 11:00 New York. A customer whose state is unknown (a 555 number, no ZIP) gets the strictest row of every state's hours (PLAN_4 A1/F1, the client's two state tables, Mon-Fri 10:00-18:00 in every continental zone), so it waits until 10:00 Los Angeles time, 13:00 New York. A touch goes out on text and email together, so it waits for the text's window.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 17:30"}
+  - new_lead: {as: ny, dealer: A, lead_type: sales, channel: email, name: Nia York, comments: "Looking for a new RAV4", send_event: false}
+  - set_contact: {lead: ny, source: website, zip: "10001"}
+  - send_lead_created: {lead: ny}
+  - wait_turns: {lead: ny, count: 1, timeout_s: 20}
+  - expect_followup: {lead: ny, kind: cadence_touch, status: pending, due_local: "09:00"}
+
+  - new_lead: {as: la, dealer: A, lead_type: sales, channel: email, name: Lars Angeles, comments: "Looking for a new RAV4", send_event: false}
+  - set_contact: {lead: la, source: website, zip: "90012"}
+  - send_lead_created: {lead: la}
+  - wait_turns: {lead: la, count: 1, timeout_s: 20}
+  - expect_followup: {lead: la, kind: cadence_touch, status: pending, due_local: "11:00"}
+
+  - new_lead: {as: unknown, dealer: A, lead_type: sales, channel: email, name: Una Known, comments: "Looking for a new RAV4", send_event: false, local_phone: false}
+  - set_contact: {lead: unknown, source: website}
+  - send_lead_created: {lead: unknown}
+  - wait_turns: {lead: unknown, count: 1, timeout_s: 20}
+  - expect_followup: {lead: unknown, kind: cadence_touch, status: pending, due_local: "13:00"}
+
+  - advance_clock: {dealer: A, to: "Wed 09:05"}
+  - expect_followup: {lead: ny, kind: cadence_touch, status: sent, index: 0, timeout_s: 20}
+  - expect_followup: {lead: la, kind: cadence_touch, status: pending, index: 0}
+  - advance_clock: {hours: 2}
+  - expect_followup: {lead: la, kind: cadence_touch, status: sent, index: 0, timeout_s: 20}

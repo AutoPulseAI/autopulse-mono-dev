@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoPulse.ai - Project Scope</title>
+<style>
+  @page {
+    size: Letter;
+    margin: 18mm 17mm 20mm 17mm;
+    @bottom-left { content: "AutoPulse.ai | Project Scope | 30 September 2026"; font: 8pt Arial, sans-serif; color: #6b7280; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt Arial, sans-serif; color: #6b7280; }
+  }
+  @page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
+  :root { --navy:#14213d; --blue:#2c4a7a; --soft:#eef3fb; --line:#cfd6e3; --muted:#5b6474; --amber:#fff4d6; --amber-b:#b58900; --red:#f7e6e6; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1f2937; margin: 0; }
+  h1 { font-size: 26pt; color: var(--navy); margin: 0 0 6pt; line-height: 1.15; }
+  h2 { font-size: 15pt; color: var(--navy); margin: 20pt 0 6pt; padding-bottom: 3pt; border-bottom: 2px solid var(--blue); break-after: avoid; }
+  h3 { font-size: 11.5pt; color: var(--blue); margin: 12pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  ul, ol { margin: 0 0 6pt; padding-left: 16pt; }
+  li { margin-bottom: 2pt; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 9pt; font-size: 9pt; break-inside: auto; }
+  tr { break-inside: avoid; }
+  th { background: var(--navy); color: #fff; text-align: left; padding: 4pt 6pt; font-weight: bold; }
+  td { border-bottom: 1px solid var(--line); padding: 4pt 6pt; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .src { color: var(--muted); font-size: 8pt; }
+  .quote { border-left: 3px solid var(--blue); background: var(--soft); padding: 6pt 9pt; margin: 6pt 0 9pt; font-size: 9.5pt; }
+  .rule { border: 1.5px solid var(--blue); background: var(--soft); padding: 8pt 10pt; margin: 8pt 0 10pt; break-inside: avoid; }
+  .rule b.t { display: block; color: var(--navy); margin-bottom: 3pt; }
+  .open { border: 1.5px solid var(--amber-b); background: var(--amber); padding: 7pt 10pt; margin: 8pt 0 10pt; break-inside: avoid; font-size: 9.5pt; }
+  .fig { text-align: center; margin: 8pt 0 10pt; break-inside: avoid; }
+  .fig img { max-width: 100%; }
+  .fig .cap { font-size: 8.5pt; color: var(--muted); margin-top: 3pt; }
+  .page-break { break-before: page; }
+  .cover { height: 230mm; display: flex; flex-direction: column; justify-content: center; }
+  .cover .kicker { color: var(--blue); font-weight: bold; letter-spacing: .06em; font-size: 10pt; text-transform: uppercase; margin-bottom: 8pt; }
+  .cover .sub { font-size: 13pt; color: var(--muted); margin-bottom: 20pt; }
+  .cover .box { border: 1.5px solid var(--blue); background: var(--soft); padding: 12pt 14pt; font-size: 11pt; }
+  .meta { margin-top: 22pt; font-size: 9.5pt; color: var(--muted); }
+  .toc { columns: 2; column-gap: 20pt; font-size: 9.5pt; }
+  .toc div { margin-bottom: 3pt; break-inside: avoid; }
+  .num { display: inline-block; min-width: 18pt; color: var(--blue); font-weight: bold; }
+  .tag { display: inline-block; font-size: 7.5pt; font-weight: bold; padding: 1pt 5pt; border-radius: 3pt; background: var(--soft); color: var(--blue); border: 1px solid var(--line); }
+  .keep { break-inside: avoid; }
+  code { font-family: Consolas, monospace; font-size: 8.8pt; background: #f1f4f9; padding: 0 2pt; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<section class="cover">
+  <div class="kicker">AutoPulse.ai · Statement of scope</div>
+  <h1>Project Scope:<br>Workflows and Expected Flow</h1>
+  <div class="sub">New lead to appointment, sale, delivery and ownership, with the compliance rules over all of it</div>
+  <div class="box">
+    <b>What this document is.</b> One place that states what the AutoPulse AI layer must do, taken only from the
+    client's own documents and messages. Nothing has been added, reinterpreted or dropped. Where the client's documents
+    disagree with each other, or leave a decision open, it's listed as a question in Section 17 rather than decided here.
+    <br><br>
+    <b>How to use it.</b> Each workflow section says what starts it, what happens step by step, what ends it, and
+    the rules that apply. If a behavior isn't in this document, it isn't in this scope.
+  </div>
+  <div class="meta">
+    Version 1 · 30 September 2026<br>
+    Sources: 4 client specifications, 1 workflow blueprint, 1 conversation-standards document, 3 client message threads (Section 1)
+  </div>
+</section>
+
+<!-- ============ CONTENTS ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">Contents</h2>
+<div class="toc">
+  <div><span class="num">1</span>Sources</div>
+  <div><span class="num">2</span>The goal, in the client's words</div>
+  <div><span class="num">3</span>The whole app at a glance</div>
+  <div><span class="num">4</span>Rules that apply everywhere</div>
+  <div><span class="num">5</span>Workflow 1 · Lead intake and classification</div>
+  <div><span class="num">6</span>Workflow 2 · After-hours first contact</div>
+  <div><span class="num">7</span>Workflow 3 · First quality response (Touch 1)</div>
+  <div><span class="num">8</span>Workflow 4 · Active conversation</div>
+  <div><span class="num">9</span>Workflow 5 · No-response cadence, Days 1–91</div>
+  <div><span class="num">10</span>Workflow 6 · Response router and specific follow-up</div>
+  <div><span class="num">11</span>Workflow 7 · Appointment, confirmation and no-show</div>
+  <div><span class="num">12</span>Workflow 8 · Sales Visit and manager outcome</div>
+  <div><span class="num">13</span>Workflow 9 · SOLD PENDING</div>
+  <div><span class="num">14</span>Workflow 10 · SOLD – DELIVERED ownership and retention</div>
+  <div><span class="num">15</span>Workflow 11 · Compliance engine, opt-out and outbound campaigns</div>
+  <div><span class="num">16</span>Statuses, data and out of scope</div>
+  <div><span class="num">17</span>Questions for the client</div>
+</div>
+
+<h2>1. Sources</h2>
+<p>Every requirement in this document is traced to one of these. The short code in brackets is used in each section.</p>
+<table>
+  <tr><th style="width:28%">Source</th><th style="width:13%">Received</th><th>What it covers</th></tr>
+  <tr><td><b>Conversation standards</b> [CS]<br><span class="src">conversations.md</span></td><td>24 Sep 2026</td><td>How the AI must talk: capture, interpret, leverage, advance to an appointment. Successful and failed examples for credit, trade-in, price/payment and service leads.</td></tr>
+  <tr><td><b>Sales lead blueprint</b> [BP]<br><span class="src">autpulse.workflowblueprint.png</span></td><td>Before 25 Sep</td><td>End-to-end sales workflow: after-hours rule, intake, 3 lead buckets, new/used filter, 6-day no-response cadence, active conversation, 3 appointment asks, personalization, inventory feed, learning engine, escalation, channels.</td></tr>
+  <tr><td><b>Client messages, 25 Sep</b> [M2]<br><span class="src">conversation_2.md</span></td><td>25 Sep 2026</td><td>After-hours choice; strict TCPA on outbound (DealerVault, drips, equity); the main goal is qualifying and booking the appointment, not escalating.</td></tr>
+  <tr><td><b>New Lead Follow-Up &amp; Appointment Workflow – OMNICHANNEL FINAL</b> [NL]</td><td>26 Sep 2026</td><td>Lead status state machine, Short-Term cadence Days 1–7, Days 8–90, Day 91, appointment, confirmation, no-show, Sales Visit, human call tasks, omnichannel rule.</td></tr>
+  <tr><td><b>TCPA &amp; AI Communication Compliance Guardrails</b> [TC]</td><td>26 Sep 2026</td><td>The compliance engine every send passes through (ALLOW / HOLD / REVIEW / BLOCK), consent evidence, opt-out, inbound vs outbound, time and frequency, AI voice, audit.</td></tr>
+  <tr><td><b>Client messages, 26 Sep</b> [M3]<br><span class="src">conversation_3.md</span></td><td>26 Sep 2026</td><td>"These cadences will apply to ALL new lead buckets."</td></tr>
+  <tr><td><b>SOLD PENDING Workflow</b> [SP]</td><td>29 Sep 2026</td><td>Follow-up between a sale and delivery: weekly for 4 weeks, then every 2 weeks, with no time limit.</td></tr>
+  <tr><td><b>SOLD – DELIVERED Ownership &amp; Retention Workflow – FINAL</b> [SD]</td><td>29 Sep 2026</td><td>Ownership lifecycle after delivery: Day 3 check-in, maintenance, NHTSA recalls, birthday, 10 yearly anniversaries; opportunity, vehicle and customer statuses.</td></tr>
+  <tr><td><b>Client messages, 29 Sep</b> [M4]<br><span class="src">conversations_4.md</span></td><td>29 Sep 2026</td><td>SOLD PENDING and SOLD DELIVERED are "the two final workflows for this SOW"; service workflows are driven by NHTSA and vehicle databases.</td></tr>
+</table>
+<p class="src">Where two sources disagree, the newer, more specific specification is shown in the body, and the disagreement is listed in Section 17.</p>
+</section>
+
+<!-- ============ 2 GOAL ============ -->
+<h2>2. The goal, in the client's words</h2>
+<div class="quote">"Now here we might be missing the MAIN GOALS of always qualifying the customer AND leveraging the customer responses to
+schedule an APPOINTMENT. The goal is not to escalate every customer creating more work for the dealer and allowing the lead
+to go cold. We need to strike while the iron is hot and get the customer in the dealership." <span class="src">[M2]</span></div>
+<div class="quote">"Every new sales lead remains actively worked until contact produces a defined next action, an appointment, an
+opt-out/suppression event, a Sales Visit, or the opportunity reaches Day 91." <span class="src">[NL p.1]</span></div>
+<div class="quote">"AI decides the next best customer action. The Compliance Engine decides whether AutoPulse is permitted to execute
+the communication." <span class="src">[TC §14]</span></div>
+<p>The blueprint's core principles <span class="src">[BP]</span>:</p>
+<ul>
+  <li><b>One goal:</b> earn the customer's response and their business.</li>
+  <li><b>Every lead ends in one of two places:</b> an appointment set within 72 hours, or a scheduled follow-up with a date and time.</li>
+  <li><b>Every touch:</b> personalize every interaction, earn the appointment, provide value.</li>
+  <li><b>TruthMode always:</b> every interaction is honest, transparent and customer-first.</li>
+</ul>
+
+<!-- ============ 3 AT A GLANCE ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">3. The whole app at a glance</h2>
+<p>A customer's journey from the first lead to long-term ownership. Each numbered box is a workflow described later in this
+document. Two things apply at every step: the compliance engine, which checks every message before it goes out, and opt-out,
+which can happen at any time.</p>
+<div class="fig"><img src="d1_overview.png" style="width:100%"><div class="cap">Figure 1 · End-to-end flow, lead to sale. What happens after the sale is Figure 3 (Section 12). The compliance engine and opt-out apply at every step.</div></div>
+</section>
+
+<!-- ============ 4 GLOBAL RULES ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">4. Rules that apply everywhere</h2>
+
+<div class="rule"><b class="t">4.1 Compliance first: the AI never decides whether a message is legal</b>
+Every outbound message passes a deterministic compliance engine that returns ALLOW, HOLD, REVIEW or BLOCK. The AI and
+ordinary dealer users can't override BLOCK. The AI may never state, infer or change that a customer consented or may legally
+be contacted. <span class="src">[TC core rule, §10, §11]</span> The full rules are in Workflow 11.</div>
+
+<div class="rule"><b class="t">4.2 Every follow-up = CALL + TEXT + EMAIL (non-negotiable)</b>
+Whenever a follow-up is due, the AI sends a text <b>and</b> an email, and a human call task is scheduled 60 minutes later. If the
+customer makes meaningful contact within that hour, the call task is cancelled; if not, it becomes active for a person. Channels
+aren't alternatives. A channel is skipped only when it's unavailable, invalid, opted out or legally blocked, and every
+remaining permitted channel continues. <span class="src">[NL p.9–10; SP §3, §8]</span></div>
+<div class="fig"><img src="d2_touch.png" style="height:92mm"><div class="cap">Figure 2 · What happens at every follow-up touch, in every workflow</div></div>
+<p>Where this applies: Days 1–7, Days 8–30 weekly, Days 31–90 monthly, specific follow-ups, appointment and confirmation touches,
+no-show touches, and SOLD PENDING touches. Birthday and anniversary messages don't automatically need a call task <span class="src">[SD §12]</span>.</p>
+<p><b>Call tasks:</b> they respect the agent's scheduled hours and days and the calling window (outside them, the task moves to
+the next eligible window). Each one shows the customer, the vehicle/opportunity, the last AI touch and the current status. They support
+Click-to-Call where available. After the call, the agent must pick an outcome: appointment → Appointment Set; a dated future action →
+Specific Follow-Up; contact but no next step → Contact Made – No Next Action; no contact → stays in the current flow; opt-out →
+suppression. <span class="src">[NL p.9]</span></p>
+
+<h3>4.3 One controlling workflow, and re-check before every send</h3>
+<ul>
+  <li>A customer/opportunity never runs two incompatible workflows at once. <span class="src">[NL §2]</span></li>
+  <li>A status change cancels the old status's queued messages and call tasks before the new workflow starts. <span class="src">[NL §2]</span></li>
+  <li>Immediately before any queued message or task runs, re-read the current status, reply, appointment, Sales Visit,
+      suppression and compliance state. Nothing runs just because it was queued. <span class="src">[NL §2, §11; SP §12; SD §15]</span></li>
+  <li><b>Priority when events collide:</b> 1 opt-out / compliance block · 2 Sales Visit · 3 appointment set or updated ·
+      4 specific follow-up · 5 no show · 6 contact made, no next action · 7 no contact made · 8 new lead. <span class="src">[NL §11]</span></li>
+</ul>
+
+<h3>4.4 Truthfulness: never invent</h3>
+<p>The AI never invents or assumes: availability, price, incentives, financing approval or terms, payments, trade values, vehicle facts,
+photos, OEM programs, dealer policy, urgency, service needs, maintenance requirements, mileage, recall status, missing documents, delivery dates,
+reasons a deal is pending, ownership, appointment availability or customer history. Price changes and OEM offers are used only when verified.
+Photos only come from an authorized inventory/media source for that vehicle. <span class="src">[CS; NL §13; SP §7; SD §12]</span></p>
+
+<h3>4.5 Context before every message</h3>
+<p>Before writing anything, the AI reads the full lead, conversation, notes, earlier questions, known vehicle and trade details, Customer 360
+and DMS history, and current inventory/promotions. It never re-asks something already answered, unless confirmation is genuinely needed,
+and it varies its angles instead of rotating templates. <span class="src">[NL §4, §13; BP 4; SD §12]</span></p>
+
+<h3>4.6 Hours</h3>
+<ul>
+  <li><b>TCPA:</b> the check happens before any outreach, in the customer's local time (blueprint: 8am–9pm; the TCPA spec requires a
+      counsel-approved, versioned state rules table; see question 4). <span class="src">[BP 0; TC §7]</span></li>
+  <li><b>Business hours:</b> Day 1's 3-hour touch goes at 3 hours if that falls within business hours, otherwise at opening the next business day.
+      "All other touches follow business hours unless customer replies." <span class="src">[BP 7]</span></li>
+</ul>
+
+<h3>4.7 Escalation</h3>
+<p>Escalate to a person immediately when the customer asks for a salesperson, indicates an urgent need or is upset. When the customer
+asks for a phone call, call within 5 minutes during business hours. All escalations are logged and tracked. <span class="src">[BP 8]</span>
+Escalation isn't the default ending: the aim is the appointment. <span class="src">[M2]</span></p>
+
+<h3>4.8 Channels</h3>
+<p>Use the channel the customer came from when possible: SMS/text, email, phone call, web chat, social DM. "Stay consistent. Be responsive.
+Be human." <span class="src">[BP 9]</span></p>
+</section>
+
+<!-- ============ 5 INTAKE ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">5. Workflow 1 · Lead intake and classification</h2>
+<p><b>Starts:</b> a lead arrives from any source, day or night. <b>Ends:</b> AutoPulse knows who the customer is, why they submitted the
+lead and what they asked; the lead enters the cadence. <span class="src">[BP 1]</span></p>
+<h3>Steps</h3>
+<ol>
+  <li>Capture the lead data, identify the source, read the raw comments, identify the customer's question, the vehicle (if any) and the likely intent,
+      and collect the customer data available.</li>
+  <li><b>Inbound or outbound.</b> Classify before any compliance check <span class="src">[TC §4; M2]</span>:
+    <table>
+      <tr><th>Class</th><th>Example</th><th>Treatment</th></tr>
+      <tr><td>Consumer-initiated lead (inbound)</td><td>Customer submits an inquiry about a vehicle</td><td>Store lead source, time, dealer, channel and consent evidence; lead-response rules apply.</td></tr>
+      <tr><td>Outbound marketing</td><td>Dealer-started trade/equity, sales or promotional outreach; DealerVault drips</td><td>Full outbound compliance checks before enrollment and before each send. "TCPA US rules strictly enforced." [M2]</td></tr>
+      <tr><td>Service / transactional</td><td>Appointment confirmation, operational update</td><td>No promotional content that changes the nature of the message.</td></tr>
+      <tr><td>Historical-data campaign</td><td>Service interval or equity opportunity found in DMS/DealerVault</td><td>The data only identifies the opportunity; the compliance engine decides contactability separately.</td></tr>
+    </table>
+  </li>
+  <li><b>Sales lead bucket</b>: one of three, by source intent, before entering the workflow <span class="src">[BP 2]</span>:
+    <table>
+      <tr><th style="width:22%">Bucket</th><th style="width:33%">Example sources</th><th>Word-track emphasis</th></tr>
+      <tr><td><b>1 · Credit / financing</b></td><td>Capital One, Chase, Carzing, DealerCentric, Credit Application, eUnifi, 700Credit</td><td>Financing options, pre-approval, payment structure, required information, how an appointment helps clarify real options.</td></tr>
+      <tr><td><b>2 · Trade-in / sell my car</b></td><td>KBB, TrueCar SELL My Car, AccuTrade, CarGurus SELL My Car</td><td>Value, appraisal, condition, payoff and equity, an accurate in-person number. Aggressively collect trade data.</td></tr>
+      <tr><td><b>3 · General sales</b></td><td>CarGurus, Edmunds, Cars.com, Facebook, Instagram, AutoWeb, CarsDirect, TrueCar (non-trade)</td><td>Availability, pricing, features, condition, history, alternatives, trade, financing, and whatever the lead comments show matters most.</td></tr>
+    </table>
+    The bucket sets intent and language, <b>not</b> the workflow: all three follow the same core workflow and cadences
+    <span class="src">[BP; M3]</span>. <b>Override:</b> if the customer's behavior shows a different intent, the conversation adapts in real time
+    while the original bucket is kept for reporting.</li>
+  <li><b>Vehicle type filter: new or used.</b> New: model/trim requested, OEM incentives, lease/finance programs, rebates, alternatives, incoming
+      inventory, dealer trades, upgrade/loyalty. Used: specific VIN/stock number, exact availability, mileage/condition/history, CARFAX, similar used
+      inventory, price changes/drops, alternatives if the unit sells. It's updated continuously as the customer changes, and the original is kept for reporting. <span class="src">[BP 2]</span></li>
+  <li><b>Duplicate lead:</b> link or merge to the existing active customer/opportunity; never two workflows for one customer at once. <span class="src">[NL §15]</span></li>
+</ol>
+
+<!-- ============ 6 AFTER HOURS ============ -->
+<h2>6. Workflow 2 · After-hours first contact</h2>
+<p><b>Starts:</b> a lead arrives while the dealership is closed. <span class="src">[BP 0; M2]</span></p>
+<div class="quote">"If a lead comes in after hours want a confirmation to be sent to the lead with the option for the customer to connect now or during
+business hours." <span class="src">[M2]</span></div>
+<ol>
+  <li>A contact-time / after-hours check runs first: the customer's local time, TCPA rules, consent and channel.</li>
+  <li>The first contact offers the choice: <b>help now</b> or <b>next business day</b>.</li>
+  <li><b>Help now:</b> the AI acknowledges and continues the conversation immediately (the blueprint adds "if within TCPA allowed hours"; see question 3).</li>
+  <li><b>Next business day:</b> the AI confirms the preference, schedules first contact for the next business day when the dealership is open, and stops outreach until then.</li>
+  <li>Then on to sales/service classification and the normal workflow.</li>
+</ol>
+</section>
+
+<!-- ============ 7 TOUCH 1 ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">7. Workflow 3 · First quality response (Touch 1)</h2>
+<p><b>Starts:</b> immediately, or in the next eligible window, after a new lead. <b>Timing:</b> "within 60 seconds" <span class="src">[BP 3A]</span>.</p>
+<h3>Required structure <span class="src">[NL §3]</span></h3>
+<div class="quote">Hello {customer_first_name}, this is {agent_name} from {dealership_name} in {city}, {state}. Thank you for your interest in our
+{vehicle_year} {vehicle_model}. I am excited to help you with your purchase. {AI_BEST_ANSWER_TO_LEAD_QUESTIONS} <b>Tell me, what are you driving now?</b></div>
+<ul>
+  <li>The AI reads the full lead first and answers the customer's questions or requests accurately before the final question.</li>
+  <li>It <b>always</b> ends with "Tell me, what are you driving now?" <span class="src">[NL §3, §16]</span></li>
+  <li>It never fabricates availability, pricing, financing, promotions, vehicle facts or dealer policy.</li>
+</ul>
+<h3>Vehicle link and image <span class="src">[BP 6]</span></h3>
+<p>For a lead tied to a specific vehicle, in this order: 1) vehicle link + image when both are available; 2) link only if no image; 3) image only if no
+clean link; 4) not tied to a specific vehicle → personalize around the customer's intent instead. Always verify the vehicle is active and available
+before sending media.</p>
+
+<!-- ============ 8 ACTIVE CONVERSATION ============ -->
+<h2>8. Workflow 4 · Active conversation</h2>
+<p><b>Starts:</b> the customer replies at any point. Any queued no-response touch stops immediately. <span class="src">[BP 3A–B]</span></p>
+<h3>The five steps <span class="src">[BP 3B]</span></h3>
+<table>
+  <tr><th style="width:4%">#</th><th style="width:26%">Step</th><th>Required behavior</th></tr>
+  <tr><td>1</td><td>Answer questions</td><td>Clear, honest answers to what they asked.</td></tr>
+  <tr><td>2</td><td>Identify intent, hot buttons and objections</td><td>Find out what matters most; surface concerns early.</td></tr>
+  <tr><td>3</td><td>Determine trade and fill missing data (mandatory)</td><td>Every sales customer ends with <b>NO TRADE</b> or <b>HAS TRADE</b>. If a trade: year, make, model, mileage, condition, payoff/loan, expected value (when relevant).</td></tr>
+  <tr><td>4</td><td>Assume ready now</td><td>The operating assumption is that the customer is ready now; change it only if they explicitly say otherwise <b>and</b> give a valid reason for delay.</td></tr>
+  <tr><td>5</td><td>Drive the appointment within 72 hours</td><td>Give a compelling, customer-specific reason to come sooner rather than later, never fake urgency.</td></tr>
+</table>
+<h3>Capture → Interpret → Leverage → Advance <span class="src">[CS]</span></h3>
+<p>"A customer answer should NEVER just become another stored field." For every meaningful answer: <b>capture</b> the fact, <b>interpret</b> what it says
+about their motivation, concern or goal, <b>leverage</b> it truthfully as the reason the next step helps them, and <b>advance</b> by asking for the appointment
+with specific options. Leverage isn't pressure.</p>
+<table>
+  <tr><th style="width:20%">Lead type</th><th style="width:38%">Collect</th><th>Turn it into the appointment reason</th></tr>
+  <tr><td>Credit</td><td>Trade, mileage, payoff, down payment, credit concern</td><td>"Evaluate the trade, payoff and financing together so we can determine the actual options instead of guessing." Never promise approval.</td></tr>
+  <tr><td>Trade-in / sell</td><td>Mileage, payoff, condition/accidents, sell vs trade</td><td>Real appraisal compared with payoff and replacement options against their stated concern.</td></tr>
+  <tr><td>Price / payment</td><td>Trade, mileage, payoff, down payment, target payment</td><td>Make their payment target the objective of the appointment.</td></tr>
+  <tr><td>Service</td><td>Still owns it, current mileage, service done or not, the obstacle</td><td>Remove the obstacle (e.g. convenience); offer specific times; note their concern for the advisor.</td></tr>
+</table>
+<h3>Asking for the appointment: up to 3 times <span class="src">[BP 3C; CS]</span></h3>
+<ol>
+  <li><b>Attempt 1:</b> an appointment ask based on their primary intent and its value.</li>
+  <li><b>Attempt 2:</b> a different approach, based on the hot button or objection.</li>
+  <li><b>Attempt 3:</b> a different value proposition explaining why meeting sooner benefits them.</li>
+  <li><b>Third rejection:</b> stop pushing, record the reason, and set a follow-up with a date and time.</li>
+</ol>
+<p>Always with specific options ("5:15 today or 10:30 tomorrow"), never "let us know when you're ready."</p>
+<h3>Personalization and inventory <span class="src">[BP 4]</span></h3>
+<ul>
+  <li><b>Personalize using:</b> lead source/bucket, customer data, vehicle of interest, raw comments and questions, trade info, previous touches, hot buttons,
+      objections, behavior and timing; DMS history when available (purchases, service history, previous trades, service preferences, communication history).</li>
+  <li><b>Live inventory feed:</b> suggest similar or better-fit vehicles, alternative models and trims, vehicles in a similar price/payment range; alert
+      the customer to new arrivals and price changes/drops; highlight recent and incoming inventory.</li>
+  <li><b>Positive outcomes only:</b> never just "not available"; keep the conversation moving with similar options, best-fit alternatives, upcoming inventory or price changes.</li>
+</ul>
+<h3>Learning and optimization <span class="src">[BP 5]</span></h3>
+<p>Track every touch: message strategy, lead source, timing, customer data, response or no response, appointment or no appointment. Learn which
+combinations get the most engagement and use them more often; A/B test wording, timing and strategies. "Goal of every touch: get the customer to respond."</p>
+</section>
+
+<!-- ============ 9 CADENCE ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">9. Workflow 5 · No-response cadence, Days 1–91</h2>
+<p><b>Starts:</b> New Lead, No Contact Made, Contact Made – No Next Action, or the end of the no-show sequence. The same for every bucket <span class="src">[NL §3; M3]</span>.
+<b>Stops:</b> at any customer reply (to Active Conversation), an appointment, a Sales Visit, an opt-out, or Day 91. Every touch is call + text + email (Rule 4.2).</p>
+<h3>Days 1–7: Short-Term follow-up <span class="src">[NL §3]</span></h3>
+<table>
+  <tr><th style="width:7%">Touch</th><th style="width:20%">When</th><th style="width:20%">Theme</th><th>Required behavior</th></tr>
+  <tr><td>1</td><td>Immediately / eligible window</td><td>Quality lead response</td><td>Section 7. Always ends "Tell me, what are you driving now?"</td></tr>
+  <tr><td>2</td><td>3 hours later; next eligible window if blocked</td><td>Name nudge</td><td><b>{FirstName}?</b> "This is non-negotiable; do not replace with other sales copy."</td></tr>
+  <tr><td>3</td><td>Day 2</td><td>Vehicle visual</td><td>A useful vehicle photo and a simple vehicle question.</td></tr>
+  <tr><td>4</td><td>Day 3</td><td>Financing help</td><td>Ask if they need help with financing/payment options; no invented terms or approval.</td></tr>
+  <tr><td>5</td><td>Day 4</td><td>Trade-in</td><td>Ask about trade/appraisal using known context; never repeat an answered question.</td></tr>
+  <tr><td>6</td><td>Day 5</td><td>Vehicle value / feature</td><td>A verified feature, trim detail, use case or fact; photo when useful.</td></tr>
+  <tr><td>7</td><td>Day 6</td><td>Appointment value</td><td>A truthful reason to visit (appraisal, comparison, financing review, management review, right-team meeting) and ask for the appointment.</td></tr>
+  <tr><td>8</td><td>Day 7</td><td>Direct close</td><td>Ask if still considering; offer practical appointment options / what day works.</td></tr>
+</table>
+<p><b>Human call tasks, Days 1–7:</b> two per scheduled workday: a morning task in the agent's hours, and an afternoon task only if the lead is still in an
+eligible Short-Term status. A status change cancels the task. After the call, the outcome is required. <span class="src">[NL §3]</span></p>
+
+<h3>Days 8–90 and Day 91 <span class="src">[NL §4]</span></h3>
+<table>
+  <tr><th style="width:15%">Period</th><th style="width:28%">Cadence</th><th>Angle</th></tr>
+  <tr><td>Days 8–30</td><td>1 outreach cycle per week (text + email + call)</td><td>A fresh, relevant angle: vehicle/photo, financing help, trade, verified inventory/trim, verified price change/OEM offer, appointment invitation.</td></tr>
+  <tr><td>Days 31–90</td><td>1 outreach cycle per month</td><td>Verified price/OEM changes, relevant inventory, trade/equity, financing help, renewed appointment invitation.</td></tr>
+  <tr><td>Day 91</td><td>Active cadence ends</td><td>The opportunity closes; the customer stays in the CRM with full history.</td></tr>
+</table>
+<p><b>Angle selection:</b> before each touch, read everything known and "choose the most relevant unused angle instead of blindly rotating templates."</p>
+<h3>Opportunity clock <span class="src">[NL §12]</span></h3>
+<p><code>opportunity_created_at</code> never changes. Re-entering Short-Term can restart the cadence instance but never resets the Day 91 clock, and
+never sends duplicate same-day touches. Tracked: <code>opportunity_age_days</code>, <code>workflow_entered_at</code>, <code>short_term_cycle_day</code>,
+<code>last_meaningful_contact_at</code>, <code>last_outbound_at</code>, <code>next_action_at</code>, <code>opportunity_closed_at</code>.</p>
+
+<!-- ============ 10 ROUTER / SPECIFIC ============ -->
+<h2>10. Workflow 6 · Response router and specific follow-up</h2>
+<h3>Response router <span class="src">[NL §5]</span></h3>
+<table>
+  <tr><th style="width:42%">Event</th><th>Result</th></tr>
+  <tr><td>Reply + appointment created</td><td>Appointment Set → Appointment workflow</td></tr>
+  <tr><td>Reply, no appointment, no dated next action</td><td>Contact Made – No Next Action → Short-Term follow-up</td></tr>
+  <tr><td>Reply with clear future timing ("call me Friday / next month / in a year")</td><td>Contact Made – Specific Follow-Up</td></tr>
+  <tr><td>"Not ready" + week/month/year horizon</td><td>Future next action; Specific Follow-Up</td></tr>
+  <tr><td>Opt-out</td><td>Suppress the affected channel(s); stop prohibited outreach</td></tr>
+  <tr><td>Sales check-in</td><td>Sales Visit → manager outcome required</td></tr>
+  <tr><td>No response</td><td>Continue the eligible cadence until a transition or Day 91</td></tr>
+</table>
+<h3>Contact Made – Specific Follow-Up <span class="src">[NL §6]</span></h3>
+<p>Entry needs structured data "so neither AI nor human intent is lost": <code>next_action_date</code> (required), <code>next_action_time</code> (if known,
+else a dealer-configurable default), <code>next_action_channel</code>, <code>next_action_owner</code> (AI or human), <code>context_notes</code>, and
+<code>entered_by</code> + timestamp. At the scheduled time, the AI or person follows the notes; the appointment is still the goal. No response within
+24 hours → No Contact Made → Short-Term. A future task can outlive Day 91: the opportunity closes, the task stays with the customer and may open a new
+opportunity when it's due.</p>
+</section>
+
+<!-- ============ 11 APPOINTMENT ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">11. Workflow 7 · Appointment, confirmation and no-show</h2>
+<p><b>Starts:</b> any appointment created, by the AI or a person, sets Appointment Set and stops Short-Term/Specific follow-up. The AI books from the customer's
+answers ("I'll reserve 10:30 tomorrow for you") and notes what the team needs to know. <span class="src">[NL §2, §7; CS]</span></p>
+<h3>Appointment Set <span class="src">[NL §7]</span></h3>
+<table>
+  <tr><th style="width:30%">When</th><th>Action</th></tr>
+  <tr><td>15 minutes after it's set</td><td>Text + email with the details, allowing time for correction: <i>"{customer_first_name}, we are all set to meet on {appointment_date} at {appointment_time} at {dealership_name}, {dealership_address}. Please make sure to call or text us if anything changes at {ai_agent_phone}. Looking forward to assisting you!"</i></td></tr>
+  <tr><td>Each day before (not same-day)</td><td>A different vehicle photo + "Counting down to our meeting at {dealership_name}!"</td></tr>
+  <tr><td>Day before</td><td>Text + email: <i>"Hello, {customer_first_name}, this is {agent_name} at {dealership_name} confirming our meeting for {date} at {time}. Does this time still work? Please reply Y for Yes or N for No."</i></td></tr>
+  <tr><td>Confirmed</td><td><code>appointment.confirmed = true</code>; the appointment report updates.</td></tr>
+  <tr><td>Appointment + 1 hour, no Sales Visit</td><td>Appointment No Show → no-show workflow.</td></tr>
+  <tr><td>Sales Visit on the appointment date</td><td>Sales Visit; <code>appointment.showed = true</code>; the report updates, whatever the arrival time.</td></tr>
+</table>
+<p><b>Same-day appointment:</b> the 15-minute details go out when still useful; no countdown or day-before confirmation.
+<b>One active primary sales appointment</b> per opportunity by default. <span class="src">[NL §7, §15]</span></p>
+<h3>Confirmation router <span class="src">[NL §8]</span></h3>
+<table>
+  <tr><th style="width:30%">Response</th><th>Action</th></tr>
+  <tr><td>Y / clear yes</td><td>Mark confirmed; Appointment Set stays active.</td></tr>
+  <tr><td>N / clear no</td><td>Not confirmed. Immediately try to reschedule and capture a new date/time.</td></tr>
+  <tr><td>Ambiguous</td><td>Ask for clarification; not confirmed until clear.</td></tr>
+  <tr><td>No response</td><td>Stays scheduled but unconfirmed; normal logic continues.</td></tr>
+  <tr><td>Confirmed by phone</td><td>A person marks it confirmed; the report updates.</td></tr>
+  <tr><td>Rescheduled</td><td>Update it; cancel old confirmation and no-show timers; schedule against the new time. An old appointment can never create a false no-show.</td></tr>
+  <tr><td>Cancelled</td><td>Try to reschedule; with no new appointment or dated next action → Contact Made – No Next Action. <span class="src">[NL §15]</span></td></tr>
+</table>
+<h3>No-show <span class="src">[NL §9]</span></h3>
+<table>
+  <tr><th style="width:8%">Step</th><th style="width:22%">When</th><th>Action</th></tr>
+  <tr><td>1</td><td>Appointment + 1 hour</td><td>Text + email + vehicle photo: <i>"Hello, this is {agent_name} with {dealership_name}. I am looking for you in the showroom - are you here and working with someone?"</i></td></tr>
+  <tr><td>2</td><td>24 hours later, no reply</td><td>Text + email: <i>"Hi! This is {agent_name} at {dealership_name} regarding your {model} purchase. How did everything go when you came in? Did you get a chance to stop by?"</i></td></tr>
+  <tr><td>3</td><td>No response after step 2</td><td><b>Contact Made – No Next Action → Short-Term follow-up.</b> Required business rule, "must not be changed to No Contact Made."</td></tr>
+  <tr><td>Any</td><td>Sales Visit logged</td><td>Stop the no-show flow; Sales Visit; mark showed if on the appointment date.</td></tr>
+</table>
+
+<!-- ============ 12 SALES VISIT ============ -->
+<h2>12. Workflow 8 · Sales Visit and manager outcome</h2>
+<p><b>Starts:</b> the customer checks in at the dealership's SALES department. <span class="src">[NL §10]</span></p>
+<ol>
+  <li>Status becomes Sales Visit immediately.</li>
+  <li>All Short-Term, Specific, Appointment and No-Show follow-up stops.</li>
+  <li>If an appointment exists that calendar day, it's marked showed (even if the time differs), and the report updates immediately.</li>
+  <li>A manager outcome is <b>required</b>: <b>SOLD PENDING</b>, <b>SOLD DELIVERED</b> or <b>UNSOLD</b>.</li>
+</ol>
+<div class="fig"><img src="d4_after_sale.png" style="width:92%"><div class="cap">Figure 3 · After the Sales Visit. UNSOLD has no defined next step yet (question 2).</div></div>
+</section>
+
+<!-- ============ 13 SOLD PENDING ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">13. Workflow 9 · SOLD PENDING</h2>
+<p><b>What it is:</b> an active deal-completion status after a Sales Visit, when the deal is sold but the vehicle isn't yet delivered. "SOLD PENDING is not
+an unsold lead": it never enters the New Lead / Day 1–90 cadence. <b>Only two outcomes</b>, set by an authorized dealership user: SOLD – DELIVERED or
+CLOSED LOST. Nothing changes because of time: no Day-90 or any other expiry. <span class="src">[SP §1–2, §4, §6]</span></p>
+<h3>Cadence: every touch is text + email + call <span class="src">[SP §3–6]</span></h3>
+<table>
+  <tr><th style="width:18%">When</th><th style="width:26%">Theme</th><th>What to ask</th></tr>
+  <tr><td>Week 1</td><td>Documentation + questions</td><td>Have they provided everything the salesperson requested? Any questions about the purchase? Never assume a specific missing document.</td></tr>
+  <tr><td>Week 2</td><td>Support check-in</td><td>Anything they need from the salesperson or dealership? Any questions come up?</td></tr>
+  <tr><td>Week 3</td><td>Purchase / vehicle check-in</td><td>Help with vehicle or purchase questions; verified, relevant items only (trade, insurance, paperwork, features, accessories).</td></tr>
+  <tr><td>Week 4</td><td>Relationship check-in</td><td>Warm and neutral: <i>"We just wanted to stay in touch while your purchase is being completed. Do you have any questions about your vehicle or is there anything our team can help you with at this time?"</i></td></tr>
+  <tr><td>Every 2 weeks after</td><td>Ongoing</td><td>Questions? Anything needed? Where appropriate, do they have everything requested? Use deal context; never repetitive.</td></tr>
+</table>
+<h3>Rules <span class="src">[SP §7, §9–10]</span></h3>
+<ul>
+  <li>Never imply the customer is delaying the deal, and never pressure them to take delivery.</li>
+  <li>Sound like a continuation of an existing purchase, not a new sales pitch.</li>
+  <li>Never invent documents, delivery dates, vehicle or financing status, approvals, dealership actions, or reasons the deal is pending.</li>
+  <li>Answer from verified context; questions needing a salesperson, manager, finance, title, trade or insurance are escalated to a person with context.</li>
+</ul>
+<table>
+  <tr><th style="width:38%">Event</th><th>Action</th></tr>
+  <tr><td>Question the AI can answer</td><td>Answer from verified context; record; stay SOLD PENDING.</td></tr>
+  <tr><td>Needs a person</td><td>Create an escalation/task with the question and context; stay SOLD PENDING.</td></tr>
+  <tr><td>Customer provides requested info</td><td>Record it; route to the right dealership user; stay SOLD PENDING.</td></tr>
+  <tr><td>Dealer records delivery</td><td>Immediately SOLD – DELIVERED; cancel all SOLD PENDING actions.</td></tr>
+  <tr><td>Dealer records the deal lost</td><td>Immediately CLOSED LOST; cancel all SOLD PENDING actions.</td></tr>
+  <tr><td>No response</td><td>Continue the weekly or two-weekly cadence.</td></tr>
+</table>
+
+<!-- ============ 14 SOLD DELIVERED ============ -->
+<h2>14. Workflow 10 · SOLD – DELIVERED ownership and retention</h2>
+<div class="rule"><b class="t">Definitive status rule <span class="src">[SD]</span></b>
+The ONLY two CLOSED opportunity statuses are <b>CLOSED LOST</b> and <b>CLOSED – NO LONGER OWNS</b>. SOLD – DELIVERED is <b>not</b> closed: it stays
+active until the customer confirms they no longer own the vehicle. History is always kept.</div>
+<p><b>Starts:</b> an authorized dealership user sets SOLD – DELIVERED. All SOLD PENDING activity stops immediately. <span class="src">[SD §2]</span></p>
+<table>
+  <tr><th style="width:20%">Trigger</th><th style="width:17%">Timing</th><th>What happens</th></tr>
+  <tr><td><b>Post-delivery check-in</b></td><td>Day 3</td><td>VIN → vehicle database → maintenance schedule → first recommended service → offer appointment. <i>"Hi [First Name], we hope you are enjoying your new [Year Make Model]! Do you have any questions about your vehicle or anything we can help with? I can also get your first recommended service scheduled now so it is already taken care of."</i> YES → service scheduling. Later/not yet → no pressure; reminders stay active. An existing appointment suppresses the offer.</td></tr>
+  <tr><td><b>Maintenance reminders</b></td><td>Per vehicle, ongoing</td><td>VIN → schedule → known mileage and/or time → service due → outreach → service appointment. Verified mileage when available; otherwise time-based intervals, never estimated mileage presented as actual. Never invent requirements. Completed, outside or updated-mileage service recalculates.</td></tr>
+  <tr><td><b>NHTSA safety recalls</b></td><td>Ongoing</td><td>VIN → NHTSA recall check → open recall → outreach → service appointment. Independent of maintenance; never claim a recall without VIN-specific authoritative support; store id, description, detected date, status, source, last-checked date; stop when closed; cadence controls; not presented as a manufacturer campaign unless the data says so.</td></tr>
+  <tr><td><b>Birthday</b></td><td>Yearly</td><td>Only with a verified birth month/day from an authorized source. <i>"Happy Birthday, [First Name]! Everyone at [Dealership] wishes you a fantastic day!"</i> Customer-level; never a sales pitch.</td></tr>
+  <tr><td><b>Ownership anniversary</b></td><td>Yearly, years 1–10</td><td>From each vehicle's delivery date: <i>"Happy anniversary with your [Year Make Model]! Do you still have your [Model]? Reply YES or NO."</i></td></tr>
+  <tr><td><b>Trade / equity / repurchase</b></td><td>—</td><td><b>Next SOW.</b> Architecture reserved only.</td></tr>
+</table>
+<h3>Anniversary answers <span class="src">[SD §8]</span></h3>
+<ul>
+  <li><b>YES:</b> stays SOLD – DELIVERED; vehicle stays ACTIVE; record <code>ownership_confirmed_at</code>; maintenance, recalls and anniversaries continue.</li>
+  <li><b>NO:</b> opportunity → CLOSED – NO LONGER OWNS; vehicle → NO_LONGER_OWNED; stop that vehicle's maintenance, recall and anniversary outreach; keep all history.
+      Then ask "Thanks for letting me know! What are you driving now?", "Nice! About how long have you had your [Model]?", and where they normally get it serviced.
+      Save it in Customer 360 as <code>CUSTOMER_REPORTED</code>. No automatic trade pitch. Recalculate the customer's status.</li>
+  <li><b>No response:</b> nothing changes.</li>
+</ul>
+<h3>Customer status <span class="src">[SD §9]</span></h3>
+<p><b>INACTIVE only when both:</b> no open lead/opportunity <b>and</b> no currently owned vehicle. Otherwise ACTIVE. Unknown ownership never counts as zero.
+A new open opportunity or owned vehicle makes an INACTIVE customer ACTIVE again. Each vehicle has its own ownership record.</p>
+</section>
+
+<!-- ============ 15 COMPLIANCE ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">15. Workflow 11 · Compliance engine, opt-out and outbound campaigns</h2>
+<p><b>Every outbound message</b>, from any workflow, passes this gate before delivery <span class="src">[TC §1]</span>:</p>
+<div class="quote">Customer → Dealer → Purpose → Channel → Consent/Evidence → DNC &amp; Suppression → State/Local Time → Frequency → Compliance Decision → Delivery</div>
+<table>
+  <tr><th style="width:12%">Decision</th><th>Meaning <span class="src">[TC §11]</span></th></tr>
+  <tr><td><b>ALLOW</b></td><td>All checks pass; the message may be sent.</td></tr>
+  <tr><td><b>HOLD</b></td><td>Maybe later; queued until the next compliant time/condition, and never released before it.</td></tr>
+  <tr><td><b>REVIEW</b></td><td>Evidence or classification is ambiguous; no automated marketing until a person resolves it.</td></tr>
+  <tr><td><b>BLOCK</b></td><td>Prohibited; the AI and users can't force-send it.</td></tr>
+</table>
+<h3>Required controls <span class="src">[TC §1–9]</span></h3>
+<ul>
+  <li><b>Consent:</b> a phone number alone is never permission. Evidence is kept and can't be edited: source, time, seller/dealer, disclosure text and version, phone, lead form, evidence id.
+      A lead provider's bare <code>consent=true</code> isn't enough; missing evidence → <code>CONSENT_REVIEW_REQUIRED</code>, no automated marketing.</li>
+  <li><b>Per dealer:</b> permission and suppression belong to that dealership, not to AutoPulse as a whole.</li>
+  <li><b>DNC / suppression:</b> national DNC requirements plus dealer and platform suppression before covered outbound marketing.</li>
+  <li><b>Opt-out:</b> STOP, END, CANCEL, UNSUBSCRIBE, QUIT, and natural language ("don't text me", "don't call me", "leave me alone", "remove my number", "take me off your list",
+      "no more messages") suppress immediately. "I'm not interested" can be an objection rather than an opt-out: if it's ambiguous → REVIEW, and marketing stops. An opt-out confirmation,
+      if sent, is non-marketing. Opt-outs are tracked per channel (SMS, email, call) plus a broad do-not-contact. <span class="src">[TC §3; NL §15]</span></li>
+  <li><b>DMS / DealerVault:</b> presence in the DMS never creates consent. The data can identify an opportunity (service interval, equity); the engine decides separately.</li>
+  <li><b>Time:</b> the customer's jurisdiction and local time before every covered outbound attempt, from a counsel-approved, versioned state rules table; outside it → HOLD with the next time.</li>
+  <li><b>Frequency:</b> caps enforced outside the AI and checked again at send time.</li>
+  <li><b>AI voice:</b> a separate, higher-risk channel; outbound AI voice stays disabled until counsel approves.</li>
+  <li><b>Audit:</b> every attempt logs its inputs, decision, reason/rule version, template and delivery result. Deleting or re-importing a customer never erases suppression history.</li>
+</ul>
+<h3>Other channel problems <span class="src">[NL §15]</span></h3>
+<ul>
+  <li><b>Wrong person / bad number:</b> a data-quality suppression; never continue outreach to a known-wrong number.</li>
+  <li><b>Hard-bounce email:</b> suppress that email; other permitted channels continue.</li>
+  <li><b>Photo unavailable:</b> never a fabricated or unrelated photo; approved alternate media or no photo.</li>
+</ul>
+
+<!-- ============ 16 STATUSES / OUT OF SCOPE ============ -->
+<h2>16. Statuses, data and out of scope</h2>
+<h3>Every status in this scope</h3>
+<table>
+  <tr><th style="width:12%">Level</th><th style="width:30%">Status</th><th>Meaning</th></tr>
+  <tr><td>Lead</td><td>New Lead</td><td>Lead received; enters Short-Term follow-up.</td></tr>
+  <tr><td>Lead</td><td>No Contact Made</td><td>No meaningful two-way contact; Short-Term.</td></tr>
+  <tr><td>Lead</td><td>Contact Made – No Next Action</td><td>Contact, but no appointment or dated next action; Short-Term.</td></tr>
+  <tr><td>Lead</td><td>Contact Made – Specific Follow-Up</td><td>A defined future action with date/time/channel/owner/notes.</td></tr>
+  <tr><td>Lead</td><td>Appointment Set</td><td>A valid appointment exists.</td></tr>
+  <tr><td>Lead</td><td>Appointment No Show</td><td>Appointment + 1 hour with no Sales Visit.</td></tr>
+  <tr><td>Lead</td><td>Sales Visit</td><td>Customer checked in at SALES; manager outcome required.</td></tr>
+  <tr><td>Lead</td><td>Opted Out / Suppressed</td><td>A revocation or suppression event; prohibited channels stop.</td></tr>
+  <tr><td>Lead</td><td>Opportunity Closed – No Response</td><td>Day 91 with no superseding outcome (see question 1).</td></tr>
+  <tr><td>Opportunity</td><td>SOLD PENDING</td><td>Sold, not yet delivered; active; no time expiry.</td></tr>
+  <tr><td>Opportunity</td><td>SOLD – DELIVERED</td><td>Active ownership lifecycle; <b>not closed</b>.</td></tr>
+  <tr><td>Opportunity</td><td>UNSOLD</td><td>A manager outcome after a Sales Visit; next step not defined (question 2).</td></tr>
+  <tr><td>Opportunity</td><td>CLOSED LOST</td><td>Terminal: the opportunity was lost.</td></tr>
+  <tr><td>Opportunity</td><td>CLOSED – NO LONGER OWNS</td><td>Terminal: the customer no longer owns the sold vehicle.</td></tr>
+  <tr><td>Vehicle</td><td>ACTIVE / NO_LONGER_OWNED</td><td>Per vehicle ownership record.</td></tr>
+  <tr><td>Customer</td><td>ACTIVE / INACTIVE</td><td>INACTIVE only with no open opportunity and no owned vehicle.</td></tr>
+</table>
+<p class="src">Event lists the client recommends: NL §14, SP §11, SD §14. Field lists: NL §6, §12; TC §2, §6, §11; SP §11; SD §11, §14.</p>
+
+<h3>Out of scope for this SOW</h3>
+<ul>
+  <li><b>Trade-in / equity / repurchase engine:</b> the next SOW. Current-vehicle and ownership-duration data may be collected but not acted on. <span class="src">[SD §13]</span></li>
+  <li><b>Automated outbound AI voice:</b> disabled until counsel approves. <span class="src">[TC §9]</span></li>
+  <li><b>Legal approval:</b> the 50-state rules table, consent/disclosure wording, DNC procedure and similar items are supplied or approved by TCPA counsel; the spec "is not legal advice". <span class="src">[TC §13]</span></li>
+  <li><b>What happens after a manager outcome beyond Sections 13–14</b> and any further service workflows are defined in later documents. <span class="src">[NL §17; M4]</span></li>
+</ul>
+</section>
+
+<!-- ============ 17 QUESTIONS ============ -->
+<section class="page-break">
+<h2 style="margin-top:0">17. Questions for the client</h2>
+<p>Places where the client's own documents disagree, or where a behavior is required but not fully defined. Each needs one answer before it's built. Nothing here
+has been decided on the client's behalf.</p>
+<table>
+  <tr><th style="width:4%">#</th><th style="width:44%">Question</th><th>Why it's open</th></tr>
+  <tr><td>1</td><td><b>Day 91:</b> does "Opportunity Closed – No Response" still exist, or does Day 91 become CLOSED LOST?</td><td>NL §1 has it as a status; SD says the ONLY two closed statuses are CLOSED LOST and CLOSED – NO LONGER OWNS.</td></tr>
+  <tr><td>2</td><td><b>UNSOLD:</b> what happens after a manager picks UNSOLD: back into follow-up, or CLOSED LOST?</td><td>NL §10 requires UNSOLD as an outcome; SP and SD don't define it.</td></tr>
+  <tr><td>3</td><td><b>After hours, "help now":</b> does the conversation continue at any hour, or only within TCPA hours?</td><td>M2: "if he says yes i need it now then it will start communication right away." BP 0: "continues the conversation immediately (if within TCPA allowed hours)."</td></tr>
+  <tr><td>4</td><td><b>Contact hours:</b> 8am–9pm customer time everywhere, or the counsel-approved state table (some states are stricter)? Who supplies the table, and when?</td><td>BP 0 says 8am–9pm; TC §7 says don't hard-code one window; use a versioned state table.</td></tr>
+  <tr><td>5</td><td><b>Initial cadence:</b> 7 days / 8 touches (NL) or 6 days / 7 touches (BP)? Touch 2 wording "{FirstName}?" (NL) or "Hi [Customer Name]?" (BP)?</td><td>The two documents differ. NL is newer and marked FINAL; please confirm it replaces the blueprint's cadence.</td></tr>
+  <tr><td>6</td><td><b>Touch 1 ending:</b> must it <i>always</i> end "Tell me, what are you driving now?", even after hours (when it also offers "now or next business day") and when the customer already asked to come in?</td><td>NL §3 says ALWAYS; BP 0 and BP 3B also ask the first message to offer the after-hours choice and to drive the appointment.</td></tr>
+  <tr><td>7</td><td><b>Touch 2 by email:</b> does "{FirstName}?" also go by email (and with what subject), given every follow-up is text + email + call?</td><td>NL §3 defines Touch 2 as a text; NL p.10 says every follow-up is text + email + call.</td></tr>
+  <tr><td>8</td><td><b>Call tasks:</b> are the Days 1–7 "two call tasks per workday" separate from the 1-hour call task after each touch, or the same tasks?</td><td>NL §3 and NL p.9 both create call tasks on Days 1–7.</td></tr>
+  <tr><td>9</td><td><b>Where do call tasks, statuses and reports live?</b> Agents need a task list with Click-to-Call and an outcome prompt; managers need the appointment/showed report and the manager-outcome prompt.</td><td>NL §3, §7, §10 and p.9 require screens for staff. Please confirm these are in the dealer platform's scope for this SOW.</td></tr>
+  <tr><td>10</td><td><b>"Meaningful contact":</b> what counts? A reply of any kind, "ok", an auto-reply, a STOP, a bounce?</td><td>It cancels call tasks and changes statuses (NL p.9, SP §3), but isn't defined.</td></tr>
+  <tr><td>11</td><td><b>No-contact routing:</b> please confirm both, since they route differently: a specific follow-up with no reply in 24h → <b>No Contact Made</b>; a no-show with no reply → <b>Contact Made – No Next Action</b>.</td><td>NL §6 vs §9 (the spec itself flags the no-show wording and keeps it as a required rule).</td></tr>
+  <tr><td>12</td><td><b>When does New Lead become No Contact Made?</b> After Touch 1, Touch 2, or the end of Day 1?</td><td>NL §1 names both statuses but not the moment of change.</td></tr>
+  <tr><td>13</td><td><b>15-minute appointment message:</b> if the dealer system already sends a booking confirmation, should the 15-minute message replace it, or be sent too?</td><td>NL §7 requires it; the platform currently sends its own on booking, so the customer would get two.</td></tr>
+  <tr><td>14</td><td><b>Sales Visit check-in:</b> how is "customer logged into dealership SALES" recorded: a check-in system, or staff setting a status?</td><td>NL §1, §10 depend on it for showed/no-show.</td></tr>
+  <tr><td>15</td><td><b>Maintenance and birthday data:</b> which "vehicle database" provides maintenance schedules, and which authorized source provides birth dates?</td><td>SD §4–5, §7 require them; M4: "NHTSA and vehicle databases will dictate those."</td></tr>
+  <tr><td>16</td><td><b>Service appointments:</b> are service appointments booked by the AI in this SOW (Day 3 first service, maintenance, recalls), and into which calendar?</td><td>SD §4–6 and CS example 4 end in a service appointment.</td></tr>
+  <tr><td>17</td><td><b>Web chat and social DM:</b> are these channels in this SOW?</td><td>BP 9 lists them; no specification defines them.</td></tr>
+  <tr><td>18</td><td><b>Phone-call request:</b> "call within 5 minutes during business hours". Is this a call task for staff (same mechanism as question 9)?</td><td>BP 8.</td></tr>
+  <tr><td>19</td><td><b>National DNC:</b> should numbers be checked against the national Do-Not-Call registry (a paid service), or is consent + internal suppression enough?</td><td>TC §1 lists "National DNC requirements"; counsel to confirm (TC §13).</td></tr>
+</table>
+</section>
+
+</body>
+</html>

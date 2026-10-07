@@ -1,0 +1,3 @@
+conversation,bucket,bucket_assigned,customer_messages,ai_replies,model_calls,tokens_in,tokens_cached,tokens_out,tokens_reasoning,cache_hit_pct,cost_usd,cost_per_reply,turn_ms_p50,turn_ms_p95,guard_retries,fallbacks,stock_searches,inventory_queries,booking_calls,summary_runs,grammar_score,grammar_flags
+credit-1-capital-one-suv,credit,credit,14,15,33,275090,139648,7081,0,50.8,0.051514,0.003434,4554.0,8719.199999999997,3,1,13,51,1,0,,0
+service-1-oil-change-reschedule,service,none (service),12,13,29,222207,114176,5119,0,51.4,0.0401,0.003085,4694.0,5856.799999999999,3,0,1,1,0,0,,0

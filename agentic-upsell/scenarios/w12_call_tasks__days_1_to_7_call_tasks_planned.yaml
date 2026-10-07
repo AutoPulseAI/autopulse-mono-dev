@@ -1,0 +1,10 @@
+name: Days 1-7 staff call tasks are planned, and stop when the status changes
+description: Scope Workflow 5 ("Human call tasks, Days 1-7"). A new lead gets the twice-a-workday staff call tasks planned next to its cadence. When staff move the lead out of follow-up (Sold Pending here), the planned call task is cancelled, because a status change cancels the old status's work (scope rule 4.3).
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Cleo Calltask, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - expect_followup: {lead: c, kind: daily_call_task, status: pending, timeout_s: 20}
+  - staff_status: {lead: c, status: "Sold Pending"}
+  - expect_lead: {lead: c, stage: sold_pending, timeout_s: 20}
+  - expect_no_followup: {lead: c, kind: daily_call_task, status: pending, settle_s: 2}

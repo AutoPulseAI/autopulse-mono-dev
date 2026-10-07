@@ -1,0 +1,18 @@
+name: Opt-out by phrase, still answered, opted back in
+description: MASTER_PLAN_3 C1 extension (decisions 135-139). "Don't text me" gets one confirmation that names only texts; the customer's next message is still answered; "you can text me again" reverses the text opt-out and the rest of that message is answered too.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: o, dealer: A, lead_type: sales, channel: sms, name: Olive Optout, comments: "Looking at a used Honda CR-V"}
+  - wait_turns: {lead: o, count: 1, timeout_s: 15}
+  - reply: {lead: o, text: "don't text me"}
+  - wait_turns: {lead: o, count: 2, timeout_s: 15}
+  - expect_turn: {lead: o, trigger: inbound_held, outcome: opt_out_confirmation}
+  - expect_messages: {lead: o, direction: outbound, count: 2}
+  - reply: {lead: o, text: "Actually, is the CR-V still there?"}
+  - wait_turns: {lead: o, count: 3, timeout_s: 30}
+  - expect_turn: {lead: o, trigger: inbound_message}
+  - expect_messages: {lead: o, direction: outbound, count: 3}
+  - reply: {lead: o, text: "you can text me again, what color is it?"}
+  - wait_turns: {lead: o, count: 4, timeout_s: 30}
+  - expect_turn: {lead: o, trigger: inbound_message}
+  - expect_messages: {lead: o, direction: outbound, count: 4}

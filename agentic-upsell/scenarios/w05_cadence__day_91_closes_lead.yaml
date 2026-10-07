@@ -1,0 +1,12 @@
+name: Day 91 closes the lead as Closed - Lost
+description: A lead still in Short-Term follow-up on Day 91 closes as Closed - Lost (client, 1 Oct 2026). The lead closes, not the customer. A new lead from the same customer starts its own workflow.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dee Ninetyone, comments: "Looking for an SUV"}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - reply: {lead: d, text: "ok thanks"}
+  - wait_turns: {lead: d, count: 2, timeout_s: 20}
+  - expect_lead: {lead: d, stage: contact_made_no_next_action}
+  - advance_clock: {hours: 2208}
+  - expect_lead: {lead: d, stage: closed_lost, timeout_s: 30}
+  - expect_no_followup: {lead: d, kind: any, status: pending}

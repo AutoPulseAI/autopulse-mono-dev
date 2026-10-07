@@ -1,0 +1,21 @@
+name: A turn loads the dealer's matching stock
+description: A sales lead for a used RAV4 (an SUV). Since Phase 2 the search runs after Extract (Search stock), so the first turn already finds it from the lead form. It searches this dealer's stock and gives the AI at most 3 records, each with its VIN. Another dealer's RAV4 never comes back. `inventory` reaches the models from Phase 3 onward, now that the grounding check (Phase 4) exists to catch a wrong vehicle fact.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - add_stock:
+      as: rav4s
+      dealer: A
+      vehicles:
+        - {year: 2023, make: Toyota, model: RAV4, trim: XLE, body: SUV, condition: used, color: White, miles: 18000}
+        - {year: 2022, make: Toyota, model: RAV4, trim: LE, body: SUV, condition: used, color: Silver, miles: 29000}
+  - add_stock:
+      as: other_dealer
+      dealer: B
+      vehicles:
+        - {year: 2023, make: Toyota, model: RAV4, trim: XLE, body: SUV, condition: used, color: Red, miles: 15000}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rhea Rav, comments: "Looking for a used Toyota RAV4"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 20}
+  - expect_inventory: {lead: r, searched: true, query: {make: Toyota, model: RAV4, condition: used}, min_loaded: 2, loaded_include: rav4s, never_loaded: other_dealer}
+  - reply: {lead: r, text: "Sometime next month"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 20}
+  - expect_inventory: {lead: r, searched: true, query: {make: Toyota, model: RAV4, condition: used}, min_loaded: 2, loaded_include: rav4s, never_loaded: other_dealer}

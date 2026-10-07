@@ -1,0 +1,13 @@
+conversation,bucket,bucket_assigned,customer_messages,ai_replies,model_calls,tokens_in,tokens_cached,tokens_out,tokens_reasoning,cache_hit_pct,cost_usd,cost_per_reply,turn_ms_p50,turn_ms_p95,guard_retries,fallbacks,stock_searches,inventory_queries,booking_calls,summary_runs,grammar_score,grammar_flags
+credit-1-capital-one-suv,credit,credit,14,15,37,304487,160768,8205,0,52.8,0.056359,0.003757,6326.0,9719.699999999995,7,2,13,47,0,0,0.902,0
+credit-2-700credit-truck-typos,credit,credit,14,12,27,210177,106752,5539,0,50.8,0.039603,0.0033,5222.0,8369.599999999999,3,2,10,25,0,0,0.911,0
+credit-3-credit-app-after-hours,credit,credit,13,12,24,171615,109696,4286,0,63.9,0.026794,0.002233,3998.0,5602.4,0,0,12,25,0,0,0.902,0
+general-1-cargurus-rav4-reschedule,general,general,13,14,30,224363,122880,6061,0,54.8,0.040565,0.002897,4823.0,7041.849999999999,2,0,10,22,2,0,0.894,1
+general-2-autotrader-not-interested,general,general,12,6,10,62861,38656,1540,0,61.5,0.010098,0.001683,4150.5,5289.25,0,0,5,7,0,0,0.845,1
+general-3-facebook-family-human,general,general,13,5,13,87667,42880,3348,0,48.9,0.018965,0.003793,6863.0,9092.199999999999,3,2,4,7,0,0,0.886,0
+service-1-oil-change-reschedule,service,none (service),12,11,25,181699,111104,4940,0,61.1,0.030306,0.002755,5004.0,7275.0,3,2,2,2,0,0,0.89,1
+service-2-check-engine-typos,service,none (service),12,13,29,209844,124800,5252,0,59.5,0.034885,0.002683,4149.0,8071.8,3,0,1,1,0,0,0.876,2
+service-3-recall-trade-curious,service,none (service),13,12,26,188002,110464,4752,0,58.8,0.03165,0.002638,4330.5,6626.599999999999,2,0,0,0,0,0,0.865,3
+trade-1-kbb-accord-equity,trade_in,trade_in,14,15,31,241329,143488,5807,0,59.5,0.039661,0.002644,4496.0,6381.699999999997,1,0,1,4,1,0,0.919,0
+trade-2-truecar-sell-only-objection,trade_in,trade_in,14,10,20,137543,84608,3543,0,61.5,0.022435,0.002243,4145.0,5531.9,0,0,0,0,0,0,0.901,0
+trade-3-accutrade-spanish,trade_in,trade_in,12,13,27,197989,124160,5244,0,62.7,0.032049,0.002465,4607.0,6213.0,1,1,0,0,1,0,0.853,5

@@ -1,0 +1,10 @@
+name: A second lead for the same customer is linked, not worked
+description: The same customer submits a second lead. Only the first runs the AI workflow; the second is linked to it with no first reply of its own, and the customer's messages go to the first lead.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: one, dealer: A, lead_type: sales, channel: sms, name: Dora Duplicate, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: one, count: 1, timeout_s: 20}
+  - new_lead: {as: two, dealer: A, lead_type: sales, channel: sms, name: Dora Duplicate, comments: "Interested in the Camry hybrid", same_contact_as: one}
+  - expect_lead: {lead: two, duplicate: true, status: paused, timeout_s: 20}
+  - expect_outbox: {lead: two, channel: sms, count: 0}
+  - expect_lead: {lead: one, duplicate: false, status: active}

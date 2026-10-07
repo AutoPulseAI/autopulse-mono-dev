@@ -1,0 +1,18 @@
+name: Days 2-5 go out daily on text and email together
+description: With no reply, one touch a day - vehicle visual, financing help, trade-in, a verified feature - each on text AND email (Omnichannel PDF §3, p.10). Never a second touch on the same day. Each touch's hour is 10:00 or 15:00 dealer time, whichever the send-time learning test picked for it (PLAN_4 stream L), so this steps through them with run_next instead of a fixed clock jump.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dan Daily, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - run_next: {lead: d, kind: cadence_touch}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 0, timeout_s: 30}
+  - run_next: {lead: d, kind: cadence_touch}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 1, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 2}
+  - run_next: {lead: d, kind: cadence_touch}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 2, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 3}
+  - run_next: {lead: d, kind: cadence_touch}
+  - expect_followup: {lead: d, kind: cadence_touch, status: sent, index: 3, timeout_s: 30}
+  - expect_outbox: {lead: d, channel: email, count: 4}
+  - expect_outbox: {lead: d, channel: sms, count: 5}

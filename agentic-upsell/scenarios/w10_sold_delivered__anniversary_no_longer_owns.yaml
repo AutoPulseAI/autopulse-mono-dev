@@ -1,0 +1,21 @@
+name: Ownership anniversary - customer no longer owns it
+description: 'MASTER_PLAN_4 D7, D8 (SOLD-DELIVERED PDF §8-§9). A year after delivery the anniversary asks "Do you still have your RAV4? Reply YES or NO." NO closes the opportunity as Closed - No Longer Owns, the vehicle is NO_LONGER_OWNED and its reminders stop; the AI asks what they drive now, for how long, and where it is serviced, stored as a CUSTOMER_REPORTED vehicle (no trade pitch). The customer stays ACTIVE because they own the new car.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: a, dealer: A, lead_type: sales, channel: sms, name: Alex Anniversary, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: a, count: 1, timeout_s: 20}
+  - staff_status: {lead: a, status: "Sold Delivered"}
+  - expect_followup: {lead: a, kind: ownership_anniversary, status: pending, timeout_s: 20}
+  - advance_clock: {hours: 8790}
+  # Index 0: sending Year 1 plans Year 2 at once (stream A3), so the newest one is the pending Year 2.
+  - expect_followup: {lead: a, kind: ownership_anniversary, status: sent, index: 0, timeout_s: 60}
+  - reply: {lead: a, text: "No, we sold it"}
+  - expect_lead: {lead: a, stage: closed_no_longer_owns, timeout_s: 30}
+  - expect_no_followup: {lead: a, kind: ownership_anniversary, status: pending}
+  - sleep: {seconds: 4}
+  - reply: {lead: a, text: "A 2022 Honda Civic"}
+  - sleep: {seconds: 4}
+  - reply: {lead: a, text: "about 2 years"}
+  - sleep: {seconds: 4}
+  - reply: {lead: a, text: "Jiffy Lube on Main St"}
+  - expect_lead: {lead: a, stage: closed_no_longer_owns, timeout_s: 30}

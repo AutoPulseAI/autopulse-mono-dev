@@ -1,0 +1,107 @@
+# PLAN_4 stream X2 — workflow and after-sale defects
+
+Source: independent audits of the New Lead Omnichannel PDF (audit 1) and the SOLD PENDING / SOLD DELIVERED
+PDFs (audit 3), plus the auditor's five probe tests. Each item below has a regression test that failed before
+the fix.
+
+## Items
+
+- **5. No two touches on one calendar day** (probe P1). `agent/cadence.py`: Touch 3 used to ignore the name
+  nudge's send date (the nudge belongs to Day 1). A nudge that a hold pushed into a later day's daytime
+  (sent at/after 06:00 on a later date) now counts as that day's touch, so Touch 3 moves to the next day.
+  Test: `test_cadence.py::test_an_evening_leads_held_nudge_and_touch_3_never_share_a_day`.
+- **1. BLOCKER - staff pause -> resume restarts the workflow** (probe P5). New `followups.replan_workflow`,
+  called from `handle_lead_resumed`: re-plans what the lead's *current* stage runs, never touching the stage or
+  the Day 91 clock: Short-Term cadence continues from its stored state (touch number / themes / last touch, so
+  no duplicate same-day touch; a pending name nudge is skipped since a person has spoken to the customer; the
+  Days 1-7 call tasks restart with it), Specific Follow-Up's dated step, Appointment Set steps (a confirmed
+  appointment for the same time keeps its confirmation and gets no Y/N), No Show's next step, Sold Pending /
+  Sold Delivered touches if none is pending. Tests: `test_x2_workflow.py::test_resume_*`.
+- **2. No Show never depends on the message being sendable** (probes P2, P4). The +1h check is planned at
+  +1h even when the send check would hold it, and when it fires (same appointment, still Appointment Set) it
+  moves the stage to No Show first, whatever the lead's status / dealer mode / send check. Only the message is
+  gated. A showroom message that can't go out by appointment + 2h (`appointment.NO_SHOW_MESSAGE_LATEST`) is
+  replaced by the +24h "how did everything go" message at the next allowed time. The no-show chain (+24h
+  message, then the close back into follow-up) continues whatever happened to a message, and the close step
+  (it sends nothing) ignores who holds the lead. Day 91 now also closes an Appointment Set / No Show lead whose
+  appointment is more than 2 days past with nothing resolving it, and a long-past booking no longer counts as
+  pending. Tests: `test_x2_workflow.py` (staff-held no-show, after-closing no-show, stale appointment).
+- **3. Call checkpoint after every AI follow-up** (probe P3). The day-before confirmation and both no-show
+  messages now start the 60-minute call timer (not the 15-minute details or the countdown: human follow-up isn't
+  appropriate there - PDF p.9 "when human follow-up is appropriate"). The visit follow-up (3rd-decline re-offer)
+  now goes on text + email and starts it; the after-hours morning message starts it. `call_task` is allowed at
+  Appointment Set / No Show; entering those stages still cancels the old stage's timers and open tasks. Each
+  timer stores `planned_stage` and is cancelled at fire time if the stage moved since its touch (also closes the
+  audit 3 race where a SOLD PENDING timer opened after Sold Delivered). The workday cap (stream T) still applies
+  at fire time. Already covered before: SOLD PENDING touches, the specific follow-up check-back, Touch 1, cadence.
+  Birthday / anniversary never start one. Tests: `test_x2_workflow.py::test_the_confirmation_*`, `*visit_follow_up*`.
+- **4. "Call within 5 minutes" (blueprint box 8).** `agent/call_tasks.py`: a customer-requested call task opened
+  while the dealership is open gets `due_by = now + 5 min` (`REQUESTED_CALL_SLA`). When `mark_missed` reaches it
+  still open, it is *escalated* instead of missed: `escalated_at`, `sla_missed`, a `call_escalation` staff notice
+  and a CRM note ("Requested call not made in 5 minutes"); the task stays open until the end of the agent's day,
+  then is missed as before. Requested tasks opened outside hours open at calling hours and get the 5 minutes then.
+  Test: `test_x2_workflow.py::test_a_requested_call_is_due_in_5_minutes_and_escalates_when_it_isnt_made`.
+- **6. Staff confirmation in the CRM reaches the AI.** CRM `aiStaff.bookingChangeKind` now returns `confirmed`
+  when PUT /api/booking (the booking screens use it) moves a booking to `confirmed` (a move still wins);
+  `BOOKING_CHANGES` includes it. AI: `BookingChangedEvent.change` accepts `confirmed`; `handle_booking_changed` sets
+  `appointment.confirmed = true` (`confirmed_by: staff`) and cancels the pending day-before Y/N; the confirm step
+  also re-checks `appointment.confirmed` before sending, and a re-plan for the same time keeps the confirmation.
+  Tests: `test_x2_workflow.py::test_staff_confirming_the_booking_*`, `test-ai-layer.js` bookingChangeKind table.
+- **7. Pre-send re-check for cadence touches.** `_cadence_touch_rechecks` adds, beyond status/stage/dealer/send
+  check: a meaningful customer message since the touch was planned that no turn answered (the reply turn failed -
+  the touch is cancelled and the next one planned from now), an upcoming booking on the platform lead the stage
+  missed, and at least one valid, permitted contact point. Tests: `test_a_reply_no_turn_answered_*`,
+  `test_a_booking_the_stage_missed_*`.
+- **8. Positive outcomes only.** `templates.SOLD_VEHICLE_FALLBACK_TEXT` (sent when the vehicle a message named sold
+  before it went out) no longer says "no longer available": it leads with similar options and a next step, and
+  claims no stock it has not checked. Test: `test_the_sold_vehicle_fallback_leads_with_the_next_step_*`. (The guard
+  still allows a denial paired with an alternative in AI-written replies - decision D, unchanged.)
+- **9. Minor.** Touch 1 names "{year} {model}" when the year is known (`decide._vehicle_of_interest`). A dated
+  follow-up a *person* owns now gets the §6 24-hour rule too (`followups.plan_human_followup_check`: a
+  `next_action_check` due 24h after the agreed time, replies counted from that time) -> No Contact Made -> cadence.
+  Per-dealer default follow-up time: `dealer_account_information.ai_followup_default_time` (HH:MM, default 10:00),
+  used by the AI's dated next step and by staff call outcomes (no CRM settings field for it yet - open item).
+  Tests: `test_x2_workflow.py::test_touch_1_names_the_year_*`, `test_call_outcomes.py` (two X2 tests).
+- **10. Status-change race (audit 3).** `worker/jobs.py`: `handle_lead_paused` (every staff status move) and
+  `handle_lead_resumed` now run under the lead lock (busy -> requeued like the other events). `sold_lifecycles.fire`
+  re-reads the stage right before sending and cancels if it changed, and `advance()` re-reads the state instead of
+  writing back the pre-send copy (a staff outcome's `ended_at` / `outcome` stands). With item 3's `planned_stage`,
+  a SOLD PENDING call timer never opens after Sold Delivered / Closed Lost. Tests: `test_x2_sold.py` (race,
+  stale timer, lock).
+- **12. Staff outcomes always apply.** `lifecycle.transition`: Sold Pending / Sold Delivered / Closed Lost set by
+  staff (`STAFF_OUTCOMES`) take effect on an Opted Out or Closed - Lost lead (Closed - No Longer Owns stays
+  terminal). Consent is untouched, so every message still obeys the opt-out. Opting back in after a delivery
+  returns to Sold - Delivered, never Sold Pending (`opted_in` carries `delivered`). Tests: `test_x2_sold.py`.
+- **13. CRM and AI agree on closing a delivered lead.** Chosen per SD PDF §1-§2: Closed Lost is for a lost
+  transaction; a delivered car leaves only as Closed - No Longer Owns. CRM: `aiDnd.statusChangeError` refuses
+  "Closed - Lost" on a Sold Delivered lead in the status route with a clear message, and the status picker no longer
+  offers it there. AI: the transition already refused it; now the event also pauses nothing (status `refused`), so
+  the ownership lifecycle carries on. Tests: `test-ai-crm-platform.js` (statusChangeError),
+  `test_x2_sold.py::test_closed_lost_on_a_delivered_lead_*`. (Pre-existing ESLint unused-var errors in the status
+  route, lines 167/443/569/723, are not from this change.)
+- **14. Reply reading.** `sold_delivered.classify_service_answer`: "later" is a decline only when it isn't a time
+  ("Yes, Tuesday later in the afternoon works" -> yes, the words kept as the request's notes); "works", "that
+  works" read as yes; "ok but I have a question..." / "a quick question" -> other (the AI answers). SOLD PENDING
+  router: "When can I pick it up?", "come get it" -> escalated to the salesperson; "I have a question about the
+  color" no longer reads as "I have [provided everything]". Table tests in `test_x2_sold.py` (7 rows failed before).
+- **15. SOLD PENDING guardrail on AI-written replies.** The Guard node runs `sold_pending.guardrail_problems` on
+  every draft for a Sold Pending lead (check `sold_pending_no_delay_or_invented_status`): a delay/blame phrase or
+  an unverified delivery date / document / approval / financing status -> one rewrite, then the template. Decide no
+  longer drops the Sold Pending hold when another hold (a possible opt-out) applies - both go to Compose.
+  Tests: `test_x2_sold.py::test_an_ai_reply_on_a_sold_pending_lead_*`, `test_a_plain_sold_pending_reply_*`.
+- **16. The vehicle actually sold.** `sold_lifecycles.sold_vehicle` no longer falls back to the model the customer
+  asked about (`interest.model`): the lead's own vehicle fields, else the customer's DealerVault deal for this
+  opportunity (Year / Make / Model / VIN), else nothing - the check-in says "your new vehicle" and the anniversary
+  "your vehicle". Tests: `test_x2_sold.py::test_the_check_in_*` (both failed before).
+- **Anniversary companion (with 1acb7ec).** The ownership question is cleared after an unclear answer (the AI
+  answers what they said) and expires after `OWNERSHIP_PROMPT_TTL` (14 days), so a "No rush..." months later is never
+  read as NO. Tests: `test_x2_sold.py::test_an_unclear_answer_*`, `test_the_ownership_question_expires`.
+- **17. CUSTOMER_REPORTED vehicles only from vehicle words.** In the current-vehicle capture, a reply with no make
+  or model ("I need an oil change", "since 2019") stores nothing, closes the capture question and goes to the AI
+  turn. Test: `test_a_reply_with_no_vehicle_in_it_*`.
+- **11. Recall confirmation in the CRM.** New proxy `GET|POST /api/dealer-ai/leads/<leadId>/recalls` (same lead-access
+  auth as the other AI pages): GET lists the AI's recall records for each VIN on the lead's ownership records; POST
+  `{vin, recall_id, action: confirm|close, reason?}` calls the AI's existing `/v1/vehicles/{vin}/recalls/{id}/confirm`
+  / `close`. Only a VIN on the lead itself is accepted (`app/lib/ai/aiRecalls.js`, pure). `RecallsSection` in the AI
+  panel (lead screen and the AI Alerts / Call Tasks drawers) shows each recall with "Confirm for this VIN",
+  "Repaired" and "Doesn't apply". Test: `test-ai-crm-platform.js` (recall actions). Not exercised in a browser.

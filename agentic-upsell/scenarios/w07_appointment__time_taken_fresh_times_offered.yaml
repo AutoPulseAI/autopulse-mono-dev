@@ -1,0 +1,17 @@
+name: The chosen time was taken meanwhile, fresh times are offered
+description: 'MASTER_PLAN_3 B5 item 3. Other customers fill the first offered time before our customer picks it (10 sales bookings per slot, client 5 Oct 2026). No booking is made; the reply says it was just taken and offers fresh times, without counting as another attempt.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tia Taken, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: t, zip: "10001"}
+  - send_lead_created: {lead: t}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - reply: {lead: t, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  # The CRM holds 10 sales bookings per one-hour slot (client, 5 Oct 2026; aidmvcs-be-dev bookingService.js), not 2.
+  - take_offered_time: {lead: t, index: 0, count: 10}
+  - reply: {lead: t, text: "the first one"}
+  - wait_turns: {lead: t, count: 3, timeout_s: 20}
+  - expect_booking: {lead: t, status: none}
+  - expect_last_sent: {lead: t, contains: "just taken"}
+  - expect_lead: {lead: t, visit_attempts: 1}

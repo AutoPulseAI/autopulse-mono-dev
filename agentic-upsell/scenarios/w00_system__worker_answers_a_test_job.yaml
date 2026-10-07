@@ -1,0 +1,4 @@
+name: Worker answers a test job
+description: The API can queue a job and a worker picks it up and returns the result.
+steps:
+  - ping_worker: {timeout_s: 10}

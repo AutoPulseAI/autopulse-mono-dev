@@ -1,0 +1,15 @@
+name: Short replies answer what we asked
+description: The AI asks new or used, and the customer just says "used"; a trade-in customer answers the year question with "2019". Each fills the slot that was asked, with the customer's own words as the quote.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sam Short, comments: "Hi, I saw your ad"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+  - expect_context: {lead: s, index: -1, new_messages: ["Hi, I saw your ad"]}
+  - reply: {lead: s, text: "used"}
+  - wait_turns: {lead: s, count: 2, timeout_s: 20}
+  - expect_slots: {lead: s, filled: [interest.new_or_used], values: {interest.new_or_used: used}, sources: {interest.new_or_used: customer}}
+  - new_lead: {as: t, dealer: A, lead_type: trade_in, channel: sms, name: Tess Trade, comments: "Thinking about trading my car"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - reply: {lead: t, text: "2019"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  - expect_slots: {lead: t, filled: [trade_in.year], values: {trade_in.year: 2019}}

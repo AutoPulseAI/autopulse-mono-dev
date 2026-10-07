@@ -1,0 +1,12 @@
+name: A hedged value is confirmed before it is used
+description: 'A hedged "about 60,000 miles" is saved as needs-confirming, the AI asks to confirm it, and a "yes" makes it a filled slot.'
+steps:
+  - advance_clock: {dealer: B, to: "Tue 10:00"}
+  - new_lead: {as: c, dealer: B, lead_type: trade_in, channel: sms, name: Casey Scenario, comments: "Want to trade my car"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 15}
+  - reply: {lead: c, text: "It's a 2019 Honda Civic with about 60,000 miles"}
+  - wait_turns: {lead: c, count: 2, timeout_s: 15}
+  - expect_turn: {lead: c, outcome: confirm}
+  - reply: {lead: c, text: "Yes, that's right"}
+  - wait_turns: {lead: c, count: 3, timeout_s: 15}
+  - expect_slots: {lead: c, filled: [trade_in.mileage], values: {trade_in.mileage: 60000}}

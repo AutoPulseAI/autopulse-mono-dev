@@ -1,0 +1,18 @@
+stateDiagram-v2
+    direction LR
+    state "Sales Visit" as SV
+    state "SOLD PENDING" as SP
+    state "SOLD - DELIVERED<br/>(active, not closed)" as SD
+    state "CLOSED LOST" as CL
+    state "CLOSED - NO LONGER OWNS" as CN
+    state "UNSOLD" as UN
+    [*] --> SV
+    SV --> SP : manager outcome
+    SV --> SD : manager outcome
+    SV --> UN : manager outcome
+    SP --> SD : dealer records delivery
+    SP --> CL : dealer records the deal lost
+    SD --> SD : anniversary YES - still owns it
+    SD --> CN : anniversary NO - no longer owns it
+    CL --> [*]
+    CN --> [*]

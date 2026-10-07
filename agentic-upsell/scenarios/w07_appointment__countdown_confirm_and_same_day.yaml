@@ -1,0 +1,20 @@
+name: A visit days away gets a countdown and a day-before confirmation; a same-day visit only a no-show check
+description: Scope Workflow 7. Staff book a visit 5 days out, so the daily countdown, the day-before Y/N confirmation and the no-show check (1 hour after the visit) are all planned, and the no-reply cadence stops. A visit booked for later today gets only the no-show check.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: far, dealer: A, lead_type: sales, channel: sms, name: Fay Faraway, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: far, count: 1, timeout_s: 20}
+  - staff_status: {lead: far, status: "Appointment Booked", booking_in_days: 5}
+  - expect_lead: {lead: far, stage: appointment_set, timeout_s: 20}
+  - expect_followup: {lead: far, kind: appointment_countdown, status: pending, timeout_s: 20}
+  - expect_followup: {lead: far, kind: appointment_confirm, status: pending}
+  - expect_followup: {lead: far, kind: appointment_no_show_check, status: pending}
+  - expect_no_followup: {lead: far, kind: cadence_touch, status: pending}
+
+  - new_lead: {as: today, dealer: A, lead_type: sales, channel: sms, name: Tod Today, comments: "Looking at a new Camry"}
+  - wait_turns: {lead: today, count: 1, timeout_s: 20}
+  - staff_status: {lead: today, status: "Appointment Booked", booking_in_days: 0.2}
+  - expect_lead: {lead: today, stage: appointment_set, timeout_s: 20}
+  - expect_followup: {lead: today, kind: appointment_no_show_check, status: pending, timeout_s: 20}
+  - expect_no_followup: {lead: today, kind: appointment_countdown}
+  - expect_no_followup: {lead: today, kind: appointment_confirm}

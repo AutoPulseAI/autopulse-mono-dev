@@ -1,0 +1,13 @@
+name: A new lead gets a reply within the client's time budget
+description: >
+  Scope Workflow 3: Touch 1 is due "within 60 seconds" of the lead arriving. The old 2-second check here was
+  from before Touch 1 called a real model (a template, sent with no AI call); now that it's a full AI turn
+  (extract, compose, guard), 2 seconds was never realistic and this failed on ordinary real-model runs for no
+  real reason. 30 seconds keeps real margin below the 60-second requirement while still catching a genuinely
+  stuck pipeline.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tina Scenario, comments: "Interested in a new truck"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 35}
+  - expect_last_sent: {lead: t, channel: sms, max_latency_ms: 30000}
+  - expect_messages: {lead: t, direction: outbound, status: sent, count: 1}

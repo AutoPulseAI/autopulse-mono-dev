@@ -1,0 +1,340 @@
+"""Plays the platform's role in DEV: creates dealers, customers, their DMS
+history and leads in the platform's own collections, then sends events
+through the same intake path as real platform events.
+
+Only used by the /dev routes, the seed script, the scenario runner and
+tests. Everything written here is tagged `dev_seed: True`. Document shapes
+follow aidmvcs-be-dev/app/models/*.js exactly (MASTER_PLAN_1 Stage 6), so
+the real platform (Customer 360, the workers, the conversation screen) can
+read them too.
+"""
+
+import hashlib
+import uuid
+from datetime import timedelta
+
+from bson import ObjectId
+
+from upsell_agent import clock
+from upsell_agent.events.intake import IntakeResult, accept_event
+from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent
+from upsell_agent.integrations.dealer_mode import dealer_ai_mode
+from upsell_agent.integrations.mongodb import (
+    PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_DEALS_COLLECTION,
+    PLATFORM_EMAIL_ACCOUNTS_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
+    PLATFORM_REPAIR_ORDERS_COLLECTION,
+    PLATFORM_SERVICE_APPOINTMENTS_COLLECTION,
+    PLATFORM_TRADE_INS_COLLECTION,
+    PLATFORM_USERS_COLLECTION,
+    PLATFORM_VEHICLES_COLLECTION,
+    as_object_id,
+    dealer_scoped_db,
+    get_db,
+)
+from upsell_agent.worker.queue import Enqueue
+
+# Kept for existing imports.
+CUSTOMERS_COLLECTION = PLATFORM_CUSTOMERS_COLLECTION
+DEV_DEALERS_COLLECTION = "dev_dealers"  # DEV only: display names for the Debug UI
+
+# Dealers A and B are `live` (two, so a burst on one can be checked against
+# the other, MASTER_PLAN_1 Stage 12) and C is `shadow` (Stage 13). Like the
+# real platform, the simulator reads each dealer's mode: shadow events are
+# marked shadow, and an `off` dealer's events are not sent at all.
+DEV_DEALERS = [
+    {"_id": "66f0000000000000000000a1", "name": "Sunrise Motors (dev)", "sms": "+15550000001",
+     "email": "sales@sunrise-motors.dev.test", "ai_mode": "live", "time_zone": "America/New_York",
+     "store": {"store_name": "Sunrise Motors", "store_address": "120 Main St", "store_city": "Springfield",
+               "store_state": "NJ", "store_postal": "07081", "store_website": "https://sunrise-motors.dev.test"}},
+    {"_id": "66f0000000000000000000b2", "name": "Lakeside Auto (dev)", "sms": "+15550000002",
+     "email": "sales@lakeside-auto.dev.test", "ai_mode": "live", "time_zone": "America/Chicago",
+     "store": {"store_name": "Lakeside Auto", "store_address": "45 Shore Dr", "store_city": "Madison",
+               "store_state": "WI", "store_postal": "53703", "store_website": "https://lakeside-auto.dev.test"}},
+    {"_id": "66f0000000000000000000c3", "name": "Hillside Cars (dev, shadow)", "sms": "+15550000003",
+     "email": "sales@hillside-cars.dev.test", "ai_mode": "shadow", "time_zone": "America/Los_Angeles",
+     "store": {"store_name": "Hillside Cars", "store_address": "9 Ridge Rd", "store_city": "Pasadena",
+               "store_state": "CA", "store_postal": "91101", "store_website": "https://hillside-cars.dev.test"}},
+]
+
+# Opening hours in the admin dealer form's own format (DealerForm.js
+# weekly_availability), in each dealer's timezone.
+DEV_WEEKLY_AVAILABILITY = {
+    **{day: {"active": True, "start": "9:00 AM", "end": "7:00 PM"}
+       for day in ("monday", "tuesday", "wednesday", "thursday", "friday")},
+    "saturday": {"active": True, "start": "9:00 AM", "end": "5:00 PM"},
+    "sunday": {"active": False, "start": "", "end": ""},
+}
+
+
+def _fake_phone(slug: str) -> str:
+    """A 555 number, as bare 10 digits: the platform stores Customer phones
+    that way (customerResolver normalizePhone). Leads keep E.164, like
+    leadworker.js / processSms.js store them."""
+    digits = int(hashlib.sha256(slug.encode()).hexdigest(), 16) % 10_000_000
+    return f"555{digits:07d}"
+
+
+def _slug(name: str) -> str:
+    return "".join(c for c in name.lower() if c.isalnum()) or "customer"
+
+
+def _mdy(years_ago: float) -> str:
+    """DealerVault's loose "M/D/YYYY" date strings."""
+    day = clock.now() - timedelta(days=int(365 * years_ago))
+    return f"{day.month}/{day.day}/{day.year}"
+
+
+async def insert_history(dealer_id: str, customer_id: str, history: dict[str, list[dict]]) -> None:
+    """Writes a customer's DMS history into the platform's own collections,
+    shaped like the DealerTrack imports (strict:false, TSV column names):
+
+        vehicles:      [{vin, year, make, model, trim}]         -> vehicles (inventory, `dealerId`)
+        deals:         [{vin, years_ago, price, salesperson}]    -> deals
+        repair_orders: [{vin, years_ago, total}]                 -> repairorders
+        appointments:  [{vin, years_ago, time, ro_number?}]      -> serviceappointments
+        trade_ins:     [{vin, year, make, model, miles, condition}] -> tradeins
+    """
+    db = dealer_scoped_db(dealer_id)
+    cid = as_object_id(customer_id)
+    tag = str(cid)[-6:]
+    for i, v in enumerate(history.get("vehicles", [])):
+        await db.collection(PLATFORM_VEHICLES_COLLECTION, dealer_field="dealerId").insert_one(
+            {"vin": v["vin"], "year": v["year"], "make": v["make"], "model": v["model"], "trim": v.get("trim"),
+             "stock_number": f"DEV{tag}{i}", "dev_seed": True, "createdAt": clock.now()})
+    for i, d in enumerate(history.get("deals", [])):
+        await db.collection(PLATFORM_DEALS_COLLECTION).insert_one(
+            {"deal_number": f"D{tag}{i}", "vin": d["vin"], "customer_number": f"C{tag}", "customer_id": cid,
+             "Contract Date": _mdy(d["years_ago"]), "Sales Price": f"{d['price']:,}.00",
+             "Salesman 1 Name": d["salesperson"], "dev_seed": True, "createdAt": clock.now()})
+    for i, r in enumerate(history.get("repair_orders", [])):
+        await db.collection(PLATFORM_REPAIR_ORDERS_COLLECTION).insert_one(
+            {"ro_number": r.get("ro_number", f"R{tag}{i}"), "vin": r["vin"], "customer_number": f"C{tag}",
+             "customer_id": cid, "Open Date": _mdy(r["years_ago"]), "Close Date": _mdy(r["years_ago"]),
+             "Total Sale": f"{r['total']:,}.00", "Customer Total Sale": f"{r['total']:,}.00",
+             "dev_seed": True, "createdAt": clock.now()})
+    for i, a in enumerate(history.get("appointments", [])):
+        await db.collection(PLATFORM_SERVICE_APPOINTMENTS_COLLECTION).insert_one(
+            {"appointment_number": f"A{tag}{i}", "ro_number": a.get("ro_number"), "vin": a["vin"],
+             "customer_id": cid, "Appointment Date": _mdy(a["years_ago"]),
+             "Appointment Time": a.get("time", "9:00 AM"), "dev_seed": True, "createdAt": clock.now()})
+    for t in history.get("trade_ins", []):
+        await db.collection(PLATFORM_TRADE_INS_COLLECTION).insert_one(
+            {"customer_id": cid, "vin": t["vin"], "year": t["year"], "make": t["make"], "model": t["model"],
+             "miles": t.get("miles"), "condition": t.get("condition"), "status": "open", "dev_seed": True,
+             "createdAt": clock.now(), "updatedAt": clock.now()})
+
+
+async def create_customer(dealer_id: str, name: str, history: dict[str, list[dict]] | None = None) -> str:
+    db = dealer_scoped_db(dealer_id)
+    customer_id = ObjectId()
+    slug = _slug(name)
+    await db.collection(PLATFORM_CUSTOMERS_COLLECTION).insert_one(
+        {
+            "_id": customer_id,
+            "name": name,
+            "emails": [{"value": f"{slug}@example.test", "is_primary": True}],
+            "phones": [{"value": _fake_phone(slug), "is_primary": True, "sms_opt_in": True}],
+            "preferred_communication_mode": "sms",
+            "inbound_lead": True,
+            "assignment_history": [],
+            "extra": {},
+            "dev_seed": True,
+            "createdAt": clock.now(),
+        }
+    )
+    if history:
+        await insert_history(dealer_id, str(customer_id), history)
+    return str(customer_id)
+
+
+async def create_lead(
+    dealer_id: str,
+    *,
+    lead_type: str,
+    channel: str,
+    name: str,
+    comments: str,
+    customer_id: str | None = None,
+    history: dict[str, list[dict]] | None = None,
+) -> dict[str, str]:
+    """Creates the platform-side Lead (and Customer, unless one is given)."""
+    db = dealer_scoped_db(dealer_id)
+    customer_id = customer_id or await create_customer(dealer_id, name, history)
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(customer_id)})
+    lead_id = ObjectId()
+    await db.collection(PLATFORM_LEADS_COLLECTION).insert_one(
+        {
+            "_id": lead_id,
+            "name": name,
+            "email": (customer or {}).get("emails", [{}])[0].get("value"),
+            "phone": "+1" + (customer or {}).get("phones", [{}])[0].get("value", ""),
+            "source": f"dev-{lead_type}-{channel}",
+            "customer_id": as_object_id(customer_id),
+            "followup_preference": channel,
+            "comments": comments,
+            "data": {"lead_type": lead_type, "comments": comments, "channel": channel},
+            "statusChangedAt": clock.now(),
+            "createdAt": clock.now(),
+            "dev_seed": True,
+        }
+    )
+    return {"lead_id": str(lead_id), "customer_id": customer_id}
+
+
+# Real area codes per dealer state, for scenario customers who live near their dealer (stream S). Without one a
+# simulated customer has a 555 "area code", no known state, and only the strictest hours of every state apply
+# (compliance/state_hours.py STRICTEST), which is not what a scenario about a local customer means.
+LOCAL_AREA_CODES = {
+    "NJ": ("201", "551", "609", "732", "848", "856", "862", "908", "973"),
+    "WI": ("262", "414", "608", "715", "920"),
+    "CA": ("213", "310", "323", "408", "415", "510", "562", "626", "650", "714", "818", "909", "949"),
+}
+
+
+async def _local_phone(db, area_codes: tuple[str, ...]) -> str:
+    """A number no other lead has, in one of the dealer's area codes, on the never-assigned 555 exchange
+    (+1 AAA 555 XXXX): its area code gives the customer's state and time zone; it never reaches a real phone."""
+    for _ in range(50):
+        token = uuid.uuid4().int
+        phone = f"+1{area_codes[token % len(area_codes)]}555{(token // 97) % 10_000:04d}"
+        if not await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"phone": phone}):
+            return phone
+    raise RuntimeError("no free local scenario phone number")
+
+
+async def set_contact(dealer_id: str, created: dict[str, str], same_as_lead_id: str | None = None, *,
+                      local: bool = False) -> None:
+    """Gives a simulated lead a phone and email of its own (a name always hashed to the same ones, so two
+    "Maria Test" leads were silently the same customer: MASTER_PLAN_3 C6 duplicate leads). With
+    `same_as_lead_id` it shares that lead's phone and email on purpose: a duplicate. With `local` the phone has
+    one of the dealer's own area codes (LOCAL_AREA_CODES), so the customer's state is the dealer's."""
+    db = dealer_scoped_db(dealer_id)
+    if same_as_lead_id:
+        source = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(same_as_lead_id)}) or {}
+        phone, email = source.get("phone"), source.get("email")
+    else:
+        token = uuid.uuid4().int
+        phone, email = f"+1555{token % 10_000_000:07d}", f"sim.{token % 10**8}@example.test"
+        dealer = next((d for d in DEV_DEALERS if d["_id"] == dealer_id), None)
+        area_codes = LOCAL_AREA_CODES.get(((dealer or {}).get("store") or {}).get("store_state", ""))
+        if local and area_codes:
+            phone = await _local_phone(db, area_codes)
+    await db.collection(PLATFORM_LEADS_COLLECTION).update_one(
+        {"_id": as_object_id(created["lead_id"])}, {"$set": {"phone": phone, "email": email}})
+    await db.collection(PLATFORM_CUSTOMERS_COLLECTION).update_one(
+        {"_id": as_object_id(created["customer_id"])},
+        {"$set": {"phones.0.value": (phone or "")[2:], "emails.0.value": email}})
+
+
+async def _platform_routing(dealer_id: str) -> tuple[bool, bool]:
+    """(send the event?, shadow?) exactly as the platform decides it
+    (aidmvcs-be-dev/app/lib/ai/aiMode.js aiRouting). A dealer with no platform
+    record (unit tests) is treated as live."""
+    dealer = await get_db()[PLATFORM_USERS_COLLECTION].find_one({"_id": as_object_id(dealer_id)}, {"_id": 1})
+    if dealer is None:
+        return True, False
+    mode = await dealer_ai_mode(dealer_id)
+    return mode != "off", mode == "shadow"
+
+
+async def send_lead_created(dealer_id: str, lead_id: str, customer_id: str, channel: str,
+                            enqueue: Enqueue, event_id: str | None = None) -> IntakeResult:
+    send, shadow = await _platform_routing(dealer_id)
+    if not send:
+        return IntakeResult(status="skipped")
+    event = LeadCreatedEvent(event_id=event_id or lead_id, dealer_id=dealer_id, lead_id=lead_id,
+                             customer_id=customer_id, channel=channel, shadow=shadow)
+    return await accept_event("lead-created", event, enqueue)
+
+
+async def send_reply(dealer_id: str, lead_id: str, channel: str, text: str, enqueue: Enqueue) -> IntakeResult:
+    lead = await dealer_scoped_db(dealer_id).collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+    if lead is None:
+        raise LookupError(f"lead {lead_id} not found for dealer {dealer_id}")
+    send, shadow = await _platform_routing(dealer_id)
+    if not send:
+        return IntakeResult(status="skipped")
+    message_id = str(ObjectId())
+    event = InboundMessageEvent(
+        event_id=message_id, dealer_id=dealer_id, customer_id=str(lead["customer_id"]), lead_id=lead_id,
+        channel=channel, message_id=message_id, text=text, received_at=clock.now(), shadow=shadow,
+    )
+    return await accept_event("inbound-message", event, enqueue)
+
+
+# The platform's staff-owned statuses (aidmvcs-be-dev lib/ai/aiStaff.js STAFF_OWNED_STATUSES): moving a
+# lead to one of these sends the AI `lead-paused` with this exact reason (notifyAiOfStaffStatus).
+STAFF_OWNED_STATUSES = ("Appointment Booked", "Visited", "Sold", "DND", "Managerial Review",
+                        "Sold Pending", "Sold Delivered", "Unsold", "No Show", "Closed Lost", "Closed - Lost")
+# The manager's outcome after a Sales Visit (MASTER_PLAN_3 C5).
+MANAGER_OUTCOMES = ("Sold Pending", "Sold Delivered", "Unsold")
+
+
+async def send_staff_status(dealer_id: str, lead_id: str, status: str, enqueue: Enqueue, *,
+                            booking_at: str | None = None, manager_outcome: str | None = None) -> IntakeResult:
+    """What the platform's status route does when staff move a lead
+    (api/conversations/lead/status/route.js): saves the status on the Lead
+    (and, for Appointment Booked, the booking fields, dealer time stored as
+    UTC), then tells the AI with `lead-paused` (MASTER_PLAN_3 C3)."""
+    from upsell_agent.events.models import LeadPausedEvent
+
+    db = dealer_scoped_db(dealer_id)
+    # "Visited" with a manager outcome ends at that outcome, and the AI is told about both in one event.
+    outcome = manager_outcome if status == "Visited" and manager_outcome in MANAGER_OUTCOMES else None
+    shown = outcome or status
+    update: dict = {"lead_status": shown, "fe_lead_status": shown, "statusChangedAt": clock.now()}
+    if outcome:
+        update.update({"manager_outcome": outcome, "manager_outcome_at": clock.now()})
+    if status == "Appointment Booked" and booking_at:
+        from datetime import datetime
+        at = datetime.fromisoformat(booking_at)
+        update.update({"booking.booking_at": at, "booking.booking_date": at,
+                       "booking.booking_time": at.strftime("%H:%M"), "booking_status": True})
+    found = await db.collection(PLATFORM_LEADS_COLLECTION).update_one({"_id": as_object_id(lead_id)}, {"$set": update})
+    if found.matched_count == 0:
+        raise LookupError(f"lead {lead_id} not found for dealer {dealer_id}")
+    if status not in STAFF_OWNED_STATUSES:
+        return IntakeResult(status="not_needed")
+    send, _ = await _platform_routing(dealer_id)
+    if not send:
+        return IntakeResult(status="skipped")
+    event = LeadPausedEvent(event_id=f"status-{lead_id}-{''.join(c for c in status if c.isalnum())}-"
+                                     f"{int(clock.now().timestamp() * 1000)}",
+                            dealer_id=dealer_id, lead_id=lead_id,
+                            reason=f'Staff moved the lead to "{status}"'
+                                   + (f' (manager outcome: "{outcome}")' if outcome else ""))
+    return await accept_event("lead-paused", event, enqueue)
+
+
+async def ensure_dev_dealers() -> None:
+    """Display names for the Debug UI (DEV-only collection)."""
+    for dealer in DEV_DEALERS:
+        await get_db()[DEV_DEALERS_COLLECTION].update_one(
+            {"_id": dealer["_id"]}, {"$set": {"name": dealer["name"]}}, upsert=True)
+
+
+async def ensure_platform_dealers() -> None:
+    """The dev dealers as real platform records: a `User` of type dealer
+    (with its SMS number, auto-reply on, a valid subscription and its AI
+    mode) and an `EmailAccount`, so the platform's workers, SMS webhook and
+    record-message endpoint all recognise them."""
+    db = get_db()
+    for dealer in DEV_DEALERS:
+        oid = ObjectId(dealer["_id"])
+        await db[PLATFORM_USERS_COLLECTION].update_one({"_id": oid}, {"$set": {
+            "email": f"dealer-{dealer['_id'][-2:]}@autopulse.dev.test", "name": dealer["name"],
+            # Not a real password hash: dev dealers are never logged into.
+            "password": "!dev-seed-account-no-login", "type": "dealer",
+            "dealer_account_information": {
+                "sms_conversion_phone": dealer["sms"], "time_zone": dealer["time_zone"], **dealer["store"],
+                "weekly_availability": DEV_WEEKLY_AVAILABILITY},
+            "setting": {"autoReplyEnabled": True},
+            "package_expiry": clock.now() + timedelta(days=365),
+            "ai_mode": dealer["ai_mode"], "dev_seed": True,
+        }}, upsert=True)
+        await db[PLATFORM_EMAIL_ACCOUNTS_COLLECTION].update_one({"dealer_id": oid}, {"$set": {
+            "dealer_id": oid, "account_name": f"{dealer['name']} sales", "event_type": "Sales",
+            "email_address": dealer["email"], "email_password": "!dev-seed", "active": True, "dev_seed": True,
+        }}, upsert=True)

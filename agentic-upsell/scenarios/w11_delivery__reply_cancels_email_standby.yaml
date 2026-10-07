@@ -1,0 +1,13 @@
+name: Replying first cancels the channel switch
+description: The customer answers the SMS, so the email fallback waiting for it is cancelled (it only exists for a message that fails to deliver). The AI's answer to the reply gets its own.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: r, dealer: A, lead_type: sales, channel: sms, name: Rita Reply, comments: "Interested in a used Honda CR-V"}
+  - wait_turns: {lead: r, count: 1, timeout_s: 15}
+  - expect_followup: {lead: r, status: standby, to_channel: email}
+  - advance_clock: {hours: 23}
+  - reply: {lead: r, text: "My budget is about $25k"}
+  - wait_turns: {lead: r, count: 2, timeout_s: 15}
+  - expect_followup: {lead: r, index: 0, status: cancelled}
+  - expect_followup: {lead: r, index: -1, status: standby, count: 2}
+  - expect_outbox: {lead: r, channel: email, count: 0}

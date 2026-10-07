@@ -1,0 +1,24 @@
+name: A handed-off lead still gets an answer, once
+description: The customer asks for a person, so the AI hands off and a staff check is scheduled. A plain message inside two hours is saved for staff with the reason on record, and the customer isn't told the same thing again. A question ("Hello?") is never met with silence - staff are told at once and the customer gets one holding reply (PLAN_4 stream X3 item 4) - and a second question inside 10 minutes is saved without another one.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: h, dealer: A, lead_type: sales, channel: sms, name: Hana Holding, comments: "Looking at a used Honda CR-V"}
+  - wait_turns: {lead: h, count: 1, timeout_s: 20}
+  - reply: {lead: h, text: "Can a real person call me instead?"}
+  - wait_turns: {lead: h, count: 2, timeout_s: 20}
+  - expect_turn: {lead: h, outcome: handoff}
+  - expect_followup: {lead: h, kind: handoff_check, status: pending, count: 1}
+  - reply: {lead: h, text: "Also I'm free after 5"}
+  - wait_turns: {lead: h, count: 3, timeout_s: 20}
+  - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
+  - expect_outbox: {lead: h, channel: sms, count: 2, contains: "a member of our team will call you"}
+  - reply: {lead: h, text: "Hello?"}
+  - wait_turns: {lead: h, count: 4, timeout_s: 20}
+  - expect_turn: {lead: h, trigger: inbound_held, outcome: holding_reply}
+  - expect_outbox: {lead: h, channel: sms, count: 3, contains: "passed this to the team"}
+  - expect_lead: {lead: h, staff_notice: after_handoff_question}
+  - reply: {lead: h, text: "Is anyone there?"}
+  - wait_turns: {lead: h, count: 5, timeout_s: 20}
+  - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
+  - expect_outbox: {lead: h, channel: sms, count: 3}
+  - expect_followup: {lead: h, kind: handoff_check, status: pending}

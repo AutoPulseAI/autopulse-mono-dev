@@ -1,0 +1,70 @@
+# Service leads (no sales bucket: agent/lead_bucket.py classify() returns None for service).
+- id: service-1-oil-change-reschedule
+  bucket: service
+  source: Website Service Request
+  lead_type: service
+  channel: sms
+  name: Helen Park
+  start: "Tue 10:00"
+  comments: Need an oil change and tire rotation for my 2021 Camry
+  covers: [vehicle details, price question, wait time, picking a time, rescheduling]
+  messages:
+    - Hi, yes I need to bring it in
+    - It's a 2021 Toyota Camry
+    - About 41,000 miles
+    - Oil change and tire rotation
+    - How much does that cost?
+    - How long will it take?
+    - Can I wait there?
+    - Do you have anything tomorrow morning?
+    - 8am
+    - Actually can we move it to Friday?
+    - Same time
+    - Thanks!
+
+- id: service-2-check-engine-typos
+  bucket: service
+  source: Website Service Request
+  lead_type: service
+  channel: sms
+  name: Derek Olsen
+  start: "Tue 10:00"
+  comments: check engine light on
+  covers: [typo-heavy customer, safety question, loaner, drop-off time, short "k", second concern]
+  messages:
+    - my check engin lite came on yestrday
+    - its a 2018 honda crv
+    - around 87k
+    - it shakes a lil when i stop at lights
+    - is it safe to drive??
+    - how much is diagnostic
+    - do u have loaners
+    - can i drop it off tomoro
+    - early like 730
+    - k
+    - also can u check my brakes they squeek
+    - thx
+
+- id: service-3-recall-trade-curious
+  bucket: service
+  source: Website Service Request
+  lead_type: service
+  channel: sms
+  name: Gary Whitfield
+  start: "Tue 10:00"
+  comments: Got a recall letter for my 2020 Silverado
+  covers: [recall, add-on service, trade curiosity on a service lead, talk to a person, booking, "yes"]
+  messages:
+    - Hi I got a recall notice in the mail
+    - 2020 Chevy Silverado LT
+    - VIN ends in 4471
+    - Is the recall free?
+    - How long does it take?
+    - Can you also do an oil change while it's in?
+    - I've been thinking about trading it in eventually
+    - What would you give me for it?
+    - Never mind, just the recall for now
+    - Can I speak to someone in service directly?
+    - Monday morning?
+    - 9 is good
+    - "yes"

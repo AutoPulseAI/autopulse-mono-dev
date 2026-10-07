@@ -1,0 +1,28 @@
+name: The lead source puts a sales lead in the credit, trade-in or general bucket
+description: Scope Workflow 1 step 3. A Capital One lead is a credit lead, a KBB lead a trade-in lead, a CarGurus lead a general lead. The bucket only changes the wording, never the cadence. When a credit customer then says they just want to sell their car, the bucket follows them and the original bucket is kept for reporting.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: credit, dealer: A, lead_type: sales, channel: sms, name: Cora Credit, comments: "Looking at a used Camry", send_event: false}
+  - set_contact: {lead: credit, source: "Capital One"}
+  - send_lead_created: {lead: credit}
+  - wait_turns: {lead: credit, count: 1, timeout_s: 20}
+  - expect_lead: {lead: credit, fields: {bucket: credit, original_bucket: credit}}
+
+  - new_lead: {as: trade, dealer: A, lead_type: sales, channel: sms, name: Tom Trade, comments: "Looking at a used Camry", send_event: false}
+  - set_contact: {lead: trade, source: "KBB Instant Cash Offer"}
+  - send_lead_created: {lead: trade}
+  - wait_turns: {lead: trade, count: 1, timeout_s: 20}
+  - expect_lead: {lead: trade, fields: {bucket: trade_in}}
+
+  - new_lead: {as: general, dealer: A, lead_type: sales, channel: sms, name: Gina General, comments: "Looking at a used Camry", send_event: false}
+  - set_contact: {lead: general, source: "CarGurus"}
+  - send_lead_created: {lead: general}
+  - wait_turns: {lead: general, count: 1, timeout_s: 20}
+  - expect_lead: {lead: general, fields: {bucket: general}}
+  # Every bucket gets the same cadence: the name nudge is planned for each.
+  - expect_followup: {lead: credit, kind: cadence_touch, status: pending}
+  - expect_followup: {lead: general, kind: cadence_touch, status: pending}
+
+  - reply: {lead: credit, text: "Honestly I just want to sell my car"}
+  - wait_turns: {lead: credit, count: 2, timeout_s: 20}
+  - expect_lead: {lead: credit, fields: {bucket: trade_in, original_bucket: credit}}
