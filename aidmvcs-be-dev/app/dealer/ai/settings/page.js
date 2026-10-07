@@ -1,7 +1,7 @@
 "use client";
 // AI Settings for the dealership: AI mode (off / shadow / on), vehicle photos in
 // texts (MMS), the Days 1-7 daily call tasks (stream T), appointment capacity per slot (stream R), and the opening
-// hours the AI works to (read-only; they come from the dealer account).
+// hours the AI works to (read-only here; edited in Dealer Setup, the dealer account form).
 //   /dealer/ai/settings
 
 import { useEffect, useState } from "react";
@@ -240,7 +240,8 @@ export default function AiSettingsPage() {
                   <p className="text-secondary-light">
                     <small>
                       The AI tells customers these hours, offers appointments inside them and opens call tasks during
-                      them. They come from your dealer account; ask your account manager to change them.
+                      them. They are your dealership&apos;s opening hours: change them in <strong>Dealer Setup</strong> (your name,
+                      top right), and the AI uses the new hours within a minute.
                       {settings.timezone && <> Time zone: {settings.timezone}.</>}
                     </small>
                   </p>
