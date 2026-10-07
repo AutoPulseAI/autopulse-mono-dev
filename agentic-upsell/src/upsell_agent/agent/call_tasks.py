@@ -89,11 +89,18 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
             existing = {**existing, "requested": True, "reason": reason, "phone": phone}
         return existing
     now = clock.now()
+    # Client, 7 Oct 2026: never give a call task to someone on their day off (agent/staff_schedule.py).
+    from upsell_agent.agent.staff_schedule import agent_for
+    salesperson = await assigned_agent(db, lead_id)
+    agent, reassigned_why = await agent_for(db, salesperson, now)
+    if reassigned_why:
+        text = f"{text} ({reassigned_why}.)"
     doc = {"lead_id": lead_id, "customer_id": customer_id, "phone": phone, "customer_name": customer_name,
            "status": OPEN, "reason": reason, "source_turn_id": source_turn_id, "followup_id": followup_id,
            "timer_started_at": created_at, "opened_at": now, "created_at": now, "requested": requested,
            # stream T: who should call, and when it counts as missed.
-           "source": "connection_timer", "assigned_to": await assigned_agent(db, lead_id),
+           "source": "connection_timer", "assigned_to": agent,
+           **({"assigned_salesperson": salesperson, "reassigned_reason": reassigned_why} if reassigned_why else {}),
            "due_by": await end_of_agent_day(db.dealer_id, now),
            **(await _requested_due(db, now) if requested else {}), **(extra or {})}
     # PLAN_4 stream X1 item 7: the calling window staff must keep to, worked out as the task opens; the platform

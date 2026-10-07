@@ -1,7 +1,7 @@
 "use client";
 // AI Settings for the dealership: AI mode (off / shadow / on), vehicle photos in
-// texts (MMS), the Days 1-7 daily call tasks (stream T), appointment capacity per slot (stream R), and the opening
-// hours the AI works to (read-only; they come from the dealer account).
+// texts (MMS), the Days 1-7 daily call tasks (stream T), appointment capacity per slot (stream R), and a
+// note that the AI follows the dealership's opening hours from Dealer Setup (not set here).
 //   /dealer/ai/settings
 
 import { useEffect, useState } from "react";
@@ -236,30 +236,21 @@ export default function AiSettingsPage() {
                 </div>
 
                 <div className="w_card">
-                  <h3 className="w_card_title mb-0">Opening hours the AI uses</h3>
-                  <p className="text-secondary-light">
+                  <h3 className="w_card_title mb-0">Opening hours</h3>
+                  <p className="text-secondary-light mb-0">
                     <small>
-                      The AI tells customers these hours, offers appointments inside them and opens call tasks during
-                      them. They come from your dealer account; ask your account manager to change them.
-                      {settings.timezone && <> Time zone: {settings.timezone}.</>}
+                      The AI follows your dealership&apos;s opening hours from <strong>Dealer Setup</strong> (your name,
+                      top right): it tells customers those hours, books appointments inside them and opens call tasks
+                      during them. Staff without their own work schedule work those hours too. Change them there; the
+                      AI uses the new hours within a minute.
                     </small>
                   </p>
                   {!settings.hours_on_record && (
-                    <Alert variant="warning" className="py-2 small">
-                      No opening hours are set. The AI won&apos;t tell customers any hours, and uses Monday to Saturday,
-                      9:00 AM to 6:00 PM for its own timing.
+                    <Alert variant="warning" className="py-2 small mt-2 mb-0">
+                      No opening hours are set in Dealer Setup. The AI won&apos;t tell customers any hours, and uses
+                      Monday to Saturday, 9:00 AM to 6:00 PM for its own timing.
                     </Alert>
                   )}
-                  <Table bordered size="sm" className="mb-0">
-                    <tbody>
-                      {settings.hours.map((h) => (
-                        <tr key={h.day}>
-                          <td className="text-capitalize" style={{ width: "40%" }}>{h.day}</td>
-                          <td>{h.open ? `${h.start || "?"} - ${h.end || "?"}` : <span className="text-secondary-light">Closed</span>}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
                 </div>
 
                 {canChange && (

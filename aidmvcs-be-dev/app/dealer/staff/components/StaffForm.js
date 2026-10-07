@@ -3,6 +3,24 @@ import { useState, useEffect } from "react";
 import { useUser } from "../../context/UserContext";
 import { Form, Button, Spinner } from "react-bootstrap";
 import useFetch from "../../../hooks/useFetch";
+import { WEEKDAYS, fromPicker, toPicker } from "@lib/workSchedule";
+
+// Work schedule rows for the form: [{ day, active, start: "09:00", end: "17:00" }]; a new employee starts on
+// Monday-Friday 9-5 once "Same as the dealership's hours" is unticked.
+function scheduleRows(saved) {
+  return WEEKDAYS.map((day) => {
+    const d = saved?.[day];
+    if (saved) return { day, active: Boolean(d?.active), start: toPicker(d?.start), end: toPicker(d?.end) };
+    const weekday = !["saturday", "sunday"].includes(day);
+    return { day, active: weekday, start: weekday ? "09:00" : "", end: weekday ? "17:00" : "" };
+  });
+}
+
+function scheduleProblem(rows) {
+  if (!rows.some((r) => r.active)) return "Pick at least one working day.";
+  const bad = rows.find((r) => r.active && (!r.start || !r.end || r.end <= r.start));
+  return bad ? `${bad.day[0].toUpperCase()}${bad.day.slice(1)}: the shift must end after it starts.` : null;
+}
 
 export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, handleClose }) {
   const { fetchData, error: fetchError } = useFetch();
@@ -15,14 +33,21 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [dealerHours, setDealerHours] = useState(true); // no own schedule: works the dealership's hours
+  const [schedule, setSchedule] = useState(scheduleRows(null));
 
   useEffect(() => {
     if (editStaff) {
       setEmail(editStaff.email || "");
       setName(editStaff.name || "");
       setRole(editStaff.role?._id || "");
+      setDealerHours(!editStaff.work_schedule);
+      setSchedule(scheduleRows(editStaff.work_schedule));
     }
   }, [editStaff]);
+
+  const setScheduleField = (day, field, value) =>
+    setSchedule((prev) => prev.map((r) => (r.day === day ? { ...r, [field]: value } : r)));
 
   useEffect(() => {
     if (message) {
@@ -45,6 +70,7 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
     if (!email.trim()) newErrors.email = "Email id is required.";
     if (!password.trim() && !editStaff) newErrors.password = "Password is required.";
     if (!role) newErrors.role = "Role selection is required.";
+    if (!dealerHours && scheduleProblem(schedule)) newErrors.schedule = scheduleProblem(schedule);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -64,6 +90,9 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
         role,
         parent_id: dealerParent.id,
         type: "dealer",
+        work_schedule: dealerHours ? null : Object.fromEntries(schedule.map((r) => [r.day, r.active
+          ? { active: true, start: fromPicker(r.start), end: fromPicker(r.end) }
+          : { active: false }])),
       };
 
       const method = editStaff ? "PUT" : "POST";
@@ -96,6 +125,8 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
         setName("");
         setPassword("");
         setRole("");
+        setDealerHours(true);
+        setSchedule(scheduleRows(null));
         setEditStaff(null);
       } else {
         setMessage(data.message);
@@ -202,6 +233,45 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
             <Form.Control.Feedback type="invalid">
               {errors.role}
             </Form.Control.Feedback>
+          </Form.Group>
+
+          <Form.Group className="mb-4">
+            <Form.Label>Work schedule</Form.Label>
+            <Form.Check type="checkbox" id="staff-dealer-hours" disabled={submitting}
+              label="Same as the dealership's opening hours" checked={dealerHours}
+              onChange={(e) => setDealerHours(e.target.checked)} />
+            <Form.Text className="text-muted d-block mb-2">
+              The AI only gives this person call tasks while they are working; on their days off a colleague who is
+              working gets them.
+            </Form.Text>
+            {!dealerHours && (
+              <table className="table table-sm table-bordered mb-0">
+                <tbody>
+                  {schedule.map((r) => (
+                    <tr key={r.day}>
+                      <td className="text-capitalize align-middle" style={{ width: "28%" }}>{r.day}</td>
+                      <td className="align-middle" style={{ width: "22%" }}>
+                        <Form.Check type="switch" id={`staff-day-${r.day}`} disabled={submitting}
+                          label={r.active ? "Working" : "Off"} checked={r.active}
+                          onChange={(e) => setScheduleField(r.day, "active", e.target.checked)} />
+                      </td>
+                      <td>
+                        {r.active && (
+                          <div className="d-flex align-items-center gap-2">
+                            <Form.Control type="time" size="sm" step={900} value={r.start} disabled={submitting}
+                              aria-label={`${r.day} start`} onChange={(e) => setScheduleField(r.day, "start", e.target.value)} />
+                            <span>to</span>
+                            <Form.Control type="time" size="sm" step={900} value={r.end} disabled={submitting}
+                              aria-label={`${r.day} end`} onChange={(e) => setScheduleField(r.day, "end", e.target.value)} />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {errors.schedule && <div className="text-danger small mt-1">{errors.schedule}</div>}
           </Form.Group>
 
           <Button type="submit" variant="custom" disabled={submitting}>
