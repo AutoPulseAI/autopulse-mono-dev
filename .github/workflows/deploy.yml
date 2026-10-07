@@ -41,7 +41,7 @@ jobs:
             cd /var/www/html/aidmvcs-be &&
             npm install &&
             npm run build &&
-            pm2 restart aidmvcs-be aidmvcs-worker
+            pm2 restart aidmvcs-be-v2 aidmvcs-worker-v2
           '
 
       - name: Deploy agentic-upsell
