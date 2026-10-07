@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import Permission from "@models/Permission";
 import { sendStaffAccountEmail, resetPasswordAccountEmail } from "@lib/emailservice";
 import { normalizeUserEmail } from "@utils/userEmail";
+import { parseWorkSchedule } from "@lib/workSchedule";
 
 export async function GET(req) {
   try {
@@ -55,7 +56,7 @@ export async function GET(req) {
 
     const staff = await User.find(query)
       .populate("role", "name")
-      .select("email role name")
+      .select("email role name work_schedule")
       .skip((page - 1) * limit)
       .limit(limit)
       .exec();
@@ -75,8 +76,11 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, role, type,parent_id } = await req.json();
+    const { name, email, password, role, type,parent_id, work_schedule } = await req.json();
     const emailNorm = normalizeUserEmail(email);
+    // Staff work schedule (app/lib/workSchedule.js); unset = the dealership's opening hours.
+    const schedule = work_schedule === undefined ? { value: undefined } : parseWorkSchedule(work_schedule);
+    if (schedule.error) return Response.json({ message: schedule.error }, { status: 422 });
 
     // Check if email already exists (stored canonical lowercase)
     const existingUser = await User.findOne({ email: emailNorm });
@@ -101,7 +105,8 @@ export async function POST(req) {
     }
     const hashedPassword = await bcrypt.hash(password, 10); 
     // Create a new user
-    const newStaff = new User({ name, email: emailNorm, password:hashedPassword, role, type,parent_id:parent_id||null });
+    const newStaff = new User({ name, email: emailNorm, password:hashedPassword, role, type,parent_id:parent_id||null,
+      ...(schedule.value ? { work_schedule: schedule.value } : {}) });
     await newStaff.save();
 
     // Populate role details
@@ -133,7 +138,9 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     await dbConnect();
-    const { staffId, name, role, email, password } = await req.json();
+    const { staffId, name, role, email, password, work_schedule } = await req.json();
+    const schedule = work_schedule === undefined ? null : parseWorkSchedule(work_schedule);
+    if (schedule?.error) return new Response(JSON.stringify({ message: schedule.error }), { status: 422 });
 
     const authHeader = req.headers.get("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -175,6 +182,7 @@ export async function PUT(req) {
     staff.name = name || staff.name;
     staff.role = role || staff.role;
     if (emailNorm) staff.email = emailNorm;
+    if (schedule) staff.work_schedule = schedule.value ?? undefined; // null: back to the dealership's hours
 
     const plainPassword =
       password && String(password).trim() ? String(password).trim() : null;
