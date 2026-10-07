@@ -36,9 +36,9 @@ jobs:
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
             --exclude='.env*' --exclude='node_modules' --exclude='.next' \
-            aidmvcs-be-dev/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/aidmvcs-be/"
+            aidmvcs-be-dev/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/autopulse-prod-v2/aidmvcs-be-dev/"
           ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
-            cd /var/www/html/aidmvcs-be &&
+            cd /var/www/html/autopulse-prod-v2/aidmvcs-be-dev &&
             npm install &&
             npm run build &&
             pm2 restart aidmvcs-be-v2 aidmvcs-worker-v2
@@ -49,12 +49,12 @@ jobs:
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
             --exclude='.env*' --exclude='.venv' --exclude='__pycache__' \
-            agentic-upsell/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/agentic-upsell/"
+            agentic-upsell/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/autopulse-prod-v2/agentic-upsell/"
           ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
-            cd /var/www/html/agentic-upsell &&
+            cd /var/www/html/autopulse-prod-v2/agentic-upsell &&
             source .venv/bin/activate &&
             pip install . &&
-            pm2 restart upsell-api upsell-worker
+            pm2 restart upsell-api upsell-worker || true
           '
 
       - name: Smoke test
