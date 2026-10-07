@@ -1,0 +1,248 @@
+"""SAQ job functions. Thin wrappers: parse the payload, take the per-lead lock
+and a dealer slot (architecture §12), call the handler.
+
+Each function receives SAQ's `ctx` first. `ctx["deps"]` and `ctx["redis"]`
+are built once per worker process in worker/main.py's startup.
+
+A turn that finds its lead locked, or its dealer at the cap, is re-queued
+under a new job key instead of blocking a worker slot while it waits: first
+`busy_retry_delay_s` later, the wait growing to `busy_retry_max_delay_s`, up
+to `busy_retry_max` times (see busy_retry_delay).
+"""
+
+import logging
+import os
+import socket
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from upsell_agent.agent import lifecycle, maintenance, recalls, summary
+from upsell_agent.config import get_settings
+from upsell_agent.events import handlers
+from upsell_agent.events.models import (
+    BookingChangedEvent,
+    InboundMessageEvent,
+    LeadCreatedEvent,
+    LeadPausedEvent,
+    LeadResumedEvent,
+)
+from upsell_agent.scheduler import followups
+from upsell_agent.worker.locks import Busy, dealer_slot, lead_lock
+from upsell_agent.worker.queue import JOB_TIMEOUT_S
+
+logger = logging.getLogger(__name__)
+
+
+async def ping(ctx: dict[str, Any], *, nonce: str) -> dict[str, Any]:
+    """Round-trip check used by `make ai-ping` and the Stage 1 scenario."""
+    return {"pong": nonce, "worker": f"{socket.gethostname()}:{os.getpid()}"}
+
+
+def busy_retry_delay(attempt: int) -> float:
+    """2s, 2.25s, 2.5s, ... up to 10s: quick while a lead's turn finishes,
+    gentle on Redis while a big campaign backlog drains."""
+    settings = get_settings()
+    return min(settings.busy_retry_max_delay_s, settings.busy_retry_delay_s + 0.25 * attempt)
+
+
+async def _guarded(
+    ctx: dict[str, Any],
+    function: str,
+    *,
+    dealer_id: str,
+    lock_id: str,
+    event: dict[str, Any],
+    received_at: str | None,
+    busy_attempt: int,
+    run: Callable[[], Awaitable[dict[str, Any]]],
+) -> dict[str, Any]:
+    settings = get_settings()
+    redis = ctx["redis"]
+    try:
+        async with lead_lock(redis, dealer_id, lock_id, settings.lead_lock_ttl_s), \
+                dealer_slot(redis, dealer_id, settings.dealer_max_inflight, settings.lead_lock_ttl_s * 2):
+            return await run()
+    except Busy as busy:
+        if busy_attempt >= settings.busy_retry_max:
+            logger.error("%s for %s gave up after %s busy retries: %s", function, lock_id, busy_attempt, busy)
+            return {"status": "gave_up", "reason": str(busy)}
+        job = ctx.get("job")
+        base_key = (job.key if job else f"{function}:{lock_id}").split(":busy")[0]
+        await ctx["worker"].queue.enqueue(
+            function,
+            key=f"{base_key}:busy{busy_attempt + 1}",
+            scheduled=int(time.time() + busy_retry_delay(busy_attempt)),
+            timeout=JOB_TIMEOUT_S,
+            event=event,
+            received_at=received_at,
+            busy_attempt=busy_attempt + 1,
+        )
+        return {"status": "requeued", "reason": str(busy), "busy_attempt": busy_attempt + 1}
+
+
+async def handle_lead_created(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                              busy_attempt: int = 0) -> dict[str, Any]:
+    parsed = LeadCreatedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_lead_created", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_lead_created(parsed, ctx["deps"], received_at),
+    )
+
+
+async def handle_inbound_message(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                                 busy_attempt: int = 0) -> dict[str, Any]:
+    parsed = InboundMessageEvent.model_validate(event)
+    # Record the message before waiting on the lead lock, so a turn already
+    # running for this lead (or the next one) answers it together with the rest.
+    await handlers.record_inbound(parsed)
+    return await _guarded(
+        ctx, "handle_inbound_message", dealer_id=parsed.dealer_id,
+        # Without a lead id the handler finds the customer's latest lead, so
+        # lock on the customer: two replies from one customer still serialize.
+        lock_id=parsed.lead_id or f"customer:{parsed.customer_id}", event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_inbound_message(parsed, ctx["deps"], received_at),
+    )
+
+
+async def handle_lead_paused(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                             busy_attempt: int = 0) -> dict[str, Any]:
+    """Staff took the lead over or moved its status. PLAN_4 stream X2 (audit 3): under the lead's lock, so a staff
+    status change (Sold Delivered, Closed Lost...) never lands in the middle of a SOLD PENDING touch, an appointment
+    step or a turn for the same lead - each sees the stage before or after it, never half of it."""
+    parsed = LeadPausedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_lead_paused", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_lead_paused(parsed, ctx.get("deps")),
+    )
+
+
+async def handle_booking_changed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                                 busy_attempt: int = 0) -> dict[str, Any]:
+    """Staff cancelled or moved the booking in the CRM (stream S): under the lead's lock, so it never races a
+    turn or a due appointment step for the same lead."""
+    parsed = BookingChangedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_booking_changed", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_booking_changed(parsed, ctx.get("deps")),
+    )
+
+
+async def handle_lead_resumed(ctx: dict[str, Any], *, event: dict[str, Any], received_at: str | None = None,
+                              busy_attempt: int = 0) -> dict[str, Any]:
+    """Under the lead's lock too (stream X2): resuming re-plans the lead's workflow."""
+    parsed = LeadResumedEvent.model_validate(event)
+    return await _guarded(
+        ctx, "handle_lead_resumed", dealer_id=parsed.dealer_id, lock_id=parsed.lead_id, event=event,
+        received_at=received_at, busy_attempt=busy_attempt,
+        run=lambda: handlers.handle_lead_resumed(parsed),
+    )
+
+
+async def update_summary(ctx: dict[str, Any], *, dealer_id: str, lead_id: str, **_: Any) -> dict[str, Any]:
+    """The rolling summary (agent/summary.py), queued by a turn after its send.
+    Its own lock, not the lead's: a turn is never kept waiting for a summary,
+    and two summary runs for one lead never overlap (the second just skips;
+    the next turn queues another if still needed)."""
+    settings = get_settings()
+    try:
+        async with lead_lock(ctx["redis"], dealer_id, f"summary:{lead_id}", settings.lead_lock_ttl_s):
+            return await summary.update_summary(dealer_id, lead_id, ctx["deps"])
+    except Busy:
+        return {"status": "skipped", "reason": "a summary update for this lead is already running"}
+
+
+async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """The 24h channel switch (scheduler/followups.py). Runs every minute on
+    every worker (worker/main.py cron) and on demand when a webhook reports a
+    failed message or the dev clock moves. Each follow-up is fired under its
+    lead's lock, so it never races a turn for the same lead."""
+    settings = get_settings()
+    redis = ctx["redis"]
+    summary = await followups.fire_due(
+        ctx["deps"], lock=lambda dealer_id, lead_id: lead_lock(redis, dealer_id, lead_id, settings.lead_lock_ttl_s))
+    if summary["results"].get("busy"):
+        summary["busy_retry"] = await _queue_busy_retry(ctx)
+    return summary
+
+
+async def _queue_busy_retry(ctx: dict[str, Any]) -> str | None:
+    """Follow-ups put back because their lead was busy fall due again in BUSY_RETRY_AFTER: run then, not at the
+    next minute's cron (stream S: a touch right after a turn waited up to 90 s). One run per retry window."""
+    worker = ctx.get("worker")
+    if worker is None:
+        return None
+    delay = followups.BUSY_RETRY_AFTER.total_seconds() + 1
+    at = int(time.time() + delay)
+    # One run per second at most. Never a wider window: a follow-up put back just after an earlier retry was
+    # queued falls due after that retry runs, and a shared key would leave it to the next minute's cron.
+    key = f"fire_due_followups:busy-retry:{at}"
+    await worker.queue.enqueue("fire_due_followups", key=key, scheduled=at, timeout=300)
+    return key
+
+
+async def close_expired_leads(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_3 C3: the Day 91 sweep (agent/lifecycle.py close_expired).
+    Hourly on every worker (worker/main.py cron); each close is one atomic
+    update, so two workers running it together close a lead once."""
+    return await lifecycle.close_expired()
+
+
+async def sweep_recalls(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_4 D6 (stream A4): NHTSA recall checks for owned vehicles (agent/recalls.py sweep), hourly;
+    each vehicle is re-checked every RECALL_RECHECK_DAYS, a batch per run."""
+    return await recalls.sweep()
+
+
+async def sweep_maintenance(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_4 D5 (stream A4): maintenance due recalculation (agent/maintenance.py sweep), hourly; each
+    vehicle at most daily. Event-driven: it raises one alert per due service, never a cadence."""
+    return await maintenance.sweep()
+
+
+async def plan_birthdays(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """MASTER_PLAN_4 D7 (stream A3): daily, birthdays for owners whose DealerVault `Birth Date` arrived after
+    the delivery (scheduler/sold_lifecycles.py sweep_birthdays)."""
+    from upsell_agent.scheduler.sold_lifecycles import sweep_birthdays
+    return await sweep_birthdays()
+
+
+async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """DEV: forget the worker's cached stock searches. The search cache lives in this process (60 s per
+    dealer and query, tools/inventory_tool.py), so a scenario or the Debug UI that changes stock from another
+    process (devtools add_stock, "mark sold") asks the worker to drop it, or the next search sees stale stock."""
+    from upsell_agent.tools import inventory_tool
+
+    inventory_tool.clear_cache()
+    return {"status": "cleared"}
+
+
+async def sweep_prices(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """PLAN_4 stream L: every 6 hours, a price snapshot of every vehicle of every dealer the AI works for, for
+    verified price drops (learning/price_watch.py)."""
+    from upsell_agent.learning import price_watch
+    return await price_watch.sweep()
+
+
+async def reconcile_events(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """PLAN_4 stream X3 items 5-6: CRM leads and customer messages the AI never heard about, every 5 minutes
+    (scheduler/reconcile.py). Submitted through the normal, deduplicating event intake."""
+    from upsell_agent.events.intake import accept_event
+    from upsell_agent.scheduler.reconcile import reconcile
+    from upsell_agent.worker.queue import make_enqueue
+
+    enqueue = make_enqueue(ctx["worker"].queue)
+    return await reconcile(submit=lambda event_type, event: accept_event(event_type, event, enqueue))
+
+
+FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
+             handle_booking_changed,  # PLAN_4 stream S
+             fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
+             sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
+             plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)
+             sweep_prices,  # PLAN_4 stream L
+             reconcile_events]  # PLAN_4 stream X3

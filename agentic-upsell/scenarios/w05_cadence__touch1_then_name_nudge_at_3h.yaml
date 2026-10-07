@@ -1,0 +1,21 @@
+name: Touch 1 has the required structure, then the name nudge at 3 hours
+description: >
+  The first reply opens with the client's required introduction and ends with "Tell me, what are you driving
+  now?" (Omnichannel PDF §3). With no word back, Touch 2 goes out 3 hours later on text AND email - exactly the
+  customer's first name and a question mark - and the lead becomes No Contact Made. The next touch (Day 2, a
+  vehicle visual) is already waiting, at 10:00 or 15:00 dealer time - PLAN_4 stream L splits Day 2-90 sends
+  between those two to learn which gets more replies, so only the name nudge itself has a fixed time.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Nina Nudge, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: n, contains: "Thank you for your interest in our"}
+  - expect_last_sent: {lead: n, contains: "Tell me, what are you driving now?"}
+  - expect_lead: {lead: n, stage: new_lead}
+  - expect_followup: {lead: n, kind: cadence_touch, status: pending, due_local: "13:00"}
+  - advance_clock: {hours: 3.1}
+  - expect_followup: {lead: n, kind: cadence_touch, status: sent, index: 0, timeout_s: 30}
+  - expect_last_sent: {lead: n, contains: "Nina?"}
+  - expect_outbox: {lead: n, channel: email, count: 1, contains: "Nina?"}
+  - expect_lead: {lead: n, stage: no_contact_made}
+  - expect_followup: {lead: n, kind: cadence_touch, status: pending, count: 2}

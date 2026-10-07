@@ -1,0 +1,12 @@
+name: No contact in an hour opens a staff call task
+description: Touch 1 goes out on text and email and starts the 60-minute connection timer. Nobody replies, so after an hour the call task opens for staff (the team gets a notice). Inside the hour nothing is shown.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Cal Callme, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - expect_followup: {lead: c, kind: call_task, status: pending}
+  - advance_clock: {minutes: 30}
+  - expect_call_task: {lead: c, status: none}
+  - advance_clock: {minutes: 35}
+  - expect_call_task: {lead: c, status: open, timeout_s: 30}
+  - expect_lead: {lead: c, staff_notice: call_task}

@@ -1,0 +1,26 @@
+flowchart TB
+    subgraph R1["A · Getting the lead"]
+        direction LR
+        IN["Lead arrives<br/>form · provider · phone<br/>text · email · campaign reply"] --> INTAKE["1 · Intake and classification<br/>source · bucket · new/used<br/>inbound or outbound"]
+        INTAKE --> AH["2 · After-hours check<br/>if closed: help now,<br/>or next business day?"]
+        AH --> T1["3 · First quality response<br/>Touch 1, within 60 seconds"]
+    end
+    subgraph R2["B · Working the lead until an appointment, an opt-out or Day 91"]
+        direction LR
+        CAD["5 · No-response cadence<br/>Days 1-7 daily<br/>Days 8-30 weekly · 31-90 monthly"] -->|customer replies| CONV["4 · Active conversation<br/>answer · qualify · use their answers<br/>ask for the appointment, up to 3 times"]
+        CONV -->|'call me Friday'| SF["6 · Specific follow-up<br/>on the customer's date"]
+        CAD -->|Day 91| C91["Opportunity closes<br/>record kept"]
+    end
+    subgraph R3["C · Appointment to sale"]
+        direction LR
+        AP["7 · Appointment<br/>details · countdown<br/>Y/N confirmation"] -->|customer arrives| SV["8 · Sales Visit<br/>manager must pick<br/>an outcome"]
+        SV --> AFTER["9-10 · After the sale<br/>SOLD PENDING · SOLD - DELIVERED<br/>UNSOLD · see Figure 3"]
+        AP -->|no show +1 hour| NS["No-show follow-up<br/>no reply: back to<br/>the cadence (5)"]
+    end
+    R1 -->|"reply: 4 · no reply: 5"| R2
+    R2 -->|appointment booked| R3
+    classDef closed fill:#f3e3e3,stroke:#a33,color:#300
+    class C91 closed
+    style R1 fill:#fafbfd,stroke:#9fb0cc
+    style R2 fill:#fafbfd,stroke:#9fb0cc
+    style R3 fill:#fafbfd,stroke:#9fb0cc

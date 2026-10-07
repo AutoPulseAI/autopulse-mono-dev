@@ -1,0 +1,148 @@
+"""One conversation turn as a LangGraph graph (architecture §7):
+
+    load_context ─┬─▶ extract ─┬─▶ validate → search_stock → decide → compose → guard ─┬─▶ END
+                  │            │                                        ▲              │
+                  │            │                                        └── retry ×1 ──┤
+                  │            └── failed ───────────────▶ fallback ◀───┘ (2nd failure / compose failed)
+                  ├── first reply (FIRST_REPLY_MODE=template) ─▶ fallback ─▶ END
+                  └── after-hours morning message (no new customer text) ─▶ search_stock
+
+- Extract and Compose call the AI (agent/llm.py). Everything else is code.
+- `search_stock` loads the dealer's stock from this turn's validated profile
+  (MASTER_PLAN_3 Phase 2); it runs after Validate so it sees this message.
+- `fallback` is the template reply step (agent/nodes/template_reply.py).
+- Decide choosing "stop" skips Compose entirely: nothing is written.
+
+Every step is wrapped so it reports to the turn's TurnTracer (input,
+reasoning, output, timing), which is what the Debug UI animates.
+
+The graph returns a draft and never sends; the worker owns sending and
+scheduling (agent/turn.py).
+
+Per-run values arrive through `config["configurable"]`:
+    ctx    agent/context.TurnContext (database, platform client, settings,
+           tracer, AI-call budget)
+"""
+
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END, StateGraph
+
+from upsell_agent.agent.after_hours import TRIGGER_RESUME
+from upsell_agent.agent.context import TurnContext
+from upsell_agent.agent.nodes.compose import compose
+from upsell_agent.agent.nodes.decide import decide
+from upsell_agent.agent.nodes.extract import extract
+from upsell_agent.agent.nodes.guard import guard
+from upsell_agent.agent.nodes.load_context import load_context
+from upsell_agent.agent.nodes.search_stock import search_stock
+from upsell_agent.agent.nodes.template_reply import template_reply
+from upsell_agent.agent.nodes.validate import validate
+from upsell_agent.agent.state import AgentState
+from upsell_agent.scheduler.followups import (
+    TRIGGER_CADENCE_TOUCH,
+    TRIGGER_NEXT_ACTION,
+    TRIGGER_VISIT_FOLLOWUP,
+)
+
+NodeFn = Callable[[AgentState, Any, TurnContext], Awaitable[dict]]
+
+
+def _node_input(name: str, state: AgentState) -> dict[str, Any]:
+    """What the Debug UI shows as this step's input: only the fields it reads."""
+    if name == "load_context":
+        return {"lead_id": state.lead_id, "customer_id": state.customer_id, "trigger": state.trigger,
+                "channel": state.channel}
+    if name == "extract":
+        pack = state.context_pack or {}
+        return {"text": state.customer_text or state.inbound_text,
+                "lead_type": (state.profile or {}).get("effective_lead_type"),
+                "recently_asked": (pack.get("conversation") or {}).get("last_asked", []),
+                "context": {"working_memory_messages": len(pack.get("working_memory", [])),
+                            "open_questions": len((pack.get("conversation") or {}).get("open_questions", [])),
+                            "now": pack.get("now")}}
+    if name == "validate":
+        return {"extraction": state.extraction, "text": state.customer_text or state.inbound_text}
+    if name == "search_stock":
+        return {"profile_criteria": {s["path"]: s.get("value") for s in (state.profile or {}).get("slots", [])
+                                     if s["path"].startswith("interest.") and s.get("state") in ("filled", "stale")},
+                "questions": (state.extraction or {}).get("questions", []),
+                "text": state.customer_text or state.inbound_text}
+    if name == "decide":
+        return {"lead_type": (state.profile or {}).get("effective_lead_type"),
+                "required": (state.profile or {}).get("required"),
+                "missing": (state.profile or {}).get("missing"),
+                "wants_human": (state.extraction or {}).get("wants_human"),
+                "upset": (state.extraction or {}).get("upset"),
+                "upset_confidence": (state.extraction or {}).get("upset_confidence"),
+                "annoyed_at_bot": (state.extraction or {}).get("annoyed_at_bot")}
+    if name == "compose":
+        return {"decision": {k: (state.decision or {}).get(k) for k in ("action", "asks", "confirm", "answer_questions")},
+                "attempt": state.retry_count + 1, "channel": state.channel, "campaign": state.campaign,
+                "guard_feedback": (state.guard_result or {}).get("violations") if state.retry_count else None}
+    if name == "guard":
+        return {"draft": state.draft}
+    if name == "fallback":
+        return {"lead_type": state.lead_type, "customer_name": state.customer_name,
+                "reason": state.fallback_reason or ("first reply" if state.first_reply_via_template else None)}
+    return {}
+
+
+def _traced(name: str, fn: NodeFn) -> Callable[[AgentState, RunnableConfig], Awaitable[dict]]:
+    async def run(state: AgentState, config: RunnableConfig) -> dict:
+        ctx: TurnContext = config["configurable"]["ctx"]
+        async with ctx.tracer.node(name, _node_input(name, state)) as span:
+            return await fn(state, span, ctx)
+
+    run.__name__ = name
+    return run
+
+
+#: Triggers whose turn has no customer message behind it (see _after_load).
+NO_INBOUND_TRIGGERS = frozenset({TRIGGER_RESUME, TRIGGER_VISIT_FOLLOWUP, TRIGGER_NEXT_ACTION,
+                                 TRIGGER_CADENCE_TOUCH})
+
+
+def _after_load(state: AgentState) -> str:
+    if state.first_reply_via_template:
+        return "fallback"
+    # Messages the system starts answer no new message, so there is nothing to extract: the
+    # after-hours morning message (B1), the dated visit_followup (B4 item 4), the customer's own
+    # dated next step and the cadence touches (C3, C4).
+    return "search_stock" if state.trigger in NO_INBOUND_TRIGGERS else "extract"
+
+
+def _after_extract(state: AgentState) -> str:
+    return "fallback" if state.fallback_reason else "validate"
+
+
+def _after_decide(state: AgentState) -> str:
+    return END if (state.decision or {}).get("action") == "stop" else "compose"
+
+
+def _after_guard(state: AgentState) -> str:
+    return (state.guard_result or {}).get("next", "fallback")
+
+
+def build_graph(checkpointer=None):
+    """`checkpointer` is optional: the shallow Redis saver
+    (memory/short_term.py) can be passed so a crashed worker can resume
+    mid-turn; MongoDB stays the source of truth either way."""
+    graph = StateGraph(AgentState)
+    for name, fn in [("load_context", load_context), ("extract", extract), ("validate", validate),
+                     ("search_stock", search_stock), ("decide", decide), ("compose", compose), ("guard", guard), ("fallback", template_reply)]:
+        graph.add_node(name, _traced(name, fn))
+
+    graph.set_entry_point("load_context")
+    graph.add_conditional_edges("load_context", _after_load, {"extract": "extract", "fallback": "fallback",
+                                                              "search_stock": "search_stock"})
+    graph.add_conditional_edges("extract", _after_extract, {"validate": "validate", "fallback": "fallback"})
+    graph.add_edge("validate", "search_stock")
+    graph.add_edge("search_stock", "decide")
+    graph.add_conditional_edges("decide", _after_decide, {"compose": "compose", END: END})
+    graph.add_edge("compose", "guard")
+    graph.add_conditional_edges("guard", _after_guard, {"send": END, "compose": "compose", "fallback": "fallback"})
+    graph.add_edge("fallback", END)
+    return graph.compile(checkpointer=checkpointer)

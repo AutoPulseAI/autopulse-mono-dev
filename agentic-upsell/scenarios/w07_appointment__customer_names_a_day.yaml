@@ -1,0 +1,23 @@
+name: '"Not Tuesday, what about Thursday?" gets Thursday''s times'
+description: 'MASTER_PLAN_3 B5 day requests. Answering the times we offered with a day of their own (no time) gets open times on that day, spread across it, in the same offer (not another attempt) and never "the team will confirm"; a day the dealership is shut gets the next open day, said plainly; picking one books it.'
+steps:
+  - advance_clock: {dealer: A, to: "Mon 12:00"}
+  - new_lead: {as: d, dealer: A, lead_type: sales, channel: sms, name: Dana Day, comments: "Hi, I want a new Toyota RAV4", send_event: false}
+  - set_contact: {lead: d, zip: "10001"}
+  - send_lead_created: {lead: d}
+  - wait_turns: {lead: d, count: 1, timeout_s: 20}
+  - reply: {lead: d, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: d, count: 2, timeout_s: 20}
+  - reply: {lead: d, text: "Not Tuesday, what about Thursday?"}
+  - wait_turns: {lead: d, count: 3, timeout_s: 20}
+  - expect_turn: {lead: d, outcome: offer_visit}
+  - expect_last_sent: {lead: d, contains: "Thursday works"}
+  - expect_last_sent: {lead: d, contains: "Thursday at"}
+  - expect_lead: {lead: d, visit_attempts: 1}
+  - reply: {lead: d, text: "Sunday afternoon?"}
+  - wait_turns: {lead: d, count: 4, timeout_s: 20}
+  - expect_last_sent: {lead: d, contains: "has no open times"}
+  - expect_last_sent: {lead: d, contains: "Monday at"}
+  - reply: {lead: d, text: "the first one"}
+  - wait_turns: {lead: d, count: 5, timeout_s: 20}
+  - expect_booking: {lead: d, status: pending}

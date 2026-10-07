@@ -1,0 +1,17 @@
+name: A birthday message is planned only when the birth date is on record
+description: Scope Workflow 10. When the dealer's records (DealerVault's Birth Date) have the customer's birthday, delivery plans a yearly birthday message. With no birth date on record nothing is planned - a birthday is never guessed.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: b, dealer: A, lead_type: sales, channel: sms, name: Bea Birthday, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: b, count: 1, timeout_s: 20}
+  - set_contact: {lead: b, birth_date: "1985-06-14"}
+  - staff_status: {lead: b, status: "Sold Delivered"}
+  - expect_lead: {lead: b, stage: sold_delivered, timeout_s: 20}
+  - expect_followup: {lead: b, kind: birthday, status: pending, timeout_s: 20}
+
+  - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Ned Nobirthday, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - staff_status: {lead: n, status: "Sold Delivered"}
+  - expect_lead: {lead: n, stage: sold_delivered, timeout_s: 20}
+  - expect_followup: {lead: n, kind: post_delivery_checkin, status: pending, timeout_s: 20}
+  - expect_no_followup: {lead: n, kind: birthday}

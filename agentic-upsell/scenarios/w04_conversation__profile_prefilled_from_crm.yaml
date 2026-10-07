@@ -1,0 +1,20 @@
+name: Profile is pre-filled from Customer 360
+description: A service lead whose car is in the DMS gets its vehicle filled from the platform, so the AI only asks what is really missing.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead:
+      as: p
+      dealer: A
+      lead_type: service
+      channel: sms
+      name: Petra Scenario
+      comments: "Need an oil change"
+      history:
+        vehicles: [{vin: DEVSCENPREFILL001, year: 2020, make: Subaru, model: Outback}]
+        deals: [{vin: DEVSCENPREFILL001, years_ago: 4, price: 29500, salesperson: Pat}]
+  - wait_turns: {lead: p, count: 1, timeout_s: 15}
+  - expect_slots:
+      lead: p
+      filled: [vehicle.year, vehicle.make, vehicle.model, interest.service_needed]
+      sources: {vehicle.make: platform, interest.service_needed: customer}
+      missing: [vehicle.mileage, contact.best_time]

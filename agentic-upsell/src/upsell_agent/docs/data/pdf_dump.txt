@@ -1,0 +1,723 @@
+========================================
+FILE: c:\Programming\Projects\06_rapidsai\AutoPulse\autopulse-backend\agentic-upsell\src\upsell_agent\docs\data\AutoPulse_New_Lead_Follow_Up_Workflow_OMNICHANNEL_FINAL.pdf
+========================================
+=== PAGE 1 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 1
+ AutoPulse.ai
+ New Lead Follow-Up & Appointment Workflow
+ Developer Implementation Specification | Version 1 | September 2026
+Core operating principle
+Every new sales lead remains actively worked until contact produces a defined next action, an
+appointment, an opt-out/suppression event, a Sales Visit, or the opportunity reaches Day 91.
+Bucket-specific qualification logic may differ, but this state machine applies regardless of lead
+bucket.
+Compliance: Every automated SMS/email/AI action and human call task remains subordinate to AutoPulse
+communication-permission, opt-out, dealer schedule, time-window, frequency, and suppression guardrails.
+
+=== PAGE 2 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 2
+1. State Machine Overview
+Status
+Trigger
+Workflow / exit
+New Lead
+New lead received.
+Immediately enters Short-Term Follow-Up.
+No Contact Made
+No meaningful two-way contact.
+Short-Term Follow-Up.
+Contact Made - No Next
+Action
+Contact occurred, but no appointment or
+dated next action exists.
+Short-Term Follow-Up.
+Contact Made - Specific
+Follow-Up
+Customer has a defined future next action.
+Specific Follow-Up; date/time/channel/context required.
+Appointment Set
+Valid appointment created by AI or human.
+Appointment Follow-Up.
+Appointment No Show
+Appointment time + 1 hour; no qualifying
+Sales Visit.
+Appointment No-Show Follow-Up.
+Sales Visit
+Customer logged into dealership SALES.
+Stop lead/appointment flows; require manager outcome:
+SOLD PENDING, SOLD DELIVERED, or UNSOLD.
+Opted Out / Suppressed
+Applicable revocation or suppression
+event.
+Immediately stop prohibited channels/tasks.
+Opportunity Closed - No
+Response
+Day 91 reached without superseding
+business outcome.
+Close opportunity; retain customer record/history.
+2. Global Transition Rules
+ One controlling workflow: a customer/opportunity cannot simultaneously run incompatible Short-Term, Specific Follow-Up,
+Appointment, and No-Show flows.
+ Status change cancels stale work: cancel/pause future messages and human tasks from the prior status before starting the
+new workflow.
+ Appointment wins: any appointment creation immediately sets Appointment Set.
+ Sales Visit wins: any qualifying SALES check-in immediately sets Sales Visit and stops lead/appointment/no-show
+automation.
+ Specific timing wins: 'call me Friday/next month/in a year' creates a dated future action rather than continuing aggressive
+Short-Term cadence.
+ Opt-out wins: immediately suppress the affected communication(s) under the compliance policy.
+ Master opportunity age never resets: re-entry may restart a cadence instance, but original opportunity_created_at continues
+toward Day 91.
+ Pre-send recheck: immediately before any queued message/task executes, re-read current status, reply state, appointment
+state, Sales Visit state, suppression state, and compliance result.
+3. Short-Term Follow-Up
+Triggers: New Lead, No Contact Made, Contact Made - No Next Action, and completion of the defined Appointment No-Show
+sequence.
+Days 1-7: Day 1 has Touch 1 plus the mandatory three-hour Touch 2. Days 2-7 have one additional SMS + email touch per
+day. Human agents receive two call tasks per scheduled workday for seven days.
+
+=== PAGE 3 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 3
+Touc
+h
+Timing
+Theme
+Required behavior
+1
+Immediately /
+eligible
+window
+Quality lead response
+Answer actual lead question(s); identify agent/dealer/location/vehicle;
+ALWAYS end: 'Tell me, what are you driving now?'
+2
+3 hours later;
+next eligible
+window if
+blocked
+Mandatory name nudge
+{FirstName}? This is non-negotiable; do not replace with other sales copy.
+3
+Day 2
+Vehicle visual
+Send useful vehicle photo and a simple vehicle-related question.
+4
+Day 3
+Financing help
+Ask whether the customer needs help with financing/payment options; do
+not invent terms or approval.
+5
+Day 4
+Trade-in
+Ask about trade/appraisal using known context; never repeat an
+already-answered question.
+6
+Day 5
+Vehicle value/feature
+Highlight a relevant verified feature, trim detail, use case, or vehicle fact;
+photo when useful.
+7
+Day 6
+Appointment value
+Give a truthful reason to visit: appraisal, comparison, financing review,
+management review, or right-team meeting; ask for appointment.
+8
+Day 7
+Direct close
+Ask if still considering vehicle and offer practical appointment options / ask
+what day works.
+Touch 1 required structure
+Hello {customer_first_name}, this is {agent_name} from {dealership_name} in {city}, {state}. Thank you for your
+interest in our {vehicle_year} {vehicle_model}. I am excited to help you with your purchase.
+{AI_BEST_ANSWER_TO_LEAD_QUESTIONS} Tell me, what are you driving now?
+AI must read the full lead first. Address questions/requests accurately before the mandatory final question. Never fabricate
+availability, pricing, financing, promotions, vehicle facts, or dealer policy.
+Touch 2: if there is no response after three hours, send {FirstName}?. If outside the permitted communication window, queue it
+for the next permitted time.
+Human call tasks - Days 1-7
+Behavior
+Requirement
+Morning
+Create/surface call task during assigned agent's scheduled hours; Click-to-Call where available.
+Afternoon
+Create second call task only if lead still has an eligible Short-Term status.
+Completion
+Agent marks completed or Click-to-Call completion is captured.
+Outcome prompt
+Immediately require outcome/status selection after call.
+Appointment
+Appointment creation automatically sets Appointment Set.
+Specific follow-up
+Require next action date, time, channel, owner, and context.
+No contact
+Remain No Contact Made / Short-Term.
+Contact, no action
+Set Contact Made - No Next Action.
+
+=== PAGE 4 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 4
+Behavior
+Requirement
+Status changed first
+Cancel obsolete call task.
+4. Days 8-90 Extended Cadence
+Period
+Cadence
+Guidance
+Days 8-30
+1 outreach cycle/week via SMS +
+email
+Fresh relevant angle: vehicle/photo, financing help, trade, verified
+inventory/trim information, verified price change/OEM offer, appointment
+invitation.
+Days 31-90
+1 outreach cycle/month via SMS +
+email
+Verified price/OEM changes, relevant inventory, trade/equity, financing help,
+or renewed appointment invitation.
+Day 91
+End active-opportunity cadence
+Customer remains open in CRM/customer base; opportunity closes;
+preserve history.
+AI selection rule: before each touch, read the full lead, conversation, notes, prior questions, known vehicle/trade information,
+and available current inventory/promotion data. Choose the most relevant unused angle instead of blindly rotating templates.
+5. Response Router
+Event
+Transition
+Reply + appointment created
+Appointment Set -> Appointment Follow-Up.
+Reply + no appointment + no dated next action
+Contact Made - No Next Action -> Short-Term Follow-Up.
+Reply + clear future timing
+Contact Made - Specific Follow-Up.
+'Not ready' + week/month/year horizon
+Create future next action; Specific/Future Follow-Up.
+Applicable opt-out
+Suppress affected channel(s); stop prohibited outreach.
+Sales check-in
+Sales Visit -> manager outcome required.
+No response
+Continue eligible cadence until transition or Day 91.
+6. Contact Made - Specific Follow-Up
+Entry requires structured next-action data so neither AI nor human intent is lost.
+Field
+Rule
+next_action_date
+Required.
+next_action_time
+Required if known; otherwise dealer-configurable approved default/selection rule.
+next_action_channel
+Call, SMS, email, or approved combination.
+next_action_owner
+AI or human.
+context_notes
+What customer requested/what should happen next.
+entered_by + timestamp
+Required audit fields.
+
+=== PAGE 5 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 5
+At the scheduled action, AI/human follows the actual notes/conversation. The appointment remains the goal. If the scheduled
+follow-up is executed and there is no response within 24 hours, set No Contact Made and enter Short-Term Follow-Up.
+Appointment -> Appointment Set. Opt-out -> suppression.
+Long-horizon rule: a future customer task may survive beyond Day 91 even though the current opportunity closes. The future
+task belongs to the customer relationship; when due, business logic may create/reopen a new opportunity rather than keeping
+the original opportunity artificially open.
+7. Appointment Set Workflow
+When
+Action
+15 minutes after set
+Text + email current appointment information, allowing time for correction.
+Each day before appointment (not
+same-day)
+Send a different vehicle photo + 'Counting down to our meeting at {dealership_name}!'
+Day before
+Text + email: 'Hello, {customer_first_name}, this is {agent_name} at {dealership_name}
+confirming our meeting for {date} at {time}. Does this time still work? Please reply Y for Yes or N
+for No.'
+Confirmed by AI/human
+Set appointment.confirmed = true; update appointment report.
+Appointment + 1 hour; no Sales Visit
+Set Appointment No Show -> No-Show workflow.
+Sales Visit on appointment date
+Set Sales Visit; mark appointment.showed = true and update report regardless of arrival time.
+15-minute appointment message
+{customer_first_name}, we are all set to meet on {appointment_date} at {appointment_time} at {dealership_name},
+{dealership_address}. Please make sure to call or text us if anything changes at {ai_agent_phone}. Looking
+forward to assisting you!
+Same-day appointment: send the 15-minute details when still useful, but skip daily pre-appointment countdown/photo
+messages and any nonsensical day-before confirmation.
+8. Appointment Confirmation Router
+Response
+Action
+Y / clear yes
+Mark Confirmed; keep Appointment Set active.
+N / clear no
+Do not mark confirmed. Immediately attempt reschedule; capture new date/time.
+Ambiguous
+Seek clarification; do not mark confirmed until clear.
+No response
+Remain scheduled but unconfirmed; normal appointment/no-show logic continues.
+Human phone confirmation
+Human marks Confirmed; report updates.
+Reschedule
+Update appointment, cancel old confirmation/no-show timers, and schedule against new appointment
+time.
+9. Appointment No-Show Workflow
+
+=== PAGE 6 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 6
+Step
+Timing
+Action
+1
+At +1 hour No Show
+trigger
+SMS + email + vehicle photo: 'Hello, this is {agent_name} with {dealership_name}. I am looking for
+you in the showroom - are you here and working with someone?'
+2
+24 hours later if no
+reply
+SMS + email: 'Hi! This is {agent_name} at {dealership_name} regarding your {model} purchase.
+How did everything go when you came in? Did you get a chance to stop by?'
+3
+No response after Step
+2 window
+Per requested rule: set Contact Made - No Next Action -> Short-Term Follow-Up.
+Any
+time
+Sales Visit logged
+Stop No-Show flow; set Sales Visit; if visit is on appointment date, mark Showed.
+Terminology note: routing a never-reached no-show customer to 'Contact Made - No Next Action' is technically workable but
+semantically inconsistent. If the status names are meant literally, No Contact Made is cleaner. The current specification
+preserves your requested behavior and flags this for final product decision.
+10. Sales Visit Trigger
+Rule
+Behavior
+Status
+Set Sales Visit immediately.
+Automation
+Stop Short-Term, Specific, Appointment, and No-Show follow-up.
+Showed logic
+If an appointment exists for that calendar day, mark Showed even if arrival time differs.
+Report
+Update Showed immediately.
+Manager outcome
+Require SOLD PENDING, SOLD DELIVERED, or UNSOLD.
+Next workflow
+Defined in separate Sales Visit workflow specification.
+11. Event Priority / Race-Condition Control
+Recommended priority:
+1. OPT-OUT / COMPLIANCE BLOCK 2. SALES VISIT 3. APPOINTMENT SET / UPDATED 4. CONTACT MADE - SPECIFIC FOLLOW-UP 5.
+APPOINTMENT NO SHOW 6. CONTACT MADE - NO NEXT ACTION 7. NO CONTACT MADE 8. NEW LEAD
+Before any queued action fires, query current state. Never execute a task simply because it was previously placed in a queue.
+12. Opportunity Clock
+opportunity_created_at = immutable original timestamp opportunity_age_days = now - opportunity_created_at
+workflow_entered_at = current workflow entry timestamp short_term_cycle_day = cadence day within current instance
+last_meaningful_contact_at = timestamp/null last_outbound_at = timestamp/null next_action_at = timestamp/null
+opportunity_closed_at = null until closure
+Re-entry into Short-Term may restart the cadence instance, but never reset opportunity_created_at. Day 91 closes the
+current opportunity unless a later Sales Visit/Sold workflow explicitly supersedes that rule.
+13. AI Content Rules
+ Read full current lead/conversation before every generated message.
+ Do not ask for information already supplied unless confirmation is genuinely necessary.
+Required business rule:
+Appointment No Show + not rescheduled -> Contact Made - No Next Action ->
+Short-Term Follow-Up. This is intentional AutoPulse workflow logic and must not
+be changed to No Contact Made.
+
+=== PAGE 7 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 7
+ Use customer responses/context to move toward the next best action and appointment.
+ Never fabricate availability, price, incentives, financing approval/terms, vehicle facts, photos, OEM programs, or dealer policy.
+ Only use verified current price changes/OEM promotions.
+ Vehicle photos must come from an authorized inventory/media source for the intended vehicle or approved alternative.
+ Vary follow-up angles and avoid repetitive messages.
+ Every send still requires current status and compliance authorization.
+14. Recommended Events
+LEAD_CREATED OUTBOUND_SENT CUSTOMER_REPLIED CALL_COMPLETED CALL_OUTCOME_SELECTED NEXT_ACTION_SET
+APPOINTMENT_CREATED APPOINTMENT_UPDATED APPOINTMENT_CONFIRMED APPOINTMENT_TIME_PASSED SALES_VISIT_CREATED
+OPT_OUT_RECEIVED COMPLIANCE_BLOCKED STATUS_CHANGED OPPORTUNITY_DAY_91_REACHED
+15. Missing Edge Cases to Lock Down
+Item
+Recommended implementation
+Wrong person / bad number
+Add data-quality/suppression outcome; never continue known-wrong-number outreach.
+Hard-bounce email
+Suppress invalid email after provider-defined hard bounce; other permitted channels may
+continue.
+Duplicate lead
+Link/merge to existing active customer/opportunity; prevent duplicate simultaneous workflows.
+Appointment cancellation
+Attempt reschedule; if no replacement appointment/detailed next action, route to Contact Made
+- No Next Action.
+Rescheduled appointment
+Cancel old confirmation/no-show timers; use new appointment time.
+Multiple appointments
+Default to one active primary sales appointment per opportunity unless explicitly allowed.
+Photo unavailable
+Never fabricate/unrelated photo; use approved alternate media or a non-photo message.
+No exact time for future follow-up
+Require selection or dealer-configurable compliant default.
+Channel-specific opt-out
+Track SMS/email/call suppression separately plus broader 'do not contact' requests under
+compliance policy.
+Short-Term re-entry
+Restart cadence only as intended; preserve Day-91 clock and prevent duplicate same-day
+touches.
+Long-horizon follow-up
+Keep future customer task after Day 91; close original opportunity and create/reopen
+opportunity when future action becomes due, per final business rule.
+16. Developer Acceptance Tests
+■ New lead creates exactly one Short-Term workflow regardless of bucket.
+■ Touch 1 answers lead questions and ends with 'what are you driving now?'
+■ Touch 2 is the first-name question nudge at 3 hours or next permitted window.
+■ Two human call tasks occur only on scheduled workdays while status remains eligible.
+■ Customer reply prevents stale queued AI messages from firing.
+■ Appointment creation stops Short-Term/Specific flow and starts Appointment Follow-Up.
+
+=== PAGE 8 ===
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow
+Page 8
+■ Confirmation updates appointment and report.
+■ Sales Visit on appointment date marks Showed regardless of exact arrival time.
+■ Rescheduled/old appointment cannot create a false No Show.
+■ No Show begins only at appointment + 1 hour with no Sales Visit.
+■ Specific Follow-Up with no response after 24 hours routes to No Contact Made.
+■ Opt-out prevents prohibited queued communications.
+■ Short-Term re-entry does not reset opportunity_created_at.
+■ Day 91 closes opportunity while retaining customer/history/future customer task where applicable.
+■ No customer has conflicting active workflow instances.
+17. Next Workflow Specification
+Next document begins at Sales Visit and defines the required manager outcomes SOLD PENDING, SOLD DELIVERED, and
+UNSOLD, including automation, human tasks, reporting, delivery logic, opportunity close/reopen rules, and follow-up for each.
+
+=== PAGE 9 ===
+Global Human Call Task Escalation Rule
+Required addition to all AutoPulse follow-up workflows in this specification
+NON-NEGOTIABLE GLOBAL RULE
+Every time AutoPulse schedules an automated text/email follow-up touch, the system must
+also schedule a human call-task checkpoint for 1 hour after that AI touch.
+If meaningful customer contact occurs before the 1-hour checkpoint, cancel the call task.
+If no meaningful contact occurs, create/activate the human call task.
+Required Developer Logic
+1. AI SMS/email touch is successfully sent.
+2. Start a 60-minute connection timer tied to that specific outreach event.
+3. During the 60 minutes, watch for meaningful customer contact by AI or human.
+4. If meaningful contact occurs, cancel the pending call task.
+5. If no meaningful contact occurs at 60 minutes, create/activate a human call task.
+6. Call task must identify the customer, vehicle/opportunity, last AI touch, and current status.
+7. Human can Click-to-Call where available or mark the call completed manually.
+8. After call completion, immediately prompt the human for the required AutoPulse outcome/status.
+9. If the call produces an appointment, Appointment Set is applied automatically and its workflow starts.
+10. If the call produces a specific future action, enter Contact Made - Specific Follow-Up.
+11. If contact occurs but no clear next action exists, enter Contact Made - No Next Action.
+12. If there is no contact, remain in the applicable no-contact/follow-up workflow.
+13. If the customer opts out, apply the appropriate suppression immediately.
+Where This Rule Applies
+ Days 1-7 Short-Term Follow-Up AI text/email touches.
+ Weekly Days 8-30 text/email outreach.
+ Monthly Days 31-90 text/email outreach.
+ Contact Made - Specific Follow-Up when the AI sends the scheduled text/email.
+ Appointment and Appointment No-Show text/email touches when human follow-up is appropriate.
+Important scheduling guardrail
+The 1-hour human call task must also respect the human agent's scheduled work hours/days and
+the applicable communication/compliance rules. If the 1-hour checkpoint falls outside an
+allowed calling period or the agent's schedule, move the task to the next eligible call window.
+Before activating the task, re-check current status so stale call tasks do not fire after a reply,
+appointment, Sales Visit, opt-out, or other workflow-changing event.
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow | Global Human Call Escalation
+Page 9
+
+=== PAGE 10 ===
+Global Omnichannel Follow-Up Rule
+Required controlling rule for every follow-up workflow in this specification
+NON-NEGOTIABLE: ALL FOLLOW-UP = CALL + TEXT + EMAIL
+Whenever a follow-up is due, AutoPulse must engage all available permitted channels:
+AI text + AI email + human call task. Call, text, and email are not optional alternatives
+unless a channel is unavailable, invalid, suppressed, or legally blocked.
+Standard Follow-Up Sequence
+1. At the scheduled follow-up time, AI sends the contextually appropriate SMS and email.
+2. Start a 60-minute connection timer after the outbound AI touch.
+3. If meaningful customer contact occurs during that hour, cancel the pending human call task.
+4. If no meaningful connection occurs after 60 minutes, activate the human call task.
+5. The call task supports Click-to-Call where available and requires completion plus outcome.
+6. Appointment -> Appointment Set. Defined future action -> Contact Made - Specific Follow-Up.
+7. Contact without clear next action -> Contact Made - No Next Action. No contact -> remain in applicable flow.
+8. Opt-out/suppression immediately removes any prohibited channel from future touches.
+Applies Everywhere Follow-Up Occurs
+ Days 1-7 Short-Term Follow-Up
+ Days 8-30 weekly follow-up
+ Days 31-90 monthly follow-up
+ Contact Made - Specific Follow-Up
+ Appointment follow-up and confirmation touches
+ Appointment No-Show follow-up
+ Any later workflow that calls for customer follow-up unless that workflow explicitly stops outreach
+Channel Availability & Compliance
+'All channels' means all channels valid and permitted for that customer at that moment. If SMS is opted out, do not text.
+If email is invalid/unsubscribed, do not email. If calling is blocked or outside the eligible window, do not call then.
+Continue every remaining permitted channel.
+Developer Override Rule
+This omnichannel rule supersedes earlier wording in this PDF that describes follow-up as 'call/text/email,' 'text/email,' or
+a choice among channels. For implementation, every follow-up means CALL + TEXT + EMAIL, subject only to current
+status, connection state, valid channel data, suppression/opt-out, scheduling, and the AutoPulse compliance engine.
+AutoPulse.ai | New Lead Follow-Up & Appointment Workflow | Omnichannel Rule
+Page 10
+
+========================================
+FILE: c:\Programming\Projects\06_rapidsai\AutoPulse\autopulse-backend\agentic-upsell\src\upsell_agent\docs\data\AutoPulse_TCPA_AI_Compliance_Guardrails_Developer_Spec.pdf
+========================================
+=== PAGE 1 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 1
+ AutoPulse.ai
+ TCPA & AI Communication Compliance
+ Guardrails
+ Developer Implementation Specification | September 2026
+Core architecture rule
+The AI must never decide whether a communication is legally permitted. Every outbound
+communication must pass through a deterministic Compliance Engine that returns
+ALLOW, HOLD, REVIEW, or BLOCK. The AI cannot override BLOCK.
+Purpose. This document converts AutoPulse's TCPA compliance requirements into product and engineering guardrails
+for AI-driven SMS and voice communications. It is an implementation specification, not legal advice. Final rules,
+disclosures, state matrices, and campaign classifications should be approved by qualified TCPA/telemarketing counsel
+before national launch.
+
+=== PAGE 2 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 2
+1. Required Communication Gate
+Every outbound communication must pass this sequence before delivery:
+Customer -> Dealer -> Purpose -> Channel -> Consent/Evidence -> DNC & Suppression -> State/Local Time ->
+Frequency -> Compliance Decision -> Delivery
+The workflow or AI may request a send. Only the Compliance Engine authorizes it.
+Control
+Required AutoPulse behavior
+Consent
+Do not send covered automated marketing merely because a phone number exists. Evaluate the
+legally required permission/basis for that campaign and channel.
+Consent evidence
+Persist source, timestamp, seller/dealer, disclosure/version, phone, lead/form source and available
+evidence metadata.
+Seller/dealer scope
+Associate permission and suppression with the applicable dealership/seller; do not treat a dealer's
+customer record as universal AutoPulse permission.
+DNC/suppression
+Check applicable National DNC requirements plus dealer-specific and platform suppression before
+covered outbound marketing.
+Revocation
+Recognize explicit keywords and natural-language opt-outs. Suppress immediately in AutoPulse.
+Ambiguity
+If a statement may reasonably be an opt-out, stop automated marketing and route to REVIEW rather
+than letting the AI persuade the customer.
+Hours
+Determine recipient local time and applicable state restrictions before sending.
+Frequency
+Enforce campaign/state contact caps outside the LLM.
+Historical data
+DMS/DealerVault data may identify an opportunity; it does not itself establish permission to send.
+AI voice
+Treat AI/artificial/prerecorded voice as a separately controlled, higher-risk channel.
+Audit
+Log the compliance inputs, decision, reason, timestamps and delivery result for every attempted
+communication.
+Override
+No user or AI force-send function may bypass a legal/compliance BLOCK.
+2. TCPA Communication Profile
+Create a compliance profile per phone number / consumer / seller relationship. Recommended minimum fields:
+consent_status
+consent_type
+consent_timestamp
+consent_source
+consent_text_version
+consent_evidence_id
+consenting_seller_id
+lead_source
+customer_state
+customer_timezone
+national_dnc_status
+dealer_dnc_status
+global_suppression_status
+sms_allowed
+
+=== PAGE 3 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 3
+voice_allowed
+marketing_allowed
+transactional_allowed
+consent_revoked_at
+revocation_source
+last_contact_at
+contact_count_24h
+Implement a deterministic service such as:
+can_contact(customer_id, dealer_id, channel, purpose, timestamp) -> ALLOW | HOLD | REVIEW | BLOCK
+Important: The LLM must not create, infer, change, or override these statuses.
+3. Opt-Out / Revocation Handling
+AutoPulse should suppress automated marketing immediately when a valid revocation is detected, even where an outside
+legal deadline could permit additional processing time.
+Explicit triggers: STOP, END, CANCEL, UNSUBSCRIBE, QUIT and equivalent commands supported by the messaging
+provider.
+Natural-language triggers: examples include 'don't text me,' 'don't call me,' 'leave me alone,' 'remove my number,' 'take
+me off your list,' and 'no more messages.'
+Do not automatically equate a sales objection with revocation. 'I'm not interested' can be an objection rather than a
+request to cease communications. If context makes revocation ambiguous, use REVIEW and stop automated marketing
+while unresolved.
+A permitted opt-out confirmation, where used, must be non-marketing and limited to confirming the revocation. Counsel
+should approve the exact implementation.
+4. Inbound vs. Outbound Classification
+AutoPulse must classify communications before compliance evaluation. Do not let the AI blur these categories:
+Class
+Example
+System treatment
+Consumer-initiated
+lead response
+Customer submits an inquiry about a
+vehicle
+Store lead source, request timestamp, dealer, channel and
+available consent/evidence; evaluate response rules.
+Outbound marketing
+Dealer initiates trade/equity, sales or
+promotional outreach
+Run full outbound campaign compliance checks before
+enrollment and before each send.
+Service/transactional
+Appointment confirmation or
+operational update
+Classify purpose carefully; do not add promotional content
+that changes the nature of the message.
+Historical-data
+campaign
+Service interval/equity opportunity
+identified from DMS/DealerVault
+Historical data identifies opportunity only; Compliance Engine
+independently determines contactability.
+5. DMS / DealerVault Guardrail
+Required rule: DMS or DealerVault presence must never automatically set TCPA_PERMISSION = YES.
+Correct flow:
+
+=== PAGE 4 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 4
+DealerVault/DMS identifies opportunity -> Compliance Engine evaluates seller, purpose, channel,
+consent/evidence, DNC/suppression, jurisdiction, time and frequency -> eligible record enters AI campaign
+-> AI personalizes permitted communication.
+This is especially important for AutoPulse service-interval reminders and other campaigns generated from historical
+customer data.
+6. Lead-Provider Evidence
+Do not rely solely on a third-party boolean such as consent=true. Where evidence is required, the ingestion layer should
+preserve an auditable consent object.
+lead_id
+consumer_id
+phone
+lead_source
+seller/dealer
+consent_status/type
+consent_timestamp
+consent_disclosure + version
+source URL/form where available
+consent_evidence_id
+permitted_channel(s)
+If required evidence is missing or cannot be validated for the campaign, set CONSENT_REVIEW_REQUIRED and
+prevent automated marketing until resolved.
+7. Time-of-Day & State Rules
+Do not hard-code only a single federal communication window. AutoPulse is intended for national use, and state
+telemarketing/SMS rules can be more restrictive or define covered communications differently.
+Recommended implementation: maintain a counsel-approved, versioned jurisdiction rules table. Determine the
+consumer's applicable jurisdiction and local time before every covered outbound attempt. If the current time is outside the
+permitted window, return HOLD with the next eligible send time.
+Do not allow the AI to calculate or override the legal window itself.
+8. Frequency Controls
+Business cadence is subordinate to compliance. AutoPulse may schedule Day 1 / Day 2-6 follow-up, but the Compliance
+Engine must evaluate frequency limits immediately before each send.
+WORKFLOW REQUESTS SEND -> COMPLIANCE ENGINE -> ALLOW/HOLD/REVIEW/BLOCK -> DELIVERY
+Store attempts and successful sends by consumer, seller, channel, campaign/purpose, rolling time window and subject
+matter where required by the applicable rule.
+9. AI Voice
+Treat AI-generated/artificial/prerecorded outbound voice as a separately controlled channel. The FCC has stated that
+AI-generated voices fall within TCPA artificial/prerecorded voice restrictions. Do not reuse SMS permission logic as a
+blanket authorization for AI voice.
+Recommended launch posture: keep automated outbound voice disabled until counsel approves the applicable consent,
+identification/disclosure, opt-out, state-law and recordkeeping implementation.
+
+=== PAGE 5 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 5
+10. Required AI System Guardrail
+Add the following concept to the system-level policy enforced around the model:
+The AI may never state, infer, or modify that a consumer consented to communications, has an established
+business relationship, is eligible for contact, is not on a suppression list, or may legally be contacted.
+Communication eligibility is determined exclusively by the AutoPulse Compliance Engine. The AI cannot
+override HOLD, REVIEW, or BLOCK.
+11. Compliance Decision & Audit Record
+Decision
+Meaning
+ALLOW
+All required checks pass; delivery layer may send.
+HOLD
+Potentially permissible later; queue until the next compliant window/condition.
+REVIEW
+Evidence or classification is ambiguous; no automated marketing send while unresolved.
+BLOCK
+Communication is prohibited under current system rules; AI and users cannot force-send.
+Recommended audit event:
+timestamp
+dealer_id / seller_id
+customer_id / phone hash or secured identifier
+channel
+purpose / campaign
+lead_source
+consent_evidence_id + disclosure version
+jurisdiction + local_time
+DNC/suppression results
+frequency check
+decision
+decision reason / rule version
+message/template ID
+delivery result
+opt-out event, if any
+12. Developer Acceptance Checklist
+■ AI cannot send without a Compliance Engine decision.
+■ BLOCK cannot be overridden by the AI or ordinary dealer users.
+■ HOLD messages cannot release before the stored eligible condition/time.
+■ REVIEW stops automated marketing until an authorized resolution.
+■ Opt-outs update suppression immediately and prevent queued marketing from releasing.
+■ Deleted/reimported customer records do not erase suppression history.
+■ DealerVault/DMS import never creates consent automatically.
+■ Every outbound attempt has dealer/seller, purpose and channel classification.
+■ Jurisdiction/time check occurs at send time, not only campaign enrollment.
+
+=== PAGE 6 ===
+AutoPulse.ai | TCPA & AI Communication Compliance Guardrails
+Page 6
+■ Frequency is checked again at send time.
+■ Consent evidence/disclosure versions are immutable/auditable.
+■ Lead-provider consent metadata is preserved rather than reduced to a boolean.
+■ AI voice is separately permissioned and can be globally disabled.
+■ Rule tables are versioned so counsel-approved state changes can be deployed without rewriting AI prompts.
+■ Audit logs show why each attempted communication was ALLOW/HOLD/REVIEW/BLOCK.
+13. Legal Review Items Before National Launch
+Have TCPA/telemarketing counsel approve at minimum: consent/disclosure language by campaign and channel; DNC
+procedures; revocation handling; transactional vs. marketing classifications; established-business-relationship use cases;
+lead-provider evidence requirements; AI voice; service-interval campaigns; state-specific calling/texting windows and
+frequency restrictions; record retention; seller/dealer allocation of responsibility; and any dealer-facing override/permission
+model.
+The state-law matrix should be maintained as versioned configuration owned by compliance/legal, not embedded in AI
+prompts.
+14. Key Authorities for Counsel / Engineering Reference
+FCC, FCC 24-24 - revocation of consent / opt-out rules and confirmation-message framework.
+FCC, FCC 24-17 - declaratory ruling addressing AI-generated voices under artificial/prerecorded voice provisions.
+FTC - Complying with the Telemarketing Sales Rule (DNC, calling times and established-business-relationship guidance).
+FCC public materials regarding the Eleventh Circuit decision vacating the 2023 one-to-one consent rule.
+State statutes/rules must also be evaluated. Examples discussed in the product review included Florida and Oklahoma
+restrictions; counsel should supply the production 50-state matrix.
+Implementation principle: AI decides the next best customer action. The Compliance Engine decides
+whether AutoPulse is permitted to execute the communication.
+

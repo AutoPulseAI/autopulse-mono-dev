@@ -1,0 +1,16 @@
+name: A question mid-flow is answered, then one ask
+description: 'The rigid loop from manual testing: the AI had asked for a detail and the customer asks "so far what do u know about me?". The reply answers from the profile first, then asks exactly one thing.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  # Inside opening hours whatever day it really is: after hours the first reply is the "now or when we open?" offer.
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: a, dealer: A, lead_type: sales, channel: sms, name: Ana Answer, comments: "Interested in a used Ford F-150"}
+  - wait_turns: {lead: a, count: 1, timeout_s: 20}
+  - reply: {lead: a, text: "so far what do u know about me?"}
+  - wait_turns: {lead: a, count: 2, timeout_s: 20}
+  - expect_turn: {lead: a, outcome: answer}
+  - expect_last_sent: {lead: a, contains_any: ["what I have so far", "what I know so far", "what we know so far", "what we have so far", "here's what"], question_marks: 1}
+  - expect_context: {lead: a, index: -1, open_questions: []}
+  - reply: {lead: a, text: "ok"}
+  - wait_turns: {lead: a, count: 3, timeout_s: 20}
+  - expect_context: {lead: a, index: -1, open_questions: []}

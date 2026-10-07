@@ -1,0 +1,14 @@
+name: A sales lead is qualified over a chat
+description: The AI asks only for what is missing, two things at a time, until every required sales detail is collected, then marks the lead qualified.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: q, dealer: A, lead_type: sales, channel: sms, name: Quinn Scenario, comments: "Looking for a new Toyota RAV4"}
+  - wait_turns: {lead: q, count: 1, timeout_s: 15}
+  - expect_slots: {lead: q, filled: [interest.new_or_used, interest.model], missing: [interest.timeline]}
+  - reply: {lead: q, text: "My budget is $35,000 and I'd like to buy this month"}
+  - wait_turns: {lead: q, count: 2, timeout_s: 15}
+  - reply: {lead: q, text: "No trade-in"}
+  - wait_turns: {lead: q, count: 3, timeout_s: 15}
+  - expect_turn: {lead: q, outcome: qualified}
+  - wait_status: {lead: q, status: qualified}
+  - expect_slots: {lead: q, values: {interest.budget: 35000, interest.timeline: this_month, trade_in.has_trade: false}}

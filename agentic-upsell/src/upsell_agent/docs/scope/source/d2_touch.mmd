@@ -1,0 +1,12 @@
+flowchart TD
+    D["Follow-up due"] --> R["Re-check status<br/>replied? booked? visited?<br/>opted out?"]
+    R -->|still due| G{"Compliance engine<br/>per channel"}
+    R -->|no longer valid| X["Cancel"]
+    G -->|ALLOW| S["AI text + AI email<br/>sent together"]
+    G -->|HOLD| H["Wait for next<br/>allowed time"]
+    G -->|REVIEW / BLOCK| B["Not sent<br/>reason logged"]
+    H --> G
+    S --> T["60-minute timer"]
+    T -->|customer engages| C1["Call task cancelled"]
+    T -->|no contact| C2["Human call task<br/>in agent's hours"]
+    C2 --> O["Agent must record<br/>the outcome"]

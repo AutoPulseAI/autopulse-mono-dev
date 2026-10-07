@@ -1,0 +1,30 @@
+{"case_id": "sales-new-model", "lead_type": "sales", "text": "Hi, I'm interested in a new Toyota RAV4", "expected": {"interest.new_or_used": "new", "interest.model": "Toyota RAV4"}}
+{"case_id": "sales-budget-timeline", "lead_type": "sales", "text": "My budget is $35,000 and I'd like to buy this month", "expected": {"interest.budget": 35000, "interest.timeline": "this_month"}}
+{"case_id": "sales-monthly", "lead_type": "sales", "text": "I can do about $450 a month", "expected": {"interest.monthly_payment": 450}}
+{"case_id": "sales-used-asap", "lead_type": "sales", "text": "Looking for a used Honda Civic asap", "expected": {"interest.new_or_used": "used", "interest.model": "Honda Civic", "interest.timeline": "now"}}
+{"case_id": "sales-no-trade", "lead_type": "sales", "text": "No trade-in, just buying", "expected": {"trade_in.has_trade": false}}
+{"case_id": "sales-with-trade", "lead_type": "sales", "text": "I'd trade in my 2018 Jeep Wrangler, 71k miles", "expected": {"trade_in.has_trade": true, "trade_in.year": 2018, "trade_in.make": "Jeep", "trade_in.model": "Wrangler", "trade_in.mileage": 71000}}
+{"case_id": "trade-full", "lead_type": "trade_in", "text": "It's a 2019 Honda Civic with 60,000 miles, good condition, I owe $8,000 on it", "expected": {"trade_in.year": 2019, "trade_in.make": "Honda", "trade_in.model": "Civic", "trade_in.mileage": 60000, "trade_in.condition": "good", "trade_in.payoff": 8000}}
+{"case_id": "trade-paid-off", "lead_type": "trade_in", "text": "2016 Ford F-150, paid off, fair condition", "expected": {"trade_in.year": 2016, "trade_in.make": "Ford", "trade_in.model": "F-150", "trade_in.payoff": 0, "trade_in.condition": "fair"}}
+{"case_id": "service-full", "lead_type": "service", "text": "2020 Subaru Outback, 54,000 miles, needs brakes. Mornings are best", "expected": {"vehicle.year": 2020, "vehicle.make": "Subaru", "vehicle.model": "Outback", "vehicle.mileage": 54000, "interest.service_needed": "brakes", "contact.best_time": "morning"}}
+{"case_id": "service-oil", "lead_type": "service", "text": "Need an oil change this week, evenings work", "expected": {"interest.service_needed": "oil change", "contact.best_time": "evening"}}
+{"case_id": "general-service", "lead_type": "general", "text": "I want to book service for my car", "expected": {"interest.lead_type": "service"}}
+{"case_id": "nothing", "lead_type": "sales", "text": "hello?", "expected": {}}
+{"case_id": "question-only", "lead_type": "sales", "text": "What are your hours on Saturday?", "expected": {}}
+{"case_id": "short-used", "lead_type": "sales", "text": "used", "recently_asked": ["interest.new_or_used"], "last_ai": "Thanks! Are you looking at new or used?", "expected": {"interest.new_or_used": "used"}}
+{"case_id": "short-yes-trade", "lead_type": "sales", "text": "yes", "recently_asked": ["trade_in.has_trade"], "last_ai": "Do you have a vehicle to trade in?", "expected": {"trade_in.has_trade": true}}
+{"case_id": "short-no-trade", "lead_type": "sales", "text": "no", "recently_asked": ["trade_in.has_trade"], "last_ai": "Do you have a vehicle to trade in?", "expected": {"trade_in.has_trade": false}}
+{"case_id": "short-year", "lead_type": "trade_in", "text": "2019", "recently_asked": ["trade_in.year"], "last_ai": "What year is your trade-in?", "expected": {"trade_in.year": 2019}}
+{"case_id": "short-mileage", "lead_type": "trade_in", "text": "82000", "recently_asked": ["trade_in.mileage"], "last_ai": "Roughly how many miles are on it?", "expected": {"trade_in.mileage": 82000}}
+{"case_id": "short-yes-nothing-asked", "lead_type": "sales", "text": "yes", "expected": {}}
+{"case_id": "question-about-me", "lead_type": "sales", "text": "so far what do u know about me?", "expected": {}, "expected_labels": ["about_me"]}
+{"case_id": "question-clarify", "lead_type": "sales", "text": "what do you mean", "last_ai": "What's your timeline?", "recently_asked": ["interest.timeline"], "expected": {}, "expected_labels": ["clarify"]}
+{"case_id": "question-restricted", "lead_type": "sales", "text": "How much is the RAV4?", "expected": {"interest.model": "Toyota RAV4"}, "expected_labels": ["restricted"]}
+{"case_id": "question-off-topic", "lead_type": "sales", "text": "Can you tell me a joke?", "expected": {}, "expected_labels": ["off_topic"]}
+{"case_id": "annoyed-at-bot", "lead_type": "sales", "text": "You keep asking the same thing!", "expected": {}, "expected_flags": {"handoff": false, "annoyed_at_bot": true}}
+{"case_id": "clearly-upset", "lead_type": "sales", "text": "This is ridiculous, worst service ever", "expected": {}, "expected_flags": {"handoff": true}}
+{"case_id": "mildly-disappointed", "lead_type": "sales", "text": "I'm a bit disappointed", "expected": {}, "expected_flags": {"handoff": false}}
+{"case_id": "asks-for-person", "lead_type": "sales", "text": "Can a real person call me?", "expected": {}, "expected_flags": {"handoff": true, "annoyed_at_bot": false}}
+{"case_id": "date-tomorrow", "lead_type": "sales", "text": "I need it by tomorrow", "expected": {"interest.needed_by": "2026-09-23"}}
+{"case_id": "date-next-tuesday-at-3", "lead_type": "service", "text": "Can I bring it in next Tuesday at 3?", "expected": {"interest.needed_by": "2026-09-29T15:00"}, "expected_labels": ["answerable"]}
+{"case_id": "date-the-15th", "lead_type": "sales", "text": "Hoping to buy by the 15th", "expected": {"interest.needed_by": "2026-10-15"}}

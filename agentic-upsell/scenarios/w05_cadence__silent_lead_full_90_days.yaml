@@ -1,0 +1,55 @@
+name: A lead that never replies gets every touch in order, then closes on Day 91
+description: 'Scope Workflow 5. Nobody ever replies. After the first reply: the name nudge, then one touch a day for Days 2-7 in the client''s order (vehicle visual, financing help, trade-in, feature, why visit, direct close), then weekly and monthly touches on days 14, 21, 28, 58 and 88, then the lead closes on Day 91 with nothing left scheduled. Each step uses run_next: "jump to the next scheduled touch and fire it".'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sid Silent, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+
+  # Touch 2: the name nudge, 3 hours later.
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 2}}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 0, timeout_s: 45}
+  - expect_last_sent: {lead: s, contains: "Sid?"}
+
+  # Touches 3-8, Days 2-7, in the client's order.
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 3, theme: vehicle_visual}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 1, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 4, theme: financing_help}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 2, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 5, theme: trade_in}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 3, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 6, theme: vehicle_value}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 4, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 7, theme: appointment_value}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 5, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 8, theme: direct_close}, timeout_s: 20}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 6, timeout_s: 45}
+
+  # Days 8-90: weekly to Day 30, then monthly - 5 more touches (days 14, 21, 28, 58, 88). PLAN_4 stream L's
+  # send-time/angle learning can re-plan and renumber these as it goes (seen live: a touch superseded and
+  # replanned under the same touch_number before firing), so this only checks each one fires in turn, not its
+  # exact number or day - the fixed-day touches above already prove the client-mandated schedule.
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - run_next: {lead: s, kind: cadence_touch}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  # The first reply and all 12 touches went out by text, and the 12 touches by email too.
+  - expect_outbox: {lead: s, channel: sms, count: 13}
+  - expect_outbox: {lead: s, channel: email, count: 12}
+
+  # Day 91: the lead closes and nothing is left.
+  - advance_clock: {hours: 96}
+  - expect_lead: {lead: s, stage: closed_lost, timeout_s: 45}
+  - expect_no_followup: {lead: s, kind: cadence_touch, status: pending}

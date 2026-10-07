@@ -1,0 +1,28 @@
+name: '"Speak to a human" offers a call or a text'
+description: PLAN_4 stream H (client action item, Friday meeting). A customer who asks for a person without saying how gets one warm reply offering a call at the number on file (last 4 digits only) or a text from a team member, and nothing else. "A call please" opens a staff call task straight away ("Customer asked for a call") and hands the lead to staff; their later "thanks" doesn't cancel it. A second customer who already said how ("have a person text me") skips the question - staff get a "wants a text" notice and no call task.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Carla Caller, comments: "Interested in a used RAV4"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - reply: {lead: c, text: "Can I talk to a real person please"}
+  - wait_turns: {lead: c, count: 2, timeout_s: 20}
+  - expect_turn: {lead: c, outcome: offer_human}
+  - expect_last_sent: {lead: c, contains: "number ending in", question_marks: 1}
+  - expect_call_task: {lead: c, status: none}
+  - reply: {lead: c, text: "A call please"}
+  - wait_turns: {lead: c, count: 3, timeout_s: 20}
+  - expect_turn: {lead: c, outcome: handoff}
+  - expect_last_sent: {lead: c, contains: "will call you"}
+  - expect_lead: {lead: c, status: handoff, staff_notice: call_task}
+  - expect_call_task: {lead: c, status: open}
+  - reply: {lead: c, text: "Thanks!"}
+  - wait_turns: {lead: c, count: 4, timeout_s: 20}
+  - expect_call_task: {lead: c, status: open}
+  - new_lead: {as: t, dealer: A, lead_type: sales, channel: sms, name: Tess Texter, comments: "Looking at trucks"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - reply: {lead: t, text: "Can you have a person text me instead?"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  - expect_turn: {lead: t, outcome: handoff}
+  - expect_last_sent: {lead: t, contains: "text you here"}
+  - expect_lead: {lead: t, status: handoff, staff_notice: text_requested}
+  - expect_call_task: {lead: t, status: none}

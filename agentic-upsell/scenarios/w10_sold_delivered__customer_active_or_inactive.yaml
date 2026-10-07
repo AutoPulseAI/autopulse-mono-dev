@@ -1,0 +1,17 @@
+name: A customer is INACTIVE only with no open opportunity and no vehicle they own
+description: 'Scope Workflow 10, "Customer status". After delivery the customer is ACTIVE (they own the vehicle). At the anniversary they say they sold it: the opportunity closes as Closed - No Longer Owns and, owning nothing and with nothing open, they become INACTIVE. When they then say what they drive now, that vehicle is recorded and they are ACTIVE again.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: c, dealer: A, lead_type: sales, channel: sms, name: Cass Status, comments: "Looking at a new RAV4"}
+  - wait_turns: {lead: c, count: 1, timeout_s: 20}
+  - staff_status: {lead: c, status: "Sold Delivered"}
+  - expect_customer: {lead: c, status: ACTIVE, timeout_s: 20}
+  - expect_followup: {lead: c, kind: ownership_anniversary, status: pending, timeout_s: 20}
+  - run_next: {lead: c, kind: ownership_anniversary}
+  - expect_followup: {lead: c, kind: ownership_anniversary, status: sent, index: 0, timeout_s: 60}
+  - reply: {lead: c, text: "No, we sold it"}
+  - expect_lead: {lead: c, stage: closed_no_longer_owns, timeout_s: 30}
+  - expect_customer: {lead: c, status: INACTIVE, timeout_s: 20}
+  - sleep: {seconds: 3}
+  - reply: {lead: c, text: "A 2022 Honda Civic"}
+  - expect_customer: {lead: c, status: ACTIVE, timeout_s: 30}
