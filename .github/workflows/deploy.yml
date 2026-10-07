@@ -1,0 +1,66 @@
+name: Deploy to AWS
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need the previous commit too, to diff what changed
+
+      - name: Detect which app(s) changed
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD || echo "all")
+          echo "core=$(echo "$CHANGED" | grep -q '^aidmvcs-be-dev/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "upsell=$(echo "$CHANGED" | grep -q '^agentic-upsell/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Snapshot current SHA for rollback
+        run: |
+          echo "${{ github.event.before }}" > /tmp/last-good-sha
+          scp -i ~/.ssh/deploy_key /tmp/last-good-sha \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/.last-good-sha"
+
+      - name: Deploy aidmvcs-be-dev
+        if: steps.changes.outputs.core == 'true'
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.env*' --exclude='node_modules' --exclude='.next' \
+            aidmvcs-be-dev/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/aidmvcs-be/"
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
+            cd /var/www/html/aidmvcs-be &&
+            npm install &&
+            npm run build &&
+            pm2 restart aidmvcs-be aidmvcs-worker
+          '
+
+      - name: Deploy agentic-upsell
+        if: steps.changes.outputs.upsell == 'true'
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.env*' --exclude='.venv' --exclude='__pycache__' \
+            agentic-upsell/ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/html/agentic-upsell/"
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
+            cd /var/www/html/agentic-upsell &&
+            source .venv/bin/activate &&
+            pip install . &&
+            pm2 restart upsell-api upsell-worker
+          '
+
+      - name: Smoke test
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
+            curl -sf http://localhost:3000/api/health || true
+            curl -sf http://localhost:8100/upsell/health
+            pm2 status
+          '
