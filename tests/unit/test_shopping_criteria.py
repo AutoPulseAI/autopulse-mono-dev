@@ -285,7 +285,8 @@ async def test_budget_filters_and_is_never_loosened(mongo):
     assert all(s["step"] != "budget" for s in found.loosened)
     cheaper = await find_stock(DEALER, InventoryCriteria(model="RAV4", price_max=35000), STUB)
     assert [r.vin for r in cheaper.records] == ["VIN00000000000361"]
-    assert not {"price", "internetreduced", "msrp"} & set(cheaper.records[0].model_dump())  # never said
+    assert not {"internetreduced", "msrp"} & set(cheaper.records[0].model_dump())  # only the listed price is said
+    assert cheaper.records[0].price <= 35000
 
 
 async def test_a_repeat_search_comes_from_the_cache(mongo):

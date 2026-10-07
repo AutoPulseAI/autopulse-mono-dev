@@ -137,13 +137,15 @@ def test_values_still_to_confirm_are_not_searched():
 
 # --- The typed view -----------------------------------------------------------------
 
-def test_typed_view_has_every_field_and_no_price():
+def test_typed_view_has_every_field_and_the_listed_price():
     record = to_record(to_listing(_vehicle("VIN00000000000001")))
     assert record.model_dump() == {
         "source_id": "VIN00000000000001", "vin": "VIN00000000000001", "year": 2022, "make": "Honda",
         "model": "CR-V", "trim": "EX", "body_type": "SUV", "condition": "used", "exterior_color": "Silver",
-        "miles": 24000, "page_url": "https://dealer.example/v/VIN00000000000001"}
-    assert not any("price" in k or "msrp" in k for k in InventoryRecord.model_fields)
+        "miles": 24000, "page_url": "https://dealer.example/v/VIN00000000000001",
+        # The listed (internetreduced) price and a rough range, never the in-store price or MSRP.
+        "price": 27995, "price_range": "$27,000-$28,500"}
+    assert not any("msrp" in k or "instore" in k for k in InventoryRecord.model_fields)
     assert "stock_number" not in InventoryRecord.model_fields
 
 
@@ -469,3 +471,46 @@ async def test_no_vehicle_named_means_no_search(mongo, monkeypatch):
     search = await _search(mongo, created)
     assert search["output"]["searched"] is False and search["output"]["records"] == []
     assert search["reasoning"][0].startswith("Not searched")
+
+
+def test_price_range_rounds_to_500_either_side():
+    from upsell_agent.tools.inventory_tool import price_range
+    assert price_range(38400) == "$37,500-$39,000"
+    assert price_range(30000) == "$29,500-$30,500"
+    assert price_range(0) is None and price_range(None) is None
+
+
+async def test_live_source_shows_a_mapped_dealers_stock_as_ours():
+    import httpx
+    from upsell_agent.config import Settings
+    from upsell_agent.tools.inventory_tool import LiveInventorySource
+
+    seen = {}
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        seen["url"], seen["dealer_id"] = str(request.url), request.url.params["dealer_id"]
+        return httpx.Response(200, json={"num_found": 1, "listings": [
+            {"vin": "VIN00000000000009", "price": 19995, "dealer": {"id": "live-dealer", "name": "Live Motors"},
+             "build": {"year": 2024, "make": "Volkswagen", "model": "Tiguan"}}]})
+
+    settings = Settings(INVENTORY_API_BASE_URL="https://crm.example", INVENTORY_DEALER_MAP="local-dealer:live-dealer")
+    body = await LiveInventorySource(settings, transport=httpx.MockTransport(reply)).search(
+        {"dealer_id": "local-dealer", "model": "^Tiguan$"}, 5)
+    assert seen["url"].startswith("https://crm.example/api/car") and seen["dealer_id"] == "live-dealer"
+    assert body["listings"][0]["dealer"]["id"] == "local-dealer"  # scoped to our dealer, so it isn't dropped
+
+
+def test_guard_allows_a_named_vehicles_listed_price_and_range_only():
+    from upsell_agent.guardrails.draft_guard import check_draft
+    rav4 = {"vin": "VIN00000000000038", "year": 2025, "make": "Toyota", "model": "RAV4", "trim": "XLE Hybrid",
+            "miles": 12, "price": 38400, "price_range": "$37,500-$39,000"}
+
+    def draft(text):
+        return check_draft({"sms_text": text, "sms_vins": [rav4["vin"]], "email_subject": "s", "email_body": "b"},
+                           customer_texts=["How much is the RAV4?"], known_values=[], inventory=[rav4])
+
+    ok = draft("The 2025 Toyota RAV4 XLE Hybrid is listed at about $38,400 (roughly $37,500-$39,000) - "
+               "the team will confirm the final number.")
+    assert ok["checks"]["no_invented_numbers"], ok["violations"]
+    assert draft("It's about $38k.")["checks"]["no_invented_numbers"]
+    assert not draft("The 2025 Toyota RAV4 is $35,000.")["checks"]["no_invented_numbers"]

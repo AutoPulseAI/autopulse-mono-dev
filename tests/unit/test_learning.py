@@ -343,7 +343,7 @@ async def test_reading_inventory_snapshots_its_prices(mongo):
     await mongo[PLATFORM_VEHICLES_COLLECTION].insert_one(
         {"dealerId": DEALER, "vin": VIN, "internetreduced": 27_995, "year": 2023, "make": "Toyota", "model": "RAV4"})
     record = await get_vehicle(DEALER, VIN, StubInventorySource())
-    assert record is not None and "price" not in record.model_dump()  # the AI's record never carries a price
+    assert record is not None and record.price == 27_995  # the listed price (client, 7 Oct 2026)
     assert (await mongo[AI_PRICE_SNAPSHOTS_COLLECTION].find_one({"vin": VIN}))["price"] == 27_995
 
 

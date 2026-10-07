@@ -48,6 +48,13 @@ def classify(text: str, now: datetime) -> str | None:
     return None
 
 
+def is_callback_request(state: dict) -> bool:
+    """The lead went to staff only because the customer asked for a person / a call (slots/policy.py). Nothing is
+    waiting on a person's decision, so the AI keeps answering their questions until the call happens (client,
+    7 Oct 2026: "Have a manager call me at 9:30" followed by service questions got silence)."""
+    return str(state.get("status_reason") or "").startswith("Customer asked for a person")
+
+
 def is_soft_handoff(state: dict) -> bool:
     """The handoff needed no person's decision: the AI couldn't write a safe reply, or it read the customer as
     upset (agent/turn.py sets `handoff_soft`; older rows are read from the reason)."""

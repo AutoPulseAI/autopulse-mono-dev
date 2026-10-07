@@ -54,16 +54,16 @@ def test_never_re_asks_what_our_last_message_asked():
     assert _asked(decision) == ["interest.budget_or_payment", "interest.timeline"]
 
 
-def test_answer_then_two_asks():
+def test_answer_then_one_ask():
     decision = _decide(questions=[Q])
-    assert decision["action"] == "answer" and _asked(decision) == ["interest.new_or_used", "interest.model"]
+    assert decision["action"] == "answer" and _asked(decision) == ["interest.new_or_used"]
 
 
-def test_answer_then_a_confirmation_and_one_ask():
+def test_answer_then_a_confirmation_and_no_ask():
     decision = _decide(*SALES_ALL[:2], _fact("interest.budget", 30000, pending=True), questions=[Q])
     assert decision["action"] == "answer" and decision["confirm"]["path"] == "interest.budget"
-    # The budget requirement is being confirmed, so it isn't asked as well.
-    assert _asked(decision) == ["interest.timeline"]
+    # Answering a question leaves room for one follow-up, and the confirmation is it.
+    assert _asked(decision) == []
 
 
 def test_confirm_plus_one_ask():

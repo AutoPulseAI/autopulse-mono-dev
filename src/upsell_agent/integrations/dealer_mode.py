@@ -10,6 +10,7 @@ Same rule as aidmvcs-be-dev/app/lib/ai/aiMode.js `effectiveAiMode`: no dealer
 record, auto-replies turned off, or an unknown value all mean `off`.
 """
 
+import os
 from typing import Literal
 
 from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id, get_db
@@ -18,8 +19,18 @@ AiMode = Literal["off", "shadow", "live"]
 AI_MODES: tuple[AiMode, ...] = ("off", "shadow", "live")
 
 
+def dealer_allowed(dealer_id: object) -> bool:
+    """AI_DEALER_ALLOWLIST (comma-separated dealer ids): when set, every other dealer is `off`, whatever its
+    record says. Set when this service runs against a shared/live database (`make crm-live-db`), so only the
+    test dealer is ever touched; aidmvcs-be-dev/app/lib/ai/aiMode.js reads the same variable."""
+    allow = {d.strip() for d in os.environ.get("AI_DEALER_ALLOWLIST", "").split(",") if d.strip()}
+    return not allow or str(dealer_id) in allow
+
+
 def effective_ai_mode(dealer: dict | None) -> AiMode:
     if not dealer:
+        return "off"
+    if "_id" in dealer and not dealer_allowed(dealer["_id"]):
         return "off"
     if (dealer.get("setting") or {}).get("autoReplyEnabled") is False:
         return "off"

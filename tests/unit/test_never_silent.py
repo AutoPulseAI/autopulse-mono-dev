@@ -168,7 +168,7 @@ async def test_one_holding_reply_every_two_hours(mongo, dealers):
     assert len(await _outbox(mongo, created)) == handoff_messages
 
     _move(125)
-    later = await _say(created, "Hello? Still waiting")
+    later = await _say(created, "Still waiting")  # a question would be answered by the AI (callback handoff)
     assert later["status"] == "holding_reply" and later["send_status"] == "sent"
     sent = await _outbox(mongo, created)
     assert len(sent) == handoff_messages + 1
@@ -189,7 +189,7 @@ async def test_holding_reply_by_email_uses_the_email_version(mongo, dealers):
     created = await _lead(channel="email")
     await _say(created, "Please have a manager call me", channel="email")
     _move(150)
-    assert (await _say(created, "Any update?", channel="email"))["status"] == "holding_reply"
+    assert (await _say(created, "Still waiting for that call", channel="email"))["status"] == "holding_reply"
     last = (await _outbox(mongo, created, "email"))[-1]
     assert last["subject"] == HOLDING_REPLIES["holding"].email_subject and "passed it to the team" in last["text"]
 

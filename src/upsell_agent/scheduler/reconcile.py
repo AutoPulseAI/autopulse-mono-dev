@@ -27,6 +27,7 @@ from bson import ObjectId
 from upsell_agent import clock
 from upsell_agent.agent import duplicates, lifecycle
 from upsell_agent.agent.customer_key import lead_customer_id
+from upsell_agent.integrations.dealer_mode import dealer_allowed
 from upsell_agent.agent.history_sync import PLATFORM_EMAILS_COLLECTION, sync_lead_history
 from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent
 from upsell_agent.integrations.mongodb import (
@@ -73,7 +74,7 @@ def _channel(lead: dict) -> str | None:
 async def live_dealers() -> list[str]:
     rows = await get_db()[PLATFORM_USERS_COLLECTION].find(
         {"ai_mode": "live", "setting.autoReplyEnabled": {"$ne": False}}, projection={"_id": 1}).to_list(None)
-    return [str(r["_id"]) for r in rows]
+    return [str(r["_id"]) for r in rows if dealer_allowed(r["_id"])]
 
 
 async def _anyone_wrote(db: DealerScopedDatabase, lead_id: Any) -> bool:

@@ -366,7 +366,10 @@ async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *,
     from upsell_agent.agent import crm_notes
 
     said = " / ".join(str(r.get("text") or "") for r in rows)[:600]
-    if took_back:
+    if took_back and request != "booking":
+        text = (f"The customer wrote again after asking for a person ({why or 'handed off'}): the AI is answering "
+                f"their questions meanwhile - the call they asked for is still yours to make. They wrote: \"{said}\"")
+    elif took_back:
         text = (f"The customer asked to book after the handoff ({why or 'handed off'}): the AI took the lead back "
                 f"to book it. They wrote: \"{said}\"")
     elif request == "booking":
@@ -590,15 +593,18 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         # MASTER_PLAN_3 C2: contact within the 60 minutes (or while the task was open): no call needed.
         await cancel_call_task(db, lead_id, reason="the customer replied", include_open=True, keep_requested=True)
 
-    if (state["status"] == "handoff" and not event.shadow and after_handoff.is_soft_handoff(state)
-            and after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) == "booking"):
+    handoff_request = (after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now())
+                       if state["status"] == "handoff" and not event.shadow else None)
+    if ((handoff_request == "booking" and after_handoff.is_soft_handoff(state))
+            or (handoff_request and after_handoff.is_callback_request(state))):
         # PLAN_4 stream X3 item 4: the handoff needed no person's decision (an unsafe draft, or read as upset) and
         # the customer now asks to book: the AI takes the lead back and books it; staff are told.
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
             "status": "active", "status_reason": None, "status_at": clock.now(), "resumed_at": clock.now(),
             "handoff_soft": None}})
-        await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id, request="booking",
-                                        rows=unanswered, took_back=True, why=state.get("status_reason"))
+        await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id,
+                                        request=handoff_request, rows=unanswered, took_back=True,
+                                        why=state.get("status_reason"))
         state = {**state, "status": "active", "status_reason": None}
 
     if state["status"] in SILENT_STATUSES:

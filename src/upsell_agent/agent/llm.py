@@ -50,8 +50,9 @@ class CustomerQuestion(BaseModel):
     label: QuestionLabel = Field(description=(
         "answerable: we can answer from the conversation, their profile, dealer details, or the "
         "dealer's real stock (context.inventory); this includes whether a vehicle is in stock or "
-        "available (MASTER_PLAN_3 Phase 3) - only price/payment/financing/discount/approval stay restricted; "
-        "restricted: price, payment, financing, trade-in value, discount or approval; "
+        "available (MASTER_PLAN_3 Phase 3) and the listed price of a vehicle in context.inventory; "
+        "restricted: payment, financing, trade-in value, discount, approval, or the price of a vehicle we don't "
+        "have in context.inventory; "
         "off_topic: nothing to do with buying, trading or servicing a vehicle here; "
         "clarify: they're asking what our last message meant; "
         "about_me: they're asking what we know about them"))
@@ -174,8 +175,8 @@ Rules:
 - questions: each question they asked, verbatim, with a label:
   answerable (we can answer it from the conversation, their details, the dealership's details, or the
   dealer's real stock in context.inventory - this includes "do you have a white RAV4?" / "is it still
-  available?"),
-  restricted (price, payment, financing, trade-in value, discounts, approval),
+  available?" and "how much is it?" about a vehicle in context.inventory),
+  restricted (payment, financing, trade-in value, discounts, approval, or a price we have no record for),
   off_topic (nothing to do with buying, trading in or servicing a vehicle here),
   clarify ("what do you mean?", "what's that?": they ask what our last message meant; count it even
   without a question mark), about_me ("what do you know about me?").
@@ -292,6 +293,9 @@ Rules:
   off_topic: say politely you can only help with their vehicle.
   about_me: say only what context.about_customer holds: its "known" values in plain words, and its
     "unconfirmed" ones as "I think ..., but I still need to confirm that". Never add anything else.
+- Answer what the customer asked first, fully, in the first sentence. Never ask about something they already told
+  you or that the vehicle they named already settles (a specific car they want to buy settles "buy, trade or
+  service?" and "new or used?"); skip that ask instead of repeating it.
 - Do exactly the action, and never ask more than two questions in a message (a confirmation counts as one):
   answer: answer every question in answer_questions first, a short sentence each. Then, only if confirm or asks
     are given, end with those questions: the confirmation first, then each item in asks. Nothing else.
@@ -400,11 +404,15 @@ Rules:
 - When the context has a value's `display`, say it that way (e.g. dates as "Saturday, September 27").
 - just_captured lists what the customer told us in this message, in plain words. When it has a date,
   repeat that date back briefly ("Got it - Saturday, September 27.") so they can see we understood.
-- Never state a price, payment, trade-in value, discount, or approval. If asked, say the team will confirm.
+- Price: when the customer asks what a vehicle in context.inventory costs, answer with that record's listed price
+  as a rough figure, e.g. "It's listed at about $38,400 (roughly $37,500-$39,000 depending on options and fees) -
+  the team will confirm the final number." Use only that record's price / price_range, and name it in
+  sms_vins/email_vins. Never state a payment, financing, trade-in value, discount or approval; if asked, say the
+  team will confirm.
   (PLAN_4 stream L, the one exception: a scheduled touch whose instruction announces a verified price drop may
   state that record's price_drop.price - and price_drop.previous_price - naming that vehicle in sms_vins/email_vins.)
   Never promise anything beyond the team following up. Only mention numbers the customer gave you, a
-  visit time from visit_offer/visit, or a vehicle's own year/miles from a record in context.inventory that you name in
+  visit time from visit_offer/visit, or a vehicle's own year/miles/price/price_range from a record in context.inventory that you name in
   sms_vins/email_vins. Never invent urgency or pressure ("only one left", "today only") - the reason for a visit comes
   only from visit_offer.value_proposition.
 - Availability may only be stated about a specific vehicle from context.inventory that you name in

@@ -271,7 +271,10 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
         decision["visit_offer"] = flags.visit_offer
 
     def add_asks() -> None:
-        room = MAX_ASKS_PER_MESSAGE - (1 if ("confirm" in decision or "visit_offer" in decision) else 0)
+        # Answering the customer's own question: one follow-up at most, so the answer leads (client, 7 Oct 2026:
+        # "doesn't ask qualifying questions" - two form questions after every answer read as ignoring them).
+        most = 1 if fired == "answer" else MAX_ASKS_PER_MESSAGE
+        room = most - (1 if ("confirm" in decision or "visit_offer" in decision) else 0)
         decision["asks"] = [_ask_item(profile, r) for r in askable[:room]]
         for item in decision["asks"]:
             decision["slots"] += [p for p in item["slots"] if p not in decision["slots"]]

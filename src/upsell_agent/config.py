@@ -187,6 +187,11 @@ class Settings(BaseSettings):
 
     # Calling back into the existing Next.js platform instead of duplicating its logic
     autopulse_api_base_url: str = Field(default="http://localhost:3000", alias="AUTOPULSE_API_BASE_URL")
+    # Where the dealer's stock is read from (GET /api/car), when it isn't AUTOPULSE_API_BASE_URL: a local CRM
+    # demoing against a real dealer's live inventory (e.g. https://www.autopulse.ai). Read-only.
+    inventory_api_base_url: str = Field(default="", alias="INVENTORY_API_BASE_URL")
+    # "<our dealer id>:<dealer id on the inventory API>,..." - whose stock a dealer shows when the two differ.
+    inventory_dealer_map: str = Field(default="", alias="INVENTORY_DEALER_MAP")
 
     # Single shared secret for BOTH directions of the Next.js <-> this service
     # boundary: Next.js sends it to authenticate calls INTO this service (see

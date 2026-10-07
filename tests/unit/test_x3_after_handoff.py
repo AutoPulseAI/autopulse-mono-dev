@@ -87,8 +87,19 @@ async def test_a_soft_handoff_customer_asking_to_book_is_taken_back_and_answered
     assert await mongo[AI_CRM_NOTES_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 1
 
 
+async def test_a_callback_request_handoff_keeps_answering_questions(mongo):
+    # Client, 7 Oct 2026: "Have a manager call me at 9:30", then service questions, got silence.
+    created = await _handed_off(mongo, "Customer asked for a person - wants a call", soft=False)
+    result = await _say(created, "In the meantime what is my next service and when?")
+    assert result["status"] == "done", result  # an AI turn answers it
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert state["status"] != "handoff"
+    assert "the call they asked for is still yours to make" in state["staff_notice"]["text"]
+    assert await mongo[AI_CRM_NOTES_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 1
+
+
 async def test_a_hard_handoff_still_gets_a_holding_reply_and_staff_get_the_request(mongo):
-    created = await _handed_off(mongo, "Customer asked for a person", soft=False)
+    created = await _handed_off(mongo, "Customer sounds urgent (confidence 0.90)", soft=False)
     result = await _say(created, "Could I come Saturday at 11?")
     assert result["status"] == "holding_reply", result  # inside the 2-hour window, still answered
     sent = await mongo["dev_outbox"].find_one({"lead_id": created["lead_id"]})

@@ -57,10 +57,11 @@ def test_clarify_with_nothing_asked_yet_is_just_answered():
     assert _decide(questions=[CLARIFY])["action"] == "answer"
 
 
-def test_answer_then_two_asks():
+def test_answer_then_one_ask():
+    # Client, 7 Oct 2026: answering their question, one follow-up at most so the answer leads.
     decision = _decide(questions=[ABOUT_ME])
     assert decision["action"] == "answer" and decision["answer_questions"] == [ABOUT_ME]
-    assert [a["requirement"] for a in decision["asks"]] == ["interest.new_or_used", "interest.model"]
+    assert [a["requirement"] for a in decision["asks"]] == ["interest.new_or_used"]
 
 
 def test_answer_then_confirm_rather_than_a_new_ask():

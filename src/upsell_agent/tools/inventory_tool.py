@@ -20,7 +20,11 @@ defects are worked around here:
 Everything comes from /api/car's response alone; nothing else is read. There
 is no age limit on records (Phase 0 item 6, removed 27 Sept).
 
-Prices are never loaded (Phase 0 item 3): the typed view has no price field.
+Each record carries the listing's price (the CRM's internetreduced) and a rough range around it, so the AI can
+answer "how much is it?" with the dealer's own listed number (client, 7 Oct 2026), never a discount or payment.
+
+INVENTORY_API_BASE_URL / INVENTORY_DEALER_MAP point a dealer at another CRM's stock (a local demo dealer showing
+a live dealer's inventory); the listings are mapped back to our dealer id so dealer scoping still holds.
 
 `PLATFORM_CLIENT=stub` reads the local database with a port of the route's
 query and response (the same switch as Customer 360), so dev runs without the
@@ -190,6 +194,9 @@ class InventoryRecord(BaseModel):
     exterior_color: str | None = None
     miles: int | None = None
     page_url: str | None = None
+    # The dealer's listed price and a rough range around it (rounded to $500 either side), for "how much is it?".
+    price: int | None = None
+    price_range: str | None = None
     # The listing's own photos (MASTER_PLAN_3 C6: agent/media.py picks from these, same vehicle only).
     photo_urls: list[str] = Field(default_factory=list, exclude=True)  # not sent to the model
 
@@ -217,18 +224,34 @@ class InventorySource(Protocol):
         """/api/car's response: {num_found, listings}."""
 
 
+def parse_dealer_map(value: str) -> dict[str, str]:
+    pairs = (p.split(":", 1) for p in (value or "").split(",") if ":" in p)
+    return {ours.strip(): theirs.strip() for ours, theirs in pairs if ours.strip() and theirs.strip()}
+
+
 class LiveInventorySource:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
-        self._url = f"{settings.autopulse_api_base_url.rstrip('/')}/api/car"
+        base = settings.inventory_api_base_url or settings.autopulse_api_base_url
+        self._url = f"{base.rstrip('/')}/api/car"
+        self._dealer_map = parse_dealer_map(settings.inventory_dealer_map)
         self._transport = transport
 
     async def search(self, params: dict[str, str], limit: int) -> dict[str, Any]:
         # /api/car has no auth today (integrations/autopulse_api_client.py);
         # called as it is.
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_S, transport=self._transport) as client:
-            response = await client.get(self._url, params={**params, "limit": str(limit), "page": "1"})
+        ours = params.get("dealer_id")
+        theirs = self._dealer_map.get(ours or "", ours)
+        query = {**params, "limit": str(limit), "page": "1", **({"dealer_id": theirs} if theirs else {})}
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_S, transport=self._transport,
+                                     follow_redirects=True) as client:
+            response = await client.get(self._url, params=query)
         response.raise_for_status()
-        return response.json()
+        body = response.json()
+        if theirs != ours:  # the other CRM's dealer stands in for ours: scope its rows to our dealer
+            for listing in body.get("listings") or []:
+                if (listing.get("dealer") or {}).get("id") == theirs:
+                    listing["dealer"] = {**listing["dealer"], "id": ours}
+        return body
 
 
 def _pattern(value: str) -> list[re.Pattern]:
@@ -289,8 +312,17 @@ def get_inventory_source(settings: Settings) -> InventorySource:
 
 # --- The typed view --------------------------------------------------------------
 
+def price_range(price: int | None) -> str | None:
+    """"$38,000-$39,000" for a $38,400 listing: $500 below and above, rounded to the nearest $500."""
+    if not price or price <= 0:
+        return None
+    low, high = int((price - 500) // 500 * 500), int(-(-(price + 500) // 500) * 500)
+    return f"${low:,}-${high:,}"
+
+
 def to_record(listing: dict[str, Any]) -> InventoryRecord:
     build = listing.get("build") or {}
+    price = int(float(listing.get("price") or 0)) or None
     return InventoryRecord(
         source_id=listing["vin"], vin=listing["vin"],
         year=build.get("year") or None, make=build.get("make") or None, model=build.get("model") or None,
@@ -299,6 +331,7 @@ def to_record(listing: dict[str, Any]) -> InventoryRecord:
         exterior_color=listing.get("exterior_color") or None,
         miles=listing.get("miles") or None,
         page_url=listing.get("vdp_url") or None,
+        price=price, price_range=price_range(price),
         photo_urls=[u for u in ((listing.get("media") or {}).get("photo_links") or []) if isinstance(u, str)],
     )
 

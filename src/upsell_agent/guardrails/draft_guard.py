@@ -116,6 +116,13 @@ def _numbers(texts: Iterable[Any]) -> set[str]:
     return found
 
 
+def _price_facts(record: dict[str, Any]) -> list[Any]:
+    price = record.get("price")
+    if not isinstance(price, (int, float)) or isinstance(price, bool) or price <= 0:
+        return []
+    return [price, record.get("price_range"), round(price / 500) * 500, round(price / 1000) * 1000]
+
+
 def _mentioned(draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The loaded records this draft actually names, via sms_vins/email_vins."""
     by_vin = {r["vin"]: r for r in inventory if r.get("vin")}
@@ -219,6 +226,10 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     # quoting that record's own year and miles: allowed, not invented.
     vehicle_facts += [r[k] for r in _named_by_model(text, inventory or []) for k in ("year", "miles")
                       if r.get(k) is not None]
+    # Client, 7 Oct 2026: a named vehicle's listed price, its rough range, and the price rounded to the nearest
+    # $500 / $1,000 ("about $38k") are the dealer's own numbers, not invented.
+    vehicle_facts += [v for r in [*_mentioned(draft, inventory or []), *_named_by_model(text, inventory or [])]
+                      for v in _price_facts(r)]
     # PLAN_4 stream L (architecture §15 decision 14's exception): a verified price drop's own prices, only for
     # that vehicle and only when the draft names it. Only a price-drop cadence touch's record carries one.
     vehicle_facts += [v for r in _mentioned(draft, inventory or []) for v in (r.get("price_drop") or {}).values()
