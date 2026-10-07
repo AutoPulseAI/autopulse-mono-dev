@@ -87,7 +87,6 @@ export default function TwoFactorVerification() {
                                         alt="Company Logo"
                                         width={157}
                                         height={68}
-                                        priority
                                     />
                                 </div>
 

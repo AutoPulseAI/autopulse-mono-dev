@@ -11,6 +11,8 @@ import Email from '../models/Email.js';
 import Lead from '../models/Lead.js';
 import mailgunJs from 'mailgun-js';
 import twilio from 'twilio';
+import { checkCampaignSend, blockReason, RETRY_UNANSWERED_MS } from '../lib/ai/aiSendCheck.js';
+import { getCampaignProcessingQueue } from '../lib/queue.js';
 
 const mailgun = mailgunJs({
   apiKey: process.env.MAILGUN_API_KEY,
@@ -59,8 +61,8 @@ export const processCampaignLead = async (job) => {
       throw new Error(`Campaign lead ${campaignLeadId} not found`);
     }
 
-    // Check if already processed
-    if (campaignLead.status !== 'pending') {
+    // Check if already processed (a `held` lead comes back when its time is up)
+    if (!['pending', 'held'].includes(campaignLead.status)) {
       console.log(`Campaign lead ${campaignLeadId} already processed with status: ${campaignLead.status}`);
       return { 
         success: true, 
@@ -247,6 +249,41 @@ export const processCampaignLead = async (job) => {
       }
 
     } else if (messageType === 'sms' && leadPhone && dealerSMSPhone) {
+      // The send check (MASTER_PLAN_3 decision 66): the AI service decides,
+      // the platform still sends. HOLD and no answer yet re-queue this lead;
+      // REVIEW and BLOCK mark it blocked with the reason.
+      const checkAttempt = job.data.checkAttempt || 0;
+      const answer = await checkCampaignSend({
+        dealerId, campaignId, campaignLeadId, leadId: savedLeadId || campaignLead.lead_id, phone: leadPhone,
+        attempt: checkAttempt,
+      });
+      if (answer.decision === 'WAITING' || answer.decision === 'HOLD') {
+        const held = answer.decision === 'HOLD';
+        const until = held && answer.until ? new Date(answer.until) : new Date(Date.now() + RETRY_UNANSWERED_MS);
+        if (held) {
+          campaignLead.status = 'held';
+          campaignLead.held_until = until;
+          campaignLead.block_reason = answer.reason || null;
+          await campaignLead.save();
+        }
+        const queue = await getCampaignProcessingQueue();
+        await queue.add('processCampaignLead', { ...job.data, checkAttempt: held ? checkAttempt + 1 : checkAttempt }, {
+          delay: Math.max(0, until.getTime() - Date.now()),
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+          removeOnComplete: 100,
+          removeOnFail: 50,
+        });
+        console.log(`Campaign SMS for lead ${campaignLeadId} ${held ? `held until ${until.toISOString()}: ${answer.reason}` : 'waiting for the send check'}`);
+        return { success: true, campaignLeadId, status: held ? 'held' : 'awaiting_check', held_until: until };
+      }
+      if (answer.decision !== 'ALLOW') {
+        campaignLead.status = 'blocked';
+        campaignLead.held_until = null;
+        campaignLead.block_reason = blockReason(answer);
+        await campaignLead.save();
+        console.log(`Campaign SMS for lead ${campaignLeadId} blocked by the send check: ${campaignLead.block_reason}`);
+      } else {
       try {
         // Send SMS using dedicated function
         messageId = await sendCampaignSMS({
@@ -276,6 +313,7 @@ export const processCampaignLead = async (job) => {
         errorMessage = err.message;
         throw err;
       }
+      }
 
     } else {
       // Missing required information
@@ -302,7 +340,7 @@ export const processCampaignLead = async (job) => {
     // campaign_id in CampaignLead is now a string, so use campaignId (string) for query
     const remainingPending = await CampaignLead.countDocuments({
       campaign_id: campaignId,
-      status: 'pending'
+      status: { $in: ['pending', 'held'] }
     });
 
     if (remainingPending === 0) {

@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
-import { onLeadStatusChange, clearPendingJobs } from '@lib/followupService.js';
+import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
+import { cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
+import { READ_ONLY_STATUSES, statusChangeError } from '@lib/ai/aiDnd';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentUpdateTemplate } from '@lib/templates/appointmentUpdateTemplate.js';
@@ -13,6 +15,11 @@ import { sendEmail } from '@lib/email.js';
 import { sendSMS } from '@lib/sms.js';
 import moment from 'moment-timezone';
 import Email from '@models/Email.js';
+import Booking from '@models/Booking.js';
+import {
+  appointmentTypeFor, checkBookingSlot, markLeadBookingShowed, nextAvailableSlot, nextSlotSentence, slotErrorResponseBody,
+  slotErrorStatus, upsertLeadBooking,
+} from '@lib/bookingService.js';
 import jwt from 'jsonwebtoken';
 import {
   normalizeUserLanguage,
@@ -209,14 +216,25 @@ export async function PUT(request) {
     // Continue without token - messageBy will remain null
   }
   try {
-    const { id, status, booking_date, booking_time } = await request.json();
-    console.log('Lead status update payload:', { id, status, booking_date, booking_time });
+    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type } = await request.json();
+    console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
       return NextResponse.json(
         { error: "Missing `id` or `status` in request body" },
         { status: 400 }
       );
+    }
+
+    // Only the AI sets "Closed - No Longer Owns" (POST /api/internal/ai/leads/status; PLAN_4 stream S).
+    if (READ_ONLY_STATUSES.includes(status)) {
+      return NextResponse.json({ error: `"${status}" is set by the AI only` }, { status: 400 });
+    }
+
+    // MASTER_PLAN_3 C5: "Visited" requires the manager's outcome (Sold Pending / Sold Delivered / Unsold).
+    const outcomeError = validateManagerOutcome(status, manager_outcome);
+    if (outcomeError) {
+      return NextResponse.json({ error: outcomeError }, { status: 400 });
     }
 
     await dbConnect();
@@ -229,6 +247,41 @@ export async function PUT(request) {
         { status: 404 }
       );
     }
+    // PLAN_4 stream X2: a status the AI's lifecycle can't follow (Closed - Lost on a delivered sale) is refused here.
+    const changeError = statusChangeError(originalLead.status, status);
+    if (changeError) {
+      return NextResponse.json({ error: changeError }, { status: 400 });
+    }
+
+    // For a dealer whose AI is live, the AI sends the appointment / no-show /
+    // review messages itself: the platform's own are skipped below (PLAN_4 C1).
+    const aiOwnsMessages = await aiOwnsFollowUps(originalLead.dealer_id);
+
+    // A staff booking goes through the same opening hours + slot capacity
+    // check as the AI's (app/lib/bookingService.js): 409 for a taken slot.
+    // Staff can book a past time (recording a walk-in) and can overbook on purpose.
+    let slotDealer = null;
+    if (status === 'Appointment Booked' && booking_date && booking_time) {
+      slotDealer = await User.findById(originalLead.dealer_id).select('dealer_account_information').lean();
+      if (slotDealer && allow_overbook !== true) {
+        const ownBooking = await Booking.findOne({ lead_id: String(id), booking_status: { $in: ['pending', 'confirmed'] } })
+          .sort({ _id: -1 }).select('_id').lean();
+        const appointmentType = appointmentTypeFor(originalLead, appointment_type);
+        const check = await checkBookingSlot(Booking, { dealer: slotDealer, date: booking_date, time: booking_time,
+          excludeBookingId: ownBooking?._id ?? null, allowPast: true, appointmentType });
+        if (!check.ok) {
+          // A full slot names the next open one (client, 5 Oct 2026).
+          const body = slotErrorResponseBody(check);
+          let next_available = null;
+          if (check.reason === 'slot_full') {
+            next_available = await nextAvailableSlot(Booking, { dealer: { ...slotDealer, _id: originalLead.dealer_id },
+              date: booking_date, time: booking_time, appointmentType, excludeBookingId: ownBooking?._id ?? null });
+            body.message = `${body.message}. ${nextSlotSentence(next_available, check.timezone)}`;
+          }
+          return NextResponse.json({ ...body, next_available }, { status: slotErrorStatus(check) });
+        }
+      }
+    }
 
     const updateDoc = {
       status,
@@ -236,6 +289,15 @@ export async function PUT(request) {
       fe_lead_status: status,
       statusChangedAt: new Date()
     };
+    if (manager_outcome) {
+      // The visit ends at its outcome: the lead shows "Sold Pending" / "Sold Delivered" / "Unsold" from now on.
+      // The AI is still told "Visited" with the outcome, in one event (notifyAiOfStaffStatus below).
+      updateDoc.status = manager_outcome;
+      updateDoc.lead_status = manager_outcome;
+      updateDoc.fe_lead_status = manager_outcome;
+      updateDoc.manager_outcome = manager_outcome;
+      updateDoc.manager_outcome_at = new Date();
+    }
 
     // When appointment booked, persist booking fields if provided.
     // booking_date and booking_time are always in the dealer's timezone (not UTC).
@@ -295,7 +357,30 @@ export async function PUT(request) {
       // Don't fail the entire request if cancellation fails
     }
 
+    // The staff booking as a Booking document, next to the AI's and the customer page's.
+    if (slotDealer) {
+      try {
+        const leadBooking = await upsertLeadBooking(Booking, { lead: updated, dealer: slotDealer, date: booking_date,
+          time: booking_time, appointmentType: appointment_type });
+        if (leadBooking?.created) {
+          await Lead.updateOne({ _id: updated._id }, { $set: { 'data.bookingId': leadBooking._id } });
+        }
+      } catch (bookingError) {
+        console.error('Error saving the staff booking:', bookingError);
+      }
+    }
+    // Visited / No Show: did the customer come to the appointment?
+    if (status === 'Visited' || status === 'No Show') {
+      try {
+        const dealerForShowed = await User.findById(updated.dealer_id).select('dealer_account_information').lean();
+        await markLeadBookingShowed(Booking, { leadId: updated._id, dealer: dealerForShowed, showed: status === 'Visited' });
+      } catch (showedError) {
+        console.error('Error recording whether the customer showed:', showedError);
+      }
+    }
+
     // Create appointment reminders if booking was created/updated
+    // (appointmentReminderService skips them for an AI-live dealer).
     if (status === 'Appointment Booked' && (booking_date || booking_time)) {
       try {
         // Pass the original booking_date string (already in dealer timezone) instead of the converted Date object
@@ -315,8 +400,9 @@ export async function PUT(request) {
       }
     }
 
-    // Send appointment booking/update notifications
-    if (status === 'Appointment Booked' && (booking_date || booking_time)) {
+    // Send appointment booking/update notifications (not for an AI-live
+    // dealer: the AI is told below and confirms the appointment itself)
+    if (status === 'Appointment Booked' && (booking_date || booking_time) && !aiOwnsMessages) {
       try {
         // Get dealer information
         const dealer = await User.findById(updated.dealer_id);
@@ -595,7 +681,7 @@ export async function PUT(request) {
     }
 
     // Create managerial review messages if status changed to "Managerial Review"
-    if (status === 'Managerial Review') {
+    if (status === 'Managerial Review' && !aiOwnsMessages) {
       try {
         const reviewResult = await createManagerialReviewMessages(updated._id, updated.dealer_id);
         console.log('Managerial review messages created from lead status update:', reviewResult);
@@ -604,8 +690,9 @@ export async function PUT(request) {
       }
     }
 
-    // Send No-Show message if status changed to "No Show"
-    if (status === 'No Show') {
+    // Send No-Show message if status changed to "No Show". For a dealer whose AI is live the AI owns the
+    // no-show messages (MASTER_PLAN_3 C5): it is told below and sends the client's own, so we don't double it.
+    if (status === 'No Show' && !aiOwnsMessages) {
       try {
         // Get dealer information
         const dealer = await User.findById(updated.dealer_id);
@@ -740,6 +827,15 @@ export async function PUT(request) {
     }
 
     await onLeadStatusChange(id);
+
+    // Taken off "Appointment Booked" (to Contacted, Lead, ...): the booking is cancelled and the AI cancels the
+    // appointment's messages now (PLAN_4 stream S). Never throws.
+    await cancelBookingsForStatusChange({ Booking, leadId: id, dealerId: updated.dealer_id, status,
+      previousStatus: originalLead.fe_lead_status || originalLead.lead_status || originalLead.status });
+
+    // Booked / visited / sold / DND / managerial review: staff own this lead
+    // now, so the AI stops replying to it (MASTER_PLAN_1 Stage 11). Never throws.
+    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status, managerOutcome: manager_outcome });
 
     return NextResponse.json({ lead: updated }, { status: 200 });
   } catch (err) {

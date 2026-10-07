@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
 import Customer from "@models/Customer";
@@ -8,8 +7,9 @@ import Deal from "@models/Deal";
 import RepairOrder from "@models/RepairOrder";
 import ServiceAppointment from "@models/ServiceAppointment";
 import Vehicle from "@models/Vehicle";
-import User from "@models/User";
+import TradeIn from "@models/TradeIn";
 import { isAuthorizedForDealer } from "@lib/customerListing";
+import { resolveRequestAuthorization } from "@lib/apiAuth";
 import {
   getDealDate,
   getDealPrice,
@@ -31,22 +31,6 @@ const RECORD_LIMIT = 500;
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
-}
-
-async function loadAuthenticatedUser(req) {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader || !/^Bearer\s+\S+$/.test(authHeader)) return null;
-
-  const token = authHeader.replace(/^Bearer\s+/, "");
-  let decoded;
-  try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    return null;
-  }
-  if (!decoded?.userId || !mongoose.isValidObjectId(decoded.userId)) return null;
-
-  return User.findById(decoded.userId).select("_id type parent_id vendor_id");
 }
 
 function uniqueVins(...recordLists) {
@@ -90,8 +74,8 @@ function hydrateVehicle(vin, vehicleDoc, fallbackSource) {
 export async function GET(req, { params }) {
   try {
     await dbConnect();
-    const currentUser = await loadAuthenticatedUser(req);
-    if (!currentUser) return jsonError("Unauthorized", 401);
+    const auth = await resolveRequestAuthorization(req);
+    if (!auth) return jsonError("Unauthorized", 401);
 
     const { id } = await params;
     if (!mongoose.isValidObjectId(id)) return jsonError("Invalid customer id", 400);
@@ -100,14 +84,19 @@ export async function GET(req, { params }) {
     const dealerId = url.searchParams.get("dealer_id")?.trim();
     if (!dealerId) return jsonError("dealer_id is required", 400);
 
-    if (!(await isAuthorizedForDealer(currentUser, dealerId))) {
+    // A trusted internal service (see ../../../../agentic-upsell/INTEGRATION.md) is
+    // authorized by possession of the shared secret, not by a human user's dealer
+    // relationship - it has no `currentUser` to check isAuthorizedForDealer against,
+    // and the dealer_id it presents was already verified against a real dealer
+    // session one hop earlier, in POST /api/upsell/recommend.
+    if (auth.mode === "user" && !(await isAuthorizedForDealer(auth.currentUser, dealerId))) {
       return jsonError("Forbidden", 403);
     }
 
     const customer = await Customer.findOne({ _id: id, dealer_id: dealerId }).lean();
     if (!customer) return jsonError("Customer not found", 404);
 
-    const [leads, deals, repairOrdersRaw, appointmentsRaw] = await Promise.all([
+    const [leads, deals, repairOrdersRaw, appointmentsRaw, tradeIns] = await Promise.all([
       Lead.find({ customer_id: customer._id, dealer_id: dealerId })
         .sort({ createdAt: -1 })
         .limit(RECORD_LIMIT)
@@ -115,6 +104,13 @@ export async function GET(req, { params }) {
       Deal.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
       RepairOrder.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
       ServiceAppointment.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
+      // Trade-ins the customer has brought to this dealer (manual or from ADF
+      // leads). Added for the AI service's slot pre-fill (agentic-upsell
+      // MASTER_PLAN_1 Stage 6); newest first, like leads.
+      TradeIn.find({ dealer_id: dealerId, customer_id: customer._id })
+        .sort({ createdAt: -1 })
+        .limit(RECORD_LIMIT)
+        .lean(),
     ]);
 
     const { repairOrders, appointments } = dedupeServiceTimeline(repairOrdersRaw, appointmentsRaw);
@@ -176,6 +172,7 @@ export async function GET(req, { params }) {
           computed_date: getAppointmentDate(appointment),
         })),
         vehicles,
+        trade_ins: tradeIns,
       },
     });
   } catch (error) {

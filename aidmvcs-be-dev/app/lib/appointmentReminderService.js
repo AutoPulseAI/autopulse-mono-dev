@@ -3,12 +3,24 @@ import AppointmentReminder from '../models/AppointmentReminder.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Lead from '../models/Lead.js';
+import { getDealerAiMode } from './ai/aiMode.js';
 import moment from 'moment-timezone';
 import {
   normalizeUserLanguage,
   toDisplayLanguageName,
   translateReminderBundle,
 } from './serverTranslateOutgoing.js';
+
+// No double messages (agentic-upsell MASTER_PLAN_3 C5, PLAN_4 stream C1): for
+// a dealer whose AI is `live`, the AI sends the appointment confirmation,
+// countdown reminders, no-show and post-visit messages itself (through the
+// platform's send endpoint), so the platform's own reminders, post-appointment
+// follow-ups and managerial review messages are neither created nor sent.
+// `shadow` / `off` dealers keep today's behaviour. Exported for tests.
+export async function aiOwnsCustomerMessages(dealerId, { getMode = getDealerAiMode } = {}) {
+  if (!dealerId) return false;
+  return (await getMode(String(dealerId))) === 'live';
+}
 
 /**
  * Create appointment reminders for a booking
@@ -18,6 +30,10 @@ import {
 export async function createAppointmentReminders(bookingData, dealerId) {
   try {
     await dbConnect();
+    if (await aiOwnsCustomerMessages(dealerId)) {
+      console.log(`Reminders skipped for dealer ${dealerId}: the AI is live and sends the appointment messages`);
+      return { success: false, skipped_for_ai: true, message: 'AI owns appointment messages' };
+    }
     
     // Get dealer's reminder settings
     const dealer = await User.findById(dealerId);
@@ -453,6 +469,10 @@ export async function cancelAllRemindersForLead(leadId) {
 export async function createManagerialReviewMessages(leadId, dealerId) {
   try {
     await dbConnect();
+    if (await aiOwnsCustomerMessages(dealerId)) {
+      console.log(`Managerial review messages skipped for dealer ${dealerId}: the AI is live`);
+      return { success: false, skipped_for_ai: true, message: 'AI owns follow-up messages' };
+    }
     
     // Get dealer's managerial review settings
     const dealer = await User.findById(dealerId);
@@ -560,6 +580,15 @@ export async function processReminder(reminder) {
     let dealerUrl = '';
     let dealershipPhone = '';
     
+    // Created before the dealer's AI went live: never sent now (the AI owns
+    // these messages); cancelled so the cron stops picking it up.
+    if (dealerId && await aiOwnsCustomerMessages(dealerId)) {
+      reminder.status = 'cancelled';
+      reminder.error_message = 'Skipped: the AI is live for this dealer and sends its own messages';
+      await reminder.save?.();
+      return { success: true, skipped: true, reason: 'ai_live' };
+    }
+
     if (dealerId) {
       dealer = await User.findById(dealerId);
       if (dealer) {

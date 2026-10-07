@@ -8,6 +8,7 @@ import dbConnect from '@lib/mongodb';
 import { sendEmail } from '@lib/email'; 
 import { sendSMS } from '@lib/sms';
 import {  onFollowUpEvent} from '@lib/followupService.js';
+import { notifyAiOfStaffReply } from '@lib/ai/aiStaff';
 import jwt from 'jsonwebtoken';
 
 function normalizeUserLanguage(raw) {
@@ -227,6 +228,18 @@ export async function POST(request) {
     }
 
     await conversationRecord.save();
+
+    // A person has answered this customer, so the AI stops replying to the
+    // lead and cancels its pending channel switch until staff hand it back
+    // (MASTER_PLAN_1 Stage 11). No-op for dealers in AI `off` mode; never throws.
+    if (parentMessage.lead_id) {
+      await notifyAiOfStaffReply({
+        leadId: parentMessage.lead_id,
+        dealerId: parentMessage.dealer_id,
+        emailRecordId: conversationRecord._id,
+        staffName: currentUser?.name,
+      });
+    }
 
     // Update parent message status
    

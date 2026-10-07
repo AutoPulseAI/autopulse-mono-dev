@@ -14,6 +14,9 @@ import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead,createAppointmentReminders, createManagerialReviewMessages } from '../lib/appointmentReminderService.js';
 import moment from 'moment-timezone';
 import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js';
+import { getDealerAiMode } from '../lib/ai/aiMode.js';
+import { notifyAiOfInbound, notifyAiOfNewLead } from '../lib/ai/aiDispatch.js';
+import { handleInboundSmsLive } from '../lib/ai/aiInbound.js';
 
 // import OpenAI from 'openai'; // Unused - kept for reference
 //import EmailConversations from 'app/agency/conversations/page.js';
@@ -63,6 +66,13 @@ export async function processSMS(job) {
            autreply =false;
         }
     }
+    // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
+    // conversation - no n8n, no auto-reply, no follow-up jobs.
+    const aiMode = await getDealerAiMode(dealer_id);
+    if (aiMode === 'live') {
+      return await handleInboundSmsLive({ currentSMS, dealer });
+    }
+
     const result = await callOllama(currentSMS);
    console.log('olamm response', result);
 
@@ -72,6 +82,7 @@ export async function processSMS(job) {
     let recipientphone;
     let smsText;
     let sms =true;
+    let aiNewLead = null; // set when this SMS creates a lead (for the shadow event)
 
     // Extract the response data
     let { 
@@ -326,6 +337,7 @@ export async function processSMS(job) {
       // is live and reachable, unlike the email/web-form paths where there's
       // no phone-channel evidence at all.
       await linkCustomerToLead(savedLead, { source: 'sms', smsOptIn: true });
+      aiNewLead = savedLead;
 
       statusJustChanged = true;
       recipientphone = lead_phone || sender;
@@ -367,6 +379,20 @@ export async function processSMS(job) {
       ...(result.use_replies_for_ai !== undefined && result.use_replies_for_ai !== null && { use_replies_for_ai: result.use_replies_for_ai })
     });
     await incomingRecord.save();
+
+    // AI shadow mode: n8n still handles this message; the AI service also
+    // drafts a reply it never sends. Never throws.
+    if (aiMode === 'shadow') {
+      if (aiNewLead) {
+        await notifyAiOfNewLead({ lead: aiNewLead, dealerId: dealer_id, channel: 'sms', mode: aiMode });
+      } else if (leadId) {
+        await notifyAiOfInbound({
+          emailRecord: incomingRecord, lead: await Lead.findById(leadId), dealerId: dealer_id,
+          channel: 'sms', text: currentSMS.mail_content, mode: aiMode,
+        });
+      }
+    }
+
     if(autreply && isManagerialReview) {
       // Handle managerial review case - send to manager and return early
       if (dealer && autreply) {
