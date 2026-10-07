@@ -8,6 +8,7 @@ import { PARTS_QUEUE, SALES_QUEUE, SERVICE_QUEUE, SERVICE_APPOINTMENTS_QUEUE, de
 const redisConfig = {
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.REDIS_PORT || 6379,
+  db: Number(process.env.REDIS_DB || 0),
   password: process.env.REDIS_PASSWORD || undefined,
 };
 

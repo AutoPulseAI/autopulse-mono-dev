@@ -22,7 +22,8 @@ import { ticketstatusUpdateTemplate } from './templates/support/statusUpdateTemp
 import { sendTicketMessageEmailtemplate } from './templates/support/sendTicketMessageEmail.js';
 import { subscriptionActivatedTemplate } from "./templates/subscriptionActivatedTemplate.js";
 
-import User from "@models/User"; 
+import User from "@models/User";
+import { isProviderSendStubbed, recordStubSend } from "./providerStub.js";
 // Create transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.mailgun.org",
@@ -53,6 +54,13 @@ const templates = {
  * @param {string} [options.from] - Sender email
  */
 export const sendEmail = async ({ to, subject, html, from, replyTo }) => {
+  // Local/dev runs never reach SMTP (app/lib/providerStub.js); e.g. the login
+  // OTP is then only in the web log and the login response.
+  if (isProviderSendStubbed()) {
+    await recordStubSend({ channel: 'email', to, from: from || process.env.EMAIL_FROM || null, subject,
+      text: String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000), kind: 'account' });
+    return true;
+  }
   try {
     await transporter.sendMail({
       from: from || `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM}>`,

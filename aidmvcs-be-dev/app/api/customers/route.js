@@ -45,7 +45,12 @@ export async function GET(req) {
     if (!currentUser) return jsonError("Unauthorized", 401);
 
     const url = new URL(req.url);
-    const dealerId = url.searchParams.get("dealer_id")?.trim();
+    let dealerId = url.searchParams.get("dealer_id")?.trim();
+    if (!dealerId && currentUser) {
+      dealerId = currentUser.type === "dealer"
+        ? currentUser._id.toString()
+        : (currentUser.parent_id ? currentUser.parent_id.toString() : null);
+    }
     if (!dealerId) return jsonError("dealer_id is required", 400);
 
     if (!(await isAuthorizedForDealer(currentUser, dealerId))) {

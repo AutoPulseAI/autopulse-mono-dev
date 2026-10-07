@@ -7,6 +7,7 @@ import EmailReplyModal from "./EmailReplyModal";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
+import AiLeadPanel from "../../ai/components/AiLeadPanel";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
 import { useUser } from "../../context/UserContext";
@@ -17,6 +18,9 @@ import {
   leadUserLanguageDisplay,
   messageUserLanguageDisplay,
 } from "../../utils/conversationTranslation";
+import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
+import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -445,12 +449,14 @@ export default function ViewConversations({
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to update status");
+      // A full slot keeps the modal open with "Book {next available}" (stream R, app/lib/bookingConflict.js).
+      await throwIfStatusFailed(response, extra);
       
       // Update local state
       lead.fe_lead_status = newStatus;
       setRefreshKey(prev => prev + 1);
     } catch (err) {
+      if (err?.slotConflict) throw err; // shown in the StatusModal (stream R)
       console.error("Error updating status:", err);
     }
   };
@@ -880,6 +886,8 @@ export default function ViewConversations({
                     </Row>
                   </div>
                 </div>
+                {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
+                {lead?._id && <AiLeadPanel key={lead._id} leadId={lead._id} />}
                 {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
@@ -1168,7 +1176,8 @@ export default function ViewConversations({
                             </div>
                           )}
                           {/* Attachments Section */}
-                          {email.attachments?.map((attachment, index) => {
+                          <MessagePhotos email={email} />{/* stream R: the AI's photos as thumbnails */}
+                          {(hasAiPhotos(email) ? [] : email.attachments)?.map((attachment, index) => {
                             // Handle both formats: SMS (publicUrl, contentType, fileName) and Campaign (url, mimeType, filename)
                             const attachmentUrl = attachment.publicUrl || attachment.url;
                             const attachmentType = attachment.contentType || attachment.mimeType;

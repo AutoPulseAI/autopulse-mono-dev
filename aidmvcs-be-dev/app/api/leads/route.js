@@ -16,6 +16,7 @@ import Role from '@models/Role';
 import Permission from '@models/Permission';
 import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
+import { attachAiStages } from '@lib/ai/aiStage';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -64,7 +65,12 @@ export async function GET(req) {
     }
     
     // Get all filter parameters
-    const dealerId = url.searchParams.get("dealer_id");
+    let dealerId = url.searchParams.get("dealer_id");
+    if (!dealerId && currentUser) {
+      dealerId = currentUser.type === "dealer"
+        ? currentUser._id.toString()
+        : (currentUser.parent_id ? currentUser.parent_id.toString() : null);
+    }
     const customerId = url.searchParams.get("customer_id");
     const assignmentFilter = url.searchParams.get("assignment"); // 'my', 'all', 'unassigned'
     const name = url.searchParams.get("name");
@@ -496,6 +502,8 @@ export async function GET(req) {
         .skip((page - 1) * limit)
         .limit(limit)
         .lean();
+      // The AI's stage per lead, read only (app/lib/ai/aiStage.js).
+      await attachAiStages(leads);
 
       return new Response(JSON.stringify({
         data: leads,
@@ -642,6 +650,7 @@ export async function POST(req) {
       const redis = new Redis({
         host: process.env.REDIS_HOST || 'localhost',
         port: process.env.REDIS_PORT || 6379,
+        db: Number(process.env.REDIS_DB || 0),
         password: process.env.REDIS_PASSWORD || undefined,
         maxRetriesPerRequest: null,
       });

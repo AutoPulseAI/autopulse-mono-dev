@@ -3,7 +3,7 @@ import { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Allow HMR when opening dev server via LAN IP (e.g. http://192.168.1.7:3001)
-  allowedDevOrigins: ["192.168.1.7", "localhost", "127.0.0.1"],
+  allowedDevOrigins: ["192.168.1.7", "localhost", "127.0.0.1", "*.trycloudflare.com", "*.ngrok-free.dev"],
 
   // Turbopack configuration (Next.js 16+)
   turbopack: {

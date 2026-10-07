@@ -16,6 +16,9 @@ import { linkCustomerToLead, isEmailSentinel } from '../lib/customerResolver.js'
 import { parseAdfLeadEmail, extractRawAdfText } from '../lib/adfLeadParser.js';
 import RawAdfPayload from '../models/RawAdfPayload.js';
 import { enqueueAdfTrades } from '../lib/adfTradeEnrichment.js';
+import { getDealerAiMode } from '../lib/ai/aiMode.js';
+import { notifyAiOfInbound, notifyAiOfNewLead } from '../lib/ai/aiDispatch.js';
+import { handleInboundEmailLive } from '../lib/ai/aiInbound.js';
 
 // Connect to the database
 await dbConnect();
@@ -255,6 +258,24 @@ export async function processEmail(job) {
         { $set: { lead_id: savedAdfLead._id } }
       );
 
+      // AI mode (app/lib/ai/aiMode.js): `shadow` and `live` tell the AI service
+      // about the new lead. In `live` the AI sends the first reply and owns the
+      // follow-ups, so the n8n acknowledgement and FollowUpJobs below are skipped.
+      const adfAiMode = await getDealerAiMode(dealer_id);
+      await notifyAiOfNewLead({
+        lead: savedAdfLead,
+        dealerId: dealer_id,
+        channel: adfLead.phone ? 'sms' : 'email',
+        mode: adfAiMode,
+      });
+      if (adfAiMode === 'live') {
+        console.log('ADF Lead handed to the AI service (live mode)', {
+          lead_id: String(savedAdfLead._id),
+          dealer_id: String(dealer_id),
+        });
+        return;
+      }
+
       try {
         await onLeadStatusChange(savedAdfLead._id);
       } catch (followupError) {
@@ -337,10 +358,18 @@ export async function processEmail(job) {
       return;
     }
 
+    // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
+    // conversation - no n8n, no auto-reply, no follow-up jobs.
+    const aiMode = await getDealerAiMode(dealer_id);
+    if (aiMode === 'live') {
+      return await handleInboundEmailLive({ currentEmail, dealer });
+    }
+
     const result = await callOllama(conversationThread,currentEmail);
 
     console.log('Third-party API response:', result);
     let leadId = null;
+    let aiNewLead = null; // set when this email creates a lead (for the shadow event)
     let recipientEmail;
     let emailSubject=`${subject}`;
     // Extract the response data
@@ -609,6 +638,7 @@ export async function processEmail(job) {
       leadId = savedLead._id;
 
       await linkCustomerToLead(savedLead, { source: 'email' });
+      aiNewLead = savedLead;
       console.log('Lead created successfully:', newLead);
       recipientEmail = (lead_mail && lead_mail !== 'NA') ? lead_mail : sender;
       emailId = null; // No parent for a new email
@@ -652,6 +682,24 @@ export async function processEmail(job) {
           originalparent.use_replies_for_ai = result.use_replies_for_ai;
         }
         await originalparent.save();
+      }
+    }
+
+    // AI shadow mode: n8n still handles this email; the AI service also
+    // drafts a reply it never sends. Never throws.
+    if (aiMode === 'shadow') {
+      if (aiNewLead) {
+        await notifyAiOfNewLead({ lead: aiNewLead, dealerId: dealer_id, channel: sms ? 'sms' : 'email', mode: aiMode });
+      } else if (leadId) {
+        const inboundRecord = currentEmail.email_record_id
+          ? await Email.findById(currentEmail.email_record_id)
+          : await Email.findOne({ message_id: currentEmail.message_id, dealer_id }).sort({ timestamp: -1 });
+        if (inboundRecord) {
+          await notifyAiOfInbound({
+            emailRecord: inboundRecord, lead: await Lead.findById(leadId), dealerId: dealer_id,
+            channel: 'email', text: bodyContent, mode: aiMode,
+          });
+        }
       }
     }
 

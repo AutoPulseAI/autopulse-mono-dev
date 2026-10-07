@@ -90,6 +90,8 @@ export default function CampaignReportPage() {
   const getLeadStatusVariant = (status) => {
     const statusMap = {
       pending: "secondary",
+      held: "warning",
+      blocked: "dark",
       sent: "info",
       delivered: "success",
       failed: "danger",
@@ -133,6 +135,9 @@ export default function CampaignReportPage() {
         if (lead.error_message) {
           row['Error Message'] = lead.error_message;
         }
+        // The send check: when a held text goes out, and why a text was held or blocked
+        row['Held Until'] = lead.status === 'held' && lead.held_until ? formatTimestamp(lead.held_until, timezone) : '';
+        row['Held / Blocked Reason'] = ['held', 'blocked'].includes(lead.status) ? (lead.block_reason || '') : '';
 
         return row;
       });
@@ -381,6 +386,28 @@ export default function CampaignReportPage() {
                                 progressTotal={report.stats.total_leads}
                               />
                             </Col>
+                            <Col lg={3} md={6} xs={6}>
+                              <CountCard
+                                iconClass="fa-regular fa-hourglass-half"
+                                count={report.stats.held || 0}
+                                label="Held until…"
+                                description={`${report.stats.held || 0} waiting for an allowed time`}
+                                showProgress
+                                progressValue={report.stats.held || 0}
+                                progressTotal={report.stats.total_leads}
+                              />
+                            </Col>
+                            <Col lg={3} md={6} xs={6}>
+                              <CountCard
+                                iconClass="fa-solid fa-ban"
+                                count={report.stats.blocked || 0}
+                                label="Blocked"
+                                description={`${report.stats.blocked || 0} stopped by the send check`}
+                                showProgress
+                                progressValue={report.stats.blocked || 0}
+                                progressTotal={report.stats.total_leads}
+                              />
+                            </Col>
                           </Row>
                         </div>
 
@@ -562,6 +589,8 @@ export default function CampaignReportPage() {
                                 >
                                   <option value="all">All Status</option>
                                   <option value="pending">Pending</option>
+                                  <option value="held">Held</option>
+                                  <option value="blocked">Blocked</option>
                                   <option value="sent">Sent</option>
                                   <option value="failed">Failed</option>
                                   <option value="bounced">Bounced</option>
@@ -736,6 +765,21 @@ export default function CampaignReportPage() {
                                         <p>
                                           <small className="text-danger">
                                             <b>Error: </b>{lead.error_message || "-"}
+                                          </small>
+                                        </p>
+                                      )}
+                                      {lead.status === "held" && (
+                                        <p className="mb-0">
+                                          <small className="text-warning">
+                                            <b>Held until {lead.held_until ? formatTimestamp(lead.held_until, timezone) : "—"}: </b>
+                                            {lead.block_reason || "waiting for an allowed time"}
+                                          </small>
+                                        </p>
+                                      )}
+                                      {lead.status === "blocked" && (
+                                        <p className="mb-0">
+                                          <small className="text-danger">
+                                            <b>Blocked: </b>{lead.block_reason || "stopped by the send check"}
                                           </small>
                                         </p>
                                       )}

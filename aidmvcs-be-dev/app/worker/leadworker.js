@@ -14,6 +14,8 @@ import { onLeadStatusChange ,onFollowUpEvent} from '../lib/followupService.js';
 import { checkLeadByIdentifiers } from '../lib/dealersocket-worknote.js';
 import { cancelAllRemindersForLead } from '../lib/appointmentReminderService.js';
 import { linkCustomerToLead } from '../lib/customerResolver.js';
+import { aiRouting, getDealerAiMode } from '../lib/ai/aiMode.js';
+import { leadChannel, notifyAiOfNewLead } from '../lib/ai/aiDispatch.js';
 
 export const processLead = async (job) => {
   const { leadData, action, dealer,jobData } = job.data;
@@ -41,8 +43,16 @@ export const processLead = async (job) => {
       const dealerEmailAccount = await EmailAccount.findOne({ dealer_id: dealer._id });
       console.log(leadData)
       
+      // AI mode (app/lib/ai/aiMode.js). In `live` the AI service replies, so
+      // n8n is not called: its outputs are replaced by safe defaults and the
+      // reply below is skipped. `shadow` runs today's flow AND tells the AI.
+      const aiMode = await getDealerAiMode(dealer._id);
+      const routing = aiRouting(aiMode);
+
       // Call Ollama API for processing first to get user_language
-      const ollamaResponse = leadData.followup_preference === 'sms' &&  leadData.phone ? await callOllama(jobData): await  callOllama(jobData);
+      const ollamaResponse = routing.callN8n
+        ? await callOllama(jobData)
+        : { response: null, response_mode: leadChannel(leadData), user_language: leadData.user_language || 'english' };
       const { 
         response,
         response_mode,
@@ -123,7 +133,25 @@ export const processLead = async (job) => {
         const recipient = communicationType === 'sms' ? leadData.phone : leadData.email;
         const content = response ? await stripTagsRegex(response): 'Thank you for contacting us. We will get back to you soon.';
         let status = 'sent';
-        try {
+        if (routing.aiReplies) {
+          // AI live: save only the lead's own message. The AI service sends
+          // the reply and records it via POST /api/internal/ai/messages.
+          await new Email({
+            message_id: `lead-${lead._id}`,
+            recipient: sender,
+            parent_message_id: null,
+            parent_conversation: null,
+            sender: recipient,
+            subject: '',
+            mail_content: leadData.comments,
+            status: 'incoming',
+            dealer_id: dealer._id,
+            lead_id: lead._id,
+            date: new Date(),
+            communication_type: communicationType,
+            user_language: user_language.toLowerCase()
+          }).save();
+        } else try {
           let messageId;
           if (autoReplyEnabled) {
             try {
@@ -263,8 +291,20 @@ export const processLead = async (job) => {
         console.warn('DealerSocket work note insert failed (leadworker):', dsErr?.message || dsErr);
       }
 
-      // Trigger follow-up system
-      if(autoReplyEnabled){
+      // Tell the AI service about the new lead (shadow and live). The lead,
+      // its Customer link and its first message are all saved by now.
+      if (routing.sendEvent) {
+        await notifyAiOfNewLead({
+          lead: savedLead,
+          dealerId: dealer._id,
+          channel: response_mode || leadChannel(leadData),
+          mode: aiMode,
+        });
+      }
+
+      // Trigger follow-up system (not for AI live dealers: the AI service
+      // owns follow-ups for them, architecture §6).
+      if(autoReplyEnabled && !routing.aiReplies){
         if (statusJustChanged) {
           await onLeadStatusChange(lead._id);
         } else {

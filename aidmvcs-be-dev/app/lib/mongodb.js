@@ -10,6 +10,13 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../../.env.local") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
+// `make crm-live-db`: never build indexes on the live database from a local copy (Mongoose's autoIndex
+// would create every model's indexes on the production collections at first use).
+if (["1", "true", "yes"].includes(String(process.env.CRM_LIVE_DB || "").toLowerCase())) {
+  mongoose.set("autoIndex", false);
+  mongoose.set("autoCreate", false);
+}
+
 function getMongoUri() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
@@ -42,10 +49,16 @@ async function dbConnect({ reportErrors = true } = {}) {
     }
 
     if (mongoose.connection.readyState === 2) {
+      // Another module started connecting (the workers await dbConnect() at
+      // load time in several modules). Wait as long as that connect may take,
+      // and check the state again before giving up: under startup load the
+      // timer can fire before the "connected" event is handled.
       await new Promise((resolve, reject) => {
         mongoose.connection.once("connected", resolve);
         mongoose.connection.once("error", reject);
-        setTimeout(() => reject(new Error("Connection timeout")), 10000);
+        setTimeout(() => (mongoose.connection.readyState === 1
+          ? resolve()
+          : reject(new Error("Connection timeout"))), 30000);
       });
       return;
     }
@@ -64,7 +77,9 @@ async function dbConnect({ reportErrors = true } = {}) {
       } else {
         mongoose.connection.once("connected", resolve);
         mongoose.connection.once("error", reject);
-        setTimeout(() => reject(new Error("Connection timeout")), 10000);
+        setTimeout(() => (mongoose.connection.readyState === 1
+          ? resolve()
+          : reject(new Error("Connection timeout"))), 30000);
       }
     });
   } catch (error) {

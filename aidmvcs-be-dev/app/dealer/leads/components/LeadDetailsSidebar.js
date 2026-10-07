@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Offcanvas, Form, Button, Alert, Spinner, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import ViewAdfModal, { isAdfLead } from "./ViewAdfModal";
+import AiLeadPanel from "../../ai/components/AiLeadPanel";
 
 export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }) {
   const { dealerParent } = useUser();
@@ -332,6 +333,10 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
             </div>
           )}
         </div>
+
+        {/* What the AI is doing with this lead */}
+        <hr className="my-4" />
+        <AiLeadPanel key={lead._id} leadId={lead._id} className="position-relative" />
       </Offcanvas.Body>
 
       <ViewAdfModal show={showAdfModal} onHide={() => setShowAdfModal(false)} leadId={lead._id} />

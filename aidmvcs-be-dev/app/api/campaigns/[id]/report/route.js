@@ -139,7 +139,12 @@ export async function GET(req, { params }) {
       
       // Processing status
       pending: campaignLeads.filter(l => l.status === "pending").length,
-      processed: campaignLeads.filter(l => l.status !== "pending").length
+      processed: campaignLeads.filter(l => !["pending", "held"].includes(l.status)).length,
+
+      // The send check (agentic-upsell MASTER_PLAN_3 decision 66): texts
+      // waiting for an allowed time, and texts it stopped
+      held: campaignLeads.filter(l => l.status === "held").length,
+      blocked: campaignLeads.filter(l => l.status === "blocked").length
     };
 
     // Calculate rates (avoid division by zero)
@@ -277,7 +282,9 @@ export async function GET(req, { params }) {
         click_count: lead.click_count || 0,
         unsubscribed: lead.unsubscribed,
         unsubscribed_at: lead.unsubscribed_at,
-        error_message: lead.error_message
+        error_message: lead.error_message,
+        held_until: lead.held_until || null,
+        block_reason: lead.block_reason || null
       }))
     };
 

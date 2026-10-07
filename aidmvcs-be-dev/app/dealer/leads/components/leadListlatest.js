@@ -11,6 +11,7 @@ import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
+import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
@@ -96,8 +97,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Visited",
     "Managerial Review",
     "Sold",
+    "Sold Pending",
+    "Sold Delivered",
+    "Unsold",
+    "Closed - Lost",
     "Lead",
-    "DND"
+    "DND",
+    "No Show",
+    // Set only by the AI (ownership ended; PLAN_4 stream S): filterable, never picked in the status modal.
+    "Closed - No Longer Owns"
   ];
 
   const getStatusVariant = (status) => {
@@ -107,6 +115,11 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       case 'visited': return 'success';
       case 'managerial review': return 'warning';
       case 'sold': return 'danger';
+      case 'sold pending': return 'warning';
+      case 'sold delivered': return 'danger';
+      case 'unsold': return 'secondary';
+      case 'closed - lost': return 'dark';
+      case 'closed - no longer owns': return 'dark';
       case 'lead': return 'custom';
       case 'dnd': return 'secondary';
       default: return 'secondary';
@@ -587,7 +600,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to update status");
+      // A full slot keeps the modal open with "Book {next available}" (stream R, app/lib/bookingConflict.js).
+      await throwIfStatusFailed(response, extra);
 
       setLeads(prev => prev.map(l =>
         l._id === selectedLead._id ? { ...l, fe_lead_status: newStatus } : l
@@ -595,8 +609,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       showAlert("Status updated successfully");
       setShowStatusModal(false);
     } catch (err) {
+      if (err?.slotConflict) throw err; // shown in the StatusModal (stream R)
       console.error("Error updating status:", err);
-      showAlert("Failed to update status", "danger");
+      showAlert(err?.message || "Failed to update status", "danger");
     }
   };
 
@@ -1232,6 +1247,12 @@ useImperativeHandle(ref, () => ({
                       >
                         {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
+                      {lead.ai_stage_label && (
+                        // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
+                        <div className="small text-muted mt-1" title="AI stage (read only)">
+                          <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
+                        </div>
+                      )}
                     </Col>
 
                     <Col xl={1} lg={2} sm={2} xs={5}>

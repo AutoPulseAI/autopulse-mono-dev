@@ -8,7 +8,7 @@ import { sendEmail } from '@lib/email.js';
 import User from '@models/User.js';
 // you’ll need to provide this yourself:
 import { sendSMS } from '@lib/sms.js';
-import {  onFollowUpCompleted } from '@lib/followupService.js';
+import {  onFollowUpCompleted, aiOwnsFollowUps } from '@lib/followupService.js';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 
 export async function PUT(request) {
@@ -79,6 +79,17 @@ export async function PUT(request) {
     
     const lead = await Lead.findById(job.leadId);
     //console.log('intial lead', lead);
+
+    // A dealer in AI `live` mode gets follow-ups from the AI service only.
+    // A job created before the switch (or scheduled some other way) must not
+    // message the customer a second time (MASTER_PLAN_1 Stage 11).
+    if (lead && await aiOwnsFollowUps(lead.dealer_id)) {
+      await FollowUpJob.findByIdAndUpdate(followup_id, { status: 'completed', executedAt: new Date() });
+      return NextResponse.json(
+        { skipped: true, reason: 'The AI service handles follow-ups for this dealer (ai_mode live). Nothing sent.' },
+        { status: 200 }
+      );
+    }
     
     if (!lead) {
       await FollowUpJob.findByIdAndUpdate(followup_id, { 

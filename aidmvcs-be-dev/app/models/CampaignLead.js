@@ -34,8 +34,19 @@ const CampaignLeadSchema = new mongoose.Schema(
     // Status tracking for campaign execution
     status: {
       type: String,
-      enum: ["pending", "sent", "delivered", "failed", "bounced"],
+      // held / blocked: the send check (agentic-upsell MASTER_PLAN_3 decision 66)
+      enum: ["pending", "held", "blocked", "sent", "delivered", "failed", "bounced"],
       default: "pending"
+    },
+    // When a held text may go out (customer's hours, dealer hours, frequency cap)
+    held_until: {
+      type: Date,
+      default: null
+    },
+    // Why the send check held or blocked the text
+    block_reason: {
+      type: String,
+      default: null
     },
     sent_at: {
       type: Date,

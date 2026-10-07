@@ -7,6 +7,7 @@ import dbConnect from './mongodb.js';
 import User from '../models/User.js';
 import Lead from '../models/Lead.js';
 import FollowUpJob from '../models/FollowUpJob.js';
+import { getDealerAiMode } from './ai/aiMode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -21,8 +22,20 @@ export async function clearPendingJobs(leadId, ruleId = null) {
   return { success: true, deleted: result.deletedCount };
 }
 
+// A dealer in AI `live` mode gets its follow-ups from the AI service (the
+// 24h channel switch), so the rule-based FollowUpJobs are paused for its
+// leads: none are created, and any still pending are cleared
+// (agentic-upsell MASTER_PLAN_1 Stage 11, BPLAN Phase 4). Exported for tests.
+export async function aiOwnsFollowUps(dealerId, { getMode = getDealerAiMode } = {}) {
+  return (await getMode(dealerId)) === 'live';
+}
+
 // schedule a single follow‑up (runIndex) for one lead+rule
 async function scheduleNext(lead, rule, runIndex, baseTs = null) {
+  if (await aiOwnsFollowUps(lead.dealer_id)) {
+    await clearPendingJobs(lead._id);
+    return;
+  }
   const DAY_MS     = 24 * 60 * 60 * 1000;
   const intervalMs = (rule.frequencyValue || 1) * DAY_MS;
   const windowEnd  = lead.statusChangedAt.getTime() +

@@ -2,9 +2,9 @@
 // Explicit URI required. Never load application environment files or call syncIndexes().
 import mongoose from 'mongoose';
 import { pathToFileURL } from 'node:url';
-import Email, { EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX } from '../app/models/Email.js';
+import Email, { EMAIL_AI_IDEMPOTENCY_INDEX, EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX } from '../app/models/Email.js';
 
-const EMAIL_INDEXES = [EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX];
+const EMAIL_INDEXES = [EMAIL_CONVERSATION_INDEX, EMAIL_SMS_PAIR_INDEX, EMAIL_AI_IDEMPOTENCY_INDEX];
 
 function hasMatchingIndex(indexes, expected) {
   const expectedEntries = Object.entries(expected.key);
