@@ -14,4 +14,6 @@ steps:
   - expect_context: {lead: c, new_messages: ["Do you take trades?"], min_working_memory: 3, open_questions: []}
   - reply: {lead: c, text: "ok thanks"}
   - wait_turns: {lead: c, count: 4, timeout_s: 20}
-  - expect_context: {lead: c, min_working_memory: 5, last_from_ai: true, promise_contains: "take trades"}
+  # A real model sometimes answers "do you take trades?" outright (no lingering promise) instead of promising
+  # to follow up on it - either way the topic must still be in working memory two turns later.
+  - expect_context: {lead: c, min_working_memory: 5, last_from_ai: true, memory_contains: "trade"}

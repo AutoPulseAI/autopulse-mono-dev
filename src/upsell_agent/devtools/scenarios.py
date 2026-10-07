@@ -50,7 +50,10 @@ Steps (one key per step):
   expect_shadow:      {lead, drafts, with_actual?}   the Shadow tab's pairs for this lead
   expect_context:     {lead, index: -1, new_messages?: [texts], min_working_memory?, last_from_ai?: bool,
                        last_asked?: bool, open_questions?: [texts], promise_contains?, summary_contains?,
-                       memory_excludes?}   the context pack that turn's AI steps read (MASTER_PLAN_2)
+                       memory_excludes?, memory_contains?}   the context pack that turn's AI steps read
+                      (MASTER_PLAN_2); memory_contains: for something that should still be remembered whether
+                      the AI promised to follow up on it or just answered it outright - use this, not
+                      promise_contains, unless a promise specifically is the thing under test
   chat:               {lead, messages?: [texts], filler?: n, filler_chars: 700, timeout_s}   the customer sends
                       each message and waits for its reply (filler: n long, neutral messages)
   add_stock:          {as, dealer: A, vehicles: [{year, make, model, trim?, body?, condition?, color?, miles?}]}
@@ -908,6 +911,9 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             problems.append(f"the summary doesn't mention {args['summary_contains']!r}: {(pack.get('summary') or '')[:200]!r}")
         if "memory_excludes" in args and any(args["memory_excludes"].lower() in m["text"].lower() for m in memory):
             problems.append(f"working memory still has {args['memory_excludes']!r}")
+        if "memory_contains" in args and not any(args["memory_contains"].lower() in m["text"].lower() for m in memory):
+            problems.append(f"working memory never mentions {args['memory_contains']!r}: "
+                            f"{[m['text'][:60] for m in memory]}")
         if problems:
             raise ScenarioFailed("; ".join(problems))
         return (f"{len(pack['new_messages'])} new, {len(memory)} in working memory, "

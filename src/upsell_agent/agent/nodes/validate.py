@@ -36,6 +36,13 @@ from upsell_agent.slots.store import confirm_fact, reject_fact, save_fact
 from upsell_agent.slots.validators import known_enum_text
 from upsell_agent.slots.validators import validate as validate_value
 
+# A value's own quote says it's approximate ("about 60,000 miles"): always needs confirming, never only on the
+# model's own confidence score. 6 Oct 2026: a real model confidently (0.8) extracted "about 60,000" straight
+# into `accepted` - the offline stand-in always scores a hedge low enough to need confirming, but nothing
+# enforced that for a real model, so this slipped through model to model. Checked on the quote, not the whole
+# message, so "about this book" in some other sentence doesn't catch an unrelated number.
+_HEDGE = re.compile(r"\b(about|around|roughly|approximately|approx\.?|\d+-?ish\b|or so|give or take|"
+                    r"close to|somewhere around|near(?:ly)?)\b", re.IGNORECASE)
 CONFIDENCE_THRESHOLD = 0.7
 # An ambiguous date is always confirmed with the customer.
 AMBIGUOUS_DATE_CONFIDENCE = 0.6
@@ -75,7 +82,15 @@ def run_checks(value: dict[str, Any], customer_text: str) -> dict[str, Any]:
         reason = result.reason
     quote = normalise(str(value.get("quote") or ""))
     checks["quote_found"] = bool(quote) and quote in normalise(customer_text)
-    checks["confident"] = float(value.get("confidence") or 0) >= CONFIDENCE_THRESHOLD
+    # Only where an approximate NUMBER actually changes what should happen next (mileage, a price or budget):
+    # a real model's quote often spans the customer's whole sentence, shared across every value it pulled from
+    # that message (seen live, 6 Oct 2026: "2019 Honda Civic" and "about 60,000 miles" all got the same quote),
+    # so checking year/make/model/condition the same way would hedge-flag them over an unrelated "about"
+    # elsewhere in that shared quote.
+    hedged = defn is not None and defn.kind in ("mileage", "money") and bool(_HEDGE.search(str(value.get("quote") or "")))
+    checks["confident"] = not hedged and float(value.get("confidence") or 0) >= CONFIDENCE_THRESHOLD
+    if hedged:
+        reason = reason or f"the customer's own words ({value.get('quote')!r}) are approximate: confirm before using it"
     if not reason and not checks["quote_found"]:
         reason = "quoted words are not in the customer's message"
     return {"checks": checks, "value": normalised, "reason": reason}

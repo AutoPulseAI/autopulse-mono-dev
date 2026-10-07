@@ -6,6 +6,9 @@ steps:
   - wait_turns: {lead: f, count: 1, timeout_s: 20}
   - reply: {lead: f, text: "You keep asking the same thing!"}
   - wait_turns: {lead: f, count: 2, timeout_s: 20}
+  # The exact apology wording is the AI's own - a real model phrases it many true ways. What must hold,
+  # whatever the words: Decide treated this as frustration (not a handoff, not another question), and the
+  # reply asks nothing (a short apology only, Omnichannel conversation standards).
   - expect_turn: {lead: f, outcome: acknowledge}
   - expect_lead: {lead: f, status: active}
-  - expect_last_sent: {lead: f, contains_any: ["won't keep asking", "won't keep repeating", "won't repeat", "stop asking", "won't ask again"], question_marks: 0}
+  - expect_last_sent: {lead: f, question_marks: 0}

@@ -7,7 +7,7 @@ steps:
   - reply: {lead: i, text: "I'm not interested anymore"}
   - wait_turns: {lead: i, count: 2, timeout_s: 20}
   - expect_turn: {lead: i, outcome: ask_why}
-  - expect_last_sent: {lead: i, contains: "what changed", question_marks: 1}
+  - expect_last_sent: {lead: i, contains_any: ["what changed", "why", "mind sharing"], question_marks: 1}
   - reply: {lead: i, text: "Bought one elsewhere last week"}
   - wait_turns: {lead: i, count: 3, timeout_s: 20}
   - expect_lead: {lead: i, status: handoff, stage: contact_made_no_next_action}

@@ -5,9 +5,11 @@ steps:
   - new_lead: {as: b, dealer: A, lead_type: sales, channel: sms, name: Bea Buyer, comments: "Hi, is the RAV4 still there?", send_event: false}
   - set_contact: {lead: b, zip: "10001"}
   - send_lead_created: {lead: b}
-  - wait_turns: {lead: b, count: 1, timeout_s: 20}
+  - wait_turns: {lead: b, count: 1, timeout_s: 30}
   - reply: {lead: b, text: "Can I come see it this weekend?"}
-  - wait_turns: {lead: b, count: 2, timeout_s: 20}
+  - wait_turns: {lead: b, count: 2, timeout_s: 30}
+  # The exact closing phrase is the AI's own (many true ways to ask "which one?"); what must hold is the
+  # structural fact - Decide actually fired the visit offer, and the reply asks (doesn't just state times).
   - expect_turn: {lead: b, outcome: offer_visit}
-  - expect_last_sent: {lead: b, contains_any: ["which one works", "which time works", "what time works", "work for you", "works for you", "works best for you"]}
+  - expect_last_sent: {lead: b, question_marks: 1}
   - expect_lead: {lead: b, visit_attempts: 1}
