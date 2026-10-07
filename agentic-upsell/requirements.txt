@@ -1,0 +1,22 @@
+# Agentic Upsell Service Dependencies
+# Generated from pyproject.toml for standard pip installs
+
+-e .
+fastapi>=0.115
+uvicorn[standard]>=0.32
+langgraph>=1.2,<2.0
+langgraph-checkpoint-redis>=0.5,<0.6
+pydantic>=2.9
+pydantic-settings>=2.6
+pydantic-ai>=0.0.14
+motor>=3.6
+redis[hiredis]>=5.2
+httpx>=0.27
+saq>=0.26,<0.27
+sse-starlette>=2.1
+pyyaml>=6.0
+langfuse>=2.53
+python-dotenv>=1.0
+tzdata>=2024.1
+zipcodes>=1.2
+phonenumbers>=8.13
