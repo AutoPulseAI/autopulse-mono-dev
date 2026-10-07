@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { isProviderSendStubbed, recordStubSend } from './providerStub.js';
+import { dealerAllowed } from './ai/aiMode.js';
 
 // Initialize Twilio client
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -16,10 +17,21 @@ const client = twilio(accountSid, authToken);
  * @param {Array} mediaUrls - Optional array of media URLs for MMS (e.g., ['https://example.com/image.jpg'])
  * @returns {Promise<string>} - Twilio Message SID
  */
+function isLiveDb(env = process.env) {
+  return ['true', '1', 'yes'].includes(String(env.CRM_LIVE_DB || '').toLowerCase());
+}
+
+function isLiveSmsOptIn(env = process.env) {
+  return ['true', '1', 'yes'].includes(String(env.PROVIDER_SEND_LIVE_SMS || '').toLowerCase());
+}
+
 export async function sendSMS(to, body, dealer, mediaUrls = []) {
   try {
-    // Local/dev runs never reach Twilio (app/lib/providerStub.js).
-    if (isProviderSendStubbed()) {
+    // Local/dev runs never reach Twilio (app/lib/providerStub.js), unless the
+    // run opts in to real SMS (PROVIDER_SEND_LIVE_SMS, `make crm-local-sms`).
+    // On the live database (CRM_LIVE_DB) only the allowlisted test dealer's texts are really sent.
+    const otherDealerOnLiveDb = isLiveSmsOptIn() && isLiveDb() && !dealerAllowed(dealer?._id ?? '');
+    if (isProviderSendStubbed() && (!isLiveSmsOptIn() || otherDealerOnLiveDb)) {
       return await recordStubSend({
         channel: 'sms', to: normalizeSmsPhone(to), text: body == null ? '' : String(body).trim(),
         from: dealer?.dealer_account_information?.sms_conversion_phone || process.env.TWILIO_PHONE_NUMBER || null,

@@ -103,6 +103,8 @@ const env = {
   // sendSMS / sendEmail / account mails never reach a provider (app/lib/providerStub.js).
   PROVIDER_SEND_STUB: 'true',
   NEXT_PUBLIC_BASE_URL: `http://localhost:${config.webPort}`,
+  // The OTP email is stubbed, so the dealer login page fills in the code itself.
+  NEXT_PUBLIC_LOCAL_OTP_AUTOFILL: 'true',
 };
 
 // The AI service for crm-local, from source (never the shared containers).
@@ -124,6 +126,10 @@ const aiServiceEnv = {
   PYDANTIC_AI_NO_BANNER: '1',
   // Never spend paid Vehicle Databases credits from the local stack (scenarios/e2e/seed run many leads).
   VEHICLE_DATABASES_ENABLED: process.env.CRM_LOCAL_VEHICLE_DATABASES_ENABLED || 'false',
+  // CRM_LOCAL_INVENTORY_FROM (e.g. https://www.autopulse.ai) + CRM_LOCAL_INVENTORY_DEALER_MAP ("<local id>:<live id>"):
+  // the AI reads a real dealer's stock, read-only, from that CRM's GET /api/car instead of the seeded vehicles.
+  INVENTORY_API_BASE_URL: process.env.CRM_LOCAL_INVENTORY_FROM || '',
+  INVENTORY_DEALER_MAP: process.env.CRM_LOCAL_INVENTORY_DEALER_MAP || '',
   // The morning / afternoon send-time split (stream L) puts a lead's Day 2-90 touches at 10:00 or 15:00 by
   // chance; the scenarios, the cadence check and a demo need the same time every run. CRM_LOCAL_SEND_TIME_AB=true
   // turns it on here.
@@ -229,5 +235,26 @@ if (CRM_LOCAL) {
   run('ai-worker', 'uv', ['run', '--frozen', 'saq', 'upsell_agent.worker.main.settings'], '33',
     { cwd: aiDir, env: aiServiceEnv });
 }
-run('web', 'npx', ['next', 'dev', '--turbopack', '-p', config.webPort], '36');
+// CRM_LOCAL_REAL_SMS=1 (`make crm-local-sms`): the web app alone gets the real
+// Twilio credentials from .env and sends SMS for real (email stays stubbed, the
+// workers keep the placeholders), for testing a Twilio number whose webhook
+// points at this machine through a tunnel.
+const realSms = CRM_LOCAL && ['1', 'true', 'yes'].includes(String(process.env.CRM_LOCAL_REAL_SMS || '').toLowerCase());
+let webEnv = env;
+if (realSms) {
+  const platformEnv = readEnvFile(path.resolve(root, '.env'));
+  webEnv = {
+    ...env,
+    TWILIO_ACCOUNT_SID: platformEnv.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: platformEnv.TWILIO_AUTH_TOKEN || platformEnv.TWILIO_AUTH,
+    TWILIO_PHONE_NUMBER: platformEnv.TWILIO_PHONE_NUMBER,
+    PROVIDER_SEND_LIVE_SMS: 'true',
+  };
+  if (!webEnv.TWILIO_ACCOUNT_SID || !webEnv.TWILIO_AUTH_TOKEN) {
+    console.error('CRM_LOCAL_REAL_SMS needs TWILIO_ACCOUNT_SID and TWILIO_AUTH(_TOKEN) in .env');
+    process.exit(1);
+  }
+  console.log(`Real SMS ON for [web]: Twilio ${webEnv.TWILIO_ACCOUNT_SID.slice(0, 8)}…, from ${webEnv.TWILIO_PHONE_NUMBER}`);
+}
+run('web', 'npx', ['next', 'dev', '--turbopack', '-p', config.webPort], '36', { env: webEnv });
 run('worker', 'node', ['app/worker/worker.js'], '35');

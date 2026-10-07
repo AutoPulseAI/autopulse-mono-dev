@@ -115,6 +115,10 @@ export default function DealerLogin() {
           router.push("/dealer/dashboard");
         } else if (data.otp_sent) {
           setOtpSentTo(email);
+          // Local runs (`make crm-local`) never send the OTP email; fill in the code instead.
+          if (process.env.NEXT_PUBLIC_LOCAL_OTP_AUTOFILL === 'true' && data.otp) {
+            setOtp(String(data.otp).split("").slice(0, 4));
+          }
           setStep(2); // Move to OTP verification step
         } else {
           setError(data.message || "Login failed. Please try again.");

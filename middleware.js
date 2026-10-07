@@ -6,6 +6,12 @@ import { dealersubscriptionMiddleware } from './app/dealer/middleware/dealersubs
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
+
+  // `make crm-live-db`: this local copy runs against the live database, so the platform-wide cron jobs
+  // (reports, CSV imports, campaigns, appointment reminders for every dealer) are the live servers' job, never ours.
+  if (pathname.startsWith('/api/cron') && ['1', 'true', 'yes'].includes(String(process.env.CRM_LIVE_DB || '').toLowerCase())) {
+    return NextResponse.json({ message: 'Cron jobs are disabled while running against the live database (CRM_LIVE_DB).' }, { status: 403 });
+  }
  
   // Public routes that skip all middleware
   if (pathname.startsWith('/auth') || pathname.startsWith('/api/auth')) {
@@ -84,6 +90,7 @@ async function handleAdminMiddleware(request) {
 export const config = {
   runtime: 'nodejs',
   matcher: [
+    "/api/cron/:path*",
     "/agency",
     "/agency/:path*",
     "/agency/register/:path*",

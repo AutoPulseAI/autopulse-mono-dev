@@ -52,9 +52,15 @@ redis.on('close', () => {
 const emailWorker = new Worker('emailQueue', processEmail, { connection: redis });
 const smsWorker = new Worker('communicationQueue', processSMS, { connection: redis });
 const leadWorker = new Worker('leadProcessingQueue', processLead, { connection: redis });
-const campaignWorker = setupCampaignWorker(redis);
-setupDealerVaultWorkers(redis);
-setupDealerVaultSqsConsumer(redis);
+// `make crm-live-db`: on the live database, campaigns and the DealerVault import stay with the live servers.
+const onLiveDb = ['1', 'true', 'yes'].includes(String(process.env.CRM_LIVE_DB || '').toLowerCase());
+const campaignWorker = onLiveDb ? null : setupCampaignWorker(redis);
+if (!onLiveDb) {
+  setupDealerVaultWorkers(redis);
+  setupDealerVaultSqsConsumer(redis);
+} else {
+  console.log('CRM_LIVE_DB: campaign and DealerVault workers are off (the live servers run them).');
+}
 setupAdfTradeWorker(redis);
 // Re-delivers AI-service events that failed on the first try (app/lib/ai/aiEvents.js).
 const aiEventRetryWorker = new Worker(AI_EVENT_RETRY_QUEUE, processAiEventRetryJob, { connection: redis });

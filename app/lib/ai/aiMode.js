@@ -20,10 +20,19 @@ export const AI_MODE_CACHE_TTL_MS = 60_000;
 
 const cache = new Map();
 
+// AI_DEALER_ALLOWLIST (comma-separated dealer ids): when set, every other dealer is `off` whatever its record
+// says. `make crm-live-db` sets it to the test dealer, so a local copy on the live database touches only that
+// dealer (agentic-upsell integrations/dealer_mode.py reads the same variable).
+export function dealerAllowed(dealerId, env = process.env) {
+  const allow = String(env.AI_DEALER_ALLOWLIST || '').split(',').map((d) => d.trim()).filter(Boolean);
+  return allow.length === 0 || allow.includes(String(dealerId));
+}
+
 // A dealer who turned auto-replies off gets no automated replies from the AI
 // either: the mode only takes effect while autoReplyEnabled isn't false.
 export function effectiveAiMode(dealer) {
   if (!dealer) return 'off';
+  if (dealer?._id && !dealerAllowed(dealer._id)) return 'off';
   if (dealer?.setting?.autoReplyEnabled === false) return 'off';
   return AI_MODES.includes(dealer.ai_mode) ? dealer.ai_mode : 'off';
 }
