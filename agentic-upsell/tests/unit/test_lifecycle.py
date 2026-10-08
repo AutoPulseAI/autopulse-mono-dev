@@ -459,6 +459,8 @@ async def test_a_crm_that_cannot_be_reached_is_tried_again_by_the_next_sweep(mon
 
     class Flaky(StubPlatformClient):
         async def set_lead_status(self, dealer_id, lead_id, status, *, reason, closed_at):
+            if status != "Closed - Lost":  # the reply's working-stage status (client, 8 Oct 2026) always lands
+                return {"updated": True}
             calls.append(status)
             answer = answers.pop(0)
             if isinstance(answer, Exception):
@@ -540,3 +542,28 @@ async def test_not_interested_with_a_reason_goes_straight_to_a_person(mongo):
 class _NoEnqueue:
     async def __call__(self, *args, **kwargs):
         return None
+
+
+async def test_the_ais_working_stages_show_as_crm_statuses_and_staff_ones_are_not_echoed(mongo, monkeypatch):
+    # Client, 8 Oct 2026: the SOW's working stages are CRM statuses; the AI sets them as the lead moves.
+    from upsell_agent.agent import crm_status
+
+    sent = []
+
+    class Recorder(StubPlatformClient):
+        async def set_lead_status(self, dealer_id, lead_id, status, *, reason, closed_at):
+            sent.append(status)
+            return {"updated": True}
+
+    monkeypatch.setattr(crm_status, "_client", lambda platform: Recorder())
+    await simulate.ensure_platform_dealers()  # the dev dealers, AI live
+    created = await _new_lead()
+    await _say(created, "Yes, I'm interested")
+    state = await _state(mongo, created)
+    assert sent and sent[-1] == "Contacted - No Next Action", (state.get("stage"), state.get("crm_status_sync"), sent)
+    before = len(sent)
+    db = dealer_scoped_db(DEALER)
+    await lifecycle.apply(db, created["lead_id"], [lifecycle.Event(
+        "staff_not_contacted", source="staff_status", reason='Staff set the lead to "Lead Not Contacted"')])
+    assert (await _state(mongo, created))["stage"] == "no_contact_made"
+    assert len(sent) == before  # staff's own status is never sent back

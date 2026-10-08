@@ -182,12 +182,26 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     "Sold Pending": "sold_pending",
     "Sold Delivered": "sold_delivered",
     "Unsold": "unsold",
+    # Client, 8 Oct 2026: the SOW's working stages as CRM statuses. Several statuses share one workflow, so staff
+    # setting these reuse the follow-up cadence Unsold already restarts - the lead lands on the matching stage and
+    # the AI takes it back (events/handlers.py handle_lead_paused).
+    "Lead Not Contacted": "staff_not_contacted",
+    "Contacted - No Next Action": "staff_no_next_action",
     # MASTER_PLAN_4 D2 (SOLD PENDING PDF §2, §9: "Dealer determines transaction is lost -> CLOSED LOST"): staff
     # close a lead as lost, arriving the same way "Sold Pending" does (aidmvcs-be-dev lib/ai/aiStaff.js).
     "Closed Lost": "staff_closed_lost",
     # Staff closed the lead as lost (client, 1 Oct 2026), e.g. a Sold Pending deal that fell through.
     "Closed - Lost": "staff_closed_lost",
 }
+# Where a stage change came from when staff made it (never echoed back to the CRM as a status).
+STAFF_SOURCES = frozenset({"staff_status", "manager_outcome"})
+
+
+def crm_status_for_stage() -> dict[str, str]:
+    from upsell_agent.agent.crm_status import CRM_STATUS_FOR_STAGE
+    return CRM_STATUS_FOR_STAGE
+
+
 # PLAN_4 stream X2: the outcomes only staff set, which always take effect (transition()).
 STAFF_OUTCOMES = frozenset({"sold_pending", "sold_delivered", "staff_closed_lost"})
 # Unsold's follow-up period (client, 1 Oct 2026): 90 days, counted from the Unsold date.
@@ -352,6 +366,10 @@ def transition(current: Stage | None, event: Event) -> Transition:
         # Client, 1 Oct 2026 (scope Q2): back to follow-up for 90 days; a visit is contact, so the stage is
         # Contact Made - No Next Action (§5), and the follow-up period restarts from the Unsold date.
         return Transition(Stage.CONTACT_NO_ACTION, "unsold", why or "Manager outcome: Unsold", event)
+    if kind == "staff_no_next_action":
+        return Transition(Stage.CONTACT_NO_ACTION, kind, why or "Staff set Contacted - No Next Action", event)
+    if kind == "staff_not_contacted":
+        return Transition(Stage.NO_CONTACT, kind, why or "Staff set Lead Not Contacted", event)
 
     if kind == "sales_visit":
         if current == Stage.SALES_VISIT:
@@ -588,6 +606,12 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
     if new != current:
         cancelled = await cancel_stale_work(db, lead_id, new, reason=f"stage changed to {STAGE_LABELS[new]}")
     out.update(stage=new.value, label=STAGE_LABELS[new], cancelled=cancelled)
+    if new != current and new.value in crm_status_for_stage() and event.source not in STAFF_SOURCES:
+        # Client, 8 Oct 2026: the AI's own moves between the working stages show as the CRM lead's status too
+        # (staff's own status changes are never sent back, so there is no loop).
+        from upsell_agent.agent import crm_status
+        out["crm_status"] = await crm_status.sync_status(db, lead_id, crm_status.CRM_STATUS_FOR_STAGE[new.value],
+                                                         reason=result.reason, event_kind=event.kind)
     if new != current and new in CLOSED_STAGES:
         # PLAN_4 stream S: the AI's own closing (Day 91, No Longer Owns) shows as the CRM lead's status too.
         from upsell_agent.agent import crm_status

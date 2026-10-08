@@ -473,13 +473,24 @@ test('a 409 full slot becomes a conflict with the next available and the day\'s 
 
 // --- The AI's closings as the CRM status; bookings cancelled from the status screen (PLAN_4 stream S) -------
 
-test('AI closing payloads: only the two closed statuses, a valid date', () => {
+test('AI status payloads: the two closed statuses and the three working stages, a valid date', () => {
   assert.deepEqual(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Closed - Lost',
     closed_at: '2026-10-04T10:00:00Z' }).errors, []);
   assert.match(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Sold' }).errors[0], /status must be/);
   assert.match(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Closed - Lost',
     closed_at: 'nope' }).errors[0], /closed_at/);
-  assert.deepEqual([...READ_ONLY_STATUSES], ['Closed - No Longer Owns']);
+  assert.deepEqual(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD,
+    status: 'Contacted - No Next Action' }).errors, []);
+  assert.deepEqual([...READ_ONLY_STATUSES], ['Closed - No Longer Owns', 'Contacted - Specific Follow-up']);
+});
+
+test('the AI\'s working stages replace only another working status, never one staff chose', () => {
+  for (const current of [null, 'Lead', 'Contacted', 'Lead Not Contacted']) {
+    assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), null, String(current));
+  }
+  for (const current of ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Sold Pending', 'Unsold', 'No Show']) {
+    assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), 'staff_status_kept', current);
+  }
 });
 
 test('staff win: a later staff change or a staff-owned status keeps the CRM status', () => {

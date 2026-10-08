@@ -821,7 +821,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # MASTER_PLAN_4 D1 (stream A3): the AI runs the SOLD PENDING workflow / the ownership lifecycle, so the lead
         # isn't paused; lifecycle.apply already started the one and stopped the others (scheduler/sold_lifecycles.py).
         return {"status": f"resumed_{final_event}", "stage_change": stage_change, **extra}
-    if final_event == "unsold":
+    if final_event in ("unsold", "staff_no_next_action", "staff_not_contacted"):
         # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
         # fresh cadence's first touch is planned now.
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
