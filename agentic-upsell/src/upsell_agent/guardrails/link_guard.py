@@ -9,8 +9,9 @@ A draft fails when any version (SMS, email subject, email body) has a URL and ei
 - the URL isn't the `page_url` of a vehicle named in that same version (`sms_vins` for the SMS, `email_vins`
   for the email), exactly as the inventory record has it.
 
-One exception, kept from before F3: the dealership's own website from its record (context.dealer.info), when
-the customer asks what it is - that's an answer to their question, not a vehicle link (MASTER_PLAN_2 Phase 6).
+Exceptions: the dealership's own links from its record (context.dealer.info) - the website (kept from before F3,
+MASTER_PLAN_2 Phase 6) and the credit application and trade-in appraisal pages (client, 8 Oct 2026) - when the
+customer asks for them: an answer to their question, not a vehicle link.
 """
 
 import re
