@@ -31,6 +31,7 @@ from upsell_agent.integrations.mongodb import (
     AI_OWNER_LIFECYCLE_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
+    PLATFORM_REPAIR_ORDERS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
     as_object_id,
@@ -45,6 +46,10 @@ KIND = "owner_touch"
 ACTIVE_SALES = lifecycle.WORKING | {lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW,
                                     lifecycle.Stage.SOLD_PENDING}
 SALES_DEFER = timedelta(days=7)
+# A repair order's follow-up is keyed like a deal's, with this prefix (one row, one touch per RO).
+RO_PREFIX = "ro:"
+# Only repair orders closed this recently are followed up (an old RO's recommendation is stale).
+RO_LOOKBACK = timedelta(days=60)
 STAFF_DEFER = timedelta(days=1)
 
 
@@ -126,6 +131,48 @@ async def plan_deal(db: DealerScopedDatabase, row: dict[str, Any]) -> dict[str, 
     return {"planned": made["created"], **made}
 
 
+async def plan_repair_order(db: DealerScopedDatabase, ro: dict[str, Any]) -> dict[str, Any]:
+    """Service not sold (client, 8 Oct 2026): a closed repair order with the technicians' recommendations gets one
+    follow-up DECLINED_FOLLOWUP_DAYS later, quoting them word for word."""
+    customer_id = str(ro.get("customer_id") or "")
+    items = owner_touches.recommendations(ro)
+    if not customer_id or not items:
+        return {"planned": False, "reason": "no customer or no recommendations"}
+    key = f"{RO_PREFIX}{ro.get('ro_number') or ro.get('RO Number')}"
+    rows = db.collection(AI_OWNER_LIFECYCLE_COLLECTION)
+    state = await rows.find_one({"deal_number": key}) or {}
+    if state.get("sent") or state.get("stopped"):
+        return {"planned": False, "reason": "already followed up"}
+    profile = await dealer_profile(db.dealer_id)
+    due = owner_touches.declined_due(ro, profile.tz)
+    now = clock.now()
+    if due is None or due + owner_touches.LATE_GRACE < now:
+        return {"planned": False, "reason": "no close date, or too long ago"}
+    lead = await anchor_lead(db, customer_id)
+    await rows.update_one({"deal_number": key}, {
+        "$set": {"customer_id": customer_id, "vin": ro.get("vin"), "kind": "repair_order", "recommendations": items,
+                 "close_date": ro.get("Close Date"), "lead_id": str(lead["_id"]) if lead else None,
+                 "checked_at": now},
+        "$setOnInsert": {"deal_number": key, "sent": [], "created_at": now}}, upsert=True)
+    if lead is None:
+        return {"planned": False, "reason": "no_lead"}
+    made = await _plan(db, lead_id=str(lead["_id"]), customer_id=customer_id, touch=owner_touches.TOUCH_DECLINED,
+                       key=owner_touches.TOUCH_DECLINED, due=due, deal_number=key, extra={"items": items})
+    return {"planned": made["created"], **made}
+
+
+async def _came_back(db: DealerScopedDatabase, life: dict | None) -> bool:
+    """A later repair order for the same car: they've been back since, so the old recommendation isn't chased."""
+    if not life or not life.get("vin") or not life.get("close_date"):
+        return False
+    closed = owner_touches._date(life["close_date"])
+    for ro in await db.collection(PLATFORM_REPAIR_ORDERS_COLLECTION).find({"vin": life["vin"]}).to_list(200):
+        opened = owner_touches._date(ro.get("Open Date")) or owner_touches._date(ro.get("Close Date"))
+        if opened and closed and opened > closed:
+            return True
+    return False
+
+
 async def plan_birthday(db: DealerScopedDatabase, customer_id: str) -> dict[str, Any]:
     """The customer's next birthday, once per customer, unless the SOLD - DELIVERED lifecycle already has it."""
     from upsell_agent.scheduler import sold_lifecycles
@@ -156,7 +203,8 @@ async def plan_birthday(db: DealerScopedDatabase, customer_id: str) -> dict[str,
 async def sweep(*, limit: int = 20000) -> dict[str, Any]:
     """Daily (worker cron). Cross-dealer by design, like the birthday sweep; each deal in its own dealer's scope.
     Only dealers whose AI is live are planned for."""
-    summary: dict[str, Any] = {"deals": 0, "planned": 0, "no_lead": 0, "birthdays": 0, "dealers_off": 0}
+    summary: dict[str, Any] = {"deals": 0, "planned": 0, "no_lead": 0, "birthdays": 0, "declined_services": 0,
+                               "dealers_off": 0}
     modes: dict[str, str] = {}
     customers: set[tuple[str, str]] = set()
     async for row in get_db()[PLATFORM_DEALS_COLLECTION].find(
@@ -179,6 +227,26 @@ async def sweep(*, limit: int = 20000) -> dict[str, Any]:
         summary["planned"] += int(bool(out.get("planned")))
         summary["no_lead"] += int(out.get("reason") == "no_lead")
         customers.add((dealer_id, str(row["customer_id"])))
+    since = clock.now() - RO_LOOKBACK
+    async for ro in get_db()[PLATFORM_REPAIR_ORDERS_COLLECTION].find(
+            {"customer_id": {"$ne": None}, "$or": [{"Recommendations": {"$nin": [None, ""]}},
+                                                   {"service_operations.recommendations": {"$exists": True}}]}
+    ).limit(limit):
+        dealer_id = str(ro.get("dealer_id") or "")
+        if not dealer_id:
+            continue
+        if dealer_id not in modes:
+            modes[dealer_id] = await dealer_ai_mode(dealer_id)
+        closed = owner_touches._date(ro.get("Close Date"))
+        if modes[dealer_id] != "live" or closed is None or owner_touches.as_utc(closed) < since:
+            continue
+        try:
+            out = await plan_repair_order(dealer_scoped_db(dealer_id), ro)
+        except Exception:
+            logger.exception("declined-service planning failed for RO %s", ro.get("ro_number"))
+            continue
+        summary["declined_services"] = summary.get("declined_services", 0) + int(bool(out.get("planned")))
+        summary["no_lead"] += int(out.get("reason") == "no_lead")
     for dealer_id, customer_id in customers:
         try:
             out = await plan_birthday(dealer_scoped_db(dealer_id), customer_id)
@@ -216,7 +284,11 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         {"deal_number": doc["deal_number"]}) if doc.get("deal_number") else None
     stage = lifecycle.stage_of(state.get("stage"))
 
+    is_ro = str(doc.get("deal_number") or "").startswith(RO_PREFIX)
+
     async def replan() -> None:
+        if is_ro:
+            return  # one follow-up per repair order
         if doc.get("deal_number"):
             row = await db.collection(PLATFORM_DEALS_COLLECTION).find_one({"deal_number": doc["deal_number"]})
             if row:
@@ -232,6 +304,10 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
                   ("owned", not (life or {}).get("stopped") and not await _no_longer_owned(
                       db, doc["customer_id"], (life or {}).get("vin")),
                    "the customer still owns the car")]
+        if is_ro:
+            back = await _came_back(db, life)
+            checks.append(("not_back_since", not back, "they've had a service visit since" if back
+                           else "no service visit since"))
         if touch == owner_touches.TOUCH_BIRTHDAY:
             c, records = await _birthday_records(db, doc["customer_id"])
             ok = sold_delivered.verified_birthday(c, records) is not None
@@ -288,12 +364,17 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
 
     profile = await dealer_profile(db.dealer_id)
     row = await db.collection(PLATFORM_DEALS_COLLECTION).find_one(
-        {"deal_number": doc["deal_number"]}) if doc.get("deal_number") else None
+        {"deal_number": doc["deal_number"]}) if doc.get("deal_number") and not is_ro else None
     vehicle = owner_touches.read_deal(row).vehicle() if row else None
+    if is_ro:
+        ro = await db.collection(PLATFORM_REPAIR_ORDERS_COLLECTION).find_one(
+            {"ro_number": doc["deal_number"][len(RO_PREFIX):]}) or {}
+        vehicle = {"year": ro.get("Year"), "make": ro.get("Make"), "model": ro.get("Model"), "vin": ro.get("vin")}
     key = str(doc.get("dedupe_key") or "")
     text = owner_touches.render(touch, first_name=_name(customer, lead), dealership=profile.name, vehicle=vehicle,
                                 tip_number=int(key.split(":")[1]) if touch == owner_touches.TOUCH_TIP else 0,
-                                year=int(key.split(":")[1]) if touch == owner_touches.TOUCH_ANNIVERSARY else 1)
+                                year=int(key.split(":")[1]) if touch == owner_touches.TOUCH_ANNIVERSARY else 1,
+                                items=doc.get("items"))
     outcomes = await _send_both(db, deps, tracer, doc, text, "marketing")
     from upsell_agent.learning import touches
     await touches.record_touch(db, touch_id=f"{KIND}-{doc_id}", lead_id=doc["lead_id"],
@@ -302,6 +383,12 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     if not delivered and any(o.status == "held" for o in outcomes):
         await _requeue(db, doc, now + timedelta(seconds=30), "held by the send check at send time; checking again")
         return "deferred"
+    if delivered and is_ro:
+        # A "yes" is a service request with notes for the service team, like any service offer (never a booking).
+        from upsell_agent.scheduler.sold_lifecycles import _set
+        await _set(db, doc["lead_id"], {"service_offer": {
+            "kind": owner_touches.TOUCH_DECLINED, "asked_at": now, "status": "offered",
+            "facts": {"recommendations": doc.get("items"), "source": "repair order recommendations"}}})
     status = "sent" if delivered else (outcomes[0].status if outcomes else "failed")
     await _close(db, doc, status, reason=None, fired_at=now)
     await mark_sent()

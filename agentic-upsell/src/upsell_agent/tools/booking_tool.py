@@ -135,7 +135,8 @@ def available_times(dealer: DealerProfile, existing: list[dict[str, Any]], now: 
 
 def offer_times(available: list[datetime], *, count: int = MAX_OFFERED) -> list[datetime]:
     """The 2-3 times actually offered to the customer: the earliest ones
-    available (B5 item 1)."""
+    available (B5 item 1) - so inside the next 72 hours whenever the dealer
+    has room (client, 8 Oct 2026: appointments "usually within 72 hours")."""
     return available[:count]
 
 

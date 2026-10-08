@@ -27,9 +27,9 @@ from bson import ObjectId
 from upsell_agent import clock
 from upsell_agent.agent import duplicates, lifecycle
 from upsell_agent.agent.customer_key import lead_customer_id
-from upsell_agent.integrations.dealer_mode import dealer_allowed
 from upsell_agent.agent.history_sync import PLATFORM_EMAILS_COLLECTION, sync_lead_history
 from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent
+from upsell_agent.integrations.dealer_mode import dealer_allowed
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_MESSAGES_COLLECTION,

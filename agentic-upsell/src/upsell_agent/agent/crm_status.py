@@ -73,7 +73,7 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
                                                              closed_at=closed_at)
             result = {"status": "updated" if answer.get("updated") else "kept", "crm_status": status,
                       **({"reason": answer["reason"]} if answer.get("reason") else {})}
-        except Exception as exc:  # noqa: BLE001 - the close stands whatever the CRM answers
+        except Exception as exc:
             logger.exception("could not show lead %s as %s in the CRM", lead_id, status)
             result = {"status": "failed", "crm_status": status, "error": str(exc)[:300], "event": event_kind,
                       "reason_text": reason}

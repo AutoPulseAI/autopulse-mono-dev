@@ -21,6 +21,7 @@ from upsell_agent.agent import owner_touches
 from upsell_agent.integrations.mongodb import (
     AI_OWNER_LIFECYCLE_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
+    PLATFORM_REPAIR_ORDERS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     as_object_id,
     dealer_scoped_db,
@@ -72,7 +73,7 @@ def test_the_first_touches_after_delivery_in_order():
 def test_a_late_touch_is_skipped_never_sent_late():
     deal = owner_touches.read_deal({"Deal Number": "4", "Deal Type": "Cash", "Delivery Date": "1/1/2026"})
     now = datetime(2026, 10, 9, 12, tzinfo=NY)
-    touch, key, due = owner_touches.next_vehicle_touch(deal, sent=set(), now=now, tz=NY)
+    touch, _key, due = owner_touches.next_vehicle_touch(deal, sent=set(), now=now, tz=NY)
     assert touch == "tip" and due + owner_touches.LATE_GRACE >= now
     skip = owner_touches.next_vehicle_touch(deal, sent=set(), now=datetime(2026, 12, 20, tzinfo=NY), tz=NY,
                                             skip=frozenset({"tip"}))
@@ -82,7 +83,8 @@ def test_a_late_touch_is_skipped_never_sent_late():
 @pytest.mark.parametrize("touch", owner_touches.ALL_TOUCHES)
 def test_every_message_says_it_is_the_ai_and_never_a_birth_year(touch):
     text = owner_touches.render(touch, first_name="Maria", dealership="Sunrise Motors",
-                                vehicle={"year": "2024", "make": "Toyota", "model": "RAV4"}, year=3)
+                                vehicle={"year": "2024", "make": "Toyota", "model": "RAV4"}, year=3,
+                                items=["Replace front brake pads"])
     assert "the AI assistant" in text["sms_text"] and "the AI assistant" in text["email_body"]
     assert not owner_touches.BIRTH_YEAR.search(text["sms_text"])
 
@@ -191,3 +193,49 @@ async def test_a_lease_customer_hears_before_the_lease_ends(mongo):
     assert "lease_end" in pending or "tip" in pending
     views = await owner_lifecycle.view(db, created["customer_id"])
     assert views[0]["deal_type"] == "lease" and views[0]["contract_end"]
+
+
+def test_recommendations_are_quoted_word_for_word():
+    ro = {"Recommendations": "Replace front brake pads^Rotate tires|NONE^|Replace cabin air filter^N/A"}
+    assert owner_touches.recommendations(ro) == ["Replace front brake pads", "Rotate tires", "Replace cabin air filter"]
+    parsed = {"service_operations": [{"recommendations": ["Replace wiper blades", ""]}, {"recommendations": ["n/a"]}]}
+    assert owner_touches.recommendations(parsed) == ["Replace wiper blades"]
+    assert owner_touches.recommendations({"Recommendations": "|^"}) == []
+    with pytest.raises(ValueError):
+        owner_touches.render("declined_service", first_name=None, dealership=None, vehicle=None, items=[])
+
+
+async def _ro(mongo, created, number="RO1", days_ago=3, **fields):
+    today = clock.now().astimezone(NY).date()
+    row = {"dealer_id": DEALER, "ro_number": number, "customer_id": as_object_id(created["customer_id"]),
+           "vin": "1HGCM82633A004352", "Model": "RAV4", "Close Date": _mdy(today - timedelta(days=days_ago)),
+           "Open Date": _mdy(today - timedelta(days=days_ago)),
+           "Recommendations": "Replace front brake pads^Rotate tires", **fields}
+    await mongo[PLATFORM_REPAIR_ORDERS_COLLECTION].insert_one(row)
+    return row
+
+
+@flow
+async def test_declined_service_is_followed_up_once_with_the_technicians_words(mongo):
+    created = await _new_lead()
+    await _staff(created, "Closed Lost")
+    await _ro(mongo, created)
+    summary = await owner_lifecycle.sweep()
+    assert summary["declined_services"] == 1
+    done = await _fire_next(mongo, created, "declined_service")
+    assert done["status"] == "sent"
+    text = (await _outbox(mongo, created))[-1]["text"]
+    assert "Replace front brake pads; Rotate tires" in text and "RAV4" not in text.split(":")[0]
+    assert [d for d in await _pending(mongo, created) if d["touch"] == "declined_service"] == []
+    assert (await owner_lifecycle.sweep())["declined_services"] == 0
+
+
+@flow
+async def test_no_follow_up_when_they_came_back_since(mongo):
+    created = await _new_lead()
+    await _staff(created, "Closed Lost")
+    await _ro(mongo, created)
+    await owner_lifecycle.sweep()
+    await _ro(mongo, created, number="RO2", days_ago=1, Recommendations="")
+    done = await _fire_next(mongo, created, "declined_service")
+    assert done["status"] == "cancelled" and "service visit since" in done["reason"]

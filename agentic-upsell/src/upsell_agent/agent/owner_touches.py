@@ -14,6 +14,8 @@ the term and the buyer's birth date, and these touches follow from it:
     lease_end        90 days before the lease ends                Deal Type (lease), Term, First Pay / Contract Date
     payoff           the month the finance contract ends          Deal Type (finance), Term, Amount Financed
     tip              every 60 days in year 1, then every 90       Delivery Date
+    declined_service 14 days after a repair order closed with      the RO's Recommendations (DealerVault service
+                     recommendations the customer didn't do       file), quoted word for word
 
 Day counts are AutoPulse's defaults until the client sets their own (OWNER_TOUCH_DAYS); tell Betsy.
 
@@ -38,13 +40,16 @@ TOUCH_FIRST_90 = "first_90"
 TOUCH_LEASE_END = "lease_end"
 TOUCH_PAYOFF = "payoff"
 TOUCH_TIP = "tip"
+TOUCH_DECLINED = "declined_service"  # service not sold: the technicians' recommendations on a repair order
 VEHICLE_TOUCHES = (TOUCH_ANNIVERSARY, TOUCH_FIRST_30, TOUCH_REVIEW, TOUCH_FIRST_90, TOUCH_LEASE_END, TOUCH_PAYOFF,
                    TOUCH_TIP)
-ALL_TOUCHES = (TOUCH_BIRTHDAY, *VEHICLE_TOUCHES)
+ALL_TOUCHES = (TOUCH_BIRTHDAY, *VEHICLE_TOUCHES, TOUCH_DECLINED)
 
 # Defaults (client to confirm): days after delivery, and days before the lease ends.
 OWNER_TOUCH_DAYS = {TOUCH_REVIEW: 14, TOUCH_FIRST_30: 30, TOUCH_FIRST_90: 85}
 LEASE_END_LEAD_DAYS = 90
+DECLINED_FOLLOWUP_DAYS = 14  # after the repair order closed
+DECLINED_MAX_ITEMS = 3
 TIP_EVERY_DAYS_YEAR_1 = 60
 TIP_EVERY_DAYS_AFTER = 90
 TIPS_FOR_YEARS = 5
@@ -181,6 +186,32 @@ def next_vehicle_touch(deal: OwnerDeal, *, sent: set[str], now: datetime, tz,
     return None
 
 
+_NOTHING = re.compile(r"^\s*(none|n/?a|no|-+|\.+|0)?\s*$", re.IGNORECASE)
+
+
+def recommendations(ro: dict[str, Any]) -> list[str]:
+    """The technicians' recommendations on a repair order, word for word (never invented or reworded): the parsed
+    `service_operations[].recommendations`, else DealerVault's raw `Recommendations` column (| and ^ separated)."""
+    found: list[str] = []
+    for op in ro.get("service_operations") or []:
+        found += [str(v) for v in (op.get("recommendations") or []) if isinstance(v, str)]
+    if not found and isinstance(ro.get("Recommendations"), str):
+        found = [v for group in ro["Recommendations"].split("|") for v in group.split("^")]
+    out: list[str] = []
+    for item in found:
+        clean = " ".join(item.split()).strip(" .;,")
+        if clean and not _NOTHING.match(clean) and clean.lower() not in (o.lower() for o in out):
+            out.append(clean[:90])
+    return out[:DECLINED_MAX_ITEMS]
+
+
+def declined_due(ro: dict[str, Any], tz) -> datetime | None:
+    closed = _date(ro.get("Close Date"))
+    if closed is None:
+        return None
+    return sold_delivered.at_touch_hour(closed + timedelta(days=DECLINED_FOLLOWUP_DAYS), tz)
+
+
 # --- The messages ----------------------------------------------------------------------------------------------------
 
 # Every first message the AI sends a DMS customer says it is the AI (FTC; client, 8 Oct 2026).
@@ -208,7 +239,7 @@ TIPS = (
 
 
 def render(touch: str, *, first_name: str | None, dealership: str | None, vehicle: dict | None,
-           tip_number: int = 0, year: int = 1) -> dict[str, str]:
+           tip_number: int = 0, year: int = 1, items: list[str] | None = None) -> dict[str, str]:
     hi = f"Hi {first_name}! " if first_name else "Hi! "
     place = dealership or "our dealership"
     label = sold_delivered.vehicle_label(vehicle) or "vehicle"
@@ -248,6 +279,13 @@ def render(touch: str, *, first_name: str | None, dealership: str | None, vehicl
         title, tip = TIPS[tip_number % len(TIPS)]
         body = f"{hi}{title} from {place}: {tip}"
         subject = f"{title} for your {model}"
+    elif touch == TOUCH_DECLINED:
+        if not items:
+            raise ValueError("a declined-service message needs the repair order's own recommendations")
+        listed = "; ".join(items)
+        body = (f"{hi}At your last service visit, our technicians recommended: {listed}. Would you like us to take "
+                f"care of that? Reply and our service team will find a time that works for you.")
+        subject = f"Recommended service for your {model}"
     else:
         raise ValueError(f"unknown owner touch {touch!r}")
     if BIRTH_YEAR.search(body):  # a guard against anything that would state an age or a birth year
