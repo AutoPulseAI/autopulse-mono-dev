@@ -149,6 +149,11 @@ const Sidebar = ({ isOpen, onClose }) => {
             {aiOpen && (
               <ul className="submenu-list">
                 <li>
+                  <Link href="/dealer/ai/messages" className={getLinkClass("/dealer/ai/messages")}>
+                    <i className="fa-regular fa-messages"></i>AI Messages
+                  </Link>
+                </li>
+                <li>
                   <Link href="/dealer/ai/call-tasks" className={getLinkClass("/dealer/ai/call-tasks")}>
                     <i className="fa-regular fa-phone"></i>Call Tasks
                   </Link>
