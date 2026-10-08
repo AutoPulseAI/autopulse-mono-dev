@@ -1,0 +1,668 @@
+AUTOPULSE AI - WORKFLOWS, CADENCES, CONDITIONS AND DATA SOURCES
+================================================================
+What the AI does, when it works, when it waits, when it stops, and where every
+piece of data it uses comes from.
+Written from the code as of 8 Oct 2026 (agentic-upsell + aidmvcs-be-dev), after
+pull requests #5-#8 on AutoPulseAI/autopulse-mono-dev were merged and deployed.
+Updated 9 Oct 2026 with everything from the 8 Oct meeting (batch 1 and batch 2):
+see section 19 for the full list. Items marked [BATCH 1] / [BATCH 2] are built
+and tested and go live when those branches are merged.
+
+Status marks:
+  [LIVE]      running on www.autopulse.ai
+  [NEXT SOW]  agreed for the next statement of work, not built
+  [GAP]       known limitation, not built yet (see section 17)
+  [BATCH 1]   8 Oct meeting, branch meeting-batch-1 (live once merged)
+  [BATCH 2]   8 Oct meeting, branch meeting-batch-2 (live once merged)
+
+Contents
+   1. When the AI works at all (per dealership)
+   2. How a message flows, end to end
+   3. Where the data comes from
+   4. How a lead arrives, lead buckets
+   5. The main follow-up cadence
+   6. Lead stages and what controls the lead
+   7. How the AI talks (what it will and won't say)
+   8. After hours
+   9. Appointments
+  10. Staff call tasks and work schedules
+  11. Sold Pending
+  12. Sold - Delivered (ownership / retention)
+  13. Service
+  14. Handoffs
+  15. Compliance (TCPA) and opt-out
+  16. Server settings it depends on
+  17. When the AI will not work or can't help (the walls)
+  18. Where to see it in the CRM
+  19. 8 Oct 2026 meeting: what changed
+
+
+================================================================================
+1. WHEN THE AI WORKS AT ALL (per dealership)
+================================================================================
+The AI handles a dealership's customers only when ALL of these are true:
+
+  1. AI Settings = "On" (live)                          [CRM: users.ai_mode]
+       Off    -> the old CRM auto-replies (n8n) run, the AI does nothing
+       Shadow -> the old auto-replies run; the AI drafts but sends nothing
+  2. Auto-reply enabled                                  [users.setting.autoReplyEnabled]
+     (off = the AI is off too, whatever the mode says)
+  3. Subscription active                                 [users.package_expiry]
+     (expired = the CRM refuses the dealership's incoming texts)
+  4. A Twilio number registered for business texting (10DLC), whose incoming
+     texts go to https://www.autopulse.ai/api/system/sms
+     (watch for a Twilio Messaging Service overriding the number's webhook)
+  5. Dealer Setup -> "SMS conversion phone" = that number
+                                     [users.dealer_account_information.sms_conversion_phone]
+     How an incoming text finds the dealership, and the number replies go from.
+  6. Dealer Setup has opening hours and a time zone       [weekly_availability, time_zone]
+     (missing: the AI uses Mon-Sat 9:00-18:00 for its own timing only and
+     never tells customers any hours)
+
+Nothing else is per dealership: the server settings (section 16) apply to all.
+A new dealership works as soon as 1-6 are true.
+
+
+================================================================================
+2. HOW A MESSAGE FLOWS, END TO END
+================================================================================
+Customer texts the dealership:
+  1. Twilio receives it -> POST https://www.autopulse.ai/api/system/sms
+  2. CRM (aidmvcs-be-v2) finds the dealer by sms_conversion_phone; checks the
+     subscription; queues the message (BullMQ / Redis "communicationQueue")
+  3. CRM worker (aidmvcs-worker-v2) reads the dealer's AI mode:
+       live   -> finds or creates the lead + customer, saves the message,
+                 sends the event to the AI service (POST /v1/events/...)
+       shadow -> old n8n reply goes out; AI gets the event marked shadow
+       off    -> old n8n reply only
+  4. AI API (agentic-upsell, 127.0.0.1:8100) accepts the event, queues a turn
+     (Redis queue) - events that fail are stored and replayed when it's back
+  5. AI worker (agentic-worker) runs the turn:
+       load context  (dealer, customer 360, inventory, conversation, rules)
+       extract       (what the customer said: slots, questions, intent) - OpenAI
+       decide        (answer / ask / offer visit / book / handoff / stop / wait)
+       compose       (the text + email) - OpenAI
+       guard         (code checks: numbers, prices, links, claims, length)
+       compliance    (opt-out, DND, state hours, caps) -> ALLOW / HOLD / BLOCK
+       send          -> CRM POST /api/internal/ai/messages/send
+  6. CRM sends through Twilio from the dealer's number (and email through its
+     mail provider), and logs it in the lead's conversation
+  7. Twilio delivery status -> CRM -> AI (/v1/.../status)
+
+Scheduled work (follow-ups, call tasks, appointment reminders, sold workflows,
+recalls, maintenance, birthdays, price checks) runs from the AI worker's
+clock, every minute to every few hours, through the same steps 5-7.
+
+Lead from a portal email / web form: the CRM creates the lead, then step 3 on.
+
+
+================================================================================
+3. WHERE THE DATA COMES FROM
+================================================================================
+A. Dealer profile - CRM users collection (Dealer Setup form), cached 60 s
+   name / store_name                 how the AI introduces the dealership
+   store_address, store_city,        address, "City, ST" in the first touch
+     store_state, store_postal
+   store_contact_number /            phone told to customers
+     alternative_contact_number
+   store_website                     website (only when asked)
+   credit_finance_application_url    credit application link (only when asked)
+   trade_in_appraisal_url            trade-in appraisal link (only when asked)
+   weekly_availability, time_zone    opening hours, open/closed, after hours,
+                                     call windows, staff default schedule
+   sms_conversion_phone              number texts come in on / go out from
+   ai_bot_name                       the AI's name ("Nicole") if set
+   booking_capacity                  appointments per slot, slot length
+   ai_daily_call_tasks               Days 1-7 call tasks on/off
+   ai_mode, setting.autoReplyEnabled AI on / shadow / off
+   ai_mms_enabled                    vehicle photos in texts on/off
+
+B. Staff - CRM users with parent_id = the dealer
+   name, role, work_schedule         who gets call tasks; days off
+
+C. Customer and lead - CRM, mostly through Customer 360
+   (GET /api/customers/{id}/360, which assembles):
+   customers                         name, phones, emails, ZIP, consent
+   leads                             source, comments, vehicle of interest,
+                                     assigned salesperson, CRM status, DND
+   emails                            the message history (texts + emails)
+   bookings                          appointments
+   deals                             sold vehicles, delivery date/mileage (DealerVault)
+   repairorders                      service visits, mileage (DealerVault)
+   serviceappointments               service bookings (DealerVault)
+   tradeins                          trade-in vehicles on file
+
+D. Inventory - the dealer's live stock: CRM GET /api/car
+   year, make, model, trim, colour, miles, photos, page link,
+   listed price (internetreduced) -> rough range told to the customer
+   Searched per turn, cached briefly; prices snapshotted to detect price drops.
+
+E. Outside services
+   OpenAI (gpt-5-mini)               reading the message + writing the reply
+   Twilio (via the CRM)              sending/receiving texts, delivery status
+   CRM mail provider                 sending emails
+   Vehicle Databases (API key)       OEM maintenance schedule per VIN, 1 credit
+                                     per new VIN, stored on the vehicle
+   NHTSA (public)                    safety recalls by year/make/model
+   DealerVault (through the CRM)     deals, repair orders, service history
+
+F. The AI's own records (same MongoDB, ai_* collections)
+   ai_lead_state         stage, status (active / handoff / paused / opted out),
+                         conversation state, after-hours choice, visit, bucket
+   qualification_facts   what the customer told us (budget, timeline, trade...)
+   ai_messages           every inbound/outbound message the AI handled
+   scheduled_followups   every planned touch, reminder, resume, call timer
+   ai_call_tasks         call tasks: assigned to, due, missed, outcome
+   ai_consent            opt-outs / opt-ins per channel
+   ai_compliance_log     every send decision with the rule that decided it
+   ai_turn_log           every turn: what it read, decided, wrote, why
+   ai_events             incoming events from the CRM
+   ai_touches            follow-up touches and replies (insights)
+   ai_price_snapshots    listed prices over time (verified price drops)
+   ai_vehicle_ownership, ai_service_vehicles, ai_vehicle_recalls,
+   ai_service_events     owned vehicles, maintenance, recalls, service history
+   ai_customer_status    per-customer status across leads
+   ai_send_checks        CRM campaign texts waiting for a compliance answer
+
+G. What the AI writes back into the CRM
+   POST /api/internal/ai/messages/send   send a text/email (CRM sends it)
+   POST /api/internal/ai/messages        record a message in the conversation
+   POST /api/internal/ai/leads/notes     notes on the lead (handoffs, service
+                                         requests, after-handoff questions)
+   POST /api/internal/ai/leads/status    CRM lead status (e.g. Contacted)
+   POST /api/internal/ai/leads/dnd       do-not-contact after an opt-out
+   POST /api/booking                     create / move an appointment
+   The CRM reads back from the AI: /v1/call-tasks, /v1/staff/notices,
+   /v1/insights, /v1/leads/... (AI Assistant pages).
+
+
+================================================================================
+4. HOW A LEAD ARRIVES, LEAD BUCKETS
+================================================================================
+  - Customer texts the dealership's number           -> lead created, AI answers
+  - Lead email / ADF from a portal (CarGurus, Cars.com, KBB, ...) -> AI answers
+  - Web form                                         -> AI answers
+  - CSV import / DealerVault / historical record     -> OUTBOUND marketing:
+    needs marketing consent; no consent = no text
+  - Same customer twice (two forms, two portals)     -> only the OLDEST open
+    lead runs the AI; the newer one is linked and paused; the customer's
+    messages always land on the main one
+  - Customer texts and no lead exists                -> a new lead is created;
+    if an earlier lead was closed, it's a returning customer (name kept)
+
+Lead buckets (by source; change the wording emphasis only, never the cadence):
+  credit   - Capital One, Chase, Carzing, DealerCentric, Credit Application,
+             eUnifi, 700Credit
+  trade_in - KBB, TrueCar SELL My Car, AccuTrade, CarGurus SELL My Car
+  general  - CarGurus, AutoTrader, Edmunds, Cars.com, Facebook, Instagram,
+             AutoWeb, CarsDirect, TrueCar, and anything unknown
+  If the customer's replies clearly show another intent, the bucket follows
+  them (the original is kept for reporting). Service leads have no bucket.
+
+
+================================================================================
+5. THE MAIN FOLLOW-UP CADENCE (a lead nobody has converted yet)        [LIVE]
+================================================================================
+Every touch = TEXT + EMAIL together (+ a staff call task, section 10).
+Touches go out at 10:00 dealer time, inside the legal texting window.
+
+  Touch 1   immediately         first quality reply; opens "Hello X, this is
+                                Nicole, the AI assistant from ..." (FTC) [BATCH 1]
+  Touch 2   3 hours later       name nudge: "{FirstName}?"
+  Touch 3   Day 2               vehicle visual (photo if photos are on)
+  Touch 4   Day 3               financing help
+  Touch 5   Day 4               trade-in / appraisal
+  Touch 6   Day 5               a verified feature or vehicle fact
+  Touch 7   Day 6               why a visit is worth it
+  Touch 8   Day 7               direct close
+  Days 8-30                     one touch a week   (Day 14, 21, 28)  [BATCH 1]
+                                price drops, similar new arrivals, "anything
+                                holding you back?", why a visit is worth it
+  Days 31-90                    every two weeks    (Day 42, 56, 70, 84) [BATCH 1]
+                                "what did we miss?", credit tips, trade-in
+                                market, still shopping? (time to get a yes/no)
+  Day 91                        the opportunity closes (Closed - Lost)
+
+  - A verified price drop on a car they looked at can replace a theme.
+  - A customer reply doesn't use up a theme; the next unused one goes next.
+  - Re-entry (e.g. after a no-show) starts a fresh schedule; the Day 91
+    clock never resets.
+  - The cadence stops as soon as something more important happens (s.6).
+  - Max 3 marketing texts per customer per 24 h; held texts go at the next
+    allowed time.
+
+
+================================================================================
+6. LEAD STAGES AND WHAT CONTROLS THE LEAD                              [LIVE]
+================================================================================
+  new_lead                        the lead arrived
+  no_contact_made                 Touch 1 + the 3-hour nudge, no answer
+  contact_made_no_next_action     customer replied, nothing scheduled -> cadence
+  contact_made_specific_followup  customer gave a date ("call me Friday") ->
+                                  AI follows up on that date, nothing before
+  appointment_set                 a booking exists -> appointments (s.9)
+  appointment_no_show             appointment + 1 hour, no visit
+  sales_visit                     staff set Visited / Sold
+  sold_pending / sold_delivered   manager outcomes (s.11, s.12)
+  opted_out                       every channel stopped, or staff set DND
+  closed_lost                     Day 91, or staff closed it
+  closed_no_longer_owns           a delivered customer no longer owns the car
+
+  Who is in charge of the conversation (separate from the stage):
+  active (AI) / handoff (staff) / paused (staff) / opted_out.
+
+  One workflow at a time. Priority when things collide:
+  opt-out > sales visit > appointment > dated next step > no-show >
+  contact without next step > no contact > new lead.
+  The AI never closes a lead from a conversation; only Day 91 or staff do.
+
+
+================================================================================
+7. HOW THE AI TALKS (every reply)                                      [LIVE]
+================================================================================
+  - Answers what the customer asked FIRST, then at most ONE follow-up question.
+  - Never re-asks something already known (a car they named settles
+    "buy/trade/service?" and "new or used?").
+  - Every question in a multi-question message gets an answer.
+  - Steers towards an appointment: offers a visit to qualified or partly
+    qualified leads, up to 3 attempts, each with a different angle.
+  - Spanish in -> Spanish out.
+  - Out-of-office / "driving" auto-replies get no reply.
+  - Replies to campaign texts know which campaign they answer.
+  - MULTI-AGENT [BATCH 2]: each reply is written by the specialist for what
+    the customer is talking about right now:
+      Sales             the car, features, stock, test drive (default)
+      Price & payment   price, monthly payment, lease vs finance
+      Credit            credit worries, approvals, down payment
+      Trade-in          their trade, what it's worth, payoff
+      Service           maintenance, repairs, recalls (service leads)
+    Picked from the customer's words, then the lead type, then the bucket.
+    Each has its own playbook and hard limits; all aim for the appointment;
+    the same safety check applies to all.
+  - Appointments: aims for the next 72 hours (the earliest open times are
+    offered); a later date only when the customer asks for it  [BATCH 2]
+  - Reads the lead's whole CRM conversation before every reply, including
+    staff replies and internal staff notes (notes are never quoted to the
+    customer)
+
+  What the AI WILL say:
+  - Real inventory (section 3D): year, miles, colour from the record
+  - The LISTED PRICE of a car in stock, as a rough figure + range:
+    "listed at about $38,400, roughly $37,500-$39,000; the team confirms the
+    final number"
+  - Dealer name, address, phone, opening hours (section 3A)
+  - ONLY WHEN THE CUSTOMER ASKS, links from Dealer Setup:
+      website                  "what's your website?"
+      credit application link  "how do I apply?" / "send the finance app"
+      trade-in appraisal link  "how do I value my trade online?"
+    Never offered unasked (the goal is the visit). Missing in Dealer Setup ->
+    "the team will send it". Any other link is blocked, except the page of a
+    car the customer asked to see online.
+
+  What the AI will NEVER say (always "the team will confirm"):
+  - payments, financing terms, approvals, discounts, final price
+  - trade-in value (no valuation provider connected)            [GAP]
+  - anything not in the records (no invented specs, features,
+    availability, urgency, "only one left")
+  - "you're approved", "guaranteed", consent or eligibility claims
+  - a birth year or the customer's age (birthday month/day only) [BATCH 2]
+  - an open recall in a sales conversation (recalls are service-only)
+  Every draft is checked in code before sending; a draft that breaks a rule is
+  rewritten, and if it can't be made safe the lead goes to staff (soft handoff).
+
+
+================================================================================
+8. AFTER HOURS (dealership closed)                                     [LIVE]
+================================================================================
+Client decision 8 Oct 2026: the customer always gets an answer within seconds
+and decides whether to continue now or wait for the dealership.
+
+  - Customer texts at ANY hour (3 AM included) - new lead or a conversation
+    already going: reply within ~20 seconds that answers them and asks:
+      "...I can help you here now, or the team can pick this up when we open
+       at 10:00 AM. Which would you like?"
+  - Asked once per closed period (every night on its own; yesterday's answer
+    doesn't count for tonight).
+
+  Their answer:
+    "now", a question, anything real   -> conversation continues at any hour
+    "later"                            -> short thank-you, nothing until opening,
+                                          then "Good morning... the team is in now"
+    NO ANSWER                          -> default = wait: nothing until opening,
+                                          then the opening message
+    wants to visit                     -> no choice, straight to booking
+    just "ok" / "thanks"               -> nothing
+    dealership opens before they answer-> choice dropped, normal conversation
+    texts again while waiting          -> answered and asked again
+
+  Not covered by this (the business writes first):
+  - Web-form / email / imported leads: the first message waits for the legal
+    texting window (section 15).
+  - Follow-up touches never go out at night (inside the window only).
+
+
+================================================================================
+9. APPOINTMENTS (stage: appointment_set)                               [LIVE]
+================================================================================
+All text + email, client's own wording:
+  15 min after it's set / moved   confirmation: date, time, address, number
+  each day before (not same-day)  "Counting down to our meeting at {dealership}!"
+  the day before                  "...confirming our meeting for {date} at {time}.
+                                   Does this time still work? Reply Y or N."
+  appointment + 1 hour, no visit  No-show: "I am looking for you in the showroom -
+                                   are you here and working with someone?"
+  +24 h, no reply                 "How did everything go when you came in?"
+  +24 h, no reply                 back to Contact Made - No Next Action -> cadence
+
+  - The AI books sales appointments itself inside opening hours, against the
+    capacity in AI Settings (bookings per slot, slot length), via the CRM's
+    booking API - the same capacity staff and the booking page use.
+  - Staff-made bookings get the same reminders.
+  - Service visits are REQUESTED, not booked (section 13).
+
+
+================================================================================
+10. STAFF CALL TASKS AND WORK SCHEDULES                                [LIVE]
+================================================================================
+When a call task opens:
+  - After each touch: a 60-minute timer; no meaningful reply -> a call task.
+    A reply within 60 minutes cancels it.
+  - Days 1-7 of a new lead: two call tasks per working day (morning: opening
+    to noon; afternoon: noon to closing), max 2 a day. On/off: AI Settings.
+  - Customer asked for a call: opens immediately, due within 5 minutes in
+    opening hours; late -> alert to staff.
+
+Who gets it:
+  the lead's assigned salesperson, if working now
+  salesperson off (their work schedule)  -> a colleague working now, the one
+                                            with the fewest open tasks (the
+                                            task says why)
+  nobody assigned to the lead            -> the dealership's main account
+  nobody working                         -> stays with the salesperson
+  Leads are assigned to salespeople by hand in the CRM (Assign Leads).
+
+Work schedules: Staff -> Add/Edit employee -> Work schedule.
+  Default: "Same as the dealership's opening hours". Otherwise working days
+  and shift times per day.
+
+Calling rules (checked before a task shows): a valid phone; no voice opt-out;
+no DND; 8:00-21:00 customer time AND dealer hours AND the state's own rules.
+Outside them the task waits for the next allowed time.
+
+Not done by the end of its window -> marked MISSED (shown per agent; BDC
+report). No manager escalation yet [GAP].
+
+
+================================================================================
+11. SOLD PENDING (deal recorded, car not delivered)                    [LIVE]
+================================================================================
+  touches 1-4  weekly: Day 1, 8, 15, 22 after the outcome (10:00 dealer time)
+  touch 5+     every 2 weeks: Day 36, 50, 64, ... while it stays pending
+  No expiry. Stops only when staff set Sold - Delivered / Closed Lost, or
+  the customer opts out. Each touch = text + email + 60-minute call task.
+  Fixed client wording: never invents documents, delivery dates, financing
+  status or reasons. Customer replies are answered under strict rules or
+  routed to a person.
+
+
+================================================================================
+12. SOLD - DELIVERED (ownership / retention)                           [LIVE]
+================================================================================
+  Day 3          post-delivery check-in + first service offer
+  yearly         birthday (only with a verified birth month/day)
+  years 1-10     ownership anniversary: "Do you still have your [Model]?"
+  on demand      maintenance reminders and safety recalls
+
+  Maintenance: Vehicle Databases schedule by VIN (1 credit per new VIN);
+    mileage only from the dealer's own records (repair orders, deals, staff);
+    without a current mileage it uses time since the last visit and names no
+    specific items. Never invents mileage or service items.
+    WHICHEVER COMES FIRST, miles or months [BATCH 2]: a car driven little is
+    still due when the months since its last visit run out (the schedule's
+    own months when it has them, else 6), even before the miles.
+    DealerVault service data (mileage, last visits) is read fresh on every
+    daily recalculation; the OEM schedule itself is kept 180 days (it doesn't
+    change, and each fetch costs a credit).
+  Recalls: NHTSA checked regularly; a model-level match is a staff notice to
+    verify first; only a VIN-confirmed open recall reaches the customer.
+  "No longer own it" -> closed_no_longer_owns.
+  Trade / equity / repurchase answers are collected, not acted on [NEXT SOW].
+
+  12B. OWNER LIFE CYCLE FOR EVERY DEALERVAULT SALE                  [BATCH 2]
+  Not only cars sold on a CRM lead: every delivered deal in DealerVault's
+  sales file. Planned daily; text + email; every message says it is the AI.
+    birthday         every year on the month/day (never the year)  Birth Date
+    review+referral  Day 14 after delivery: a review, and "who's next in
+                     line for a car?"                              Delivery Date
+    first 30 days    Day 30: phone / Bluetooth / app set-up, offer
+                     a visit with the salesperson                  Delivery Date
+    first 90 days    Day 85 check-in                               Delivery Date
+    anniversary      years 1-10 ("Can you believe it's been 3 years
+                     with your RAV4?")                             Delivery Date
+    lease end        90 days before the lease ends                 Deal Type,
+                                                                   Term, First
+                                                                   Pay Date
+    paid off         when the finance contract ends
+                     ("congratulations, you paid off your car")    Term, Amount
+                                                                   Financed
+    tips             every 60 days in year 1, then every 90, for
+                     5 years (service, ownership, safety tips)     Delivery Date
+  Conditions:
+    - goes out on the customer's latest CRM lead; a DealerVault customer with
+      NO lead in the CRM is counted and skipped                       [GAP]
+    - waits a week while that customer is in an active sales conversation
+      (birthday excepted); waits a day while staff are talking to them
+    - stops when they opt out or say they no longer own the car; unwound /
+      cancelled deals are skipped
+    - a touch more than 3 weeks late is skipped, never sent late
+    - a car sold on a CRM lead keeps its anniversary in section 12 (no double)
+  Day counts above are AutoPulse defaults until the client changes them.
+
+
+================================================================================
+13. SERVICE                                                            [LIVE]
+================================================================================
+  - The AI offers a service visit and asks which day/time suits them.
+  - Their answer becomes a SERVICE REQUEST with notes for the service team
+    (day/time, vehicle, mileage, needs, loaner, waiting): a staff notice
+    (AI Alerts) and a note on the lead. Nothing is booked.
+  - "What's my next service?" is answered only from the stored schedule and
+    real mileage; otherwise the team confirms.
+  - Reading/writing the real service scheduler (Dealer FX)  [NEXT SOW]
+  - SERVICE NOT SOLD / DECLINED SERVICES [BATCH 2]: a repair order that
+    closed with technician recommendations gets ONE follow-up 14 days later,
+    quoting the recommendations word for word ("our technicians recommended:
+    Replace front brake pads; Rotate tires. Would you like us to take care of
+    that?"). Not sent if the car has been back for service since. A "yes" is
+    a service request for the service team (nothing booked).
+
+
+================================================================================
+14. HANDOFFS - WHEN THE AI STOPS AND A PERSON TAKES OVER               [LIVE]
+================================================================================
+  Customer asks for a person:
+    said how ("call me")      -> call task now (section 10), handoff
+    didn't say how            -> one reply offering a call or a text from a
+                                 team member (nothing else in that reply)
+    answer "call"             -> call task, handoff
+    answer "text"             -> staff notice, handoff
+    "call me at 9:30"         -> call task; the AI KEEPS ANSWERING their
+                                 questions meanwhile; staff note "the call is
+                                 still yours"
+  Hard handoff (customer clearly upset, urgent, needs a manager's decision):
+    the AI goes quiet. After 30 business minutes: one "the team has your
+    message" text + staff alert. Later messages: a holding reply at most every
+    2 hours (a question or booking request gets one within 10 minutes) and a
+    staff notice + note with what they asked.
+  Soft handoff (the AI couldn't write a safe reply, or read the customer as
+    upset): quiet, but takes the lead back if the customer asks to book.
+  Staff pause the AI on a lead: quiet until staff resume.
+  Customer asks for a person but staff never act -> see [GAP]s, section 17.
+  MANAGER ALERTS [BATCH 1]: the manager in Dealer Setup (general manager
+    email + phone, else the store phone) gets an EMAIL and a TEXT for:
+    every escalation (Managerial Review, by staff or the AI), a requested
+    call nobody made, a customer writing while staff own the lead, and a
+    customer no longer interested. The dashboard card is "AI Alerts".
+
+
+================================================================================
+15. COMPLIANCE (TCPA) AND OPT-OUT                                      [LIVE]
+================================================================================
+When the business writes first (follow-ups, the first message to a web-form /
+email / imported lead, reminders):
+  - State texting windows in the customer's time zone (from ZIP, else
+    DealerVault state, else area code; unknown = the strictest of all).
+    NY, FL: from 8:00 AM. Some states: no Sundays, no holidays (incl. state
+    holidays), stricter weekday hours. Held messages go at the next allowed time.
+  - Max 3 marketing texts per customer per 24 h (state caps may be tighter).
+  - Indiana / Maine automated-device rules applied to every AI text.
+  - New Jersey: no unsolicited sales texts to cell phones (only follow-ups to
+    their own inquiry, or with consent).
+  - Imported / DealerVault / CSV leads need marketing consent.
+  - Campaign texts (sent by the CRM) pass the same check first.
+Replies to the customer's own message (including the first reply when the
+customer texted first): allowed at any hour.
+AI voice calls: off. Only people call.
+Every decision is logged with its rule (ai_compliance_log).
+
+Opt-out and back in:
+  STOP / UNSUBSCRIBE (alone)         -> that channel stops (carrier confirms)
+  "don't text me", "leave me alone"  -> that channel / every channel; one
+                                        plain confirmation
+  "not interested", "not right now"  -> NOT an opt-out (an objection)
+  "not interested", no reason        -> asks why once, then stops
+  START / UNSTOP / "YES" (capitals)  -> back in on that channel
+  "you can text me again"            -> back in
+  Wrong number                       -> stops and flags the number
+  A possible opt-out (unclear wording) -> nothing marketing goes out until it's
+                                        resolved by the customer or staff
+
+
+================================================================================
+16. SERVER SETTINGS IT DEPENDS ON (all dealerships at once)
+================================================================================
+Server: AWS EC2 54.88.250.148, everything under PM2_HOME=/home/ubuntu/.pm2:
+  aidmvcs-be-v2       CRM website, port 3001 (nginx serves /_next/static)
+  aidmvcs-worker-v2   CRM worker (incoming texts, leads, email, campaigns)
+  agentic-upsell      AI API, 127.0.0.1:8100
+  agentic-worker      AI worker (turns, schedules)
+  Code: /var/www/html/autopulse-prod-v2/{aidmvcs-be-dev, agentic-upsell}
+  Deploy: merge to main on GitHub -> builds aside, swaps in, checks, rolls
+  back automatically on failure.
+
+AI settings (agentic-upsell/.env) - must be:
+  ENVIRONMENT=PROD
+  CHANNEL_DRIVER=platform        (unset = "fake": messages never leave - the
+                                  cause of the 8 Oct outage)
+  PLATFORM_CLIENT=live
+  AUTOPULSE_API_BASE_URL=http://127.0.0.1:3001
+  UPSELL_SERVICE_SHARED_SECRET   same as the CRM's
+  OPENAI_API_KEY                 (model: gpt-5-mini unless MODEL_* set)
+  VEHICLE_DATABASES_ENABLED=true + VEHICLE_DATABASES_API_KEY
+  MONGODB_URI, REDIS_URL         same database / Redis as the CRM
+CRM settings (aidmvcs-be-dev/.env, .env.local overrides):
+  UPSELL_AGENT_API_URL=http://localhost:8100
+  UPSELL_SERVICE_SHARED_SECRET   same as the AI's
+  TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN
+  PROVIDER_SEND_STUB must NOT be true
+
+
+================================================================================
+17. WHEN THE AI WILL NOT WORK OR CAN'T HELP (the walls)
+================================================================================
+Setup:
+  - AI Settings Off / Shadow, or auto-reply off
+  - subscription expired (Victory Cars Central: 12 Oct 2026)
+  - number not in Dealer Setup ("No dealer found" - e.g. +1 929-684-0744)
+  - number not 10DLC-registered (carriers block: Twilio error 30034)
+  - Twilio webhook / messaging service pointing somewhere else
+  - Dealer Setup without hours / address / links
+Data:
+  - trade-in value: no valuation provider (Black Book / KBB / ...)   [GAP]
+  - real service booking: Dealer FX                                   [NEXT SOW]
+  - sold cars not marked sold in the CRM -> may still be offered      [GAP]
+  - Vehicle Databases credits run out -> no new maintenance schedules
+  - lead with no valid phone and no email -> staff task only
+Customer:
+  - opted out, wrong number, never replies (closes at Day 91)
+People (no escalation yet)                                            [GAP]
+  - hard handoff nobody picks up -> sits there after the alert
+  - missed call task -> recorded, nobody alerted at the time
+  - customer asked for a call and nobody called -> one alert only
+  - paused and forgotten -> silent forever
+  - "the team will confirm" -> nothing checks the team did
+Technical:
+  - AI service down -> messages queued and replayed; after a day the reply is
+    dropped and staff get a note
+  - text not delivered (carrier filtering) -> recorded, no staff alert  [GAP]
+
+Recommended next fixes:
+  1. escalation ladder: no action in X min -> manager alert; after Y hours the
+     AI takes the lead back with an apology
+  2. missed / requested calls -> manager alert + apology text with a new time
+  3. delivery failures -> staff alert, switch to email
+  4. safeguards: the AI refuses to start in production with the test sending
+     driver; the health check shows the sending mode; the deploy checks it
+
+
+================================================================================
+18. WHERE TO SEE IT IN THE CRM
+================================================================================
+  Leads / conversation          every customer message and AI reply
+  AI Assistant > Call Tasks     call tasks, who has them, missed ones
+  AI Assistant > AI Alerts      handoffs, "customer asked for a person",
+                                questions after a handoff, service requests
+  Admin > Settings [BATCH 1]   one page, three tabs: Follow-ups, Appointment
+                                reminders, AI (On / Shadow / Off, photos, call
+                                tasks, capacity). Dealers view only; AutoPulse
+                                super admins edit (via "login as")
+  Dashboard > AI Alerts         count of open alerts, links to AI Alerts
+  Lead > View customer profile  from any lead to the customer's profile
+  AI Assistant > AI Insights    reply rates, buckets, cadence results
+  Dealer Setup (top right)      SMS number, opening hours, time zone, address,
+                                website, credit and trade-in links, AI name
+  Staff > employee              role, work schedule
+
+
+================================================================================
+19. 8 OCT 2026 MEETING: WHAT CHANGED
+================================================================================
+BATCH 1 (branch meeting-batch-1)
+  1. One Settings page (follow-ups, reminders, AI); dealers view only, super
+     admins edit; "login as" fixed (any user could impersonate anyone)
+  2. AI Alerts on the dashboard; managers get email + text (section 14)
+  3. "Open lead" opens that lead; "View customer profile" on every lead
+  4. Old n8n auto-replies off (LEGACY_N8N_AUTOREPLY=true turns them back on);
+     turning the AI off now means no automatic replies at all
+  5. FTC: the first message says "the AI assistant"
+  6. Days 8-90 use Betsy's angles; Days 31-90 every two weeks
+  Already working, unchanged: no status after an appointment -> the no-show
+  follow-up 24 h later (a Visited / Sold status before then cancels it);
+  unanswered emails create call tasks like texts.
+
+BATCH 2 (branch meeting-batch-2)
+  7. Owner life cycle for every DealerVault sale (section 12B): birthday,
+     review & referral, first 30 / 90 days, anniversary, lease end, paid off,
+     tips
+  8. Service not sold / declined recommendations (section 13)
+  9. Maintenance "whichever comes first, miles or months" (section 12)
+ 10. Multi-agent specialists: Sales, Price & payment, Credit, Trade-in,
+     Service (section 7)
+ 11. Never a birth year or age; never a recall in sales (checked in code)
+ 12. Appointments aimed within 72 hours
+  Already working: the AI reads staff notes; DealerVault data is read fresh
+  every day.
+
+WAITING ON THE CLIENT
+  - FTC first-message wording (placeholder: "the AI assistant")
+  - Days 31-90 every two weeks: confirm
+  - Owner life cycle day counts (review Day 14, lease end 90 days before,
+    tips every 60/90 days): confirm or change
+  - DealerVault customers with no CRM lead: should the CRM create an owner
+    lead for them so they get the owner life cycle?
+  - Status names, walk-in opt-in (TCPA), escalation rules (Betsy)
+
+NEXT SOW (agreed in the meeting)
+  Desk log, reporting, forms, Dealer FX / Xtime booking, trade-in value from
+  VIN + miles (Vehicle Databases), equity mining, new-salesperson intro.
+
