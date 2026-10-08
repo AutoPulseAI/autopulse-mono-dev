@@ -1122,9 +1122,11 @@ async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) ->
         choice = ((state.get("conversation") or {}).get("after_hours") or {}).get("choice")
         mode = await dealer_ai_mode(db.dealer_id)
         checks = [
-            ("still_waiting", choice == "later",
+            # "offered": asked at night and never answered - that means wait for the team (client, 8 Oct 2026).
+            ("still_waiting", choice in ("later", "offered"),
              "the customer is still waiting for the team" if choice == "later"
-             else f"the after-hours choice is now {choice!r}"),
+             else "the customer never answered the after-hours choice, so the team picks it up at opening"
+             if choice == "offered" else f"the after-hours choice is now {choice!r}"),
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_RESUME),
