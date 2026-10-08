@@ -211,6 +211,13 @@ async def plan_birthdays(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await sweep_birthdays()
 
 
+async def plan_owner_touches(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """Client, 8 Oct 2026: daily, the owner life cycle for every DealerVault sale - birthday, anniversary, review
+    and referral, first 90 days, lease end, payoff, tips (scheduler/owner_lifecycle.py sweep)."""
+    from upsell_agent.scheduler.owner_lifecycle import sweep
+    return await sweep()
+
+
 async def clear_inventory_cache(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """DEV: forget the worker's cached stock searches. The search cache lives in this process (60 s per
     dealer and query, tools/inventory_tool.py), so a scenario or the Debug UI that changes stock from another
@@ -244,5 +251,6 @@ FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paus
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
              plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)
+             plan_owner_touches,  # client, 8 Oct 2026
              sweep_prices,  # PLAN_4 stream L
              reconcile_events]  # PLAN_4 stream X3

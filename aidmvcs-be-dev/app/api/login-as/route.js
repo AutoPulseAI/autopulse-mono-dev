@@ -12,15 +12,14 @@ export async function POST(req) {
     
 
     const { userId } = await req.json();
+    let currentUser = null;
 
     const authHeader = req.headers.get("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
+      currentUser = await User.findById(decoded.userId).select('_id name email type');
+      if (!currentUser) {
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
       }
     }else{
@@ -35,13 +34,23 @@ export async function POST(req) {
       });
     }
 
-    // Generate impersonation token (mark it as such)
+    // Only a super admin (any account) or an agency (its own dealers) may sign in as someone else. Before this any
+    // signed-in user could take over any account.
+    const isAdmin = currentUser.type === 'admin';
+    const isOwnAgency = currentUser.type === 'vendor' && String(user.vendor_id || '') === String(currentUser._id);
+    if (!isAdmin && !isOwnAgency) {
+      return new Response(JSON.stringify({ message: "Not allowed to sign in as this account" }), { status: 403 });
+    }
+
+    // Generate impersonation token (mark it as such): `impersonated_by` lets the CRM tell a super admin acting in a
+    // dealer account from the dealer (app/lib/apiAuth.js loadSettingsEditor: only super admins edit AI settings).
     const token = jwt.sign(
       { 
         userId: user._id, 
         role: user?.role?.name, 
         type: user.type,
-       
+        impersonated_by: String(currentUser._id),
+        impersonator_type: currentUser.type,
       },
       process.env.JWT_SECRET,
       { expiresIn: "24h" } // Shorter expiration for impersonation
@@ -62,7 +71,7 @@ export async function POST(req) {
     return new Response(JSON.stringify({ 
       token, 
       user: user,
-      impersonatedBy: token.userId
+      impersonatedBy: String(currentUser._id)
     }), { status: 200 });
   } catch (error) {
     return new Response(JSON.stringify({ message: error.message }), {

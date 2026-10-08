@@ -1,5 +1,6 @@
 // app/api/leads/status/route.js
 import { NextResponse } from "next/server";
+import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
@@ -682,6 +683,12 @@ export async function PUT(request) {
 
     // Create managerial review messages if status changed to "Managerial Review"
     // For AI-live dealers too: the AI pauses on Managerial Review, and these are its only follow-ups.
+    if (status === 'Managerial Review' && (originalLead.fe_lead_status || originalLead.status) !== 'Managerial Review') {
+      // The dealer's manager is alerted by email and text (client, 8 Oct 2026: "ensure managers receive SMS and
+      // email notification").
+      await notifyManagers({ dealerId: updated.dealer_id, leadId: updated._id,
+        title: 'A lead needs a manager (Managerial Review)', detail: 'Set by staff.' });
+    }
     if (status === 'Managerial Review') {
       try {
         const reviewResult = await createManagerialReviewMessages(updated._id, updated.dealer_id);

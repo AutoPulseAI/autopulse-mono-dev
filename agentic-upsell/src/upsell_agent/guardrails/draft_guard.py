@@ -270,6 +270,11 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     # written in words.
     words = word_claims.check(text, customer_texts)
     violations += words
+    # Client, 8 Oct 2026: birthday month and day are fine, a birth year or an age never.
+    from upsell_agent.agent.owner_touches import BIRTH_YEAR
+    birth_year = bool(BIRTH_YEAR.search(text))
+    if birth_year:
+        violations.append("mentions a birth year or the customer's age")
 
     checks = {
         "no_consent_claims": not consent_said,
@@ -279,6 +284,7 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
         "no_unattached_photo_claims": not photo_claims,
         "service_claims_grounded": not service,
         "no_invented_word_claims": not words,
+        "no_birth_year": not birth_year,
         "sms_length_ok": 0 < len(sms) <= sms_max,
         "email_complete": bool(subject.strip()) and bool(body.strip()),
     }

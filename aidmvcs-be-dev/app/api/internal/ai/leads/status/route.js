@@ -11,6 +11,7 @@ import { clearPendingJobs } from '@lib/followupService';
 import { cancelAllRemindersForLead, createManagerialReviewMessages } from '@lib/appointmentReminderService';
 import Email from '@models/Email';
 import Lead from '@models/Lead';
+import { notifyManagers } from '@lib/ai/managerAlerts';
 
 export async function POST(req) {
   if (!verifyInternalServiceToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,7 +26,7 @@ export async function POST(req) {
   try {
     await dbConnect();
     const result = await markLeadClosedFromAi(body, { Lead, Email, clearPendingJobs, cancelAllRemindersForLead,
-      createManagerialReviewMessages });
+      createManagerialReviewMessages, notifyManagers });
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {

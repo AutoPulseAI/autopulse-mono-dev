@@ -167,11 +167,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dealer/ai/settings" className={getLinkClass("/dealer/ai/settings")}>
-                    <i className="fa-regular fa-sliders"></i>AI Settings
-                  </Link>
-                </li>
-                <li>
                   <Link href="/dealer/ai/insights" className={getLinkClass("/dealer/ai/insights")}>
                     <i className="fa-regular fa-chart-line"></i>AI Insights
                   </Link>
@@ -310,19 +305,10 @@ const Sidebar = ({ isOpen, onClose }) => {
 
                 {canFollowupSettings && (
                   <li>
+                    {/* One page for follow-ups, appointment reminders and AI (client, 8 Oct 2026); view-only for
+                        dealers, edited by AutoPulse super admins. */}
                     <Link href="/dealer/settings" className={getLinkClass("/dealer/settings")}>
-                      <i className="fa-regular fa-gear"></i>Followup Setting
-                    </Link>
-                  </li>
-                )}
-
-                {canFollowupSettings && (
-                  <li>
-                    <Link
-                      href="/dealer/settings/reminder-settings"
-                      className={getLinkClass("/dealer/settings/reminder-settings")}
-                    >
-                      <i className="fa-regular fa-alarm-clock"></i>Reminder Setting
+                      <i className="fa-regular fa-gear"></i>Settings
                     </Link>
                   </li>
                 )}

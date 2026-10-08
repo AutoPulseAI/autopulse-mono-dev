@@ -63,7 +63,7 @@ export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() 
 
 export async function markLeadDndFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
-  createManagerialReviewMessages = async () => {},
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id fe_lead_status').lean();
   if (!lead) return { found: false, updated: false };
@@ -179,6 +179,8 @@ export async function markLeadClosedFromAi(body, {
   if (body.status === 'Managerial Review') {
     // The same follow-ups as when staff set it (app/api/conversations/lead/status): one escalation flow.
     await createManagerialReviewMessages(lead._id, body.dealer_id);
+    await notifyManagers({ dealerId: body.dealer_id, leadId: body.lead_id,
+      title: 'A lead needs a manager (Managerial Review)', detail: body.reason || '' });
   }
   return { found: true, updated: true, previous: current };
 }

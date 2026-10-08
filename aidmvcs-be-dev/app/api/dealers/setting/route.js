@@ -1,9 +1,19 @@
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
+import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
+
+// Follow-up settings are edited by AutoPulse super admins only; dealers view them (client, 8 Oct 2026 meeting).
 
 export async function PUT(req) {
     try {
         await dbConnect();
+        const editor = await loadSettingsEditor(req);
+        if (!editor.superAdmin) {
+            return new Response(JSON.stringify({ message: SETTINGS_VIEW_ONLY_MESSAGE }), {
+                status: editor.user ? 403 : 401,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
         const { dealerId, autoReplyEnabled, rules } = await req.json();
 
         if (!dealerId) {
@@ -131,6 +141,13 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         await dbConnect();
+        const editor = await loadSettingsEditor(req);
+        if (!editor.superAdmin) {
+            return new Response(JSON.stringify({ message: SETTINGS_VIEW_ONLY_MESSAGE }), {
+                status: editor.user ? 403 : 401,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
         const { dealerId } = await req.json();
 
         if (!dealerId) {
@@ -177,6 +194,13 @@ export async function POST(req) {
 export async function DELETE(req) {
     try {
         await dbConnect();
+        const editor = await loadSettingsEditor(req);
+        if (!editor.superAdmin) {
+            return new Response(JSON.stringify({ message: SETTINGS_VIEW_ONLY_MESSAGE }), {
+                status: editor.user ? 403 : 401,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
         const { dealerId } = await req.json();
 
         if (!dealerId) {

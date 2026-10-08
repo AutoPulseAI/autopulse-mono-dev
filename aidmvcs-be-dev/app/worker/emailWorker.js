@@ -1,4 +1,5 @@
 import axios from 'axios'; // For making HTTP requests
+import { legacyAutoReplyOn } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js'; // For database operations
 import Lead from '../models/Lead.js'; // Lead model
 import Email from '../models/Email.js'; // Email model
@@ -157,7 +158,8 @@ export async function processEmail(job) {
         '_id': dealer_id
     });
     let sourcemail='';
-    let autreply =true;
+    // n8n's replies are off unless LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+    let autreply = legacyAutoReplyOn();
     let existingparent=null;
     if(dealer?.setting){
         if(dealer?.setting?.autoReplyEnabled ===false ){
