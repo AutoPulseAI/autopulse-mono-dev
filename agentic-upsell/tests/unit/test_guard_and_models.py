@@ -144,3 +144,12 @@ def test_never_a_birth_year_or_age(sms, passes):
     draft = {"sms_text": sms, "email_subject": "Hi", "email_body": sms}
     result = check_draft(draft, customer_texts=[], known_values=["40", "1985"])
     assert result["checks"]["no_birth_year"] is passes
+
+
+def test_a_sales_reply_never_brings_up_a_recall():
+    """Client, 8 Oct 2026: open recalls are told only in the service cadence - "we're not going to tell the customer
+    the car they want to buy has an open recall"."""
+    draft = {"sms_text": "Good news, the RAV4 had its open recall fixed already!", "email_subject": "RAV4",
+             "email_body": "The RAV4 has an open recall."}
+    assert check_draft(draft, customer_texts=["Is the RAV4 still there?"], known_values=[])["checks"][
+        "service_claims_grounded"] is False
