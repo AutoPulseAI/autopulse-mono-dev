@@ -61,7 +61,8 @@ def known_from_sources(state: AgentState) -> list[str]:
     September 27")."""
     pack = state.context_pack or {}
     info = (pack.get("dealer") or {}).get("info") or {}
-    texts = [info.get(k) for k in ("address", "phone", "website", "hours_summary")]
+    texts = [info.get(k) for k in ("address", "phone", "website", "credit_application_link", "trade_in_link",
+                                   "hours_summary")]
     texts += list((info.get("hours") or {}).values())
     texts += [s.get("display") for s in pack.get("profile") or []]
     return [t for t in texts if t]
@@ -323,7 +324,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     # MASTER_PLAN_4 F3: the photo, not the link - a link only when the customer asked, and only to a named
     # vehicle's own page (guardrails/link_guard.py).
     bad_links = disallowed_links(state.draft, inventory=inventory, link_requested=wants_link(state.extraction),
-                                 allowed=[((pack.get("dealer") or {}).get("info") or {}).get("website")])
+                                 allowed=[((pack.get("dealer") or {}).get("info") or {}).get(k)
+                                          for k in ("website", "credit_application_link", "trade_in_link")])
     result["checks"]["no_link_unless_asked"] = not bad_links
     if bad_links:
         result["passed"] = False
