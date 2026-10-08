@@ -346,8 +346,15 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     check("ai_voice", True, f"channel is {channel}")
 
     if purpose == "lead_response":
-        is_reply = False  # never the reply exemption: the business sends first
-        if origin.origin != "inbound":
+        # The customer texted us first (the lead *is* their text): our first message is a reply to it, sent at
+        # any hour by SMS (client, 8 Oct 2026: a customer texting after hours is asked at once whether to carry on
+        # now or when the dealership opens - agent/after_hours.py). Every other lead_response (a web form, an
+        # email, an import) stays a business-initiated first message under the state hours.
+        texted_first = origin.origin == "inbound" and origin.source == "sms" and channel == "sms"
+        is_reply = texted_first
+        if texted_first:
+            check("lead_response", True, "the customer texted us first: the first message is a reply to it")
+        elif origin.origin != "inbound":
             # PLAN_4 stream X1 item 1: an imported / historical / campaign record is not a consumer inquiry.
             check("lead_response", False, f"not a consumer-initiated lead ({origin.rule}): its first message is "
                                           "outbound marketing")
