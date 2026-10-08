@@ -7,7 +7,7 @@ work the dealership's opening hours.
 
 `agent_for` keeps a task with the lead's assigned salesperson when they are working at that time. When they are
 off, it goes to a colleague who is working then (the one with the fewest open tasks), and says so; when nobody is
-working, it stays with the assigned salesperson. A lead with nobody assigned stays unassigned, as before.
+working, it stays with the assigned salesperson. A lead with nobody assigned goes to the dealership's main account.
 """
 
 from datetime import datetime, time
@@ -61,7 +61,9 @@ async def _staff(dealer_id: str) -> list[dict[str, Any]]:
 async def agent_for(db: DealerScopedDatabase, assigned: str | None, at: datetime) -> tuple[str | None, str | None]:
     """(who gets the task, why it isn't the assigned salesperson or None)."""
     if not assigned:
-        return None, None  # unassigned stays unassigned, as before
+        # The CRM only assigns leads by hand, so many have nobody: the task goes to the dealership's main account
+        # (client, 8 Oct 2026), which sees and hands out every task, instead of belonging to no one.
+        return db.dealer_id, "No salesperson is assigned to this lead, so it goes to the dealership"
     staff = await _staff(db.dealer_id)
     by_id = {str(s["_id"]): s for s in staff}
     if assigned not in by_id:
