@@ -19,8 +19,7 @@
 // Opening hours are shown read-only: they are the ones on the dealer's account
 // (dealer_account_information.weekly_availability), which the AI uses.
 //
-// Anyone at the dealership can read these; changing them needs the dealer's main
-// account, an admin, or the "Manage Follow-up setting" permission.
+// Anyone at the dealership can read these; only an AutoPulse super admin changes them (client, 8 Oct 2026).
 
 import { NextResponse } from "next/server";
 import { AI_MODES, effectiveAiMode, invalidateDealerAiMode } from "@lib/ai/aiMode";
@@ -29,11 +28,11 @@ import FollowUpJob from "@models/FollowUpJob";
 import "@models/Role";
 import "@models/Permission";
 import { jsonError, requireDealerSession, staffName } from "../_lib/dealerAi";
+import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
 import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
 import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-const SETTINGS_PERMISSION = "Manage Follow-up setting";
 
 function describe(dealer) {
   const info = dealer?.dealer_account_information || {};
@@ -59,14 +58,10 @@ function describe(dealer) {
   };
 }
 
-async function canChange(user, dealerId) {
-  if (user.type === "admin") return true;
-  if (user.type === "dealer" && !user.parent_id && String(user._id) === String(dealerId)) return true;
-  const full = await User.findById(user._id)
-    .select("role")
-    .populate({ path: "role", populate: { path: "permissions" } })
-    .lean();
-  return (full?.role?.permissions || []).some((p) => p?.permission_name === SETTINGS_PERMISSION);
+// Client, 8 Oct 2026 meeting: only AutoPulse super admins change AI settings (dealers view them, so they can't drive
+// up costs) - a super admin signed in directly or inside the dealer account (app/lib/apiAuth.js).
+async function canChange(req) {
+  return (await loadSettingsEditor(req)).superAdmin;
 }
 
 async function loadDealer(dealerId) {
@@ -80,7 +75,7 @@ export async function GET(req) {
   if (session.error) return session.error;
   const dealer = await loadDealer(session.dealerId);
   if (!dealer) return jsonError("Dealership not found", 404);
-  return NextResponse.json({ ...describe(dealer), can_change: await canChange(session.user, session.dealerId) });
+  return NextResponse.json({ ...describe(dealer), can_change: await canChange(req) });
 }
 
 export async function PUT(req) {
@@ -92,8 +87,8 @@ export async function PUT(req) {
   }
   const session = await requireDealerSession(req, body?.dealer_id);
   if (session.error) return session.error;
-  if (!(await canChange(session.user, session.dealerId))) {
-    return jsonError("Only the dealership's main account or a manager can change AI settings.", 403);
+  if (!(await canChange(req))) {
+    return jsonError(SETTINGS_VIEW_ONLY_MESSAGE, 403);
   }
 
   const set = {};
