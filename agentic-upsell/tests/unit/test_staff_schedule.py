@@ -63,8 +63,9 @@ async def test_nobody_working_leaves_it_with_the_salesperson(team):
     assert await agent_for(dealer_scoped_db(DEALER), ALEX, ny(22, 22)) == (ALEX, None)  # Tuesday 10 PM
 
 
-async def test_unassigned_stays_unassigned(team):
-    assert await agent_for(dealer_scoped_db(DEALER), None, ny(26, 12)) == (None, None)
+async def test_unassigned_goes_to_the_dealership(team):
+    agent, why = await agent_for(dealer_scoped_db(DEALER), None, ny(26, 12))
+    assert agent == DEALER and "goes to the dealership" in why
 
 
 async def test_no_schedule_follows_dealer_hours(team, mongo):
