@@ -286,6 +286,9 @@ def describe(state: CadenceState, now: datetime, tz) -> dict[str, Any]:
             "started_at": state.started_at.isoformat() if isinstance(state.started_at, datetime) else None}
 
 
+AI_DISCLOSURE = "the AI assistant"
+
+
 def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
     """Touch 1's mandatory closing question (Omnichannel PDF §3, "ALWAYS end"),
     unless the customer has already told us about a trade-in (client, 1 Oct
@@ -316,14 +319,13 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     message the customer never sent. Only this one line changes; the required closing question, and every
     other part of the structure, stay exactly as specified regardless of origin."""
     who = f"Hello {customer_first_name}" if customer_first_name else "Hello"
-    speaker = f", this is {agent_name}" if agent_name else ""
+    # FTC (client, 8 Oct 2026 meeting): the AI must say it is AI and never pose as a person - the first message
+    # names it "the AI assistant". AI_DISCLOSURE is the wording, kept in one place for the client's final text.
+    speaker = f", this is {agent_name}, {AI_DISCLOSURE}" if agent_name else f", this is {AI_DISCLOSURE}"
     place = ""
     if dealership:
         where = ", ".join(x for x in (city, state_code) if x)
         place = f" from {dealership}" + (f" in {where}" if where else "")
-        if customer_first_name and not agent_name:
-            # Stream G (grammar): "Hello Maria from ABC Toyota." reads as if Maria were from ABC Toyota.
-            place = f", greetings{place}"
     if service:
         care = f"your {vehicle}" if vehicle else "your vehicle"
         return (f"{who}{speaker}{place}. Thank you for contacting our service team. "
