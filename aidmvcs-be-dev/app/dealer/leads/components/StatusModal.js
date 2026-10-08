@@ -42,11 +42,14 @@ export default function StatusModal({
     "Unsold",
     "Closed - Lost",
     "Lead",
+    // The SOW's working stages (client, 8 Oct 2026): the AI also sets them as the lead moves.
+    "Lead Not Contacted",
+    "Contacted - No Next Action",
     "DND",
     "No Show"
   ];
   // Statuses only the AI sets (app/lib/ai/aiDnd.js READ_ONLY_STATUSES).
-  const readOnlyStatuses = ["Closed - No Longer Owns"];
+  const readOnlyStatuses = ["Closed - No Longer Owns", "Contacted - Specific Follow-up"];
   // MASTER_PLAN_3 C5: a visit needs the manager's outcome (client: "Sales Visit -> manager outcome required").
   const managerOutcomes = ["Sold Pending", "Sold Delivered", "Unsold"];
 

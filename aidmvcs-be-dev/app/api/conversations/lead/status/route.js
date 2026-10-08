@@ -681,7 +681,8 @@ export async function PUT(request) {
     }
 
     // Create managerial review messages if status changed to "Managerial Review"
-    if (status === 'Managerial Review' && !aiOwnsMessages) {
+    // For AI-live dealers too: the AI pauses on Managerial Review, and these are its only follow-ups.
+    if (status === 'Managerial Review') {
       try {
         const reviewResult = await createManagerialReviewMessages(updated._id, updated.dealer_id);
         console.log('Managerial review messages created from lead status update:', reviewResult);
