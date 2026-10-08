@@ -172,7 +172,7 @@ def _clock(hour: str, minute: str | None, meridiem: str | None) -> time:
 def part_of_day(text: str) -> tuple[tuple[time, time] | None, str | None]:
     lowered = (text or "").lower()
     for word, span in _PARTS.items():
-        if re.search(rf"\b{word}\b", lowered):
+        if re.search(rf"\b{word}s?\b", lowered):  # "mornings" / "afternoons" too
             return span, word
     if m := _AFTER.search(lowered):
         return (_clock(*m.groups()), time(23, 59)), m.group(0)

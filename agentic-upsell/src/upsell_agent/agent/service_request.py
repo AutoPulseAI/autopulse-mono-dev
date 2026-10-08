@@ -28,7 +28,7 @@ Next SOW: read service availability, offer real times, write the booking.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
 from upsell_agent import clock
@@ -60,6 +60,10 @@ _CONFIRMED_WORDING = re.compile(
     r"\b(booked|confirmed|see you (?:on|at|then)|(?:is|are|you'?re) (?:all )?set for|scheduled (?:you|it|for)|"
     r"locked (?:it |you )?in|reserved)\b", re.IGNORECASE)
 _REQUESTED_WORDING = re.compile(r"\brequested\b", re.IGNORECASE)
+# "your 10 AM appointment", "I've noted the appointment": nothing is booked for a service visit, so there is no
+# appointment to name (the customer's own "book me an appointment" is a request, not a fact). An offer such as
+# "to set up an appointment" is fine; owning one ("your/the ... appointment") is not.
+_APPOINTMENT_CLAIM = re.compile(r"\b(?:your|the|our)\s+(?:[\w:']+\s+){0,3}appointment\b", re.IGNORECASE)
 
 
 def is_service_visit(profile: Profile) -> bool:
@@ -79,22 +83,90 @@ def preferred_time(text: str, dealer: DealerProfile, now: datetime) -> dict[str,
     if resolved is not None and resolved.day < local_now.date():
         resolved = None
     _, part = part_of_day(text or "")
-    if resolved is None and not part:
+    day_has_time = resolved is not None and isinstance(resolved.value, datetime)
+    clock_time = None if day_has_time else _bare_clock_time(text or "")
+    if resolved is None and not part and clock_time is None:
         return None
     pieces: list[str] = []
     day = time_text = None
     if resolved is not None:
         day = resolved.day
         pieces.append(f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}")
-        if isinstance(resolved.value, datetime):
+        if day_has_time:
             time_text = resolved.value.strftime("%H:%M")
             pieces.append("at " + resolved.value.strftime("%I:%M %p").lstrip("0"))
-    if part and not time_text:
+    if clock_time is not None:
+        # "10 am", "ten in the morning", "tomorrow at ten": the exact time wins over "any morning". With no day
+        # it is still a request - the team gets the time and is told the day is missing.
+        time_text = clock_time.strftime("%H:%M")
+        shown = clock_time.strftime("%I:%M %p").lstrip("0")
+        pieces = [*pieces, "at " + shown] if day else [shown]
+    elif part and not time_text:
         pieces.append(f"in the {part}" if part in ("morning", "afternoon", "evening") else part)
-    if part and resolved is None:
-        pieces = [f"any {part}" if part in ("morning", "afternoon", "evening") else part]
+        if resolved is None:
+            pieces = [f"any {part}" if part in ("morning", "afternoon", "evening") else part]
     return {"display": " ".join(pieces), "date": day.isoformat() if day else None, "time": time_text,
-            "part": part, "approximate": bool(resolved and (resolved.ambiguous or resolved.approximate))}
+            "part": part, "day_missing": day is None,
+            "approximate": bool(resolved and (resolved.ambiguous or resolved.approximate))}
+
+
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+                 "ten": 10, "eleven": 11, "twelve": 12}
+_MINUTE_WORDS = {"fifteen": 15, "thirty": 30, "forty five": 45, "forty-five": 45, "fortyfive": 45}
+_HOUR = r"(\d{1,2}|" + "|".join(_NUMBER_WORDS) + r")"
+_MINUTES = r"(?:\s*:\s*(\d{2})|\s+(" + "|".join(_MINUTE_WORDS) + r"))?"
+# Things a number is followed by when it isn't an hour ("at 10 miles", "around 10k", "10 tires").
+_NOT_AN_HOUR = r"(?!\s*(?:miles?|mi\b|km|k\b|thousand|years?|tires?|people|dollars?|bucks|grand|%|\$|\d))"
+# An hour, said with am/pm ("10 am", "ten thirty a.m."), "o'clock", or a part of the day ("ten in the morning",
+# "ten in morning"); or after at/around/about/by ("at 10", "around ten thirty"); or h:mm ("10:30").
+_CLOCK_PATTERNS = [
+    re.compile(rf"\b{_HOUR}{_MINUTES}\s*(?:([ap])\.?m\b\.?|o'?\s?clock|(?:in|of)\s+(?:the\s+)?(morning|afternoon|evening))",
+               re.IGNORECASE),
+    re.compile(rf"\b(?:at|around|about|by|@)\s*{_HOUR}{_MINUTES}\b{_NOT_AN_HOUR}", re.IGNORECASE),
+    re.compile(r"\b(\d{1,2})\s*:\s*(\d{2})\b()()()", re.IGNORECASE),
+]
+
+
+def _bare_clock_time(text: str) -> time | None:
+    """The clock time a message names, whether or not it names a day: "10 am", "2:30pm", "ten in the morning",
+    "10 o'clock", "at ten thirty", "10:30". None for numbers that aren't an hour ("100000 miles", "4 tires").
+    Without am/pm or a part of the day, a dealership's hours decide: 8-11 is morning, 12-7 the afternoon."""
+    for pattern in _CLOCK_PATTERNS:
+        for m in pattern.finditer(text or ""):
+            raw_hour = m.group(1).lower()
+            hour = int(raw_hour) if raw_hour.isdigit() else _NUMBER_WORDS[raw_hour]
+            minute = int(m.group(2)) if m.group(2) else _MINUTE_WORDS.get((m.group(3) or "").lower(), 0)
+            if not (1 <= hour <= 12 and minute < 60):
+                continue
+            meridiem = (m.group(4) or "").lower() if m.lastindex and m.lastindex >= 4 else ""
+            part = (m.group(5) or "").lower() if m.lastindex and m.lastindex >= 5 else ""
+            if meridiem == "p" or part in ("afternoon", "evening"):
+                hour = hour % 12 + 12
+            elif meridiem == "a" or part == "morning":
+                hour = hour % 12
+            else:
+                hour = hour % 12 + 12 if (hour == 12 or hour <= 7) else hour
+            return time(hour, minute)
+    return None
+
+
+VISIT_WHEN_CONFIDENCE = 0.7
+
+
+def from_extraction(extraction: dict[str, Any], dealer: DealerProfile, now: datetime) -> dict[str, Any] | None:
+    """The model's `visit_when`: the customer's own words for when they'd come in, whatever the wording.
+
+    The code's date reading is tried on those words first (the model may have cleaned up what the message
+    mangled). If it still can't work out a day or time, the request is passed anyway with their exact words,
+    marked `unparsed`, so the team confirms it: a stated time is never dropped because we couldn't parse it."""
+    words = str(extraction.get("visit_when") or "").strip()
+    if not words or float(extraction.get("visit_when_confidence") or 0.0) < VISIT_WHEN_CONFIDENCE:
+        return None
+    parsed = preferred_time(words, dealer, now)
+    if parsed is not None:
+        return parsed
+    return {"display": f"\"{words[:120]}\"", "date": None, "time": None, "part": None, "day_missing": True,
+            "approximate": True, "unparsed": True}
 
 
 def take_notes(profile: Profile, texts: list[str]) -> dict[str, Any]:
@@ -109,7 +181,9 @@ def take_notes(profile: Profile, texts: list[str]) -> dict[str, Any]:
 
 
 def notes_text(request: dict[str, Any]) -> str:
-    parts = [f"Requested: {request.get('display')}"]
+    parts = [f"Requested: {request.get('display')}" + (
+        " (their words, not understood as a date or time - confirm with them)" if request.get("unparsed")
+        else " (no day given - ask which day)" if request.get("day_missing") else "")]
     if request.get("vehicle"):
         parts.append(f"vehicle: {request['vehicle']}")
     if request.get("mileage") is not None:
@@ -135,7 +209,8 @@ def plan(*, profile: Profile, extraction: dict[str, Any], conversation: Conversa
     declined = visit_declines(extraction)
     wanted = visit_wants(extraction)
     asked = conversation.awaiting_visit_pick
-    preference = None if (declined or hold) else preferred_time(text, dealer, now)
+    preference = None if (declined or hold) else (preferred_time(text, dealer, now)
+                                                  or from_extraction(extraction, dealer, now))
     changing = bool(record.service_request) and bool(_CHANGE.search(text or ""))
 
     if preference and (asked or wanted or changing):
@@ -171,7 +246,10 @@ def invalid_wording(visit: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     violations = []
     for name, key in (("SMS", "sms_text"), ("email", "email_body")):
         text = str(draft.get(key) or "")
-        if _CONFIRMED_WORDING.search(text):
+        if _APPOINTMENT_CLAIM.search(text):
+            violations.append(f"the {name} names an appointment, but a service visit is only a request - nothing is "
+                              "booked; say the request was passed to the service team")
+        elif _CONFIRMED_WORDING.search(text):
             violations.append(f"the {name} says the service visit is booked/confirmed, but service visits are only "
                               "requested - the team confirms the time")
         elif _REQUESTED_WORDING.search(text) and not has_request:

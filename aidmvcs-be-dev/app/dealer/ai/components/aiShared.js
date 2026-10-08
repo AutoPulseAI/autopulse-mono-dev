@@ -118,6 +118,7 @@ export const ALERT_KINDS = {
   visit_moved: { label: "Visit moved", icon: "fa-calendar-pen", variant: "info" },
   visit_cancelled: { label: "Visit cancelled", icon: "fa-calendar-xmark", variant: "warning" },
   after_hours_resume: { label: "After-hours lead picked up", icon: "fa-moon", variant: "info" },
+  team_promise: { label: "Team follow-up promised", icon: "fa-handshake", variant: "warning" },
   duplicate_lead: { label: "Duplicate lead", icon: "fa-clone", variant: "secondary" },
   reply_on_closed_lead: { label: "Reply on a closed lead", icon: "fa-envelope-open", variant: "warning" },
 };

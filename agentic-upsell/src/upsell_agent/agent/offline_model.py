@@ -273,6 +273,7 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         **_sentiment(text),
         **_possible_opt_out(text),
         **_wants_visit(text),
+        **_visit_when(text, payload),
         **_declines_visit(text, payload),
         **_urgent(text),
         "next_contact_when": next_contact[0] if next_contact else None,
@@ -386,6 +387,21 @@ def _wants_link(text: str) -> dict[str, Any]:
     if _LINK.search(text):
         return {"wants_link": True, "wants_link_confidence": 0.9}
     return {"wants_link": False, "wants_link_confidence": 0.0}
+
+
+# A stand-in for the real model's visit_when: any day, time or window word, only while a visit time was asked.
+_WHEN = re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\b|o'?clock)?|noon|midnight|today|tonight|tomorrow|"
+                   r"mon(?:day)?s?|tue(?:s(?:day)?)?s?|wed(?:nesday)?s?|thu(?:r(?:s(?:day)?)?)?s?|fri(?:day)?s?|"
+                   r"sat(?:urday)?s?|sun(?:day)?s?|weekends?|weekdays?|mornings?|afternoons?|evenings?|"
+                   r"after|before|whenever|any ?time|anytime|"
+                   r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", re.IGNORECASE)
+
+
+def _visit_when(text: str, payload: dict[str, Any]) -> dict[str, Any]:
+    awaiting = bool(((payload.get("context") or {}).get("conversation") or {}).get("awaiting_visit_pick"))
+    if awaiting and _WHEN.search(text) and not re.search(r"\b\d{3,}\b", text):
+        return {"visit_when": text.strip()[:200], "visit_when_confidence": 0.9}
+    return {"visit_when": None, "visit_when_confidence": 0.0}
 
 
 def _wants_visit(text: str) -> dict[str, Any]:
