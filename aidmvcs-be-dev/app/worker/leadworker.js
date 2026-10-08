@@ -1,5 +1,6 @@
 // leadworker.js
 import { Worker } from 'bullmq';
+import { legacyAutoReplyOn } from '../lib/legacyAutoReply.js';
 
 import dbConnect from '../lib/mongodb.js';
 import { sendEmail } from '../lib/email.js';
@@ -153,7 +154,8 @@ export const processLead = async (job) => {
           }).save();
         } else try {
           let messageId;
-          if (autoReplyEnabled) {
+          // n8n's first reply only when LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+          if (autoReplyEnabled && legacyAutoReplyOn()) {
             try {
               if (communicationType === 'sms') {
                 messageId = await sendSMS(recipient, content, dealer);

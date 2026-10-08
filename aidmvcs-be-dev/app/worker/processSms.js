@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { legacyAutoReplyOn } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js';
 import Lead from '../models/Lead.js';
 import User from '../models/User.js';
@@ -60,7 +61,8 @@ export async function processSMS(job) {
     const dealer = await User.findOne({
         '_id': dealer_id
     });
-    let autreply =true;
+    // n8n's replies are off unless LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+    let autreply = legacyAutoReplyOn();
     if(dealer?.setting){
         if(dealer?.setting?.autoReplyEnabled === false){
            autreply =false;
