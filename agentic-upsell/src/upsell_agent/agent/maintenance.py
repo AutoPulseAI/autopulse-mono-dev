@@ -24,6 +24,10 @@ because they alert the ai to send a message/create a task"): a due service raise
 event (agent/service_events.py). A recall outreach for the same vehicle in the last
 SERVICE_OUTREACH_GAP_DAYS holds it back, so the two never compete for the customer's attention (D6).
 
+Whichever comes first (client, 8 Oct 2026): with a current reading short of the next service, the time since the
+last visit still makes it due once it reaches the interval's months (MAINTENANCE_TIME_INTERVAL_MONTHS when the
+schedule has none).
+
 A dealer service visit at or past a schedule mileage counts as that service done: repair-order operations
 aren't matched against the OEM's item list (decision, stream A4).
 """
@@ -165,6 +169,29 @@ def compute_status(schedule: MaintenanceSchedule | None, readings: list[Reading]
         out["next_service"] = upcoming.as_dict() if upcoming else None
         out["basis"] = BASIS_MILEAGE
         if not passed:
+            # Client, 8 Oct 2026: "it's whichever one comes first" - a car driven little still needs its service
+            # when the months run out (the interval's own months when the schedule gives them, else the setting).
+            anchor = last_visit.at if last_visit else delivered_at
+            limit = (upcoming.months if upcoming and upcoming.months else time_interval_months)
+            if anchor is not None and upcoming and _months_between(anchor, now) >= limit:
+                months = _months_between(anchor, now)
+                out.update(status="due", basis=BASIS_TIME,
+                           reason=f"{months} month(s) since {anchor.date().isoformat()} reach the {limit}-month "
+                                  f"limit before the {upcoming.miles:,}-mile service (whichever comes first)",
+                           due={"due_key": f"time:{anchor.date().isoformat()}", "basis": BASIS_TIME,
+                                "interval": upcoming.as_dict(),
+                                "facts": {"kind": "maintenance", "basis": BASIS_TIME,
+                                          "source": "OEM maintenance schedule (Vehicle Databases)",
+                                          "service": f"{upcoming.miles:,}-mile service ({', '.join(upcoming.items)})"
+                                                     f" - due by time first ({months} months since the last visit)",
+                                          "service_items": list(upcoming.items), "interval_miles": upcoming.miles,
+                                          "verified_mileage": {"miles": current.miles,
+                                                               "observed_at": current.observed_at.date().isoformat(),
+                                                               "source": current.source},
+                                          "mileage_is_estimate": False, "months_since_last_visit": months,
+                                          "last_visit_date": anchor.date().isoformat(),
+                                          "last_visit_was": "delivery" if not last_visit else "service visit"}})
+                return out
             out.update(status="not_due" if upcoming else "schedule_complete", due=None,
                        reason=(f"next service at {upcoming.miles:,} miles; verified {current.miles:,}" if upcoming
                                else "past the end of the OEM schedule"))
@@ -268,6 +295,9 @@ async def check_vehicle(dealer_id: str, vehicle: dict[str, Any], *, client: Vehi
     label = service_events.vehicle_label(vehicle)
     what = (", ".join(due["facts"]["service_items"]) + f" at {due['facts']['interval_miles']:,} miles"
             if due["basis"] == BASIS_MILEAGE else
+            f"{', '.join(due['facts']['service_items'])} - {due['facts']['months_since_last_visit']} months since "
+            f"the last visit came first, before {due['facts']['interval_miles']:,} miles"
+            if due["facts"].get("interval_miles") else
             f"{due['facts']['months_since_last_visit']} months since the last visit, no current mileage on record")
     event = await service_events.record_event(
         db, vehicle, event_type=service_events.MAINTENANCE_DUE, event_key=f"maintenance:{vin}:{due['due_key']}",

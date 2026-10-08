@@ -132,3 +132,15 @@ def test_campaign_text_numbers_are_allowed_when_passed_as_known():
     draft = {**GOOD, "sms_text": "Our 20% off maintenance offer runs this month!"}
     assert not _guard(draft)["passed"]
     assert _guard(draft, known=["20% off all maintenance this month"])["passed"]
+
+
+@pytest.mark.parametrize(("sms", "passes"), [
+    ("Happy birthday, Maria! Hope it's a great day.", True),
+    ("Happy 40th birthday, Maria!", False),
+    ("Since you were born in 1985, here's a deal", False),
+])
+def test_never_a_birth_year_or_age(sms, passes):
+    """Client, 8 Oct 2026: "we don't need to discuss birth year ever"."""
+    draft = {"sms_text": sms, "email_subject": "Hi", "email_body": sms}
+    result = check_draft(draft, customer_texts=[], known_values=["40", "1985"])
+    assert result["checks"]["no_birth_year"] is passes
