@@ -484,6 +484,16 @@ test('AI status payloads: the two closed statuses and the three working stages, 
   assert.deepEqual([...READ_ONLY_STATUSES], ['Closed - No Longer Owns', 'Contacted - Specific Follow-up']);
 });
 
+test('an AI manager escalation becomes Managerial Review only over a working status, Unsold or No Show', () => {
+  for (const current of [null, 'Lead', 'Contacted', 'Contacted - No Next Action', 'Unsold', 'No Show']) {
+    assert.equal(closedStatusConflict({ status: 'Managerial Review', current }), null, String(current));
+  }
+  for (const current of ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Sold Pending', 'Sold Delivered']) {
+    assert.equal(closedStatusConflict({ status: 'Managerial Review', current }), 'staff_status_kept', current);
+  }
+  assert.deepEqual(validateClosedStatusPayload({ dealer_id: DEALER, lead_id: LEAD, status: 'Managerial Review' }).errors, []);
+});
+
 test('the AI\'s working stages replace only another working status, never one staff chose', () => {
   for (const current of [null, 'Lead', 'Contacted', 'Lead Not Contacted']) {
     assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), null, String(current));
