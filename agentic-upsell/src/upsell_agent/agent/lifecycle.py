@@ -168,6 +168,10 @@ KIND_STAGES: dict[str, frozenset[Stage]] = {
     "service_outreach": frozenset({Stage.SOLD_DELIVERED}),
     # Customer-level, not vehicle-level (§7): it outlives one vehicle's Closed - No Longer Owns.
     "birthday": frozenset({Stage.SOLD_DELIVERED, Stage.CLOSED_NO_LONGER_OWNS}),
+    # Client, 8 Oct 2026 (scheduler/owner_lifecycle.py): an owner touch for a DealerVault sale rides on the
+    # customer's latest lead whatever its stage - usually an old, closed sales lead. Only an opt-out stops it; an
+    # active sales conversation defers it (checked when it fires).
+    "owner_touch": frozenset(Stage) - {Stage.OPTED_OUT},
 }
 
 # What the platform's staff statuses mean here (aidmvcs-be-dev lib/ai/aiStaff.js

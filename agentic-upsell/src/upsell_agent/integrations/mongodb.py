@@ -201,6 +201,7 @@ AI_SERVICE_EVENTS_COLLECTION = "ai_service_events"
 # vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
 AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
 AI_CUSTOMER_STATUS_COLLECTION = "ai_customer_status"
+AI_OWNER_LIFECYCLE_COLLECTION = "ai_owner_lifecycle"  # agent/owner_touches.py: one row per DealerVault deal
 # PLAN_4 stream L (learning/): one row per outbound AI touch with its context, the variants it was given and
 # what the customer did after it (blueprint box 5); one price history per (dealer, VIN) for verified price
 # drops (learning/price_watch.py).
