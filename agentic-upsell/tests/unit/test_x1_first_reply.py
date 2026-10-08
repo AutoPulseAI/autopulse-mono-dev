@@ -153,3 +153,16 @@ async def test_an_open_review_stops_the_first_message(mongo, dealers):
     result = await handlers.handle_lead_created(_created(created), _deps())
     assert result["status"] == "not_sent" and result["send_check"] == "REVIEW"
     assert await _outbox(mongo, created) == []
+
+
+async def test_a_customer_who_texts_us_at_3_am_is_answered_at_once_with_the_after_hours_choice(mongo, dealers):
+    # Client, 8 Oct 2026: a customer texting at any hour gets a reply within seconds asking whether to carry on now
+    # or when the dealership opens; their own text makes our first message a reply (web forms still wait: above).
+    set_clock(ny(23, 3))
+    created = await _lead(mongo, source="sms")
+    result = await handlers.handle_lead_created(_created(created), _deps())
+    assert result.get("status") != "held" and result["send_status"] == "sent", result
+    [sent] = await _outbox(mongo, created)
+    assert "open" in sent["text"].lower()  # the "now, or when we open?" choice
+    logged = await mongo[AI_COMPLIANCE_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "decision": "ALLOW"})
+    assert logged["purpose"] == "lead_response" and logged["rule"] == "reply"  # allowed as a reply, any hour

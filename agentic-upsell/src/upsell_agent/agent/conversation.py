@@ -70,6 +70,9 @@ class AfterHoursChoice(BaseModel):
     decided_at: str | None = None
     # Why the choice ended up as it is, for the Debug UI.
     why: str | None = None
+    # The closed period it belongs to: the dealership's next opening when it was recorded (client, 8 Oct 2026:
+    # every night the customer writes, they are asked again).
+    period: str | None = None
 
 
 class VisitState(BaseModel):
