@@ -136,6 +136,8 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "reply_language": decision.get("reply_language"),
         # MASTER_PLAN_4 A1: the lead bucket's intent and word-track emphasis (blueprint §2) - language only.
         "bucket": decision.get("bucket"),
+        # Client, 8 Oct 2026: the specialist answering this turn (agent/specialists.py).
+        "specialist": decision.get("specialist"),
         # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
         # that we're checking back as they asked.
         # MASTER_PLAN_3 C4: Touch 1's required opening and closing, and the cadence touch's theme.
