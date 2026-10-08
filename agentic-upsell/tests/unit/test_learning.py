@@ -224,7 +224,8 @@ async def _choose(state, lead_state=None, lead=None, *, send_time_ab=False, lear
 async def test_a_new_dealer_keeps_the_standard_angle_order_and_never_the_unverified_price_angle(mongo):
     planned, extra = await _choose(_extended_state())
     # Before stream L the price angle came first with nothing to say; now it isn't a candidate without a drop.
-    assert planned.theme.id == "vehicle_visual" and planned.day == 14
+    # Day 14 is in Days 8-30 ("nurture & re-engage", client 8 Oct 2026): its first angle without a price drop.
+    assert planned.theme.id == "similar_arrivals" and planned.day == 14
     assert extra["choice"]["angle"]["method"] == "default"
     assert "price_or_offer" not in extra["choice"]["angle"]["candidates"]
     assert "price_drop" not in extra
@@ -240,9 +241,10 @@ async def _settled_touches(mongo, theme, n, replies, *, bucket="general", dealer
 
 
 async def test_with_enough_data_the_angle_that_gets_replies_is_used_more(mongo):
-    state = _extended_state(["appointment_value", "vehicle_visual", "financing_help", "trade_in", "vehicle_value",
-                             "direct_close"])
-    for theme in ("vehicle_visual", "financing_help", "trade_in", "vehicle_value"):
+    # Every Days 8-30 angle has been used once, so all of them (but the two most recent) are candidates.
+    state = _extended_state(["appointment_value", "similar_arrivals", "objection_check", "vehicle_visual",
+                             "direct_close", "trade_in"])
+    for theme in ("similar_arrivals", "objection_check", "vehicle_visual"):
         await _settled_touches(mongo, theme, 40, 2)
     await _settled_touches(mongo, "appointment_value", 40, 30)
     picks = []
@@ -253,16 +255,16 @@ async def test_with_enough_data_the_angle_that_gets_replies_is_used_more(mongo):
     assert picks.count("appointment_value") >= 10
     assert extra["choice"]["angle"]["method"] == "learned"
     # The last two angles used are never repeated straight away ("do not blindly repeat").
-    used = [*[t.id for t in cadence.DAY_THEMES[:4]], "direct_close", "appointment_value"]
+    used = ["similar_arrivals", "objection_check", "vehicle_visual", "direct_close", "appointment_value"]
     _, extra = await _choose(_extended_state(used))
     assert "appointment_value" not in extra["choice"]["angle"]["candidates"]
 
 
 async def test_another_dealers_data_is_only_a_prior(mongo):
     other = str(ObjectId())
-    for theme in ("vehicle_visual", "financing_help", "trade_in", "vehicle_value"):
+    for theme in ("objection_check",):
         await _settled_touches(mongo, theme, 200, 10, dealer=other)
-    await _settled_touches(mongo, "appointment_value", 200, 150, dealer=other)
+    await _settled_touches(mongo, "similar_arrivals", 200, 150, dealer=other)
     planned, extra = await _choose(_extended_state())
     assert extra["choice"]["angle"]["method"] == "learned"
     scores = extra["choice"]["angle"]
@@ -281,8 +283,8 @@ async def test_the_send_time_test_moves_a_touch_to_the_afternoon_inside_the_wind
 
 async def test_learning_off_gives_todays_plan(mongo):
     planned, extra = await _choose(_extended_state(), learning=False)
-    assert planned.theme.id == "vehicle_visual" and "variant" not in extra
-    assert optimizer.touch_dict(planned, extra)["instruction"] == cadence.BY_ID["vehicle_visual"].instruction
+    assert planned.theme.id == "similar_arrivals" and "variant" not in extra
+    assert optimizer.touch_dict(planned, extra)["instruction"] == cadence.BY_ID["similar_arrivals"].instruction
 
 
 # --- Verified price drops --------------------------------------------------------------------------------
