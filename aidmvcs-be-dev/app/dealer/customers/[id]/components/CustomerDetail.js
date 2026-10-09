@@ -91,7 +91,7 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, deals, repair_orders, appointments, all_appointments, vehicles, leads } = data;
+  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads } = data;
 
   // A customer with an existing Lead already has a reachable conversation
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
@@ -160,7 +160,7 @@ export default function CustomerDetail({ customerId }) {
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
         <Tab eventKey="overview" title="Overview">
-          <OverviewTab overview={overview} />
+          <OverviewTab overview={overview} activity={activity || []} />
         </Tab>
         <Tab eventKey="leads" title="Leads & Communications">
           <LeadsTab customerId={customerId} />
