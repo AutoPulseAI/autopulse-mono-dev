@@ -163,7 +163,7 @@ async function leadFromParent(parentId, dealerId) {
 }
 
 export async function handleInboundSmsLive({ currentSMS, dealer, notifyNewLead = notifyAiOfNewLead,
-  notifyInbound = notifyAiOfInbound, logger = console }) {
+  notifyInbound = notifyAiOfInbound, logger = console, mode = 'live' }) {
   const dealerId = String(currentSMS.dealer_id || dealer?._id);
   const from = currentSMS.sender;
   const text = currentSMS.mail_content || currentSMS.body || '';
@@ -206,8 +206,8 @@ export async function handleInboundSmsLive({ currentSMS, dealer, notifyNewLead =
 
   // 3. Tell the AI service.
   const event = created
-    ? await notifyNewLead({ lead, dealerId, channel: 'sms', mode: 'live', logger })
-    : await notifyInbound({ emailRecord: record, lead, dealerId, channel: 'sms', text, mode: 'live', logger });
+    ? await notifyNewLead({ lead, dealerId, channel: 'sms', mode, logger })
+    : await notifyInbound({ emailRecord: record, lead, dealerId, channel: 'sms', text, mode, logger });
   logger.info?.('[ai] live inbound SMS handled', {
     lead_id: String(lead._id), created, email_id: String(record._id), event: event?.status,
   });
@@ -215,7 +215,7 @@ export async function handleInboundSmsLive({ currentSMS, dealer, notifyNewLead =
 }
 
 export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLead = notifyAiOfNewLead,
-  notifyInbound = notifyAiOfInbound, logger = console }) {
+  notifyInbound = notifyAiOfInbound, logger = console, mode = 'live' }) {
   const dealerId = String(currentEmail.dealer_id || dealer?._id);
   const text = currentEmail.mail_content || currentEmail.emailBody || '';
 
@@ -275,8 +275,8 @@ export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLe
   await Lead.updateOne({ _id: lead._id }, { $set: { response_mode: replyChannel, last_inbound_at: new Date() } });
 
   const event = created
-    ? await notifyNewLead({ lead, dealerId, channel: replyChannel, mode: 'live', logger })
-    : await notifyInbound({ emailRecord: record, lead, dealerId, channel: 'email', text, mode: 'live', logger });
+    ? await notifyNewLead({ lead, dealerId, channel: replyChannel, mode, logger })
+    : await notifyInbound({ emailRecord: record, lead, dealerId, channel: 'email', text, mode, logger });
   logger.info?.('[ai] live inbound email handled', {
     lead_id: String(lead._id), created, email_id: String(record._id), event: event?.status,
   });

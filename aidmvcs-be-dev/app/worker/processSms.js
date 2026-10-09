@@ -71,8 +71,10 @@ export async function processSMS(job) {
     // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
     // conversation - no n8n, no auto-reply, no follow-up jobs.
     const aiMode = await getDealerAiMode(dealer_id);
-    if (aiMode === 'live') {
-      return await handleInboundSmsLive({ currentSMS, dealer });
+    // No n8n at all unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026: "we do not need n8n for anything"):
+    // every dealership's texts are saved and linked by our own code; the AI hears of them only when it is on.
+    if (aiMode === 'live' || !legacyAutoReplyOn()) {
+      return await handleInboundSmsLive({ currentSMS, dealer, mode: aiMode });
     }
 
     const result = withoutLegacyStatus(await callOllama(currentSMS));
