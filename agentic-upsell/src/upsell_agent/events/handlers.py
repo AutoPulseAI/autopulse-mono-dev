@@ -148,7 +148,9 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
         # MASTER_PLAN_3 C6: the same customer already has an open lead the AI is working. This one is
         # linked to it; no first reply, no cadence, no second workflow.
         linked = await duplicates.link_duplicate(db, event.lead_id, event.customer_id, primary)
-        return {"status": "duplicate", "reason": f"same customer as open lead {primary['lead_id']}", **linked}
+        answered = await _answer_new_inquiry_on_primary(db, deps, event, lead, primary["lead_id"], received_at)
+        return {"status": "duplicate", "reason": f"same customer as open lead {primary['lead_id']}", **linked,
+                "new_inquiry": answered}
     if state.get("duplicate_of"):
         return {"status": "duplicate", "reason": f"linked to lead {state['duplicate_of']}",
                 "duplicate_of": state["duplicate_of"]}
@@ -164,6 +166,33 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     return await _first_reply(db, deps, customer_id=event.customer_id, lead_id=event.lead_id, lead=lead,
                               channel=event.channel, shadow=event.shadow,
                               received_at=_parse_received_at(received_at), turn_id=turn_id)
+
+
+async def _answer_new_inquiry_on_primary(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent,
+                                        lead: dict | None, primary_id: str,
+                                        received_at: str | datetime | None) -> dict[str, Any]:
+    """Client, 10 Oct 2026: a customer who already has an open lead and sends a new inquiry (another vehicle, another
+    portal) gets an answer to it - in the existing conversation, so still one workflow, one thread (C6). Before, the
+    new lead was linked and nothing was said: from the customer's side the inquiry went unanswered. Not while staff
+    own the primary (they have the notice), never twice for the same lead, nothing in shadow."""
+    if event.shadow:
+        return {"status": "skipped", "reason": "shadow"}
+    primary_state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": primary_id}) or {}
+    if primary_state.get("status") in SILENT_STATUSES:
+        return {"status": "skipped", "reason": f"the primary lead is {primary_state.get('status')} (staff have it)"}
+    turn_id = f"new-inquiry-{event.lead_id}"
+    if await _already_sent(db, turn_id):
+        return {"status": "already_answered", "turn_id": turn_id}
+    text = _comments(lead)
+    if not text.strip():
+        return {"status": "skipped", "reason": "the new lead carries no inquiry text"}
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=primary_state.get("customer_id") or event.customer_id,
+        lead_id=primary_id, trigger="inbound_message", channel=event.channel,
+        inbound_text=f"(New inquiry submitted on a lead form) {text}", shadow=False, deps=deps,
+        event_received_at=_parse_received_at(received_at), turn_id=turn_id, is_reply=False,
+        purpose="lead_response")
+    return {"status": "done", "turn_id": log["turn_id"], "send_status": log["summary"].get("send_status")}
 
 
 # PLAN_4 stream X1 item 1: the first reply held to the customer's next allowed time (scheduler/followups.py fires

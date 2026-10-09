@@ -233,9 +233,17 @@ async def test_a_second_lead_for_the_same_customer_is_linked_not_worked(mongo, l
     primary = await _state(mongo, first["lead_id"])
     assert [x["lead_id"] for x in primary["linked_leads"]] == [second["lead_id"]]
     assert primary["staff_notice"]["kind"] == "duplicate_lead"
-    # A repeat of the same event changes nothing.
-    assert (await _created(second))["status"] == "duplicate"
+    # Client, 10 Oct 2026: the new inquiry is answered - on the primary, in the same conversation.
+    assert result["new_inquiry"]["status"] == "done", result["new_inquiry"]
+    assert result["new_inquiry"]["send_status"] == "sent"
+    sent = {"lead_id": first["lead_id"], "direction": "outbound", "turn_id": f"new-inquiry-{second['lead_id']}"}
+    assert await mongo[AI_MESSAGES_COLLECTION].count_documents(sent) >= 1
+    replies = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": first["lead_id"]}).to_list(None)
+    # A repeat of the same event changes nothing and doesn't answer twice.
+    again = await _created(second)
+    assert again["status"] == "duplicate"
     assert len((await _state(mongo, first["lead_id"]))["linked_leads"]) == 1
+    assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]}) == len(replies)
 
 
 async def test_the_same_phone_on_a_different_customer_record_is_a_duplicate_too(mongo, live_dealer):
