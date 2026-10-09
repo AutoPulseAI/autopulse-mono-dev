@@ -1,5 +1,5 @@
 import axios from 'axios'; // For making HTTP requests
-import { legacyAutoReplyOn } from '../lib/legacyAutoReply.js';
+import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js'; // For database operations
 import Lead from '../models/Lead.js'; // Lead model
 import Email from '../models/Email.js'; // Email model
@@ -294,7 +294,7 @@ export async function processEmail(job) {
           // `callOllama`'s regular (non-ADF-local) caller uses further down.
           let acknowledgement = null;
           try {
-            const n8nResult = await callOllama(conversationThread, currentEmail);
+            const n8nResult = withoutLegacyStatus(await callOllama(conversationThread, currentEmail));
             if (typeof n8nResult?.response === 'string' && n8nResult.response.trim()) {
               acknowledgement = n8nResult.response;
             }
@@ -367,7 +367,7 @@ export async function processEmail(job) {
       return await handleInboundEmailLive({ currentEmail, dealer });
     }
 
-    const result = await callOllama(conversationThread,currentEmail);
+    const result = withoutLegacyStatus(await callOllama(conversationThread,currentEmail));
 
     console.log('Third-party API response:', result);
     let leadId = null;

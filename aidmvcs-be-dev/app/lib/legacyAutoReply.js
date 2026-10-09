@@ -8,3 +8,19 @@
 export function legacyAutoReplyOn(env = process.env) {
   return ['1', 'true', 'yes'].includes(String(env.LEGACY_N8N_AUTOREPLY || '').toLowerCase());
 }
+
+// With the old auto-reply off nothing was sent, so nothing n8n decided about the lead is true either (client, 9 Oct
+// 2026: leads showed "Contacted" nobody contacted, and an appointment the customer never asked for). Everything that
+// acts is dropped - the status, a booking (date / time / status, which also started reminders), a cancellation, the
+// reply text. Only its readings of the message stay (language, name, contact details, vehicle, source, campaign).
+export const LEGACY_ACTION_FIELDS = Object.freeze([
+  'fe_lead_status', 'lead_status', 'booking_status', 'booking_date', 'booking_time',
+  'appointment_cancellation_requested', 'response',
+]);
+
+export function withoutLegacyStatus(result, env = process.env) {
+  if (legacyAutoReplyOn(env) || !result || typeof result !== 'object') return result;
+  const clean = { ...result };
+  for (const field of LEGACY_ACTION_FIELDS) delete clean[field];
+  return clean;
+}
