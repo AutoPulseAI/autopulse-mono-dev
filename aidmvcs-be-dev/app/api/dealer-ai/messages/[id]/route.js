@@ -1,7 +1,8 @@
-// One customer's text conversation on the AI Messages screen (app/dealer/ai/messages).
+// One customer's conversation on the AI Messages screen (app/dealer/ai/messages).
 //   GET /api/dealer-ai/messages/<leadId>
-// Every SMS on the lead, oldest first: what came in from Twilio and what went out,
-// with who sent it (the AI, a staff member, or the platform's own auto-reply).
+// Every SMS ("messages") and email ("emails") on the lead, oldest first: what came in
+// and what went out, with who sent it (the AI, a staff member, or the platform's own
+// auto-reply).
 
 import { NextResponse } from "next/server";
 import Email from "@models/Email";
@@ -21,21 +22,18 @@ export async function GET(req, { params }) {
     return jsonError("You don't have access to this lead.", 403);
   }
 
-  const [records, summaries] = await Promise.all([
-    Email.find({ lead_id: lead._id, communication_type: "sms", is_note: { $ne: true } })
-      .populate({ path: "message_by", select: "name email", strictPopulate: false })
-      .sort({ timestamp: -1, _id: -1 })
-      .limit(MAX_MESSAGES)
-      .lean(),
-    leadSummaries(dealerId, [leadId]),
-  ]);
+  const find = (type) => Email.find({ lead_id: lead._id, communication_type: type, is_note: { $ne: true } })
+    .populate({ path: "message_by", select: "name email", strictPopulate: false })
+    .sort({ timestamp: -1, _id: -1 })
+    .limit(MAX_MESSAGES)
+    .lean();
+  const [smsRecords, emailRecords, summaries] = await Promise.all([find("sms"), find("email"), leadSummaries(dealerId, [leadId])]);
 
-  const messages = records.reverse().map((m) => {
+  const common = (m) => {
     const inbound = INBOUND.includes(m.status);
     return {
       id: String(m._id),
       direction: inbound ? "inbound" : "outbound",
-      text: m.mail_content || "",
       at: m.timestamp || m.date,
       status: m.status,
       from: m.sender,
@@ -43,13 +41,21 @@ export async function GET(req, { params }) {
       ai: Boolean(m.ai_generated),
       staff: inbound || m.ai_generated ? null : m.message_by?.name || m.message_by?.email || null,
       media: [...(m.attachments || []), ...(m.media || [])]
-        .map((a) => ({ url: a.publicUrl || a.url, type: a.contentType || "" }))
+        .map((a) => ({ url: a.publicUrl || a.url, type: a.contentType || "", name: a.fileName || "" }))
         .filter((a) => a.url),
     };
-  });
+  };
+
+  const messages = smsRecords.reverse().map((m) => ({ ...common(m), text: m.mail_content || "" }));
+  const emails = emailRecords.reverse().map((m) => ({
+    ...common(m),
+    subject: m.subject || "",
+    body: typeof m.mail_content === "string" ? m.mail_content : "",
+  }));
 
   return NextResponse.json({
     lead: { lead_id: leadId, ...(summaries[leadId] || { name: lead.name, phone: lead.phone }) },
     messages,
+    emails,
   });
 }
