@@ -74,6 +74,13 @@ class ExtractionResult(BaseModel):
         "They ask to come in, see a vehicle in person, test drive it or book a time to visit"))
     wants_visit_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are they want to visit"))
+    visit_when: str | None = Field(default=None, description=(
+        "Only when our last message asked when they'd like to come in, and they answer with any day, time or "
+        "window - however it's worded ('ten in morning sounds good', 'after the kids are at school', 'Thursdays "
+        "work', 'any time after 3', 'whenever you open'): their own words, exactly as said. Never a date or "
+        "time you work out yourself. Null when they didn't say when."))
+    visit_when_confidence: float = Field(default=0.0, ge=0, le=1, description=(
+        "How sure you are that those words are their answer to when they'd come in"))
     declines_visit: bool = Field(default=False, description=(
         "They turn down a visit offer we just made (e.g. 'not yet', 'I'm just looking', 'maybe later')"))
     declines_visit_confidence: float = Field(default=0.0, ge=0, le=1, description=(
@@ -200,6 +207,11 @@ Rules:
   time ("can I come see it tomorrow at 10?", "I'd like a test drive", "can I bring it in for service Thursday?").
   0.8+ only when they clearly ask; asking
   about opening hours alone is not a visit request.
+- visit_when (+ visit_when_confidence): only when our last message asked when they'd like to come in (a
+  service visit: "which day and time suit you?"). Whatever they answer with - a day, a time, a window, a
+  condition ("ten in morning sounds good for me", "after my shift", "Thursdays", "any time after 3", "whenever
+  you open") - their own words, exactly as said, even if you can't tell the exact date or time. Never work out
+  a date or time yourself. A message that gives no day or time ("100000 miles", "yes") -> null.
 - declines_visit (+ declines_visit_confidence): only when our last message offered specific visit times
   (context.conversation shows a visit was just offered) and they turn it down ("not yet", "I'm just looking",
   "maybe later", "can't make it this week"). Picking one of the offered times, or asking a question instead, is
@@ -453,7 +465,9 @@ Rules:
   visit.service_request.passed_this_turn true, say you've passed visit.service_request.display to the service
   team with their notes and they'll confirm the exact time ("I've passed Thursday morning to our service team
   with your notes; they'll confirm the exact time with you."), and list that as a promise. Never say booked,
-  confirmed, scheduled or "see you then" for a service visit.
+  confirmed, scheduled or "see you then" for a service visit, and never call it "your appointment" or "the
+  appointment": nothing exists yet, it is only a request. When passed_this_turn is not true, don't say a time was
+  noted or that the team will reach out or confirm it: ask for the missing day or time instead.
 - bucket (only when given - MASTER_PLAN_4 A1, the lead's intent bucket): bucket.intent says why they came to us
   and bucket.emphasis what to lean on (and bucket.vehicle_type_emphasis for new vs used). Let it shape your
   wording and which helpful angle you pick, where it fits naturally. It never changes the action, never adds a

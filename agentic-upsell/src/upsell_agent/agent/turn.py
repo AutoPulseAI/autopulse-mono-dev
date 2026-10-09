@@ -336,6 +336,7 @@ async def run_turn(
             await service_request.notify_team(db, deps.platform, dealer_id=dealer_id, lead_id=lead_id,
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
+            await _notify_team_of_promises(db, lead_id, result)
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
         if not review and trigger == "inbound_message":
             await _resolve_review_if_answered(db, lead_id, customer_id, result, inbound_text, channel)
@@ -646,6 +647,29 @@ async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decisi
         return
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
+
+
+async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
+    """A reply that told the customer "the team will ..." always leaves staff something to act on.
+
+    The specific notices (service request, visit booked, call task...) are written by their own steps. This is the
+    safety net for every other promise, so "the team will reach out" is never said with nobody told. It never
+    replaces a notice staff haven't dealt with yet: the promise stays on the conversation state either way."""
+    from upsell_agent.api.staff_view import _same_time
+
+    promises = [p.strip() for p in ((result.get("draft") or {}).get("promises") or []) if p and p.strip()]
+    if not promises:
+        return
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    state = await states.find_one({"lead_id": lead_id}, projection={"staff_notice": 1, "handled_notices": 1}) or {}
+    notice = state.get("staff_notice")
+    if notice and notice.get("at"):
+        mark = (state.get("handled_notices") or {}).get("notice") or {}
+        if not _same_time(mark.get("notice_at"), notice["at"]):
+            return  # an unhandled notice is still waiting for staff
+    text = "The AI told the customer the team would act: " + "; ".join(dict.fromkeys(promises))
+    await states.update_one({"lead_id": lead_id},
+                            {"$set": {"staff_notice": {"at": clock.now(), "kind": "team_promise", "text": text}}})
 
 
 async def _notify_team_at_opening(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:

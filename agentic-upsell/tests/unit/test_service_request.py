@@ -192,3 +192,170 @@ def test_notes_carry_vehicle_mileage_need_and_concerns():
     assert notes["concerns"] == ["wants to wait for it", "needs a loaner"]
     text = service_request.notes_text({**notes, "display": "Thursday morning"})
     assert "mileage: 42,000" in text and "needs: oil change" in text
+
+
+# --- "10 am" with no day, plural parts of the day, and promises that must reach staff -------------------------
+
+async def test_a_bare_clock_time_or_plural_part_of_day_is_still_a_request(mongo):
+    dealer = await dealer_profile(DEALER)
+    now = datetime(2026, 9, 22, 12, tzinfo=ZoneInfo("America/New_York"))
+    bare = service_request.preferred_time("10 am", dealer, now)
+    assert bare["time"] == "10:00" and bare["date"] is None and bare["day_missing"] and bare["display"] == "10:00 AM"
+    assert service_request.preferred_time("2:30pm", dealer, now)["time"] == "14:30"
+    assert service_request.preferred_time("Mornings", dealer, now)["display"] == "any morning"
+    # Numbers that aren't a clock time are not a request (mileage, "3 tires").
+    assert service_request.preferred_time("100000 miles", dealer, now) is None
+    assert service_request.preferred_time("I need 4 tires", dealer, now) is None
+    # A day still wins: "Thursday 10 am" is a full request.
+    full = service_request.preferred_time("Thursday 10 am", dealer, now)
+    assert full["date"] == "2026-09-24" and full["time"] == "10:00" and not full["day_missing"]
+
+
+async def test_the_chat_that_lost_its_alert_now_reaches_the_team(mongo, no_booking):
+    # A service lead, asked for a time; the customer answers just "10 am" (no day).
+    created = await _lead()
+    await _say(created, "Can I bring it in for service?")
+    await _say(created, "10 am")
+    state = await _state(mongo, created)
+    assert state["staff_notice"]["kind"] == "service_request"
+    assert "10:00 AM" in state["staff_notice"]["text"] and "ask which day" in state["staff_notice"]["text"]
+    assert state["service_requests"][0]["time"] == "10:00"
+    assert await mongo[PLATFORM_BOOKINGS_COLLECTION].count_documents({}) == 0
+    reply = await _last_sms(mongo, created)
+    assert "appointment" not in reply.lower() and "booked" not in reply.lower()
+
+
+@pytest.mark.parametrize("text", [
+    "Got it. I've noted your 10 AM appointment for the tire change.",
+    "I've noted the appointment. The team will reach out.",
+    "Your appointment is noted.",
+])
+def test_naming_an_appointment_on_a_service_request_is_rejected(text):
+    decision = {"visit": {"kind": "service", "service_request": {"display": "10:00 AM", "passed_this_turn": True}}}
+    assert invalid_booking_wording(decision, {"sms_text": text, "email_body": ""})
+
+
+def test_asking_to_set_up_a_visit_is_not_an_appointment_claim():
+    decision = {"visit": {"kind": "service"}}
+    text = "Happy to help - what day and time suit you? I'll pass it to our service team."
+    assert invalid_booking_wording(decision, {"sms_text": text, "email_body": text}) == []
+
+
+async def test_a_team_promise_always_leaves_a_notice_unless_one_is_waiting(mongo):
+    from upsell_agent.agent.turn import _notify_team_of_promises
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+
+    db = dealer_scoped_db(DEALER)
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    result = {"draft": {"promises": ["The team will reach out with next steps.", ""]}}
+
+    # No notice yet: the promise becomes one.
+    await states.insert_one({"lead_id": "lead-promise", "dealer_id": DEALER})
+    await _notify_team_of_promises(db, "lead-promise", result)
+    notice = (await states.find_one({"lead_id": "lead-promise"}))["staff_notice"]
+    assert notice["kind"] == "team_promise" and "reach out" in notice["text"]
+
+    # An unhandled notice is never replaced by it.
+    await states.update_one({"lead_id": "lead-promise"},
+                            {"$set": {"staff_notice": {"at": clock.now(), "kind": "service_request", "text": "keep me"}}})
+    await _notify_team_of_promises(db, "lead-promise", result)
+    assert (await states.find_one({"lead_id": "lead-promise"}))["staff_notice"]["text"] == "keep me"
+
+    # A handled one can be.
+    current = (await states.find_one({"lead_id": "lead-promise"}))["staff_notice"]
+    await states.update_one({"lead_id": "lead-promise"},
+                            {"$set": {"handled_notices.notice": {"notice_at": current["at"], "at": clock.now()}}})
+    await _notify_team_of_promises(db, "lead-promise", result)
+    assert (await states.find_one({"lead_id": "lead-promise"}))["staff_notice"]["kind"] == "team_promise"
+
+    # No promise, no notice.
+    await states.insert_one({"lead_id": "lead-none", "dealer_id": DEALER})
+    await _notify_team_of_promises(db, "lead-none", {"draft": {"promises": []}})
+    assert "staff_notice" not in await states.find_one({"lead_id": "lead-none"})
+
+
+@pytest.mark.parametrize("text, display, clock", [
+    ("ten in morning sounds good for me", "10:00 AM", "10:00"),
+    ("ten in the morning", "10:00 AM", "10:00"),
+    ("10 in the morning", "10:00 AM", "10:00"),
+    ("ten am", "10:00 AM", "10:00"),
+    ("10 o'clock", "10:00 AM", "10:00"),
+    ("at 10", "10:00 AM", "10:00"),
+    ("10:30", "10:30 AM", "10:30"),
+    ("ten thirty am", "10:30 AM", "10:30"),
+    ("2 in the afternoon", "2:00 PM", "14:00"),
+    ("around 3", "3:00 PM", "15:00"),   # a dealership hour: 1-7 means the afternoon
+    ("6 pm works", "6:00 PM", "18:00"),
+])
+async def test_clock_times_said_in_words_or_without_am_pm(mongo, text, display, clock):
+    dealer = await dealer_profile(DEALER)
+    now = datetime(2026, 9, 22, 12, tzinfo=ZoneInfo("America/New_York"))
+    found = service_request.preferred_time(text, dealer, now)
+    assert found["display"] == display and found["time"] == clock and found["day_missing"]
+
+
+async def test_a_clock_time_is_added_to_a_named_day(mongo):
+    dealer = await dealer_profile(DEALER)
+    now = datetime(2026, 9, 22, 12, tzinfo=ZoneInfo("America/New_York"))  # a Tuesday
+    found = service_request.preferred_time("tomorrow at ten", dealer, now)
+    assert found["date"] == "2026-09-23" and found["time"] == "10:00" and not found["day_missing"]
+    assert found["display"] == "Wednesday, September 23 at 10:00 AM"
+
+
+@pytest.mark.parametrize("text", [
+    "100000 miles", "I need 4 tires", "about 10 miles a day", "around 10k", "my 2019 Civic", "it's a 2.0 engine",
+    "I have 3 kids", "sounds good", "about 12 years old", "at 10 miles an hour",
+])
+async def test_numbers_that_are_not_an_hour_are_not_a_time(mongo, text):
+    dealer = await dealer_profile(DEALER)
+    now = datetime(2026, 9, 22, 12, tzinfo=ZoneInfo("America/New_York"))
+    assert service_request.preferred_time(text, dealer, now) is None
+
+
+# --- The model's reading: any wording is passed on, understood or not -------------------------------------------
+
+async def test_the_models_visit_when_is_read_by_code_first_then_kept_in_their_words(mongo):
+    dealer = await dealer_profile(DEALER)
+    now = datetime(2026, 9, 22, 12, tzinfo=ZoneInfo("America/New_York"))  # a Tuesday
+
+    # The message itself defeats the parser, but the model's own words don't: the code reads them.
+    cleaned = service_request.from_extraction(
+        {"visit_when": "Thursday at 10 am", "visit_when_confidence": 0.9}, dealer, now)
+    assert cleaned["date"] == "2026-09-24" and cleaned["time"] == "10:00" and not cleaned.get("unparsed")
+
+    # Wording no parser could read: passed anyway, in their exact words, marked for the team to confirm.
+    odd = service_request.from_extraction(
+        {"visit_when": "after the kids are at school", "visit_when_confidence": 0.9}, dealer, now)
+    assert odd["unparsed"] and odd["display"] == '"after the kids are at school"' and odd["date"] is None
+    text = service_request.notes_text({**odd, "vehicle": "2022 Honda Civic"})
+    assert "after the kids are at school" in text and "confirm with them" in text
+
+    # Nothing said, or not sure: nothing is invented.
+    assert service_request.from_extraction({"visit_when": None}, dealer, now) is None
+    assert service_request.from_extraction({"visit_when": "maybe", "visit_when_confidence": 0.3}, dealer, now) is None
+
+
+@pytest.mark.parametrize("answer", [
+    "after the kids are at school",
+    "Thursdays are usually good for me",
+    "whenever you open tomorrow works",
+    "sometime next week, I'll let you know",
+    "ten in morning sounds good for me",
+    "my shift ends at 4 so after that",
+])
+async def test_any_answer_to_the_service_ask_reaches_the_team(mongo, no_booking, answer):
+    created = await _lead()
+    await _say(created, "Can I bring it in for service?")
+    await _say(created, answer)
+    state = await _state(mongo, created)
+    assert state["staff_notice"]["kind"] == "service_request", answer
+    assert state["service_requests"], answer
+    assert await mongo[PLATFORM_BOOKINGS_COLLECTION].count_documents({}) == 0
+
+
+async def test_an_unrelated_answer_to_the_service_ask_is_not_a_request(mongo, no_booking):
+    created = await _lead()
+    await _say(created, "Can I bring it in for service?")
+    await _say(created, "it has 100000 miles")
+    state = await _state(mongo, created)
+    assert not state.get("service_requests")
