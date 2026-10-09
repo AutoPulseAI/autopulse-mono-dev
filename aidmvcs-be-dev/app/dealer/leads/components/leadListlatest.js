@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -16,7 +17,6 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   const canAssignLeads = useCan("Assign Leads");
-import { statusLabel } from "@lib/statusLabels";
   const [leads, setLeads] = useState([]);
   const [paginationDirection, setPaginationDirection] = useState(null);
   const paginationDirectionRef = useRef(null); // Use ref to hold direction reliably

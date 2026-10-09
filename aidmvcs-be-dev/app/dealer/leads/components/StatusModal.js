@@ -1,8 +1,8 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
 import SlotFullNotice from "../../components/SlotFullNotice";
-import { statusLabel } from "@lib/statusLabels";
 
 // One status modal for the lead list, the booking page and the conversation views (stream R: the booking and
 // conversations folders re-export this one). `onStatusChange` may return a promise: when it rejects with a

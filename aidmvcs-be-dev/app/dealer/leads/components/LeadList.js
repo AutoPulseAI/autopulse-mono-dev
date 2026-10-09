@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -18,7 +19,6 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
-import { statusLabel } from "@lib/statusLabels";
   const canManageLeads = useCan("Manage Leads");
   const canViewAssignedLeads = useCan("View Assigned Leads");
   const [leads, setLeads] = useState([]);
