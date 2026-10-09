@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { legacyAutoReplyOn } from '../lib/legacyAutoReply.js';
+import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js';
 import Lead from '../models/Lead.js';
 import User from '../models/User.js';
@@ -75,7 +75,7 @@ export async function processSMS(job) {
       return await handleInboundSmsLive({ currentSMS, dealer });
     }
 
-    const result = await callOllama(currentSMS);
+    const result = withoutLegacyStatus(await callOllama(currentSMS));
    console.log('olamm response', result);
 
     // The webhook can deterministically associate a reply from prior SMS

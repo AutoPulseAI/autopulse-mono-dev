@@ -8,3 +8,11 @@
 export function legacyAutoReplyOn(env = process.env) {
   return ['1', 'true', 'yes'].includes(String(env.LEGACY_N8N_AUTOREPLY || '').toLowerCase());
 }
+
+// With the old auto-reply off nothing was sent, so n8n's status for the lead ("Contacted", "Visit Requested", ...)
+// isn't true either (client, 9 Oct 2026: leads showed "Contacted" that nobody contacted). Its other readings
+// (language, vehicle, ...) are kept.
+export function withoutLegacyStatus(result, env = process.env) {
+  if (legacyAutoReplyOn(env) || !result || typeof result !== 'object') return result;
+  return { ...result, fe_lead_status: undefined, lead_status: undefined };
+}
