@@ -228,7 +228,7 @@ function CallTasksContent() {
           </Form.Select>
         </div>
 
-        <div className="w_card">
+        <div className="w_card mb-5">
           {view === "open" && (
             <p className="text-secondary-light small">
               The AI opens a call task when its text and email got no reply within an hour, and (if turned on in AI
@@ -338,7 +338,7 @@ function CallTasksContent() {
                 </tbody>
               </Table>
               {pages > 1 && (
-                <Pagination size="sm" className="justify-content-center mt-3 mb-0">
+                <Pagination size="sm" className="justify-content-center mt-3 mb-4 pb-2">
                   <Pagination.Prev disabled={current === 1} onClick={() => setPage(current - 1)} />
                   {Array.from({ length: pages }, (_, i) => i + 1)
                     .filter((n) => n === 1 || n === pages || Math.abs(n - current) <= 2)

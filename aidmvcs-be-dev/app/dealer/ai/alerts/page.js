@@ -177,7 +177,7 @@ function AlertsContent() {
         })}
         </div>
         {pages > 1 && (
-          <Pagination size="sm" className="justify-content-center mt-3">
+          <Pagination size="sm" className="justify-content-center mt-3 mb-5 pb-4">
             <Pagination.Prev disabled={current === 1} onClick={() => setPage(current - 1)} />
             {Array.from({ length: pages }, (_, i) => i + 1)
               .filter((n) => n === 1 || n === pages || Math.abs(n - current) <= 2)
