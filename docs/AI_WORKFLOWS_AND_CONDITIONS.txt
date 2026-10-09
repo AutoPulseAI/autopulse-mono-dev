@@ -206,7 +206,7 @@ Lead buckets (by source; change the wording emphasis only, never the cadence):
 Every touch = TEXT + EMAIL together (+ a staff call task, section 10).
 Touches go out at 10:00 dealer time, inside the legal texting window.
 
-  Touch 1   immediately         first quality reply; opens "Hello X, this is
+  Touch 1   immediately         first quality reply; opens "Hi X, this is
                                 <AI name>, <Dealership>'s AI Sales Manager,
                                 following up on your interest in the <Year Make
                                 Model>. Tell me, what are you driving now?" (FTC,
