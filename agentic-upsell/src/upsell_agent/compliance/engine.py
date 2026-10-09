@@ -244,6 +244,12 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
     # do you close?" never agreed to campaigns. It only ever supported answering that conversation (a reply needs
     # no consent). Its `false` is still an explicit no (rule 4).
 
+    # Client, 9 Oct 2026: the customer's own YES to our email invitation (compliance/text_consent.py).
+    from upsell_agent.compliance import text_consent
+    if customer_id and (yes := await text_consent.latest_yes(db, customer_id)):
+        return {"status": "granted", "source": yes["consent_source"], "evidence_id": str(yes["_id"]),
+                "text_version": yes.get("consent_text_version"),
+                "detail": "the customer texted YES to the invitation to receive texts"}
     if not campaign:
         created = _lead_created(lead)
         fresh = created is None or at - created <= timedelta(days=INQUIRY_DAYS)

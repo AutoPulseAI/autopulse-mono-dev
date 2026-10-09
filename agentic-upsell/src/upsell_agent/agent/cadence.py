@@ -205,10 +205,10 @@ def cadence_day(state: CadenceState, now: datetime, tz) -> int:
     return (now.astimezone(tz).date() - started.astimezone(tz).date()).days + 1
 
 
-# After Day 7 the schedule sits on this grid of cadence days: weekly in Days 8-30, then every two weeks in Days
-# 31-90 (client, 8 Oct 2026 meeting: the leads are cold by then - "slow it down"; it was monthly, Days 58 and 88).
+# After Day 7 the schedule sits on this grid of cadence days: weekly in Days 8-30, then monthly in Days 31-90
+# (Omnichannel PDF §4; client, 9 Oct 2026: "follow the workflow PDF", not the meeting's every two weeks).
 # A customer who keeps talking through a grid day doesn't get it late: the next one on the grid is used instead.
-EXTENDED_GRID: tuple[int, ...] = (14, 21, 28, 42, 56, 70, 84)
+EXTENDED_GRID: tuple[int, ...] = (14, 21, 28, 58, 88)
 
 
 def next_day_after(day: int) -> int | None:

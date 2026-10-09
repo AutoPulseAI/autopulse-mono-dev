@@ -59,9 +59,9 @@ def test_the_clients_schedule_for_a_silent_lead():
     # Days 2-7, one touch a day, in the client's own order (Omnichannel PDF §3).
     assert plan[1:7] == [(3, 2, "vehicle_visual"), (4, 3, "financing_help"), (5, 4, "trade_in"),
                          (6, 5, "vehicle_value"), (7, 6, "appointment_value"), (8, 7, "direct_close")]
-    # Then weekly to Day 30, then every two weeks to Day 90 (client, 8 Oct 2026), and nothing after.
-    assert [day for _, day, _ in plan[7:]] == [14, 21, 28, 42, 56, 70, 84]
-    assert len(plan) == 14
+    # Then weekly to Day 30, then monthly to Day 90 (§4; client, 9 Oct 2026: follow the PDF), and nothing after.
+    assert [day for _, day, _ in plan[7:]] == [14, 21, 28, 58, 88]
+    assert len(plan) == 12
 
 
 def test_no_extended_angle_repeats_until_every_one_has_been_used():
@@ -71,13 +71,12 @@ def test_no_extended_angle_repeats_until_every_one_has_been_used():
     # "the most relevant unused angle" (§4), from each phase's own set (client, 8 Oct 2026).
     assert len(nurture) == 3 and len(set(nurture)) == 3
     assert {t.id for t in cadence.NURTURE_THEMES} >= set(nurture)
-    assert len(deeper) == 4 and len(set(deeper)) == 4
+    assert len(deeper) == 2 and len(set(deeper)) == 2
     assert {t.id for t in cadence.DEEPER_THEMES} >= set(deeper)
-    assert "what_did_we_miss" in deeper and "still_shopping" in deeper
 
 
-def test_days_8_to_30_are_weekly_and_31_to_90_every_two_weeks():
-    assert [cadence.next_day_after(d) for d in (7, 14, 21, 28, 42, 56, 70, 84)] == [14, 21, 28, 42, 56, 70, 84, None]
+def test_days_8_to_30_are_weekly_and_31_to_90_monthly():
+    assert [cadence.next_day_after(d) for d in (7, 14, 21, 28, 58, 88)] == [14, 21, 28, 58, 88, None]
     assert cadence.next_day_after(1) == 2 and cadence.next_day_after(6) == 7
 
 
@@ -279,15 +278,15 @@ async def test_the_whole_cadence_runs_on_both_channels_then_stops(mongo):
         assert {m["channel"] for m in new} == {"sms", "email"}, "every touch goes out on text and email together"
         seen.append((fired["touch"]["touch"]["touch_number"], fired["touch"]["touch"]["day"],
                      fired["touch"]["touch"]["theme"]))
-    assert [t[0] for t in seen] == list(range(2, 16))
+    assert [t[0] for t in seen] == list(range(2, 14))
     assert [t[2] for t in seen[:7]] == ["name_nudge", "vehicle_visual", "financing_help", "trade_in",
                                         "vehicle_value", "appointment_value", "direct_close"]
-    assert [t[1] for t in seen[7:]] == [14, 21, 28, 42, 56, 70, 84]
+    assert [t[1] for t in seen[7:]] == [14, 21, 28, 58, 88]
     assert await _pending_touches(mongo, created) == []
     # Every touch passed the guard first time (no invented price, no fallback template).
     turns = await mongo[AI_TURN_LOG_COLLECTION].find(
         {"lead_id": created["lead_id"], "trigger": "cadence_touch"}).to_list(None)
-    assert len(turns) == 14 and all(t["outcome"] != "fallback" for t in turns)
+    assert len(turns) == 12 and all(t["outcome"] != "fallback" for t in turns)
 
 
 @pytestmark_flow

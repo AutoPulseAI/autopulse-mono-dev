@@ -28,6 +28,7 @@ from upsell_agent.agent.turn import (
 )
 from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
+from upsell_agent.compliance import text_consent
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.events.models import (
     BookingChangedEvent,
@@ -579,6 +580,16 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                       "its own confirmation, so nothing is sent.",
                                received_at=_parse_received_at(received_at))
             return {"status": "opted_in", "channel": channel, "followups_cancelled": cancelled}
+        if (channel == "sms" and text_consent.is_invite_answer(message["text"], state)
+                and not await text_consent.has_text_consent(db, event.customer_id)):
+            # Client, 9 Oct 2026: an owner who never consented to texts was invited by email to text YES; their
+            # YES is their own written opt-in (TCPA spec §5: DealerVault data never is). Recorded, then confirmed.
+            await text_consent.record_yes(db, customer_id=event.customer_id, lead_id=lead_id, message=message,
+                                          address=_address(lead, customer, channel))
+            return await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="text_consent",
+                                      reason="The customer texted YES to the email invitation: text consent "
+                                             "recorded.", received_at=_parse_received_at(received_at),
+                                      reply={"text": text_consent.CONFIRMATION})
         if keyword is None and (opt_in := detect_opt_in(message["text"])):
             # "You can text me again": reverse it and carry on into a normal turn, so the rest of the
             # message is answered (decision 138).
