@@ -215,13 +215,19 @@ def declined_due(ro: dict[str, Any], tz) -> datetime | None:
 # --- The messages ----------------------------------------------------------------------------------------------------
 
 # Every first message the AI sends a DMS customer says it is the AI (FTC; client, 8 Oct 2026).
+def _title(dealership: str | None) -> str:
+    from upsell_agent.agent.cadence import AI_SALES_ROLE
+    if not dealership:
+        return f"the {AI_SALES_ROLE}"
+    return f"{dealership}' {AI_SALES_ROLE}" if dealership.endswith("s") else f"{dealership}'s {AI_SALES_ROLE}"
+
+
 def _sign(dealership: str | None) -> str:
-    place = dealership or "the dealership"
-    return f"\n\nThank you,\nNicole, the AI assistant at {place}"
+    return f"\n\nThank you,\n{_title(dealership)}"
 
 
 def _sms_sign(dealership: str | None) -> str:
-    return f" - Nicole, the AI assistant at {dealership}" if dealership else " - Nicole, the AI assistant"
+    return f" - {_title(dealership)}"
 
 
 TIPS = (

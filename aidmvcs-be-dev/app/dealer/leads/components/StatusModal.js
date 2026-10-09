@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
 import SlotFullNotice from "../../components/SlotFullNotice";
+import { statusLabel } from "@lib/statusLabels";
 
 // One status modal for the lead list, the booking page and the conversation views (stream R: the booking and
 // conversations folders re-export this one). `onStatusChange` may return a promise: when it rejects with a
@@ -112,13 +113,13 @@ export default function StatusModal({
             {statusOptions.filter((status) => !(currentStatus === "Sold Delivered" && status === "Closed - Lost"))
               .map((status) => (
               <option key={status} value={status}>
-                {status}
+                {statusLabel(status)}
               </option>
             ))}
             {/* Set only by the AI (PLAN_4 stream S): shown when it is the lead's status, never offered. */}
             {readOnlyStatuses.includes(currentStatus) && (
               <option value={currentStatus} disabled>
-                {currentStatus} (set by the AI)
+                {statusLabel(currentStatus)} (set by the AI)
               </option>
             )}
           </Form.Select>

@@ -24,10 +24,12 @@ from typing import Any
 
 from upsell_agent import clock
 from upsell_agent.agent import lifecycle, owner_touches, ownership, sold_delivered
+from upsell_agent.compliance import text_consent
 from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 from upsell_agent.integrations.dealer_profile import dealer_profile
 from upsell_agent.integrations.mongodb import (
     AI_CUSTOMER_STATUS_COLLECTION,
+    AI_LEAD_STATE_COLLECTION,
     AI_OWNER_LIFECYCLE_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
@@ -60,6 +62,28 @@ async def anchor_lead(db: DealerScopedDatabase, customer_id: str) -> dict | None
     if not rows:
         return None
     return max(rows, key=lambda r: str(r["_id"]))  # ObjectIds sort by creation time
+
+
+async def lead_for_owner(db: DealerScopedDatabase, customer_id: str, deal_number: str | None = None) -> dict | None:
+    """The customer's latest CRM lead; with none, the CRM creates their owner lead (client, 9 Oct 2026; aidmvcs-be-dev
+    app/lib/ai/aiOwnerLead.js: "Sold Delivered", source DealerVault). The AI marks it as an owner at once
+    (stage Sold - Delivered), so reconciliation never takes it for a new sales lead and no sales cadence starts."""
+    lead = await anchor_lead(db, customer_id)
+    if lead is not None:
+        return lead
+    from upsell_agent.config import get_settings
+    from upsell_agent.integrations.platform_client import get_platform_client
+
+    lead_id = await get_platform_client(get_settings()).ensure_owner_lead(db.dealer_id, customer_id, deal_number)
+    if not lead_id:
+        return None
+    now = clock.now()
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": lead_id},
+        {"$setOnInsert": {"lead_id": lead_id, "customer_id": customer_id, "stage": lifecycle.Stage.SOLD_DELIVERED.value,
+                          "status": "active", "owner_lead": True, "stage_source": "owner_lifecycle",
+                          "created_at": now, "stage_at": now}}, upsert=True)
+    return await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)}) or {"_id": lead_id}
 
 
 async def _crm_sold(db: DealerScopedDatabase, customer_id: str, vin: str | None) -> bool:
@@ -109,7 +133,7 @@ async def plan_deal(db: DealerScopedDatabase, row: dict[str, Any]) -> dict[str, 
         await rows.update_one({"deal_number": deal.deal_number}, {"$set": {"stopped": "no longer owns the car"}},
                               upsert=True)
         return {"planned": False, "reason": "no longer owns the car"}
-    lead = await anchor_lead(db, customer_id)
+    lead = await lead_for_owner(db, customer_id, deal.deal_number)
     now = clock.now()
     await rows.update_one({"deal_number": deal.deal_number}, {
         "$set": {"customer_id": customer_id, "vin": deal.vin, "deal_type": deal.deal_type,
@@ -148,7 +172,7 @@ async def plan_repair_order(db: DealerScopedDatabase, ro: dict[str, Any]) -> dic
     now = clock.now()
     if due is None or due + owner_touches.LATE_GRACE < now:
         return {"planned": False, "reason": "no close date, or too long ago"}
-    lead = await anchor_lead(db, customer_id)
+    lead = await lead_for_owner(db, customer_id, key)
     await rows.update_one({"deal_number": key}, {
         "$set": {"customer_id": customer_id, "vin": ro.get("vin"), "kind": "repair_order", "recommendations": items,
                  "close_date": ro.get("Close Date"), "lead_id": str(lead["_id"]) if lead else None,
@@ -375,7 +399,17 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
                                 tip_number=int(key.split(":")[1]) if touch == owner_touches.TOUCH_TIP else 0,
                                 year=int(key.split(":")[1]) if touch == owner_touches.TOUCH_ANNIVERSARY else 1,
                                 items=doc.get("items"))
+    invited = False
+    if doc["to_channel"] == "email" and not await text_consent.has_text_consent(db, doc["customer_id"]):
+        # Client, 9 Oct 2026: no text consent, so this goes by email - and the email asks for it (never a text).
+        from upsell_agent.channels.dealer_identity import dealer_identity
+        if line := text_consent.invite_line((await dealer_identity(db.dealer_id)).sms_from):
+            text = {**text, "email_body": f"{text['email_body']}\n\n{line}"}
+            invited = True
     outcomes = await _send_both(db, deps, tracer, doc, text, "marketing")
+    if invited and any(o.channel == "email" and o.status in ("sent", "duplicate") for o in outcomes):
+        from upsell_agent.scheduler.sold_lifecycles import _set
+        await _set(db, doc["lead_id"], {"text_consent_invited_at": now})
     from upsell_agent.learning import touches
     await touches.record_touch(db, touch_id=f"{KIND}-{doc_id}", lead_id=doc["lead_id"],
                                customer_id=doc["customer_id"], kind=KIND, outcomes=outcomes, theme=touch)

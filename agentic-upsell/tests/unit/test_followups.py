@@ -120,7 +120,7 @@ async def test_a_sent_sms_schedules_the_email_version_for_24h_later(mongo, live_
 
     [doc] = await _followups(mongo, created)
     assert doc["status"] == "pending" and doc["from_channel"] == "sms" and doc["to_channel"] == "email"
-    assert doc["to"].endswith("@example.test") and doc["subject"] and doc["text"].startswith("Hello Maria")  # Touch 1 opens it (stream G: no second greeting)
+    assert doc["to"].endswith("@example.test") and doc["subject"] and doc["text"].startswith("Hi Maria")  # Touch 1 opens it (stream G: no second greeting)
     assert doc["source_turn_id"] == log["turn_id"] and doc["source_provider_id"].startswith("fake-")
     due = doc["due_at"].replace(tzinfo=clock.now().tzinfo)
     assert abs((due - clock.now()) - DAY) < timedelta(seconds=5)

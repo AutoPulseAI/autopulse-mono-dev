@@ -206,8 +206,11 @@ Lead buckets (by source; change the wording emphasis only, never the cadence):
 Every touch = TEXT + EMAIL together (+ a staff call task, section 10).
 Touches go out at 10:00 dealer time, inside the legal texting window.
 
-  Touch 1   immediately         first quality reply; opens "Hello X, this is
-                                Nicole, the AI assistant from ..." (FTC) [BATCH 1]
+  Touch 1   immediately         first quality reply; opens "Hi X, this is
+                                <AI name>, <Dealership>'s AI Sales Manager,
+                                following up on your interest in the <Year Make
+                                Model>. Tell me, what are you driving now?" (FTC,
+                                Betsy's email 7 Oct) [FIX 9 OCT]
   Touch 2   3 hours later       name nudge: "{FirstName}?"
   Touch 3   Day 2               vehicle visual (photo if photos are on)
   Touch 4   Day 3               financing help
@@ -218,7 +221,8 @@ Touches go out at 10:00 dealer time, inside the legal texting window.
   Days 8-30                     one touch a week   (Day 14, 21, 28)  [BATCH 1]
                                 price drops, similar new arrivals, "anything
                                 holding you back?", why a visit is worth it
-  Days 31-90                    every two weeks    (Day 42, 56, 70, 84) [BATCH 1]
+  Days 31-90                    one touch a month  (Day 58, 88) - the workflow
+                                PDF (client, 9 Oct: follow the PDF)
                                 "what did we miss?", credit tips, trade-in
                                 market, still shopping? (time to get a yes/no)
   Day 91                        the opportunity closes (Closed - Lost)
@@ -449,7 +453,13 @@ report). No manager escalation yet [GAP].
                      5 years (service, ownership, safety tips)     Delivery Date
   Conditions:
     - goes out on the customer's latest CRM lead; a DealerVault customer with
-      NO lead in the CRM is counted and skipped                       [GAP]
+      NO lead gets an owner lead created in the CRM ("Sold - Delivered",
+      source DealerVault) - never a sales lead, no sales follow-up [9 OCT]
+    - TEXT CONSENT (TCPA spec s.5: DealerVault data is never consent): without
+      it the message goes by EMAIL only, and that email ends "Prefer texts?
+      Text YES to <dealer number>...". Their YES is recorded as their written
+      consent; texts start from the next message. The AI never texts to ask.
+      Counsel should approve the invitation wording.
     - waits a week while that customer is in an active sales conversation
       (birthday excepted); waits a day while staff are talking to them
     - stops when they opt out or say they no longer own the car; unwound /
@@ -634,8 +644,10 @@ BATCH 1 (branch meeting-batch-1)
   3. "Open lead" opens that lead; "View customer profile" on every lead
   4. Old n8n auto-replies off (LEGACY_N8N_AUTOREPLY=true turns them back on);
      turning the AI off now means no automatic replies at all
-  5. FTC: the first message says "the AI assistant"
-  6. Days 8-90 use Betsy's angles; Days 31-90 every two weeks
+  5. FTC: the first message is Betsy's exact wording: "Hi X, this is <AI name>,
+     <Dealership>'s AI Sales Manager, following up on your interest in the
+     <vehicle>. Tell me, what are you driving now?" (fixed 9 Oct)
+  6. Days 8-90 use Betsy's angles; Days 31-90 monthly (back to the PDF, 9 Oct)
   Already working, unchanged: no status after an appointment -> the no-show
   follow-up 24 h later (a Visited / Sold status before then cancels it);
   unanswered emails create call tasks like texts.
@@ -653,9 +665,15 @@ BATCH 2 (branch meeting-batch-2)
   Already working: the AI reads staff notes; DealerVault data is read fresh
   every day.
 
+9 OCT (client answers)
+ 13. Lead statuses shown with the PDF names (New Lead, No Contact Made,
+     Contact Made - No Next Action / Specific Follow-Up, Appointment Set,
+     Appointment No Show, Sales Visit, Sold Pending, Sold - Delivered,
+     Closed Lost, Opted Out / Suppressed); stored values unchanged
+ 14. Owner leads for DealerVault customers with no lead; consent asked by email
+ 15. Escalation rules: as in the scope (unchanged)
+
 WAITING ON THE CLIENT
-  - FTC first-message wording (placeholder: "the AI assistant")
-  - Days 31-90 every two weeks: confirm
   - Owner life cycle day counts (review Day 14, lease end 90 days before,
     tips every 60/90 days): confirm or change
   - DealerVault customers with no CRM lead: should the CRM create an owner

@@ -13,6 +13,7 @@ from tests.unit.test_sold_lifecycles import (  # noqa: F401 - the live_dealer fi
     _deps,
     _new_lead,
     _outbox,
+    _say,
     _staff,
     live_dealer,
 )
@@ -85,7 +86,7 @@ def test_every_message_says_it_is_the_ai_and_never_a_birth_year(touch):
     text = owner_touches.render(touch, first_name="Maria", dealership="Sunrise Motors",
                                 vehicle={"year": "2024", "make": "Toyota", "model": "RAV4"}, year=3,
                                 items=["Replace front brake pads"])
-    assert "the AI assistant" in text["sms_text"] and "the AI assistant" in text["email_body"]
+    assert "AI Sales Manager" in text["sms_text"] and "AI Sales Manager" in text["email_body"]
     assert not owner_touches.BIRTH_YEAR.search(text["sms_text"])
 
 
@@ -139,7 +140,7 @@ async def test_a_dealervault_owner_gets_review_then_first_30_on_their_old_lead(m
     done = await _fire_next(mongo, created, "review_referral")
     assert done["status"] == "sent"
     text = (await _outbox(mongo, created))[-1]["text"]
-    assert "review" in text and "who's next" in text and "the AI assistant" in text
+    assert "review" in text and "who's next" in text and "AI Sales Manager" in text
     [nxt] = await _pending(mongo, created)
     assert nxt["touch"] == "first_30"
     row = await mongo[AI_OWNER_LIFECYCLE_COLLECTION].find_one({"deal_number": "D100"})
@@ -174,7 +175,7 @@ async def test_birthday_for_a_dealervault_customer_never_says_the_year(mongo):
     done = await _fire_next(mongo, created, "birthday")
     assert done["status"] == "sent"
     text = (await _outbox(mongo, created))[-1]["text"]
-    assert text.startswith("Happy Birthday") and "1985" not in text and "the AI assistant" in text
+    assert text.startswith("Happy Birthday") and "1985" not in text and "AI Sales Manager" in text
     [nxt] = [d for d in await _pending(mongo, created) if d["touch"] == "birthday"]
     assert _aware(nxt["due_at"]).year == _aware(done["due_at"]).year + 1
 
@@ -239,3 +240,65 @@ async def test_no_follow_up_when_they_came_back_since(mongo):
     await _ro(mongo, created, number="RO2", days_ago=1, Recommendations="")
     done = await _fire_next(mongo, created, "declined_service")
     assert done["status"] == "cancelled" and "service visit since" in done["reason"]
+
+
+@flow
+async def test_no_text_consent_means_email_with_an_invitation_and_their_yes_turns_texts_on(mongo):
+    """Client, 9 Oct 2026: ask for consent by email (TCPA spec §5: DealerVault data never is consent, and the AI
+    never texts to ask). Their YES by text is recorded; the next owner touch goes by text too."""
+    from upsell_agent.channels.dealer_identity import clear_cache
+    from upsell_agent.compliance import text_consent
+    await mongo["users"].update_one({"_id": as_object_id(DEALER)},
+                                    {"$set": {"dealer_account_information.sms_conversion_phone": "+13475550100"}})
+    clear_cache()
+    created = await _new_lead()
+    await _staff(created, "Closed Lost")
+    set_clock(clock.now() + timedelta(days=120))  # their own inquiry no longer covers marketing texts
+    await _deal(mongo, created)
+    await owner_lifecycle.sweep()
+    pending = await _pending(mongo, created)
+    first = min(pending, key=lambda d: d["due_at"])
+    done = await _fire_next(mongo, created, first["touch"])
+    assert done["status"] == "sent"
+    last = (await _outbox(mongo, created))[-1]
+    assert last["channel"] == "email" and "Text YES to +13475550100" in last["text"]  # no text went
+    await _say(created, "YES")
+    db = dealer_scoped_db(DEALER)
+    assert await text_consent.has_text_consent(db, created["customer_id"])
+    assert (await _outbox(mongo, created))[-1]["text"] == text_consent.CONFIRMATION
+    # The next owner touch now goes by text as well.
+    nxt = min(await _pending(mongo, created), key=lambda d: d["due_at"])
+    before = len(await _outbox(mongo, created))
+    assert (await _fire_next(mongo, created, nxt["touch"]))["status"] == "sent"
+    assert "sms" in {m["channel"] for m in (await _outbox(mongo, created))[before:]}
+
+
+@flow
+async def test_a_dealervault_customer_with_no_lead_gets_an_owner_lead_never_a_sales_cadence(mongo):
+    """Client, 9 Oct 2026: "we will need to create their leads". Sold Delivered, source DealerVault; the AI marks it
+    an owner at once, so reconciliation never starts a sales cadence on it."""
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, PLATFORM_CUSTOMERS_COLLECTION
+    from upsell_agent.scheduler import reconcile
+    cid = "66f0000000000000000000bb"
+    await mongo[PLATFORM_CUSTOMERS_COLLECTION].insert_one(
+        {"_id": as_object_id(cid), "dealer_id": DEALER, "name": "Owen Owner",
+         "emails": [{"value": "owen@example.test", "is_primary": True}],
+         "phones": [{"value": "+12015550111", "is_primary": True}]})
+    created = {"customer_id": cid}
+    await _deal(mongo, created, deal_number="D300")
+    summary = await owner_lifecycle.sweep()
+    assert summary["planned"] == 1 and summary["no_lead"] == 0
+    [lead] = await mongo["leads"].find({"customer_id": as_object_id(cid)}).to_list(None)
+    assert lead["fe_lead_status"] == "Sold Delivered" and lead["source"] == "DealerVault"
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": str(lead["_id"])})
+    assert state["stage"] == "sold_delivered" and state["owner_lead"] is True
+    [doc] = await _pending(mongo, created)
+    assert doc["lead_id"] == str(lead["_id"]) and doc["touch"] == "review_referral"
+    submitted = []
+    async def submit(kind, event):
+        submitted.append(kind)
+    set_clock(clock.now() + timedelta(hours=1))
+    await reconcile.reconcile_dealer(DEALER, submit=submit)
+    assert submitted == []
+    assert await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].count_documents(
+        {"lead_id": str(lead["_id"]), "kind": "cadence_touch"}) == 0

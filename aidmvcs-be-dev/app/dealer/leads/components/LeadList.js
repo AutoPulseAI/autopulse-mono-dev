@@ -18,6 +18,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
+import { statusLabel } from "@lib/statusLabels";
   const canManageLeads = useCan("Manage Leads");
   const canViewAssignedLeads = useCan("View Assigned Leads");
   const [leads, setLeads] = useState([]);
@@ -1304,7 +1305,7 @@ useImperativeHandle(ref, () => ({
                 >
                   <option value="">All Status</option>
                   {statusOptions.map(status => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status}>{statusLabel(status)}</option>
                   ))}
                 </Form.Select>
               </Col>
@@ -1424,7 +1425,7 @@ useImperativeHandle(ref, () => ({
                 >
                   <option value="">All Status</option>
                   {statusOptions.map(status => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status}>{statusLabel(status)}</option>
                   ))}
                 </Form.Select>
               </Col>
@@ -1730,7 +1731,7 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        {statusLabel(lead.fe_lead_status) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stage_label && (
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).

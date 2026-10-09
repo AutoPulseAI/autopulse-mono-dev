@@ -205,10 +205,10 @@ def cadence_day(state: CadenceState, now: datetime, tz) -> int:
     return (now.astimezone(tz).date() - started.astimezone(tz).date()).days + 1
 
 
-# After Day 7 the schedule sits on this grid of cadence days: weekly in Days 8-30, then every two weeks in Days
-# 31-90 (client, 8 Oct 2026 meeting: the leads are cold by then - "slow it down"; it was monthly, Days 58 and 88).
+# After Day 7 the schedule sits on this grid of cadence days: weekly in Days 8-30, then monthly in Days 31-90
+# (Omnichannel PDF §4; client, 9 Oct 2026: "follow the workflow PDF", not the meeting's every two weeks).
 # A customer who keeps talking through a grid day doesn't get it late: the next one on the grid is used instead.
-EXTENDED_GRID: tuple[int, ...] = (14, 21, 28, 42, 56, 70, 84)
+EXTENDED_GRID: tuple[int, ...] = (14, 21, 28, 58, 88)
 
 
 def next_day_after(day: int) -> int | None:
@@ -327,7 +327,10 @@ def describe(state: CadenceState, now: datetime, tz) -> dict[str, Any]:
             "started_at": state.started_at.isoformat() if isinstance(state.started_at, datetime) else None}
 
 
-AI_DISCLOSURE = "the AI assistant"
+# Client email, 7 Oct 2026: the AI introduces itself as the dealership's AI Sales Manager (FTC: never poses as a person).
+AI_SALES_ROLE = "AI Sales Manager"
+AI_SERVICE_ROLE = "AI Service Manager"
+AI_DISCLOSURE = AI_SALES_ROLE
 
 
 def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
@@ -359,21 +362,20 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     the blueprint's core principle: "every interaction is honest, transparent"), and reads like a reply to a
     message the customer never sent. Only this one line changes; the required closing question, and every
     other part of the structure, stay exactly as specified regardless of origin."""
-    who = f"Hello {customer_first_name}" if customer_first_name else "Hello"
-    # FTC (client, 8 Oct 2026 meeting): the AI must say it is AI and never pose as a person - the first message
-    # names it "the AI assistant". AI_DISCLOSURE is the wording, kept in one place for the client's final text.
-    speaker = f", this is {agent_name}, {AI_DISCLOSURE}" if agent_name else f", this is {AI_DISCLOSURE}"
-    place = ""
-    if dealership:
-        where = ", ".join(x for x in (city, state_code) if x)
-        place = f" from {dealership}" + (f" in {where}" if where else "")
+    # FTC (client email, 7 Oct 2026, "this basically needs to be said BEFORE ANYTHING"): "Hi [First Name], this is
+    # Angela, [Dealership Name]'s AI Sales Manager, following up on your interest in the [Year Make Model]. Tell me,
+    # what are you driving now?" - the AI says it is AI in its very first words. City / state are no longer part of it.
+    who = f"Hi {customer_first_name}" if customer_first_name else "Hi"
+    role = AI_SERVICE_ROLE if service else AI_SALES_ROLE
+    owner = (f"{dealership}'" if dealership.endswith("s") else f"{dealership}'s") if dealership else None
+    title = f"{owner} {role}" if owner else f"the {role}"
+    speaker = f", this is {agent_name}, {title}" if agent_name else f", this is {title}"
     if service:
         care = f"your {vehicle}" if vehicle else "your vehicle"
-        return (f"{who}{speaker}{place}. Thank you for contacting our service team. "
-                f"I am happy to help you take care of {care}.")
+        return f"{who}{speaker}. I am happy to help you with service for {care}."
     if origin == "outbound":
-        thanks = f" I wanted to reach out about our {vehicle}." if vehicle else " I wanted to reach out."
+        about = f", reaching out about the {vehicle}." if vehicle else ", reaching out to see how I can help."
     else:
-        thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
-                  else " Thank you for getting in touch.")
-    return f"{who}{speaker}{place}.{thanks} I am excited to help you with your purchase."
+        about = (f", following up on your interest in the {vehicle}." if vehicle
+                 else ", following up on your interest.")
+    return f"{who}{speaker}{about}"
