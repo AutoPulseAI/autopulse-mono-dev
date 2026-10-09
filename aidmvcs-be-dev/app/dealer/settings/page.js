@@ -36,7 +36,8 @@ function SettingsTabs() {
         {!canEdit && (
           <Alert variant="info" className="small">
             <i className="fa-regular fa-lock me-2"></i>
-            These settings are managed by AutoPulse. You can view them here; contact us to change anything.
+            These settings are managed by AutoPulse. You can view them here (and turn the AI on or off in the AI
+            tab); contact us to change anything else.
           </Alert>
         )}
         <Nav variant="tabs" activeKey={tab} className="mb-3"
@@ -46,7 +47,8 @@ function SettingsTabs() {
           ))}
         </Nav>
         {/* A disabled fieldset greys out and blocks every input and button inside for a dealer. */}
-        <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        {/* The AI tab decides itself what a dealer may change (the On/Off switch, client 9 Oct 2026). */}
+        <fieldset disabled={!canEdit && tab !== "ai"} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <Current />
         </fieldset>
       </div>

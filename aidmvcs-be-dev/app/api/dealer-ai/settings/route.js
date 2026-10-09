@@ -19,7 +19,10 @@
 // Opening hours are shown read-only: they are the ones on the dealer's account
 // (dealer_account_information.weekly_availability), which the AI uses.
 //
-// Anyone at the dealership can read these; only an AutoPulse super admin changes them (client, 8 Oct 2026).
+// Anyone at the dealership can read these; only an AutoPulse super admin changes them (client, 8 Oct 2026) - except
+// turning the AI on or off, which the dealership does itself (client, 9 Oct 2026). Shadow mode and every other
+// setting stay with AutoPulse. Turning it on also clears the old n8n auto-reply "off" (setting.autoReplyEnabled),
+// which would otherwise keep the AI off without saying so (app/lib/ai/aiMode.js effectiveAiMode).
 
 import { NextResponse } from "next/server";
 import { AI_MODES, effectiveAiMode, invalidateDealerAiMode } from "@lib/ai/aiMode";
@@ -31,6 +34,9 @@ import { jsonError, requireDealerSession, staffName } from "../_lib/dealerAi";
 import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
 import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
 import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
+
+// What a dealership may switch between itself (client, 9 Oct 2026); "shadow" is AutoPulse's.
+export const DEALER_AI_MODES = ["off", "live"];
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -75,7 +81,7 @@ export async function GET(req) {
   if (session.error) return session.error;
   const dealer = await loadDealer(session.dealerId);
   if (!dealer) return jsonError("Dealership not found", 404);
-  return NextResponse.json({ ...describe(dealer), can_change: await canChange(req) });
+  return NextResponse.json({ ...describe(dealer), can_change: await canChange(req), can_toggle_ai: true });
 }
 
 export async function PUT(req) {
@@ -87,14 +93,18 @@ export async function PUT(req) {
   }
   const session = await requireDealerSession(req, body?.dealer_id);
   if (session.error) return session.error;
-  if (!(await canChange(req))) {
-    return jsonError(SETTINGS_VIEW_ONLY_MESSAGE, 403);
+  const superAdmin = await canChange(req);
+  if (!superAdmin) {
+    const keys = Object.keys(body || {}).filter((k) => k !== "dealer_id");
+    const onOffOnly = keys.length === 1 && keys[0] === "ai_mode" && DEALER_AI_MODES.includes(body.ai_mode);
+    if (!onOffOnly) return jsonError(SETTINGS_VIEW_ONLY_MESSAGE, 403);
   }
 
   const set = {};
   if (body.ai_mode !== undefined) {
     if (!AI_MODES.includes(body.ai_mode)) return jsonError(`AI mode must be one of ${AI_MODES.join(", ")}`, 422);
     set.ai_mode = body.ai_mode;
+    if (body.ai_mode === "live") set["setting.autoReplyEnabled"] = true;
   }
   if (body.mms_enabled !== undefined) {
     if (typeof body.mms_enabled !== "boolean") return jsonError("mms_enabled must be true or false", 422);
@@ -127,5 +137,6 @@ export async function PUT(req) {
     dealer_id: session.dealerId, ...set, by: await staffName(session.user), follow_up_jobs_cleared: followUpJobsCleared,
   });
   const dealer = await loadDealer(session.dealerId);
-  return NextResponse.json({ ...describe(dealer), can_change: true, follow_up_jobs_cleared: followUpJobsCleared });
+  return NextResponse.json({ ...describe(dealer), can_change: superAdmin, can_toggle_ai: true,
+    follow_up_jobs_cleared: followUpJobsCleared });
 }

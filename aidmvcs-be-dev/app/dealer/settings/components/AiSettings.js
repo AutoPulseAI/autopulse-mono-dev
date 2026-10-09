@@ -117,6 +117,11 @@ export default function AiSettingsPage() {
   }
 
   const canChange = settings?.can_change;
+  // Client, 9 Oct 2026: the dealership turns the AI on and off itself; Shadow and the rest stay with AutoPulse.
+  const canToggle = canChange || settings?.can_toggle_ai;
+  const canPickMode = (m) => canChange || (canToggle && (m === "off" || m === "live"));
+  const onlyModeChanged = settings && mode !== settings.ai_mode && mms === settings.mms_enabled
+    && daily === settings.ai_daily_call_tasks && Object.keys(capacityChanged).length === 0;
 
   return (
     <div className="page_content">
@@ -133,7 +138,10 @@ export default function AiSettingsPage() {
           <Col lg={10} xl={8}>
             {error && <Alert variant="danger">{error}</Alert>}
             {settings && !canChange && (
-              <Alert variant="info" className="small">Managed by AutoPulse: contact us to change these.</Alert>
+              <Alert variant="info" className="small">
+                You can turn the AI on or off here. The other AI settings are managed by AutoPulse: contact us to
+                change them.
+              </Alert>
             )}
 
             {settings && (
@@ -150,13 +158,21 @@ export default function AiSettingsPage() {
                   </div>
                   {MODES.map((m) => (
                     <Form.Check key={m} type="radio" name="ai-mode" id={`ai-mode-${m}`} className="mb-2"
-                      disabled={!canChange} checked={mode === m} onChange={() => setMode(m)}
+                      disabled={!canPickMode(m)} checked={mode === m} onChange={() => setMode(m)}
                       label={<><strong>{MODE_TITLES[m]}</strong><small className="d-block text-secondary-light">{AI_MODE_LABELS[m].help}</small></>} />
                   ))}
-                  {!settings.auto_reply_enabled && (
+                  {!settings.auto_reply_enabled && settings.ai_mode === "live" && (
                     <Alert variant="warning" className="py-2 mb-0 small">
-                      Auto-reply is turned off in Follow-up Settings, so the AI stays off whatever is chosen here.
+                      The old auto-reply setting is keeping the AI off. Choose Off, save, then On again to fix it.
                     </Alert>
+                  )}
+                  {!canChange && canToggle && (
+                    <div className="d-flex justify-content-end mt-2">
+                      <Button variant="custom" size="sm" onClick={save}
+                        disabled={!onlyModeChanged || saveStatus === "saving"}>
+                        {saveStatus === "saving" ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
                   )}
                 </div>
 
