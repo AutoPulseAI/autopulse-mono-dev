@@ -56,6 +56,13 @@ export async function GET(req, { params }) {
     body: typeof m.mail_content === "string" ? m.mail_content : "",
   }));
 
+  // Opening a conversation reads it (client, 10 Oct 2026: the red count never went down here): the customer's
+  // messages on this lead are marked read, the same as opening it in Leads (app/api/conversations/mark-read).
+  await Email.updateMany(
+    { lead_id: lead._id, status: { $in: INBOUND }, read: { $ne: true } },
+    { $set: { read: true, read_by: access.user?._id || null, read_at: new Date() } },
+  );
+
   return NextResponse.json({
     lead: { lead_id: leadId, ...(summaries[leadId] || { name: lead.name, phone: lead.phone }) },
     messages,
