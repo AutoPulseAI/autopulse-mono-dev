@@ -366,6 +366,13 @@ def transition(current: Stage | None, event: Event) -> Transition:
         # own workflow (MASTER_PLAN_4 D2) runs from scheduler/sold_lifecycles.py. Nothing in the lead workflow moves
         # it: only the two outcomes above, staff Closed Lost and an opt-out.
         return _stay("sold", f"{STAGE_LABELS[current]}: the lead workflow doesn't apply.", event)
+    if kind == "reengaged":
+        # Client, 10 Oct 2026 (Betsy): "legally when a customer re-engages, sends a new lead, the 90 day clock starts
+        # over". A new inquiry on a working lead restarts the follow-up period and the cadence, like Unsold; an
+        # appointment or a dated next step the customer already has stays as it is.
+        if current in (Stage.APPOINTMENT_SET, Stage.NO_SHOW, Stage.SPECIFIC_FOLLOWUP, Stage.SALES_VISIT):
+            return _stay("reengaged_kept", f"{STAGE_LABELS[current]} kept; the 90-day clock restarts.", event)
+        return Transition(Stage.CONTACT_NO_ACTION, "reengaged", why or "The customer sent a new inquiry", event)
     if kind == "unsold":
         # Client, 1 Oct 2026 (scope Q2): back to follow-up for 90 days; a visit is contact, so the stage is
         # Contact Made - No Next Action (§5), and the follow-up period restarts from the Unsold date.
@@ -590,7 +597,7 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         unset["next_action"] = ""
     if new == Stage.APPOINTMENT_SET and event.detail.get("appointment"):
         fields["appointment"] = {**event.detail["appointment"], "set_at": now}
-    if event.kind == "unsold":
+    if event.kind in ("unsold", "reengaged"):
         # Unsold restarts the Day 91 follow-up period from today (client, scope Q2). `opportunity_created_at`
         # itself is never touched (§12); the sweep counts from this anchor.
         fields["day91_anchor"] = now

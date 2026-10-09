@@ -252,6 +252,15 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
                 "detail": "the customer texted YES to the invitation to receive texts"}
     if not campaign:
         created = _lead_created(lead)
+        # Client, 10 Oct 2026: a re-engaging customer's new lead restarts the own-inquiry window (events/handlers.py
+        # _restart_opportunity_clock records it on the lead the AI works).
+        if lead_id:
+            from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+            row = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
+                                                                         projection={"last_inquiry_at": 1}) or {}
+            latest = _aware(row.get("last_inquiry_at")) if isinstance(row.get("last_inquiry_at"), datetime) else None
+            if latest and (created is None or latest > created):
+                created = latest
         fresh = created is None or at - created <= timedelta(days=INQUIRY_DAYS)
         wrote = await _customer_wrote(db, lead_id)
         if fresh and (origin.origin == "inbound" or wrote):

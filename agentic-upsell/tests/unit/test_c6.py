@@ -337,3 +337,28 @@ def test_plain_wording_about_photos_is_fine():
     for text in ("I can't send photos by text, but I can show you the car in person.",
                  "Do you want to see it Thursday?"):
         assert not media.unattached_photo_claim(text)
+
+
+async def test_a_new_lead_from_the_same_customer_restarts_the_90_day_clock(mongo, live_dealer):
+    """Client, 10 Oct 2026 (Betsy): "when a customer re-engages, sends a new lead, the 90 day clock starts over" -
+    every dealer, every lead: the Day 91 period and the own-inquiry texting window count from the new lead."""
+    from datetime import timedelta
+
+    from tests.unit.conftest import set_clock
+    from upsell_agent import clock
+    first = await _lead()
+    await _created(first)
+    set_clock(clock.now() + timedelta(days=60))
+    second = await _lead(customer_id=first["customer_id"])
+    result = await _created(second)
+    assert result["reengaged"]["status"] == "restarted"
+    state = await _state(mongo, first["lead_id"])
+    anchor = state["day91_anchor"]
+    anchor = anchor if anchor.tzinfo else anchor.replace(tzinfo=clock.now().tzinfo)
+    assert abs((anchor - clock.now()).total_seconds()) < 60
+    assert state["last_inquiry_at"] and state["stage"] == "contact_made_no_next_action"
+    # Day 100 of the first lead, Day 40 of the re-engagement: still open, not closed at Day 91.
+    set_clock(clock.now() + timedelta(days=40))
+    from upsell_agent.agent import lifecycle
+    await lifecycle.close_expired()
+    assert (await _state(mongo, first["lead_id"]))["stage"] != "closed_lost"
