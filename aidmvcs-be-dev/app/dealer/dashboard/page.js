@@ -925,13 +925,8 @@ export default function Dashboard() {
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
             
-            <CountCard
-              iconClass="fa-regular fa-envelope-open"
-              count={unreadMessageCount}
-              label="Unread Messages"
-              link="/dealer/leads?message_filter=unread"
-              description="Current unread count"
-            />
+            {/* "Unread Messages" removed (client, 9 Oct 2026): it counted every stored message never opened, all time,
+                in both directions; customer conversations are in AI Assistant > AI Messages. */}
            
             {/*
             <CountCard

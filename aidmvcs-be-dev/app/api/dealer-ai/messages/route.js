@@ -39,7 +39,10 @@ export async function GET(req) {
         last_recipient: { $first: "$recipient" },
         total: { $sum: 1 },
         sms_count: { $sum: { $cond: [{ $eq: ["$communication_type", "sms"] }, 1, 0] } },
-        email_count: { $sum: { $cond: [{ $eq: ["$communication_type", "email"] }, 1, 0] } },
+        // The raw lead file (ADF XML) isn't a conversation email (the detail route hides it too).
+        email_count: { $sum: { $cond: [{ $and: [{ $eq: ["$communication_type", "email"] }, { $not: [
+          { $regexMatch: { input: { $cond: [{ $eq: [{ $type: "$mail_content" }, "string"] }, "$mail_content", ""] },
+            regex: "<\\?adf|<adf[\\s>]", options: "i" } }] }] }, 1, 0] } },
         ai_count: { $sum: { $cond: [{ $eq: ["$ai_generated", true] }, 1, 0] } },
         unread: {
           $sum: { $cond: [{ $and: [{ $in: ["$status", INBOUND] }, { $ne: ["$read", true] }] }, 1, 0] },
