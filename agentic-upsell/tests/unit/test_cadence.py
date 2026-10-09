@@ -133,16 +133,16 @@ def test_re_entry_skips_the_introduction_and_the_nudge_and_starts_a_fresh_schedu
 def test_touch_1_opening_is_the_clients_required_text():
     text = cadence.touch1_intro(customer_first_name="Maria", agent_name="Ava", dealership="ABC Toyota",
                                 city="Springfield", state_code="NJ", vehicle="2023 Toyota Camry")
-    assert text == ("Hello Maria, this is Ava, the AI assistant from ABC Toyota in Springfield, NJ. Thank you for your interest in "
-                    "our 2023 Toyota Camry. I am excited to help you with your purchase.")
+    # Client email, 7 Oct 2026 - word for word.
+    assert text == ("Hi Maria, this is Ava, ABC Toyota's AI Sales Manager, following up on your interest in the "
+                    "2023 Toyota Camry.")
 
 
 def test_touch_1_opening_never_invents_what_the_dealer_record_lacks():
     text = cadence.touch1_intro(customer_first_name="Maria", agent_name=None, dealership="ABC Toyota",
                                 city=None, state_code=None, vehicle=None)
-    assert text == ("Hello Maria, this is the AI assistant from ABC Toyota. Thank you for getting in touch. "
-                    "I am excited to help you with your purchase.")
-    assert "this is the AI assistant" in text  # no invented name, AI disclosed (FTC)
+    assert text == "Hi Maria, this is ABC Toyota's AI Sales Manager, following up on your interest."
+    assert "AI Sales Manager" in text  # no invented name, AI disclosed (FTC)
 
 
 def test_touch_1_closing_question_is_dropped_only_when_a_trade_in_is_known():
@@ -212,10 +212,9 @@ async def test_touch_1_has_the_required_structure_and_ending(mongo):
     created = await _new_lead()
     [first] = await _outbox(mongo, created)
     text = first["text"]
-    assert text.startswith("Hello Maria, this is the AI assistant from Sunrise Motors in Springfield, NJ. Thank you for your interest in our")
-    assert "I am excited to help you with your purchase." in text
+    assert text.startswith("Hi Maria, this is Sunrise Motors' AI Sales Manager, following up on your interest in the")
     assert text.endswith("Tell me, what are you driving now?") and len(text) <= 480
-    assert "this is the AI assistant" in text  # no agent name on the dealer record: no name claimed, AI disclosed (FTC)
+    assert "AI Sales Manager" in text  # no agent name on the dealer record: no name claimed, AI disclosed (FTC)
 
 
 @pytestmark_flow
@@ -224,7 +223,7 @@ async def test_touch_1_names_the_agent_when_the_dealer_has_given_one(mongo):
         {"_id": ObjectId(DEALER)}, {"$set": {"dealer_account_information.ai_agent_name": "Ava"}})
     created = await _new_lead()
     [first] = await _outbox(mongo, created)
-    assert first["text"].startswith("Hello Maria, this is Ava, the AI assistant from Sunrise Motors in Springfield, NJ.")
+    assert first["text"].startswith("Hi Maria, this is Ava, Sunrise Motors' AI Sales Manager,")
 
 
 @pytestmark_flow
@@ -232,7 +231,7 @@ async def test_touch_1_skips_the_closing_question_when_a_trade_in_is_already_ind
     created = await _new_lead(comments="I want to trade in my 2018 Nissan Altima for a new Toyota RAV4")
     [first] = await _outbox(mongo, created)
     assert "what are you driving now" not in first["text"].lower()
-    assert first["text"].startswith("Hello Maria")
+    assert first["text"].startswith("Hi Maria")
 
 
 @pytestmark_flow

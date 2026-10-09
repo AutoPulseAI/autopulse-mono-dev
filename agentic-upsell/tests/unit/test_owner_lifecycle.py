@@ -85,7 +85,7 @@ def test_every_message_says_it_is_the_ai_and_never_a_birth_year(touch):
     text = owner_touches.render(touch, first_name="Maria", dealership="Sunrise Motors",
                                 vehicle={"year": "2024", "make": "Toyota", "model": "RAV4"}, year=3,
                                 items=["Replace front brake pads"])
-    assert "the AI assistant" in text["sms_text"] and "the AI assistant" in text["email_body"]
+    assert "AI Sales Manager" in text["sms_text"] and "AI Sales Manager" in text["email_body"]
     assert not owner_touches.BIRTH_YEAR.search(text["sms_text"])
 
 
@@ -139,7 +139,7 @@ async def test_a_dealervault_owner_gets_review_then_first_30_on_their_old_lead(m
     done = await _fire_next(mongo, created, "review_referral")
     assert done["status"] == "sent"
     text = (await _outbox(mongo, created))[-1]["text"]
-    assert "review" in text and "who's next" in text and "the AI assistant" in text
+    assert "review" in text and "who's next" in text and "AI Sales Manager" in text
     [nxt] = await _pending(mongo, created)
     assert nxt["touch"] == "first_30"
     row = await mongo[AI_OWNER_LIFECYCLE_COLLECTION].find_one({"deal_number": "D100"})
@@ -174,7 +174,7 @@ async def test_birthday_for_a_dealervault_customer_never_says_the_year(mongo):
     done = await _fire_next(mongo, created, "birthday")
     assert done["status"] == "sent"
     text = (await _outbox(mongo, created))[-1]["text"]
-    assert text.startswith("Happy Birthday") and "1985" not in text and "the AI assistant" in text
+    assert text.startswith("Happy Birthday") and "1985" not in text and "AI Sales Manager" in text
     [nxt] = [d for d in await _pending(mongo, created) if d["touch"] == "birthday"]
     assert _aware(nxt["due_at"]).year == _aware(done["due_at"]).year + 1
 
