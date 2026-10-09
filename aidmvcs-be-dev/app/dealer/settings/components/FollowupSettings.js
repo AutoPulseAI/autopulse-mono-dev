@@ -10,7 +10,6 @@ import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
 import Card from 'react-bootstrap/Card';
 import Button from 'react-bootstrap/Button';
-import Form from 'react-bootstrap/Form';
 
 export default function SettingsPage() {
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -113,23 +112,8 @@ export default function SettingsPage() {
         <div className="page_body">
           <Row className="justify-content-center">
             <Col lg={10} xl={8}>
-              {/* Auto‑reply */}
-              <div className="w_card">
-                <div className="position-relative d-flex">
-                  <div className="position-relative me-auto">
-                    <h3 className="w_card_title mb-0">Auto-reply</h3>
-                    <p className='text-secondary-light mb-0'><small>When enabled, incoming messages get an automatic reply.</small></p>
-                  </div>
-                  <Form.Check
-                    type="switch"
-                    id="auto-reply-switch"
-                    label={autoReplyEnabled ? 'Enabled' : 'Disabled'}
-                    checked={autoReplyEnabled}
-                    onChange={e => setAutoReplyEnabled(e.target.checked)}
-                  />
-                </div>
-              </div>
-
+              {/* The old n8n "Auto-reply" switch is gone (client, 9 Oct 2026): automatic replies are the AI's, turned
+                  on and off in the AI tab. Its saved value is kept as it is. */}
               {/* Follow‑up */}
               <div className="w_card">
                 <div className="position-relative d-flex">
