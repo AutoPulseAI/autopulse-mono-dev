@@ -153,10 +153,13 @@ maybe('a live dealer\'s new lead never reaches n8n and gets no FollowUpJob; the 
   assert.equal(events[0].body.lead_id, String(lead._id));
 });
 
-maybe('control: the same lead for an off dealer does go to n8n (the tripwire works)', async () => {
-  // The old path throws when n8n answers 503; the call is what matters here.
-  await runLead(OFF, '1110002').catch(() => {});
-  assert.ok(n8nHitsMentioning('1110002').length >= 1, 'expected the off dealer to call n8n');
+// Client, 10 Oct 2026: no n8n for anything unless LEGACY_N8N_AUTOREPLY=true - an `off` dealer's lead is saved by
+// our own code too, and the AI hears nothing.
+maybe('an off dealer\'s new lead is saved without n8n, and the AI hears nothing', async () => {
+  const lead = await runLead(OFF, '1110002');
+  assert.ok(lead, 'lead created');
+  assert.deepEqual(n8nHitsMentioning('1110002'), [], 'n8n was called');
+  assert.equal(lead.fe_lead_status, 'Lead', 'no status from n8n');
   assert.equal(ai.hits.length, 0, 'an off dealer sends the AI nothing');
 });
 
@@ -165,12 +168,15 @@ maybe('a live dealer\'s inbound SMS never reaches n8n; the AI gets it', async ()
   assert.deepEqual(n8n.hits, [], 'n8n was called for a live dealer');
   assert.equal(ai.hits.length, 1);
   assert.equal(ai.hits[0].path, '/v1/events/lead-created'); // a new number starts a lead
-  assert.equal(await FollowUpJob.countDocuments({}), 0);
+  const lead = await Lead.findOne({ phone: '+15557770001' }).lean();
+  assert.equal(await FollowUpJob.countDocuments({ leadId: lead._id }), 0);
 });
 
-maybe('control: an off dealer\'s inbound SMS goes to n8n', async () => {
+maybe('an off dealer\'s inbound SMS is saved on a lead without n8n, and the AI hears nothing', async () => {
   await processSMS(smsJob(OFF, '+15550001002', '+15557770002', 'Hello there'));
-  assert.ok(n8nHitsMentioning('Hello there').length >= 1);
+  assert.deepEqual(n8nHitsMentioning('Hello there'), []);
+  const lead = await Lead.findOne({ phone: '+15557770002' }).lean();
+  assert.ok(lead, 'lead created from the text');
   assert.equal(ai.hits.length, 0);
 });
 

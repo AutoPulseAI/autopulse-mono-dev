@@ -51,7 +51,8 @@ export const processLead = async (job) => {
       const routing = aiRouting(aiMode);
 
       // Call Ollama API for processing first to get user_language
-      const ollamaResponse = routing.callN8n
+      // No n8n unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026): the lead is saved from its own data.
+      const ollamaResponse = routing.callN8n && legacyAutoReplyOn()
         ? withoutLegacyStatus(await callOllama(jobData))
         : { response: null, response_mode: leadChannel(leadData), user_language: leadData.user_language || 'english' };
       const { 

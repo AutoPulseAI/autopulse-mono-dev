@@ -363,8 +363,10 @@ export async function processEmail(job) {
     // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
     // conversation - no n8n, no auto-reply, no follow-up jobs.
     const aiMode = await getDealerAiMode(dealer_id);
-    if (aiMode === 'live') {
-      return await handleInboundEmailLive({ currentEmail, dealer });
+    // No n8n at all unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026): our own code saves and links every
+    // dealership's emails and lead emails; the AI hears of them only when it is on.
+    if (aiMode === 'live' || !legacyAutoReplyOn()) {
+      return await handleInboundEmailLive({ currentEmail, dealer, mode: aiMode });
     }
 
     const result = withoutLegacyStatus(await callOllama(conversationThread,currentEmail));
