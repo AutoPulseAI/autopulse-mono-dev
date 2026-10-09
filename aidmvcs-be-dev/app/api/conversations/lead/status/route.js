@@ -22,6 +22,7 @@ import {
   slotErrorStatus, upsertLeadBooking,
 } from '@lib/bookingService.js';
 import jwt from 'jsonwebtoken';
+import { logActivity } from '@lib/activityLog';
 import {
   normalizeUserLanguage,
   toDisplayLanguageName,
@@ -197,6 +198,7 @@ async function createAppointmentNotificationRecord(leadId, dealerId, messageType
 
 export async function PUT(request) {
   let messageBy = null; // Default to null (system message)
+  let actorName = null; // for the customer timeline (app/lib/activityLog.js)
   try {
     const authHeader = request.headers.get("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -206,6 +208,7 @@ export async function PUT(request) {
       // Set message_by to user ID for authenticated users
       if (currentUser) {
         messageBy = currentUser._id;
+        actorName = currentUser.name || currentUser.email || null;
       }else{
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
       }
@@ -340,6 +343,16 @@ export async function PUT(request) {
       updateDoc,
       { new: true, runValidators: true }
     );
+
+    if (updated && String(originalLead?.fe_lead_status || '') !== String(updated.fe_lead_status || '')) {
+      // Client, 10 Oct 2026: a person changing a status is logged on the customer timeline, with who and when.
+      await logActivity({
+        dealer_id: updated.dealer_id, customer_id: updated.customer_id || null, lead_id: updated._id,
+        actor_type: 'staff', actor_id: messageBy, actor_name: actorName, action: 'status_changed',
+        from: originalLead?.fe_lead_status || null, to: updated.fe_lead_status || null,
+        detail: manager_outcome ? `Visit outcome: ${manager_outcome}` : null,
+      });
+    }
 
     if (!updated) {
       return NextResponse.json(
