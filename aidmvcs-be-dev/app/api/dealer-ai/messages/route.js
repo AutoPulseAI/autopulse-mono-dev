@@ -46,6 +46,9 @@ export async function GET(req) {
         },
       },
     },
+    // A real conversation only (client, 9 Oct 2026): a text, or anything the AI sent. A lead whose only record is
+    // the incoming lead email (Cars.com, CarGurus, ...) is a lead, not an AI conversation - it stays in Leads.
+    { $match: { $or: [{ sms_count: { $gt: 0 } }, { ai_count: { $gt: 0 } }] } },
     { $sort: { last_at: -1 } },
     { $limit: MAX_THREADS },
   ]);
