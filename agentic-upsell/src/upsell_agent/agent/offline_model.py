@@ -279,6 +279,7 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         "next_contact_when": next_contact[0] if next_contact else None,
         **_not_interested(text, payload),
         **_wants_link(text),
+        "browse_stock": bool(_BROWSE.search(text)),
     }
 
 
@@ -375,6 +376,13 @@ def _contact_preference(text: str) -> str | None:
     if now and not later:
         return "now"
     return None
+
+
+# conversation_7: "what vehicles do you have?" - general stock, not the vehicle in the profile. (The offline model
+# leaves asked_vehicle empty: agent/nodes/search_stock.py finds a vehicle named in the message itself.)
+_BROWSE = re.compile(r"\bwhat (?:vehicles|cars|trucks|suvs|inventory|stock)\b[^.?!]{0,25}\b(?:have|got|carry)\b|"
+                     r"\bwhat(?:'s| is) (?:in )?(?:your|the) (?:inventory|stock|lot)\b|"
+                     r"\bshow me (?:what|your) (?:you(?:'ve)? got|inventory|cars|stock)\b", re.IGNORECASE)
 
 
 # MASTER_PLAN_4 F3: the customer asks for the vehicle's link / web page.
@@ -624,6 +632,11 @@ def _stock_answer(payload: dict[str, Any]) -> tuple[str, list[str], list[str]]:
         return ("I'm not seeing a matching one right now, but I can have the team let you know the moment one comes in.",
                 [], ["The team will let you know when a matching vehicle comes in."])
     names = [_vehicle_phrase(r) for r in chosen]
+    searched = (payload.get("context") or {}).get("stock_search") or {}
+    if searched and not searched.get("exact") and searched.get("searched_for") not in (None, "any vehicle"):
+        # conversation_7: the nearest we have, said as such - never passed off as what they asked for.
+        return (f"We don't have a {searched['searched_for']} right now, but we do have {'; and '.join(names)}.",
+                [r["vin"] for r in chosen], [])
     return (f"Good news - we have {'; and '.join(names)} in stock.", [r["vin"] for r in chosen], [])
 
 
