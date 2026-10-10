@@ -130,11 +130,10 @@ async function translateBatchThirdParty(messages, targetLanguage, sourceHint) {
   return translationsArrayToMap(rows);
 }
 
+// Translation is ours: always OpenAI (client, 10 Oct 2026 - "it needs to be ours"). The old third-party option
+// pointed at an n8n workflow that is switched off; TRANSLATION_PROVIDER is no longer read.
 function useThirdPartyProvider() {
-  return (
-    (process.env.TRANSLATION_PROVIDER || "").toLowerCase().trim() ===
-    "third_party"
-  );
+  return false;
 }
 
 export async function POST(req) {
