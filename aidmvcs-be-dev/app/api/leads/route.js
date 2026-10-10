@@ -1,3 +1,4 @@
+import { contactedLeadIds } from '@lib/contactedLeads';
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
@@ -193,7 +194,8 @@ export async function GET(req) {
         };
       }
     }
-    if (status) query.fe_lead_status = status;
+    // "Contacted" = the customer actually talked to us (app/lib/contactedLeads.js), applied once the other filters are in.
+    if (status && status !== 'Contacted') query.fe_lead_status = status;
     if (leadSources && leadSources.length > 0) {
       const knownSources = leadSources.filter((s) => s && s.toLowerCase() !== 'unknown');
       const includeUnknown = leadSources.some((s) => s && s.toLowerCase() === 'unknown');
@@ -422,6 +424,12 @@ export async function GET(req) {
           query._id = { $in: [] };
         }
       }
+    }
+
+    if (status === 'Contacted') {
+      const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
+      const contacted = await contactedLeadIds(candidates);
+      query._id = { $in: contacted };
     }
 
     if (format === 'csv') {

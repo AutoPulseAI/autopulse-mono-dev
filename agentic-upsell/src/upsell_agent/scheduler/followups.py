@@ -658,6 +658,8 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
     """MASTER_PLAN_3 C2: a touch just went out on `sent_channels`; start the 60-minute connection timer
     behind which the staff call task waits. A newer touch replaces an older waiting timer; a task already
     open for staff is not doubled."""
+    if not get_settings().call_task_on_no_reply:
+        return {"created": False, "reason": "no call task for an unanswered touch (CALL_TASK_ON_NO_REPLY is off)"}
     stage = (lead_state or {}).get("stage")
     if not lifecycle.kind_allowed(KIND_CALL_TASK, stage):
         return {"created": False, "reason": f"no call task at stage {stage}"}

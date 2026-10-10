@@ -53,6 +53,9 @@ async def test_staff_words_enter_the_thread_by_author_and_only_once(mongo):
         _email(lead_id, "Hi Ann, it's Sam from the store - I can do $500 off if you come Saturday.", now,
                status="sent", message_by=ObjectId()),
         _email(lead_id, "Promised $500 off, manager approved.", now, is_note=True, communication_type="note"),
+        # Client, 10 Oct 2026: an internal note is never read by the AI.
+        _email(lead_id, "Customer has bad credit, don't mention financing.", now, is_note=True,
+               communication_type="note", internal_use=True),
         _email(lead_id, "Reminder: your appointment is tomorrow.", now, status="sent"),
         _email(lead_id, "Fall sale this weekend!", now, status="sent", campaign_id=ObjectId()),
         _email(lead_id, "AI reply", now, status="sent", ai_generated=True),
@@ -65,6 +68,7 @@ async def test_staff_words_enter_the_thread_by_author_and_only_once(mongo):
     rows = {r["author"]: r for r in await mongo[AI_MESSAGES_COLLECTION].find({"lead_id": lead_id}).to_list(None)}
     assert set(rows) == {"staff", "staff_note", "crm", "campaign"}  # no AI copy, no customer message (events do it)
     assert rows["staff"]["direction"] == "outbound" and rows["staff_note"]["direction"] == "note"
+    assert rows["staff_note"]["text"].startswith("Promised")  # the internal note isn't there
     again = await sync_lead_history(db, lead_id=lead_id, customer_id=created["customer_id"],
                                     lead_state=await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": lead_id}))
     assert again["imported"] == 0

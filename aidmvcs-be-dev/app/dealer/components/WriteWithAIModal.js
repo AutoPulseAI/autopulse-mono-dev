@@ -27,7 +27,9 @@ function formatMessageForDisplay(msg) {
         minute: "2-digit",
       })
     : "";
-  const body = (msg.mail_content || msg.body || msg.subject || "").trim();
+  const rawBody = (msg.mail_content || msg.body || msg.subject || "").trim();
+  // The portal's lead file (ADF XML) is shown as what it is, never as raw XML (client, 10 Oct 2026).
+  const body = /<\?adf|<adf[\s>]/i.test(rawBody) ? "Lead submitted by the customer (lead form)" : rawBody;
   const snippet = body.length > 120 ? body.slice(0, 120) + "…" : body;
   const dir = isIn ? <i className="fa-regular fa-arrow-down text-warning"></i> : <i className="fa-regular fa-arrow-up text-success"></i>;
   const subjectLine =

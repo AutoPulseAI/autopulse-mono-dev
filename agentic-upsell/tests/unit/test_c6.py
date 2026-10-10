@@ -362,3 +362,10 @@ async def test_a_new_lead_from_the_same_customer_restarts_the_90_day_clock(mongo
     from upsell_agent.agent import lifecycle
     await lifecycle.close_expired()
     assert (await _state(mongo, first["lead_id"]))["stage"] != "closed_lost"
+
+
+def test_no_call_task_for_an_unanswered_touch_by_default(monkeypatch):
+    """Client, 10 Oct 2026: the 60-minute no-reply call task made hundreds of alerts - off unless turned back on."""
+    from upsell_agent.config import Settings
+    monkeypatch.delenv("CALL_TASK_ON_NO_REPLY", raising=False)
+    assert Settings(_env_file=None).call_task_on_no_reply is False

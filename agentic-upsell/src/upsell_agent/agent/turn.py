@@ -337,6 +337,10 @@ async def run_turn(
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
+            # Client, 10 Oct 2026: the language the customer writes in carries over to short replies and follow-ups.
+            spoken = (result.get("decision") or {}).get("reply_language")
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"reply_language": spoken or None}})
         review = await _open_review_if_possible_opt_out(db, lead_id, customer_id, result, inbound_text, channel)
         if not review and trigger == "inbound_message":
             await _resolve_review_if_answered(db, lead_id, customer_id, result, inbound_text, channel)

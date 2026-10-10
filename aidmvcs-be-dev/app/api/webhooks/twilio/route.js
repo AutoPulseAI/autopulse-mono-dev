@@ -3,6 +3,7 @@ import twilio from "twilio";
 import { Types } from "mongoose";
 const { ObjectId } = Types;
 import dbConnect from "@lib/mongodb";
+import Email from "@models/Email";
 import Campaign from "@models/Campaign";
 import CampaignLead from "@models/CampaignLead";
 import CampaignTracking from "@models/CampaignTracking";
@@ -44,11 +45,32 @@ export async function POST(req) {
 
     await dbConnect();
 
+    // Client, 10 Oct 2026: every text's delivery status on its conversation record (AI, staff and campaign texts),
+    // so the CRM shows delivered / undelivered and why. Inbound records are never touched.
+    let conversationRecord = null;
+    if (messageSid && ['sent', 'delivered', 'undelivered', 'failed'].includes(status)) {
+      const RANK = { sent: 1, delivered: 2, undelivered: 2, failed: 2 };
+      const record = await Email.findOne({ message_id: messageSid, communication_type: 'sms',
+        status: { $nin: ['received', 'incoming'] } }).select('_id status').lean();
+      conversationRecord = record;
+      if (record && (RANK[status] || 0) >= (RANK[record.status] || 0)) {
+        await Email.updateOne({ _id: record._id }, { $set: {
+          status, ai_delivery_status: status, delivery_updated_at: new Date(),
+          ...(errorCode ? { delivery_error_code: String(errorCode), delivery_error: errorMessage || null } : {}),
+        } });
+      }
+    }
+
     // Find campaign lead by Twilio message SID
     // Note: You need to store messageSid when sending the SMS
     const campaignLead = await CampaignLead.findOne({
       twilio_message_sid: messageSid
     });
+
+    if (!campaignLead && conversationRecord) {
+      // A conversation text (AI / staff), not a campaign one: the phone fallback below would credit it to a campaign.
+      return NextResponse.json({ success: true });
+    }
 
     if (!campaignLead) {
       // Try to find by phone number as fallback (less reliable)

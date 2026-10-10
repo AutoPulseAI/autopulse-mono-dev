@@ -139,6 +139,9 @@ class Settings(BaseSettings):
     # §5 "if reliable current mileage is unavailable, use applicable time-based intervals": the Vehicle
     # Databases schedule is mileage-only, so the time interval is ours until the client gives one (open item).
     maintenance_time_interval_months: int = Field(default=6, alias="MAINTENANCE_TIME_INTERVAL_MONTHS")
+    # Client, 10 Oct 2026: no staff call task just because a text / email got no reply within 60 minutes (it made
+    # hundreds of alerts). A call the customer asks for still opens one. True brings the 60-minute task back.
+    call_task_on_no_reply: bool = Field(default=False, alias="CALL_TASK_ON_NO_REPLY")
     # --- end D5/D6 ---------------------------------------------------------------------------------
 
     # Sending (architecture §9): provider attempts per message, with the delay

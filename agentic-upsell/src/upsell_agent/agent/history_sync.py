@@ -102,6 +102,10 @@ async def sync_lead_history(db: DealerScopedDatabase, *, lead_id: str, customer_
         text = _text(row)
         if not text:
             continue
+        if author == "staff_note" and row.get("internal_use") is True:
+            # Client, 10 Oct 2026: a note marked internal is for the team only - the AI never reads it, so it can never
+            # shape a reply. Unmarked notes are read as before.
+            continue
         doc: dict[str, Any] = {"lead_id": lead_id, "customer_id": customer_id, "channel": _channel(row),
                                "text": text, "platform_message_id": str(row["_id"]), "created_at": at,
                                "author": author, "imported": True}

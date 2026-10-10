@@ -9,7 +9,7 @@ const BATCH_SIZE = Number.parseInt(process.env.OPENAI_TRANSLATION_BATCH_SIZE || 
 const MAX_TEXT_LENGTH = 4000;
 
 function getOpenAiKey() {
-  return process.env.OPENAPI_KEY || process.env.OPENAI_API_KEY || "";
+  return process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY || "";
 }
 
 function normalizeMessage(msg) {
