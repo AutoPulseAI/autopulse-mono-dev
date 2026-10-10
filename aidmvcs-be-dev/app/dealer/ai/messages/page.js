@@ -19,7 +19,7 @@ const css = `
 
 /* Panel 1: contacts */
 .aim-list { width: 320px; flex-shrink: 0; border-right: 1px solid #e6eaf0; display: flex; flex-direction: column; background: #fff; }
-.aim-list-scroll { overflow-y: auto; flex: 1; }
+.aim-list-scroll { overflow-y: auto; overflow-x: hidden; flex: 1; }
 .aim-thread { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #f0f2f6; cursor: pointer; border-left: 3px solid transparent; }
 .aim-thread:hover { background: #f7f9fc; }
 .aim-thread:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
@@ -97,6 +97,34 @@ const css = `
   padding: 1px 10px; margin: 8px 0 0; }
 .aim-quote-toggle:hover { background: #e9edf2; }
 .aim-quote { margin-top: 8px; padding-left: 12px; border-left: 3px solid #d5dbe3; color: #5b6676; }
+
+/* Lead-provider (ADF) emails */
+.aim-adf-banner { display: flex; align-items: center; background: #eaf3fa; color: #0b4f8a; font-weight: 600; font-size: 13px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 4px; }
+.aim-adf-sec { padding: 12px 0; border-bottom: 1px solid #f0f2f6; }
+.aim-adf-sec:last-of-type { border-bottom: 0; }
+.aim-adf-h { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #8a94a3; margin: 0 0 8px; }
+.aim-adf-name { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.aim-adf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; margin: 0; }
+.aim-adf-grid > div { min-width: 0; }
+.aim-adf-grid dt { font-size: 11px; color: #8a94a3; font-weight: 500; }
+.aim-adf-grid dd { margin: 0; font-size: 13.5px; color: #1f2933; overflow-wrap: anywhere; }
+.aim-adf-vehicle-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.aim-adf-vtitle { font-size: 16px; font-weight: 600; margin-right: auto; }
+.aim-adf-price { font-size: 17px; font-weight: 700; color: #1b6e2e; }
+.aim-adf-price small { font-size: 11px; font-weight: 500; color: #8a94a3; margin-left: 5px; }
+.aim-adf-tags { display: flex; gap: 6px; margin: 6px 0 10px; }
+.aim-adf-tag { background: #eef1f5; color: #4a5565; border-radius: 8px; padding: 1px 9px; font-size: 11.5px; font-weight: 600; }
+.aim-adf-sub { font-size: 11px; color: #8a94a3; font-weight: 500; margin: 12px 0 5px; }
+.aim-adf-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.aim-adf-chip { background: #f4f6f9; border: 1px solid #e6eaf0; color: #3b4656; border-radius: 12px; padding: 1px 9px; font-size: 12px; }
+.aim-adf-chip.more { background: #fff; color: #0b66c3; cursor: pointer; }
+.aim-adf-comment { margin: 0 0 8px; padding: 8px 12px; background: #f7f9fc; border-left: 3px solid #b6d4fe; border-radius: 4px;
+  white-space: pre-wrap; font-size: 13.5px; }
+.aim-adf-fine { margin-top: 12px; font-size: 12px; color: #6c757d; }
+.aim-adf-fine summary { cursor: pointer; color: #0b66c3; }
+.aim-adf-foot { margin-top: 6px; padding-top: 10px; border-top: 1px solid #f0f2f6; font-size: 12px; color: #8a94a3; }
+.aim-adf-raw { white-space: pre-wrap; font-size: 12px; margin: 0; }
 
 .aim-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8a94a3; background: #f7f9fc; }
 

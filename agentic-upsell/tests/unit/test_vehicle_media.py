@@ -235,28 +235,43 @@ def _draft(sms, vins=(VIN,)):
             "sms_vins": list(vins), "email_vins": list(vins)}
 
 
-def test_any_url_without_a_link_request_is_rejected():
-    found = disallowed_links(_draft(f"We have the RAV4: {PAGE}"), inventory=INVENTORY, link_requested=False)
-    assert found and "didn't ask for one" in found[0]
+HOME = "https://sunrise.test"
 
 
-def test_the_named_vehicles_page_passes_when_asked():
-    assert disallowed_links(_draft(f"Here's the link: {PAGE}."), inventory=INVENTORY, link_requested=True) == []
+def test_any_url_the_plan_doesnt_allow_is_rejected():
+    found = disallowed_links(_draft(f"We have the RAV4: {PAGE}"), allowed=[])
+    assert found and "may not carry" in found[0]
 
 
-def test_a_link_to_a_vehicle_the_reply_doesnt_name_is_rejected():
-    found = disallowed_links(_draft("Here: https://dealer.example/v/VIN2"), inventory=INVENTORY, link_requested=True)
-    assert found and "isn't the page of a vehicle it names" in found[0]
+def test_the_plans_vehicle_page_passes():
+    assert disallowed_links(_draft(f"Here's the link: {PAGE}."), allowed=[PAGE]) == []
 
 
-def test_a_made_up_link_is_rejected_even_when_asked():
-    found = disallowed_links(_draft("See www.cheap-cars.example/rav4"), inventory=INVENTORY, link_requested=True)
-    assert found
+def test_another_vehicles_page_is_rejected():
+    assert disallowed_links(_draft("Here: https://dealer.example/v/VIN2"), allowed=[PAGE])
 
 
-def test_the_dealers_own_website_is_still_an_answer():
-    draft = _draft("Our website is https://sunrise.test", vins=())
-    assert disallowed_links(draft, inventory=INVENTORY, link_requested=False, allowed=["https://sunrise.test"]) == []
+def test_a_made_up_link_is_rejected():
+    assert disallowed_links(_draft("See www.cheap-cars.example/rav4"), allowed=[PAGE])
+
+
+def test_the_homepage_needs_the_plan_too():
+    """conversation_7: "You can view our main site here: www.victorycarscentral.com" when they asked for a link
+    to the RDX they inquired about."""
+    draft = _draft(f"You can view our main site here: {HOME}", vins=())
+    assert disallowed_links(draft, allowed=[], homepage=HOME)
+    assert disallowed_links(_draft("Browse us at sunrise.test anytime", vins=()), allowed=[], homepage=HOME)
+    assert disallowed_links(draft, allowed=[HOME], homepage=HOME) == []
+
+
+def test_an_autopulse_link_is_always_rejected():
+    draft = _draft("You can book here: https://www.autopulse.ai/booking/abc/def", vins=())
+    found = disallowed_links(draft, allowed=["https://www.autopulse.ai/booking/abc/def"])
+    assert found and "AutoPulse" in found[0]
+
+
+def test_an_unfilled_placeholder_is_rejected():
+    assert disallowed_links(_draft("Here's the RAV4: [VEHICLE_LINK]"), allowed=[PAGE])
 
 
 # --- Drivers --------------------------------------------------------------------------------------------------
@@ -377,6 +392,22 @@ async def test_send_me_the_link_gets_that_vehicles_page_only(mongo):
     await _say(created, "Do you have a Toyota RAV4? Can you send me the link?", deps)
     sms = await _last_sms(mongo, created)
     assert PAGE in sms["text"] and sms["media_urls"]  # the photo still goes with it
+    turn = (await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]})
+            .sort("created_at", -1).to_list(1))[0]
+    guard = [n for n in turn["nodes"] if n["node"] == "guard"][-1]
+    assert guard["output"]["checks"]["no_link_unless_asked"]
+
+
+async def test_a_link_to_look_on_a_lead_about_one_vehicle_gets_its_page(mongo):
+    """conversation_7 (Jean, 2023 RDX lead): "Can you send me a link to look please" got the dealer's homepage."""
+    await _stock(mongo, _rav4())
+    deps = _deps()
+    created = await _lead(deps)
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                     {"$set": {"data.vin": VIN}})
+    await _say(created, "Can you send me a link to look please", deps)
+    sms = await _last_sms(mongo, created)
+    assert PAGE in sms["text"] and "autopulse" not in sms["text"].lower()
     turn = (await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]})
             .sort("created_at", -1).to_list(1))[0]
     guard = [n for n in turn["nodes"] if n["node"] == "guard"][-1]

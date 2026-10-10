@@ -19,10 +19,12 @@ from typing import Any
 from upsell_agent.agent import human_contact
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
 from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
+from upsell_agent.agent.link_resolver import LinkPlan, fill_links, resolve_link
 from upsell_agent.agent.llm import compose_agent, run_agent
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
-from upsell_agent.agent.vehicle_media import wants_link
+from upsell_agent.agent.vehicle_media import lead_vehicle_vin, wants_link
+from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.display import about_customer, display_value
 from upsell_agent.slots.schema import SCHEMA
@@ -114,7 +116,16 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
     return changed
 
 
-def compose_payload(state: AgentState) -> dict[str, Any]:
+def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
+    """This turn's link plan (agent/link_resolver.py), from what Extract said and this turn's stock."""
+    pack = state.context_pack or {}
+    return resolve_link(state.extraction, inventory=pack.get("inventory") or [],
+                        website=((pack.get("dealer") or {}).get("info") or {}).get("website"),
+                        referred_vin=(pack.get("referred_vehicle") or {}).get("vin"),
+                        lead_vin=lead_vehicle_vin(ctx.lead, ctx.lead_state) if ctx else None)
+
+
+def compose_payload(state: AgentState, link_plan: LinkPlan | None = None) -> dict[str, Any]:
     decision = state.decision or {}
     return {
         "action": decision.get("action"),
@@ -142,8 +153,9 @@ def compose_payload(state: AgentState) -> dict[str, Any]:
         "touch1": decision.get("touch1"),
         "touch": decision.get("touch"),
         "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
-        # MASTER_PLAN_4 F3: only then may the message carry a vehicle's page_url (guardrails/link_guard.py).
+        # MASTER_PLAN_4 F3 / conversation_7: which link placeholder(s) to write, if any (agent/link_resolver.py).
         "link_requested": wants_link(state.extraction),
+        "link": link_plan.for_compose() if link_plan else None,
         "reach_out": decision.get("reach_out"),
         # PLAN_4 stream H: "speak to a person" - offer a call or a text, or say how they'll be contacted.
         # Never the full phone number: its last 4 digits only (agent/human_contact.for_compose).
@@ -209,7 +221,8 @@ def _apply_dev_hint(draft: dict[str, Any], payload: dict[str, Any], *, retry: bo
 
 async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     model = ctx.settings.model_compose
-    payload = compose_payload(state)
+    link_plan = plan_links(state, ctx)
+    payload = compose_payload(state, link_plan)
     span.metrics = {"model": model}
     slow, retry, fallback, badtrim = _dev_hints(state, ctx)
     if slow:
@@ -230,6 +243,10 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
+    decision = state.decision or {}
+    linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
+                        decision.get("reply_language") else SMS_MAX)
+    draft["link_plan"] = link_plan.as_dict()
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
@@ -239,6 +256,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
         span.reasoning.append("The client's exact fixed wording put in by code, replacing the model's own draft.")
     if hinted:
         span.reasoning.append(hinted)
+    span.reasoning += [f"Link: {r}" for r in link_plan.reasons] + linked
     if draft.get("promises"):
         span.reasoning.append("Promises the team: " + "; ".join(draft["promises"]))
     if payload["guard_feedback"]:

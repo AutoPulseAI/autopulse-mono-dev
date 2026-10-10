@@ -379,14 +379,46 @@ def _contact_preference(text: str) -> str | None:
 
 # MASTER_PLAN_4 F3: the customer asks for the vehicle's link / web page.
 _LINK = re.compile(r"\b(?:send|text|email|share|give|got|have)\b[^.?!]{0,20}\blink\b|\blink\b[^.?!]{0,20}\b(?:to|for)\b"
+                   r"[^.?!]{0,20}\b(?:look|see)\b|"
+                   r"\blink\b[^.?!]{0,20}\b(?:to|for)\b"
                    r"[^.?!]{0,20}\b(?:it|car|truck|vehicle|listing|one)\b|\bsee (?:it|them|that one) online\b|"
                    r"\bmore (?:pictures|photos|pics)\b|\bwebsite listing\b|\blisting (?:page|link)\b", re.IGNORECASE)
 
 
+# conversation_7: what the link is for (agent/link_resolver.py picks the URL from it).
+_WEBSITE_LINK = re.compile(r"\b(?:your|the dealership'?s?|dealer'?s?)\s+(?:web\s*site|site|home\s*page)\b", re.IGNORECASE)
+_VEHICLE_LINK = re.compile(r"\b(?:it|car|truck|suv|vehicle|listing|one|pictures|photos|pics)\b", re.IGNORECASE)
+_OTHER_LINK = re.compile(r"\b(?:trade[- ]?in|credit|financ\w*|application|apply|service)\b", re.IGNORECASE)
+
+
+def _link_line(link: dict[str, Any] | None) -> str:
+    """The sentence the link plan asks for, with its placeholders (never a URL)."""
+    if not link:
+        return ""
+    vehicle = link.get("vehicle") or "it"
+    return {
+        "vehicle": f"Here's the {vehicle}: [VEHICLE_LINK]",
+        "vehicle_and_website": f"Here's the {vehicle}: [VEHICLE_LINK] You can also browse everything we have "
+                               "at [WEBSITE_LINK]",
+        "website": "Here's our website: [WEBSITE_LINK]",
+        "unavailable": f"{link.get('honest_line') or ''} The team can send it to you, or you're welcome to come by.",
+        "ask_which": "Happy to send a link. Which vehicle would you like it for?",
+    }.get(link.get("kind"), "").strip()
+
+
 def _wants_link(text: str) -> dict[str, Any]:
-    if _LINK.search(text):
-        return {"wants_link": True, "wants_link_confidence": 0.9}
-    return {"wants_link": False, "wants_link_confidence": 0.0}
+    website = bool(_WEBSITE_LINK.search(text))
+    if not (_LINK.search(text) or website):
+        return {"wants_link": False, "wants_link_confidence": 0.0}
+    if website:
+        target, sure = "website", 0.9
+    elif _OTHER_LINK.search(text):
+        target, sure = "other", 0.85
+    elif _VEHICLE_LINK.search(text):
+        target, sure = "vehicle", 0.85
+    else:  # "send me a link to look": which link is a guess
+        target, sure = "unclear", 0.5
+    return {"wants_link": True, "wants_link_confidence": 0.9, "link_target": target, "link_target_confidence": sure}
 
 
 # A stand-in for the real model's visit_when: any day, time or window word, only while a visit time was asked.
@@ -541,8 +573,9 @@ def _dealer_answer(question: str, info: dict[str, Any]) -> str | None:
             text = hours[day.capitalize()]
             return f"On {day.capitalize()} we're closed." if text == "closed" else f"On {day.capitalize()} we're open {text}."
         return f"Our hours are {info['hours_summary']}."
-    for pattern, field, template in ((_ADDRESS_Q, "address", "We're at {}."), (_PHONE_Q, "phone", "You can reach us at {}."),
-                                     (_WEBSITE_Q, "website", "Our website is {}.")):
+    if _WEBSITE_Q.search(question) and not (_ADDRESS_Q.search(question) or _PHONE_Q.search(question)):
+        return ""  # conversation_7: the website goes in only as the link plan's [WEBSITE_LINK] (compose)
+    for pattern, field, template in ((_ADDRESS_Q, "address", "We're at {}."), (_PHONE_Q, "phone", "You can reach us at {}.")):
         if pattern.search(question):
             return template.format(info[field]) if info.get(field) else ""
     return None
@@ -595,6 +628,8 @@ def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[
         sentences.append(text)
         promises += stock_promises
     for q in (q for q in questions if q["label"] == "answerable" and q not in stock):
+        if payload.get("link") and _WEBSITE_Q.search(q["text"]) and not _ADDRESS_Q.search(q["text"]):
+            continue  # answered by the link plan's sentence (compose)
         answer = _dealer_answer(q["text"], info)
         if answer:
             sentences.append(answer)
@@ -942,16 +977,20 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
              else [],
              "sms_vins": vins, "email_vins": vins}
     if vins:
-        # MASTER_PLAN_4 F3: the first vehicle named gets the photo (attached in code); its page link only
-        # when the customer asked for it.
+        # MASTER_PLAN_4 F3: the first vehicle named gets the photo (attached in code).
         result.update(sms_media_vin=vins[0], email_media_vin=vins[0])
-        stock = (payload.get("context") or {}).get("inventory") or []
-        page = next((r.get("page_url") for r in stock if r.get("vin") == vins[0] and r.get("page_url")), None)
-        if payload.get("link_requested") and page:
-            if len(f"{sms} Here's the link: {page}") <= limit:
-                result["sms_text"] = f"{sms} Here's the link: {page}"
-            result["email_body"] = f"{hi}{body} Here's the link: {page}\n\nThanks,\nThe Team"
-            result["why"] += " They asked for the link, so the vehicle's own page is included."
+    if line := _link_line(payload.get("link")):
+        # conversation_7: the link plan's placeholders only (agent/link_resolver.py fills in the real URLs).
+        link = payload["link"]
+        if len(f"{sms} {line}") <= limit:
+            result["sms_text"] = f"{sms} {line}"
+        result["email_body"] = f"{hi}{body} {line}\n\nThanks,\nThe Team"
+        if link.get("vin") and link.get("placeholders"):
+            for key in ("sms_vins", "email_vins"):
+                result[key] = [*result[key], link["vin"]] if link["vin"] not in result[key] else result[key]
+            result.setdefault("sms_media_vin", link["vin"])
+            result.setdefault("email_media_vin", link["vin"])
+        result["why"] += f" They asked for a link: {link['kind']}."
     if body_no_vehicles:
         no_sms = body_no_vehicles if len(body_no_vehicles) <= limit else (
             body_no_vehicles[: limit - 1].rsplit(" ", 1)[0] + "…")

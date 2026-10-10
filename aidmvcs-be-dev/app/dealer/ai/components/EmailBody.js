@@ -2,11 +2,13 @@
 // Renders one email body for the AI Messages screen.
 //   - Plain text (what the AI writes): paragraphs, line breaks, clickable links, and the
 //     quoted earlier thread folded away behind "Show quoted text".
+//   - ADF XML (a lead from Cars.com, CarGurus...): a formatted lead card (AdfLead).
 //   - HTML (customer replies, the dealer's branded template): drawn inside a sandboxed
 //     iframe with no scripts, so a stray <script>, <style> or CSS from the message can
 //     neither run nor restyle our page. The frame grows to fit its content.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import AdfLead, { looksLikeAdf } from "./AdfLead";
 
 const HTML_TAG = /<\/?(html|body|div|p|br|table|tr|td|span|a|img|h[1-6]|ul|ol|li|strong|b|em|i|center|font)\b/i;
 const URL_RE = /(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])/g;
@@ -128,6 +130,7 @@ function HtmlBody({ html }) {
 export default function EmailBody({ body }) {
   const text = useMemo(() => decodeLeftovers(String(body || "")).replace(/\r\n/g, "\n"), [body]);
   if (!text.trim()) return <p className="text-secondary-light fst-italic mb-0">This email has no content.</p>;
+  if (looksLikeAdf(text)) return <AdfLead raw={text} />;
   if (HTML_TAG.test(text)) return <HtmlBody html={text} />;
   return <PlainBody text={text} />;
 }

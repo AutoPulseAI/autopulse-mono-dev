@@ -60,7 +60,8 @@ export async function GET(req) {
     return {
       lead_id: r.lead_id,
       name: lead?.name || null,
-      phone: lead?.phone || (inbound ? r.last_sender : r.last_recipient) || null,
+      // An email's sender / recipient is an address, not a phone number.
+      phone: lead?.phone || (r.last_channel === "email" ? null : inbound ? r.last_sender : r.last_recipient) || null,
       vehicle: lead?.vehicle || null,
       email: lead?.email || null,
       last_text: previewText(r),

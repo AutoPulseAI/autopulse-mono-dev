@@ -29,6 +29,7 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.context_pack import estimate_tokens
 from upsell_agent.agent.question_topics import is_stock_question
 from upsell_agent.agent.state import AgentState
+from upsell_agent.agent.vehicle_media import lead_vehicle_vin, wants_link
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.tools.inventory_tool import (
     MAX_LOADED,
@@ -117,9 +118,35 @@ async def _referred_vehicle(state: AgentState, span: NodeSpan, ctx: TurnContext,
     return {**patched, "referred_vehicle": referred}
 
 
+async def _link_vehicle(state: AgentState, span: NodeSpan, ctx: TurnContext, pack: dict[str, Any]) -> dict[str, Any]:
+    """conversation_7: the customer asked for a link ("can you send me a link to look") - the vehicle they mean
+    (the one Extract named, else the one the lead is about) is read fresh and put in `inventory` when this turn's
+    search didn't load it, so agent/link_resolver.py can find its page. Never a stand-in vehicle."""
+    if not wants_link(state.extraction):
+        return pack
+    loaded = {r.get("vin") for r in pack.get("inventory") or []}
+    named = (state.extraction or {}).get("link_target_vin")
+    vin = next((v for v in (named, lead_vehicle_vin(ctx.lead, ctx.lead_state)) if v), None)
+    if not vin or vin in loaded:
+        return pack
+    try:
+        record = await get_vehicle(state.dealer_id, vin, ctx.inventory or get_inventory_source(ctx.settings))
+    except Exception as exc:  # noqa: BLE001 - a link is never worth a failed turn
+        span.reasoning = [*(span.reasoning or []), f"Link vehicle {vin} couldn't be read ({exc!r})."]
+        return pack
+    if not record:
+        span.reasoning = [*(span.reasoning or []), f"Link vehicle {vin} is no longer in stock."]
+        return pack
+    shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
+    span.reasoning = [*(span.reasoning or []), f"They asked for a link: {vin} added to this turn's stock."]
+    return _patch(pack, [{**record.model_dump(), "already_shown": vin in shown}, *(pack.get("inventory") or [])],
+                  pack.get("inventory_query"), pack.get("inventory_checked_at"))
+
+
 async def search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     out = await _search_stock(state, span, ctx)
     out = {"context_pack": await _referred_vehicle(state, span, ctx, out["context_pack"])}
+    out = {"context_pack": await _link_vehicle(state, span, ctx, out["context_pack"])}
     # PLAN_4 stream L: a cadence touch announcing a verified price drop gets that vehicle, read fresh, with
     # its verified prices - the only record that ever carries a price (learning/price_watch.py).
     drop = ((ctx.lead_state or {}).get("pending_touch") or {}).get("price_drop")

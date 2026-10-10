@@ -30,7 +30,6 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.language import message_language
 from upsell_agent.agent.nodes.compose import just_captured
 from upsell_agent.agent.state import AgentState
-from upsell_agent.agent.vehicle_media import wants_link
 from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
 from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
@@ -66,6 +65,14 @@ def known_from_sources(state: AgentState) -> list[str]:
     texts += [s.get("display") for s in pack.get("profile") or []]
     return [t for t in texts if t]
 ANSWERING_ACTIONS = {"answer", "clarify"}
+
+
+def _mask_links(text: Any, links: list[str]) -> Any:
+    if not isinstance(text, str):
+        return text
+    for link in sorted(links, key=len, reverse=True):
+        text = text.replace(link, "LINK")
+    return text
 
 
 def _key(text: str) -> str:
@@ -268,7 +275,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
-    result = check_draft(state.draft, customer_texts=customer_texts, known_values=known, inventory=inventory,
+    # The plan's own links were put in by code (agent/link_resolver.py): their digits aren't the AI's numbers.
+    links = ((state.draft or {}).get("link_plan") or {}).get("urls") or []
+    checked = {k: (_mask_links(v, links) if k in ("sms_text", "email_subject", "email_body") else v)
+               for k, v in draft.items()} if links else state.draft
+    result = check_draft(checked, customer_texts=customer_texts, known_values=known, inventory=inventory,
                          # Three segments for Touch 1, and for a reply in Spanish (stream Q: the same message runs
                          # about a fifth longer, and two over-length drafts handed a Spanish lead to staff).
                          sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") or (
@@ -320,10 +331,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_booking_wording:
         result["passed"] = False
         result["violations"] += bad_booking_wording
-    # MASTER_PLAN_4 F3: the photo, not the link - a link only when the customer asked, and only to a named
-    # vehicle's own page (guardrails/link_guard.py).
-    bad_links = disallowed_links(state.draft, inventory=inventory, link_requested=wants_link(state.extraction),
-                                 allowed=[((pack.get("dealer") or {}).get("info") or {}).get("website")])
+    # MASTER_PLAN_4 F3 / conversation_7: only the links this turn's plan allows (agent/link_resolver.py) - a
+    # vehicle's own page, the homepage when they asked for it or weren't clear - and never an autopulse.ai one.
+    bad_links = disallowed_links(state.draft, allowed=((state.draft or {}).get("link_plan") or {}).get("urls") or [],
+                                 homepage=((pack.get("dealer") or {}).get("info") or {}).get("website"))
     result["checks"]["no_link_unless_asked"] = not bad_links
     if bad_links:
         result["passed"] = False
