@@ -60,7 +60,8 @@ def known_from_sources(state: AgentState) -> list[str]:
     September 27")."""
     pack = state.context_pack or {}
     info = (pack.get("dealer") or {}).get("info") or {}
-    texts = [info.get(k) for k in ("address", "phone", "website", "hours_summary")]
+    texts = [info.get(k) for k in ("address", "phone", "website", "credit_application_link", "trade_in_link",
+                                   "hours_summary")]
     texts += list((info.get("hours") or {}).values())
     texts += [s.get("display") for s in pack.get("profile") or []]
     return [t for t in texts if t]
@@ -332,7 +333,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         result["passed"] = False
         result["violations"] += bad_booking_wording
     # MASTER_PLAN_4 F3 / conversation_7: only the links this turn's plan allows (agent/link_resolver.py) - a
-    # vehicle's own page, the homepage when they asked for it or weren't clear - and never an autopulse.ai one.
+    # vehicle's own page, the homepage when they asked for it or weren't clear, Dealer Setup's credit application /
+    # trade-in page when they asked for it (client, 8 Oct 2026) - and never an autopulse.ai one.
     bad_links = disallowed_links(state.draft, allowed=((state.draft or {}).get("link_plan") or {}).get("urls") or [],
                                  homepage=((pack.get("dealer") or {}).get("info") or {}).get("website"))
     result["checks"]["no_link_unless_asked"] = not bad_links

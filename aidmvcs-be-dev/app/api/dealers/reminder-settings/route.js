@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
+import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
+
+// Reminder settings are edited by AutoPulse super admins only; dealers view them (client, 8 Oct 2026 meeting).
 
 
 // GET: Get dealer's reminder settings
@@ -61,6 +64,11 @@ export async function GET(req) {
 // PUT: Update dealer's reminder settings
 export async function PUT(req) {
   try {
+    await dbConnect();
+    const editor = await loadSettingsEditor(req);
+    if (!editor.superAdmin) {
+      return NextResponse.json({ message: SETTINGS_VIEW_ONLY_MESSAGE }, { status: editor.user ? 403 : 401 });
+    }
     const body = await req.json();
     console.log('Received PUT body:', JSON.stringify(body, null, 2));
     

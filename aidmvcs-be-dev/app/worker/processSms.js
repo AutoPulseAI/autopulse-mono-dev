@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js';
 import Lead from '../models/Lead.js';
 import User from '../models/User.js';
@@ -60,7 +61,8 @@ export async function processSMS(job) {
     const dealer = await User.findOne({
         '_id': dealer_id
     });
-    let autreply =true;
+    // n8n's replies are off unless LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+    let autreply = legacyAutoReplyOn();
     if(dealer?.setting){
         if(dealer?.setting?.autoReplyEnabled === false){
            autreply =false;
@@ -69,11 +71,13 @@ export async function processSMS(job) {
     // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
     // conversation - no n8n, no auto-reply, no follow-up jobs.
     const aiMode = await getDealerAiMode(dealer_id);
-    if (aiMode === 'live') {
-      return await handleInboundSmsLive({ currentSMS, dealer });
+    // No n8n at all unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026: "we do not need n8n for anything"):
+    // every dealership's texts are saved and linked by our own code; the AI hears of them only when it is on.
+    if (aiMode === 'live' || !legacyAutoReplyOn()) {
+      return await handleInboundSmsLive({ currentSMS, dealer, mode: aiMode });
     }
 
-    const result = await callOllama(currentSMS);
+    const result = withoutLegacyStatus(await callOllama(currentSMS));
    console.log('olamm response', result);
 
     // The webhook can deterministically associate a reply from prior SMS

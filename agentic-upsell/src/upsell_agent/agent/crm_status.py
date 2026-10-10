@@ -26,6 +26,14 @@ CRM_STATUS_FOR_EVENT = {
     "day_91": "Closed - Lost",
     "no_longer_owns": "Closed - No Longer Owns",
 }
+# Client, 8 Oct 2026: the SOW's working stages shown as CRM statuses, set by the AI as the lead moves. The CRM
+# applies one only over another working status (aidmvcs-be-dev app/lib/ai/aiDnd.js WORKING_STATUSES), never over a
+# status staff chose (Appointment Booked, Visited, Sold, DND, ...).
+CRM_STATUS_FOR_STAGE = {
+    "no_contact_made": "Lead Not Contacted",
+    "contact_made_no_next_action": "Contacted - No Next Action",
+    "contact_made_specific_followup": "Contacted - Specific Follow-up",
+}
 RETRY_LIMIT = 200
 
 
@@ -40,11 +48,18 @@ def _client(platform: Any | None) -> Any:
 async def sync_closed(db: DealerScopedDatabase, lead_id: str, event_kind: str, *, reason: str,
                       closed_at: Any = None, platform: Any | None = None) -> dict[str, Any]:
     """Shows the AI's closing on the CRM lead. Never raises. Returns what happened (kept on the lead state)."""
-    from upsell_agent.integrations.dealer_mode import dealer_ai_mode
-
     status = CRM_STATUS_FOR_EVENT.get(event_kind)
     if not status:
         return {"status": "not_needed"}
+    return await sync_status(db, lead_id, status, reason=reason, event_kind=event_kind, closed_at=closed_at,
+                             platform=platform)
+
+
+async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, reason: str, event_kind: str,
+                      closed_at: Any = None, platform: Any | None = None) -> dict[str, Any]:
+    """Shows `status` on the CRM lead (a closing, or a working stage). Never raises; kept on the lead state."""
+    from upsell_agent.integrations.dealer_mode import dealer_ai_mode
+
     closed_at = closed_at or clock.now()
     try:
         mode = await dealer_ai_mode(db.dealer_id)
@@ -58,7 +73,7 @@ async def sync_closed(db: DealerScopedDatabase, lead_id: str, event_kind: str, *
                                                              closed_at=closed_at)
             result = {"status": "updated" if answer.get("updated") else "kept", "crm_status": status,
                       **({"reason": answer["reason"]} if answer.get("reason") else {})}
-        except Exception as exc:  # noqa: BLE001 - the close stands whatever the CRM answers
+        except Exception as exc:
             logger.exception("could not show lead %s as %s in the CRM", lead_id, status)
             result = {"status": "failed", "crm_status": status, "error": str(exc)[:300], "event": event_kind,
                       "reason_text": reason}

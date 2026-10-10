@@ -233,9 +233,17 @@ async def test_a_second_lead_for_the_same_customer_is_linked_not_worked(mongo, l
     primary = await _state(mongo, first["lead_id"])
     assert [x["lead_id"] for x in primary["linked_leads"]] == [second["lead_id"]]
     assert primary["staff_notice"]["kind"] == "duplicate_lead"
-    # A repeat of the same event changes nothing.
-    assert (await _created(second))["status"] == "duplicate"
+    # Client, 10 Oct 2026: the new inquiry is answered - on the primary, in the same conversation.
+    assert result["new_inquiry"]["status"] == "done", result["new_inquiry"]
+    assert result["new_inquiry"]["send_status"] == "sent"
+    sent = {"lead_id": first["lead_id"], "direction": "outbound", "turn_id": f"new-inquiry-{second['lead_id']}"}
+    assert await mongo[AI_MESSAGES_COLLECTION].count_documents(sent) >= 1
+    replies = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": first["lead_id"]}).to_list(None)
+    # A repeat of the same event changes nothing and doesn't answer twice.
+    again = await _created(second)
+    assert again["status"] == "duplicate"
     assert len((await _state(mongo, first["lead_id"]))["linked_leads"]) == 1
+    assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]}) == len(replies)
 
 
 async def test_the_same_phone_on_a_different_customer_record_is_a_duplicate_too(mongo, live_dealer):
@@ -329,3 +337,28 @@ def test_plain_wording_about_photos_is_fine():
     for text in ("I can't send photos by text, but I can show you the car in person.",
                  "Do you want to see it Thursday?"):
         assert not media.unattached_photo_claim(text)
+
+
+async def test_a_new_lead_from_the_same_customer_restarts_the_90_day_clock(mongo, live_dealer):
+    """Client, 10 Oct 2026 (Betsy): "when a customer re-engages, sends a new lead, the 90 day clock starts over" -
+    every dealer, every lead: the Day 91 period and the own-inquiry texting window count from the new lead."""
+    from datetime import timedelta
+
+    from tests.unit.conftest import set_clock
+    from upsell_agent import clock
+    first = await _lead()
+    await _created(first)
+    set_clock(clock.now() + timedelta(days=60))
+    second = await _lead(customer_id=first["customer_id"])
+    result = await _created(second)
+    assert result["reengaged"]["status"] == "restarted"
+    state = await _state(mongo, first["lead_id"])
+    anchor = state["day91_anchor"]
+    anchor = anchor if anchor.tzinfo else anchor.replace(tzinfo=clock.now().tzinfo)
+    assert abs((anchor - clock.now()).total_seconds()) < 60
+    assert state["last_inquiry_at"] and state["stage"] == "contact_made_no_next_action"
+    # Day 100 of the first lead, Day 40 of the re-engagement: still open, not closed at Day 91.
+    set_clock(clock.now() + timedelta(days=40))
+    from upsell_agent.agent import lifecycle
+    await lifecycle.close_expired()
+    assert (await _state(mongo, first["lead_id"]))["stage"] != "closed_lost"

@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import DateRangePickerComponent from "../components/DateRangePicker";
 import CountCard from "./components/CountCard";
+import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
 import ActivityOverTimeDataBar from "./components/ActivityOverTimeDataBar";
 import LeadSourceDataPie from "./components/LeadSourceDataPie";
@@ -27,6 +28,14 @@ export default function Dashboard() {
   const [messageStats, setMessageStats] = useState(null);
   const [reportAnalytics, setReportAnalytics] = useState(null);
   const [managerialReviewCount, setManagerialReviewCount] = useState(0);
+  // Client, 8 Oct 2026: the dashboard's escalation card is "AI Alerts" - one name everywhere - and counts the open
+  // AI alerts (the same number as the menu badge) plus the leads in Managerial Review.
+  const [aiAlertCount, setAiAlertCount] = useState(0);
+  useEffect(() => {
+    aiFetch("/api/dealer-ai/alerts?count_only=1")
+      .then((data) => setAiAlertCount(data.unhandled_count || 0))
+      .catch(() => setAiAlertCount(0));
+  }, []);
   const [newThisWeekCount, setNewThisWeekCount] = useState(0);
   const [todayLeadsCount, setTodayLeadsCount] = useState(0);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
@@ -909,20 +918,15 @@ export default function Dashboard() {
             />
 
             <CountCard
-              iconClass="fa-light fa-comment-lines"
-              count={managerialReviewCount}
-              label="Managerial Review"
-              link="/dealer/leads?status=Managerial Review"
-              description="All-time count"
+              iconClass="fa-light fa-bell"
+              count={aiAlertCount}
+              label="AI Alerts"
+              link="/dealer/ai/alerts"
+              description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
             
-            <CountCard
-              iconClass="fa-regular fa-envelope-open"
-              count={unreadMessageCount}
-              label="Unread Messages"
-              link="/dealer/leads?message_filter=unread"
-              description="Current unread count"
-            />
+            {/* "Unread Messages" removed (client, 9 Oct 2026): it counted every stored message never opened, all time,
+                in both directions; customer conversations are in AI Assistant > AI Messages. */}
            
             {/*
             <CountCard

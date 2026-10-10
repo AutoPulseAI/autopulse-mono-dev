@@ -134,8 +134,8 @@ def _rng(db: DealerScopedDatabase, lead_id: str, state: cadence.CadenceState, to
     return random.Random(f"{db.dealer_id}:{lead_id}:{started}:{touch_number}:{purpose}")
 
 
-def angle_candidates(used: list[str], exclude: frozenset[str]) -> list[str]:
-    themes = [t.id for t in cadence.EXTENDED_THEMES if t.id not in exclude]
+def angle_candidates(used: list[str], exclude: frozenset[str], day: int | None = None) -> list[str]:
+    themes = [t.id for t in cadence.themes_for_day(day) if t.id not in exclude]
     unused = [t for t in themes if t not in used]
     if unused:
         return unused
@@ -173,8 +173,8 @@ async def choose_for_touch(db: DealerScopedDatabase, planned: cadence.PlannedTou
     if planned.touch_number not in cadence.FIXED_DAYS:
         drop = await price_watch.drop_for_lead(db, lead, lead_state, now)
         exclude = frozenset() if drop else frozenset({cadence.PRICE_CHANGE.id})
-        default = cadence.pick_theme(planned.touch_number, state.themes_used, exclude)
-        candidates = angle_candidates(state.themes_used, exclude)
+        default = cadence.pick_theme(planned.touch_number, state.themes_used, exclude, day=planned.day)
+        candidates = angle_candidates(state.themes_used, exclude, day=planned.day)
         if default.id not in candidates:
             candidates.append(default.id)
         if learning:

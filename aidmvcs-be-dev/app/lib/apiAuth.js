@@ -37,6 +37,35 @@ export async function loadAuthenticatedUser(req) {
 }
 
 /**
+ * Who may edit a dealership's AI, follow-up and reminder settings (client, 8 Oct 2026 meeting: "only super admins
+ * get workflow access" - dealers can only view them, so they can't drive up costs): a super admin (User.type
+ * "admin"), signed in directly or inside a dealer account through "login as" (app/api/login-as stamps
+ * `impersonated_by` on that token). Dealers, their managers and staff are view-only.
+ * @returns {Promise<{user: object|null, superAdmin: boolean}>}
+ */
+export async function loadSettingsEditor(req) {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader || !/^Bearer\s+\S+$/.test(authHeader)) return { user: null, superAdmin: false };
+  let decoded;
+  try {
+    decoded = jwt.verify(authHeader.replace(/^Bearer\s+/, ""), process.env.JWT_SECRET);
+  } catch {
+    return { user: null, superAdmin: false };
+  }
+  if (!decoded?.userId || !mongoose.isValidObjectId(decoded.userId)) return { user: null, superAdmin: false };
+  const user = await User.findById(decoded.userId).select("_id type parent_id vendor_id");
+  if (!user) return { user: null, superAdmin: false };
+  if (user.type === "admin") return { user, superAdmin: true };
+  if (decoded.impersonated_by && mongoose.isValidObjectId(decoded.impersonated_by)) {
+    const by = await User.findById(decoded.impersonated_by).select("_id type");
+    if (by?.type === "admin") return { user, superAdmin: true };
+  }
+  return { user, superAdmin: false };
+}
+
+export const SETTINGS_VIEW_ONLY_MESSAGE = "These settings are managed by AutoPulse. Please contact us to change them.";
+
+/**
  * @param {Request} req
  * @returns {Promise<{mode: "internal_service"} | {mode: "user", currentUser: object} | null>}
  *   null means unauthenticated — caller should respond 401.

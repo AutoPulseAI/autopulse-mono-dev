@@ -1,5 +1,6 @@
 // app/api/leads/status/route.js
 import { NextResponse } from "next/server";
+import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
 import User from "@models/User.js";
@@ -21,6 +22,7 @@ import {
   slotErrorStatus, upsertLeadBooking,
 } from '@lib/bookingService.js';
 import jwt from 'jsonwebtoken';
+import { logActivity } from '@lib/activityLog';
 import {
   normalizeUserLanguage,
   toDisplayLanguageName,
@@ -196,6 +198,7 @@ async function createAppointmentNotificationRecord(leadId, dealerId, messageType
 
 export async function PUT(request) {
   let messageBy = null; // Default to null (system message)
+  let actorName = null; // for the customer timeline (app/lib/activityLog.js)
   try {
     const authHeader = request.headers.get("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -205,6 +208,7 @@ export async function PUT(request) {
       // Set message_by to user ID for authenticated users
       if (currentUser) {
         messageBy = currentUser._id;
+        actorName = currentUser.name || currentUser.email || null;
       }else{
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
       }
@@ -339,6 +343,16 @@ export async function PUT(request) {
       updateDoc,
       { new: true, runValidators: true }
     );
+
+    if (updated && String(originalLead?.fe_lead_status || '') !== String(updated.fe_lead_status || '')) {
+      // Client, 10 Oct 2026: a person changing a status is logged on the customer timeline, with who and when.
+      await logActivity({
+        dealer_id: updated.dealer_id, customer_id: updated.customer_id || null, lead_id: updated._id,
+        actor_type: 'staff', actor_id: messageBy, actor_name: actorName, action: 'status_changed',
+        from: originalLead?.fe_lead_status || null, to: updated.fe_lead_status || null,
+        detail: manager_outcome ? `Visit outcome: ${manager_outcome}` : null,
+      });
+    }
 
     if (!updated) {
       return NextResponse.json(
@@ -681,7 +695,14 @@ export async function PUT(request) {
     }
 
     // Create managerial review messages if status changed to "Managerial Review"
-    if (status === 'Managerial Review' && !aiOwnsMessages) {
+    // For AI-live dealers too: the AI pauses on Managerial Review, and these are its only follow-ups.
+    if (status === 'Managerial Review' && (originalLead.fe_lead_status || originalLead.status) !== 'Managerial Review') {
+      // The dealer's manager is alerted by email and text (client, 8 Oct 2026: "ensure managers receive SMS and
+      // email notification").
+      await notifyManagers({ dealerId: updated.dealer_id, leadId: updated._id,
+        title: 'A lead needs a manager (Managerial Review)', detail: 'Set by staff.' });
+    }
+    if (status === 'Managerial Review') {
       try {
         const reviewResult = await createManagerialReviewMessages(updated._id, updated.dealer_id);
         console.log('Managerial review messages created from lead status update:', reviewResult);

@@ -41,6 +41,35 @@ function LeadManagementContent() {
     }
   }, [searchParams]);
 
+  // Client, 8 Oct 2026: "Open lead" (AI Alerts, AI Messages, manager alert links) opens that lead, not the list.
+  // The address carries ?selectedLead=true&leadId=<id> or ?lead=<id>; the lead is loaded and shown.
+  useEffect(() => {
+    const leadId = searchParams.get('leadId') || searchParams.get('lead');
+    if (!leadId || selectedLead?._id === leadId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/leads/${leadId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('dealertoken')}` },
+        });
+        const data = await res.json();
+        if (!cancelled && data?.lead) {
+          if (searchParams.get('selectedLead') !== 'true') {
+            const params = new URLSearchParams(window.location.search);
+            params.set('selectedLead', 'true');
+            params.set('leadId', leadId);
+            params.delete('lead');
+            window.history.replaceState(window.history.state, '', `/dealer/leads?${params.toString()}`);
+          }
+          setSelectedLead(data.lead);
+        }
+      } catch (error) {
+        console.error('Could not open the lead from the link:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleLeadSelect = async (lead) => {
     setSelectedLead(lead);
     setIsOpen(false);

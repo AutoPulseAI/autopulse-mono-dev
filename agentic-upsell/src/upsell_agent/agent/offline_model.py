@@ -388,7 +388,14 @@ _LINK = re.compile(r"\b(?:send|text|email|share|give|got|have)\b[^.?!]{0,20}\bli
 # conversation_7: what the link is for (agent/link_resolver.py picks the URL from it).
 _WEBSITE_LINK = re.compile(r"\b(?:your|the dealership'?s?|dealer'?s?)\s+(?:web\s*site|site|home\s*page)\b", re.IGNORECASE)
 _VEHICLE_LINK = re.compile(r"\b(?:it|car|truck|suv|vehicle|listing|one|pictures|photos|pics)\b", re.IGNORECASE)
-_OTHER_LINK = re.compile(r"\b(?:trade[- ]?in|credit|financ\w*|application|apply|service)\b", re.IGNORECASE)
+_CREDIT_LINK = re.compile(r"\b(?:credit|financ\w*|pre-?approv\w*|apply|application)\b", re.IGNORECASE)
+_TRADE_LINK = re.compile(r"\b(?:trade[- ]?in|apprais\w*|valu(?:e|ed|ation))\b", re.IGNORECASE)
+_OTHER_LINK = re.compile(r"\bservice\b", re.IGNORECASE)
+# "how do I apply for financing?" / "can I value my trade online?": the dealer may have a page for it.
+_DEALER_PAGE_ASK = re.compile(r"\b(?:how (?:do|can) I|can I|where (?:do|can) I)\b[^.?!]{0,30}\b(?:apply|pre-?approv\w*|"
+                              r"(?:get|have) (?:my|the) (?:car|trade|vehicle)[^.?!]{0,10}(?:valued|apprais\w*)|value "
+                              r"my (?:car|trade))\b|\bonline\b[^.?!]{0,20}\b(?:apply|application|apprais\w*)\b",
+                              re.IGNORECASE)
 
 
 def _link_line(link: dict[str, Any] | None) -> str:
@@ -401,6 +408,8 @@ def _link_line(link: dict[str, Any] | None) -> str:
         "vehicle_and_website": f"Here's the {vehicle}: [VEHICLE_LINK] You can also browse everything we have "
                                "at [WEBSITE_LINK]",
         "website": "Here's our website: [WEBSITE_LINK]",
+        "credit_application": "You can apply for financing here: [DEALER_LINK]",
+        "trade_in": "You can get your trade valued here: [DEALER_LINK]",
         "unavailable": f"{link.get('honest_line') or ''} The team can send it to you, or you're welcome to come by.",
         "ask_which": "Happy to send a link. Which vehicle would you like it for?",
     }.get(link.get("kind"), "").strip()
@@ -408,10 +417,14 @@ def _link_line(link: dict[str, Any] | None) -> str:
 
 def _wants_link(text: str) -> dict[str, Any]:
     website = bool(_WEBSITE_LINK.search(text))
-    if not (_LINK.search(text) or website):
+    if not (_LINK.search(text) or website or _DEALER_PAGE_ASK.search(text)):
         return {"wants_link": False, "wants_link_confidence": 0.0}
     if website:
         target, sure = "website", 0.9
+    elif _TRADE_LINK.search(text):
+        target, sure = "trade_in", 0.85
+    elif _CREDIT_LINK.search(text):
+        target, sure = "credit_application", 0.85
     elif _OTHER_LINK.search(text):
         target, sure = "other", 0.85
     elif _VEHICLE_LINK.search(text):

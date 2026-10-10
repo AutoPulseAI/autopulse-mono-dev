@@ -1,5 +1,6 @@
 // leadworker.js
 import { Worker } from 'bullmq';
+import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 
 import dbConnect from '../lib/mongodb.js';
 import { sendEmail } from '../lib/email.js';
@@ -50,8 +51,9 @@ export const processLead = async (job) => {
       const routing = aiRouting(aiMode);
 
       // Call Ollama API for processing first to get user_language
-      const ollamaResponse = routing.callN8n
-        ? await callOllama(jobData)
+      // No n8n unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026): the lead is saved from its own data.
+      const ollamaResponse = routing.callN8n && legacyAutoReplyOn()
+        ? withoutLegacyStatus(await callOllama(jobData))
         : { response: null, response_mode: leadChannel(leadData), user_language: leadData.user_language || 'english' };
       const { 
         response,
@@ -153,7 +155,8 @@ export const processLead = async (job) => {
           }).save();
         } else try {
           let messageId;
-          if (autoReplyEnabled) {
+          // n8n's first reply only when LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+          if (autoReplyEnabled && legacyAutoReplyOn()) {
             try {
               if (communicationType === 'sms') {
                 messageId = await sendSMS(recipient, content, dealer);

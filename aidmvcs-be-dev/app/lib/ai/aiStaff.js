@@ -28,6 +28,9 @@ export const STAFF_OWNED_STATUSES = Object.freeze([
   // The lead is lost (client, 1 Oct 2026: the only closed status besides "Closed - No Longer Owns"). From
   // Sold Pending too: staff picking Closed - Lost or Sold Delivered ends the Sold Pending workflow.
   'Closed - Lost',
+  // The SOW's working stages (client, 8 Oct 2026): staff setting one puts the lead back on the follow-up cadence
+  // (the same workflow Unsold restarts) at that stage, and the AI takes it back.
+  'Lead Not Contacted', 'Contacted - No Next Action',
 ]);
 
 // The outcome a manager must pick when a lead is set to "Visited" (MASTER_PLAN_3 C5).

@@ -854,6 +854,20 @@ export default function ViewConversations({
                     </Button>
                     </Col>
 
+                    {lead?.customer_id && (
+                    <Col xxl={12} lg={3} md={12} xs={6}>
+                    {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (all their leads). */}
+                    <Button
+                      variant="outline-secondary"
+                      className="w-100 text-nowrap"
+                      href={`/dealer/customers/${lead.customer_id}`}
+                    >
+                      <i className="fa-regular fa-user me-2"></i>
+                      View customer profile
+                    </Button>
+                    </Col>
+                    )}
+
                     {!embedded && (
                     <Col xxl={12} lg={3} md={12} xs={6}>
                     <Button

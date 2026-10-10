@@ -8,7 +8,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Alert, Badge, Button, Nav, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Form, Nav, Pagination, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CallOutcomeModal from "../components/CallOutcomeModal";
 import LeadAiDrawer from "../components/LeadAiDrawer";
@@ -119,6 +119,10 @@ function CallTasksContent() {
   const [success, setSuccess] = useState("");
   const [pending, setPending] = useState(null); // task whose outcome must be recorded
   const [drawer, setDrawer] = useState(null);
+  // Client, 10 Oct 2026: a long list needs search and pages.
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,6 +137,14 @@ function CallTasksContent() {
       setLoading(false);
     }
   }, [view]);
+
+  const needle = query.trim().toLowerCase();
+  const filtered = needle ? tasks.filter((t) => [t.name, t.customer_name, t.lead?.name, t.phone, t.email, t.vehicle,
+    t.reason, t.why, t.outcome, t.notes].some((v) => String(v || "").toLowerCase().includes(needle))) : tasks;
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const current = Math.min(page, pages);
+  const shown = filtered.slice((current - 1) * perPage, current * perPage);
+  useEffect(() => setPage(1), [view, needle, perPage]);
 
   useEffect(() => {
     load();
@@ -207,7 +219,16 @@ function CallTasksContent() {
         {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
         {view === "done" && <MissedCounts missed={missed} />}
 
-        <div className="w_card">
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Search name, phone, vehicle or reason"
+            value={query} onChange={(e) => setQuery(e.target.value)} />
+          <small className="text-secondary-light ms-auto">{filtered.length} task{filtered.length === 1 ? "" : "s"}</small>
+          <Form.Select size="sm" style={{ width: 100 }} value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
+            {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
+          </Form.Select>
+        </div>
+
+        <div className="w_card mb-5">
           {view === "open" && (
             <p className="text-secondary-light small">
               The AI opens a call task when its text and email got no reply within an hour, and (if turned on in AI
@@ -224,9 +245,10 @@ function CallTasksContent() {
 
           {loading && !tasks.length ? (
             <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
-          ) : !tasks.length ? (
+          ) : !filtered.length ? (
             <p className="text-secondary-light text-center py-4 mb-0">
-              {view === "open" ? "No calls to make right now." : view === "upcoming" ? "Nothing waiting." : "No finished call tasks yet."}
+              {needle ? "No call tasks match your search." : view === "open" ? "No calls to make right now."
+                : view === "upcoming" ? "Nothing waiting." : "No finished call tasks yet."}
             </p>
           ) : (
             <div className="table-responsive">
@@ -244,7 +266,7 @@ function CallTasksContent() {
                   )}
                 </thead>
                 <tbody>
-                  {tasks.map((task) => view === "done" ? (
+                  {shown.map((task) => view === "done" ? (
                     <tr key={task.id}>
                       <td><CustomerCell task={task} /></td>
                       <td>
@@ -315,6 +337,20 @@ function CallTasksContent() {
                   ))}
                 </tbody>
               </Table>
+              {pages > 1 && (
+                <Pagination size="sm" className="justify-content-center mt-3 mb-4 pb-2">
+                  <Pagination.Prev disabled={current === 1} onClick={() => setPage(current - 1)} />
+                  {Array.from({ length: pages }, (_, i) => i + 1)
+                    .filter((n) => n === 1 || n === pages || Math.abs(n - current) <= 2)
+                    .map((n, i, arr) => (
+                      <span key={n} className="d-flex">
+                        {i > 0 && n - arr[i - 1] > 1 && <Pagination.Ellipsis disabled />}
+                        <Pagination.Item active={n === current} onClick={() => setPage(n)}>{n}</Pagination.Item>
+                      </span>
+                    ))}
+                  <Pagination.Next disabled={current === pages} onClick={() => setPage(current + 1)} />
+                </Pagination>
+              )}
             </div>
           )}
         </div>

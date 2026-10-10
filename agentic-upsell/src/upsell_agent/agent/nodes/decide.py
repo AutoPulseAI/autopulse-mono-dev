@@ -24,7 +24,7 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, service_request
+from upsell_agent.agent import cadence, human_contact, lead_bucket, service_request, specialists
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
@@ -755,6 +755,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
     decision["bucket"] = lead_bucket.for_compose(ctx.lead_state, profile.values(include_stale=True))
+    # Client, 8 Oct 2026: the specialist for what the customer is talking about this turn (agent/specialists.py) -
+    # the reply's expertise and limits, never the action.
+    expert, expert_why = specialists.route(text, lead_type=getattr(profile.effective_lead_type, "value", None),
+                                           bucket=(ctx.lead_state or {}).get("bucket"))
+    decision["specialist"] = specialists.for_compose(expert, expert_why)
     # Stream Q: a customer writing in Spanish is answered in Spanish (agent/language.py).
     decision["reply_language"] = reply_language
     span.output = decision

@@ -244,8 +244,23 @@ async def marketing_sms_consent(db: DealerScopedDatabase, *, customer_id: str | 
     # do you close?" never agreed to campaigns. It only ever supported answering that conversation (a reply needs
     # no consent). Its `false` is still an explicit no (rule 4).
 
+    # Client, 9 Oct 2026: the customer's own YES to our email invitation (compliance/text_consent.py).
+    from upsell_agent.compliance import text_consent
+    if customer_id and (yes := await text_consent.latest_yes(db, customer_id)):
+        return {"status": "granted", "source": yes["consent_source"], "evidence_id": str(yes["_id"]),
+                "text_version": yes.get("consent_text_version"),
+                "detail": "the customer texted YES to the invitation to receive texts"}
     if not campaign:
         created = _lead_created(lead)
+        # Client, 10 Oct 2026: a re-engaging customer's new lead restarts the own-inquiry window (events/handlers.py
+        # _restart_opportunity_clock records it on the lead the AI works).
+        if lead_id:
+            from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+            row = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
+                                                                         projection={"last_inquiry_at": 1}) or {}
+            latest = _aware(row.get("last_inquiry_at")) if isinstance(row.get("last_inquiry_at"), datetime) else None
+            if latest and (created is None or latest > created):
+                created = latest
         fresh = created is None or at - created <= timedelta(days=INQUIRY_DAYS)
         wrote = await _customer_wrote(db, lead_id)
         if fresh and (origin.origin == "inbound" or wrote):
@@ -346,8 +361,15 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     check("ai_voice", True, f"channel is {channel}")
 
     if purpose == "lead_response":
-        is_reply = False  # never the reply exemption: the business sends first
-        if origin.origin != "inbound":
+        # The customer texted us first (the lead *is* their text): our first message is a reply to it, sent at
+        # any hour by SMS (client, 8 Oct 2026: a customer texting after hours is asked at once whether to carry on
+        # now or when the dealership opens - agent/after_hours.py). Every other lead_response (a web form, an
+        # email, an import) stays a business-initiated first message under the state hours.
+        texted_first = origin.origin == "inbound" and origin.source == "sms" and channel == "sms"
+        is_reply = texted_first
+        if texted_first:
+            check("lead_response", True, "the customer texted us first: the first message is a reply to it")
+        elif origin.origin != "inbound":
             # PLAN_4 stream X1 item 1: an imported / historical / campaign record is not a consumer inquiry.
             check("lead_response", False, f"not a consumer-initiated lead ({origin.rule}): its first message is "
                                           "outbound marketing")

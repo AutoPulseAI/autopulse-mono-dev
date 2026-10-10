@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
 import SlotFullNotice from "../../components/SlotFullNotice";
@@ -42,11 +43,14 @@ export default function StatusModal({
     "Unsold",
     "Closed - Lost",
     "Lead",
+    // The SOW's working stages (client, 8 Oct 2026): the AI also sets them as the lead moves.
+    "Lead Not Contacted",
+    "Contacted - No Next Action",
     "DND",
     "No Show"
   ];
   // Statuses only the AI sets (app/lib/ai/aiDnd.js READ_ONLY_STATUSES).
-  const readOnlyStatuses = ["Closed - No Longer Owns"];
+  const readOnlyStatuses = ["Closed - No Longer Owns", "Contacted - Specific Follow-up"];
   // MASTER_PLAN_3 C5: a visit needs the manager's outcome (client: "Sales Visit -> manager outcome required").
   const managerOutcomes = ["Sold Pending", "Sold Delivered", "Unsold"];
 
@@ -109,13 +113,13 @@ export default function StatusModal({
             {statusOptions.filter((status) => !(currentStatus === "Sold Delivered" && status === "Closed - Lost"))
               .map((status) => (
               <option key={status} value={status}>
-                {status}
+                {statusLabel(status)}
               </option>
             ))}
             {/* Set only by the AI (PLAN_4 stream S): shown when it is the lead's status, never offered. */}
             {readOnlyStatuses.includes(currentStatus) && (
               <option value={currentStatus} disabled>
-                {currentStatus} (set by the AI)
+                {statusLabel(currentStatus)} (set by the AI)
               </option>
             )}
           </Form.Select>

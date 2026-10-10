@@ -95,7 +95,8 @@ LATER = {"choice": "later", "times_offered": 1, "offered_turn": 1}
 def test_answer_to_the_offer(extraction, choice, mode):
     plan = _plan(trigger="inbound_message", turn=1, record=OFFERED, extraction=extraction)
     assert plan.record["choice"] == choice and plan.mode == mode
-    assert plan.schedule_resume == (choice == "later") and not plan.cancel_resume
+    # The offer already planned the morning message (no answer = wait): "later" keeps it, anything else cancels it.
+    assert plan.schedule_resume == (choice == "later") and plan.cancel_resume == (choice == "now")
 
 
 def test_the_answer_is_only_read_against_our_offer():
@@ -207,8 +208,10 @@ async def _state(mongo, created):
 
 
 async def _resumes(mongo, created):
-    return await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+    """The morning messages, without the ones a newer one replaced (the offer plans one; "later" re-plans it)."""
+    rows = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
         {"lead_id": created["lead_id"], "kind": followups.KIND_RESUME}).to_list(None)
+    return [r for r in rows if r["status"] != "superseded"]
 
 
 async def _turns(mongo, created):
@@ -250,8 +253,9 @@ async def test_now_carries_the_conversation_on_at_night(mongo, dealer_with_hours
     reply = await _last_sms(mongo, created)
     assert "closed" not in reply and 1 <= reply.count("?") <= 2
     assert (await _state(mongo, created))["conversation"]["after_hours"]["choice"] == "now"
-    assert await _resumes(mongo, created) == []
-    # Never offered again.
+    # The offer planned the morning message; "now" cancelled it.
+    assert [r["status"] for r in await _resumes(mongo, created)] == ["cancelled"]
+    # Never offered again the same night.
     await _say(created, "what colours do you have?")
     assert "Which would you like?" not in await _last_sms(mongo, created)
 
@@ -485,3 +489,29 @@ async def test_the_resume_message_is_exempt_from_the_greeting_check():
                         channel="sms", store_prompts=False)
     result = (await guard(state, NodeSpan(), SimpleNamespace(tracer=tracer)))["guard_result"]
     assert result["checks"]["no_repeated_greeting"]
+
+
+# --- Client, 8 Oct 2026: every closed period on its own; no answer = wait for opening -------------------------
+
+async def test_no_answer_to_the_offer_means_the_team_picks_it_up_at_opening(mongo, dealer_with_hours):
+    set_clock(TUESDAY_NIGHT)
+    created = await _lead()
+    assert (await _last_sms(mongo, created)).endswith("Which would you like?")
+    [resume] = await _resumes(mongo, created)  # planned with the offer: the customer never answers
+    assert resume["status"] == "pending"
+    assert resume["due_at"].replace(tzinfo=UTC) == datetime(2026, 9, 23, 13, 0, tzinfo=UTC)  # Wed 9:00 New York
+    set_clock(WEDNESDAY_OPEN)
+    assert (await followups.fire_due(_deps()))["results"] == {"sent": 1}
+    assert (await _last_sms(mongo, created)).startswith("Good morning, Maria!")
+
+
+async def test_a_conversation_already_going_is_asked_again_on_a_later_night(mongo, dealer_with_hours):
+    set_clock(TUESDAY_NIGHT)
+    created = await _lead()
+    await _say(created, "now is fine")  # Tuesday night's choice
+    set_clock(TUESDAY_NIGHT + timedelta(days=1))  # Wednesday night: a new closed period
+    await _say(created, "hey, is the RAV4 still there?")
+    assert (await _last_sms(mongo, created)).endswith("Which would you like?")
+    state = await _state(mongo, created)
+    assert state["conversation"]["after_hours"]["choice"] == "offered"
+    assert [r["status"] for r in await _resumes(mongo, created)][-1] == "pending"

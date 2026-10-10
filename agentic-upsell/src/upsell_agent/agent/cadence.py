@@ -94,8 +94,47 @@ PRICE_CHANGE = Theme("price_or_offer", "Verified price change or offer",
 NAME_NUDGE = Theme("name_nudge", "Name nudge",
                    "Send exactly the customer's first name followed by a question mark, and nothing else.")
 
-EXTENDED_THEMES: list[Theme] = [*(t for t in DAY_THEMES if t.extended), PRICE_CHANGE]
-BY_ID: dict[str, Theme] = {t.id: t for t in (*DAY_THEMES, PRICE_CHANGE, NAME_NUDGE)}
+# The client's own angles per phase (sales deck "Text & Email Cadences", 8 Oct 2026 meeting). Days 8-30 "nurture &
+# re-engage": new offers, price-drop alerts, similar new arrivals, and surfacing the objection for the manager.
+# Days 31-90 "time to dig deeper": deeper questions ("what did we miss?"), credit tips, trade-in market trends, new
+# incentives, a "did you purchase?" check-in - the goal now is a yes or a no before Day 91.
+SIMILAR_ARRIVALS = Theme("similar_arrivals", "Similar new arrivals",
+                         "Mention one or two vehicles from context.inventory that are similar to what they wanted "
+                         "(same type, size or budget), and ask if they'd like to see them. Only vehicles in the "
+                         "inventory records, never invented ones.", extended=True)
+OBJECTION_CHECK = Theme("objection_check", "What's holding you back",
+                        "Ask, warmly and briefly, whether something is holding them back - price, the vehicle, timing, "
+                        "financing - so the right person can help. One question, no pressure.", extended=True)
+WHAT_DID_WE_MISS = Theme("what_did_we_miss", "What did we miss?",
+                         "Ask what we could have done better or what we missed in what they need, and whether "
+                         "they're still looking. Short and honest.", extended=True)
+CREDIT_TIPS = Theme("credit_tips", "Credit tips",
+                    "Share one general, practical tip about getting ready to finance a car (checking your credit "
+                    "report, having proof of income, a down payment helps) and offer the team's help. Never a "
+                    "rate, an approval, a payment or a promise about their credit.", extended=True)
+TRADE_MARKET = Theme("trade_market", "Trade-in market",
+                     "Note, in general terms, that trade-in values change with the market and offer a free "
+                     "appraisal at the dealership. Never a value, an estimate or a claim about their car.",
+                     extended=True)
+STILL_SHOPPING = Theme("still_shopping", "Still shopping?",
+                       "Ask plainly whether they're still in the market or have already bought a vehicle, so we "
+                       "know whether to keep in touch. Friendly, one question.", extended=True)
+
+# A verified price drop comes first in both phases - the most relevant, time-sensitive reason to write; without one
+# it isn't a candidate at all (learning/optimizer.py excludes it), so the phase's own angles follow in order.
+NURTURE_THEMES: list[Theme] = [PRICE_CHANGE, SIMILAR_ARRIVALS, OBJECTION_CHECK, DAY_THEMES[4], DAY_THEMES[0]]
+DEEPER_THEMES: list[Theme] = [PRICE_CHANGE, WHAT_DID_WE_MISS, CREDIT_TIPS, TRADE_MARKET, STILL_SHOPPING]
+NURTURE_LAST_DAY = 30
+
+
+def themes_for_day(day: int | None) -> list[Theme]:
+    """The angles a Days 8-90 touch picks from: the nurture set to Day 30, the dig-deeper set after."""
+    return DEEPER_THEMES if day and day > NURTURE_LAST_DAY else NURTURE_THEMES
+
+
+# Every Days 8-90 angle (the learning layer's catalogue, learning/optimizer.py).
+EXTENDED_THEMES: list[Theme] = list(dict.fromkeys([*NURTURE_THEMES, *DEEPER_THEMES]))
+BY_ID: dict[str, Theme] = {t.id: t for t in (*DAY_THEMES, *EXTENDED_THEMES, NAME_NUDGE)}
 
 # Touch number -> the day it goes out on, for the fixed part of the schedule (§3).
 # Touch 1 is the first reply itself; touch 2 is timed in hours, not days.
@@ -166,9 +205,9 @@ def cadence_day(state: CadenceState, now: datetime, tz) -> int:
     return (now.astimezone(tz).date() - started.astimezone(tz).date()).days + 1
 
 
-# After Day 7 the schedule sits on this grid of cadence days (Omnichannel PDF §4): weekly in Days 8-30,
-# monthly in Days 31-90. A customer who keeps talking through a grid day doesn't get it late: the next one
-# on the grid is used instead.
+# After Day 7 the schedule sits on this grid of cadence days: weekly in Days 8-30, then monthly in Days 31-90
+# (Omnichannel PDF §4; client, 9 Oct 2026: "follow the workflow PDF", not the meeting's every two weeks).
+# A customer who keeps talking through a grid day doesn't get it late: the next one on the grid is used instead.
 EXTENDED_GRID: tuple[int, ...] = (14, 21, 28, 58, 88)
 
 
@@ -180,13 +219,15 @@ def next_day_after(day: int) -> int | None:
     return next((d for d in EXTENDED_GRID if d > day), None)
 
 
-def pick_theme(touch_number: int, used: list[str], exclude: frozenset[str] = frozenset()) -> Theme:
+def pick_theme(touch_number: int, used: list[str], exclude: frozenset[str] = frozenset(),
+               day: int | None = None) -> Theme:
     """Days 2-7 follow the client's fixed order; Days 8-90 take the
     least-recently-used angle, so nothing repeats while others are unused (§4).
     `exclude` (PLAN_4 stream L): angles whose facts aren't available (no verified price drop)."""
     if touch_number in FIXED_DAYS:
         return DAY_THEMES[touch_number - 3]
-    themes = [t for t in EXTENDED_THEMES if t.id not in exclude] or EXTENDED_THEMES
+    phase = themes_for_day(day)
+    themes = [t for t in phase if t.id not in exclude] or phase
     unused = [t for t in themes if t.id not in used]
     if unused:
         return unused[0]
@@ -240,7 +281,7 @@ def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bo
         return PlannedTouch(touch_number=touch, day=0,
                             why=f"Day {today}: past the end of the {LAST_DAY}-day cadence.")
     due = due_on(day)
-    theme = pick_theme(touch, state.themes_used)
+    theme = pick_theme(touch, state.themes_used, day=day)
     return PlannedTouch(touch_number=touch, theme=theme, day=day, due_at=due,
                         why=f"Touch {touch} on day {day} of the cadence: {theme.label.lower()}.")
 
@@ -286,6 +327,12 @@ def describe(state: CadenceState, now: datetime, tz) -> dict[str, Any]:
             "started_at": state.started_at.isoformat() if isinstance(state.started_at, datetime) else None}
 
 
+# Client email, 7 Oct 2026: the AI introduces itself as the dealership's AI Sales Manager (FTC: never poses as a person).
+AI_SALES_ROLE = "AI Sales Manager"
+AI_SERVICE_ROLE = "AI Service Manager"
+AI_DISCLOSURE = AI_SALES_ROLE
+
+
 def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
     """Touch 1's mandatory closing question (Omnichannel PDF §3, "ALWAYS end"),
     unless the customer has already told us about a trade-in (client, 1 Oct
@@ -315,22 +362,20 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     the blueprint's core principle: "every interaction is honest, transparent"), and reads like a reply to a
     message the customer never sent. Only this one line changes; the required closing question, and every
     other part of the structure, stay exactly as specified regardless of origin."""
-    who = f"Hello {customer_first_name}" if customer_first_name else "Hello"
-    speaker = f", this is {agent_name}" if agent_name else ""
-    place = ""
-    if dealership:
-        where = ", ".join(x for x in (city, state_code) if x)
-        place = f" from {dealership}" + (f" in {where}" if where else "")
-        if customer_first_name and not agent_name:
-            # Stream G (grammar): "Hello Maria from ABC Toyota." reads as if Maria were from ABC Toyota.
-            place = f", greetings{place}"
+    # FTC (client email, 7 Oct 2026, "this basically needs to be said BEFORE ANYTHING"): "Hi [First Name], this is
+    # Angela, [Dealership Name]'s AI Sales Manager, following up on your interest in the [Year Make Model]. Tell me,
+    # what are you driving now?" - the AI says it is AI in its very first words. City / state are no longer part of it.
+    who = f"Hi {customer_first_name}" if customer_first_name else "Hi"
+    role = AI_SERVICE_ROLE if service else AI_SALES_ROLE
+    owner = (f"{dealership}'" if dealership.endswith("s") else f"{dealership}'s") if dealership else None
+    title = f"{owner} {role}" if owner else f"the {role}"
+    speaker = f", this is {agent_name}, {title}" if agent_name else f", this is {title}"
     if service:
         care = f"your {vehicle}" if vehicle else "your vehicle"
-        return (f"{who}{speaker}{place}. Thank you for contacting our service team. "
-                f"I am happy to help you take care of {care}.")
+        return f"{who}{speaker}. I am happy to help you with service for {care}."
     if origin == "outbound":
-        thanks = f" I wanted to reach out about our {vehicle}." if vehicle else " I wanted to reach out."
+        about = f", reaching out about the {vehicle}." if vehicle else ", reaching out to see how I can help."
     else:
-        thanks = (f" Thank you for your interest in our {vehicle}." if vehicle
-                  else " Thank you for getting in touch.")
-    return f"{who}{speaker}{place}.{thanks} I am excited to help you with your purchase."
+        about = (f", following up on your interest in the {vehicle}." if vehicle
+                 else ", following up on your interest.")
+    return f"{who}{speaker}{about}"

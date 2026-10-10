@@ -293,6 +293,8 @@ function MessagesContent() {
     try {
       const data = await aiFetch(`/api/dealer-ai/messages/${leadId}`);
       setChat(data);
+      // Opening it marked it read on the server: refresh the red counts.
+      if (!quiet) setThreads((prev) => prev.map((t) => (t.lead_id === leadId ? { ...t, unread: 0 } : t)));
     } catch (err) {
       setChatError(err.message);
       if (!quiet) setChat(null);

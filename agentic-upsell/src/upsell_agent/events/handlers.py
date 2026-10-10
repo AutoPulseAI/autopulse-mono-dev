@@ -28,6 +28,7 @@ from upsell_agent.agent.turn import (
 )
 from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
+from upsell_agent.compliance import text_consent
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.events.models import (
     BookingChangedEvent,
@@ -147,7 +148,15 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
         # MASTER_PLAN_3 C6: the same customer already has an open lead the AI is working. This one is
         # linked to it; no first reply, no cadence, no second workflow.
         linked = await duplicates.link_duplicate(db, event.lead_id, event.customer_id, primary)
-        return {"status": "duplicate", "reason": f"same customer as open lead {primary['lead_id']}", **linked}
+        restarted = await _restart_opportunity_clock(db, event, primary["lead_id"])
+        answered = await _answer_new_inquiry_on_primary(db, deps, event, lead, primary["lead_id"], received_at)
+        if restarted.get("cadence_started") and answered.get("status") == "done":
+            restarted["cadence_touch"] = await plan_cadence_touch(
+                db, lead_id=primary["lead_id"], customer_id=event.customer_id, channel=event.channel,
+                turn_id=f"reengaged-{event.lead_id}", lead=await find_lead(db, primary["lead_id"]),
+                first_contact_done=True)
+        return {"status": "duplicate", "reason": f"same customer as open lead {primary['lead_id']}", **linked,
+                "new_inquiry": answered, "reengaged": restarted}
     if state.get("duplicate_of"):
         return {"status": "duplicate", "reason": f"linked to lead {state['duplicate_of']}",
                 "duplicate_of": state["duplicate_of"]}
@@ -163,6 +172,53 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     return await _first_reply(db, deps, customer_id=event.customer_id, lead_id=event.lead_id, lead=lead,
                               channel=event.channel, shadow=event.shadow,
                               received_at=_parse_received_at(received_at), turn_id=turn_id)
+
+
+async def _restart_opportunity_clock(db: DealerScopedDatabase, event: LeadCreatedEvent,
+                                     primary_id: str) -> dict[str, Any]:
+    """Client, 10 Oct 2026 (Betsy): "legally when a customer re-engages, sends a new lead, the 90 day clock starts
+    over". The customer's new inquiry is a new own-inquiry: the Day 91 period counts from today (`day91_anchor`),
+    the own-inquiry texting window counts from today (`last_inquiry_at`, compliance/engine.py), and a working lead
+    starts a fresh cadence (lifecycle "reengaged"). Never in shadow."""
+    if event.shadow:
+        return {"status": "skipped", "reason": "shadow"}
+    now = clock.now()
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+        {"lead_id": primary_id}, {"$set": {"day91_anchor": now, "last_inquiry_at": now,
+                                           "reengaged_at": now, "reengaged_by_lead": event.lead_id}})
+    primary_lead = await find_lead(db, primary_id)
+    change = await lifecycle.apply(db, primary_id, [lifecycle.Event(
+        "reengaged", source="new_inquiry", reason=f"The customer sent a new inquiry (lead {event.lead_id})")],
+        lead=primary_lead, customer_id=event.customer_id)
+    return {"status": "restarted", "day91_anchor": now.isoformat(),
+            "cadence_started": bool((change or {}).get("cadence_started"))}
+
+
+async def _answer_new_inquiry_on_primary(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent,
+                                        lead: dict | None, primary_id: str,
+                                        received_at: str | datetime | None) -> dict[str, Any]:
+    """Client, 10 Oct 2026: a customer who already has an open lead and sends a new inquiry (another vehicle, another
+    portal) gets an answer to it - in the existing conversation, so still one workflow, one thread (C6). Before, the
+    new lead was linked and nothing was said: from the customer's side the inquiry went unanswered. Not while staff
+    own the primary (they have the notice), never twice for the same lead, nothing in shadow."""
+    if event.shadow:
+        return {"status": "skipped", "reason": "shadow"}
+    primary_state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": primary_id}) or {}
+    if primary_state.get("status") in SILENT_STATUSES:
+        return {"status": "skipped", "reason": f"the primary lead is {primary_state.get('status')} (staff have it)"}
+    turn_id = f"new-inquiry-{event.lead_id}"
+    if await _already_sent(db, turn_id):
+        return {"status": "already_answered", "turn_id": turn_id}
+    text = _comments(lead)
+    if not text.strip():
+        return {"status": "skipped", "reason": "the new lead carries no inquiry text"}
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=primary_state.get("customer_id") or event.customer_id,
+        lead_id=primary_id, trigger="inbound_message", channel=event.channel,
+        inbound_text=f"(New inquiry submitted on a lead form) {text}", shadow=False, deps=deps,
+        event_received_at=_parse_received_at(received_at), turn_id=turn_id, is_reply=False,
+        purpose="lead_response")
+    return {"status": "done", "turn_id": log["turn_id"], "send_status": log["summary"].get("send_status")}
 
 
 # PLAN_4 stream X1 item 1: the first reply held to the customer's next allowed time (scheduler/followups.py fires
@@ -579,6 +635,16 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                       "its own confirmation, so nothing is sent.",
                                received_at=_parse_received_at(received_at))
             return {"status": "opted_in", "channel": channel, "followups_cancelled": cancelled}
+        if (channel == "sms" and text_consent.is_invite_answer(message["text"], state)
+                and not await text_consent.has_text_consent(db, event.customer_id)):
+            # Client, 9 Oct 2026: an owner who never consented to texts was invited by email to text YES; their
+            # YES is their own written opt-in (TCPA spec §5: DealerVault data never is). Recorded, then confirmed.
+            await text_consent.record_yes(db, customer_id=event.customer_id, lead_id=lead_id, message=message,
+                                          address=_address(lead, customer, channel))
+            return await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="text_consent",
+                                      reason="The customer texted YES to the email invitation: text consent "
+                                             "recorded.", received_at=_parse_received_at(received_at),
+                                      reply={"text": text_consent.CONFIRMATION})
         if keyword is None and (opt_in := detect_opt_in(message["text"])):
             # "You can text me again": reverse it and carry on into a normal turn, so the rest of the
             # message is answered (decision 138).
@@ -821,7 +887,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # MASTER_PLAN_4 D1 (stream A3): the AI runs the SOLD PENDING workflow / the ownership lifecycle, so the lead
         # isn't paused; lifecycle.apply already started the one and stopped the others (scheduler/sold_lifecycles.py).
         return {"status": f"resumed_{final_event}", "stage_change": stage_change, **extra}
-    if final_event == "unsold":
+    if final_event in ("unsold", "staff_no_next_action", "staff_not_contacted"):
         # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
         # fresh cadence's first touch is planned now.
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(

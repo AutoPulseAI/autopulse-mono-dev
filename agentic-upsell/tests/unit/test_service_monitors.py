@@ -394,6 +394,24 @@ def test_compute_status_uses_verified_mileage_only():
                                       time_interval_months=6)["status"] == "no_schedule"
 
 
+def test_maintenance_is_due_at_whichever_comes_first_miles_or_months():
+    """Client, 8 Oct 2026: "if it's five months but they didn't hit the 5,000 miles yet, they still need to do the
+    service because the five months elapsed"."""
+    visit = NOW - timedelta(days=200)  # about 6.5 months ago, at 15,100 miles
+    visits = [maintenance.ServiceVisit(visit, 15_100, "repair_order")]
+    readings = [maintenance.Reading(16_000, NOW - timedelta(days=20), "repair_order")]  # driven little since
+    status = maintenance.compute_status(_schedule(), readings, visits, delivered_at=None, now=NOW,
+                                        time_interval_months=6)
+    assert status["status"] == "due" and status["basis"] == "time"
+    facts = status["due"]["facts"]
+    assert facts["interval_miles"] == 25000 and facts["months_since_last_visit"] == 6
+    assert facts["verified_mileage"]["miles"] == 16_000 and facts["mileage_is_estimate"] is False
+    # Inside the months, the same car is not due yet.
+    recent = [maintenance.ServiceVisit(NOW - timedelta(days=60), 15_100, "repair_order")]
+    assert maintenance.compute_status(_schedule(), readings, recent, delivered_at=None, now=NOW,
+                                      time_interval_months=6)["status"] == "not_due"
+
+
 def test_used_vehicle_isnt_chased_for_services_before_delivery():
     readings = [maintenance.Reading(40_000, NOW - timedelta(days=3), "deal", "D1")]
     status = maintenance.compute_status(_schedule(), readings, [], delivered_at=NOW - timedelta(days=3), now=NOW,

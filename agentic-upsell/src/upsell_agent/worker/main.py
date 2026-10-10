@@ -28,6 +28,7 @@ from upsell_agent.worker.jobs import (
     close_expired_leads,
     fire_due_followups,
     plan_birthdays,
+    plan_owner_touches,
     reconcile_events,
     sweep_maintenance,
     sweep_prices,
@@ -108,6 +109,8 @@ def settings() -> dict[str, Any]:
                       CronJob(sweep_maintenance, cron="41 * * * *", timeout=900),
                       # MASTER_PLAN_4 D7 (stream A3): birthdays whose DealerVault date arrived late, daily.
                       CronJob(plan_birthdays, cron="17 6 * * *", timeout=600),
+                      # Client, 8 Oct 2026: the owner life cycle for every DealerVault sale, daily.
+                      CronJob(plan_owner_touches, cron="29 6 * * *", timeout=1800),
                       # PLAN_4 stream L: price snapshots for verified price drops, every 6 hours.
                       CronJob(sweep_prices, cron="53 */6 * * *", timeout=900),
                       # PLAN_4 stream X3: leads / messages the AI never heard about (scheduler/reconcile.py).

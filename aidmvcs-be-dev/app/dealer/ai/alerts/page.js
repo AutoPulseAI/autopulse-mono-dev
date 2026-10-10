@@ -8,7 +8,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Alert, Badge, Button, Form, Spinner } from "react-bootstrap";
+import { Alert, Badge, Button, ButtonGroup, Form, Pagination, Spinner } from "react-bootstrap";
 import LeadAiDrawer from "../components/LeadAiDrawer";
 import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, formatDateTime, fromNow, leadHref, stageVariant } from "../components/aiShared";
 
@@ -33,6 +33,11 @@ function AlertsContent() {
   const [kindFilter, setKindFilter] = useState("");
   const [busy, setBusy] = useState(null);
   const [drawer, setDrawer] = useState(null);
+  // Client, 10 Oct 2026: a long list needs search, pages and a grid view.
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
+  const [view, setView] = useState("list");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,7 +57,13 @@ function AlertsContent() {
   }, [load]);
 
   const kinds = useMemo(() => [...new Set(alerts.map((a) => a.kind))], [alerts]);
-  const shown = kindFilter ? alerts.filter((a) => a.kind === kindFilter) : alerts;
+  const needle = query.trim().toLowerCase();
+  const filtered = alerts.filter((a) => (!kindFilter || a.kind === kindFilter) && (!needle
+    || [a.lead?.name, a.lead?.phone, a.lead?.email, a.lead?.vehicle, a.text].some((v) => String(v || "").toLowerCase().includes(needle))));
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const current = Math.min(page, pages);
+  const shown = filtered.slice((current - 1) * perPage, current * perPage);
+  useEffect(() => setPage(1), [kindFilter, needle, perPage, showHandled]);
 
   const toggleHandled = (checked) => {
     router.push(checked ? "/dealer/ai/alerts?all=1" : "/dealer/ai/alerts", { scroll: false });
@@ -96,8 +107,22 @@ function AlertsContent() {
             <option value="">All types</option>
             {kinds.map((k) => <option key={k} value={k}>{alertKind(k).label}</option>)}
           </Form.Select>
+          <Form.Control size="sm" style={{ maxWidth: 260 }} placeholder="Search name, phone, vehicle or text"
+            value={query} onChange={(e) => setQuery(e.target.value)} />
           <Form.Check type="switch" id="alerts-show-handled" label="Show handled alerts"
             checked={showHandled} onChange={(e) => toggleHandled(e.target.checked)} />
+          <div className="ms-auto d-flex align-items-center gap-2">
+            <small className="text-secondary-light">{filtered.length} alert{filtered.length === 1 ? "" : "s"}</small>
+            <Form.Select size="sm" style={{ width: 90 }} value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
+              {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
+            </Form.Select>
+            <ButtonGroup size="sm">
+              <Button variant={view === "list" ? "custom" : "outline-custom"} onClick={() => setView("list")} title="List view">
+                <i className="fa-solid fa-list" /></Button>
+              <Button variant={view === "grid" ? "custom" : "outline-custom"} onClick={() => setView("grid")} title="Grid view">
+                <i className="fa-solid fa-grip" /></Button>
+            </ButtonGroup>
+          </div>
         </div>
 
         {error && <Alert variant="danger">{error}</Alert>}
@@ -110,11 +135,14 @@ function AlertsContent() {
               {showHandled ? "No alerts." : "Nothing needs your attention right now."}
             </p>
           </div>
-        ) : shown.map((item) => {
+        ) : (<>
+        <div className={view === "grid" ? "row g-2" : ""}>
+        {shown.map((item) => {
           const kind = alertKind(item.kind);
           const details = DETAIL_FIELDS.filter(([key]) => item[key] && !(key === "reason" && item.kind === "not_interested"));
           return (
-            <div key={item.id} className={`w_card mb-2 ${item.handled ? "opacity-75" : ""}`}>
+            <div key={item.id} className={view === "grid" ? "col-12 col-lg-6 d-flex" : ""}>
+            <div className={`w_card mb-2 w-100 ${item.handled ? "opacity-75" : ""}`}>
               <div className="d-flex flex-wrap align-items-start gap-2">
                 <div className="me-auto" style={{ minWidth: 0, flex: "1 1 300px" }}>
                   <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
@@ -144,8 +172,25 @@ function AlertsContent() {
                 </div>
               </div>
             </div>
+            </div>
           );
         })}
+        </div>
+        {pages > 1 && (
+          <Pagination size="sm" className="justify-content-center mt-3 mb-5 pb-4">
+            <Pagination.Prev disabled={current === 1} onClick={() => setPage(current - 1)} />
+            {Array.from({ length: pages }, (_, i) => i + 1)
+              .filter((n) => n === 1 || n === pages || Math.abs(n - current) <= 2)
+              .map((n, i, arr) => (
+                <span key={n} className="d-flex">
+                  {i > 0 && n - arr[i - 1] > 1 && <Pagination.Ellipsis disabled />}
+                  <Pagination.Item active={n === current} onClick={() => setPage(n)}>{n}</Pagination.Item>
+                </span>
+              ))}
+            <Pagination.Next disabled={current === pages} onClick={() => setPage(current + 1)} />
+          </Pagination>
+        )}
+        </>)}
       </div>
 
       <LeadAiDrawer

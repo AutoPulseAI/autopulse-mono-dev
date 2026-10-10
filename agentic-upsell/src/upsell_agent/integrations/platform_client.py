@@ -61,6 +61,7 @@ from upsell_agent.config import Settings
 from upsell_agent.integrations.customer360 import EMPTY_360, build_customer_360
 from upsell_agent.integrations.mongodb import (
     PLATFORM_BOOKINGS_COLLECTION,
+    PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     as_object_id,
     dealer_scoped_db,
@@ -105,6 +106,8 @@ class PlatformClient(Protocol):
 
     async def add_lead_note(self, dealer_id: str, lead_id: str, text: str, kind: str | None = None,
                             idempotency_key: str | None = None, customer_id: str | None = None) -> str: ...
+
+    async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None: ...
 
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
@@ -218,6 +221,26 @@ class StubPlatformClient:
         return {"found": result.matched_count > 0, "updated": result.matched_count > 0}
 
 
+    async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:
+        """What `POST /api/internal/ai/leads/owner` does (aidmvcs-be-dev app/lib/ai/aiOwnerLead.js): the customer's
+        latest lead, else a new owner lead (Sold Delivered, source DealerVault). None: no such customer."""
+        db = dealer_scoped_db(dealer_id)
+        customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(customer_id)})
+        if customer is None:
+            return None
+        rows = await db.collection(PLATFORM_LEADS_COLLECTION).find(
+            {"customer_id": {"$in": [as_object_id(customer_id), customer_id]}}).to_list(500)
+        if rows:
+            return str(max(rows, key=lambda r: str(r["_id"]))["_id"])
+        first = lambda key: ((customer.get(key) or [{}])[0] or {}).get("value")  # noqa: E731
+        inserted = await db.collection(PLATFORM_LEADS_COLLECTION).insert_one({
+            "customer_id": as_object_id(customer_id), "name": customer.get("name"), "email": first("emails"),
+            "phone": first("phones"), "source": "DealerVault", "fe_lead_status": "Sold Delivered",
+            "data": {"owner_lead": True, "created_by": "ai_owner_lifecycle", "deal_number": deal_number},
+            "createdAt": clock.now()})
+        return str(inserted.inserted_id)
+
+
 class LivePlatformClient:
     def __init__(self, settings: Settings):
         self._base_url = settings.autopulse_api_base_url.rstrip("/")
@@ -298,6 +321,18 @@ class LivePlatformClient:
                                 {"dealer_id": dealer_id, "lead_id": lead_id, "text": text, "kind": kind,
                                  **({"idempotency_key": idempotency_key} if idempotency_key else {})})
         return str(body.get("id") or "")
+
+    async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:
+        """`POST /api/internal/ai/leads/owner` (client, 9 Oct 2026): an owner lead for a DealerVault customer with
+        no lead in the CRM. None when the CRM doesn't know the customer."""
+        try:
+            body = await self._post("/api/internal/ai/leads/owner",
+                                    {"dealer_id": dealer_id, "customer_id": customer_id, "deal_number": deal_number})
+        except PlatformError as error:
+            if "→ 404" in str(error):
+                return None
+            raise
+        return str(body.get("lead_id") or "") or None
 
     async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=RECORD_TIMEOUT_S) as client:

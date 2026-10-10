@@ -6,8 +6,9 @@ help advance to appt unless the customer specifically asks for the link."
 Client (conversation_7): "Should never ever be an autopulse link of any kind."
 
 agent/link_resolver.py decides in code which URLs a reply may carry (a vehicle's own page, the dealership's
-homepage, both, or none) and fills them in. A draft fails when any version (SMS, email subject, email body) has:
-- a URL that isn't one of the plan's (the homepage included: it is no longer allowed on its own), or
+homepage, or Dealer Setup's credit application / trade-in appraisal page - client, 8 Oct 2026 - each only when
+the customer asks for it) and fills them in. A draft fails when any version (SMS, email subject, email body) has:
+- a URL that isn't one of the plan's (the dealer's own links included: none is allowed on its own), or
 - any autopulse.ai URL, whatever the plan says, or
 - a link placeholder Compose wrote that was never filled.
 """

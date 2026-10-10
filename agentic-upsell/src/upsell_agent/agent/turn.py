@@ -942,3 +942,10 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         {"$set": fields, "$setOnInsert": {"lead_id": lead_id, "created_at": clock.now(),
                                           **({} if "status" in fields else {"status": "active"})}},
         upsert=True)
+    if lead_id and fields.get("status") == "handoff" and not shadow:
+        # Client, 8 Oct 2026: an escalation that needs a manager puts the lead into the CRM's Managerial Review, so
+        # the CRM's one escalation flow (its follow-ups, its lists, the client's if/then rules) takes it from here.
+        from upsell_agent.agent import crm_status, escalation
+        if why := escalation.manager_escalation(fields.get("status_reason")):
+            await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                         reason=f"{fields['status_reason']}: {why}", event_kind="manager_escalation")

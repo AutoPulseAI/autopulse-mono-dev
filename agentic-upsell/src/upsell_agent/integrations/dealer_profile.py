@@ -68,6 +68,10 @@ class DealerProfile:
     address: str | None = None
     phone: str | None = None
     website: str | None = None
+    # Dealer Setup's online credit application and trade-in appraisal pages (client, 8 Oct 2026): shared only when
+    # the customer asks for them (agent/llm.py, guardrails/link_guard.py).
+    credit_application_url: str | None = None
+    trade_in_url: str | None = None
     # MASTER_PLAN_3 C4: Touch 1's required opening names the city and state, and the agent the
     # message comes from (Omnichannel PDF §3). The dealer record has no agent/persona name today,
     # so `agent_name` is usually None and the opening simply doesn't claim one (decision 150).
@@ -108,6 +112,7 @@ class DealerProfile:
     def public_info(self) -> dict[str, Any]:
         """What the AI may tell a customer; `missing` lists what the team must confirm."""
         info = {"name": self.name, "address": self.address, "phone": self.phone, "website": self.website,
+                "credit_application_link": self.credit_application_url, "trade_in_link": self.trade_in_url,
                 "hours": self.hours_text() if self.hours_from_record else None,
                 "hours_summary": self.hours_summary() if self.hours_from_record else None}
         info["missing"] = [k for k in ("name", "address", "phone", "website", "hours") if not info[k]]
@@ -227,6 +232,8 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         phone=format_phone(info.get("store_contact_number") or info.get("alternative_contact_number")
                            or info.get("sms_conversion_phone")),
         website=str(info.get("store_website") or "").strip() or None,
+        credit_application_url=str(info.get("credit_finance_application_url") or "").strip() or None,
+        trade_in_url=str(info.get("trade_in_appraisal_url") or "").strip() or None,
         city=str(info.get("store_city") or "").strip() or None,
         state=str(info.get("store_state") or "").strip() or None,
         # Set by the dealer when they give their AI assistant a name; never invented (decision 150).

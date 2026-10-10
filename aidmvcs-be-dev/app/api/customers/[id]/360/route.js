@@ -8,6 +8,8 @@ import RepairOrder from "@models/RepairOrder";
 import ServiceAppointment from "@models/ServiceAppointment";
 import Vehicle from "@models/Vehicle";
 import TradeIn from "@models/TradeIn";
+import ActivityLog from "@models/ActivityLog";
+import { buildActivity } from "./activity";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import { resolveRequestAuthorization } from "@lib/apiAuth";
 import {
@@ -142,12 +144,21 @@ export async function GET(req, { params }) {
       assignments: customer.assignment_history,
     });
     const valueSnapshot = buildValueSnapshot({ leads, deals, repairOrders, appointments });
+    // Client, 10 Oct 2026: every staff and AI action on the timeline. Kept apart from `overview`, which the AI
+    // service also reads, so its contract doesn't change; the customer page shows both together.
+    let activity = [];
+    try {
+      activity = await buildActivity({ dealerId, customerId: customer._id, leadIds: leads.map((l) => l._id) }, { ActivityLog });
+    } catch (error) {
+      console.error("[activity] timeline build failed", { customer_id: String(customer._id), error: error?.message });
+    }
 
     return NextResponse.json({
       data: {
         customer: { ...customer, origin_badge: getOriginBadge(customer, { hasLinkedLeads: leads.length > 0 }) },
         value_snapshot: valueSnapshot,
         overview: overviewFeed,
+        activity,
         leads,
         deals: deals.map((deal) => ({
           ...deal,

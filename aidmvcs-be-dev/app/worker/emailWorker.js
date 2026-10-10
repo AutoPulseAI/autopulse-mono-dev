@@ -1,4 +1,5 @@
 import axios from 'axios'; // For making HTTP requests
+import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 import dbConnect from '../lib/mongodb.js'; // For database operations
 import Lead from '../models/Lead.js'; // Lead model
 import Email from '../models/Email.js'; // Email model
@@ -157,7 +158,8 @@ export async function processEmail(job) {
         '_id': dealer_id
     });
     let sourcemail='';
-    let autreply =true;
+    // n8n's replies are off unless LEGACY_N8N_AUTOREPLY=true (app/lib/legacyAutoReply.js).
+    let autreply = legacyAutoReplyOn();
     let existingparent=null;
     if(dealer?.setting){
         if(dealer?.setting?.autoReplyEnabled ===false ){
@@ -292,7 +294,7 @@ export async function processEmail(job) {
           // `callOllama`'s regular (non-ADF-local) caller uses further down.
           let acknowledgement = null;
           try {
-            const n8nResult = await callOllama(conversationThread, currentEmail);
+            const n8nResult = withoutLegacyStatus(await callOllama(conversationThread, currentEmail));
             if (typeof n8nResult?.response === 'string' && n8nResult.response.trim()) {
               acknowledgement = n8nResult.response;
             }
@@ -361,11 +363,13 @@ export async function processEmail(job) {
     // AI mode (app/lib/ai/aiMode.js). `live`: the AI service owns this
     // conversation - no n8n, no auto-reply, no follow-up jobs.
     const aiMode = await getDealerAiMode(dealer_id);
-    if (aiMode === 'live') {
-      return await handleInboundEmailLive({ currentEmail, dealer });
+    // No n8n at all unless LEGACY_N8N_AUTOREPLY=true (client, 10 Oct 2026): our own code saves and links every
+    // dealership's emails and lead emails; the AI hears of them only when it is on.
+    if (aiMode === 'live' || !legacyAutoReplyOn()) {
+      return await handleInboundEmailLive({ currentEmail, dealer, mode: aiMode });
     }
 
-    const result = await callOllama(conversationThread,currentEmail);
+    const result = withoutLegacyStatus(await callOllama(conversationThread,currentEmail));
 
     console.log('Third-party API response:', result);
     let leadId = null;

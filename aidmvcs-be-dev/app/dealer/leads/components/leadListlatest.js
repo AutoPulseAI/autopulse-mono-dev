@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -102,10 +103,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Unsold",
     "Closed - Lost",
     "Lead",
+    // The SOW's working stages (client, 8 Oct 2026): the AI also sets them as the lead moves.
+    "Lead Not Contacted",
+    "Contacted - No Next Action",
     "DND",
     "No Show",
     // Set only by the AI (ownership ended; PLAN_4 stream S): filterable, never picked in the status modal.
-    "Closed - No Longer Owns"
+    "Closed - No Longer Owns",
+    // Set only by the AI: the customer gave a date to get back to them (it carries that date).
+    "Contacted - Specific Follow-up"
   ];
 
   const getStatusVariant = (status) => {
@@ -882,7 +888,7 @@ useImperativeHandle(ref, () => ({
                 >
                   <option value="">All Status</option>
                   {statusOptions.map(status => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status}>{statusLabel(status)}</option>
                   ))}
                 </Form.Select>
               </Col>
@@ -974,7 +980,7 @@ useImperativeHandle(ref, () => ({
                 >
                   <option value="">All Status</option>
                   {statusOptions.map(status => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status}>{statusLabel(status)}</option>
                   ))}
                 </Form.Select>
               </Col>
@@ -1245,7 +1251,7 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        {statusLabel(lead.fe_lead_status) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stage_label && (
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).

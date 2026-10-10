@@ -63,6 +63,7 @@ export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() 
 
 export async function markLeadDndFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id fe_lead_status').lean();
   if (!lead) return { found: false, updated: false };
@@ -95,7 +96,18 @@ export async function markLeadDndFromAi(body, {
 // status the AI could not have been working from (a Sold / Visited / DND lead is never "lost" by the AI).
 export const AI_CLOSED_STATUSES = Object.freeze(['Closed - Lost', 'Closed - No Longer Owns']);
 // Statuses only the AI sets: shown in the CRM's lists and filters, not offered in the status picker.
-export const READ_ONLY_STATUSES = Object.freeze(['Closed - No Longer Owns']);
+export const READ_ONLY_STATUSES = Object.freeze(['Closed - No Longer Owns', 'Contacted - Specific Follow-up']);
+
+// The SOW's working stages the AI shows as the lead's status as it moves (client, 8 Oct 2026; agentic-upsell
+// agent/crm_status.py CRM_STATUS_FOR_STAGE). One replaces only another working status - never a status staff chose.
+export const AI_WORKING_STATUSES = Object.freeze(['Lead Not Contacted', 'Contacted - No Next Action',
+  'Contacted - Specific Follow-up']);
+const WORKING_FROM = Object.freeze([null, '', 'Lead', 'New', 'Contacted', ...AI_WORKING_STATUSES]);
+// Manager escalation (client, 8 Oct 2026; agentic-upsell agent/escalation.py): the AI's own escalations that need a
+// manager put the lead into the CRM's one escalation flow, Managerial Review - over a working status or Unsold /
+// No Show, never over a status staff chose for a later step (Appointment Booked, Visited, Sold, DND, ...).
+export const AI_ESCALATION_STATUSES = Object.freeze(['Managerial Review']);
+const ESCALATION_FROM = Object.freeze([...WORKING_FROM, 'Unsold', 'No Show']);
 
 // PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2; SOLD PENDING PDF §2): "Closed - Lost" is for a transaction that won't
 // complete. A delivered car's opportunity stays active until the customer no longer owns it, and it leaves only as
@@ -118,7 +130,8 @@ const FROM_FOR_NO_LONGER_OWNS = Object.freeze(['Sold Delivered', 'Sold']);
 
 export function validateClosedStatusPayload(body) {
   const { errors } = validateDndPayload(body);
-  if (!AI_CLOSED_STATUSES.includes(body?.status)) errors.push(`status must be one of ${AI_CLOSED_STATUSES.join(', ')}`);
+  const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES];
+  if (!allowed.includes(body?.status)) errors.push(`status must be one of ${allowed.join(', ')}`);
   if (body?.closed_at != null && Number.isNaN(Date.parse(body.closed_at))) errors.push('closed_at must be a date');
   return { errors };
 }
@@ -129,6 +142,8 @@ export function closedStatusConflict({ status, current, changedAt, closedAt }) {
   if (changedAt && closedAt && new Date(changedAt) > new Date(closedAt)) return 'staff_changed_it_after';
   if (status === 'Closed - Lost' && KEEP_FOR_CLOSED_LOST.includes(current)) return 'staff_status_kept';
   if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
+  if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)) return 'staff_status_kept';
+  if (AI_ESCALATION_STATUSES.includes(status) && !ESCALATION_FROM.includes(current ?? null)) return 'staff_status_kept';
   return null;
 }
 
@@ -156,7 +171,16 @@ export async function markLeadClosedFromAi(body, {
     status: 'sent', communication_type: 'note', is_note: true, internal_use: true,
     message_id: `note_ai_status_${body.lead_id}_${at.getTime()}`, timestamp: at, date: at, ai_generated: true,
   });
-  await clearPendingJobs(lead._id);
-  await cancelAllRemindersForLead(lead._id);
+  if (AI_CLOSED_STATUSES.includes(body.status)) {
+    // A closing ends the platform's own follow-ups and reminders; a working stage leaves them as they are.
+    await clearPendingJobs(lead._id);
+    await cancelAllRemindersForLead(lead._id);
+  }
+  if (body.status === 'Managerial Review') {
+    // The same follow-ups as when staff set it (app/api/conversations/lead/status): one escalation flow.
+    await createManagerialReviewMessages(lead._id, body.dealer_id);
+    await notifyManagers({ dealerId: body.dealer_id, leadId: body.lead_id,
+      title: 'A lead needs a manager (Managerial Review)', detail: body.reason || '' });
+  }
   return { found: true, updated: true, previous: current };
 }

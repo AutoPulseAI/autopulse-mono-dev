@@ -169,7 +169,7 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
           {dealerAiOff && (
             <Alert variant="light" className="py-2 small mb-2 border">
               The AI is off for this dealership, so it isn&apos;t contacting this customer.{" "}
-              <Link href="/dealer/ai/settings">AI settings</Link>
+              <Link href="/dealer/settings?tab=ai">AI settings</Link>
             </Alert>
           )}
 

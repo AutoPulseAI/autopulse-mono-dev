@@ -159,10 +159,13 @@ SOLD_LIFECYCLE_KINDS = ("sold_pending_touch", "post_delivery_checkin", "ownershi
                         "service_outreach")
 # PLAN_4 stream T: the Days 1-7 morning / afternoon call tasks (scheduler/daily_call_tasks.py KIND).
 KIND_DAILY_CALL_TASK = "daily_call_task"
+# Client, 8 Oct 2026: the owner life cycle for every DealerVault sale (scheduler/owner_lifecycle.py KIND).
+KIND_OWNER_TOUCH = "owner_touch"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
-                                      KIND_DAILY_CALL_TASK, *APPOINTMENT_KINDS, *SOLD_LIFECYCLE_KINDS]}}
+                                      KIND_DAILY_CALL_TASK, KIND_OWNER_TOUCH, *APPOINTMENT_KINDS,
+                                      *SOLD_LIFECYCLE_KINDS]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -924,6 +927,9 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
         # MASTER_PLAN_4 (stream A3): SOLD PENDING and the ownership lifecycle fire from their own module.
         from upsell_agent.scheduler import sold_lifecycles
         fire_locked = sold_lifecycles.fire
+    if doc.get("kind") == KIND_OWNER_TOUCH:
+        from upsell_agent.scheduler import owner_lifecycle
+        fire_locked = owner_lifecycle.fire
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)
@@ -1122,9 +1128,11 @@ async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) ->
         choice = ((state.get("conversation") or {}).get("after_hours") or {}).get("choice")
         mode = await dealer_ai_mode(db.dealer_id)
         checks = [
-            ("still_waiting", choice == "later",
+            # "offered": asked at night and never answered - that means wait for the team (client, 8 Oct 2026).
+            ("still_waiting", choice in ("later", "offered"),
              "the customer is still waiting for the team" if choice == "later"
-             else f"the after-hours choice is now {choice!r}"),
+             else "the customer never answered the after-hours choice, so the team picks it up at opening"
+             if choice == "offered" else f"the after-hours choice is now {choice!r}"),
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_RESUME),

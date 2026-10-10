@@ -52,7 +52,7 @@ export async function requireLeadAccess(req, params) {
   if (!mongoose.isValidObjectId(id)) return { error: jsonError("Invalid lead id", 400) };
   const user = await loadAuthenticatedUser(req);
   if (!user) return { error: jsonError("Your session has expired. Please sign in again.", 401) };
-  const lead = await Lead.findById(id).select("dealer_id name phone email fe_lead_status").lean();
+  const lead = await Lead.findById(id).select("dealer_id customer_id name phone email fe_lead_status").lean();
   if (!lead) return { error: jsonError("Lead not found", 404) };
   if (!lead.dealer_id || !(await isAuthorizedForDealer(user, lead.dealer_id))) {
     return { error: jsonError("You don't have access to this lead.", 403) };

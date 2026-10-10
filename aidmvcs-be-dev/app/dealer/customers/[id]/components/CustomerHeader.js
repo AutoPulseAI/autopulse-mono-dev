@@ -89,7 +89,6 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                 <li key={entry.value}>
                   {entry.value}
                   {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
-                  <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
                 </li>
               ))}
             </ul>
@@ -106,7 +105,6 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   {entry.value}
                   {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
                   {entry.sms_opt_in && <Badge bg="success" className="ms-2">SMS opt-in</Badge>}
-                  <span className="text-muted small ms-2">({entry.source || "unknown"})</span>
                 </li>
               ))}
             </ul>

@@ -469,10 +469,9 @@ export async function cancelAllRemindersForLead(leadId) {
 export async function createManagerialReviewMessages(leadId, dealerId) {
   try {
     await dbConnect();
-    if (await aiOwnsCustomerMessages(dealerId)) {
-      console.log(`Managerial review messages skipped for dealer ${dealerId}: the AI is live`);
-      return { success: false, skipped_for_ai: true, message: 'AI owns follow-up messages' };
-    }
+    // Not skipped for an AI-live dealer (client, 8 Oct 2026): the AI pauses on a lead set to "Managerial Review"
+    // (a staff-owned status) and sends nothing, so these existing follow-ups - configured in Reminder Setting -
+    // are the one check that the customer's issue was resolved. One system, no double messages.
     
     // Get dealer's managerial review settings
     const dealer = await User.findById(dealerId);
@@ -582,7 +581,8 @@ export async function processReminder(reminder) {
     
     // Created before the dealer's AI went live: never sent now (the AI owns
     // these messages); cancelled so the cron stops picking it up.
-    if (dealerId && await aiOwnsCustomerMessages(dealerId)) {
+    // Managerial review follow-ups still go: the AI is paused on those leads (createManagerialReviewMessages).
+    if (dealerId && reminder.message_type !== 'managerial_review' && await aiOwnsCustomerMessages(dealerId)) {
       reminder.status = 'cancelled';
       reminder.error_message = 'Skipped: the AI is live for this dealer and sends its own messages';
       await reminder.save?.();
