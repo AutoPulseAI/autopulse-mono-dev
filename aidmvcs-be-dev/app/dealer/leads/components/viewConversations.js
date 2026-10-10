@@ -26,9 +26,12 @@ import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
 // that contact method on file.
-function getReplyChannel(lead) {
+function getReplyChannel(lead, tab) {
   const hasPhone = !!lead?.phone;
   const hasEmail = !!lead?.email;
+  // The reply follows the tab staff have open (client, 10 Oct 2026), when the lead has that contact detail.
+  if (tab === 'sms' && hasPhone) return 'sms';
+  if (tab === 'email' && hasEmail) return 'email';
   if (hasPhone && hasEmail) {
     return lead.followup_preference === 'email' ? 'email' : 'sms';
   }
@@ -824,14 +827,14 @@ export default function ViewConversations({
                   <div className="position-relative mt-3">
                     <Row className="align-items-center g-1">
                     <Col xxl={12} lg={3} md={12} xs={6}>
-                      {selectedConversation && getReplyChannel(lead) && (
+                      {selectedConversation && getReplyChannel(lead, activeChannelTab) && (
                         <Button
                           variant="custom"
                           className="w-100"
                           onClick={() => setShowReplyModal(true)}
                         >
                           <i className="fa-regular fa-reply me-2"></i>
-                          {getReplyChannel(lead) === 'sms' ? 'SMS Reply' : 'Email Reply'}
+                          {getReplyChannel(lead, activeChannelTab) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                         </Button>
                       )}
                     </Col>
@@ -1303,7 +1306,7 @@ export default function ViewConversations({
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
           selectedConversation={selectedConversation}
-          communicationType={getReplyChannel(lead) || selectedConversation.communication_type || 'email'}
+          communicationType={getReplyChannel(lead, activeChannelTab) || selectedConversation.communication_type || 'email'}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}
