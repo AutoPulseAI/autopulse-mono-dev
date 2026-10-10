@@ -87,6 +87,8 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
                 "staff_notice": {"at": clock.now(), "kind": "call_task", "text": text, "reason": reason}}})
             existing = {**existing, "requested": True, "reason": reason, "phone": phone}
+        if requested:
+            await _note_requested(db, lead_id, text)
         return existing
     now = clock.now()
     # Client, 7 Oct 2026: never give a call task to someone on their day off (agent/staff_schedule.py).
@@ -112,7 +114,16 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
         "call_task": {"id": str(doc["_id"]), "status": OPEN, "phone": phone, "opened_at": now, "reason": reason},
         "staff_notice": {"at": now, "kind": "call_task", "text": text, "reason": reason}}})
+    if requested:
+        await _note_requested(db, lead_id, text)
     return doc
+
+
+async def _note_requested(db: DealerScopedDatabase, lead_id: str, text: str) -> None:
+    """Client, 10 Oct 2026: the customer asking for a call is an alert that reaches a person, not just a row in AI
+    Alerts - this CRM note makes the CRM email and text the manager in Dealer Setup (managerAlerts.js), once."""
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="call_requested", text=text, key=f"call_requested:{lead_id}:{clock.now().date()}")
 
 
 async def cancel_open(db: DealerScopedDatabase, lead_id: str, reason: str, *, keep_requested: bool = False,

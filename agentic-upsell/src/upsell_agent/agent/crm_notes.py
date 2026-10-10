@@ -25,6 +25,7 @@ AI_CRM_NOTES_COLLECTION = "ai_crm_notes"
 # How each kind reads at the top of the note in the CRM.
 LABELS = {
     "service_request": "Service request",
+    "call_requested": "Customer asked for a call",
     "sold_pending_escalation": "Sold Pending - question for a person",
     "sold_pending_info": "Sold Pending - information from the customer",
     "recall_detected": "Recall notice",

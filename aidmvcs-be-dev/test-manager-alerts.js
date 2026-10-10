@@ -38,7 +38,7 @@ test('no manager phone: the store number gets the text; no contact at all: skipp
 });
 
 test('which alerts notify', () => {
-  assert.deepEqual(Object.keys(MANAGER_ALERT_NOTE_KINDS).sort(), ['after_handoff', 'call_escalation', 'not_interested']);
+  assert.deepEqual(Object.keys(MANAGER_ALERT_NOTE_KINDS).sort(), ['after_handoff', 'call_escalation', 'call_requested', 'not_interested', 'service_request', 'sold_pending_escalation']);
   assert.ok(alertForStatus('Managerial Review'));
   assert.equal(alertForStatus('Contacted'), null);
   assert.match(alertText({ title: 'T', lead: {}, link: 'L' }).sms, /a customer/);
