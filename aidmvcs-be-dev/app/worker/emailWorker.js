@@ -1058,7 +1058,7 @@ async function createPrompt(currentEmail, conversationThread) {
 async function openaitrigger(emailBody) {
   console.log(emailBody);
   const processedPrompt = Array.isArray(emailBody) ? JSON.stringify(emailBody) : emailBody;
-  const OPENAI_API_KEY = process.env.OPENAPI_KEY;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY;
   const payload = {
     model: 'gpt-4',
     messages: [
