@@ -215,36 +215,19 @@ export default function ViewConversations({
     }
   }, [buildConversationUrl, readConversationResponse]);
 
+  // Re-read the latest page each poll, like the AI Messages screen does, rather than
+  // asking only for records "after" the newest one shown: a record saved out of
+  // timestamp order (e.g. an AI send recorded a moment late) was skipped by the
+  // cursor and only appeared after a reload.
   const pollForNewConversations = useCallback(async (leadId) => {
     if (!leadId || pollingRef.current) return;
-    if (!cursorRef.current.newer) {
-      await reconcileLatestConversations(leadId);
-      return;
-    }
-
     pollingRef.current = true;
-    const generation = conversationGenerationRef.current;
-    let cursor = cursorRef.current.newer;
     try {
-      let hasNewer = true;
-      while (hasNewer && generation === conversationGenerationRef.current) {
-        const response = await fetch(buildConversationUrl(leadId, "after", cursor, 100));
-        const result = await readConversationResponse(response);
-        if (generation !== conversationGenerationRef.current) return;
-
-        if (result.emails.length > 0) {
-          setEmails((current) => mergeConversationMessages(current, result.emails));
-          cursor = result.pageInfo.newerCursor;
-          cursorRef.current.newer = cursor;
-        }
-        hasNewer = Boolean(result.pageInfo.hasNewer && result.pageInfo.newerCursor);
-      }
-    } catch (err) {
-      console.error("Error polling conversations:", err);
+      await reconcileLatestConversations(leadId);
     } finally {
       pollingRef.current = false;
     }
-  }, [buildConversationUrl, readConversationResponse, reconcileLatestConversations]);
+  }, [reconcileLatestConversations]);
 
   const loadOlderConversations = useCallback(async () => {
     const leadId = lead?._id;
