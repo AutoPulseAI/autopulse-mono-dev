@@ -20,6 +20,10 @@ export const MANAGER_ALERT_NOTE_KINDS = Object.freeze({
   call_escalation: 'A call the customer asked for has not been made',
   after_handoff: 'The customer wrote while the lead is with the team',
   not_interested: 'The customer says they are no longer interested',
+  // Client, 10 Oct 2026: every alert that needs a person reaches them by email and text, not only AI Alerts.
+  call_requested: 'The customer asked for a call',
+  service_request: 'A customer requested a service visit',
+  sold_pending_escalation: 'A Sold Pending customer has a question for a person',
 });
 
 function leadName(lead) {
