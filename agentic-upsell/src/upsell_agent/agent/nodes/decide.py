@@ -658,6 +658,17 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # words are read by the same booking code as anyone's ("el sábado en la mañana" -> "Saturday morning").
     reply_language = customer_language(
         text, [m.get("text") or "" for m in pack.get("working_memory", []) if m.get("direction") == "inbound"])
+    # Client, 10 Oct 2026: any language the customer writes in, not only Spanish - the model names it; a message too
+    # short to tell keeps the language they used before, then the language chosen on the lead in the CRM.
+    said = str((extraction or {}).get("message_language") or "").strip().title()
+    lead_language = str(((ctx.lead or {}).get("user_language")) or "").strip().title()
+    if said and said != "English":
+        reply_language = said
+    elif said == "English":
+        reply_language = None
+    elif not reply_language:
+        previous = str((ctx.lead_state or {}).get("reply_language") or "").strip()
+        reply_language = previous or (lead_language if lead_language not in ("", "English") else None)
     booking_text = dates_to_english(text) if reply_language == SPANISH else text
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,

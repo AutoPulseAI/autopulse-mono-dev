@@ -13,6 +13,8 @@ os.environ["LANGFUSE_SECRET_KEY"] = ""
 # PLAN_4 stream L: the morning / afternoon send-time test moves cadence touches off the fixed 10:00 that the
 # schedule tests check; tests of the test itself turn it on (tests/unit/test_learning.py).
 os.environ["SEND_TIME_AB"] = "false"
+# The 60-minute no-reply call task is off in production (client, 10 Oct 2026); its own tests still exercise it.
+os.environ.setdefault("CALL_TASK_ON_NO_REPLY", "true")
 
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo

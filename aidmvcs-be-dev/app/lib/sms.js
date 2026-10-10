@@ -95,6 +95,12 @@ export async function sendSMS(to, body, dealer, mediaUrls = []) {
       console.log(`Sending SMS from ${fromNumber} to ${toE164}`);
     }
 
+    // Client, 10 Oct 2026: delivered / undelivered come back to the CRM (app/api/webhooks/twilio), so a text shows
+    // "delivered" instead of staying at "sent".
+    const base = (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+    if (base.startsWith('https://') && !messageOptions.statusCallback) {
+      messageOptions.statusCallback = `${base}/api/webhooks/twilio`;
+    }
     const message = await client.messages.create(messageOptions);
 
     const messageType = mediaUrls && mediaUrls.length > 0 ? 'MMS' : 'SMS';

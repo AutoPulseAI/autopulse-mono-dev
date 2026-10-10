@@ -1,3 +1,4 @@
+import { contactedLeadIds } from '@lib/contactedLeads';
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
 import Email from "@models/Email";
@@ -104,7 +105,15 @@ export async function GET(request) {
         }
       }
 
-      const status_count = await Lead.countDocuments(statusQuery);
+      // "Contacted" = the customer actually talked to us (app/lib/contactedLeads.js), not a status that was set.
+      let status_count;
+      if (fe_lead_status === 'Contacted') {
+        const { fe_lead_status: _ignored, ...inRange } = statusQuery;
+        const ids = (await Lead.find(inRange).select('_id').lean()).map((l) => l._id);
+        status_count = (await contactedLeadIds(ids)).length;
+      } else {
+        status_count = await Lead.countDocuments(statusQuery);
+      }
 
       return new Response(JSON.stringify({
         total_leads: status_count

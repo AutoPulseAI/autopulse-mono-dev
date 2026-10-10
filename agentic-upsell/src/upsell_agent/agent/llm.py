@@ -70,6 +70,9 @@ class ExtractionResult(BaseModel):
         "They may be asking us to stop contacting them, but not in plain words"))
     opt_out_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are they want us to stop contacting them"))
+    message_language: str | None = Field(default=None, description=(
+        "The language the customer's latest message is written in, as its English name ('English', 'Spanish', "
+        "'Urdu', 'French', 'Portuguese', ...). Null when the message is too short to tell ('ok', '11', a name)."))
     wants_visit: bool = Field(default=False, description=(
         "They ask to come in, see a vehicle in person, test drive it or book a time to visit"))
     wants_visit_confidence: float = Field(default=0.0, ge=0, le=1, description=(
@@ -224,6 +227,8 @@ Rules:
   "have the team call me" -> later. A message that answers neither (a new question, a detail) -> no value.
   That answer is about when to talk, not about buying: "now", "tomorrow" or "morning" in it is never
   interest.timeline, interest.needed_by or contact.best_time.
+- message_language: the language the customer's latest message is written in, by its English name. Null when it is
+  too short to tell. A message mixing a few English words into another language is that other language.
 - wants_visit (+ wants_visit_confidence): they ask to come in, see the vehicle in person, test drive it or book a
   time ("can I come see it tomorrow at 10?", "I'd like a test drive", "can I bring it in for service Thursday?").
   0.8+ only when they clearly ask; asking
@@ -546,7 +551,8 @@ Rules:
   true: say so ("Monday works - I have ...") and ask which one. When it's false that day has no open time:
   say so briefly and offer the times in visit_offer, on `offered_day`. Never say the team will confirm the
   day or that you can't help with times: the times given are real and open.
-- reply_language (only when given, e.g. "Spanish"): the customer writes in that language. Write sms_text,
+- reply_language (only when given, e.g. "Spanish", "Urdu", "French"): the customer writes in that language (client,
+  10 Oct 2026: any language, not only Spanish). Write sms_text,
   email_subject and email_body in it, with the same rules and the same care for grammar. The client requires
   touch1.intro word for word, so it stays exactly as given (in English) at the start; everything after it is
   in reply_language. Other fixed wording (touch1.ending, the after-hours question) is translated faithfully,

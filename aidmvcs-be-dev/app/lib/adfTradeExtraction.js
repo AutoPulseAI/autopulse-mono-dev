@@ -41,7 +41,7 @@ export function validateTradeExtraction(output, input) {
 
 export async function extractTrade(input, {
   fetchImpl = fetch,
-  apiKey = process.env.OPENAPI_KEY || process.env.OPENAI_API_KEY,
+  apiKey = process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY,
   model = process.env.OPENAI_TRADE_MODEL || 'gpt-4o-mini',
   timeoutMs = 15000,
 } = {}) {

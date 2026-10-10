@@ -7,7 +7,7 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = process.env.OPENAI_TRANSLATION_MODEL || "gpt-4o-mini";
 
 function getOpenAiKey() {
-  return process.env.OPENAPI_KEY || process.env.OPENAI_API_KEY || "";
+  return process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY || "";
 }
 
 export async function POST(req) {

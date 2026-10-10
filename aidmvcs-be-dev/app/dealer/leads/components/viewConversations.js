@@ -21,6 +21,7 @@ import {
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
+import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -115,12 +116,15 @@ export default function ViewConversations({
     () => [...emails].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     [emails]
   );
+  // A note belongs to the lead, not to a channel (client, 10 Oct 2026: notes didn't show): it was filed under the
+  // channel of the latest message, so it only appeared in one tab - usually not the open one. Both tabs show it.
+  const isNoteRecord = (e) => Boolean(e?.is_note || e?.status === "note");
   const smsConversations = useMemo(
-    () => sortedEmails.filter((e) => e.communication_type === "sms"),
+    () => sortedEmails.filter((e) => e.communication_type === "sms" || isNoteRecord(e)),
     [sortedEmails]
   );
   const emailConversations = useMemo(
-    () => sortedEmails.filter((e) => e.communication_type !== "sms"),
+    () => sortedEmails.filter((e) => e.communication_type !== "sms" || isNoteRecord(e)),
     [sortedEmails]
   );
   const activeChannelEmails = activeChannelTab === "sms" ? smsConversations : emailConversations;
@@ -1155,7 +1159,11 @@ export default function ViewConversations({
                           <div className={`conversation-content ${
                             cleaned.type === "html" ? 'html-content' : 'text-content'
                           }`}>
-                            {cleaned.type === "html" ? (
+                            {looksLikeAdf(email.mail_content || "") ? (
+                              // The lead file a portal sent (ADF XML) shown as the lead it describes, never raw XML
+                              // (client, 10 Oct 2026).
+                              <AdfLead raw={email.mail_content} />
+                            ) : cleaned.type === "html" ? (
                               <div 
                                 className="html-body"
                                 dangerouslySetInnerHTML={{ __html: cleaned.content }}

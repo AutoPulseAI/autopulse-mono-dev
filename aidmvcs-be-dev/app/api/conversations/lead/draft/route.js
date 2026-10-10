@@ -61,7 +61,7 @@ function draftPrompt({ lead, dealerName, channel, language, thread, prompt }) {
 }
 
 async function callDraftProvider(payload, channel) {
-  const key = process.env.OPENAPI_KEY || process.env.OPENAI_API_KEY || "";
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY || "";
   if (!key) throw new Error("OPENAI_API_KEY is not configured");
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
@@ -148,7 +148,12 @@ export async function POST(request) {
 
     const threadSummary = thread.map((m) => {
       const date = m.timestamp || m.date ? new Date(m.timestamp || m.date).toISOString() : "";
-      const body = (m.mail_content || m.body || "").slice(0, 2000);
+      // The portal's lead file (ADF XML) is noise to the writer: it gets a one-line summary instead (client, 10 Oct
+      // 2026: raw XML showed in the Write with AI context).
+      const raw = String(m.mail_content || m.body || "");
+      const body = /<\?adf|<adf[\s>]/i.test(raw)
+        ? `(Lead submitted by the customer${lead?.vehicle ? ` about ${lead.vehicle}` : ""}${lead?.comments ? `: ${String(lead.comments).slice(0, 300)}` : ""})`
+        : raw.slice(0, 2000);
       const direction =
         m.status === "incoming" || m.status === "received" ? "IN" : "OUT";
 
