@@ -34,6 +34,7 @@ from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_d
 from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
+from upsell_agent.guardrails.stock_claims import unsupported_stock_claims
 from upsell_agent.guardrails.wording import (
     invented_names,
     repeated_vehicle_name,
@@ -42,6 +43,7 @@ from upsell_agent.guardrails.wording import (
 )
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
+from upsell_agent.tools.vehicle_catalog import dealer_catalog
 
 MAX_REWRITES = 1
 # PLAN_4 stream Q (client, 25 Sept: "The goal is not to escalate every customer ... allowing the lead to go cold"):
@@ -341,6 +343,14 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_links:
         result["passed"] = False
         result["violations"] += bad_links
+    # conversation_7: "we don't have X" only about what this turn's search looked for (guardrails/stock_claims.py).
+    catalog = await dealer_catalog(state.dealer_id)
+    bad_stock = unsupported_stock_claims(state.draft, stock_search=pack.get("stock_search"), inventory=inventory,
+                                         vehicle_words=set(catalog.models) | set(catalog.makes))
+    result["checks"]["stock_claims_match_search"] = not bad_stock
+    if bad_stock:
+        result["passed"] = False
+        result["violations"] += bad_stock
     not_first = touch1_not_first(state.decision or {}, state.draft or {})
     result["checks"]["touch1_opening_first"] = not not_first
     if not_first:

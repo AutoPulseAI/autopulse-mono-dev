@@ -24,7 +24,7 @@ from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations import dealer_profile, mongodb
 from upsell_agent.learning import optimizer
-from upsell_agent.tools import inventory_tool
+from upsell_agent.tools import inventory_tool, vehicle_catalog
 
 
 @pytest.fixture
@@ -46,11 +46,13 @@ def reset_clock():
     clock.set_offset(0)
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
+    vehicle_catalog.clear_cache()
     optimizer.clear_cache()
     yield
     clock.set_offset(0)
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
+    vehicle_catalog.clear_cache()
 
 
 @pytest.fixture

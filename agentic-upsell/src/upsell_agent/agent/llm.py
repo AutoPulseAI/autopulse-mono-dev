@@ -117,6 +117,15 @@ class ExtractionResult(BaseModel):
         "'can I see more pictures?')"))
     wants_link_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are they're asking for the link"))
+    # conversation_7: the stock search follows what THIS message asks about (tools/vehicle_catalog.py resolves it
+    # against the dealer's own makes and models), not only the vehicle saved in the profile.
+    asked_vehicle: str | None = Field(default=None, description=(
+        "The vehicle this message asks about or wants, in any form ('rdx acura', 'a Sonata', '2023 Honda CR-V', "
+        "'an SUV'), written as make and model when you can tell ('Acura RDX', 'Hyundai Sonata'). Null when the "
+        "message names no vehicle."))
+    browse_stock: bool = Field(default=False, description=(
+        "They ask what we have in general ('what vehicles do you have?', 'what's in your inventory?', 'show me "
+        "what you've got') without naming a vehicle"))
     # conversation_7: what the link is for, worked out from the conversation - code picks the URL from it
     # (agent/link_resolver.py), the model never writes one.
     link_target: Literal["vehicle", "website", "credit_application", "trade_in", "other", "unclear"] = Field(
@@ -256,6 +265,12 @@ Rules:
   trade valued online ("how do I apply for financing?", "can I value my trade online?") - the dealership may have
   a page for those. 0.8+ only when they clearly ask; asking for the dealership's address or hours is not a link
   request, and a question about payments, rates or what their trade is worth is not one either.
+- asked_vehicle: the vehicle this message asks about or says they want - a question counts too ("do u have
+  sonata in stock?" -> "Hyundai Sonata", "I want to buy rdx acura" -> "Acura RDX", "any SUVs?" -> "SUV"). Put the
+  make first and fix obvious misspellings when you're sure ("sonta" -> "Sonata"); otherwise copy their words.
+  Null when the message names no vehicle. This is only what to search stock for: it never fills a slot by itself.
+- browse_stock: true when they ask what we have in general ("what vehicles do you have?", "what's in your
+  inventory?") without naming a vehicle.
 - link_target (+ link_target_vin, link_target_confidence): only when wants_link is true - what the link is for,
   read from customer_text AND the conversation so far (the vehicle the lead inquired about, the vehicles we
   showed, what we were just talking about):
@@ -314,6 +329,12 @@ Rules:
     application link and the trade-in link are never copied from context: they go in only as the link
     placeholders `link` gives (see the links rule).
     Questions about whether a vehicle is in stock or available are answered only from context.inventory:
+    - context.stock_search (when given) says what this turn's search looked for (searched_for) and whether the
+      vehicles in context.inventory are exactly that (exact). exact false with vehicles: we don't have
+      searched_for right now - say so plainly, then offer those vehicles as the nearest we have. No
+      context.stock_search: no search ran this turn - never say we don't have a vehicle; the team will confirm.
+      Only ever say we don't have searched_for (never another vehicle the customer named), and never that we
+      have no vehicles at all unless searched_for is "any vehicle" and context.inventory is empty.
     - Name only vehicles that are in context.inventory, described only with that record's own fields
       (year, make, model, trim, color, miles) - never a made-up trim, color, year or mileage.
       Never mention a vehicle already marked already_shown as if it were new, but you may still talk

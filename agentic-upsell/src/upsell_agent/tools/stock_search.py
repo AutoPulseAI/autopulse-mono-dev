@@ -14,7 +14,8 @@ keeps its dealer scoping, `year_range`, escaping and 60 s cache):
   must be in it). "Loosen trim" means stop checking.
 - **Loosening (item 4).** No match loosens in a fixed order, each step only
   if that criterion was given, and each step is recorded:
-  colour → trim → year ±1 → the same body type from any make → new or used
+  colour → trim → year ±1 → the same body type from any make (body type unknown: the same make, then
+  any vehicle - conversation_7) → new or used
   (the last one decided 28 Sept, our default, flagged for client feedback).
 - **"Something bigger" (item 2).** Four size tiers (our default, flagged for
   client feedback). The search moves one tier up from the body type they were
@@ -197,12 +198,18 @@ async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
     elif (c.make or c.model) and not any(s["step"] == "make" for s in loosened):
         named = " ".join(filter(None, [c.make, c.model]))
         body = await _body_of(dealer_id, c, source)
-        if body is None:
-            loosened.append({"step": "make", "detail": f"skipped: the body type of {named} isn't known from this "
-                                                       "dealer's stock"})
-        else:
+        if body is not None:
             loosened.append({"step": "make", "detail": f"no {named}; any {body}, any make"})
             return "make", c.model_copy(update={"make": None, "model": None, "trim": None, "body_type": body})
+        # conversation_7: the body type of a vehicle the dealer doesn't have can't be read from its stock. Before,
+        # this step was skipped and the search ended empty ("we don't have any vehicles"); now it widens to the
+        # same make, then to the stock in general.
+        if c.make and c.model and not any(s["step"] == "model" for s in loosened):
+            loosened.append({"step": "model", "detail": f"no {named} (its body type isn't known from this dealer's "
+                                                        f"stock); any {c.make}"})
+            return "model", c.model_copy(update={"model": None, "trim": None})
+        loosened.append({"step": "make", "detail": f"no {named} (body type unknown); other vehicles in stock"})
+        return "make", c.model_copy(update={"make": None, "model": None, "trim": None})
     # Last (decided 28 Sept, our default): nothing in their condition, so the other one too.
     if c.condition:
         other = "used" if c.condition == "new" else "new"

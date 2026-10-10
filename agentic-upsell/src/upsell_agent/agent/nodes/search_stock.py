@@ -41,6 +41,7 @@ from upsell_agent.tools.inventory_tool import (
 
 TRIGGER_CADENCE_TOUCH = "cadence_touch"  # scheduler/followups.py (not imported: it imports the agent)
 from upsell_agent.tools.stock_search import find_stock
+from upsell_agent.tools.vehicle_catalog import ResolvedVehicle, dealer_catalog, resolve_vehicle
 
 BIGGER = re.compile(r"\b(bigger|larger|more room|more space|roomier)\b", re.IGNORECASE)
 NOT_SEARCHED = ("Not searched: no stock question, and the profile doesn't name a vehicle "
@@ -170,22 +171,80 @@ async def search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
     return out
 
 
+def _profile_vehicle_words(profile: dict[str, Any]) -> str | None:
+    slot = next((s for s in profile.get("slots", []) if s.get("path") == "interest.model"
+                 and s.get("state") in ("filled", "stale")), None)
+    value = (slot or {}).get("value")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _with_vehicle(c: InventoryCriteria, v: ResolvedVehicle) -> InventoryCriteria:
+    """`c` searching vehicle `v` instead: the make/model/trim/year (and a body type said in place of a model)
+    replaced; condition and budget kept; the old vehicle's colour dropped."""
+    return c.model_copy(update={"make": v.make, "model": v.model, "trim": v.trim, "year_min": v.year,
+                                "year_max": v.year, "exterior_color": None,
+                                "body_type": None if (v.make or v.model) else (v.body_type or c.body_type)})
+
+
+async def turn_criteria(state: AgentState, stock_question: bool) -> tuple[InventoryCriteria, str | None, list[str]]:
+    """conversation_7: what this turn searches for, and why. A stock question about a vehicle ("do u have sonata in
+    stock?") searches that vehicle; "what vehicles do you have?" searches the stock in general; otherwise the
+    profile's vehicle. Every vehicle is resolved against the dealer's own makes and models first (word order,
+    spacing, misspellings: tools/vehicle_catalog.py), so "rdx acura" is searched as make Acura, model RDX. Never
+    changes the profile: this is only what to search."""
+    profile_criteria = criteria_from_profile(state.profile or {})
+    extraction = state.extraction or {}
+    text = state.customer_text or state.inbound_text or ""
+    catalog = await dealer_catalog(state.dealer_id)
+    notes: list[str] = []
+    if stock_question or extraction.get("browse_stock"):
+        asked = extraction.get("asked_vehicle")
+        named = resolve_vehicle(asked, catalog) if asked else ResolvedVehicle()
+        if not named.found:
+            named = resolve_vehicle(text, catalog, phrase=False)  # a vehicle named in the message itself
+        same = named.model and (named.make or "").lower() == (profile_criteria.make or "").lower() and \
+            named.model.lower() == (profile_criteria.model or "").lower()
+        if same:  # the vehicle the profile already has: its colour, trim and year still count
+            return profile_criteria, None, notes
+        if named.found:
+            notes.append(f"This message asks about {(asked or text)!r}: searched as {named.describe()} ({named.how}).")
+            return _with_vehicle(profile_criteria, named), "the customer asked about a vehicle", notes
+        if extraction.get("browse_stock") or not (profile_criteria.make or profile_criteria.model):
+            notes.append("They asked what we have: the stock in general (budget and new/used kept), not one vehicle.")
+            return (InventoryCriteria(condition=profile_criteria.condition, price_max=profile_criteria.price_max,
+                                      body_type=profile_criteria.body_type), "the customer asked what we have", notes)
+    if words := _profile_vehicle_words(state.profile or {}):
+        wanted = resolve_vehicle(words, catalog)
+        # Only when it reads the words better than the profile's own split did: a model this dealer carries
+        # ("rdx acura" -> Acura RDX), or a make the profile missed. A vehicle the dealer doesn't carry keeps the
+        # profile's split ("RAV4 Adventure" -> model RAV4, trim Adventure).
+        better = wanted.how == "catalog" or wanted.how.startswith("fuzzy") or (
+            wanted.make and not profile_criteria.make)
+        if better and (wanted.make, wanted.model) != (profile_criteria.make, profile_criteria.model):
+            notes.append(f"The profile's vehicle {words!r} searched as {wanted.describe()} ({wanted.how}).")
+            return _with_vehicle(profile_criteria, wanted).model_copy(update={
+                "exterior_color": profile_criteria.exterior_color}), None, notes
+    return profile_criteria, None, notes
+
+
 async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
-    criteria = criteria_from_profile(state.profile or {})
     text = state.customer_text or state.inbound_text
+    stock_question = _asked_about_stock(state)
+    criteria, asked_trigger, resolve_notes = await turn_criteria(state, stock_question)
     bigger = bool(BIGGER.search(text or ""))
-    trigger = search_trigger(criteria, _asked_about_stock(state), bigger)
+    trigger = asked_trigger or search_trigger(criteria, stock_question, bigger)
     pack = dict(state.context_pack or {})
     wanted = criteria.model_dump(exclude_none=True)
 
     if trigger is None:
         span.output = {"searched": False, "records": [], "criteria": wanted}
-        span.reasoning = [NOT_SEARCHED]
+        span.reasoning = [*resolve_notes, NOT_SEARCHED]
         span.edge_label = "no search"
         return {"context_pack": _patch(pack, [], None, None)}
 
     source = ctx.inventory or get_inventory_source(ctx.settings)
-    reasoning = [f"Searching because {trigger}.", f"From the profile: {wanted or 'nothing (the newest stock)'}"
+    reasoning = [*resolve_notes, f"Searching because {trigger}.",
+                 f"Looking for: {wanted or 'nothing in particular (the newest stock)'}"
                  + (" · the budget filters the search only, it's never said" if criteria.price_max else "")
                  + (" · asked for something bigger, so the vehicle named is swapped for the next size up"
                     if bigger else (" · trim checked on our side" if criteria.trim else "")) + "."]
@@ -217,7 +276,22 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
     span.reasoning = reasoning
     span.edge_label = (f"{len(loaded)} loaded" + (f" · loosened {', '.join(s['step'] for s in result.loosened)}"
                                                   if result.loosened else ""))
-    return {"context_pack": _patch(pack, loaded, result.final_query, result.checked_at)}
+    patched = _patch(pack, loaded, result.final_query, result.checked_at)
+    # conversation_7: what was searched, and whether the vehicles loaded are that or the nearest we have - so the
+    # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
+    widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
+    patched["stock_search"] = {"searched_for": describe_criteria(criteria), "found": len(loaded),
+                               "exact": bool(loaded) and not widened,
+                               "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
+                               if widened and loaded else None}
+    return {"context_pack": patched}
+
+
+def describe_criteria(c: InventoryCriteria) -> str:
+    """"2023 Acura RDX", "Hyundai Sonata", "an SUV", "any vehicle": what a search looked for, in words."""
+    year = (str(c.year_min) if c.year_min == c.year_max else f"{c.year_min}-{c.year_max}") if c.year_min else None
+    named = " ".join(p for p in (year, c.make, c.model, c.trim) if p)
+    return named or (c.body_type or (" / ".join(c.body_types) if c.body_types else "")) or "any vehicle"
 
 
 def _patch(pack: dict[str, Any], records: list[dict[str, Any]], query: dict[str, Any] | None,
@@ -226,4 +300,5 @@ def _patch(pack: dict[str, Any], records: list[dict[str, Any]], query: dict[str,
     budget = dict(pack.get("budget") or {})
     budget["tokens"] = {**(budget.get("tokens") or {}), "inventory": estimate_tokens(str(records)) if records else 0}
     return {**pack, "inventory": records, "inventory_query": query, "inventory_checked_at": checked_at,
-            "budget": budget}
+            # The turn's own search summary is kept when a later step (a referred vehicle, a link) re-patches.
+            "budget": budget, "stock_search": pack.get("stock_search")}

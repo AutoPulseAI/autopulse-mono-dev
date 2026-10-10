@@ -242,10 +242,12 @@ async def test_same_body_type_from_another_make(mongo):
     await _stock(mongo, _vehicle("VIN00000000000331", make="Mazda", model="CX-5", body="SUV"),
                  _vehicle("VIN00000000000332", make="Toyota", model="Camry", body="Sedan"),
                  _vehicle("VIN00000000000333", dealer=OTHER, make="Honda", model="CR-V", body="SUV", condition="new"))
-    # No CR-V at this dealer at all, so its body type can't be learned here: the step is skipped, not guessed.
-    none = await find_stock(DEALER, InventoryCriteria(make="Honda", model="CR-V", condition="new"), STUB)
-    assert [s["step"] for s in none.loosened] == ["make", "condition"] and "skipped" in none.loosened[0]["detail"]
-    assert none.records == []  # no CR-V of either condition here
+    # No CR-V at this dealer at all, so its body type can't be learned here: never guessed. conversation_7: the
+    # search no longer ends empty - any Honda, then the stock in general (never another dealer's).
+    other = await find_stock(DEALER, InventoryCriteria(make="Honda", model="CR-V", condition="new"), STUB)
+    assert [s["step"] for s in other.loosened][:2] == ["model", "make"]
+    assert "body type isn't known" in other.loosened[0]["detail"]
+    assert {r.vin for r in other.records} <= {"VIN00000000000331", "VIN00000000000332"} and other.records
 
     # With the body type known (the customer said SUV), another make's SUV; never another dealer's.
     found = await find_stock(DEALER, InventoryCriteria(make="Honda", model="CR-V", body_type="SUV"), STUB)
