@@ -40,3 +40,30 @@ def test_a_new_lead_email_is_not_contact():
     for current in (None, Stage.NEW_LEAD, Stage.NO_CONTACT):
         assert transition(current, Event("reengaged")).stage == Stage.NO_CONTACT
     assert transition(Stage.CONTACT_NO_ACTION, Event("reengaged")).stage == Stage.CONTACT_NO_ACTION
+
+
+async def test_the_interior_photo_when_asked_about_the_inside(monkeypatch):
+    from upsell_agent.agent import interior_photo as ip
+    views = {"https://x/1.jpg": "exterior", "https://x/2.jpg": "exterior", "https://x/3.jpg": "interior"}
+    looked: list[str] = []
+
+    async def fake_label(url, settings):
+        looked.append(url)
+        return views[url]
+
+    monkeypatch.setattr(ip, "_label", fake_label)
+    assert ip.asks_about_interior("what color is the interior?")
+    assert ip.asks_about_interior("are the seats leather")
+    assert not ip.asks_about_interior("is it still available")
+    assert await ip.interior_photo(list(views), None, None) == "https://x/3.jpg"
+    assert looked == list(views)
+
+
+async def test_no_model_no_guess(monkeypatch):
+    from upsell_agent.agent import interior_photo as ip
+
+    async def no_label(url, settings):
+        return None
+
+    monkeypatch.setattr(ip, "_label", no_label)
+    assert await ip.interior_photo(["https://x/1.jpg"], None, None) is None

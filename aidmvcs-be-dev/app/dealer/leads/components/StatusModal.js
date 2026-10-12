@@ -33,20 +33,21 @@ export default function StatusModal({
   }, [show]);
 
   const statusOptions = [
+    // In the order of the client's status list (scope §16; Betsy, 12 Oct 2026: "statuses do not look exactly as I
+    // specified" - no plain "Contacted" or "Sold", which her workflows don't have). Shown with app/lib/statusLabels.js.
+    "Lead",
+    "Lead Not Contacted",
+    "Contacted - No Next Action",
     "Appointment Booked",
+    "No Show",
     "Visited",
+    "DND",
     "Managerial Review",
-    "Sold",
     "Sold Pending",
     "Sold Delivered",
     "Unsold",
     "Closed - Lost",
-    "Lead",
-    // The SOW's working stages (client, 8 Oct 2026): the AI also sets them as the lead moves.
-    "Lead Not Contacted",
-    "Contacted - No Next Action",
-    "DND",
-    "No Show"
+
   ];
   // Statuses only the AI sets (app/lib/ai/aiDnd.js READ_ONLY_STATUSES).
   const readOnlyStatuses = ["Closed - No Longer Owns", "Contacted - Specific Follow-up"];

@@ -912,7 +912,7 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-light fa-hand"
               count={contactedCount}
-              label="Contacted"
+              label="Customer Replied"
               link={getContactedLink()}
               description={getContactedDescription()}
             />

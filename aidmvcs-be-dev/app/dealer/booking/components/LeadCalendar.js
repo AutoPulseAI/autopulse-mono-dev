@@ -1,4 +1,5 @@
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 // import { useSearchParams } from "next/navigation"; // Not needed for calendar view
 import { Button, Card, Badge, Modal, Row, Col, Spinner } from "react-bootstrap";
@@ -432,7 +433,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                     <div
                       key={lead._id}
                       className={`lead-indicator bg-${getStatusColor(lead.fe_lead_status)}`}
-                      title={`${lead.name} - ${lead.fe_lead_status}`}
+                      title={`${lead.name} - ${statusLabel(lead.fe_lead_status)}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleLeadClick(lead);

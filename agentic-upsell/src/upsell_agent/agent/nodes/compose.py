@@ -21,6 +21,7 @@ from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
 from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
 from upsell_agent.agent.link_resolver import LinkPlan, fill_links, resolve_link
 from upsell_agent.agent.llm import compose_agent, run_agent
+from upsell_agent.agent.multi_vehicle import vehicle_label
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
 from upsell_agent.agent.vehicle_media import lead_vehicle_vin, wants_link
@@ -98,7 +99,8 @@ def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
     return changed
 
 
-def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None) -> bool:
+def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None,
+                     vehicle: str | None = None) -> bool:
     """Touch 2's name nudge (decide.py plan_cadence_touch_context: "the client calls it non-negotiable",
     Omnichannel PDF §3) is overwritten here rather than trusted to the model, the same reasoning as Touch 1's
     intro (place_touch1_intro): seen live, 6 Oct 2026, gpt-5-mini wrote a full qualifying question instead of
@@ -111,7 +113,12 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
     name = first_name(customer_first_name) or "there"
     draft["sms_text"] = fixed_text
     draft["email_subject"] = draft.get("email_subject") or "Your inquiry"
-    draft["email_body"] = f"Hi {name},\n\n{fixed_text}\n\nThanks,\nThe Team"
+    # "{FirstName}?" is a text; as an email it read "Hi Domenico, Domenico? Thanks, The Team" (seen live, 11 Oct
+    # 2026). The email says the same thing in a sentence.
+    about = f" about the {vehicle}" if vehicle else ""
+    draft["email_subject"] = "Just checking in"
+    draft["email_body"] = (f"Hi {name},\n\nJust checking that you saw my last message{about}. Is there anything I can "
+                           f"help you with?\n\nThank you")
     draft["promises"] = []
     return changed
 
@@ -257,7 +264,8 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
-    nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name)
+    nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
+                              vehicle=vehicle_label(ctx.lead) if ctx else None)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
     decision = state.decision or {}
     linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
