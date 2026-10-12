@@ -299,11 +299,13 @@ export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLe
     created = true;
   }
 
-  if (!record.lead_id || String(record.lead_id) !== String(lead._id)) {
-    await Email.updateOne({ _id: record._id }, { $set: { lead_id: lead._id } });
+  if (!record.lead_id || String(record.lead_id) !== String(lead._id) || leadEmail) {
+    await Email.updateOne({ _id: record._id }, { $set: { lead_id: lead._id, ...(leadEmail ? { is_lead_email: true } : {}) } });
   }
   const replyChannel = created && lead.followup_preference === 'sms' ? 'sms' : 'email';
-  await Lead.updateOne({ _id: lead._id }, { $set: { response_mode: replyChannel, last_inbound_at: new Date() } });
+  // The lead email is not the customer writing to us: it never counts as their last message.
+  await Lead.updateOne({ _id: lead._id }, { $set: { response_mode: replyChannel,
+    ...(leadEmail ? {} : { last_inbound_at: new Date() }) } });
 
   const event = created
     ? await notifyNewLead({ lead, dealerId, channel: replyChannel, mode, logger })

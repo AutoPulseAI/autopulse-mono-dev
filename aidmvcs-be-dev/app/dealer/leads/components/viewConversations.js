@@ -300,7 +300,10 @@ export default function ViewConversations({
         setHasOlderConversations(cursorRef.current.hasOlder);
         if (tabDefaultSetForLeadRef.current !== leadId) {
           tabDefaultSetForLeadRef.current = leadId;
-          setActiveChannelTab(result.emails.some((message) => message.communication_type === "sms") ? "sms" : "email");
+          // Client, 12 Oct 2026: a portal lead with a phone is a text conversation; the lead email never makes it an
+          // email conversation.
+          setActiveChannelTab(lead?.phone || result.emails.some((message) => message.communication_type === "sms")
+            ? "sms" : "email");
         }
       } catch (err) {
         if (err.name !== "AbortError") console.error("Error fetching conversations:", err);
@@ -1162,7 +1165,15 @@ export default function ViewConversations({
                           <div className={`conversation-content ${
                             cleaned.type === "html" ? 'html-content' : 'text-content'
                           }`}>
-                            {looksLikeAdf(email.mail_content || "") ? (
+                            {email.is_lead_email && !looksLikeAdf(email.mail_content || "") ? (
+                              // A portal's plain lead notification: the lead it brought in, not the customer writing.
+                              <div className="text-body">
+                                <div className="fw-semibold mb-1">New lead received{lead?.source ? ` from ${lead.source}` : ""}</div>
+                                {cleaned.type === "html"
+                                  ? <div className="html-body" dangerouslySetInnerHTML={{ __html: cleaned.content }} />
+                                  : cleaned.content}
+                              </div>
+                            ) : looksLikeAdf(email.mail_content || "") ? (
                               // The lead file a portal sent (ADF XML) shown as the lead it describes, never raw XML
                               // (client, 10 Oct 2026).
                               <AdfLead raw={email.mail_content} />

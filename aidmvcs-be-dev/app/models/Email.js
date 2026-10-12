@@ -42,6 +42,9 @@ const emailSchema = new mongoose.Schema({
   },
   lead_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
   is_note: { type: Boolean, default: false },
+  // The portal's / ADF lead notification itself (client, 12 Oct 2026): shown as the lead card, never as the customer
+  // writing to us, and never counted as contact (app/lib/contactedLeads.js).
+  is_lead_email: { type: Boolean, default: false },
   
   // Read/Unread tracking
   read: { type: Boolean, default: false },

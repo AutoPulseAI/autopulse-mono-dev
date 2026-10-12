@@ -372,7 +372,11 @@ def transition(current: Stage | None, event: Event) -> Transition:
         # appointment or a dated next step the customer already has stays as it is.
         if current in (Stage.APPOINTMENT_SET, Stage.NO_SHOW, Stage.SPECIFIC_FOLLOWUP, Stage.SALES_VISIT):
             return _stay("reengaged_kept", f"{STAGE_LABELS[current]} kept; the 90-day clock restarts.", event)
-        return Transition(Stage.CONTACT_NO_ACTION, "reengaged", why or "The customer sent a new inquiry", event)
+        # Client, 12 Oct 2026 (Betsy): "THE INCOMING LEAD EMAIL IS NOT A CONTACT MADE". A new inquiry is a lead, not a
+        # conversation: a customer who never replied stays Lead Not Contacted; one who already talked to us keeps
+        # Contacted - No Next Action.
+        stage = Stage.CONTACT_NO_ACTION if current == Stage.CONTACT_NO_ACTION else Stage.NO_CONTACT
+        return Transition(stage, "reengaged", why or "The customer sent a new inquiry", event)
     if kind == "unsold":
         # Client, 1 Oct 2026 (scope Q2): back to follow-up for 90 days; a visit is contact, so the stage is
         # Contact Made - No Next Action (§5), and the follow-up period restarts from the Unsold date.

@@ -33,3 +33,10 @@ def test_the_value_of_my_car_is_a_trade():
     assert _TRADE.search("what is the value of my civic")
     assert _TRADE.search("how much would you give me for my car")
     assert not _TRADE.search("what's my payment")
+
+
+def test_a_new_lead_email_is_not_contact():
+    from upsell_agent.agent.lifecycle import Event, Stage, transition
+    for current in (None, Stage.NEW_LEAD, Stage.NO_CONTACT):
+        assert transition(current, Event("reengaged")).stage == Stage.NO_CONTACT
+    assert transition(Stage.CONTACT_NO_ACTION, Event("reengaged")).stage == Stage.CONTACT_NO_ACTION
