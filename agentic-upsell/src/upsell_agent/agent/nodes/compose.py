@@ -99,6 +99,31 @@ def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
     return changed
 
 
+def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) -> list[str]:
+    """Client, 12 Oct 2026 (Betsy): the first reply about an in-stock vehicle carries its listed price (tax,
+    documentation and DMV not included) and its photo, right after the introduction; a customer with no phone gets
+    her email asking for one. Placed by code, like the introduction. Returns what was placed (for the trace)."""
+    touch1 = touch1 or {}
+    placed: list[str] = []
+    line, vin, intro = touch1.get("price_line"), touch1.get("vin"), str(touch1.get("intro") or "").strip()
+    if line and vin:
+        for key, vins, media in (("sms_text", "sms_vins", "sms_media_vin"), ("email_body", "email_vins",
+                                                                             "email_media_vin")):
+            text = str(draft.get(key) or "")
+            if line not in text:
+                text = (f"{intro} {line}{text[len(intro):]}" if intro and text.startswith(intro)
+                        else f"{line} {text}").replace("  ", " ")
+                draft[key] = text
+            draft[vins] = list(dict.fromkeys([vin, *(draft.get(vins) or [])]))
+            draft[media] = vin
+        placed.append("listed price and photo")
+    email = touch1.get("no_phone_email")
+    if email:
+        draft["email_subject"], draft["email_body"] = email["subject"], email["body"]
+        placed.append("no-phone email")
+    return placed
+
+
 def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None,
                      vehicle: str | None = None) -> bool:
     """Touch 2's name nudge (decide.py plan_cadence_touch_context: "the client calls it non-negotiable",
@@ -285,6 +310,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
+    extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None)
@@ -300,6 +326,8 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
+    if extras:
+        span.reasoning.append("First reply: " + " and ".join(extras) + " placed by code (client, 12 Oct 2026).")
     if scripted:
         span.reasoning.append(f"Can't-supply reply ({decision['cannot_supply']['topic']}) placed by code, in the "
                               "client's words.")

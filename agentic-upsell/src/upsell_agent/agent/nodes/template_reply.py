@@ -42,6 +42,9 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     else:
         draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
                  if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
+    if not mid_conversation and not spanish and touch1:
+        from upsell_agent.agent.nodes.compose import place_touch1_extras
+        place_touch1_extras(draft, touch1)
     draft["why"] = why
     return draft
 

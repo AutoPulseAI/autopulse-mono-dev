@@ -545,6 +545,41 @@ def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: st
     }
 
 
+def _money(value: Any) -> str | None:
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return f"${amount:,.0f}" if amount > 0 else None
+
+
+def first_reply_extras(ctx: TurnContext, state: AgentState, dealer: DealerProfile) -> dict[str, Any]:
+    """Client, 12 Oct 2026 (Betsy, Natasha's lead): the first reply about an in-stock vehicle sends "a picture of the
+    vehicle and the listed price, which does not include tax, documentation or DMV" - never lead-form details read
+    back. And (same day) a customer with no phone number gets her email asking for one."""
+    from upsell_agent.agent.multi_vehicle import vehicle_label
+    from upsell_agent.agent.vehicle_media import lead_vehicle_vin
+    extras: dict[str, Any] = {}
+    vin = lead_vehicle_vin(ctx.lead, ctx.lead_state)
+    record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
+    if record and (price := _money(record.get("price"))):
+        extras.update(vin=vin, price_line=f"It's listed at {price}, not including tax, documentation and DMV fees.")
+    if not resolve_recipient(ctx.lead, ctx.customer, "sms"):
+        vehicle = vehicle_label(ctx.lead) or "vehicle"
+        model = " ".join(p for p in (str((ctx.lead or {}).get("year") or "").strip(),
+                                     str((ctx.lead or {}).get("model") or "").strip()) if p) or vehicle
+        name = first_name(state.customer_name) or "there"
+        reach = f" We can be reached at {dealer.phone}." if dealer.phone else ""
+        extras["no_phone_email"] = {
+            "subject": f"{vehicle} Update" if vehicle != "vehicle" else "Your Vehicle Update",
+            "body": (f"Hello {name},\n\nThank you for reaching out to {dealer.name or 'us'} regarding the {model}. "
+                     "I am excited to assist you with your purchase!\n\nWe can accomplish a lot with a quick call. "
+                     f"What is the best phone number to reach you?{reach}\n\nBy the way, what are you driving now?"
+                     "\n\nI look forward to hearing from you."),
+        }
+    return extras
+
+
 async def _assigned_name(ctx: TurnContext) -> str | None:
     """The first name of the salesperson the lead is assigned to (CRM `assigned_to`), or None."""
     from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id, get_db
@@ -793,6 +828,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
               if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff", "offer_human")
               else None)
     if touch1:
+        touch1.update(first_reply_extras(ctx, state, dealer))
         decision["touch1"] = touch1
         if touch1["ending"]:
             # The closing question is one of the two, so at most one other ask fits (decision 35). A

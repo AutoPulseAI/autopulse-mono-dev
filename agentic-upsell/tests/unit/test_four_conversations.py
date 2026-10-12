@@ -45,7 +45,7 @@ def test_a_new_lead_email_is_not_contact():
 
 async def test_the_interior_photo_when_asked_about_the_inside(monkeypatch):
     from upsell_agent.agent import interior_photo as ip
-    views = {"https://x/1.jpg": "exterior", "https://x/2.jpg": "exterior", "https://x/3.jpg": "interior"}
+    views = {"https://x/1.jpg": "cargo", "https://x/2.jpg": "front", "https://x/3.jpg": "interior"}
     looked: list[str] = []
 
     async def fake_label(url, settings):
@@ -76,3 +76,56 @@ def test_the_trade_agent_hears_value_of_my_car():
                  "my civic's value", "can you appraise my truck"):
         assert route(said)[0].id == TRADE, said
     assert route("do you have it in blue")[0].id != TRADE
+
+
+def test_first_reply_price_photo_and_no_phone_email():
+    # Client, 12 Oct 2026 (Betsy: Natasha's and Francisco's leads).
+    from types import SimpleNamespace
+
+    from upsell_agent.agent.nodes.compose import place_touch1_extras
+    from upsell_agent.agent.nodes.decide import first_reply_extras
+    lead = {"year": "2026", "make": "Hyundai", "model": "Tucson", "vin": "5NMJBCDE4TH632221",
+            "email": "pandofrancisco@yahoo.com"}
+    ctx = SimpleNamespace(lead=lead, customer={}, lead_state={})
+    state = SimpleNamespace(customer_name="Francisco Pando",
+                            context_pack={"inventory": [{"vin": "5NMJBCDE4TH632221", "price": 24639}]})
+    dealer = SimpleNamespace(phone="(347) 658-5466", name="Victory Cars Central")
+    extras = first_reply_extras(ctx, state, dealer)
+    assert extras["price_line"] == "It's listed at $24,639, not including tax, documentation and DMV fees."
+    email = extras["no_phone_email"]
+    assert email["subject"] == "2026 Hyundai Tucson Update"
+    assert email["body"].startswith("Hello Francisco,\n\nThank you for reaching out to Victory Cars Central regarding "
+                                    "the 2026 Tucson. I am excited to assist you with your purchase!")
+    assert "What is the best phone number to reach you? We can be reached at (347) 658-5466." in email["body"]
+    assert "By the way, what are you driving now?" in email["body"] and "team" not in email["body"].lower()
+
+    intro = "Hi Francisco, this is Nicole, Victory Cars Central's AI Sales Manager."
+    draft = {"sms_text": f"{intro} Tell me, what are you driving now?", "email_body": f"{intro}\n\nThank you",
+             "email_subject": "Your inquiry"}
+    placed = place_touch1_extras(draft, {"intro": intro, **extras})
+    assert draft["sms_text"] == (f"{intro} It's listed at $24,639, not including tax, documentation and DMV fees. "
+                                 "Tell me, what are you driving now?")
+    assert draft["sms_media_vin"] == "5NMJBCDE4TH632221" and draft["sms_vins"] == ["5NMJBCDE4TH632221"]
+    assert draft["email_subject"] == "2026 Hyundai Tucson Update" and placed == ["listed price and photo",
+                                                                                 "no-phone email"]
+
+
+def test_a_customer_with_a_phone_gets_no_phone_request():
+    from types import SimpleNamespace
+
+    from upsell_agent.agent.nodes.decide import first_reply_extras
+    ctx = SimpleNamespace(lead={"phone": "+13476585466", "model": "Giulia"}, customer={}, lead_state={})
+    extras = first_reply_extras(ctx, SimpleNamespace(customer_name="Artem", context_pack={}),
+                                SimpleNamespace(phone=None, name="Victory"))
+    assert "no_phone_email" not in extras and "price_line" not in extras
+
+
+async def test_the_first_photo_is_the_outside_not_the_trunk(monkeypatch):
+    from upsell_agent.agent import interior_photo as ip
+    views = {"https://x/trunk.jpg": "cargo", "https://x/front.jpg": "front"}
+
+    async def fake_label(url, settings):
+        return views[url]
+
+    monkeypatch.setattr(ip, "_label", fake_label)
+    assert await ip.photo_showing(list(views), ip.EXTERIOR, None, None) == "https://x/front.jpg"

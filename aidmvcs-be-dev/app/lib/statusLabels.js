@@ -5,13 +5,15 @@ export const STATUS_LABELS = Object.freeze({
   'Lead': 'New Lead',
   'Lead Not Contacted': 'No Contact Made',
   'Contacted - No Next Action': 'Contact Made - No Next Action',
-  'Contacted - Specific Follow-up': 'Contact Made - Specific Follow-Up',
+  // Client, 12 Oct 2026 (Betsy): "Contact Made - Follow Up Assigned" when the customer asked for follow-up on
+  // another day; and "Opt-Out" - the legal TCPA process, different from Closed Lost.
+  'Contacted - Specific Follow-up': 'Contact Made - Follow Up Assigned',
   'Appointment Booked': 'Appointment Set',
   'No Show': 'Appointment No Show',
   'Visited': 'Sales Visit',
   'Sold Delivered': 'Sold - Delivered',
   'Closed - Lost': 'Closed Lost',
-  'DND': 'Opted Out / Suppressed',
+  'DND': 'Opt-Out',
   // Client, 12 Oct 2026 (Betsy): "change Manager Review to Dealership Action Required". A plain "Contacted" isn't
   // a workflow status (it's no longer offered when setting a status); as a Leads filter it means the customer
   // actually talked to us (app/lib/contactedLeads.js).

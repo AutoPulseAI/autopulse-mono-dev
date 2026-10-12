@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from upsell_agent.agent.interior_photo import asks_about_interior, interior_photo
+from upsell_agent.agent.interior_photo import EXTERIOR, INTERIOR, asks_about_interior, photo_showing
 from upsell_agent.agent.media import choose_photo, photo_candidates, valid_photo_url
 from upsell_agent.config import Settings
 from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id, get_db
@@ -193,23 +193,23 @@ async def pick_vehicle_photo(dealer_id: str, vin: str | None, *, channel: str, s
     return pick
 
 
-async def _interior_pick(dealer_id: str, vin: str, channel: str, *, settings: Settings,
-                         source: InventorySource | None, db: Any) -> MediaPick | None:
-    """That vehicle's interior photo, checked like any other; None to fall back to the usual photo."""
+async def _labeled_pick(dealer_id: str, vin: str, channel: str, views: frozenset[str], why: str, *,
+                        settings: Settings, source: InventorySource | None, db: Any) -> MediaPick | None:
+    """That vehicle's own photo showing one of `views`, checked like any other; None to fall back to the usual
+    first-listed photo."""
     if channel == "sms" and not (await mms_enabled(dealer_id, settings))[0]:
         return None
     try:
         record = await get_vehicle(dealer_id, vin, source or get_inventory_source(settings))
     except Exception:  # noqa: BLE001 - a photo is never worth a failed send
         return None
-    url = await interior_photo(photo_candidates(vin, [record] if record else []), settings, db)
+    url = await photo_showing(photo_candidates(vin, [record] if record else []), views, settings, db)
     if not url:
         return None
     result = await get_image_checker(settings).check(url)
     if not result.ok:
         return None
-    why = f"The customer asked about the inside: {vin}'s interior photo ({result.reason})."
-    return MediaPick(vin=vin, urls=[url], reasons=[why])
+    return MediaPick(vin=vin, urls=[url], reasons=[f"{why}: {vin}'s photo ({result.reason})."])
 
 
 def media_vin(draft: dict[str, Any], channel: str) -> str | None:
@@ -251,7 +251,15 @@ async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *
     vin = media_vin(draft, channel)
     if asks_about_interior(customer_text) and (vin := vin or lead_vehicle_vin(lead, lead_state)):
         # Client, 12 Oct 2026: asked about the inside, the inside is what they see - from that vehicle's own photos.
-        pick = await _interior_pick(dealer_id, vin, channel, settings=settings, source=source, db=db)
+        pick = await _labeled_pick(dealer_id, vin, channel, INTERIOR, "The customer asked about the inside",
+                                   settings=settings, source=source, db=db)
+        if pick is not None:
+            return pick
+    elif vin and db is not None:
+        # Client, 12 Oct 2026 (Betsy, Francisco's lead: "a photo of the vehicle's trunk was provided"): the outside of
+        # the car, front or side - not whatever photo the feed happens to list first.
+        pick = await _labeled_pick(dealer_id, vin, channel, EXTERIOR, "A front or side view of the vehicle",
+                                   settings=settings, source=source, db=db)
         if pick is not None:
             return pick
     if vin is None and theme in PHOTO_THEMES:

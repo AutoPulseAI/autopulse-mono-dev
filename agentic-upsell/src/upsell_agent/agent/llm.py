@@ -415,6 +415,11 @@ Rules:
   thing in the message, always, whatever the action is - unless after_hours is "offer", whose question comes
   after it. With touch1.ending null, don't ask what they drive: they've already told us. touch1.intro already
   greets them, so the email has no separate salutation line before it (never "Hello Maria," then the intro).
+- First reply (client, 12 Oct 2026 - Betsy, on "Thanks for the shopper details ... I see you're just browsing and
+  your budget is about $59,445"): never read the lead form back to the customer - no "thanks for the shopper
+  details", no budget, deal, wallet, payment or "just browsing" details from the portal's lead, nothing about how
+  they found us. Use the lead only to know what they want. touch1.price_line (when given) is placed by the
+  dealership right after the introduction: don't repeat or change the price.
 - touch (only when this message is a scheduled follow-up - MASTER_PLAN_3 C4, Omnichannel PDF §3-§4):
   touch.label and touch.instruction say what this one is about. Follow the instruction, keep it short and
   easy to answer, and don't repeat a question they have already answered. If touch.fixed_text is given, that
