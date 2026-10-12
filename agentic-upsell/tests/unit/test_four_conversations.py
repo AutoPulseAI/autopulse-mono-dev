@@ -67,3 +67,11 @@ async def test_no_model_no_guess(monkeypatch):
 
     monkeypatch.setattr(ip, "_label", no_label)
     assert await ip.interior_photo(["https://x/1.jpg"], None, None) is None
+
+
+def test_the_trade_agent_hears_value_of_my_car():
+    from upsell_agent.agent.specialists import TRADE, route
+    for said in ("Depends for the value of you home to my civic", "what can you give me for my accord",
+                 "my civic's value", "can you appraise my truck"):
+        assert route(said)[0].id == TRADE, said
+    assert route("do you have it in blue")[0].id != TRADE
