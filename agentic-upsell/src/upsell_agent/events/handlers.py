@@ -242,11 +242,13 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
                                   purpose="lead_response", is_reply=False, lead=lead, customer=customer,
                                   record=False)
         other = "email" if channel == "sms" else "sms"
-        if check.outcome in ("BLOCK", "REVIEW") and await consent.usable_recipient(db, lead, customer, other):
+        # Client, 12 Oct 2026: a lead that arrives at night is answered at once by EMAIL (no quiet hours for email), with
+        # the after-hours choice; only the text waits for the customer's legal texting hours.
+        if check.outcome in ("BLOCK", "REVIEW", "HOLD") and await consent.usable_recipient(db, lead, customer, other):
             alt = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=other,
                                     purpose="lead_response", is_reply=False, lead=lead, customer=customer,
                                     record=False)
-            if alt.outcome in ("ALLOW", "HOLD"):
+            if alt.outcome == "ALLOW" or (check.outcome != "HOLD" and alt.outcome == "HOLD"):
                 channel, check = other, alt
         if check.outcome == "HOLD" and check.until:
             return await _hold_first_reply(db, customer_id=customer_id, lead_id=lead_id, channel=channel,
