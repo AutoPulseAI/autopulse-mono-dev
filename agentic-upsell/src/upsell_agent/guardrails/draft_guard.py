@@ -136,7 +136,8 @@ def _named_by_model(text: str, inventory: list[dict[str, Any]]) -> list[dict[str
             and re.search(rf"(?<![\w-]){re.escape(model)}(?![\w-])", text, re.IGNORECASE)]
 
 
-def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]]]:
+def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]],
+               said: str = "") -> tuple[list[str], dict[str, dict[str, Any]]]:
     """MASTER_PLAN_3 Phase 4: every vehicle the draft names must be real stock
     loaded this turn, described only with that record's own fields.
 
@@ -174,7 +175,11 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
     if sms_vins or email_vins:
         trim_words = {w.group(0).lower() for w in _TRIM_WORD.finditer(text)}
         have_trims = {t for r in mentioned if (t := (r.get("trim") or "").lower())}
-        bad_trims = sorted(w for w in trim_words if not any(w in have for have in have_trims))
+        # The vehicle the customer asked for, named back to them ("I'll make sure the Honda CR-V is available ... in
+        # the meantime we have a Toyota RAV4" - client, 12 Oct 2026) is theirs, not a claim about our stock.
+        said_lower = said.lower()
+        bad_trims = sorted(w for w in trim_words if not any(w in have for have in have_trims)
+                           and not re.search(rf"\b{re.escape(w)}\b", said_lower))
         if bad_trims:
             violations.append(f"a trim not on the named vehicle(s): {', '.join(bad_trims)}")
             for v, info in per_vehicle.items():
@@ -185,7 +190,8 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
         have_makes = {(r.get("make") or "").lower() for r in mentioned}
         named_makes = {m.lower() for m in KNOWN_MAKES.values()
                        if re.search(rf"\b{re.escape(m)}\b", text, re.IGNORECASE)}
-        bad_makes = sorted(m for m in named_makes if m not in have_makes)
+        bad_makes = sorted(m for m in named_makes if m not in have_makes
+                           and not re.search(rf"\b{re.escape(m)}\b", said_lower))
         if bad_makes:
             violations.append(f"a make not on the named vehicle(s): {', '.join(bad_makes)}")
             for v, info in per_vehicle.items():
@@ -248,7 +254,7 @@ def check_draft(draft: dict[str, Any] | None, *, customer_texts: list[str], know
     if approval:
         violations.append("approval or guarantee language")
 
-    grounding, per_vehicle = _grounding(text, draft, inventory or [])
+    grounding, per_vehicle = _grounding(text, draft, inventory or [], " ".join(str(t or "") for t in customer_texts))
     violations += grounding
 
     # MASTER_PLAN_3 C6: never claim a photo that isn't attached (nothing is attached until Plan 4 F3).
