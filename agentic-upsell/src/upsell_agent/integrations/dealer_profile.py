@@ -56,6 +56,16 @@ def format_time(value: time) -> str:
     return value.strftime("%I:%M %p").lstrip("0")
 
 
+DEPARTMENTS = ("new", "used", "service", "parts")
+
+
+def _departments(value) -> tuple[str, ...]:
+    """dealer_account_information.departments: {new, used, service, parts} -> true/false (unset = offered)."""
+    if not isinstance(value, dict):
+        return DEPARTMENTS
+    return tuple(d for d in DEPARTMENTS if value.get(d) is not False)
+
+
 @dataclass(frozen=True)
 class DealerProfile:
     dealer_id: str
@@ -89,6 +99,8 @@ class DealerProfile:
     # PLAN_4 stream T: the Days 1-7 morning + afternoon human call tasks (scheduler/daily_call_tasks.py), a per-dealer
     # setting (`ai_daily_call_tasks`: "off" | "on"; unset = on, as the Omnichannel PDF §3 has them).
     daily_call_tasks: bool = True
+    # Client, 12 Oct 2026 (Betsy): what the dealership offers - New / Used / Service / Parts. Unset = all of them.
+    departments: tuple[str, ...] = ("new", "used", "service", "parts")
     # PLAN_4 stream X2 (Omnichannel PDF §6 "next_action_time, else a dealer-configurable default"): when a dated next
     # step has no time of its own (`ai_followup_default_time`, HH:MM; unset = 10:00).
     followup_default_time: str = "10:00"
@@ -243,6 +255,7 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         agent_phone=format_phone(info.get("sms_conversion_phone")),  # MASTER_PLAN_4 (stream R)
         **_sales_capacity(info),
         daily_call_tasks=str(info.get("ai_daily_call_tasks") or "on").strip().lower() != "off",  # stream T
+        departments=_departments(info.get("departments")),
         followup_default_time=_hhmm(info.get("ai_followup_default_time")) or "10:00",  # stream X2
     )
 

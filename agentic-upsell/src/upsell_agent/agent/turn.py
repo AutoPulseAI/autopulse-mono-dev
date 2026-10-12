@@ -674,6 +674,12 @@ async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, resul
     text = "The AI told the customer the team would act: " + "; ".join(dict.fromkeys(promises))
     await states.update_one({"lead_id": lead_id},
                             {"$set": {"staff_notice": {"at": clock.now(), "kind": "team_promise", "text": text}}})
+    # Client, 12 Oct 2026 (Betsy, Mariah Guillaume): "this says the team will reach out but was not changed to
+    # Manager Review" - a promise that the team will act puts the lead into Dealership Action Required (the CRM's
+    # Managerial Review), which also emails and texts the manager.
+    from upsell_agent.agent import crm_status, escalation
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=text[:300],
+                                 event_kind="team_promise")
 
 
 async def _notify_team_at_opening(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:

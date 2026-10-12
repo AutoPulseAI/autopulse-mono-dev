@@ -92,7 +92,7 @@ function AlertsContent() {
         <div className="row align-items-center">
           <div className="col col-12">
             <div className="d-flex align-items-center">
-              <h3 className="page_title mb-0 me-auto">AI Alerts</h3>
+              <h3 className="page_title mb-0 me-auto">Dealer Action Required</h3>
               <Button variant="outline-custom" size="sm" onClick={load} disabled={loading}>
                 <i className={`fa-solid fa-rotate-right me-1 ${loading ? "fa-spin" : ""}`} />Refresh
               </Button>

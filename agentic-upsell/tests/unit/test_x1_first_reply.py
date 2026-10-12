@@ -98,9 +98,25 @@ async def test_a_consumer_inquiry_needs_no_marketing_consent(mongo, dealers):
     assert logged["purpose"] == "lead_response" and logged["is_reply"] is False
 
 
-async def test_an_inquiry_at_23_30_is_held_to_8_and_then_gets_the_after_hours_choice(mongo, dealers):
+async def test_an_inquiry_at_23_30_is_emailed_at_once_with_the_after_hours_choice(mongo, dealers):
+    """Client, 12 Oct 2026: a night lead is answered straight away by email (email has no quiet hours), with the
+    after-hours choice; no text goes out before the customer's legal texting hours."""
     set_clock(ny(22, 23, 30))
     created = await _lead(mongo, source="website")
+    result = await handlers.handle_lead_created(_created(created), _deps())
+    assert result["status"] == "done"
+    [sent] = await _outbox(mongo, created)
+    assert sent["channel"] == "email"
+    turn = await mongo[AI_TURN_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "trigger": "lead_created",
+                                                         "outcome": {"$ne": "not_sent"}})
+    decide = next(n for n in turn["nodes"] if n["node"] == "decide")
+    assert (decide["output"].get("after_hours") or {}).get("mode") == "offer"
+
+
+async def test_an_inquiry_at_23_30_with_no_email_is_held_to_8_and_then_gets_the_choice(mongo, dealers):
+    set_clock(ny(22, 23, 30))
+    created = await _lead(mongo, source="website")
+    await _no_email(mongo, created)
     result = await handlers.handle_lead_created(_created(created), _deps())
     assert result["status"] == "held" and await _outbox(mongo, created) == []
     [held] = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
@@ -110,11 +126,6 @@ async def test_an_inquiry_at_23_30_is_held_to_8_and_then_gets_the_after_hours_ch
     await followups.fire_due(_deps())
     [sent] = await _outbox(mongo, created)
     assert sent["channel"] == "sms"
-    turn = await mongo[AI_TURN_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "trigger": "lead_created",
-                                                         "outcome": {"$ne": "not_sent"}})
-    decide = next(n for n in turn["nodes"] if n["node"] == "decide")
-    # The dealer opens at 9:00: the customer is offered now or when it opens (MASTER_PLAN_3 B1), kept working.
-    assert (decide["output"].get("after_hours") or {}).get("mode") == "offer"
     held = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": held["_id"]})
     assert held["status"] == "sent"
 
@@ -129,6 +140,7 @@ async def test_an_inquiry_after_closing_but_inside_the_window_is_answered_now_wi
 async def test_the_customer_writing_before_8_cancels_the_held_first_reply(mongo, dealers):
     set_clock(ny(22, 23, 30))
     created = await _lead(mongo, source="website")
+    await _no_email(mongo, created)  # a phone-only lead: its first reply is held to 8:00
     await handlers.handle_lead_created(_created(created), _deps())
     set_clock(ny(22, 23, 40))
     await handlers.handle_inbound_message(_inbound(created, "Is the CR-V still there?"), _deps())

@@ -50,6 +50,11 @@ _FILL = (r"(?:(?!(?:text|texting|sms|email|e-mail|emailing|mail|call|calling|pho
          r"message|messaging|reach)\b)\w+\s+){0,2}")
 # (pattern, channels it names; None = every channel)
 _PHRASES: list[tuple[re.Pattern[str], tuple[Channel, ...] | None]] = [
+    # Client, 12 Oct 2026 (Betsy, Jonathan Cleveland): "contact me by email" means email from now on - texts stop.
+    (re.compile(r"\b(?:(?:please\s+)?(?:contact|reach|message|respond\s+to|get\s+(?:back\s+)?to|talk\s+to)\s+me\s+"
+                r"(?:by|via|through|over|on|at\s+my)\s+e-?mail|e-?mail\s+(?:me\s+)?(?:only|instead)|"
+                r"(?:only|just)\s+e-?mail\s+me|prefer\s+(?:to\s+be\s+contacted\s+(?:by|via)\s+)?e-?mail|"
+                r"rather\s+(?:you\s+)?e-?mail(?:\s+me)?)\b"), ("sms",)),
     (re.compile(rf"\b{_NOT}\s+{_FILL}(?:text|texting|txt|txting|sms|message\s+my\s+phone)(?:ing)?\b(?!\s+(?:you|u)\b)"),
      ("sms",)),
     (re.compile(r"\b(?:remove|delete|take)\s+my\s+(?:phone\s+)?number\b"), ("sms", "voice")),

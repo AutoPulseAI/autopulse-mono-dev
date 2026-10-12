@@ -19,9 +19,11 @@ MANAGER_ESCALATIONS: tuple[tuple[str, str], ...] = (
     ("Customer says they're not interested any more", "a person decides whether to close the lead"),
     ("Declined a visit 3 times and a staff-only question is still open",
      "a staff-only question (price, approval, trade value) is still open"),
+    # Client, 12 Oct 2026 (Betsy): a customer asking for a person needs the dealership to act.
+    ("Customer asked for a person", "the customer asked to talk to a person"),
 )
-# Not escalations: "Customer asked for a person" (the call / text flow, agent/human_contact.py) and "AI couldn't write
-# a safe reply" (a soft handoff the AI can take back).
+# Not an escalation: "AI couldn't write a safe reply" (a soft handoff the AI takes back) - client, 12 Oct 2026 (Dylan
+# Kirsch): a lead nobody has talked to stays in its follow-up, it isn't Dealership Action Required.
 
 
 def manager_escalation(reason: str | None) -> str | None:

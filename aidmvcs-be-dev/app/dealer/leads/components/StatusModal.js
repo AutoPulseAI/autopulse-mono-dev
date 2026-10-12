@@ -33,7 +33,6 @@ export default function StatusModal({
   }, [show]);
 
   const statusOptions = [
-    "Contacted",
     "Appointment Booked",
     "Visited",
     "Managerial Review",

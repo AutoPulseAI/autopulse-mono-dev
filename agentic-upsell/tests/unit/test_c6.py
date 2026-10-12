@@ -233,12 +233,11 @@ async def test_a_second_lead_for_the_same_customer_is_linked_not_worked(mongo, l
     primary = await _state(mongo, first["lead_id"])
     assert [x["lead_id"] for x in primary["linked_leads"]] == [second["lead_id"]]
     assert primary["staff_notice"]["kind"] == "duplicate_lead"
-    # Client, 10 Oct 2026: the new inquiry is answered - on the primary, in the same conversation.
-    assert result["new_inquiry"]["status"] == "done", result["new_inquiry"]
-    assert result["new_inquiry"]["send_status"] == "sent"
-    sent = {"lead_id": first["lead_id"], "direction": "outbound", "turn_id": f"new-inquiry-{second['lead_id']}"}
-    assert await mongo[AI_MESSAGES_COLLECTION].count_documents(sent) >= 1
+    # Client, 12 Oct 2026: a second lead within 30 days gets "Hello again ... comparing models, or more than one
+    # vehicle?" on the primary's conversation.
+    assert result["new_inquiry"]["status"] == "done"
     replies = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": first["lead_id"]}).to_list(None)
+    assert any(r["text"].startswith("Hello again") and "more than one vehicle" in r["text"] for r in replies)
     # A repeat of the same event changes nothing and doesn't answer twice.
     again = await _created(second)
     assert again["status"] == "duplicate"
@@ -369,3 +368,48 @@ def test_no_call_task_for_an_unanswered_touch_by_default(monkeypatch):
     from upsell_agent.config import Settings
     monkeypatch.delenv("CALL_TASK_ON_NO_REPLY", raising=False)
     assert Settings(_env_file=None).call_task_on_no_reply is False
+
+
+@pytest.mark.parametrize(("text", "answer"), [
+    ("I'm comparing them", "one"), ("just one car", "one"), ("not both, just the RAV4", "one"),
+    ("both!", "both"), ("we need two cars, one for my wife", "both"), ("more than one", "both"), ("ok", None),
+])
+def test_multi_vehicle_answers(text, answer):
+    from upsell_agent.agent import multi_vehicle
+    assert multi_vehicle.classify(text) == answer
+
+
+async def test_one_vehicle_closes_the_original_lead_and_the_new_one_takes_over(mongo, live_dealer):
+    first = await _lead()
+    await _created(first)
+    second = await _lead(customer_id=first["customer_id"])
+    await _created(second)
+    await _say(first, "Just one, I'm comparing them")
+    assert (await _state(mongo, first["lead_id"]))["stage"] == "closed_lost"
+    new_state = await _state(mongo, second["lead_id"])
+    assert not new_state.get("duplicate_of") and new_state["status"] == "active"
+
+
+async def test_both_vehicles_keeps_both_leads_open(mongo, live_dealer):
+    first = await _lead()
+    await _created(first)
+    second = await _lead(customer_id=first["customer_id"])
+    await _created(second)
+    await _say(first, "Both - one is for my wife")
+    assert (await _state(mongo, first["lead_id"]))["stage"] != "closed_lost"
+    new_state = await _state(mongo, second["lead_id"])
+    assert not new_state.get("duplicate_of") and new_state["status"] == "active" and new_state.get("stage")
+
+
+@pytest.mark.parametrize("text", ["Please contact me by email", "email me instead", "I prefer email",
+                                  "only email me please", "can you reach me via email"])
+def test_asking_for_email_stops_texts(text):
+    from upsell_agent.compliance.opt_out import detect_opt_out
+    found = detect_opt_out(text, "sms")
+    assert found and found.channels == ("sms",)
+
+
+@pytest.mark.parametrize("text", ["what's your email?", "I sent you an email", "can I email you the photos"])
+def test_mentioning_email_is_not_a_preference(text):
+    from upsell_agent.compliance.opt_out import detect_opt_out
+    assert detect_opt_out(text, "sms") is None

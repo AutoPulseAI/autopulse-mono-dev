@@ -88,5 +88,5 @@ export async function notifyManagers({ dealerId, leadId, title, detail = '' }, {
 
 // A lead moved to Managerial Review (staff in the status screen, or the AI's own escalation).
 export function alertForStatus(status) {
-  return status === 'Managerial Review' ? 'A lead needs a manager (Managerial Review)' : null;
+  return status === 'Managerial Review' ? 'Dealership action required' : null;
 }

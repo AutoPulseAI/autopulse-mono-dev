@@ -47,6 +47,9 @@ export default function AiSettingsPage() {
   const [mode, setMode] = useState("off");
   const [mms, setMms] = useState(false);
   const [daily, setDaily] = useState("on"); // stream T: Days 1-7 call tasks
+  // Client, 12 Oct 2026: what the dealership offers - the AI keeps the rest off limits.
+  const DEPTS = [["new", "New vehicles"], ["used", "Used vehicles"], ["service", "Service"], ["parts", "Parts"]];
+  const [depts, setDepts] = useState({ new: true, used: true, service: true, parts: true });
   const [capacity, setCapacity] = useState(capacityForm(null));
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -60,6 +63,7 @@ export default function AiSettingsPage() {
         setMode(data.ai_mode);
         setMms(data.mms_enabled);
         setDaily(data.ai_daily_call_tasks || "on");
+        if (data.departments) setDepts(data.departments);
         setCapacity(capacityForm(data.booking_capacity));
       } catch (err) {
         setError(err.message);
@@ -73,7 +77,8 @@ export default function AiSettingsPage() {
   const capacityInvalid = CAPACITY_TYPES.some(([type]) => CAPACITY_FIELDS.some(([field, , min, max]) =>
     capacityProblem(capacity[type][field], min, max)));
   const changed = settings && (mode !== settings.ai_mode || mms !== settings.mms_enabled
-    || daily !== settings.ai_daily_call_tasks || Object.keys(capacityChanged).length > 0);
+    || daily !== settings.ai_daily_call_tasks || Object.keys(capacityChanged).length > 0
+    || DEPTS.some(([d]) => depts[d] !== (settings.departments || {})[d]));
   const setCapacityField = (type, field, value) =>
     setCapacity((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
 
@@ -90,12 +95,14 @@ export default function AiSettingsPage() {
       if (mode !== settings.ai_mode) body.ai_mode = mode;
       if (mms !== settings.mms_enabled) body.mms_enabled = mms;
       if (daily !== settings.ai_daily_call_tasks) body.ai_daily_call_tasks = daily;
+      if (DEPTS.some(([d]) => depts[d] !== (settings.departments || {})[d])) body.departments = depts;
       if (Object.keys(capacityChanged).length) body.booking_capacity = capacityChanged;
       const data = await aiFetch("/api/dealer-ai/settings", { method: "PUT", body: JSON.stringify(body) });
       setSettings(data);
       setMode(data.ai_mode);
       setMms(data.mms_enabled);
       setDaily(data.ai_daily_call_tasks || "on");
+      if (data.departments) setDepts(data.departments);
       setCapacity(capacityForm(data.booking_capacity));
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -209,6 +216,22 @@ export default function AiSettingsPage() {
                     <Form.Check type="switch" id="ai-daily-call-tasks-switch" disabled={!canChange}
                       label={daily === "on" ? "On" : "Off"} checked={daily === "on"}
                       onChange={(e) => setDaily(e.target.checked ? "on" : "off")} />
+                  </div>
+                </div>
+
+                <div className="w_card">
+                  <h3 className="w_card_title mb-0">What this dealership offers</h3>
+                  <p className="text-secondary-light">
+                    <small>
+                      The AI only talks about what is switched on. Anything switched off is off limits: it won't
+                      offer, quote or book it, and tells the customer politely that the dealership doesn&apos;t offer it.
+                    </small>
+                  </p>
+                  <div className="d-flex flex-wrap gap-4">
+                    {DEPTS.map(([d, label]) => (
+                      <Form.Check key={d} type="switch" id={`dept-${d}`} disabled={!canChange} label={label}
+                        checked={depts[d] !== false} onChange={(e) => setDepts({ ...depts, [d]: e.target.checked })} />
+                    ))}
                   </div>
                 </div>
 

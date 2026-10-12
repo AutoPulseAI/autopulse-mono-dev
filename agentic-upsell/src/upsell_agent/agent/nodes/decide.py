@@ -536,6 +536,17 @@ def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: st
     }
 
 
+async def _assigned_name(ctx: TurnContext) -> str | None:
+    """The first name of the salesperson the lead is assigned to (CRM `assigned_to`), or None."""
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id, get_db
+    who = (ctx.lead or {}).get("assigned_to")
+    if not who:
+        return None
+    user = await get_db()[PLATFORM_USERS_COLLECTION].find_one({"_id": as_object_id(str(who))}, {"name": 1})
+    name = str((user or {}).get("name") or "").strip()
+    return name.split()[0] if name else None
+
+
 def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str | None) -> dict[str, Any] | None:
     """The theme this cadence touch is about (MASTER_PLAN_3 C4,
     agent/cadence.py), written onto the lead state by the scheduler just
@@ -762,6 +773,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # Stream Q: buying urgency, for Compose to lean into getting them in soon (never a handoff by itself).
     decision["urgency"] = ({"reason": urgency_reason} if urgency_mode == "buying"
                            and decision["action"] not in ("stop", "handoff", "offer_human") else None)
+    if visit_ctx.get("just_booked") or visit_ctx.get("status") in ("pending", "confirmed"):
+        # Client, 12 Oct 2026: the confirmation says who to ask for - the salesperson the lead is assigned to.
+        visit_ctx = {**visit_ctx, "address": dealer.address, "ask_for": await _assigned_name(ctx)}
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
@@ -771,6 +785,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     expert, expert_why = specialists.route(text, lead_type=getattr(profile.effective_lead_type, "value", None),
                                            bucket=(ctx.lead_state or {}).get("bucket"))
     decision["specialist"] = specialists.for_compose(expert, expert_why)
+    # Client, 12 Oct 2026: what this dealership doesn't offer is off limits (Dealer Setup switches).
+    offered = tuple(getattr(dealer, "departments", None) or ())
+    missing = [d for d in ("new", "used", "service", "parts") if offered and d not in offered]
+    decision["departments"] = {"offered": list(offered), "not_offered": missing} if missing else None
     # Stream Q: a customer writing in Spanish is answered in Spanish (agent/language.py).
     decision["reply_language"] = reply_language
     span.output = decision

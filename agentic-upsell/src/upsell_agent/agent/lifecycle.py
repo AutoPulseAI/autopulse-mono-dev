@@ -434,6 +434,12 @@ def transition(current: Stage | None, event: Event) -> Transition:
         # the opportunity open for ever.
         return Transition(Stage.CLOSED_LOST, "day_91_stale_appointment",
                           why or "Day 91 reached; the appointment is long past with no visit or outcome", event)
+    if kind == "one_vehicle":
+        # Client, 12 Oct 2026 (agent/multi_vehicle.py): the customer is shopping for one vehicle and a newer lead
+        # carries it on - the original lead closes as Closed - Lost.
+        if current in CLOSED_STAGES or current in (Stage.SOLD_PENDING, Stage.SOLD_DELIVERED, Stage.OPTED_OUT):
+            return _stay("one_vehicle_kept", f"{STAGE_LABELS[current]} kept.", event)
+        return Transition(Stage.CLOSED_LOST, "one_vehicle", why or "The customer is shopping for one vehicle", event)
     if kind == "day_91":
         if current not in CLOSABLE_AT_DAY_91:
             return _stay("superseded", f"Day 91, but the lead is at {STAGE_LABELS[current]}: that supersedes it.",

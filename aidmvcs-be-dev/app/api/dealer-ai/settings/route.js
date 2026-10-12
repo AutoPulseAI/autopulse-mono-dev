@@ -37,6 +37,7 @@ import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
 
 // What a dealership may switch between itself (client, 9 Oct 2026); "shadow" is AutoPulse's.
 export const DEALER_AI_MODES = ["off", "live"];
+const DEPARTMENTS = ["new", "used", "service", "parts"];
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -61,6 +62,8 @@ function describe(dealer) {
     hours_on_record: hours.some((h) => h.open),
     booking_capacity: bookingCapacityView(dealer), // stream R
     ai_daily_call_tasks: dailyCallTasksView(dealer), // stream T
+    // Client, 12 Oct 2026: what the dealership offers; the AI keeps the rest off limits (unset = offered).
+    departments: Object.fromEntries(DEPARTMENTS.map((d) => [d, info.departments?.[d] !== false])),
   };
 }
 
@@ -119,6 +122,15 @@ export async function PUT(req) {
     const daily = dailyCallTasksUpdate(body.ai_daily_call_tasks);
     if (daily.error) return jsonError(daily.error, 422);
     Object.assign(set, daily.set);
+  }
+  if (body.departments !== undefined) {
+    if (typeof body.departments !== "object" || body.departments === null) return jsonError("departments must be an object", 422);
+    for (const d of DEPARTMENTS) {
+      if (body.departments[d] !== undefined) {
+        if (typeof body.departments[d] !== "boolean") return jsonError(`departments.${d} must be true or false`, 422);
+        set[`dealer_account_information.departments.${d}`] = body.departments[d];
+      }
+    }
   }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 

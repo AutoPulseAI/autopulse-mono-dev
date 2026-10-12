@@ -242,8 +242,11 @@ export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLe
     const who = leadEmail || (portal ? null : { email: senderEmail });
     if (who && (who.email || who.phone)) {
       const found = await openLeadFor({ dealerId, phone: who.phone, email: who.email });
-      lead = found.lead;
-      if (found.closedOnly) returning = found.previous;
+      // Client, 12 Oct 2026 (Betsy: "the incoming lead email is NOT a contact made"): a portal's lead email is a new
+      // inquiry, never the customer writing to us - it always becomes its own lead. The AI links it to the
+      // customer's open lead and answers the new inquiry there (agentic-upsell agent/duplicates.py).
+      lead = leadEmail ? null : found.lead;
+      if (found.closedOnly || (leadEmail && found.lead)) returning = found.previous || found.lead;
     }
   }
 
