@@ -197,9 +197,16 @@ def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
                         lead_vin=lead_vin)
 
 
-def compose_payload(state: AgentState, link_plan: LinkPlan | None = None) -> dict[str, Any]:
+def compose_payload(state: AgentState, link_plan: LinkPlan | None = None,
+                    ctx: TurnContext | None = None) -> dict[str, Any]:
     decision = state.decision or {}
+    from upsell_agent.agent import lead_brief
     return {
+        # Client, 13 Oct 2026: the whole picture first, so the writer knows where this lead came from, where it
+        # stands, what happened so far and what this one message is for (agent/lead_brief.py).
+        "brief": lead_brief.build(decision=decision, pack=state.context_pack or {}, lead=ctx.lead if ctx else None,
+                                  lead_state=ctx.lead_state if ctx else None,
+                                  customer_text=state.customer_text or state.inbound_text, trigger=state.trigger),
         "action": decision.get("action"),
         "asks": [{"label": a["label"], "question": a.get("question") or a["hint"], "explanation": a.get("explanation", "")}
                  for a in decision.get("asks", [])],
@@ -298,7 +305,7 @@ def _apply_dev_hint(draft: dict[str, Any], payload: dict[str, Any], *, retry: bo
 async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     model = ctx.settings.model_compose
     link_plan = plan_links(state, ctx)
-    payload = compose_payload(state, link_plan)
+    payload = compose_payload(state, link_plan, ctx)
     span.metrics = {"model": model}
     slow, retry, fallback, badtrim = _dev_hints(state, ctx)
     if slow:

@@ -174,3 +174,25 @@ def test_the_repeat_lead_question_names_the_vehicle_not_its_record():
     text = question_text(None, vehicle_label(lead))["sms_text"]
     assert text.startswith("Hello again, thank you for inquiring about our 2020 Mercedes-Benz C-Class.")
     assert "{" not in text and "Null" not in text
+
+
+def test_the_writer_gets_the_whole_picture():
+    # Client, 13 Oct 2026: the writer knows where the lead came from, where it stands and what this message is for.
+    from upsell_agent.agent import lead_brief
+    brief = lead_brief.build(
+        decision={"action": "offer_visit", "bucket": {"bucket": "general", "intent": "shopping for a vehicle"},
+                  "rules": [{"id": "offer_visit", "result": "fired", "why": "budget and timeline known"}]},
+        pack={"working_memory": [{"direction": "outbound", "text": "Hi Maria, this is Nicole..."},
+                                 {"direction": "inbound", "text": "I want to stay under 550 a month"}],
+              "about_customer": {"known": [{"label": "Budget", "value": "$550 a month"}]},
+              "inventory": [{"vin": "V1"}], "stock_search": {"exact": True}},
+        lead={"source": "CarGurus", "year": "2024", "make": "Toyota", "model": "RAV4",
+              "data": {"comments": "Is it still available?"}},
+        lead_state={"stage_label": "Contact Made - No Next Action"},
+        customer_text="I want to stay under 550 a month", trigger="inbound_message")
+    assert brief["customer"]["came_from"] == "CarGurus" and brief["customer"]["vehicle_they_want"] == "2024 Toyota RAV4"
+    assert brief["customer"]["what_the_lead_form_said"] == "Is it still available?"
+    assert brief["where_it_stands"]["this_message_is"] == "a reply to their message"
+    assert brief["this_message"]["why_code_chose_it"] == ["budget and timeline known"]
+    assert brief["this_message"]["goal"].startswith("Get them to pick one of the offered times")
+    assert brief["conversation_so_far"]["our_last_message"].startswith("Hi Maria")
