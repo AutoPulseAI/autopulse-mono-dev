@@ -106,7 +106,7 @@ def test_first_reply_price_photo_and_no_phone_email():
     assert draft["sms_text"] == (f"{intro} It's listed at $24,639, not including tax, documentation and DMV fees. "
                                  "Tell me, what are you driving now?")
     assert draft["sms_media_vin"] == "5NMJBCDE4TH632221" and draft["sms_vins"] == ["5NMJBCDE4TH632221"]
-    assert draft["email_subject"] == "2026 Hyundai Tucson Update" and placed == ["listed price and photo",
+    assert draft["email_subject"] == "2026 Hyundai Tucson Update" and placed == ["the vehicle's facts and photo",
                                                                                  "no-phone email"]
 
 
@@ -129,3 +129,25 @@ async def test_the_first_photo_is_the_outside_not_the_trunk(monkeypatch):
 
     monkeypatch.setattr(ip, "_label", fake_label)
     assert await ip.photo_showing(list(views), ip.EXTERIOR, None, None) == "https://x/front.jpg"
+
+
+def test_the_first_reply_answers_mileage_and_history_from_the_record():
+    # Client, 12 Oct 2026 (Betsy, Yvette Miller: "Please provide CarFax and mileage of car").
+    from types import SimpleNamespace
+
+    from upsell_agent.agent.nodes.decide import first_reply_extras
+    lead = {"vin": "YV4L12UK7P2053842", "phone": "+15555550100", "comments": "Please provide CarFax and mileage of car"}
+    record = {"vin": "YV4L12UK7P2053842", "miles": 23456, "page_url": "https://dealer.example/vdp/xc40"}
+    extras = first_reply_extras(SimpleNamespace(lead=lead, customer={}, lead_state={}),
+                                SimpleNamespace(customer_name="Yvette Miller", context_pack={"inventory": [record]}),
+                                SimpleNamespace(phone=None, name="Victory"))
+    assert extras["lead_answers"].startswith("It has 23,456 miles.")
+    assert "https://dealer.example/vdp/xc40" in extras["lead_answers"]
+
+
+def test_a_dealer_website_form_is_the_customer_reaching_out():
+    # Yvette's "Dealer Inspire/Get E-Price" lead opened with "reaching out about" (an outbound line).
+    from upsell_agent.compliance.origin import origin_from_records
+    assert origin_from_records({"source": "Dealer Inspire/Get E-Price"}, {}, from_campaign=False).origin == "inbound"
+    assert origin_from_records({"source": "?", "data": {"created_by": "ai_live_inbound_adf"}}, {},
+                               from_campaign=False).origin == "inbound"

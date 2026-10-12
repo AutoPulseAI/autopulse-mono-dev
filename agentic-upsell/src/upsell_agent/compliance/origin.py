@@ -33,7 +33,11 @@ INBOUND_SOURCES = re.compile(
     r"autotrader|auto\s*trader|cargurus|car\s*gurus|cars\.com|edmunds|truecar|carsdirect|kbb|kelley|"
     r"autoweb|facebook|instagram|google|marketplace|\badf\b|oem|dealer\s*website|capital\s*one|"
     r"700credit|carzing|dealercentric|eunifi|accutrade|instant\s*offer|"
-    r"phone|call|walk[\s-]*in|showroom|\bsms\b|\btext\b|\bemail\b|inbound|^dev-",
+    r"phone|call|walk[\s-]*in|showroom|\bsms\b|\btext\b|\bemail\b|inbound|^dev-|"
+    # Client, 12 Oct 2026 (Yvette Miller's "Dealer Inspire/Get E-Price" lead got "reaching out about" - an outbound
+    # opening - because the source wasn't on this list): the dealer website platforms' own lead forms.
+    r"dealer\s*inspire|dealeron|dealer\.com|carnow|e-?price|test\s*drive|get\s*a?\s*quote|"
+    r"trade\s*value|value\s*your\s*trade|apply|credit\s*app|availability|reserve",
 )
 CAMPAIGN_SOURCES = re.compile(r"^campaign")
 DMS_SOURCES = re.compile(r"dealer\s*vault|dealervault|\bdms\b|import|csv|upload|equity|drip|re-?engage")
@@ -63,6 +67,10 @@ def origin_from_records(lead: dict | None, customer: dict | None, *, from_campai
         return LeadOrigin("outbound", "the conversation started from a platform campaign", source)
     if source and not DMS_SOURCES.search(source) and INBOUND_SOURCES.search(source):
         return LeadOrigin("inbound", f"lead source {source!r} is the customer reaching out", source)
+    created_by = str(((lead or {}).get("data") or {}).get("created_by") or "")
+    if created_by.startswith("ai_live_inbound"):
+        # A lead the CRM built from a lead email (ADF or a portal's notification): the customer filled in a form.
+        return LeadOrigin("inbound", "the lead came from a lead form the customer submitted", source)
     if (customer or {}).get("dealervault_upload") is True:
         return LeadOrigin("outbound", "DealerVault contact with no lead form of their own", source)
     if source and DMS_SOURCES.search(source):

@@ -170,7 +170,7 @@ def _upper_first(text: str) -> str:
 def _after_hours_fallback(name: str, after_hours: dict[str, Any]) -> dict[str, Any] | None:
     mode, opens_at = after_hours.get("mode"), after_hours.get("opens_at")
     if mode == "resume":
-        line = f"Good morning, {name}! We're open now. How can I help you today?"
+        line = f"Good morning, {name}! We're open now. What day this week works best for you to come in?"
     elif mode == "later":
         line = f"Thanks, {name}! I'll pick this up when we open" + (f" at {opens_at}" if opens_at else "") + "."
     else:

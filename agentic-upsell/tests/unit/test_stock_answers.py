@@ -201,7 +201,8 @@ async def test_no_match_offers_a_promise_never_a_bare_no(mongo):
     await _say(created, "Do you have a Ford Mustang?")
     turn, sms = await _last(mongo, created)
     # Client, 12 Oct 2026: no "the team will let you know" - ask what else would work, keep going.
-    assert "team" not in sms.lower() and "find the right fit" in sms.lower()
+    # Client, 12 Oct 2026 (Betsy): never "not available" - make sure with a manager before scheduling.
+    assert "team" not in sms.lower() and "check with my manager" in sms.lower()
     guard = next(n for n in turn["nodes"] if n["node"] == "guard" and n.get("status") == "done")
     assert guard["output"]["passed"]  # never rejected as a bare denial with no alternative/promise
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})

@@ -10,9 +10,8 @@ times, so the customer's pick books like any other offer (agent/nodes/decide.py 
 A customer who lives out of state gets her script for that too. Code places the text (agent/nodes/compose.py
 place_cannot_supply), never the model, the same way the FTC introduction is placed.
 
-Custom photos or a video need a person: that request also puts the lead into Dealership Action Required
-(agent/escalation.py). Whether an out-of-state customer does too is an open question for the client, so it doesn't
-yet.
+Custom photos or a video, and an out-of-state customer (her script ends "> Dealership Action Required"), need a
+person: those also put the lead into Dealership Action Required (agent/escalation.py).
 """
 
 import re
@@ -66,7 +65,8 @@ _CALCULATOR = " If you are just looking for very rough figures, our payment calc
 # With a visit already booked, the time question becomes a pointer to that visit.
 _BOOKED = "We'll go over it together at your visit on {booked}."
 
-ESCALATES = frozenset({CUSTOM_MEDIA})
+# Client, 12 Oct 2026: her out-of-state script ends "> Dealership Action Required" (shipping / pick-up is staff's).
+ESCALATES = frozenset({CUSTOM_MEDIA, OUT_OF_STATE})
 ESCALATION_REASON = "Customer asked for something the AI can't supply"
 
 

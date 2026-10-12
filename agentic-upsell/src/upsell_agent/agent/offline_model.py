@@ -630,13 +630,15 @@ def _stock_answer(payload: dict[str, Any]) -> tuple[str, list[str], list[str]]:
         # Wording deliberately avoids "in stock" / "available" (the guard's own
         # availability patterns): this is an honest "we have nothing" plus a
         # promise, not an availability claim about a specific vehicle.
-        return ("I'm not seeing a matching one right now, but I'd love to help you find the right fit.",
+        return ("I want to make absolutely sure that one is available, so I'll check with my manager before we "
+                "schedule.",
                 [], [])
     names = [_vehicle_phrase(r) for r in chosen]
     searched = (payload.get("context") or {}).get("stock_search") or {}
     if searched and not searched.get("exact") and searched.get("searched_for") not in (None, "any vehicle"):
         # conversation_7: the nearest we have, said as such - never passed off as what they asked for.
-        return (f"We don't have a {searched['searched_for']} right now, but we do have {'; and '.join(names)}.",
+        return (f"I want to make absolutely sure the {searched['searched_for']} is available, so I'll check with my "
+                f"manager before we schedule. In the meantime, we have {'; and '.join(names)}.",
                 [r["vin"] for r in chosen], [])
     return (f"Good news - we have {'; and '.join(names)} in stock.", [r["vin"] for r in chosen], [])
 

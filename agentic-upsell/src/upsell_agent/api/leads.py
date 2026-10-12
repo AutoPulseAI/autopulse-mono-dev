@@ -54,6 +54,8 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         return None
     customer_id = lead_customer_id(lead, dealer_id) or ""
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+    primary = (await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+        {"lead_id": state["duplicate_of"]}, projection={"status": 1}) or {}) if state.get("duplicate_of") else {}
     profile = build_profile(
         lead_type_for(lead),
         await current_facts(db, customer_id, lead_id) if customer_id else [],
@@ -88,6 +90,9 @@ async def lead_profile(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
         **sold,
         "lead": {"id": lead_id, "customer_id": customer_id, "status": state.get("status", "new"),
                  "status_reason": state.get("status_reason"), "lead_type": profile.lead_type.value,
+                 # A repeat lead is worked on the customer's open lead (agent/duplicates.py): the CRM shows the AI as
+                 # on for it, working there (client, 12 Oct 2026 - "you cannot turn it back on").
+                 "duplicate_of": state.get("duplicate_of"), "workflow_status": primary.get("status"),
                  # MASTER_PLAN_4 A1: the sales bucket (blueprint §2) and the one it started in, for reporting.
                  "bucket": state.get("bucket"), "original_bucket": state.get("original_bucket"),
                  # PLAN_4 stream L: new / used now, and the first classification (kept for reporting).

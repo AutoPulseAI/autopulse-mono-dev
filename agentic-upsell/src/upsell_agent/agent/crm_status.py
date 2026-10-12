@@ -32,7 +32,10 @@ CRM_STATUS_FOR_EVENT = {
 # status staff chose (Appointment Booked, Visited, Sold, DND, ...).
 CRM_STATUS_FOR_STAGE = {
     "no_contact_made": "Lead Not Contacted",
-    "contact_made_no_next_action": "Contacted - No Next Action",
+    # Client, 12 Oct 2026 (Betsy): "Let's delete Contact Made - No Next Action". A customer who replied with no
+    # appointment and no day of their own is followed up by the AI on a date it sets (the cadence's next touch), so
+    # the lead shows "Contact Made - Follow Up Assigned" - our default until she says otherwise (one line to change).
+    "contact_made_no_next_action": "Contacted - Specific Follow-up",
     "contact_made_specific_followup": "Contacted - Specific Follow-up",
 }
 RETRY_LIMIT = 200

@@ -25,6 +25,7 @@ from typing import Any
 
 from upsell_agent import clock
 from upsell_agent.agent import (
+    buyers_order,
     cadence,
     cannot_supply,
     human_contact,
@@ -571,6 +572,20 @@ def first_reply_extras(ctx: TurnContext, state: AgentState, dealer: DealerProfil
     record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
     if record and (price := _money(record.get("price"))):
         extras.update(vin=vin, price_line=f"It's listed at {price}, not including tax, documentation and DMV fees.")
+    if record:
+        # Client, 12 Oct 2026 (Betsy, Yvette Miller: "Please provide CarFax and mileage of car" got no answer): what the
+        # lead form asks for that the vehicle's own record holds, answered in the first reply.
+        asked = " ".join(str(x or "") for x in ((ctx.lead or {}).get("comments"),
+                                                 ((ctx.lead or {}).get("data") or {}).get("comments"))).lower()
+        answers = []
+        if re.search(r"\b(mileage|miles|odometer)\b", asked) and record.get("miles"):
+            answers.append(f"It has {int(record['miles']):,} miles.")
+        page = str(record.get("page_url") or "").strip()
+        if re.search(r"\b(carfax|car fax|autocheck|history|accident)", asked) and page:
+            answers.append(f"Here's the vehicle's page with all the details, including its history report where "
+                           f"available: {page}")
+        if answers:
+            extras.update(vin=vin, lead_answers=" ".join(answers))
     if not resolve_recipient(ctx.lead, ctx.customer, "sms"):
         vehicle = vehicle_label(ctx.lead) or "vehicle"
         model = " ".join(p for p in (str((ctx.lead or {}).get("year") or "").strip(),
@@ -782,6 +797,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
     cannot, cannot_plan = await plan_cannot_supply(ctx, state, profile, conversation, dealer=dealer, now=now,
                                                    text=text, hold=hold, visit_ctx=visit_ctx)
+    # Client, 12 Oct 2026 (Betsy): the buyer's order sequence, in her words (agent/buyers_order.py).
+    order = (buyers_order.plan(ctx.lead_state, text, now, credit_link=dealer.credit_application_url)
+             if state.trigger in ("inbound_message", "resume_at_opening") and not hold else None)
+    if order is not None:
+        cannot, cannot_plan = None, None
     if cannot_plan is not None:
         visit_plan = cannot_plan
     if visit_ctx.get("day_request"):
@@ -877,8 +897,20 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if visit_ctx.get("just_booked") or visit_ctx.get("status") in ("pending", "confirmed"):
         # Client, 12 Oct 2026: the confirmation says who to ask for - the salesperson the lead is assigned to.
         visit_ctx = {**visit_ctx, "address": dealer.address, "ask_for": await _assigned_name(ctx)}
+    stock = (state.context_pack or {}).get("stock_search") or {}
+    # Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
+    # before scheduling the appointment and move to Manager Review status".
+    decision["vehicle_check"] = ({"vehicle": stock.get("searched_for")} if stock.get("asked") and not stock.get("exact")
+                                 and stock.get("searched_for") not in (None, "", "any vehicle")
+                                 and state.trigger in ("inbound_message", "resume_at_opening")
+                                 and decision["action"] not in ("stop", "handoff", "offer_human") else None)
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
+    if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # Placed like the can't-supply answers: her text, word for word.
+        decision["cannot_supply"] = {"topic": "buyers_order", "text": order.text, "offers_times": False,
+                                     "escalates": order.escalates}
+        decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).

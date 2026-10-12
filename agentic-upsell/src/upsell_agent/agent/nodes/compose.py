@@ -105,7 +105,8 @@ def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) ->
     her email asking for one. Placed by code, like the introduction. Returns what was placed (for the trace)."""
     touch1 = touch1 or {}
     placed: list[str] = []
-    line, vin, intro = touch1.get("price_line"), touch1.get("vin"), str(touch1.get("intro") or "").strip()
+    line = " ".join(p for p in (touch1.get("price_line"), touch1.get("lead_answers")) if p) or None
+    vin, intro = touch1.get("vin"), str(touch1.get("intro") or "").strip()
     if line and vin:
         for key, vins, media in (("sms_text", "sms_vins", "sms_media_vin"), ("email_body", "email_vins",
                                                                              "email_media_vin")):
@@ -116,10 +117,15 @@ def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) ->
                 draft[key] = text
             draft[vins] = list(dict.fromkeys([vin, *(draft.get(vins) or [])]))
             draft[media] = vin
-        placed.append("listed price and photo")
+        placed.append("the vehicle's facts and photo")
     email = touch1.get("no_phone_email")
     if email:
-        draft["email_subject"], draft["email_body"] = email["subject"], email["body"]
+        # The FTC introduction first ("needs to be said BEFORE ANYTHING", 7 Oct 2026; "email should follow all same
+        # rules as SMS", 12 Oct 2026), then her no-phone email without its own greeting line.
+        body = email["body"]
+        if intro:
+            body = f"{intro}\n\n{body.split(chr(10) + chr(10), 1)[1] if chr(10) + chr(10) in body else body}"
+        draft["email_subject"], draft["email_body"] = email["subject"], body
         placed.append("no-phone email")
     return placed
 
@@ -319,10 +325,12 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
                         decision.get("reply_language") else SMS_MAX)
     draft["link_plan"] = link_plan.as_dict()
-    if scripted:
-        # The payment answer's calculator link is the vehicle's own page (agent/cannot_supply.py): allowed.
+    placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
+                                                  ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))
+    if placed_text.strip():
+        # Only the vehicle's own page that code placed (a can't-supply calculator link, a first-reply answer): allowed.
         draft["link_plan"]["urls"] = [*draft["link_plan"].get("urls", []),
-                                      *(u.rstrip(".") for u in re.findall(r"https?://\S+", draft["sms_text"]))]
+                                      *(u.rstrip(".") for u in re.findall(r"https?://\S+", placed_text))]
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
