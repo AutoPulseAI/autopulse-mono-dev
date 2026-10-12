@@ -59,7 +59,8 @@ _HEDGE = re.compile(r"\b(about|around|roughly|maybe|i think|approximately|ish|or
 _YEAR = re.compile(r"\b(19[89]\d|20[0-3]\d)\b")
 _MILES = re.compile(r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k\b|thousand\b)?\s*(miles|mi\b|on it)", re.IGNORECASE)
 _MONEY = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k\b|thousand\b)?", re.IGNORECASE)
-_TRADE = re.compile(r"\btrad(?:e|ed|es|ing)(?:-in)?\b", re.IGNORECASE)
+_TRADE = re.compile(r"\btrad(?:e|ed|es|ing)(?:-in)?\b|\b(?:value of|valuation (?:of|for)|(?:give|offer) me for|get for) "
+                    r"(?:my|our) \w+|\b(?:my|our) \w+(?: \w+)? (?:is )?worth\b", re.IGNORECASE)
 _NO_TRADE = re.compile(r"\b(no trade(?:-in)?|nothing to trade|don'?t have a trade|not trading|no,? no trade)\b", re.IGNORECASE)
 _PAID_OFF = re.compile(r"\b(paid off|own it outright|no loan|don'?t owe|owe nothing|nothing owed)\b", re.IGNORECASE)
 _BODY = re.compile(r"\b(suvs?|crossover|pickup|trucks?|sedans?|coupes?|minivans?|vans?|hatchback|wagons?|convertible)\b",

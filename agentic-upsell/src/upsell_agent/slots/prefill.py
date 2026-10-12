@@ -67,14 +67,29 @@ def facts_from_360(data: dict[str, Any], now: datetime | None = None) -> dict[st
     return found
 
 
+def facts_from_lead(lead: dict[str, Any] | None) -> dict[str, Any]:
+    """The vehicle the lead itself is about (ADF / portal email, CRM form): the customer already told us, so the AI
+    must not ask "which vehicle" (client, 12 Oct 2026 - Jean's 2025 BMW 330i)."""
+    lead = lead or {}
+    data = lead.get("data") or {}
+    vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
+    parts = [str(lead.get(k) or vehicle.get(k) or "").strip() for k in ("year", "make", "model")]
+    label = " ".join(p for p in parts if p)
+    if not (parts[1] or parts[2]):
+        label = str(data.get("vehicle") if isinstance(data.get("vehicle"), str) else "").strip()
+    return {"interest.model": label[:120]} if label else {}
+
+
 async def prefill_from_360(db: DealerScopedDatabase, *, customer_id: str, lead_id: str | None,
-                           data: dict[str, Any] | None, turn_id: str | None = None) -> list[dict[str, Any]]:
-    """Saves the 360 facts that aren't already known. Returns what was added."""
-    if not data:
+                           data: dict[str, Any] | None, turn_id: str | None = None,
+                           lead: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Saves the lead's and the 360's facts that aren't already known. Returns what was added."""
+    found = {**facts_from_360(data), **facts_from_lead(lead)} if data else facts_from_lead(lead)
+    if not found:
         return []
     known = {f["path"] for f in await current_facts(db, customer_id, lead_id)}
     added = []
-    for path, raw in facts_from_360(data).items():
+    for path, raw in found.items():
         if path in known:
             continue
         checked = validate(SCHEMA[path], raw)

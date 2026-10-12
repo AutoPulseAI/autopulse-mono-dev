@@ -1,3 +1,5 @@
+import { twelveHour } from './appointmentSMSTemplate.js';
+
 export const appointmentUpdateTemplate = (customerName, oldDate, oldTime, newDate, newTime, dealerName, dealerPhone, dealerAddress) => ({
   subject: `Appointment Updated - ${newDate}`,
   html: `
@@ -45,7 +47,7 @@ export const appointmentUpdateTemplate = (customerName, oldDate, oldTime, newDat
             </div>
             <div class="detail-row">
               <div class="detail-label">Time:</div>
-              <div class="detail-value">${oldTime}</div>
+              <div class="detail-value">${twelveHour(oldTime)}</div>
             </div>
           </div>
           
@@ -57,7 +59,7 @@ export const appointmentUpdateTemplate = (customerName, oldDate, oldTime, newDat
             </div>
             <div class="detail-row">
               <div class="detail-label">Time:</div>
-              <div class="detail-value">${newTime}</div>
+              <div class="detail-value">${twelveHour(newTime)}</div>
             </div>
             <div class="detail-row">
               <div class="detail-label">Dealer:</div>
@@ -80,7 +82,7 @@ export const appointmentUpdateTemplate = (customerName, oldDate, oldTime, newDat
         
         <div style="background-color: #d1ecf1; padding: 15px; border-radius: 8px; margin: 20px 0;">
           <h4>📋 Reminder:</h4>
-          <p>Please update your calendar with the new appointment time. We look forward to seeing you on <strong>${newDate} at ${newTime}</strong>!</p>
+          <p>Please update your calendar with the new appointment time. We look forward to seeing you on <strong>${newDate} at ${twelveHour(newTime)}</strong>!</p>
         </div>
         
         <p>Thank you for your understanding, and we apologize for any inconvenience.</p>

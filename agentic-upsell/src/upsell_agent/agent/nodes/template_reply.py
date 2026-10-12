@@ -14,7 +14,12 @@ Templates contain no prices, numbers or promises (agent/templates.py).
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
-from upsell_agent.agent.templates import render_continue_reply, render_first_reply
+from upsell_agent.agent.templates import (
+    CONTINUE_VARIANTS,
+    first_name,
+    render_continue_reply,
+    render_first_reply,
+)
 from upsell_agent.observability.trace import NodeSpan
 
 
@@ -39,6 +44,30 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
                  if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
     draft["why"] = why
     return draft
+
+
+def _said(text: str | None) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def avoid_repeat(draft: dict, sent: list[str], customer_name: str | None) -> dict:
+    """The same text as one we already sent this customer becomes the next variant they haven't had."""
+    already = {_said(t) for t in sent}
+    if _said(draft.get("sms_text")) not in already:
+        return draft
+    name = first_name(customer_name)
+    for variant in CONTINUE_VARIANTS:
+        line = variant.format(name=name)
+        if _said(line) not in already:
+            body = line.split(". ", 1)[1] if ". " in line else line
+            return {**draft, "sms_text": line, "email_body": f"Hi {name},\n\n{body}\n\nThank you",
+                    "asks": {"sms": [], "email": []}}
+    return draft
+
+
+def _sent_texts(state: AgentState) -> list[str]:
+    memory = (state.context_pack or {}).get("working_memory") or []
+    return [m.get("text") or "" for m in memory if m.get("direction") == "outbound"]
 
 
 def mid_conversation(state: AgentState) -> bool:
@@ -69,5 +98,7 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     if later:
         span.reasoning.append("Mid-conversation: the continue template, built from Decide's plan.")
     draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
+    if later:
+        draft = avoid_repeat(draft, _sent_texts(state), state.customer_name)
     span.output = draft
     return {"draft": draft, "used_template": True, "used_fallback": not first_reply}

@@ -77,6 +77,14 @@ _CALL_ME = re.compile(r"\b(call|phone|ring)\s+me\b", re.IGNORECASE)
 _CANCEL_BOOKING = re.compile(
     r"\b(can'?t make it|need to cancel|won'?t be able to (?:come|make it)|"
     r"cancel (?:my|the|this) (?:appointment|visit|booking)|have to cancel)\b", re.IGNORECASE)
+# Client, 12 Oct 2026: a booking is made only from the customer's own reply picking or agreeing to a time - never
+# from the lead email's text (a portal's "Scheduled appointment" note) and never when they say they aren't ready.
+_NOT_READY = re.compile(
+    r"\b(numbers? first|price first|need (the |some )?(numbers|pricing|price|info|information|details)|"
+    r"not (ready|yet|sure)|think about it|let me (think|check|see)|get back to you|(will|i'?ll) let you know|"
+    r"before (i|we) (come|book|schedule|commit)|no rush|maybe later)\b", re.IGNORECASE)
+_BOOKS_FROM_OWN_REPLY = ("inbound_message", "resume_at_opening")
+
 _RESCHEDULE_HINT = re.compile(
     r"\b(instead|reschedule|move (?:it|my appointment)|change (?:it|the time)|"
     r"can we make it|different time|push it)\b", re.IGNORECASE)
@@ -308,8 +316,9 @@ async def _visit_and_booking(
     asks_for_a_time = visit_wants_visit(extraction)
     # PLAN_4 stream X3 item 3: a bare time or a part of the day after they asked for a day is about that day.
     about_asked_day = bool(asked_day and (booking_tool.bare_time(text) or booking_tool.part_of_day(text)[0]))
+    customer_picks = state.trigger in _BOOKS_FROM_OWN_REPLY and not _NOT_READY.search(text)
     if (pending or asks_for_a_time or about_asked_day or (conversation.awaiting_visit_pick and conversation.visit)) \
-            and not hold and not after_hours_blocking:
+            and customer_picks and not hold and not after_hours_blocking:
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         picked = pending
