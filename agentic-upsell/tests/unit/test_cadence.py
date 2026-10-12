@@ -257,7 +257,9 @@ async def test_touch_2_is_the_name_nudge_on_text_and_email_and_nothing_else(mong
     sms = next(m for m in sent if m["channel"] == "sms")["text"]
     email = next(m for m in sent if m["channel"] == "email")["text"]
     assert sms == "Maria?"  # the client calls it non-negotiable (Omnichannel PDF §3)
-    assert "Maria?" in email and len(email) < 60
+    # The email says it in a sentence, not a bare "Maria?" (seen live 11 Oct 2026: "Hi Domenico, Domenico?").
+    assert email.startswith("Hi Maria,") and "Just checking that you saw my last message" in email
+    assert "Maria?" not in email
     state = await _state(mongo, created)
     assert state["stage"] == "no_contact_made"  # Touch 1 and the nudge both went unanswered
     assert state["cadence"]["touch_number"] == 3

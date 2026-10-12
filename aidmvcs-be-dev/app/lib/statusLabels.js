@@ -16,7 +16,7 @@ export const STATUS_LABELS = Object.freeze({
   // a workflow status (it's no longer offered when setting a status); as a Leads filter it means the customer
   // actually talked to us (app/lib/contactedLeads.js).
   'Managerial Review': 'Dealership Action Required',
-  'Contacted': 'Contacted (customer replied)',
+  'Contacted': 'Customer Replied',
 });
 
 export function statusLabel(status) {

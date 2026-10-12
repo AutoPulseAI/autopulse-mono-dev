@@ -127,26 +127,22 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const [sourceOptions, setSourceOptions] = useState([]);
 
   const statusOptions = [
-    "Contacted",
+    // In the order of the client's status list (scope §16; Betsy, 12 Oct 2026: "statuses do not look exactly as I
+    // specified" - no plain "Contacted" or "Sold", which her workflows don't have). Shown with app/lib/statusLabels.js.
+    "Lead",
+    "Lead Not Contacted",
+    "Contacted - No Next Action",
+    "Contacted - Specific Follow-up",
     "Appointment Booked",
+    "No Show",
     "Visited",
+    "DND",
     "Managerial Review",
-    "Sold",
     "Sold Pending",
     "Sold Delivered",
     "Unsold",
     "Closed - Lost",
-    "Lead",
-    // The SOW's working stages (client, 8 Oct 2026): the AI also sets them as the lead moves.
-    "Lead Not Contacted",
-    "Contacted - No Next Action",
-    "DND",
-    "No Show",
-    // Set only by the AI (ownership ended; PLAN_4 stream S): filterable, never picked in the status modal.
     "Closed - No Longer Owns",
-    // Set only by the AI: the customer gave a date to get back to them (it carries that date).
-    "Contacted - Specific Follow-up"
-
   ];
 
   const getStatusVariant = (status) => {

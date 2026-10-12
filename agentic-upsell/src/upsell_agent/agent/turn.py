@@ -225,7 +225,8 @@ async def run_turn(
             subject = None if channel == "sms" else draft.get("email_subject")
             reply, subject, freshness = await _fresh_send_text(ctx, dealer_id, draft, channel, reply, subject)
             # MASTER_PLAN_4 F3: the named vehicle's own photo, checked, never a link in its place.
-            photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]))
+            photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]),
+                                 customer_text=inbound_text)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
@@ -821,12 +822,12 @@ async def _fresh_send_text(ctx: TurnContext, dealer_id: str, draft: dict[str, An
 
 
 async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision: dict[str, Any], *,
-                 stock_free: bool = False) -> MediaPick:
+                 stock_free: bool = False, customer_text: str | None = None) -> MediaPick:
     """MASTER_PLAN_4 F3 (agent/vehicle_media.py): the photo for this channel's version of the draft."""
     return await photo_for_draft(
         ctx.db.dealer_id, draft, channel, settings=ctx.settings, source=ctx.inventory,
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
-        stock_free=stock_free)
+        stock_free=stock_free, customer_text=customer_text, db=ctx.db)
 
 
 def _hands_off(result: dict[str, Any]) -> bool:

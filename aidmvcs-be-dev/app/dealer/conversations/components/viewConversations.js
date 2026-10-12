@@ -1,5 +1,6 @@
 // viewConversations.js
 "use client";
+import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
@@ -216,7 +217,7 @@ export default function ViewConversations({ selectedEmail, dealer_id, refresh })
                         <p className="col col-md-12 col-12 text-break"><strong>Email:</strong> {lead?.email}</p>
                         <p className="col col-md-12 col-12"><strong>Phone:</strong> {lead?.phone}</p>
                         <p className="col col-md-12 col-6"><strong>Source:</strong> {lead?.source}</p>
-                        <p className="col col-md-12 col-6"><strong>Lead Status:</strong> {lead?.fe_lead_status}</p>
+                        <p className="col col-md-12 col-6"><strong>Lead Status:</strong> {statusLabel(lead?.fe_lead_status)}</p>
                         <p className="col col-md-12 col-12"><strong>Lead Source:</strong> {lead?.lead_source}</p>
                         <p className="col col-md-12 col-6"><strong>Vin:</strong> {lead?.vin}</p>
                         <p className="col col-md-12 col-6"><strong>Year:</strong> {lead?.vehicle_year}</p>
