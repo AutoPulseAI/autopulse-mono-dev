@@ -14,7 +14,7 @@ const INBOUND = ["received", "incoming"];
 const STAFF_SOURCES = new Set(["staff_status", "manager_outcome"]);
 const STAGE_LABELS = {
   new_lead: "New Lead", no_contact_made: "No Contact Made", contact_made_no_next_action: "Contact Made - No Next Action",
-  contact_made_specific_followup: "Contact Made - Specific Follow-Up", appointment_set: "Appointment Set",
+  contact_made_specific_followup: "Contact Made - Follow Up Assigned", appointment_set: "Appointment Set",
   appointment_no_show: "Appointment No Show", sales_visit: "Sales Visit", opted_out: "Opted Out",
   closed_lost: "Closed Lost", sold_pending: "Sold Pending", sold_delivered: "Sold - Delivered",
   closed_no_longer_owns: "Closed - No Longer Owns",
@@ -56,7 +56,7 @@ export function consentEntry(c) {
 export function staffEntry(a) {
   const who = a.actor_name || (a.actor_type === "staff" ? "Staff" : a.actor_type);
   const what = a.action === "status_changed" ? `changed the status${a.from ? ` from ${a.from}` : ""} to ${a.to}`
-    : a.action === "ai_turned_off" ? "turned the AI off for this lead" : a.action === "ai_turned_on" ? "turned the AI back on for this lead"
+    : a.action === "ai_turned_off" ? "turned the AI off for this lead" : a.action === "ai_turned_on" ? "turned the AI back on for this lead" : a.action === "ai_turn_on_blocked" ? "tried to turn the AI back on (blocked: the customer opted out)"
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };

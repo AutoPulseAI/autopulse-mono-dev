@@ -42,6 +42,9 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     else:
         draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
                  if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
+    if not mid_conversation and not spanish and touch1:
+        from upsell_agent.agent.nodes.compose import place_touch1_extras
+        place_touch1_extras(draft, touch1)
     draft["why"] = why
     return draft
 
@@ -100,5 +103,7 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
     if later:
         draft = avoid_repeat(draft, _sent_texts(state), state.customer_name)
+    from upsell_agent.agent.nodes.compose import place_cannot_supply
+    place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     span.output = draft
     return {"draft": draft, "used_template": True, "used_fallback": not first_reply}

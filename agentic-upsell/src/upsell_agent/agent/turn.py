@@ -338,6 +338,13 @@ async def run_turn(
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
+            await _escalate_cannot_supply(db, lead_id, result)
+            if "buyers_order" in decision:
+                # The buyer's order sequence's next step (agent/buyers_order.py), kept once the reply went out.
+                step = decision["buyers_order"]
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"buyers_order": step}} if step.get("step")
+                    else {"$unset": {"buyers_order": ""}})
             # Client, 10 Oct 2026: the language the customer writes in carries over to short replies and follow-ups.
             spoken = (result.get("decision") or {}).get("reply_language")
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
@@ -654,6 +661,27 @@ async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decisi
         {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
 
 
+async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
+    """Client, 12 Oct 2026 (Betsy): a customer asking for something the AI can't supply (custom photos, a video)
+    puts the lead into Dealership Action Required - the AI still asks about the test drive, a person sends them."""
+    decision = result.get("decision") or {}
+    cannot = decision.get("cannot_supply") or {}
+    check = decision.get("vehicle_check") or {}
+    if not cannot.get("escalates") and not check:
+        return
+    from upsell_agent.agent import cannot_supply, crm_status, escalation
+    if cannot.get("topic") == "buyers_order":
+        from upsell_agent.agent.buyers_order import ESCALATE_REASON
+        await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=ESCALATE_REASON,
+                                     event_kind="buyers_order")
+        return
+    what = ("an out-of-state customer (pick-up or shipping)" if cannot.get("topic") == "out_of_state"
+            else "custom photos or a video") if cannot.get("escalates") else (
+        f"confirm {check.get('vehicle')} is available before scheduling")
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                 reason=f"{cannot_supply.ESCALATION_REASON}: {what}", event_kind="cannot_supply")
+
+
 async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
     """A reply that told the customer "the team will ..." always leaves staff something to act on.
 
@@ -675,12 +703,8 @@ async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, resul
     text = "The AI told the customer the team would act: " + "; ".join(dict.fromkeys(promises))
     await states.update_one({"lead_id": lead_id},
                             {"$set": {"staff_notice": {"at": clock.now(), "kind": "team_promise", "text": text}}})
-    # Client, 12 Oct 2026 (Betsy, Mariah Guillaume): "this says the team will reach out but was not changed to
-    # Manager Review" - a promise that the team will act puts the lead into Dealership Action Required (the CRM's
-    # Managerial Review), which also emails and texts the manager.
-    from upsell_agent.agent import crm_status, escalation
-    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=text[:300],
-                                 event_kind="team_promise")
+    # Not Dealership Action Required by itself (client, 12 Oct 2026, Betsy: that status is only for the cases in
+    # agent/escalation.py) - the AI no longer promises "the team will ..." outside them; this note stays for staff.
 
 
 async def _notify_team_at_opening(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:

@@ -923,6 +923,10 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     db = dealer_scoped_db(event.dealer_id)
     staff_status = lifecycle.staff_status_from_reason(event.reason)
     outcome_status = lifecycle.manager_outcome_from_reason(event.reason)
+    if not staff_status and not outcome_status and (primary := await duplicates.workflow_lead_id(
+            db, event.lead_id)) not in (None, event.lead_id):
+        # The AI switch on a repeat lead: the AI works the customer on their open lead, so it's turned off there.
+        return await handle_lead_paused(event.model_copy(update={"lead_id": primary}), deps)
     stage_event = lifecycle.STAFF_STATUS_EVENTS.get(staff_status or "")
     outcome_event = lifecycle.STAFF_STATUS_EVENTS.get(outcome_status or "")
     if staff_status == "No Show":
@@ -1117,8 +1121,14 @@ async def handle_lead_resumed(event: LeadResumedEvent) -> dict[str, Any]:
     db = dealer_scoped_db(event.dealer_id)
     # An admin resuming the AI resolves an open review (decision 72).
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
-    if state.get("duplicate_of") and await duplicates.workflow_lead_id(db, event.lead_id) != event.lead_id:
-        return {"status": "duplicate", "reason": f"linked to open lead {state['duplicate_of']}: not resumed"}
+    # Client, 12 Oct 2026 (AI toggle bug fix, SOW item 21): a legal opt-out is never undone by the toggle.
+    if state.get("status") == "opted_out" or state.get("stage") == lifecycle.Stage.OPTED_OUT.value:
+        return {"status": "blocked", "reason": "The customer opted out: the AI stays off until they text START."}
+    if state.get("duplicate_of") and (primary := await duplicates.workflow_lead_id(db, event.lead_id)) != event.lead_id:
+        # A repeat lead runs on the customer's open lead (agent/duplicates.py), so turning the AI on here turns it on
+        # there. Before, this was refused silently and the switch "couldn't be turned back on" (client, 12 Oct 2026).
+        resumed = await handle_lead_resumed(event.model_copy(update={"lead_id": primary})) if primary else {}
+        return {"status": "duplicate", "workflow_lead_id": primary, "primary": resumed}
     await _resolve_review(db, state.get("customer_id"), event.lead_id, "admin_resumed_ai", {})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},

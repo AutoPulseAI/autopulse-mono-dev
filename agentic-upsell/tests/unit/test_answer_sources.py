@@ -165,9 +165,10 @@ async def test_missing_details_are_left_to_the_team(mongo):
     created = await _lead(dealer=BARE_DEALER)
     await _say(created, "When are you open?", dealer=BARE_DEALER)
     _, sms = await _last(mongo, created)
-    assert "our team will confirm" in sms and "9:00" not in sms
+    # Client, 12 Oct 2026: never "the team will confirm" - it's for the visit.
+    assert "go over together when you come in" in sms and "team" not in sms and "9:00" not in sms
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert [p["text"] for p in state["conversation"]["promises"]] == ["The team will confirm: When are you open?"]
+    assert state["conversation"]["promises"] == []
 
 
 async def test_about_me_says_only_what_we_know(mongo):

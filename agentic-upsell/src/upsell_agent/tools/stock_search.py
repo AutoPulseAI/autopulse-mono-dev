@@ -24,6 +24,7 @@ keeps its dealer scoping, `year_range`, escaping and 60 s cache):
   never said either (Phase 0 item 3: records carry no price).
 """
 
+import itertools
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -70,8 +71,11 @@ def match_colour(wanted: str, stored: list[str | None]) -> str | None:
 
 def trim_matches(wanted: str, trim: str | None) -> bool:
     """Every word of the trim they said is in the record's trim ("XLE" matches "XLE Hybrid")."""
-    have = (trim or "").lower().split()
-    return bool(have) and all(word in have for word in wanted.lower().split())
+    # "Mach-E", "Mach E" and "MachE" are the same trim.
+    have = (trim or "").lower().replace("-", " ").split()
+    words = wanted.lower().replace("-", " ").split()
+    tokens = {*have, *(a + b for a, b in itertools.pairwise(have))}
+    return bool(have) and (all(word in tokens for word in words) or "".join(words) in tokens)
 
 
 @dataclass
@@ -178,6 +182,12 @@ async def find_stock(dealer_id: str, criteria: InventoryCriteria, source: Invent
 async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
                   loosened: list[dict[str, str]]) -> tuple[str | None, InventoryCriteria]:
     """The next loosening step that applies, recorded; (None, c) when none is left."""
+    if c.model and len(c.model.split()) > 1 and not any(s["step"] == "model_name" for s in loosened):
+        # Client, 12 Oct 2026 (Bibi, a Mustang Mach-E lead): the feed lists it as model "Mustang", trim "Mach-E".
+        # Not a loosening - the same vehicle, named the way the feed names it - so the match stays exact.
+        first, rest = c.model.split(None, 1)
+        loosened.append({"step": "model_name", "detail": f"no model {c.model!r}; model {first!r} with {rest!r}"})
+        return "model_name", c.model_copy(update={"model": first, "trim": " ".join(filter(None, [rest, c.trim]))})
     if c.exterior_color:
         loosened.append({"step": "colour", "detail": f"no match in {c.exterior_color}; any colour"})
         return "colour", c.model_copy(update={"exterior_color": None})

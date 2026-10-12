@@ -165,7 +165,10 @@ export default function AdfLead({ raw }) {
       email: text(contact, "email"),
       phone: text(contact, "phone"),
       address: addressLines(contact?.querySelector("address")),
-      comments: (prospect.querySelector("customer comments")?.textContent || "").replace(/\r/g, "").trim(),
+      // Portals put HTML line breaks in the comments ("...still available?<br><br>VEHICLE OF INTEREST:"): show them
+      // as line breaks, never as raw "<br>" text (client, 12 Oct 2026).
+      comments: (prospect.querySelector("customer comments")?.textContent || "").replace(/\r/g, "")
+        .replace(/<br\s*\/?>/gi, "\n").replace(/&lt;br\s*\/?&gt;/gi, "\n").trim(),
       vehicles: all(prospect, "vehicle").map(vehicleModel),
       vendor: vendor && {
         name: text(vendor, "vendorname"),
@@ -200,7 +203,7 @@ export default function AdfLead({ raw }) {
         <section className="aim-adf-sec">
           <h5 className="aim-adf-h"><i className="fa-regular fa-message-lines me-2" />Customer comments</h5>
           {comments.split(/\n{2,}/).map((p, i) => (
-            <p key={i} className="aim-adf-comment"><Linked value={p.replace(/&#39;/g, "'").trim()} /></p>
+            <p key={i} className="aim-adf-comment" style={{ whiteSpace: "pre-line" }}><Linked value={p.replace(/&#39;/g, "'").trim()} /></p>
           ))}
         </section>
       )}

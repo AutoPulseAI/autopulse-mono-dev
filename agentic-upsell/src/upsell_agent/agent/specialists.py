@@ -70,7 +70,10 @@ _PATTERNS = (
     (CREDIT, (r"\b(credit|approv\w*|bad credit|no credit|repo\w*|bankrupt\w*|co-?signer|first time buyer|"
              r"credit score|denied|financ\w* (with|for) (bad|low|no))\b")),
     (TRADE, (r"\b(trade[- ]?in|trade (it|my|in)|my (current |old )?car (is )?worth|sell (you )?my (car|truck|"
-            r"vehicle)|what('s| is) my (car|truck) worth|payoff|kbb|kelley)\b")),
+            r"vehicle)|what('s| is) my (car|truck) worth|payoff|kbb|kelley|"
+            # Client, 12 Oct 2026 (Jean Castro: "the value of you home to my civic"): what their own car is worth.
+            r"(value|valuation|worth) (of|for|on) (\w+ ){0,3}?(my|our) \w+|(my|our) \w+('s)? (value|worth)|"
+            r"(give|offer|pay) me for (my|our) \w+|appraise (my|our) \w+)\b")),
     (PRICE, (r"\b(price|pricing|cost|how much|monthly|per month|payment|apr|rate|interest|out the door|otd|"
             r"discount|best deal|lease|financ\w*|down payment|msrp|incentives?|rebates?)\b")),
 )

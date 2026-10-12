@@ -419,7 +419,7 @@ def _link_line(link: dict[str, Any] | None) -> str:
         "website": "Here's our website: [WEBSITE_LINK]",
         "credit_application": "You can apply for financing here: [DEALER_LINK]",
         "trade_in": "You can get your trade valued here: [DEALER_LINK]",
-        "unavailable": f"{link.get('honest_line') or ''} The team can send it to you, or you're welcome to come by.",
+        "unavailable": f"{link.get('honest_line') or ''} You're welcome to come by and see it in person.",
         "ask_which": "Happy to send a link. Which vehicle would you like it for?",
     }.get(link.get("kind"), "").strip()
 
@@ -630,13 +630,15 @@ def _stock_answer(payload: dict[str, Any]) -> tuple[str, list[str], list[str]]:
         # Wording deliberately avoids "in stock" / "available" (the guard's own
         # availability patterns): this is an honest "we have nothing" plus a
         # promise, not an availability claim about a specific vehicle.
-        return ("I'm not seeing a matching one right now, but I can have the team let you know the moment one comes in.",
-                [], ["The team will let you know when a matching vehicle comes in."])
+        return ("I want to make absolutely sure that one is available, so I'll check with my manager before we "
+                "schedule.",
+                [], [])
     names = [_vehicle_phrase(r) for r in chosen]
     searched = (payload.get("context") or {}).get("stock_search") or {}
     if searched and not searched.get("exact") and searched.get("searched_for") not in (None, "any vehicle"):
         # conversation_7: the nearest we have, said as such - never passed off as what they asked for.
-        return (f"We don't have a {searched['searched_for']} right now, but we do have {'; and '.join(names)}.",
+        return (f"I want to make absolutely sure the {searched['searched_for']} is available, so I'll check with my "
+                f"manager before we schedule. In the meantime, we have {'; and '.join(names)}.",
                 [r["vin"] for r in chosen], [])
     return (f"Good news - we have {'; and '.join(names)} in stock.", [r["vin"] for r in chosen], [])
 
@@ -663,8 +665,7 @@ def _answers(questions: list[dict[str, str]], payload: dict[str, Any]) -> tuple[
         else:  # not about the dealer's details, or a detail they never entered
             team.append(q)
     if team:
-        sentences.append("Good question - our team will confirm that for you.")
-        promises += [f"The team will confirm: {q['text']}" for q in team]
+        sentences.append("Good question - that's something we can go over together when you come in.")
     if any(q["label"] == "about_me" for q in questions):
         sentences.append(_about_me(payload))
     if any(q["label"] == "off_topic" for q in questions):
@@ -697,11 +698,11 @@ def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> st
     if theme == "vehicle_visual":
         return f"I took another look at {it} for you. Is there anything you'd like to see or know about it?", []
     if theme == "financing_help":
-        return ("Would you like help with financing or payment options? The team can walk you through "
+        return ("Would you like help with financing or payment options? I can walk you through "
                 "what's possible."), []
     if theme == "trade_in":
-        return (f"Would you like the team to take a good look at your {trade} while you're in?" if trade
-                else "Do you have a car you'd want to put towards it? The team can take a look at it for you."), []
+        return (f"Would you like us to take a good look at your {trade} while you're in?" if trade
+                else "Do you have a car you'd want to put towards it? We can take a look at it for you."), []
     if theme == "vehicle_value":
         if stock:
             car = stock[0]
@@ -711,7 +712,7 @@ def _touch_text(touch: dict[str, Any], payload: dict[str, Any], name: str) -> st
                         f"{detail}. Would you like to take a look?"), ([car["vin"]] if car.get("vin") else [])
         return f"Is there anything in particular you want to know about {it}?", []
     if theme == "appointment_value":
-        return (f"If you come in, the team can go through {it} with you in person, all at once. "
+        return (f"If you come in, we can go through {it} with you in person, all at once. "
                 "What day works for you?"), []
     if theme == "direct_close":
         return f"Are you still thinking about {it}? I can hold a time for you - what day works?", []
@@ -735,7 +736,7 @@ def _confirm_text(confirm: dict[str, Any]) -> str:
 # MASTER_PLAN_4 A1: the first reply's line for each lead bucket's word track (blueprint §2), no numbers,
 # no approval, no trade value, no question.
 _BUCKET_LINES = {
-    "credit": "Our team can walk you through your financing options and what you'd need to get started.",
+    "credit": "I can walk you through your financing options and what you'd need to get started.",
     "trade_in": "We'd be glad to take a good look at your car and get you an accurate, in-person number.",
     "general": "",
 }
@@ -871,18 +872,11 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
             body = f"{opener}Thanks, {name}!"
             why = "All required details are collected, but the visit offer was already declined 3 times: just acknowledge."
         else:
-            body = f"{opener}That's everything we need, {name}. A member of our team will reach out shortly with next steps."
+            body = f"{opener}That's everything we need, {name}. Thank you!"
             why = "All required details are collected, so the reply wraps up without asking more."
-            promises.append("A member of the team will reach out with next steps.")
     elif action == "partly_qualified":
-        if visit.get("stopped"):
-            body = f"Thanks, {name}. I've passed what we have to the team."
-            why = "Everything still missing was asked twice, and the visit offer was already declined 3 times."
-        else:
-            body = (f"Thanks, {name}. I've passed what we have to the team, and someone will reach out shortly "
-                    "with next steps.")
-            why = "Everything still missing was asked twice, so the lead goes to the team with what we have."
-            promises.append("A member of the team will reach out with next steps.")
+        body = f"Thanks, {name}. I've made a note of everything you told me."
+        why = "Everything still missing was asked twice: acknowledge what we have."
     elif payload.get("annoyed_at_bot"):
         body = f"Sorry about that, {name} - I won't keep asking. Just tell me whatever you need and I'll help."
         why = "The customer is frustrated with the conversation: apologise, ask nothing."
@@ -894,17 +888,22 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     if after_hours.get("mode") == "offer":
         body = (f"{answered} " if action in ("answer", "clarify") and answered else "Thanks for reaching out! ") + (
             f"We're closed right now and open again at {opens}. " if opens else "We're closed right now. ") + (
-            "I can help you here now, or the team can pick this up when we open. Which would you like?")
-        why = "The dealership is closed: answer, then offer to help now or have the team pick it up at opening."
+            "Would you like to chat now, or would you prefer to continue during business hours?")
+        why = "Outside the customer's texting hours: answer, then ask whether to chat now or during business hours."
+    elif after_hours.get("mode") == "closed":
+        note = f"We're closed right now and open again at {opens}, but I can help you right now. " if opens else (
+            "We're closed right now, but I can help you right now. ")
+        body = f"{note}{body}"
+        why = "Closed, but inside the customer's texting hours: say so and carry on. " + why
     elif after_hours.get("mode") == "later":
-        body = (f"{answered} " if answered else "") + f"Thanks, {name}! The team will pick this up when we open" + (
+        body = (f"{answered} " if answered else "") + f"Thanks, {name}! I'll pick this up when we open" + (
             f" at {opens}." if opens else ".")
         why = "The customer chose to wait for the team: a short thank-you, nothing asked."
     elif after_hours.get("mode") == "resume":
         hour = int(str(((payload.get("context") or {}).get("now") or {}).get("time", "09:00")).split(":")[0])
         greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
         rest = "Just reply here whenever you're ready." if action == "acknowledge" else body.removeprefix(opener)
-        body = f"{greeting}, {name}! The team is in now. {rest}"
+        body = f"{greeting}, {name}! We're open now. {rest}"
         why = "The dealership has opened: the conversation picks up where it stopped. " + why
     if (planned := payload.get("next_action")) and action not in ("handoff", "stop"):
         # MASTER_PLAN_3 C3: the customer asked us to get back to them on a date - confirm it, nothing else.
@@ -922,11 +921,11 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         wording = "confirmed" if visit.get("status") == "confirmed" else "requested"
         verb = "moved" if visit.get("moved_this_turn") else wording
         lead_in = f"{answered} " if answered else ""
-        body = (f"{lead_in}Great - I've {verb} {visit.get('display')} for you." +
-               (" The team will confirm shortly." if wording == "requested" else " See you then!"))
+        body = (f"{lead_in}Great - you're all set for {visit.get('display')}. See you then!" if verb != "moved"
+                else f"{lead_in}Great - I've moved your visit to {visit.get('display')}. See you then!")
         why = f"A booking was {verb} this turn ({wording}, matching its real status)."
         if wording == "requested":
-            promises = [*promises, "The team will confirm the visit shortly."]
+            promises = list(promises)
     elif visit.get("cancelled_this_turn"):
         body = f"{f'{answered} ' if answered else ''}No problem, {name} - I've canceled that. I'm happy to find another time whenever it works for you."
         why = "The customer cancelled their booking this turn."
@@ -983,11 +982,10 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         vins = [referred["vin"], *[v for v in vins if v != referred["vin"]]][:2]
         why += f" The customer means {referred['description']}."
     elif referred.get("vin"):
-        body = f"Sorry, {referred['description']} has just sold. The team will look for similar ones for you. {body}"
-        promises = [*promises, "The team will look for similar vehicles"]
+        body = f"Sorry, {referred['description']} has just sold. {body}"
         why += " The vehicle the customer means has sold."
     if payload.get("quiet_hours"):
-        body += " The team will pick this up at 8:00 AM."
+        body += " I'll pick this up at 8:00 AM."
         why += " Outside 8:00-21:00 customer time in an outbound conversation: no questions, the team picks up at 8."
     elif payload.get("hold_questions"):
         why += f" Nothing asked or offered: {payload['hold_questions']}."
@@ -999,7 +997,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
     # Touch 1's required opening already greets them: no second "Hi Maria," above it (stream G).
     hi = "" if payload.get("touch1") else f"Hi {name},\n\n"
     result = {"sms_text": sms, "email_subject": subject,
-             "email_body": f"{hi}{body}\n\nThanks,\nThe Team", "why": why, "promises": promises,
+             "email_body": f"{hi}{body}\n\nThank you", "why": why, "promises": promises,
              "answered_questions": [q["text"] for q in questions] if action in ("answer", "clarify", "ask_why")
              else [],
              "sms_vins": vins, "email_vins": vins}
@@ -1011,7 +1009,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         link = payload["link"]
         if len(f"{sms} {line}") <= limit:
             result["sms_text"] = f"{sms} {line}"
-        result["email_body"] = f"{hi}{body} {line}\n\nThanks,\nThe Team"
+        result["email_body"] = f"{hi}{body} {line}\n\nThank you"
         if link.get("vin") and link.get("placeholders"):
             for key in ("sms_vins", "email_vins"):
                 result[key] = [*result[key], link["vin"]] if link["vin"] not in result[key] else result[key]
@@ -1022,7 +1020,7 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         no_sms = body_no_vehicles if len(body_no_vehicles) <= limit else (
             body_no_vehicles[: limit - 1].rsplit(" ", 1)[0] + "…")
         result.update(sms_text_no_vehicles=no_sms, email_subject_no_vehicles=subject,
-                      email_body_no_vehicles=f"{hi}{body_no_vehicles}\n\nThanks,\nThe Team")
+                      email_body_no_vehicles=f"{hi}{body_no_vehicles}\n\nThank you")
     return result
 
 

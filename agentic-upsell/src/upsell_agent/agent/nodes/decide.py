@@ -24,7 +24,15 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, service_request, specialists
+from upsell_agent.agent import (
+    buyers_order,
+    cadence,
+    cannot_supply,
+    human_contact,
+    lead_bucket,
+    service_request,
+    specialists,
+)
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
@@ -545,6 +553,55 @@ def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: st
     }
 
 
+def _money(value: Any) -> str | None:
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return f"${amount:,.0f}" if amount > 0 else None
+
+
+def first_reply_extras(ctx: TurnContext, state: AgentState, dealer: DealerProfile) -> dict[str, Any]:
+    """Client, 12 Oct 2026 (Betsy, Natasha's lead): the first reply about an in-stock vehicle sends "a picture of the
+    vehicle and the listed price, which does not include tax, documentation or DMV" - never lead-form details read
+    back. And (same day) a customer with no phone number gets her email asking for one."""
+    from upsell_agent.agent.multi_vehicle import vehicle_label
+    from upsell_agent.agent.vehicle_media import lead_vehicle_vin
+    extras: dict[str, Any] = {}
+    vin = lead_vehicle_vin(ctx.lead, ctx.lead_state)
+    record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
+    if record and (price := _money(record.get("price"))):
+        extras.update(vin=vin, price_line=f"It's listed at {price}, not including tax, documentation and DMV fees.")
+    if record:
+        # Client, 12 Oct 2026 (Betsy, Yvette Miller: "Please provide CarFax and mileage of car" got no answer): what the
+        # lead form asks for that the vehicle's own record holds, answered in the first reply.
+        asked = " ".join(str(x or "") for x in ((ctx.lead or {}).get("comments"),
+                                                 ((ctx.lead or {}).get("data") or {}).get("comments"))).lower()
+        answers = []
+        if re.search(r"\b(mileage|miles|odometer)\b", asked) and record.get("miles"):
+            answers.append(f"It has {int(record['miles']):,} miles.")
+        page = str(record.get("page_url") or "").strip()
+        if re.search(r"\b(carfax|car fax|autocheck|history|accident)", asked) and page:
+            answers.append(f"Here's the vehicle's page with all the details, including its history report where "
+                           f"available: {page}")
+        if answers:
+            extras.update(vin=vin, lead_answers=" ".join(answers))
+    if not resolve_recipient(ctx.lead, ctx.customer, "sms"):
+        vehicle = vehicle_label(ctx.lead) or "vehicle"
+        model = " ".join(p for p in (str((ctx.lead or {}).get("year") or "").strip(),
+                                     str((ctx.lead or {}).get("model") or "").strip()) if p) or vehicle
+        name = first_name(state.customer_name) or "there"
+        reach = f" We can be reached at {dealer.phone}." if dealer.phone else ""
+        extras["no_phone_email"] = {
+            "subject": f"{vehicle} Update" if vehicle != "vehicle" else "Your Vehicle Update",
+            "body": (f"Hello {name},\n\nThank you for reaching out to {dealer.name or 'us'} regarding the {model}. "
+                     "I am excited to assist you with your purchase!\n\nWe can accomplish a lot with a quick call. "
+                     f"What is the best phone number to reach you?{reach}\n\nBy the way, what are you driving now?"
+                     "\n\nI look forward to hearing from you."),
+        }
+    return extras
+
+
 async def _assigned_name(ctx: TurnContext) -> str | None:
     """The first name of the salesperson the lead is assigned to (CRM `assigned_to`), or None."""
     from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id, get_db
@@ -623,6 +680,50 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
                               channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
 
 
+async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
+                             *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
+                             visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
+                                                                 VisitOfferPlan | None]:
+    """Client, 12 Oct 2026 (Betsy): a credit score, APR, payment, custom photos/video, out-the-door price or an
+    out-of-state question is answered in her words, with two open times when she asked for them (agent/
+    cannot_supply.py). Only on the customer's own message, never under a hold."""
+    if state.trigger not in ("inbound_message", "resume_at_opening") or hold:
+        return None, None
+    topic = cannot_supply.detect(text)
+    if topic is None:
+        return None, None
+    from upsell_agent.agent.vehicle_media import lead_vehicle_vin
+    vin = lead_vehicle_vin(ctx.lead, ctx.lead_state)
+    record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
+    url = str((record or {}).get("page_url") or "").strip() or None
+    if visit_ctx.get("status") in ("pending", "confirmed"):
+        return cannot_supply.reply(topic, booked=visit_ctx.get("display") or "your visit", vehicle_url=url), None
+    if not cannot_supply.needs_times(topic):
+        return cannot_supply.reply(topic, vehicle_url=url), None
+    existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
+    available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=state.lead_id or "")
+    zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
+    built = booking_tool.format_offer(booking_tool.offer_times(available, count=2), dealer, customer_zones=zones)
+    answer = cannot_supply.reply(topic, times=[t["display"] for t in built], vehicle_url=url)
+    if not answer.offers_times:
+        return answer, None
+    plan = plan_day_offer(profile=profile, conversation=conversation, built_times=built,
+                          why=f"Can't supply ({topic}): the client's answer with two open times.")
+    return answer, plan
+
+
+def customer_texting_hours(zone: dict | None, now: datetime, dealer_tz: Any) -> bool:
+    """Is it the customer's legal texting time (TCPA state table, client 1 Oct 2026)? Unknown location: the
+    federal 8 AM - 9 PM in the dealer's time zone."""
+    from upsell_agent.compliance.state_hours import allowed, rules_for, zone_states
+    states = zone_states(zone or {})
+    zones = tuple((zone or {}).get("zones") or ())
+    if states and zones:
+        return allowed(now, zones, rules_for(states))
+    local = now.astimezone(dealer_tz)
+    return 8 <= local.hour < 21
+
+
 async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     extraction = state.extraction or {}
     profile = await load_profile(ctx, state)
@@ -639,15 +740,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     pack = state.context_pack or {}
     now = clock.now()
     text = state.customer_text or state.inbound_text
+    dealer = await dealer_profile(state.dealer_id)
     after_hours = plan_after_hours(
         trigger=state.trigger, origin=((ctx.compliance or {}).get("origin") or {}).get("origin"),
-        now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=now, text=text)
+        now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=now, text=text,
+        texting_hours=customer_texting_hours((ctx.compliance or {}).get("zone"), now, dealer.tz))
     if hold and after_hours.mode == "offer":
         # A possible opt-out or quiet hours: nothing is asked, not even the choice.
         after_hours.mode, after_hours.record = None, None
         after_hours.why = f"No after-hours choice: {hold}."
 
-    dealer = await dealer_profile(state.dealer_id)
     # MASTER_PLAN_3 C3: a dated next step the customer asked for. The reply confirms it and asks or
     # offers nothing else (they asked us to come back later, not to keep going now).
     dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text)
@@ -693,6 +795,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
+    cannot, cannot_plan = await plan_cannot_supply(ctx, state, profile, conversation, dealer=dealer, now=now,
+                                                   text=text, hold=hold, visit_ctx=visit_ctx)
+    # Client, 12 Oct 2026 (Betsy): the buyer's order sequence, in her words (agent/buyers_order.py).
+    order = (buyers_order.plan(ctx.lead_state, text, now, credit_link=dealer.credit_application_url)
+             if state.trigger in ("inbound_message", "resume_at_opening") and not hold else None)
+    if order is not None:
+        cannot, cannot_plan = None, None
+    if cannot_plan is not None:
+        visit_plan = cannot_plan
     if visit_ctx.get("day_request"):
         # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
         questions = [q for q in questions if not booking_tool.preferred_day(q["text"], dealer, now)]
@@ -744,6 +855,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
               if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff", "offer_human")
               else None)
     if touch1:
+        touch1.update(first_reply_extras(ctx, state, dealer))
         decision["touch1"] = touch1
         if touch1["ending"]:
             # The closing question is one of the two, so at most one other ask fits (decision 35). A
@@ -785,6 +897,20 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if visit_ctx.get("just_booked") or visit_ctx.get("status") in ("pending", "confirmed"):
         # Client, 12 Oct 2026: the confirmation says who to ask for - the salesperson the lead is assigned to.
         visit_ctx = {**visit_ctx, "address": dealer.address, "ask_for": await _assigned_name(ctx)}
+    stock = (state.context_pack or {}).get("stock_search") or {}
+    # Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
+    # before scheduling the appointment and move to Manager Review status".
+    decision["vehicle_check"] = ({"vehicle": stock.get("searched_for")} if stock.get("asked") and not stock.get("exact")
+                                 and stock.get("searched_for") not in (None, "", "any vehicle")
+                                 and state.trigger in ("inbound_message", "resume_at_opening")
+                                 and decision["action"] not in ("stop", "handoff", "offer_human") else None)
+    decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
+                                 ("stop", "handoff", "offer_human") else None)
+    if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # Placed like the can't-supply answers: her text, word for word.
+        decision["cannot_supply"] = {"topic": "buyers_order", "text": order.text, "offers_times": False,
+                                     "escalates": order.escalates}
+        decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).

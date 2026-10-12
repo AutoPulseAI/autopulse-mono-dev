@@ -99,6 +99,37 @@ def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
     return changed
 
 
+def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) -> list[str]:
+    """Client, 12 Oct 2026 (Betsy): the first reply about an in-stock vehicle carries its listed price (tax,
+    documentation and DMV not included) and its photo, right after the introduction; a customer with no phone gets
+    her email asking for one. Placed by code, like the introduction. Returns what was placed (for the trace)."""
+    touch1 = touch1 or {}
+    placed: list[str] = []
+    line = " ".join(p for p in (touch1.get("price_line"), touch1.get("lead_answers")) if p) or None
+    vin, intro = touch1.get("vin"), str(touch1.get("intro") or "").strip()
+    if line and vin:
+        for key, vins, media in (("sms_text", "sms_vins", "sms_media_vin"), ("email_body", "email_vins",
+                                                                             "email_media_vin")):
+            text = str(draft.get(key) or "")
+            if line not in text:
+                text = (f"{intro} {line}{text[len(intro):]}" if intro and text.startswith(intro)
+                        else f"{line} {text}").replace("  ", " ")
+                draft[key] = text
+            draft[vins] = list(dict.fromkeys([vin, *(draft.get(vins) or [])]))
+            draft[media] = vin
+        placed.append("the vehicle's facts and photo")
+    email = touch1.get("no_phone_email")
+    if email:
+        # The FTC introduction first ("needs to be said BEFORE ANYTHING", 7 Oct 2026; "email should follow all same
+        # rules as SMS", 12 Oct 2026), then her no-phone email without its own greeting line.
+        body = email["body"]
+        if intro:
+            body = f"{intro}\n\n{body.split(chr(10) + chr(10), 1)[1] if chr(10) + chr(10) in body else body}"
+        draft["email_subject"], draft["email_body"] = email["subject"], body
+        placed.append("no-phone email")
+    return placed
+
+
 def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None,
                      vehicle: str | None = None) -> bool:
     """Touch 2's name nudge (decide.py plan_cadence_touch_context: "the client calls it non-negotiable",
@@ -121,6 +152,27 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
                            f"help you with?\n\nThank you")
     draft["promises"] = []
     return changed
+
+
+def place_cannot_supply(draft: dict[str, Any], cannot: dict[str, Any] | None, customer_first_name: str | None,
+                        allowed_urls: list[str] | None = None) -> bool:
+    """Client, 12 Oct 2026 (Betsy): what the AI can't supply (credit score, APR, payment, custom photos/video,
+    out-the-door price, out of state) is answered in her words exactly (agent/cannot_supply.py) - written here, not
+    by the model. Its time choices are the visit offer Decide recorded, so a pick books. Returns whether it placed."""
+    if not cannot or not cannot.get("text"):
+        return False
+    text = str(cannot["text"])
+    name = first_name(customer_first_name) or "there"
+    draft["sms_text"] = text
+    draft["email_subject"] = draft.get("email_subject") or "Your inquiry"
+    draft["email_body"] = f"Hi {name},\n\n{text}\n\nThank you"
+    draft["promises"] = []
+    draft["sms_vins"], draft["email_vins"] = [], []
+    draft["sms_text_no_vehicles"] = draft["email_body_no_vehicles"] = draft["email_subject_no_vehicles"] = None
+    url = next((u for u in re.findall(r"https?://\S+", text)), None)
+    if url and allowed_urls is not None:
+        allowed_urls.append(url.rstrip("."))
+    return True
 
 
 def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
@@ -264,6 +316,8 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
+    extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
+    scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
@@ -271,9 +325,20 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
                         decision.get("reply_language") else SMS_MAX)
     draft["link_plan"] = link_plan.as_dict()
+    placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
+                                                  ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))
+    if placed_text.strip():
+        # Only the vehicle's own page that code placed (a can't-supply calculator link, a first-reply answer): allowed.
+        draft["link_plan"]["urls"] = [*draft["link_plan"].get("urls", []),
+                                      *(u.rstrip(".") for u in re.findall(r"https?://\S+", placed_text))]
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
+    if extras:
+        span.reasoning.append("First reply: " + " and ".join(extras) + " placed by code (client, 12 Oct 2026).")
+    if scripted:
+        span.reasoning.append(f"Can't-supply reply ({decision['cannot_supply']['topic']}) placed by code, in the "
+                              "client's words.")
     if placed:
         span.reasoning.append("Touch 1's required opening put first by code in the " + " and ".join(placed) + ".")
     if nudged:

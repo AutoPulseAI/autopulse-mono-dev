@@ -118,13 +118,30 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
                 (("SMS", "sms_text"), ("email", "email_body")) if "?" not in str(draft.get(key) or "")]
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
-            if "which would you like" not in str(draft.get(key) or "").lower()]
+            if "would you like to chat now" not in str(draft.get(key) or "").lower()]
 
 
 # A resume message just needs to signal "we're available now" before it carries on - not literally "the team
 # is in now" (agent/llm.py's instruction to Compose), since a real model's own close paraphrase is fine; only
 # dropping the acknowledgment entirely (seen live, 6 Oct 2026: straight into a budget question) is the problem.
 _RESUME_PHRASES = ("team is in", "we're open", "we are open", "we're back", "we are back", "open now", "back open")
+
+
+# Client, 12 Oct 2026 (Betsy): "stop saying the team can do this and that ... the goal is to make an appointment."
+# The team is mentioned only when the lead goes to the dealership (handoff / offer_human) or a service request is
+# passed on (service visits are requested, never booked, in this SOW).
+_TEAM = re.compile(r"\b(?:the|our|a|your)\s+(?:sales\s+|finance\s+)?team\b|\bteam\s+member|\bsomeone\s+(?:from|at|on)\s+"
+                   r"(?:our|the)\b|\bsomeone\s+will\s+(?:reach|get|call|follow|be)\b", re.IGNORECASE)
+
+
+def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if decision.get("action") in ("handoff", "offer_human") or decision.get("reply_language"):
+        return []
+    if ((decision.get("visit") or {}).get("service_request") or {}).get("passed_this_turn"):
+        return []
+    return [f"the {name} mentions the team or someone else following up - speak for yourself and move toward "
+            f"the visit instead" for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if _TEAM.search(str(draft.get(key) or ""))]
 
 
 def missing_resume_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
@@ -135,7 +152,7 @@ def missing_resume_acknowledgment(decision: dict[str, Any], draft: dict[str, Any
     if decision.get("reply_language"):
         # Stream Q: translated, so the English phrases above can't be checked here.
         return []
-    return [f"the {name} doesn't say the team is in now before continuing" for name, key in
+    return [f"the {name} doesn't say we're open now before continuing" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if not any(p in str(draft.get(key) or "").lower() for p in _RESUME_PHRASES)]
 
@@ -154,7 +171,7 @@ def missing_later_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]
         return []
     if decision.get("reply_language"):
         return []
-    return [f"the {name} doesn't say the team will pick this up" for name, key in
+    return [f"the {name} doesn't say we'll pick this up when we open" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
             if not any(p in str(draft.get(key) or "").lower() for p in _LATER_PHRASES)]
 
@@ -215,8 +232,7 @@ def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> 
             continue
         if not active:
             violations.append(f"the {name} claims a booking, but there's no active booking on this lead")
-        elif confirmed_words and status != "confirmed":
-            violations.append(f"the {name} says the visit is booked/confirmed, but it's only {status}")
+        # Client, 12 Oct 2026 (Betsy): a pending booking IS scheduled - "You're all set for ..." is right for both.
     return violations
 
 
@@ -289,6 +305,15 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
                              state.decision or {}).get("reply_language") else SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
+    scripted = ((state.decision or {}).get("cannot_supply") or {}).get("text")
+    if scripted and str(draft.get("sms_text") or "") == scripted:
+        # The client's own can't-supply wording, placed by code (agent/cannot_supply.py): her payment answer runs
+        # past one text and says "incentives you qualify for" - her words, not a consent claim.
+        for check in ("sms_length_ok", "no_consent_claims"):
+            result["checks"][check] = True
+        skipped = ("SMS must be", "states the customer's consent")
+        result["violations"] = [v for v in result["violations"] if not v.startswith(skipped)]
+        result["passed"] = all(result["checks"].values())
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
     if jargon:
@@ -309,13 +334,18 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if missing_choice:
         result["passed"] = False
         result["violations"] += missing_choice
+    team = mentions_the_team(state.decision or {}, state.draft or {})
+    result["checks"]["no_team_mention"] = not team
+    if team:
+        result["passed"] = False
+        result["violations"] += team
     missing_resume = missing_resume_acknowledgment(state.decision or {}, state.draft or {})
-    result["checks"]["resume_says_team_is_in"] = not missing_resume
+    result["checks"]["resume_says_we_are_open"] = not missing_resume
     if missing_resume:
         result["passed"] = False
         result["violations"] += missing_resume
     missing_later = missing_later_acknowledgment(state.decision or {}, state.draft or {})
-    result["checks"]["later_says_team_will_follow_up"] = not missing_later
+    result["checks"]["later_says_we_will_pick_up"] = not missing_later
     if missing_later:
         result["passed"] = False
         result["violations"] += missing_later

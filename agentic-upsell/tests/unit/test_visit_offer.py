@@ -141,7 +141,7 @@ def test_third_decline_stops_offering_and_schedules_the_dated_followup():
                       conversation=conversation, active_booking=None, built_times=[], booked_this_turn=False, now=NOW)
     assert plan.record["stopped"] is True and plan.schedule_followup is True
     assert plan.followup_due == "2026-10-02"  # +3 days, no date named
-    assert plan.handoff is False  # no staff-only question open
+    assert plan.handoff is True  # client, 12 Oct 2026: declined more than once -> Dealership Action Required
 
 
 def test_third_decline_with_a_customer_named_date_uses_it():

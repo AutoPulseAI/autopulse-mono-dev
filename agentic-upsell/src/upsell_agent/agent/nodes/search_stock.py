@@ -281,6 +281,7 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
     # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
     widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
     patched["stock_search"] = {"searched_for": describe_criteria(criteria), "found": len(loaded),
+                               "asked": stock_question,
                                "exact": bool(loaded) and not widened,
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
                                if widened and loaded else None}

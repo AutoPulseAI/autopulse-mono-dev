@@ -78,13 +78,13 @@ const STAGE_LABELS = {
   new_lead: "New Lead",
   no_contact_made: "No Contact Made",
   contact_made_no_next_action: "Contact Made - No Next Action",
-  contact_made_specific_followup: "Contact Made - Specific Follow-Up",
+  contact_made_specific_followup: "Contact Made - Follow Up Assigned",
   appointment_set: "Appointment Set",
   appointment_no_show: "Appointment No Show",
   sales_visit: "Sales Visit",
   sold_pending: "Sold Pending",
   sold_delivered: "Sold - Delivered",
-  opted_out: "Opted Out / Suppressed",
+  opted_out: "Opt-Out",
   closed_lost: "Closed - Lost",
 };
 export const stageLabel = (stage) => STAGE_LABELS[stage] || (stage ? stage.replace(/_/g, " ") : "");

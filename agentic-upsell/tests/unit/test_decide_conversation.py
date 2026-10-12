@@ -259,6 +259,6 @@ async def test_every_question_is_answered_and_closed(mongo, question):
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["conversation"]["open_questions"] == []
     if "How much" in question:
-        assert [p["text"] for p in state["conversation"]["promises"]] == [f"The team will confirm: {question}"]
+        assert state["conversation"]["promises"] == []  # client, 12 Oct 2026: never "the team will confirm"
     else:
         assert re.search(r"only help with your vehicle", await _last_sms(mongo, created))

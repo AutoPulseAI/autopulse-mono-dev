@@ -92,9 +92,12 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
     setLoading(true);
     setError("");
     try {
-      setData(await aiFetch(`/api/dealer-ai/leads/${leadId}`));
+      const fresh = await aiFetch(`/api/dealer-ai/leads/${leadId}`);
+      setData(fresh);
+      return fresh;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -114,8 +117,17 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
       });
       setConfirmOff(false);
       setReason("");
-      // The AI applies the change from its queue: give it a moment before re-reading.
-      setTimeout(load, 1500);
+      // The AI applies the change from its queue, which can take a few seconds: keep re-reading until it shows the
+      // new state (client, 12 Oct 2026 - "when you turn AI off, you cannot turn it back on": the switch was re-read
+      // after 1.5 s, before the change landed, and flipped back).
+      for (let i = 0; i < 8; i += 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const fresh = await load();
+        const status = fresh?.profile?.lead?.status;
+        const shown = fresh?.profile?.lead?.duplicate_of ? fresh.profile.lead.workflow_status : status;
+        if (fresh && (on ? !AI_STOPPED.includes(shown) : AI_STOPPED.includes(shown))) return;
+      }
+      setError(on ? "The AI hasn't picked this up yet. Please refresh in a minute." : "");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -126,7 +138,11 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
   const profile = data?.profile;
   const life = profile?.lifecycle || {};
   const aiStatus = profile?.lead?.status;
-  const aiOnForLead = profile ? !AI_STOPPED.includes(aiStatus) : true;
+  // A repeat lead is worked on the customer's open lead, so the AI is on for it there (client, 12 Oct 2026: the
+  // switch showed Off on every repeat lead and "couldn't be turned back on").
+  const linkedTo = profile?.lead?.duplicate_of || null;
+  const aiOnForLead = profile
+    ? !AI_STOPPED.includes(linkedTo ? profile.lead.workflow_status : aiStatus) : true;
   const mode = AI_MODE_LABELS[data?.ai_mode] || AI_MODE_LABELS.off;
   const dealerAiOff = data && data.ai_mode === "off";
   const history = [...(life.history || [])].reverse();
@@ -179,6 +195,11 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
                 <strong>AI on this lead</strong>
                 {!aiOnForLead && profile?.lead?.status_reason && (
                   <span className="d-block text-secondary-light">{profile.lead.status_reason}</span>
+                )}
+                {linkedTo && (
+                  <span className="d-block text-secondary-light">
+                    Working on this customer&apos;s open lead (a repeat inquiry).
+                  </span>
                 )}
               </span>
               <Form.Check
