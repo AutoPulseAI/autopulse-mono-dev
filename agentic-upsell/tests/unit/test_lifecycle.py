@@ -560,7 +560,7 @@ async def test_the_ais_working_stages_show_as_crm_statuses_and_staff_ones_are_no
     created = await _new_lead()
     await _say(created, "Yes, I'm interested")
     state = await _state(mongo, created)
-    assert sent and sent[-1] == "Contacted - Specific Follow-up", (state.get("stage"), state.get("crm_status_sync"), sent)
+    assert sent and sent[-1] == "Contacted - No Next Action", (state.get("stage"), state.get("crm_status_sync"), sent)
     before = len(sent)
     db = dealer_scoped_db(DEALER)
     await lifecycle.apply(db, created["lead_id"], [lifecycle.Event(

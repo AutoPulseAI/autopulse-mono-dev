@@ -97,6 +97,14 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
             {"lead_id": state.lead_id}, {"$set": {"prefilled_at": ctx.tracer.log["created_at"]}})
         reasoning.append(f"First turn: pre-filled {len(prefilled)} slot(s) from Customer 360"
                          + (f" ({', '.join(p['path'] for p in prefilled)})." if prefilled else "."))
+    elif state.lead_id:
+        # Client, 12 Oct 2026 (Betsy: "why is it asking what vehicle - the AI can see the vehicle that's in the lead"):
+        # a lead the AI started on before the lead's vehicle was read (slots/prefill.py facts_from_lead) gets it now;
+        # a vehicle the customer already named is never overwritten.
+        prefilled = await prefill_from_360(ctx.db, customer_id=state.customer_id, lead_id=state.lead_id, data=None,
+                                           turn_id=state.turn_id, lead=ctx.lead)
+        if prefilled:
+            reasoning.append("The lead's own vehicle filled in: " + ", ".join(str(p["value"]) for p in prefilled) + ".")
 
     profile = await load_profile(ctx, state)
     states: dict[str, int] = {}

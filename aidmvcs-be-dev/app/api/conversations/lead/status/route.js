@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from "@lib/mongodb.js";
 import Lead from "@models/Lead.js";
+import { statusLabel } from "@lib/statusLabels";
 import User from "@models/User.js";
 import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
 import { cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
@@ -352,6 +353,19 @@ export async function PUT(request) {
         from: originalLead?.fe_lead_status || null, to: updated.fe_lead_status || null,
         detail: manager_outcome ? `Visit outcome: ${manager_outcome}` : null,
       });
+      // Client, 12 Oct 2026: a status a person changed shows in the lead's own conversation too (the AI's changes
+      // already do, "Set to ... by the AI"), so everyone sees who changed it and when. Internal: never sent, and
+      // never read by the AI as a message (history_sync skips internal notes).
+      const at = new Date();
+      await Email.create({
+        sender: actorName || 'Staff', recipient: 'staff', subject: 'Lead Note',
+        mail_content: `Status changed${originalLead?.fe_lead_status ? ` from ${statusLabel(originalLead.fe_lead_status)}` : ''}`
+          + ` to ${statusLabel(updated.fe_lead_status)} by ${actorName || 'staff'}`
+          + (manager_outcome ? ` (visit outcome: ${statusLabel(manager_outcome)})` : ''),
+        dealer_id: String(updated.dealer_id), lead_id: updated._id, status: 'sent', communication_type: 'note',
+        is_note: true, internal_use: true, message_by: messageBy || undefined,
+        message_id: `note_staff_status_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
+      }).catch((error) => console.error('[status] could not add the status note', error?.message));
     }
 
     if (!updated) {
