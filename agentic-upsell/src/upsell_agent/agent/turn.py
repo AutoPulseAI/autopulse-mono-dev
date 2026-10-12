@@ -338,6 +338,7 @@ async def run_turn(
                                               customer_id=customer_id, decision=decision, turn_id=tracer.turn_id)
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
+            await _escalate_cannot_supply(db, lead_id, result)
             # Client, 10 Oct 2026: the language the customer writes in carries over to short replies and follow-ups.
             spoken = (result.get("decision") or {}).get("reply_language")
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
@@ -652,6 +653,18 @@ async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decisi
         return
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
+
+
+async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
+    """Client, 12 Oct 2026 (Betsy): a customer asking for something the AI can't supply (custom photos, a video)
+    puts the lead into Dealership Action Required - the AI still asks about the test drive, a person sends them."""
+    cannot = (result.get("decision") or {}).get("cannot_supply") or {}
+    if not cannot.get("escalates"):
+        return
+    from upsell_agent.agent import cannot_supply, crm_status, escalation
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                 reason=f"{cannot_supply.ESCALATION_REASON}: custom photos or a video",
+                                 event_kind="cannot_supply")
 
 
 async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:

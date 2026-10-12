@@ -24,7 +24,7 @@ from datetime import date, datetime
 from typing import Any
 
 from upsell_agent import clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, service_request, specialists
+from upsell_agent.agent import cadence, cannot_supply, human_contact, lead_bucket, service_request, specialists
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
@@ -623,6 +623,38 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
                               channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
 
 
+async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
+                             *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
+                             visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
+                                                                 VisitOfferPlan | None]:
+    """Client, 12 Oct 2026 (Betsy): a credit score, APR, payment, custom photos/video, out-the-door price or an
+    out-of-state question is answered in her words, with two open times when she asked for them (agent/
+    cannot_supply.py). Only on the customer's own message, never under a hold."""
+    if state.trigger not in ("inbound_message", "resume_at_opening") or hold:
+        return None, None
+    topic = cannot_supply.detect(text)
+    if topic is None:
+        return None, None
+    from upsell_agent.agent.vehicle_media import lead_vehicle_vin
+    vin = lead_vehicle_vin(ctx.lead, ctx.lead_state)
+    record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
+    url = str((record or {}).get("page_url") or "").strip() or None
+    if visit_ctx.get("status") in ("pending", "confirmed"):
+        return cannot_supply.reply(topic, booked=visit_ctx.get("display") or "your visit", vehicle_url=url), None
+    if not cannot_supply.needs_times(topic):
+        return cannot_supply.reply(topic, vehicle_url=url), None
+    existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
+    available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=state.lead_id or "")
+    zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
+    built = booking_tool.format_offer(booking_tool.offer_times(available, count=2), dealer, customer_zones=zones)
+    answer = cannot_supply.reply(topic, times=[t["display"] for t in built], vehicle_url=url)
+    if not answer.offers_times:
+        return answer, None
+    plan = plan_day_offer(profile=profile, conversation=conversation, built_times=built,
+                          why=f"Can't supply ({topic}): the client's answer with two open times.")
+    return answer, plan
+
+
 def customer_texting_hours(zone: dict | None, now: datetime, dealer_tz: Any) -> bool:
     """Is it the customer's legal texting time (TCPA state table, client 1 Oct 2026)? Unknown location: the
     federal 8 AM - 9 PM in the dealer's time zone."""
@@ -706,6 +738,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
+    cannot, cannot_plan = await plan_cannot_supply(ctx, state, profile, conversation, dealer=dealer, now=now,
+                                                   text=text, hold=hold, visit_ctx=visit_ctx)
+    if cannot_plan is not None:
+        visit_plan = cannot_plan
     if visit_ctx.get("day_request"):
         # "What about Monday?" is answered by Monday's times, not passed to the team as an open question.
         questions = [q for q in questions if not booking_tool.preferred_day(q["text"], dealer, now)]
@@ -798,6 +834,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if visit_ctx.get("just_booked") or visit_ctx.get("status") in ("pending", "confirmed"):
         # Client, 12 Oct 2026: the confirmation says who to ask for - the salesperson the lead is assigned to.
         visit_ctx = {**visit_ctx, "address": dealer.address, "ask_for": await _assigned_name(ctx)}
+    decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
+                                 ("stop", "handoff", "offer_human") else None)
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).

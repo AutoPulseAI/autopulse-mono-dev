@@ -100,5 +100,7 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
     if later:
         draft = avoid_repeat(draft, _sent_texts(state), state.customer_name)
+    from upsell_agent.agent.nodes.compose import place_cannot_supply
+    place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     span.output = draft
     return {"draft": draft, "used_template": True, "used_fallback": not first_reply}

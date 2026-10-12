@@ -305,6 +305,15 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
                              state.decision or {}).get("reply_language") else SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
+    scripted = ((state.decision or {}).get("cannot_supply") or {}).get("text")
+    if scripted and str(draft.get("sms_text") or "") == scripted:
+        # The client's own can't-supply wording, placed by code (agent/cannot_supply.py): her payment answer runs
+        # past one text and says "incentives you qualify for" - her words, not a consent claim.
+        for check in ("sms_length_ok", "no_consent_claims"):
+            result["checks"][check] = True
+        result["violations"] = [v for v in result["violations"] if not v.startswith(("SMS must be", "states the "
+                                                                                         "customer's consent"))]
+        result["passed"] = all(result["checks"].values())
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
     if jargon:

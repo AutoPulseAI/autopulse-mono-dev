@@ -123,6 +123,27 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
     return changed
 
 
+def place_cannot_supply(draft: dict[str, Any], cannot: dict[str, Any] | None, customer_first_name: str | None,
+                        allowed_urls: list[str] | None = None) -> bool:
+    """Client, 12 Oct 2026 (Betsy): what the AI can't supply (credit score, APR, payment, custom photos/video,
+    out-the-door price, out of state) is answered in her words exactly (agent/cannot_supply.py) - written here, not
+    by the model. Its time choices are the visit offer Decide recorded, so a pick books. Returns whether it placed."""
+    if not cannot or not cannot.get("text"):
+        return False
+    text = str(cannot["text"])
+    name = first_name(customer_first_name) or "there"
+    draft["sms_text"] = text
+    draft["email_subject"] = draft.get("email_subject") or "Your inquiry"
+    draft["email_body"] = f"Hi {name},\n\n{text}\n\nThank you"
+    draft["promises"] = []
+    draft["sms_vins"], draft["email_vins"] = [], []
+    draft["sms_text_no_vehicles"] = draft["email_body_no_vehicles"] = draft["email_subject_no_vehicles"] = None
+    url = next((u for u in re.findall(r"https?://\S+", text)), None)
+    if url and allowed_urls is not None:
+        allowed_urls.append(url.rstrip("."))
+    return True
+
+
 def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
     """This turn's link plan (agent/link_resolver.py), from what Extract said and this turn's stock."""
     pack = state.context_pack or {}
@@ -264,6 +285,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
+    scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
@@ -271,9 +293,16 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
                         decision.get("reply_language") else SMS_MAX)
     draft["link_plan"] = link_plan.as_dict()
+    if scripted:
+        # The payment answer's calculator link is the vehicle's own page (agent/cannot_supply.py): allowed.
+        draft["link_plan"]["urls"] = [*draft["link_plan"].get("urls", []),
+                                      *(u.rstrip(".") for u in re.findall(r"https?://\S+", draft["sms_text"]))]
     span.output = draft
     span.metrics = call.as_metrics()
     span.reasoning = [draft["why"]]
+    if scripted:
+        span.reasoning.append(f"Can't-supply reply ({decision['cannot_supply']['topic']}) placed by code, in the "
+                              "client's words.")
     if placed:
         span.reasoning.append("Touch 1's required opening put first by code in the " + " and ".join(placed) + ".")
     if nudged:
