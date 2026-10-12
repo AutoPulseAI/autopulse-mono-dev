@@ -18,6 +18,7 @@ const aiConfigItemSchema = new mongoose.Schema({
   // Which built-in revision this item's version 1 came from (app/lib/ai/aiStudioDefaults.json "revision").
   defaults_revision: { type: Number, default: 1 },
   deleted: { type: Boolean, default: false },
+  deleted_at: { type: Date, default: null },
 }, { timestamps: true });
 aiConfigItemSchema.index({ type: 1, key: 1, dealer_id: 1 }, { unique: true });
 
