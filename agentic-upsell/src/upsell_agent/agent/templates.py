@@ -144,6 +144,13 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
 # never one they just gave. Still no numbers, prices or promises beyond the team following up.
 CONTINUE_CHECKING = "Thanks, {name}. Let me check on that with the team, and someone will get back to you shortly."
 CONTINUE_NOTED = "Thanks, {name}. I've made a note of that."
+# Client, 12 Oct 2026 (Jean got "Let me check on that with the team" twice in a row): the safety net never sends the
+# same words again - the next unused one of these instead (agent/nodes/template_reply.py avoid_repeat).
+CONTINUE_VARIANTS = (
+    "Thanks, {name}. The team has your question and will reply to you shortly.",
+    "Got it, {name}. I've added that to your file for the team.",
+    "Thank you, {name}. Someone from our team will be in touch with you soon.",
+)
 CONTINUE_ASK = "Thanks, {name}. {question}"
 # The same for a customer who writes in Spanish (agent/language.py). The asks' wording is English-only, so a
 # Spanish fallback never asks: it notes their message, or takes the question to the team.

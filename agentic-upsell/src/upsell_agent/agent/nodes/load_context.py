@@ -92,7 +92,7 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
             data = None
             reasoning.append(f"Customer 360 unavailable ({exc!r}); continuing without pre-fill.")
         prefilled = await prefill_from_360(ctx.db, customer_id=state.customer_id, lead_id=state.lead_id,
-                                           data=data, turn_id=state.turn_id)
+                                           data=data, turn_id=state.turn_id, lead=ctx.lead)
         await ctx.db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": state.lead_id}, {"$set": {"prefilled_at": ctx.tracer.log["created_at"]}})
         reasoning.append(f"First turn: pre-filled {len(prefilled)} slot(s) from Customer 360"

@@ -113,7 +113,7 @@ export function customerFromLeadEmail(text, senderEmail) {
       if (adf) {
         return { kind: 'adf', name: adf.name || undefined, email: adf.email ? adf.email.toLowerCase() : undefined,
           phone: adf.phone ? String(adf.phone).replace(/\D/g, '').slice(-10) || undefined : undefined,
-          comments: adf.comments || '', source: adf.source || 'ADF/XML' };
+          comments: adf.comments || '', source: adf.source || 'ADF/XML', vehicle: adfVehicle(adf.vehicle) };
       }
     } catch {
       // an ADF the parser can't read falls through to the plain-email reading
@@ -121,10 +121,37 @@ export function customerFromLeadEmail(text, senderEmail) {
   }
   const plain = parsePlainLeadEmail(text, senderEmail);
   if (plain && (isPortalSender(senderEmail) || !senderEmail)) {
-    return { kind: 'portal', ...plain, comments: String(text || '').slice(0, 2000),
+    return { kind: 'portal', ...plain, vehicle: plainVehicle(text), comments: String(text || '').slice(0, 2000),
       source: String(senderEmail || '').split('@')[1] || 'email' };
   }
   return null;
+}
+
+// The vehicle a lead email is about, kept on the Lead so the AI never asks "which vehicle" (client, 12 Oct 2026).
+function adfVehicle(v) {
+  const vehicle = {};
+  for (const key of ['year', 'make', 'model', 'trim', 'vin', 'stock']) {
+    if (v && v[key]) vehicle[key] = String(v[key]).trim();
+  }
+  return vehicle.make || vehicle.model || vehicle.vin ? vehicle : undefined;
+}
+
+export function plainVehicle(text) {
+  const body = String(text || '').replace(/<[^>]+>/g, ' ');
+  const vin = (body.match(/\bVIN\W{0,3}([A-HJ-NPR-Z0-9]{17})\b/i) || [])[1];
+  // year, make, then model words that look like a model (capital or digit: "330i", "xDrive", "CR-V"), one line only
+  const word = '(?:[A-Z0-9][\\w-]*|[a-z]+[A-Z][\\w-]*)';
+  const found = body.match(new RegExp(`\\b((?:19|20)\\d{2})[ \\t]+([A-Z][a-zA-Z-]+)((?:[ \\t]+${word}){1,3})`));
+  const labelled = found && `${found[1]} ${found[2]} ${found[3].trim().split(/\s+/).filter((w) => w !== 'VIN').join(' ')}`;
+  if (!labelled && !vin) return undefined;
+  const [year, make, ...model] = String(labelled || '').trim().split(/\s+/);
+  return { ...(labelled ? { year, make, model: model.join(' ') } : {}), ...(vin ? { vin: vin.toUpperCase() } : {}) };
+}
+
+function vehicleFields(vehicle) {
+  if (!vehicle) return {};
+  const { year, make, model, vin } = vehicle;
+  return Object.fromEntries(Object.entries({ year, make, model, vin }).filter(([, value]) => value));
 }
 
 function newLeadFields({ dealerId, channel, comments, name, email, phone }) {
@@ -263,8 +290,9 @@ export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLe
     lead = await new Lead({
       ...newLeadFields({ dealerId, channel, comments: leadEmail ? (leadEmail.comments || text) : text,
         name: contact.name, email: contact.email, phone: contact.phone }),
-      ...(leadEmail ? { source: leadEmail.source, data: { comments: leadEmail.comments || text, channel,
-        created_by: `ai_live_inbound_${leadEmail.kind}` } } : {}),
+      ...(leadEmail ? { source: leadEmail.source, ...vehicleFields(leadEmail.vehicle),
+        data: { comments: leadEmail.comments || text, channel, created_by: `ai_live_inbound_${leadEmail.kind}`,
+          ...(leadEmail.vehicle ? { vehicle: leadEmail.vehicle } : {}) } } : {}),
       ...(returning ? { previous_lead_id: returning._id } : {}),
     }).save();
     await linkCustomerToLead(lead, { source: leadEmail ? leadEmail.kind : 'email' });

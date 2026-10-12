@@ -1,3 +1,5 @@
+import { twelveHour } from './appointmentSMSTemplate.js';
+
 export const appointmentBookingTemplate = (customerName, appointmentDate, appointmentTime, dealerName, dealerPhone, dealerAddress) => ({
   subject: `Appointment Confirmed - ${appointmentDate}`,
   html: `
@@ -41,7 +43,7 @@ export const appointmentBookingTemplate = (customerName, appointmentDate, appoin
           </div>
           <div class="detail-row">
             <div class="detail-label">🕐 Time:</div>
-            <div class="detail-value">${appointmentTime}</div>
+            <div class="detail-value">${twelveHour(appointmentTime)}</div>
           </div>
           <div class="detail-row">
             <div class="detail-label">🏢 Dealer:</div>
@@ -70,7 +72,7 @@ export const appointmentBookingTemplate = (customerName, appointmentDate, appoin
           </ul>
         </div>
         
-        <p>We look forward to seeing you on ${appointmentDate} at ${appointmentTime}!</p>
+        <p>We look forward to seeing you on ${appointmentDate} at ${twelveHour(appointmentTime)}!</p>
         
         <p>Best regards,<br>The ${dealerName} Team</p>
       </div>

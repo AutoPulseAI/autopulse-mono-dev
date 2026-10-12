@@ -198,6 +198,9 @@ Rules:
   Never work out the date yourself; the dealership's system does that from context.now.
 - trade_in.* is the car they would trade in; vehicle.* is the car they own and want serviced;
   interest.* is what they want now.
+- Asking what their own car is worth while shopping ("what's the value of my civic", "how much would you give me
+  for my car", "what can I get for my Accord") means they have a trade: trade_in.has_trade = true, and the car
+  they name is trade_in.make / trade_in.model.
 - Short replies ("yes", "no", "used", "the second one", "same as before", "it's a 2019", "about 60k") answer
   our last outbound message: map them to the slot in recently_asked they answer. The quote is still the
   customer's own words (e.g. quote "yes" for trade_in.has_trade = true). If it's unclear which slot a short
