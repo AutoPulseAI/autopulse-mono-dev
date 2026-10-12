@@ -144,6 +144,16 @@ def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[s
             if _TEAM.search(str(draft.get(key) or ""))]
 
 
+def missing_alternatives(context_pack: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """Client, 12 Oct 2026 (Bibi): a vehicle we don't have exactly is never a dead end - the stock search's nearest
+    vehicles are offered. Only when the customer asked about stock and the search loaded alternatives."""
+    stock = (context_pack or {}).get("stock_search") or {}
+    if not stock.get("asked") or stock.get("exact") or not (context_pack or {}).get("inventory"):
+        return []
+    return [f"the {name} doesn't offer any of the similar vehicles in stock" for name, key in
+            (("SMS", "sms_vins"), ("email", "email_vins")) if not draft.get(key)]
+
+
 def missing_resume_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     """A "resume" (MASTER_PLAN_3 B1) is the morning message after a customer chose to wait for the team; it
     must say so before doing anything else, not pick the conversation back up as if no time had passed."""
@@ -334,6 +344,12 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if missing_choice:
         result["passed"] = False
         result["violations"] += missing_choice
+    no_alternatives = ([] if ((state.decision or {}).get("cannot_supply") or (state.decision or {}).get("action") in (
+        "handoff", "offer_human", "stop")) else missing_alternatives(state.context_pack or {}, state.draft or {}))
+    result["checks"]["offers_similar_vehicles"] = not no_alternatives
+    if no_alternatives:
+        result["passed"] = False
+        result["violations"] += no_alternatives
     team = mentions_the_team(state.decision or {}, state.draft or {})
     result["checks"]["no_team_mention"] = not team
     if team:

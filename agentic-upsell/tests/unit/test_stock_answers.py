@@ -274,3 +274,15 @@ def test_shown_vehicles_dont_repeat_and_are_isolated_per_lead():
 
     b = ConversationState()  # a second lead's state, never touched by `a`'s turn
     assert b.shown_vehicles == []
+
+
+async def test_a_vehicle_we_dont_have_gets_similar_ones_from_stock(mongo):
+    # Client, 12 Oct 2026 (Bibi: "AI has to read the inventory and refer a similar model if the one they're interested
+    # in is not available"; Betsy: never say it isn't available).
+    await _stock(mongo, _rav4("VIN00000000000791", color="White", trim="LE"))
+    created = await _lead()
+    await _say(created, "Do you have a Honda CR-V?")
+    turn, sms = await _last(mongo, created)
+    assert "RAV4" in sms and "don't have" not in sms.lower()
+    guard = next(n for n in turn["nodes"] if n["node"] == "guard" and n.get("status") == "done")
+    assert guard["output"]["checks"].get("offers_similar_vehicles", True)
