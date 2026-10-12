@@ -42,66 +42,62 @@ TEMPLATE_PROMISE = "A member of the team will follow up shortly."
 # this text is to guarantee a sold vehicle is never sent, even in that gap.
 # PLAN_4 stream X2 (Sales Lead Blueprint box 4, "POSITIVE OUTCOMES ONLY - never say a vehicle is not available"):
 # leads with the next step and the alternatives, never a flat "not available"; and claims no stock it hasn't checked.
-SOLD_VEHICLE_FALLBACK_TEXT = ("Thanks for your patience! The team is lining up a few similar options for you. "
-                              "When would be a good time to take a look?")
+SOLD_VEHICLE_FALLBACK_TEXT = ("Thanks for your patience! I have a few similar options I'd love to show you. "
+                              "What day this week works best for you to take a look?")
 SOLD_VEHICLE_FALLBACK_SUBJECT = "Update on your inquiry"
 
 
-_SIGN_OFF = "\n\nThanks,\nThe {team} Team"
+# Client, 12 Oct 2026: the AI speaks for itself, never "the team" - so no "The Sales Team" signature either.
+_SIGN_OFF = "\n\nThank you"
 
 FIRST_REPLY: dict[LeadType, Template] = {
     LeadType.SALES: Template(
         sms=(
-            "Hi {name}, thanks for reaching out! We got your inquiry, and our sales team will follow up "
-            "shortly. Are you looking for a new or a used vehicle?"
+            "Hi {name}, thanks for reaching out! Are you looking for a new or a used vehicle?"
         ),
         email_subject="Thanks for your inquiry",
         email_body=(
-            "Hi {name},\n\nThanks for reaching out! We received your inquiry, and a member of our sales team "
-            "will follow up shortly.\n\nSo we can pull together the right options, are you looking for a new or "
-            "a used vehicle, and do you have a timeline in mind?" + _SIGN_OFF.format(team="Sales")
+            "Hi {name},\n\nThanks for reaching out! So I can pull together the right options, are you looking for "
+            "a new or a used vehicle, and do you have a timeline in mind?" + _SIGN_OFF.format(team="Sales")
         ),
         sms_asks=("interest.new_or_used",),
         email_asks=("interest.new_or_used", "interest.timeline"),
     ),
     LeadType.TRADE_IN: Template(
         sms=(
-            "Hi {name}, thanks for reaching out about your trade-in! Our team will follow up shortly. "
-            "What year, make and model is it, and about how many miles?"
+            "Hi {name}, thanks for reaching out about your trade-in! What year, make and model is it, and about "
+            "how many miles?"
         ),
         email_subject="About your trade-in",
         email_body=(
-            "Hi {name},\n\nThanks for reaching out about your trade-in! A member of our team will follow up "
-            "shortly.\n\nTo get started: what year, make and model is your vehicle, and roughly how many "
-            "miles are on it?" + _SIGN_OFF.format(team="Trade-in")
+            "Hi {name},\n\nThanks for reaching out about your trade-in! To get started: what year, make and model "
+            "is your vehicle, and roughly how many miles are on it?" + _SIGN_OFF.format(team="Trade-in")
         ),
         sms_asks=("trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"),
         email_asks=("trade_in.year", "trade_in.make", "trade_in.model", "trade_in.mileage"),
     ),
     LeadType.SERVICE: Template(
         sms=(
-            "Hi {name}, thanks for contacting our service team! We'll follow up shortly. "
-            "Which vehicle is this for, and what day works best for you?"
+            "Hi {name}, thanks for contacting our service department! Which vehicle is this for, and what day "
+            "works best for you?"
         ),
         email_subject="Your service request",
         email_body=(
-            "Hi {name},\n\nThanks for contacting our service team! We'll follow up shortly to get you "
-            "scheduled.\n\nWhich vehicle is this for (year, make and model), and what day works best for "
-            "you?" + _SIGN_OFF.format(team="Service")
+            "Hi {name},\n\nThanks for contacting our service department! Which vehicle is this for (year, make "
+            "and model), and what day works best for you?" + _SIGN_OFF.format(team="Service")
         ),
         sms_asks=("vehicle.year", "vehicle.make", "vehicle.model"),
         email_asks=("vehicle.year", "vehicle.make", "vehicle.model"),
     ),
     LeadType.GENERAL: Template(
         sms=(
-            "Hi {name}, thanks for reaching out! Someone from our team will follow up shortly. "
-            "Are you shopping for a vehicle, trading one in, or booking service?"
+            "Hi {name}, thanks for reaching out! Are you shopping for a vehicle, trading one in, or booking "
+            "service?"
         ),
         email_subject="Thanks for reaching out",
         email_body=(
-            "Hi {name},\n\nThanks for reaching out! Someone from our team will follow up shortly.\n\n"
-            "So we can point you to the right person: are you shopping for a vehicle, trading one in, or "
-            "booking service?" + _SIGN_OFF.format(team="Customer Care")
+            "Hi {name},\n\nThanks for reaching out! Are you shopping for a vehicle, trading one in, or booking "
+            "service?" + _SIGN_OFF.format(team="Customer Care")
         ),
         sms_asks=("interest.lead_type",),
         email_asks=("interest.lead_type",),
@@ -134,7 +130,7 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
         "email_body": template.email_body.format(name=name),
         "template": (lead_type or LeadType.GENERAL).value,
         "asks": {"sms": list(template.sms_asks), "email": list(template.email_asks)},
-        "promises": [TEMPLATE_PROMISE],
+        "promises": [],
     }
 
 
@@ -142,21 +138,22 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
 # vehicle?") ignored the conversation (seen: sent right after the customer said "used"). This one only thanks
 # them, takes any open question to the team, or asks the next detail Decide chose - a detail still missing, so
 # never one they just gave. Still no numbers, prices or promises beyond the team following up.
-CONTINUE_CHECKING = "Thanks, {name}. Let me check on that with the team, and someone will get back to you shortly."
+CONTINUE_CHECKING = ("Thanks, {name}. That's something we can go over together when you come in. What day this week "
+                     "works best for you?")
 CONTINUE_NOTED = "Thanks, {name}. I've made a note of that."
 # Client, 12 Oct 2026 (Jean got "Let me check on that with the team" twice in a row): the safety net never sends the
 # same words again - the next unused one of these instead (agent/nodes/template_reply.py avoid_repeat).
 CONTINUE_VARIANTS = (
-    "Thanks, {name}. The team has your question and will reply to you shortly.",
-    "Got it, {name}. I've added that to your file for the team.",
-    "Thank you, {name}. Someone from our team will be in touch with you soon.",
+    "Got it, {name}. We can cover that in person. Would a weekday or the weekend work better for you to come in?",
+    "Thank you, {name}. I've made a note of that. When would be a good time for you to stop by?",
+    "Thanks, {name}. Is there anything else I can help you with before your visit?",
 )
 CONTINUE_ASK = "Thanks, {name}. {question}"
 # The same for a customer who writes in Spanish (agent/language.py). The asks' wording is English-only, so a
 # Spanish fallback never asks: it notes their message, or takes the question to the team.
-CONTINUE_CHECKING_ES = "Gracias, {name}. Voy a consultarlo con el equipo, y alguien le responderá muy pronto."
+CONTINUE_CHECKING_ES = "Gracias, {name}. Podemos verlo juntos cuando nos visite. ¿Qué día de esta semana le conviene?"
 CONTINUE_NOTED_ES = "Gracias, {name}. Ya tomé nota."
-FIRST_REPLY_ES = "Hola {name}, gracias por comunicarse con nosotros. Un miembro de nuestro equipo le responderá muy pronto."
+FIRST_REPLY_ES = "Hola {name}, gracias por comunicarse con nosotros. ¿En qué le puedo ayudar hoy?"
 _SIGN_OFF_ES = "\n\nGracias,\nEl equipo de atención al cliente"
 
 
@@ -173,9 +170,9 @@ def _upper_first(text: str) -> str:
 def _after_hours_fallback(name: str, after_hours: dict[str, Any]) -> dict[str, Any] | None:
     mode, opens_at = after_hours.get("mode"), after_hours.get("opens_at")
     if mode == "resume":
-        line = f"Good morning, {name}! The team is in now."
+        line = f"Good morning, {name}! We're open now. How can I help you today?"
     elif mode == "later":
-        line = f"Thanks, {name}! The team will pick this up when we open" + (f" at {opens_at}" if opens_at else "") + "."
+        line = f"Thanks, {name}! I'll pick this up when we open" + (f" at {opens_at}" if opens_at else "") + "."
     else:
         return None
     body_line = line.split("! ", 1)[1] if "! " in line else line
@@ -200,10 +197,10 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
         return {"sms_text": line, "email_subject": "Seguimiento",
                 "email_body": f"Hola {name},\n\n{_upper_first(line.split(', ' if first else '. ', 1)[1])}" + _SIGN_OFF_ES, "template": "continue",
                 "asks": {"sms": [], "email": []},
-                "promises": [TEMPLATE_PROMISE] if decision.get("answer_questions") else []}
+                "promises": []}
     if decision.get("answer_questions"):
         line, asked = CONTINUE_CHECKING.format(name=name), []
-        promises = [TEMPLATE_PROMISE]
+        promises = []
     elif asks:
         line, asked = CONTINUE_ASK.format(name=name, question=asks[0]["question"]), list(asks[0].get("slots") or [])
     else:

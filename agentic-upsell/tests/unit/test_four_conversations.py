@@ -22,10 +22,11 @@ def test_never_books_from_the_lead_email_or_when_not_ready():
 
 
 def test_the_safety_net_never_repeats_itself():
-    sent = ["Thanks, Jean. Let me check on that with the team, and someone will get back to you shortly."]
+    from upsell_agent.agent.templates import CONTINUE_CHECKING
+    sent = [CONTINUE_CHECKING.format(name="Jean")]
     draft = {"sms_text": sent[0], "email_body": "x", "asks": {"sms": [], "email": []}}
     again = avoid_repeat(draft, sent, "Jean Smith")
-    assert again["sms_text"] != sent[0] and again["sms_text"].startswith("Thanks, Jean.")
+    assert again["sms_text"] != sent[0] and "Jean" in again["sms_text"] and "team" not in again["sms_text"]
     assert avoid_repeat(draft, [], "Jean")["sms_text"] == sent[0]
 
 

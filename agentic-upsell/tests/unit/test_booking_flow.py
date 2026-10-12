@@ -82,7 +82,8 @@ async def test_picking_an_offered_time_books_it(mongo):
     assert lead["status"] == "Appointment Booked"
 
     reply = await _last_sms(mongo, created)
-    assert "requested" in reply.lower() and "confirm" in reply.lower()
+    # Client, 12 Oct 2026: a pending booking is scheduled - "you're all set".
+    assert "all set" in reply.lower() and "team" not in reply.lower()
     assert "booked" not in reply.lower() and "confirmed" not in reply.lower()
     # Not paused: the AI still answers the next message (B5 item 4).
     assert state.get("status") != "handoff"
@@ -200,7 +201,7 @@ async def test_a_visit_request_naming_a_time_is_booked_straight_away(mongo):
     await _say(created, "can I come see it tomorrow at 10am?")
     booking = await _booking(mongo, created)
     assert booking is not None and booking["bookingTime"] == "10:00"
-    assert "requested" in (await _last_sms(mongo, created)).lower()
+    assert "all set" in (await _last_sms(mongo, created)).lower()
 
 
 async def test_a_visit_request_at_night_is_booked_not_met_with_the_choice(mongo):

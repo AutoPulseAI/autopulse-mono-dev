@@ -44,10 +44,10 @@ def test_payment_target_becomes_the_reason_for_the_visit():
 
 def test_trade_payoff_becomes_the_reason_and_objection_keeps_it():
     profile = _profile(LeadType.TRADE_IN, _fact("trade_in.model", "Honda Accord"), _fact("trade_in.payoff", "9000"))
-    assert customer_objective(profile) == ("so the team can look at your Honda Accord in person and see where your "
+    assert customer_objective(profile) == ("so we can look at your Honda Accord in person and see where your "
                                            "$9,000 payoff leaves you")
     plan = _offer(profile, 1, objection="time_convenience")
-    assert plan.value_proposition.startswith("we can work around your schedule, so the team can look at your Honda")
+    assert plan.value_proposition.startswith("we can work around your schedule, so we can look at your Honda")
 
 
 def test_no_canned_availability_or_duration_claims_in_any_reason():

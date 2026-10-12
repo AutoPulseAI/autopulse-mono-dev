@@ -312,7 +312,8 @@ async def test_conversation_state_saved_after_each_turn(mongo):
 
     await _reply(created, "Is it AWD?")
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert [p["text"] for p in state["conversation"]["promises"]] == ["The team will confirm: Is it AWD?"]
+    # Client, 12 Oct 2026: no "the team will confirm" promise - the question is for the visit.
+    assert state["conversation"]["promises"] == []
     assert state["conversation"]["turn"] == 2
 
 

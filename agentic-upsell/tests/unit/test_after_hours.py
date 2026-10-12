@@ -225,7 +225,7 @@ async def test_lead_at_night_gets_the_choice_and_no_other_question(mongo, dealer
     assert "We're closed right now and open again at 9:00 AM tomorrow" in reply
     # MASTER_PLAN_3 C4, client 1 Oct 2026 (decision 34 reversed): Touch 1 always asks what they drive now,
     # so the first reply carries two questions - that one, then the choice, which stays the last thing said.
-    assert reply.endswith("Which would you like?") and reply.count("?") == 2
+    assert reply.endswith("continue during business hours?") and reply.count("?") == 2
     assert reply.index("what are you driving now?") < reply.index("We're closed right now")
     [turn] = await _turns(mongo, created)
     assert turn["summary"]["after_hours"] == "offer" and turn["summary"]["asked"] == ["trade_in.has_trade"]
@@ -257,7 +257,7 @@ async def test_now_carries_the_conversation_on_at_night(mongo, dealer_with_hours
     assert [r["status"] for r in await _resumes(mongo, created)] == ["cancelled"]
     # Never offered again the same night.
     await _say(created, "what colours do you have?")
-    assert "Which would you like?" not in await _last_sms(mongo, created)
+    assert "continue during business hours?" not in await _last_sms(mongo, created)
 
 
 async def test_ignoring_the_choice_counts_as_now(mongo, dealer_with_hours):
@@ -265,7 +265,7 @@ async def test_ignoring_the_choice_counts_as_now(mongo, dealer_with_hours):
     created = await _lead()
     await _say(created, "Is it a hybrid?")
     assert (await _state(mongo, created))["conversation"]["after_hours"]["choice"] == "now"
-    assert "Which would you like?" not in await _last_sms(mongo, created)
+    assert "continue during business hours?" not in await _last_sms(mongo, created)
 
 
 async def test_later_then_the_morning_message_at_opening(mongo, dealer_with_hours):
@@ -273,7 +273,7 @@ async def test_later_then_the_morning_message_at_opening(mongo, dealer_with_hour
     created = await _lead()
     result = await _say(created, "tomorrow is fine")
     reply = await _last_sms(mongo, created)
-    assert "The team will pick this up when we open at 9:00 AM tomorrow" in reply and "?" not in reply
+    assert "I'll pick this up when we open at 9:00 AM tomorrow" in reply and "?" not in reply
     assert result["outcome"] == "acknowledge"
     [resume] = await _resumes(mongo, created)
     assert resume["status"] == "pending" and resume["to_channel"] == "sms"
@@ -285,7 +285,7 @@ async def test_later_then_the_morning_message_at_opening(mongo, dealer_with_hour
     [resume] = await _resumes(mongo, created)
     assert resume["status"] == "sent"
     morning = await _last_sms(mongo, created)
-    assert morning.startswith("Good morning, Maria! The team is in now.") and 1 <= morning.count("?") <= 2
+    assert morning.startswith("Good morning, Maria! We're open now.") and 1 <= morning.count("?") <= 2
     turns = await _turns(mongo, created)
     turn = next(t for t in turns if t["trigger"] == "resume_at_opening")
     ran = {n["node"] for n in turn["nodes"] if n["status"] == "done"}
@@ -303,7 +303,7 @@ async def test_writing_again_after_later_is_answered_and_re_offered(mongo, deale
     await _say(created, "tomorrow is fine")
     await _say(created, "oh also, do you have it in red?")
     reply = await _last_sms(mongo, created)
-    assert ("team" in reply or "matching" in reply) and reply.endswith("Which would you like?")
+    assert ("team" in reply or "matching" in reply) and reply.endswith("continue during business hours?")
     state = await _state(mongo, created)
     assert state["conversation"]["after_hours"]["choice"] == "later"
     assert state["conversation"]["after_hours"]["times_offered"] == 2
@@ -316,7 +316,7 @@ async def test_writing_again_after_later_is_answered_and_re_offered(mongo, deale
 
     # Asked a third time, then ignored: counts as now, and the morning message is cancelled.
     await _say(created, "is it AWD?")
-    assert (await _last_sms(mongo, created)).endswith("Which would you like?")
+    assert (await _last_sms(mongo, created)).endswith("continue during business hours?")
     await _say(created, "it's for my daughter")
     assert (await _state(mongo, created))["conversation"]["after_hours"]["choice"] == "now"
     assert [r["status"] for r in await _resumes(mongo, created)] == ["cancelled"]
@@ -327,7 +327,7 @@ async def test_a_visit_request_after_later_carries_on(mongo, dealer_with_hours):
     created = await _lead()
     await _say(created, "tomorrow is fine")
     await _say(created, "Actually can I come see it tomorrow at 10?")
-    assert "Which would you like?" not in await _last_sms(mongo, created)
+    assert "continue during business hours?" not in await _last_sms(mongo, created)
     assert (await _state(mongo, created))["conversation"]["after_hours"]["choice"] == "now"
     assert [r["status"] for r in await _resumes(mongo, created)] == ["cancelled"]
 
@@ -366,7 +366,7 @@ async def test_no_hours_on_record_offers_without_a_time(mongo):
     set_clock(TUESDAY_NIGHT)  # the default hours (Mon-Sat 9:00-18:00) apply, but are never told
     created = await _lead()
     reply = await _last_sms(mongo, created)
-    assert "We're closed right now. I can help you here now" in reply and "9:00" not in reply
+    assert "We're closed right now. Would you like to chat now" in reply and "9:00" not in reply
 
 
 # --- Extract's answer to the choice (agent/nodes/extract.py) --------------------------------
@@ -398,7 +398,7 @@ async def test_guard_sends_back_an_offer_with_no_choice_question():
     no "which would you like?" at all."""
     from upsell_agent.agent.nodes.guard import guard, missing_after_hours_choice
 
-    text = "Hello, Test! The team will pick this up when we open at 9:00 AM today. Let me know if anything else!"
+    text = "Hello, Test! I'll pick this up when we open at 9:00 AM today. Let me know if anything else!"
     decision = {"action": "acknowledge", "after_hours": {"mode": "offer", "opens_at": "9:00 AM today"}}
     assert missing_after_hours_choice(decision, {"sms_text": text, "email_body": text}) == [
         "the SMS doesn't offer the after-hours choice", "the email doesn't offer the after-hours choice"]
@@ -410,7 +410,7 @@ async def test_guard_sends_back_an_offer_with_no_choice_question():
     assert not result["passed"] and not result["checks"]["after_hours_choice_offered"]
     assert result["next"] == "compose"
 
-    ok_text = text.rstrip("!") + " Which would you like?"
+    ok_text = text.rstrip("!") + " Would you like to chat now, or would you prefer to continue during business hours?"
     assert missing_after_hours_choice(decision, {"sms_text": ok_text, "email_body": ok_text}) == []
     assert missing_after_hours_choice({"action": "acknowledge"}, {"sms_text": text}) == []  # no after_hours: n/a
 
@@ -483,8 +483,8 @@ async def test_the_resume_message_is_exempt_from_the_greeting_check():
     state = AgentState(dealer_id="d", customer_id="c", trigger="resume_at_opening", customer_text="",
                        context_pack={"conversation": {"turn": 3}},
                        decision={"after_hours": {"mode": "resume"}},
-                       draft={"sms_text": "Good evening, Test! The team is in now.", "email_subject": "Hi",
-                              "email_body": "Good evening, Test! The team is in now."})
+                       draft={"sms_text": "Good evening, Test! We're open now.", "email_subject": "Hi",
+                              "email_body": "Good evening, Test! We're open now."})
     tracer = TurnTracer(sink=MemoryTraceSink(), dealer_id="d", lead_id=None, customer_id="c", trigger="t",
                         channel="sms", store_prompts=False)
     result = (await guard(state, NodeSpan(), SimpleNamespace(tracer=tracer)))["guard_result"]
@@ -496,7 +496,7 @@ async def test_the_resume_message_is_exempt_from_the_greeting_check():
 async def test_no_answer_to_the_offer_means_the_team_picks_it_up_at_opening(mongo, dealer_with_hours):
     set_clock(TUESDAY_NIGHT)
     created = await _lead()
-    assert (await _last_sms(mongo, created)).endswith("Which would you like?")
+    assert (await _last_sms(mongo, created)).endswith("continue during business hours?")
     [resume] = await _resumes(mongo, created)  # planned with the offer: the customer never answers
     assert resume["status"] == "pending"
     assert resume["due_at"].replace(tzinfo=UTC) == datetime(2026, 9, 23, 13, 0, tzinfo=UTC)  # Wed 9:00 New York
@@ -511,7 +511,20 @@ async def test_a_conversation_already_going_is_asked_again_on_a_later_night(mong
     await _say(created, "now is fine")  # Tuesday night's choice
     set_clock(TUESDAY_NIGHT + timedelta(days=1))  # Wednesday night: a new closed period
     await _say(created, "hey, is the RAV4 still there?")
-    assert (await _last_sms(mongo, created)).endswith("Which would you like?")
+    assert (await _last_sms(mongo, created)).endswith("continue during business hours?")
     state = await _state(mongo, created)
     assert state["conversation"]["after_hours"]["choice"] == "offered"
     assert [r["status"] for r in await _resumes(mongo, created)][-1] == "pending"
+
+
+async def test_closed_but_inside_texting_hours_helps_now_without_the_team(mongo, dealer_with_hours):
+    # Client, 12 Oct 2026 (Betsy): 8:00 PM in New York - the dealership closed at 7, but it's still legal to
+    # text. "The dealership is closed right now and I can help you right now is fine, but stop saying the team
+    # can do this and that."
+    set_clock(datetime(2026, 9, 23, 0, 0, tzinfo=UTC))
+    created = await _lead()
+    reply = await _last_sms(mongo, created)
+    assert "closed right now" in reply and "help you right now" in reply
+    assert "business hours?" not in reply and "team" not in reply.lower()
+    [turn] = await _turns(mongo, created)
+    assert turn["summary"]["after_hours"] == "closed"

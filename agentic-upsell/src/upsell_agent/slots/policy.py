@@ -204,14 +204,16 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     not_interested_handoff = flags.not_interested == "handoff"
     conditions: dict[str, tuple[bool, str]] = {
         "stop": (flags.opted_out, "Customer opted out"),
-        "handoff": ((flags.wants_human and flags.human_contact != "offer") or flags.clearly_upset or flags.clearly_urgent or flags.visit_handoff
+        # Client, 12 Oct 2026 (Betsy): only these hand the lead to the dealership - a request for a person, an upset
+        # customer, appointments declined more than once (and "not interested" with a reason, client 1 Oct 2026).
+        # An urgent customer is not one of them: urgency is a reason to book, not to hand off.
+        "handoff": ((flags.wants_human and flags.human_contact != "offer") or flags.clearly_upset or flags.visit_handoff
                     or not_interested_handoff,
                     ("Customer asked for a person" + (f" - wants a {flags.human_contact}" if flags.human_contact
                                                       in ("call", "text") else ""))
                     if flags.wants_human and flags.human_contact != "offer"
                     else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})" if flags.clearly_upset
-                    else f"Customer sounds urgent (confidence {flags.urgent_confidence:.2f})" if flags.clearly_urgent
-                    else "Declined a visit 3 times and a staff-only question is still open" if flags.visit_handoff
+                    else "Declined a visit more than once" if flags.visit_handoff
                     else ("Customer says they're not interested any more: "
                           + (f"{flags.not_interested_reason!r}" if flags.not_interested_reason
                              else "no reason given, even after we asked")

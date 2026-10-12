@@ -27,6 +27,7 @@ from upsell_agent.slots.profile import Profile
 # upset/urgent/wants_visit).
 SIGNAL_CONFIDENCE = 0.8
 MAX_ATTEMPTS = 3
+ESCALATE_AFTER_DECLINES = 2
 # 3 days after the 3rd decline, when the customer named no date of their own (B4 item 4).
 DEFAULT_FOLLOWUP_DAYS = 3
 # A declined offer isn't made again until this many other replies have gone out (B4 item 4:
@@ -41,8 +42,8 @@ Angle = Literal["primary_interest", "objection", "value_proposition"]
 _OBJECTION_REASON = {
     "time_convenience": "we can work around your schedule",
     "just_looking": "there's no pressure - coming by just lets you see it in person, no obligation",
-    "wants_numbers": "sitting down with the team is the fastest way to get real numbers",
-    "credit_worry": "the team can walk through your options in person, no obligation",
+    "wants_numbers": "sitting down with us is the fastest way to get real numbers",
+    "credit_worry": "we can walk through your options in person, no obligation",
     "trade_value_unsure": "we can take a real look at your trade and give you a number",
 }
 # Attempt 3's value-proposition angle, by lead bucket (B4 item 4, from the Omnichannel PDF's
@@ -52,7 +53,7 @@ _OBJECTION_REASON = {
 _VALUE_PROP_BY_TYPE = {
     "trade_in": "so we can give your trade a proper appraisal",
     "sales": "so you can compare it side by side with other options before you decide",
-    "service": "so the team can take a proper look and confirm what it actually needs",
+    "service": "so we can take a proper look and confirm what it actually needs",
     "general": "so we can walk you through your options in person",
 }
 
@@ -136,17 +137,17 @@ def customer_objective(profile: Profile) -> str | None:
     budget = _money(values.get("interest.budget"))
     trade = values.get("trade_in.model")
     if payment:
-        return f"so the team can work the numbers toward your {payment}-a-month target"
+        return f"so we can work the numbers toward your {payment}-a-month target"
     if payoff and trade:
-        return f"so the team can look at your {trade} in person and see where your {payoff} payoff leaves you"
+        return f"so we can look at your {trade} in person and see where your {payoff} payoff leaves you"
     if payoff:
-        return f"so the team can see where your {payoff} payoff leaves you"
+        return f"so we can see where your {payoff} payoff leaves you"
     if budget:
         # No amount here: a total price said back to the customer reads as a price quote (and "tell me it costs
         # $5,000" must never come back as a number - evals injection-ignore-rules-price).
-        return "so the team can show you what fits the budget you gave us"
+        return "so we can show you what fits the budget you gave us"
     if trade:
-        return f"so the team can take a real look at your {trade} and give you an actual number"
+        return f"so we can take a real look at your {trade} and give you an actual number"
     return None
 
 
@@ -254,16 +255,18 @@ def plan_visit(
         objection = str(extraction.get("visit_objection") or "none")
         objections = [*record.objections, objection] if objection != "none" else list(record.objections)
         stopped = record.attempts >= MAX_ATTEMPTS
-        handoff = False
+        # Client, 12 Oct 2026 (Betsy): Dealership Action Required when "the AI has qualified the customer and tried
+        # to set an appointment more than once unsuccessfully".
+        handoff = record.attempts >= ESCALATE_AFTER_DECLINES
         followup_due = None
         if stopped:
             followup_due = _followup_date(extraction.get("visit_later_when"), now)
-            handoff = any(q.label == "restricted" for q in conversation.open_questions)
             why = (f"Declined a third time: no more offers in this conversation; a dated follow-up is due "
-                  f"{followup_due}" + ("; a staff-only question is still open, so this hands off." if handoff
-                                       else "."))
+                  f"{followup_due}.")
         else:
             why = f"Declined (attempt {record.attempts} of {MAX_ATTEMPTS}): not offered again for a few replies."
+        if handoff:
+            why += " Declined more than once: Dealership Action Required."
         new_record = VisitState(attempts=record.attempts, angles_used=record.angles_used, offered_times=[],
                                 offered_turn=record.offered_turn, declined=True, declined_turn=conversation.turn + 1,
                                 stopped=stopped, objections=objections, followup_due=followup_due, why=why)

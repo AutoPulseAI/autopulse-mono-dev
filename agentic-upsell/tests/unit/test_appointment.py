@@ -138,7 +138,7 @@ def test_a_missing_agent_name_is_left_out_not_invented():
     kw = {"customer_name": "Maria", "dealership": "ABC Toyota", "agent_name": None,
           "appt": datetime(2026, 10, 9, 10, tzinfo=NY)}
     text = appointment.render_message("confirm", **kw)["sms_text"]
-    assert text.startswith("Hello, Maria, it's the team at ABC Toyota confirming") and "Ava" not in text
+    assert text.startswith("Hello, Maria, it's ABC Toyota confirming") and "Ava" not in text
 
 
 def test_the_appointments_time_comes_from_the_booking_or_the_lead():
@@ -421,7 +421,7 @@ async def test_no_show_follow_up_then_back_into_short_term_follow_up(mongo):
     await _fire(mongo, created, "no_show_check")
     await _fire(mongo, created, "no_show_followup")
     second = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
-    assert second.startswith("Hi! This is the team at Sunrise Motors regarding your") and (
+    assert second.startswith("Hi! This is Sunrise Motors regarding your") and (
         "How did everything go when you came in? Did you get a chance to stop by?" in second)
     await _fire(mongo, created, "no_show_close")
     state = await _state(mongo, created)

@@ -1,6 +1,7 @@
 """The after-hours first reply (MASTER_PLAN_3 B1, architecture §15 decisions
 56-57): a new inbound lead that arrives while the dealership is closed is
-asked whether to carry on now or have the team pick it up when it opens.
+asked whether to carry on now or during business hours (only outside the customer's texting hours; inside them
+it is told the dealership is closed and helped right away - client, 12 Oct 2026).
 
 A pure function of the turn: what triggered it, the lead's origin, whether the
 dealer is open (the context pack's `now` layer), the conversation state's
@@ -52,7 +53,7 @@ WANTS_VISIT_CONFIDENCE = 0.8
 TRIGGER_RESUME = "resume_at_opening"
 FIRST_CONTACT_TRIGGERS = ("lead_created", "inbound_message")
 
-Mode = Literal["offer", "later", "resume"]
+Mode = Literal["offer", "later", "resume", "closed"]
 
 # A short "ok" / "thanks" and nothing else: not a real answer to anything
 # (agreed with the user, 1 Oct). The whole (stripped) message must match.
@@ -100,6 +101,7 @@ def plan_after_hours(
     extraction: dict[str, Any],
     at: datetime,
     text: str = "",
+    texting_hours: bool = False,
 ) -> AfterHoursPlan:
     """`now`: the context pack's `now` layer (`open_now`, `next_open_text`)."""
     record = conversation.after_hours
@@ -140,9 +142,16 @@ def plan_after_hours(
             return AfterHoursPlan(record=decided("now", why), why=why)
         if conversation.turn > 0 and is_plain_acknowledgement(text):
             return AfterHoursPlan(why="A plain acknowledgement while closed: nothing to ask.")
+        if texting_hours:
+            # Client, 12 Oct 2026 (Betsy): closed, but inside the customer's legal texting hours - "the dealership is
+            # closed right now and I can help you right now is fine", and the conversation goes on toward the
+            # appointment. No "or the team can pick this up": the goal is not more work for the team.
+            why = "Closed, but inside the customer's texting hours: say so, help now, keep going toward a visit."
+            return AfterHoursPlan(mode="closed", record=decided("now", why), why=why, opens_at=opens_at)
         why = ("The customer wrote while the dealership is closed" if conversation.turn > 0
                else "A new inbound lead while the dealership is closed") + (
-            ": offer to help now or when it opens; with no answer, the team picks it up at opening.")
+            ", outside their texting hours: ask whether to chat now or during business hours; with no answer, "
+            "we pick it up at opening.")
         return AfterHoursPlan(mode="offer", record=offered("offered", why), schedule_resume=True, why=why,
                               opens_at=opens_at)
 

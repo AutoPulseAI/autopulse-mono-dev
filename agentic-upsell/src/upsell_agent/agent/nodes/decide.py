@@ -623,6 +623,18 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
                               channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
 
 
+def customer_texting_hours(zone: dict | None, now: datetime, dealer_tz: Any) -> bool:
+    """Is it the customer's legal texting time (TCPA state table, client 1 Oct 2026)? Unknown location: the
+    federal 8 AM - 9 PM in the dealer's time zone."""
+    from upsell_agent.compliance.state_hours import allowed, rules_for, zone_states
+    states = zone_states(zone or {})
+    zones = tuple((zone or {}).get("zones") or ())
+    if states and zones:
+        return allowed(now, zones, rules_for(states))
+    local = now.astimezone(dealer_tz)
+    return 8 <= local.hour < 21
+
+
 async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     extraction = state.extraction or {}
     profile = await load_profile(ctx, state)
@@ -639,15 +651,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     pack = state.context_pack or {}
     now = clock.now()
     text = state.customer_text or state.inbound_text
+    dealer = await dealer_profile(state.dealer_id)
     after_hours = plan_after_hours(
         trigger=state.trigger, origin=((ctx.compliance or {}).get("origin") or {}).get("origin"),
-        now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=now, text=text)
+        now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=now, text=text,
+        texting_hours=customer_texting_hours((ctx.compliance or {}).get("zone"), now, dealer.tz))
     if hold and after_hours.mode == "offer":
         # A possible opt-out or quiet hours: nothing is asked, not even the choice.
         after_hours.mode, after_hours.record = None, None
         after_hours.why = f"No after-hours choice: {hold}."
 
-    dealer = await dealer_profile(state.dealer_id)
     # MASTER_PLAN_3 C3: a dated next step the customer asked for. The reply confirms it and asks or
     # offers nothing else (they asked us to come back later, not to keep going now).
     dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text)

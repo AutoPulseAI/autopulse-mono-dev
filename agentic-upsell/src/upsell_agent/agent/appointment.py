@@ -229,17 +229,17 @@ def render_message(step: str, *, customer_name: str | None, dealership: str | No
         text = f"Counting down to our meeting at {place}!"
         subject = "Counting down to our meeting"
     elif step == STEP_CONFIRM:
-        who = f"this is {agent_name} at {place}" if agent_name else f"it's the team at {place}"
+        who = f"this is {agent_name} at {place}" if agent_name else f"it's {place}"
         text = (f"Hello, {first}, {who} confirming our meeting for {day} at {at}. "
                 "Does this time still work? Please reply Y for Yes or N for No.")
         subject = "Does this time still work?"
     elif step == STEP_NO_SHOW_CHECK:
-        who = f"this is {agent_name} with {place}" if agent_name else f"this is the team at {place}"
+        who = f"this is {agent_name} with {place}" if agent_name else f"this is {place}"
         text = (f"Hello, {who}. I am looking for you in the showroom - "
                 "are you here and working with someone?")
         subject = "Are you here?"
     elif step == STEP_NO_SHOW_FOLLOWUP:
-        who = f"This is {agent_name} at {place}" if agent_name else f"This is the team at {place}"
+        who = f"This is {agent_name} at {place}" if agent_name else f"This is {place}"
         about = f"your {model} purchase" if model else "your visit"
         text = (f"Hi! {who} regarding {about}. How did everything go when you came in? "
                 "Did you get a chance to stop by?")
