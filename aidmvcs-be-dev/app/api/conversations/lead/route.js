@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
+import { conversationLeadIds } from "@lib/ai/linkedLeads";
 import { Types } from "mongoose";
 const { ObjectId } = Types;
 
@@ -107,7 +108,9 @@ export async function GET(req) {
                 );
             }
 
-            const filters = [{ lead_id: new ObjectId(lead_id) }];
+            // A repeat lead and the customer's first lead share one conversation (app/lib/ai/linkedLeads.js).
+            const leadIds = await conversationLeadIds(lead_id);
+            const filters = [{ lead_id: leadIds.length > 1 ? { $in: leadIds } : new ObjectId(lead_id) }];
 
             // Apply date filtering to conversation thread if provided
             if (startDate || endDate) {
