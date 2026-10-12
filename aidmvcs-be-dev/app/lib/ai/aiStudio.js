@@ -7,7 +7,11 @@ import { AiConfigItem, AiConfigVersion } from '@models/AiConfig';
 import defaults from './aiStudioDefaults.json';
 
 export const PLACEHOLDERS = defaults.placeholders;
-export const TYPES = ['agents', 'buckets', 'sources', 'cadences', 'messages', 'scripts', 'status_rules', 'prompts'];
+export const TYPES = ['agents', 'buckets', 'sources', 'cadences', 'workflows', 'messages', 'status_rules', 'prompts'];
+// What a workflow branch can wait for, and what it can lead to (the tree editor's dropdowns).
+export const CONDITIONS = ['yes', 'no', 'anything_else', 'picks_a_time', 'mentions_trade', 'mentions_credit',
+  'mentions_price', 'no_reply'];
+export const OUTCOMES = ['ask', 'ai', 'book', 'end', 'escalate', 'set_status', 'call_task'];
 const MODES = ['fixed', 'ai', 'fixed_opening_ai'];
 
 // Only the super admin (client, 8 Oct 2026: "workflow access is limited to admins"). The role names that count can be
@@ -24,14 +28,29 @@ export function requireStudioAdmin(request) {
   return auth;
 }
 
-// Version 1 of every item is the AI's built-in setting. Added once; an item already there is never overwritten.
+// Version 1 of every item is the AI's built-in setting. Added once; an item someone edited is never overwritten. A
+// built-in item nobody has touched follows a newer built-in shape (defaults.revision), and one the built-ins no longer
+// have (and nobody edited) is retired.
 export async function seedDefaults({ by = 'AutoPulse default' } = {}) {
   let added = 0;
+  const revision = defaults.revision || 1;
+  const builtIn = new Set(defaults.items.map((row) => `${row.type}:${row.key}`));
+  const stale = await AiConfigItem.find({ dealer_id: null, deleted: { $ne: true }, latest_version: 1,
+    defaults_revision: { $not: { $gte: revision } } }).lean();
+  for (const item of stale) {
+    if (!builtIn.has(`${item.type}:${item.key}`)) {
+      await AiConfigItem.updateOne({ _id: item._id }, { $set: { deleted: true } });
+      continue;
+    }
+    const row = defaults.items.find((r) => r.type === item.type && r.key === item.key);
+    await AiConfigVersion.updateOne({ item_id: item._id, version: 1 }, { $set: { content: row.content } });
+    await AiConfigItem.updateOne({ _id: item._id }, { $set: { name: row.name, defaults_revision: revision } });
+  }
   for (const row of defaults.items) {
     const existing = await AiConfigItem.findOne({ type: row.type, key: row.key, dealer_id: null }).lean();
     if (existing) continue;
     const item = await AiConfigItem.create({ type: row.type, key: row.key, name: row.name, locked: !!row.locked,
-      published_version: 1, latest_version: 1 });
+      published_version: 1, latest_version: 1, defaults_revision: revision });
     await AiConfigVersion.create({ item_id: item._id, version: 1, status: 'published', content: row.content,
       note: 'Built-in setting (what the AI does today)', created_by_name: by, published_at: new Date(),
       published_by_name: by });
@@ -64,9 +83,39 @@ function messageProblems(message, where) {
   return problems;
 }
 
+// A workflow is a tree: every node has a message and branches; every branch waits for a condition and leads somewhere.
+function treeProblems(node, path, problems, seen) {
+  if (!node || typeof node !== 'object') { problems.push(`${path}: this step is empty.`); return; }
+  const where = `${path}${node.label ? ` "${node.label}"` : ''}`;
+  if (node.id) {
+    if (seen.has(node.id)) problems.push(`${where}: two steps share the name "${node.id}".`);
+    seen.add(node.id);
+  }
+  problems.push(...messageProblems(node.message, where));
+  const branches = Array.isArray(node.branches) ? node.branches : [];
+  const used = new Set();
+  branches.forEach((b, i) => {
+    const label = `${where}, branch ${i + 1}`;
+    const when = b?.when?.value;
+    if (!CONDITIONS.includes(when)) problems.push(`${label}: choose what the customer says or does.`);
+    if (used.has(when) && when !== 'no_reply') problems.push(`${label}: "${when}" is used twice on this step.`);
+    used.add(when);
+    const action = b?.then?.action;
+    if (!OUTCOMES.includes(action)) problems.push(`${label}: choose what happens next.`);
+    if (action === 'ask') treeProblems(b.then.node, `${label} ->`, problems, seen);
+    if (action === 'set_status' && !b.then.status) problems.push(`${label}: choose the status.`);
+  });
+}
+
 export function contentProblems(type, content) {
   if (!content || typeof content !== 'object') return ['Nothing to save.'];
   const problems = [];
+  if (content.tree) {
+    treeProblems(content.tree, 'First step', problems, new Set());
+    if (type === 'workflows' && !content.trigger?.pattern && !(content.trigger?.phrases || []).length) {
+      problems.push('Say what starts this workflow (the words the customer uses).');
+    }
+  }
   if (content.message) problems.push(...messageProblems(content.message, 'Message'));
   if (Array.isArray(content.steps)) {
     const ids = new Set(content.steps.map((s) => s.id));
@@ -80,7 +129,7 @@ export function contentProblems(type, content) {
         }
       }
     });
-    if (type === 'scripts' && content.steps.length && !content.steps.some((s) => (s.go || 'end') === 'end'
+    if (type === 'workflows' && content.steps.length && !content.steps.some((s) => (s.go || 'end') === 'end'
       || (s.next || []).some((n) => n.go === 'end' || n.go === 'ai'))) {
       problems.push('The flow has no way to finish: at least one step must end it or hand back to the AI.');
     }

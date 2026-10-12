@@ -1,5 +1,6 @@
 {
- "exported_at": "2026-10-12T21:38:03.320428+00:00",
+ "exported_at": "2026-10-12T21:50:38.615948+00:00",
+ "revision": 2,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1004,277 +1005,565 @@
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_credit_score",
    "name": "Can't supply: credit score",
    "content": {
-    "trigger": "\\bcredit\\s+score\\b|\\bwhat(?:'s| is)\\s+my\\s+(?:credit|score)\\b|\\bcheck\\s+my\\s+credit\\b|\\bpull\\s+my\\s+credit\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "We need to meet with you in person to discuss your credit because we have to confirm your identity. What day this week works best for you to meet with our business manager? I have {times} available.",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bcredit\\s+score\\b|\\bwhat(?:'s| is)\\s+my\\s+(?:credit|score)\\b|\\bcheck\\s+my\\s+credit\\b|\\bpull\\s+my\\s+credit\\b"
     },
-    "escalates": false
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "We need to meet with you in person to discuss your credit because we have to confirm your identity. What day this week works best for you to meet with our business manager? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_payment",
    "name": "Can't supply: payment",
    "content": {
-    "trigger": "\\bmonthly\\s+payments?\\b|\\bpayments?\\s+(?:be|would\\s+be|is|on|for)\\b|\\bper\\s+month\\b|\\ba\\s+month\\b|\\blease\\s+(?:payment|price|deal|it|for)\\b|\\bwhat\\s+would\\s+my\\s+payments?\\b|\\bfinance\\s+payment\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "Our goal is to get you the lowest possible payment, so this requires some work on our end and more information about you so we can include all incentives you qualify for. We would be doing you a disservice by quoting automated information. {vehicle_link} Our business manager would like to work on this for you. What day this week works best for you to meet with us? I have {times} available.",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bmonthly\\s+payments?\\b|\\bpayments?\\s+(?:be|would\\s+be|is|on|for)\\b|\\bper\\s+month\\b|\\ba\\s+month\\b|\\blease\\s+(?:payment|price|deal|it|for)\\b|\\bwhat\\s+would\\s+my\\s+payments?\\b|\\bfinance\\s+payment\\b"
     },
-    "escalates": false
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "Our goal is to get you the lowest possible payment, so this requires some work on our end and more information about you so we can include all incentives you qualify for. We would be doing you a disservice by quoting automated information. {vehicle_link} Our business manager would like to work on this for you. What day this week works best for you to meet with us? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_apr",
    "name": "Can't supply: apr",
    "content": {
-    "trigger": "\\bapr\\b|\\binterest\\s+rates?\\b|\\bwhat\\s+(?:rate|rates)\\b|\\bfinance\\s+rate\\b|\\brates?\\s+(?:would|will|do|can)\\s+(?:i|you)\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "Our goal is to get you the lowest possible APR, so this requires some work on our end. We would be doing you a disservice by quoting an automated rate. Our business manager would like to work on this for you. What day this week works best for you to meet with us? I have {times} available.",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bapr\\b|\\binterest\\s+rates?\\b|\\bwhat\\s+(?:rate|rates)\\b|\\bfinance\\s+rate\\b|\\brates?\\s+(?:would|will|do|can)\\s+(?:i|you)\\b"
     },
-    "escalates": false
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "Our goal is to get you the lowest possible APR, so this requires some work on our end. We would be doing you a disservice by quoting an automated rate. Our business manager would like to work on this for you. What day this week works best for you to meet with us? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_out_the_door",
    "name": "Can't supply: out the door",
    "content": {
-    "trigger": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "Our list price is accurate and includes the total cost to purchase the vehicle, exclusive of tax, documentation, and DMV. Is there something that concerns you that you want to ensure is included in the price? Otherwise, the next step would be to schedule a test drive. What day this week works best for you? I have {times} available.",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b"
     },
-    "escalates": false
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "Our list price is accurate and includes the total cost to purchase the vehicle, exclusive of tax, documentation, and DMV. Is there something that concerns you that you want to ensure is included in the price? Otherwise, the next step would be to schedule a test drive. What day this week works best for you? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_custom_media",
    "name": "Can't supply: custom media",
    "content": {
-    "trigger": "\\bvideos?\\b|\\bwalk[\\s-]?around\\b|\\bmore\\s+(?:photos|pictures|pics)\\b|\\bclose[\\s-]?ups?\\b|\\b(?:photos?|pictures?|pics)\\s+of\\s+the\\s+(?:engine|tires?|wheels?|interior|seats?|trunk|damage|scratch\\w*|dent\\w*|undercarriage|back|front|inside)\\b|\\bsend\\s+(?:me\\s+)?(?:a\\s+)?(?:video|more\\s+photos|more\\s+pictures)\\b|\\bfacetime\\b|\\bvideo\\s+call\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "I will make sure you get some photos as soon as possible. In the meantime, if everything looks good, when do you anticipate visiting us for a test drive? I have {times} available.",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bvideos?\\b|\\bwalk[\\s-]?around\\b|\\bmore\\s+(?:photos|pictures|pics)\\b|\\bclose[\\s-]?ups?\\b|\\b(?:photos?|pictures?|pics)\\s+of\\s+the\\s+(?:engine|tires?|wheels?|interior|seats?|trunk|damage|scratch\\w*|dent\\w*|undercarriage|back|front|inside)\\b|\\bsend\\s+(?:me\\s+)?(?:a\\s+)?(?:video|more\\s+photos|more\\s+pictures)\\b|\\bfacetime\\b|\\bvideo\\s+call\\b"
     },
-    "escalates": true
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [
+      "dealership_action_required"
+     ],
+     "message": {
+      "mode": "fixed",
+      "text": "I will make sure you get some photos as soon as possible. In the meantime, if everything looks good, when do you anticipate visiting us for a test drive? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "cannot_supply_out_of_state",
    "name": "Can't supply: out of state",
    "content": {
-    "trigger": "\\bout\\s+of\\s+state\\b|\\bout-of-state\\b|\\b(?:another|a\\s+different|different)\\s+state\\b|\\bship(?:ped|ping)?\\s+(?:it|the\\s+(?:car|vehicle|truck)|to\\s+me)\\b|\\bdeliver\\w*\\s+to\\s+my\\s+state\\b",
-    "message": {
-     "mode": "fixed",
-     "text": "That is no problem at all; we work with customers who are out of state all the time. Do you plan to pick the vehicle up or have it shipped to you?",
-     "email_text": null,
-     "email_subject": null,
-     "instruction": null,
-     "fallback": null
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bout\\s+of\\s+state\\b|\\bout-of-state\\b|\\b(?:another|a\\s+different|different)\\s+state\\b|\\bship(?:ped|ping)?\\s+(?:it|the\\s+(?:car|vehicle|truck)|to\\s+me)\\b|\\bdeliver\\w*\\s+to\\s+my\\s+state\\b"
     },
-    "escalates": true
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [
+      "dealership_action_required"
+     ],
+     "message": {
+      "mode": "fixed",
+      "text": "That is no problem at all; we work with customers who are out of state all the time. Do you plan to pick the vehicle up or have it shipped to you?",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },
   {
-   "type": "scripts",
+   "type": "workflows",
    "key": "buyers_order",
-   "name": "Buyer's order sequence",
+   "name": "Buyer's order",
    "content": {
-    "trigger": "\\bbuyer'?s?\\s+order\\b|\\bpurchase\\s+order\\b|\\bbuyers?\\s+agreement\\b|\\bbill\\s+of\\s+sale\\b",
-    "steps": [
-     {
-      "id": "start",
-      "message": {
-       "mode": "fixed",
-       "text": "That is great; that must mean you are ready to buy today! Are you ready to take delivery today?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "next": [
-       {
-        "if": "yes",
-        "go": "delivery"
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bbuyer'?s?\\s+order\\b|\\bpurchase\\s+order\\b|\\bbuyers?\\s+agreement\\b|\\bbill\\s+of\\s+sale\\b"
+    },
+    "tree": {
+     "id": "start",
+     "label": "Ready to take delivery today?",
+     "message": {
+      "mode": "fixed",
+      "text": "That is great; that must mean you are ready to buy today! Are you ready to take delivery today?",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "yes"
        },
-       {
-        "if": "anything else",
-        "go": "ai"
+       "then": {
+        "action": "ask",
+        "node": {
+         "id": "delivery_yes",
+         "label": "Trade",
+         "message": {
+          "mode": "fixed",
+          "text": "We will be happy to help you with that! We will just need to cover a few items: Are you trading a vehicle?",
+          "email_text": null,
+          "email_subject": null,
+          "instruction": null,
+          "fallback": null
+         },
+         "branches": [
+          {
+           "when": {
+            "type": "reply",
+            "value": "yes"
+           },
+           "then": {
+            "action": "ask",
+            "node": {
+             "id": "trade_yes",
+             "label": "Trade: yes",
+             "message": {
+              "mode": "fixed",
+              "text": "Excellent! In order to provide you with an accurate buyer's order and because it is a legal document, we must appraise your trade-in first. When are you available to come in to complete this step: today or tomorrow?",
+              "email_text": null,
+              "email_subject": null,
+              "instruction": null,
+              "fallback": null
+             },
+             "branches": [],
+             "also": []
+            }
+           }
+          },
+          {
+           "when": {
+            "type": "reply",
+            "value": "no"
+           },
+           "then": {
+            "action": "ask",
+            "node": {
+             "id": "trade_no",
+             "label": "Finance",
+             "message": {
+              "mode": "fixed",
+              "text": "Are you planning to finance this vehicle?",
+              "email_text": null,
+              "email_subject": null,
+              "instruction": null,
+              "fallback": null
+             },
+             "branches": [
+              {
+               "when": {
+                "type": "reply",
+                "value": "yes"
+               },
+               "then": {
+                "action": "ask",
+                "node": {
+                 "id": "finance_yes",
+                 "label": "Finance: yes",
+                 "message": {
+                  "mode": "fixed",
+                  "text": "Ok, I will need you to complete our credit application to ensure you qualify. Here is a link: {credit_app_link} Please let me know once this step is complete.",
+                  "email_text": null,
+                  "email_subject": null,
+                  "instruction": null,
+                  "fallback": null
+                 },
+                 "branches": [],
+                 "also": []
+                }
+               }
+              },
+              {
+               "when": {
+                "type": "reply",
+                "value": "no"
+               },
+               "then": {
+                "action": "ask",
+                "node": {
+                 "id": "finance_no",
+                 "label": "Lien",
+                 "message": {
+                  "mode": "fixed",
+                  "text": "Will you receive the funds from a lender? In many circumstances, we are required to list them as a lien holder. Will there be a lien holder associated with this transaction?",
+                  "email_text": null,
+                  "email_subject": null,
+                  "instruction": null,
+                  "fallback": null
+                 },
+                 "branches": [
+                  {
+                   "when": {
+                    "type": "reply",
+                    "value": "yes"
+                   },
+                   "then": {
+                    "action": "ask",
+                    "node": {
+                     "id": "lien_yes",
+                     "label": "Rate",
+                     "message": {
+                      "mode": "fixed",
+                      "text": "What is the lien holder name and address? Often, we can obtain a more competitive interest rate. Would you like to explore that option?",
+                      "email_text": null,
+                      "email_subject": null,
+                      "instruction": null,
+                      "fallback": null
+                     },
+                     "branches": [
+                      {
+                       "when": {
+                        "type": "reply",
+                        "value": "yes"
+                       },
+                       "then": {
+                        "action": "ask",
+                        "node": {
+                         "id": "rate_yes",
+                         "label": "Rate: yes",
+                         "message": {
+                          "mode": "fixed",
+                          "text": "Here is our credit application: {credit_app_link} Please let me know once this step is complete.",
+                          "email_text": null,
+                          "email_subject": null,
+                          "instruction": null,
+                          "fallback": null
+                         },
+                         "branches": [],
+                         "also": []
+                        }
+                       }
+                      },
+                      {
+                       "when": {
+                        "type": "reply",
+                        "value": "anything_else"
+                       },
+                       "then": {
+                        "action": "ai"
+                       }
+                      }
+                     ]
+                    }
+                   }
+                  },
+                  {
+                   "when": {
+                    "type": "reply",
+                    "value": "no"
+                   },
+                   "then": {
+                    "action": "ask",
+                    "node": {
+                     "id": "lien_no",
+                     "label": "Call",
+                     "message": {
+                      "mode": "fixed",
+                      "text": "Great! In order to generate your purchase order, please provide me with a copy of your driver's license and insurance ID card as well as your social security number. Each of these items must appear on the purchase order. Can we get on a quick call right now to ensure all of your information is secured?",
+                      "email_text": null,
+                      "email_subject": null,
+                      "instruction": null,
+                      "fallback": null
+                     },
+                     "branches": [
+                      {
+                       "when": {
+                        "type": "reply",
+                        "value": "yes"
+                       },
+                       "then": {
+                        "action": "ask",
+                        "node": {
+                         "id": "call_yes",
+                         "label": "Call: yes",
+                         "message": {
+                          "mode": "fixed",
+                          "text": "Perfect, I'm getting our sales manager to call you right now.",
+                          "email_text": null,
+                          "email_subject": null,
+                          "instruction": null,
+                          "fallback": null
+                         },
+                         "branches": [],
+                         "also": [
+                          "dealership_action_required"
+                         ]
+                        }
+                       }
+                      },
+                      {
+                       "when": {
+                        "type": "reply",
+                        "value": "anything_else"
+                       },
+                       "then": {
+                        "action": "ai"
+                       }
+                      }
+                     ]
+                    }
+                   }
+                  },
+                  {
+                   "when": {
+                    "type": "reply",
+                    "value": "anything_else"
+                   },
+                   "then": {
+                    "action": "ai"
+                   }
+                  }
+                 ]
+                }
+               }
+              },
+              {
+               "when": {
+                "type": "reply",
+                "value": "anything_else"
+               },
+               "then": {
+                "action": "ai"
+               }
+              }
+             ]
+            }
+           }
+          },
+          {
+           "when": {
+            "type": "reply",
+            "value": "anything_else"
+           },
+           "then": {
+            "action": "ai"
+           }
+          }
+         ]
+        }
        }
-      ]
-     },
-     {
-      "id": "delivery_yes",
-      "on_step": "delivery",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "We will be happy to help you with that! We will just need to cover a few items: Are you trading a vehicle?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
       },
-      "go": "trade",
-      "escalates": false
-     },
-     {
-      "id": "trade_yes",
-      "on_step": "trade",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "Excellent! In order to provide you with an accurate buyer's order and because it is a legal document, we must appraise your trade-in first. When are you available to come in to complete this step: today or tomorrow?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "end",
-      "escalates": false
-     },
-     {
-      "id": "trade_no",
-      "on_step": "trade",
-      "if": "no",
-      "message": {
-       "mode": "fixed",
-       "text": "Are you planning to finance this vehicle?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "finance",
-      "escalates": false
-     },
-     {
-      "id": "finance_yes",
-      "on_step": "finance",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "Ok, I will need you to complete our credit application to ensure you qualify. Here is a link: {credit_app_link} Please let me know once this step is complete.",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "end",
-      "escalates": false
-     },
-     {
-      "id": "finance_no",
-      "on_step": "finance",
-      "if": "no",
-      "message": {
-       "mode": "fixed",
-       "text": "Will you receive the funds from a lender? In many circumstances, we are required to list them as a lien holder. Will there be a lien holder associated with this transaction?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "lien",
-      "escalates": false
-     },
-     {
-      "id": "lien_yes",
-      "on_step": "lien",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "What is the lien holder name and address? Often, we can obtain a more competitive interest rate. Would you like to explore that option?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "rate",
-      "escalates": false
-     },
-     {
-      "id": "lien_no",
-      "on_step": "lien",
-      "if": "no",
-      "message": {
-       "mode": "fixed",
-       "text": "Great! In order to generate your purchase order, please provide me with a copy of your driver's license and insurance ID card as well as your social security number. Each of these items must appear on the purchase order. Can we get on a quick call right now to ensure all of your information is secured?",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "call",
-      "escalates": false
-     },
-     {
-      "id": "rate_yes",
-      "on_step": "rate",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "Here is our credit application: Here is a link: {credit_app_link} Please let me know once this step is complete.",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "end",
-      "escalates": false
-     },
-     {
-      "id": "call_yes",
-      "on_step": "call",
-      "if": "yes",
-      "message": {
-       "mode": "fixed",
-       "text": "Perfect, I'm getting our sales manager to call you right now.",
-       "email_text": null,
-       "email_subject": null,
-       "instruction": null,
-       "fallback": null
-      },
-      "go": "end",
-      "escalates": true
-     }
-    ]
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
    },
    "locked": false
   },

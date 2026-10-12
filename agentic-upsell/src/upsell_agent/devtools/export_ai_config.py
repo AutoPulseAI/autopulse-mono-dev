@@ -174,18 +174,51 @@ def messages() -> list[dict[str, Any]]:
     ]
 
 
-def scripts() -> list[dict[str, Any]]:
-    out = [{"key": f"cannot_supply_{topic}", "name": f"Can't supply: {topic.replace('_', ' ')}", "content": {
-        "trigger": pattern, "message": fixed(cannot_supply._REPLIES[topic].replace("{calculator}", " {vehicle_link}")),
-        "escalates": topic in cannot_supply.ESCALATES}} for topic, pattern in cannot_supply._PATTERNS]
-    steps = [{"id": "start", "message": fixed(buyers_order.START), "next": [
-        {"if": "yes", "go": buyers_order.DELIVERY}, {"if": "anything else", "go": "ai"}]}]
-    for (step, answer), (text, nxt) in buyers_order._TEXT.items():
-        steps.append({"id": f"{step}_{answer}", "on_step": step, "if": answer, "message": fixed(
-            text.replace("{link}", " Here is a link: {credit_app_link}")), "go": nxt or "end",
-            "escalates": (step, answer) == (buyers_order.CALL, "yes")})
-    out.append({"key": "buyers_order", "name": "Buyer's order sequence", "content": {
-        "trigger": buyers_order.ASKS.pattern, "steps": steps}})
+def _branch(when: str, then: dict[str, Any]) -> dict[str, Any]:
+    return {"when": {"type": "reply", "value": when}, "then": then}
+
+
+def _link(text: str) -> str:
+    return text.replace(":{link}", ": {credit_app_link}").replace("{link}", " Here is a link: {credit_app_link}")
+
+
+def _buyers_order_node(step: str | None, text: str) -> dict[str, Any]:
+    """The client's buyer's order flow as a tree: each question, and what each answer leads to."""
+    node = {"id": step or "start", "label": step.replace("_", " ").title() if step else "Ready to take delivery today?",
+            "message": fixed(_link(text)), "branches": []}
+    ask = buyers_order.DELIVERY if step is None else step
+    for answer in ("yes", "no"):
+        found = buyers_order._TEXT.get((ask, answer))
+        if not found:
+            continue
+        reply, nxt = found
+        child_text = _link(reply)
+        if nxt:
+            child = _buyers_order_node(nxt, child_text)
+            child["id"] = f"{ask}_{answer}"
+            node["branches"].append(_branch(answer, {"action": "ask", "node": child}))
+        else:
+            escalate = (ask, answer) == (buyers_order.CALL, "yes")
+            leaf = {"id": f"{ask}_{answer}", "label": f"{ask.title()}: {answer}", "message": fixed(child_text),
+                    "branches": [], "also": ["dealership_action_required"] if escalate else []}
+            node["branches"].append(_branch(answer, {"action": "ask", "node": leaf}))
+    node["branches"].append(_branch("anything_else", {"action": "ai"}))
+    return node
+
+
+def workflows() -> list[dict[str, Any]]:
+    out = []
+    for topic, pattern in cannot_supply._PATTERNS:
+        escalates = topic in cannot_supply.ESCALATES
+        out.append({"key": f"cannot_supply_{topic}", "name": f"Can't supply: {topic.replace('_', ' ')}", "content": {
+            "trigger": {"type": "customer_says", "pattern": pattern},
+            "tree": {"id": "answer", "label": "Answer", "also": ["dealership_action_required"] if escalates else [],
+                     "message": fixed(cannot_supply._REPLIES[topic].replace("{calculator}", " {vehicle_link}")),
+                     "branches": [_branch("picks_a_time", {"action": "book"}),
+                                  _branch("anything_else", {"action": "ai"})]}}})
+    out.append({"key": "buyers_order", "name": "Buyer's order", "content": {
+        "trigger": {"type": "customer_says", "pattern": buyers_order.ASKS.pattern},
+        "tree": _buyers_order_node(None, buyers_order.START)}})
     return out
 
 
@@ -209,15 +242,20 @@ def prompts() -> list[dict[str, Any]]:
 LOCKED = {"prompts": ["extract"]}
 
 
+# Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
+DEFAULTS_REVISION = 2
+
+
 def export() -> dict[str, Any]:
     groups = {"agents": agents(), "buckets": buckets(), "sources": sources(), "cadences": cadences(),
-              "messages": messages(), "scripts": scripts(), "status_rules": status_rules(), "prompts": prompts()}
+              "messages": messages(), "workflows": workflows(), "status_rules": status_rules(), "prompts": prompts()}
     items = []
     for kind, rows in groups.items():
         for row in rows:
             items.append({"type": kind, "key": row["key"], "name": row["name"], "content": row["content"],
                           "locked": row["key"] in LOCKED.get(kind, [])})
-    return {"exported_at": datetime.now(UTC).isoformat(), "placeholders": PLACEHOLDERS, "items": items}
+    return {"exported_at": datetime.now(UTC).isoformat(), "revision": DEFAULTS_REVISION, "placeholders": PLACEHOLDERS,
+            "items": items}
 
 
 if __name__ == "__main__":
