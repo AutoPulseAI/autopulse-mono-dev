@@ -106,7 +106,7 @@ def test_priority_when_events_collide():
 def test_every_stage_has_the_clients_label_and_a_priority():
     assert set(lifecycle.STAGE_LABELS) == set(Stage) == set(lifecycle.PRIORITY)
     assert lifecycle.label("closed_lost") == "Closed - Lost"
-    assert lifecycle.label("contact_made_specific_followup") == "Contact Made - Specific Follow-Up"
+    assert lifecycle.label("contact_made_specific_followup") == "Contact Made - Follow Up Assigned"
 
 
 @pytest.mark.parametrize(("kind", "stage", "allowed"), [

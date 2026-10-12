@@ -23,20 +23,20 @@ CREDIT_SCORE, APR, PAYMENT, OTD, CUSTOM_MEDIA, OUT_OF_STATE = (
 
 # Checked in this order: the first match decides (a payment question that mentions the rate is a payment question).
 _PATTERNS: tuple[tuple[str, str], ...] = (
-    (CREDIT_SCORE, r"\bcredit\s+score\b|\bwhat(?:'s| is)\s+my\s+(?:credit|score)\b|\bcheck\s+my\s+credit\b|"
-                   r"\bpull\s+my\s+credit\b"),
-    (PAYMENT, r"\bmonthly\s+payments?\b|\bpayments?\s+(?:be|would\s+be|is|on|for)\b|\bper\s+month\b|\ba\s+month\b|"
-              r"\blease\s+(?:payment|price|deal|it|for)\b|\bwhat\s+would\s+my\s+payments?\b|\bfinance\s+payment\b"),
-    (APR, r"\bapr\b|\binterest\s+rates?\b|\bwhat\s+(?:rate|rates)\b|\bfinance\s+rate\b|\brates?\s+(?:would|will|do|can)"
-          r"\s+(?:i|you)\b"),
-    (OTD, r"\bout[\s-]the[\s-]door\b|\botd\b|\btotal\s+(?:price|cost)\b|\ball[\s-]in\s+(?:price|cost)\b|"
-          r"\bwith\s+(?:tax|taxes)\s+and\s+fees\b"),
-    (CUSTOM_MEDIA, r"\bvideos?\b|\bwalk[\s-]?around\b|\bmore\s+(?:photos|pictures|pics)\b|\bclose[\s-]?ups?\b|"
+    (CREDIT_SCORE, (r"\bcredit\s+score\b|\bwhat(?:'s| is)\s+my\s+(?:credit|score)\b|\bcheck\s+my\s+credit\b|"
+                   r"\bpull\s+my\s+credit\b")),
+    (PAYMENT, (r"\bmonthly\s+payments?\b|\bpayments?\s+(?:be|would\s+be|is|on|for)\b|\bper\s+month\b|\ba\s+month\b|"
+              r"\blease\s+(?:payment|price|deal|it|for)\b|\bwhat\s+would\s+my\s+payments?\b|\bfinance\s+payment\b")),
+    (APR, (r"\bapr\b|\binterest\s+rates?\b|\bwhat\s+(?:rate|rates)\b|\bfinance\s+rate\b|\brates?\s+(?:would|will|do|can)"
+          r"\s+(?:i|you)\b")),
+    (OTD, (r"\bout[\s-]the[\s-]door\b|\botd\b|\btotal\s+(?:price|cost)\b|\ball[\s-]in\s+(?:price|cost)\b|"
+          r"\bwith\s+(?:tax|taxes)\s+and\s+fees\b")),
+    (CUSTOM_MEDIA, (r"\bvideos?\b|\bwalk[\s-]?around\b|\bmore\s+(?:photos|pictures|pics)\b|\bclose[\s-]?ups?\b|"
                    r"\b(?:photos?|pictures?|pics)\s+of\s+the\s+(?:engine|tires?|wheels?|interior|seats?|trunk|"
                    r"damage|scratch\w*|dent\w*|undercarriage|back|front|inside)\b|\bsend\s+(?:me\s+)?(?:a\s+)?"
-                   r"(?:video|more\s+photos|more\s+pictures)\b|\bfacetime\b|\bvideo\s+call\b"),
-    (OUT_OF_STATE, r"\bout\s+of\s+state\b|\bout-of-state\b|\b(?:another|a\s+different|different)\s+state\b|"
-                   r"\bship(?:ped|ping)?\s+(?:it|the\s+(?:car|vehicle|truck)|to\s+me)\b|\bdeliver\w*\s+to\s+my\s+state\b"),
+                   r"(?:video|more\s+photos|more\s+pictures)\b|\bfacetime\b|\bvideo\s+call\b")),
+    (OUT_OF_STATE, (r"\bout\s+of\s+state\b|\bout-of-state\b|\b(?:another|a\s+different|different)\s+state\b|"
+                   r"\bship(?:ped|ping)?\s+(?:it|the\s+(?:car|vehicle|truck)|to\s+me)\b|\bdeliver\w*\s+to\s+my\s+state\b")),
 )
 _COMPILED = tuple((topic, re.compile(p, re.IGNORECASE)) for topic, p in _PATTERNS)
 

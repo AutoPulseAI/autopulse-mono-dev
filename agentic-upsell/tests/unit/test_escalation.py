@@ -7,8 +7,8 @@ def test_handoffs_that_need_a_manager():
     assert MANAGERIAL_REVIEW == "Managerial Review"
     # Client, 12 Oct 2026 (Betsy): only these.
     for reason in ("Customer is clearly upset (confidence 0.91)",
-                   "Customer says they're not interested any more: 'bought elsewhere' - a person decides whether to "
-                   "close the lead", "Declined a visit more than once", "Customer asked for a call",
+                   ("Customer says they're not interested any more: 'bought elsewhere' - a person decides whether "
+                    "to close the lead"), "Declined a visit more than once", "Customer asked for a call",
                    "Customer asked for a text from a person", "Customer asked for something the AI can't supply: video"):
         assert manager_escalation(reason), reason
 

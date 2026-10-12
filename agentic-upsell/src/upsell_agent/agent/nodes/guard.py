@@ -311,8 +311,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # past one text and says "incentives you qualify for" - her words, not a consent claim.
         for check in ("sms_length_ok", "no_consent_claims"):
             result["checks"][check] = True
-        result["violations"] = [v for v in result["violations"] if not v.startswith(("SMS must be", "states the "
-                                                                                         "customer's consent"))]
+        skipped = ("SMS must be", "states the customer's consent")
+        result["violations"] = [v for v in result["violations"] if not v.startswith(skipped)]
         result["passed"] = all(result["checks"].values())
     jargon = find_jargon(f"{draft.get('sms_text', '')}\n{draft.get('email_subject', '')}\n{draft.get('email_body', '')}")
     result["checks"]["plain_language"] = not jargon
