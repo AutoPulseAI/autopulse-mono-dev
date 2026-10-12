@@ -3,14 +3,15 @@
 //   POST /api/admin/ai-studio            { type, name, content }  a new item, saved as a draft
 import { NextResponse } from 'next/server';
 import dbConnect from '@lib/mongodb';
-import { PLACEHOLDERS, TYPES, createItem, listItems, requireStudioAdmin } from '@lib/ai/aiStudio';
+import { CONDITIONS, OUTCOMES, PLACEHOLDERS, TYPES, createItem, listItems, requireStudioAdmin } from '@lib/ai/aiStudio';
 import { studioUser } from './_user';
 
 export async function GET(request) {
   const auth = requireStudioAdmin(request);
   if (auth.error) return auth.error;
   await dbConnect();
-  return NextResponse.json({ items: await listItems(), types: TYPES, placeholders: PLACEHOLDERS });
+  return NextResponse.json({ items: await listItems(), types: TYPES, placeholders: PLACEHOLDERS, conditions: CONDITIONS,
+    outcomes: OUTCOMES });
 }
 
 export async function POST(request) {
