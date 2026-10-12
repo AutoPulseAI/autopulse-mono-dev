@@ -39,7 +39,9 @@ export async function seedDefaults({ by = 'AutoPulse default' } = {}) {
     defaults_revision: { $not: { $gte: revision } } }).lean();
   for (const item of stale) {
     if (!builtIn.has(`${item.type}:${item.key}`)) {
-      await AiConfigItem.updateOne({ _id: item._id }, { $set: { deleted: true } });
+      // Its history stays; the name is freed, so a new item can be made with it.
+  await AiConfigItem.updateOne({ _id: item._id },
+    { $set: { deleted: true, deleted_at: new Date(), key: `${item.key}__deleted_${Date.now()}` } });
       continue;
     }
     const row = defaults.items.find((r) => r.type === item.type && r.key === item.key);
@@ -230,8 +232,10 @@ export async function createItem({ type, key, name, content }, { by }) {
   if (!TYPES.includes(type)) return { status: 422, error: 'Unknown type.' };
   const slug = String(key || name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   if (!slug || !String(name || '').trim()) return { status: 422, error: 'Give it a name.' };
-  if (await AiConfigItem.findOne({ type, key: slug, dealer_id: null })) {
-    return { status: 409, error: 'Something with that name already exists.' };
+  const taken = await AiConfigItem.findOne({ type, key: slug, dealer_id: null });
+  if (taken && !taken.deleted) return { status: 409, error: 'Something with that name already exists.' };
+  if (taken) {  // deleted before names were freed on delete: free it now
+    await AiConfigItem.updateOne({ _id: taken._id }, { $set: { key: `${taken.key}__deleted_${Date.now()}` } });
   }
   const item = await AiConfigItem.create({ type, key: slug, name: String(name).trim(), published_version: null,
     latest_version: 0 });
@@ -245,6 +249,8 @@ export async function removeItem(id) {
   if (item.locked || defaultContent(item.type, item.key)) {
     return { status: 409, error: 'Built-in items can be changed or reset, not deleted.' };
   }
-  await AiConfigItem.updateOne({ _id: item._id }, { $set: { deleted: true } });
+  // Its history stays; the name is freed, so a new item can be made with it.
+  await AiConfigItem.updateOne({ _id: item._id },
+    { $set: { deleted: true, deleted_at: new Date(), key: `${item.key}__deleted_${Date.now()}` } });
   return { deleted: true };
 }
