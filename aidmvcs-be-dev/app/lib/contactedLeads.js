@@ -12,7 +12,7 @@ const ADF = /<\?adf|<adf[\s>]/i;
 export async function contactedLeadIds(leadIds, { EmailModel = Email } = {}) {
   if (!leadIds?.length) return [];
   const rows = await EmailModel.aggregate([
-    { $match: { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true } } },
+    { $match: { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true }, is_lead_email: { $ne: true } } },
     { $project: { lead_id: 1, communication_type: 1,
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } },

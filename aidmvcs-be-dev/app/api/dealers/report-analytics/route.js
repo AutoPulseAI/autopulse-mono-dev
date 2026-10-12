@@ -5,6 +5,7 @@ import Email from "@models/Email";
 import Vehicle from "@models/Vehicle";
 import ReportSchedule from "@models/ReportSchedule";
 import moment from "moment-timezone";
+import { contactedLeadIds } from "@lib/contactedLeads";
 
 export async function GET(req) {
   try {
@@ -249,10 +250,9 @@ async function getLeadMetrics(dealerId, periodStart, periodEnd) {
     console.log('🆕 New leads found:', newLeads.length);
 
     // Check status fields - match the EXACT logic from /api/leads/stats for consistency
-    // Contacted: Only check fe_lead_status (matches visit_requested: fe_lead_status: 'Contacted')
-    const contactedLeads = leads.filter(lead => 
-      lead.fe_lead_status === 'Contacted'
-    ).length;
+    // Contacted = the customer actually talked to us (app/lib/contactedLeads.js, client 10 Oct 2026), the same rule as
+    // the dashboard card - never a status that was set, and never the lead email itself.
+    const contactedLeads = (await contactedLeadIds(leads.map((lead) => lead._id))).length;
     
     // Appointment: Check booking_status (matches appointment_booked: booking_status: true)
     const appointmentLeads = leads.filter(lead => 
