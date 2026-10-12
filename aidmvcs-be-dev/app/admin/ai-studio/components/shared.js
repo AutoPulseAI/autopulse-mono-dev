@@ -92,3 +92,80 @@ export const summary = (message) => {
   if (message.mode === "ai") return `AI writes: ${message.instruction || ""}`;
   return fill(message.text || message.fallback || "");
 };
+
+// A built-in match pattern, as the plain words and phrases it looks for ("\b(credit|approv\w*|bad credit)\b" ->
+// ["credit", "approv…", "bad credit"]) - nobody should have to read a pattern.
+const splitTop = (text) => {
+  const parts = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of text) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "|" && depth === 0) { parts.push(cur); cur = ""; } else cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+};
+
+// "financ\w* (with|for) (bad|low|no)" -> every combination, as plain words.
+const expand = (text) => {
+  const m = text.match(/\((?:\?:)?([^()]*)\)\??/);
+  if (!m) return [text];
+  const optional = m[0].endsWith("?");
+  const choices = [...splitTop(m[1]), ...(optional ? [""] : [])];
+  return choices.flatMap((c) => expand(text.replace(m[0], c))).slice(0, 24);
+};
+
+const tidy = (raw) => raw
+  .replace(/\\b|\^|\$/g, "")
+  .replace(/\\s[+*]?|\\W\{[^}]*\}|\[\\s_-\]\*|\[\\s-\]\??/g, " ")
+  .replace(/\\w\*|\\w\+/g, "…")
+  .replace(/\\d\{?\d*,?\d*\}?/g, "#")
+  .replace(/(.)\?/g, "$1")
+  .replace(/\\(.)/g, "$1")
+  .replace(/\[[^\]]*\]/g, "")
+  .replace(/\{\d*,?\d*\}/g, "")
+  .replace(/\s+/g, " ")
+  .trim();
+
+// A built-in match pattern, as the plain words and phrases it looks for ("\b(credit|approv\w*|bad credit)\b" ->
+// ["credit", "approv…", "bad credit"]) - nobody should have to read a pattern.
+export function patternToWords(pattern) {
+  let text = String(pattern || "").trim();
+  const outer = text.match(/^\\b\((.*)\)\\b$/);
+  if (outer && !/^\\b\(.*\)\\b\|/.test(text)) text = outer[1];
+  const words = splitTop(text).flatMap(expand).map(tidy).filter((w) => w.length > 1 && !/[\\[\]{}()|]/.test(w));
+  return [...new Set(words)];
+}
+
+export function WordChips({ words, onChange, readOnly, placeholder = "Add a word or phrase and press Enter" }) {
+  const add = (e) => {
+    if (e.key !== "Enter" && e.key !== ",") return;
+    e.preventDefault();
+    const value = e.currentTarget.value.trim();
+    if (value && !words.includes(value)) onChange([...words, value]);
+    e.currentTarget.value = "";
+  };
+  return (
+    <div className="border rounded p-2 bg-white">
+      <div className="d-flex flex-wrap gap-1">
+        {words.map((w) => (
+          <span key={w} className="badge rounded-pill text-bg-light border d-inline-flex align-items-center gap-1"
+            style={{ fontSize: 13, fontWeight: 500 }}>
+            {w}
+            {!readOnly && <span role="button" className="text-danger" onClick={() => onChange(words.filter((x) => x !== w))}>
+              ✕</span>}
+          </span>
+        ))}
+        {!readOnly && <input onKeyDown={add} placeholder={placeholder} className="border-0 flex-grow-1"
+          style={{ minWidth: 220, outline: "none", fontSize: 13 }} />}
+      </div>
+    </div>
+  );
+}
+
+export function HowTo({ children }) {
+  return <div className="small p-2 mb-3 rounded" style={{ background: "#fff8e6", border: "1px solid #f3dfa3" }}>
+    <strong>How to edit: </strong>{children}</div>;
+}

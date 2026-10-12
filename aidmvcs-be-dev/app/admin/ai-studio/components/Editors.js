@@ -3,7 +3,7 @@
 // lead sources, single messages, status rules and prompts.
 import { useState } from "react";
 import { Badge, Button, Card, Col, Form, Row, Table } from "react-bootstrap";
-import { MessageBlock, STATUS_OPTIONS, summary } from "./shared";
+import { HowTo, MessageBlock, STATUS_OPTIONS, WordChips, patternToWords, summary } from "./shared";
 
 const CHANNELS = { sms: "Text", email: "Email", call_task: "Call task" };
 
@@ -18,6 +18,8 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly }) {
   };
   return (
     <div>
+      <HowTo>click a touch to change its day, channels and message. Use ↑ ↓ to change the order, ✕ to remove a touch,
+        and &quot;+ Add touch&quot; at the bottom to add one. Then Save draft and Publish.</HowTo>
       <div className="small text-muted mb-2">
         {content.every && <>Repeats every <strong>{content.every}</strong>. </>}
         {content.stops_when && <>Stops when: {content.stops_when.join(", ")}. </>}
@@ -84,20 +86,17 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly }) {
   );
 }
 
-const readable = (pattern) => String(pattern || "").replace(/\\[sb]\*?/g, " ").replace(/[()?:^$\\]/g, "")
-  .split("|").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
 
 export function BucketEditor({ content, onChange, readOnly, agents }) {
-  const sources = readable(content.source_pattern);
+  const sources = content.sources || patternToWords(content.source_pattern);
   return (
     <div>
+      <HowTo>type a lead source name and press Enter to add it, or ✕ to remove one. Choose the agent that leads this
+        bucket, then Save draft and Publish.</HowTo>
       <Form.Group className="mb-3">
         <Form.Label className="fw-semibold">Lead sources that go into this bucket</Form.Label>
-        <div className="d-flex flex-wrap gap-1 mb-2">{sources.map((s) => <Badge key={s} bg="info">{s}</Badge>)}</div>
-        <Form.Control size="sm" disabled={readOnly} placeholder="Add sources, separated by commas"
-          value={(content.extra_sources || []).join(", ")}
-          onChange={(e) => onChange({ ...content, extra_sources: e.target.value.split(",").map((x) => x.trim())
-            .filter(Boolean) })} />
+        <WordChips words={sources} readOnly={readOnly} placeholder="Add a lead source (e.g. Dealer Inspire) and press Enter"
+          onChange={(next) => onChange({ ...content, sources: next })} />
       </Form.Group>
       <Form.Group className="mb-3">
         <Form.Label className="fw-semibold">Agent that leads this bucket</Form.Label>
@@ -130,9 +129,17 @@ export function AgentEditor({ content, onChange, readOnly }) {
   );
   return (
     <div>
+      <HowTo>change how this agent talks, what it must never do, and the words that bring it in (press Enter to add a
+        word, ✕ to remove). Then Save draft and Publish.</HowTo>
       {area("playbook", "How this agent talks and what it leans on", 4)}
       {area("never", "Never does", 2)}
-      {area("steps_in_when", "Steps in when the customer talks about", 2, "Words or a pattern")}
+      <Form.Group className="mb-3">
+        <Form.Label className="fw-semibold">This agent takes over when the customer mentions</Form.Label>
+        <WordChips words={content.keywords || patternToWords(content.steps_in_when)} readOnly={readOnly}
+          onChange={(next) => onChange({ ...content, keywords: next })} />
+        <Form.Text muted>If a message includes any of these, this agent answers it. &quot;…&quot; means any ending
+          (approv… = approve, approved, approval).</Form.Text>
+      </Form.Group>
       <Form.Group className="mb-2">
         <Form.Label className="fw-semibold">Example conversations (one per box: what a great reply looks like)</Form.Label>
         {(content.examples || []).map((ex, i) => (
@@ -153,13 +160,9 @@ export function AgentEditor({ content, onChange, readOnly }) {
 export function SourceEditor({ content, onChange, readOnly }) {
   return (
     <div>
-      <div className="d-flex flex-wrap gap-1 mb-3">{readable(content.pattern).map((s) => <Badge key={s} bg="info">{s}</Badge>)}</div>
-      <Form.Group className="mb-2">
-        <Form.Label className="fw-semibold">Add sources (comma separated)</Form.Label>
-        <Form.Control size="sm" disabled={readOnly} value={(content.extra_sources || []).join(", ")}
-          onChange={(e) => onChange({ ...content, extra_sources: e.target.value.split(",").map((x) => x.trim())
-            .filter(Boolean) })} />
-      </Form.Group>
+      <HowTo>type a source name and press Enter to add it, ✕ to remove one. Then Save draft and Publish.</HowTo>
+      <WordChips words={content.sources || patternToWords(content.pattern)} readOnly={readOnly}
+        placeholder="Add a lead source and press Enter" onChange={(next) => onChange({ ...content, sources: next })} />
       {content.note && <div className="small text-muted">{content.note}</div>}
     </div>
   );
@@ -213,6 +216,12 @@ export function PromptEditor({ content, onChange, readOnly }) {
 }
 
 export function SingleMessage({ content, onChange, placeholders, readOnly }) {
-  return <MessageBlock message={content.message} placeholders={placeholders} readOnly={readOnly}
-    onChange={(message) => onChange({ ...content, message })} />;
+  return (
+    <div>
+      <HowTo>choose how the message is written, type it (click a {"{placeholder}"} button to insert the customer&apos;s
+        name, vehicle and so on), check the preview, then Save draft and Publish.</HowTo>
+      <MessageBlock message={content.message} placeholders={placeholders} readOnly={readOnly}
+        onChange={(message) => onChange({ ...content, message })} />
+    </div>
+  );
 }

@@ -5,7 +5,7 @@
 // are pills (AI carries on, End, Book, Dealership Action Required). Clicking a box opens just that step in a side panel.
 import { useState } from "react";
 import { Badge, Button, Form, Offcanvas } from "react-bootstrap";
-import { MessageBlock, OUTCOME_LABELS, STATUS_OPTIONS, fill } from "./shared";
+import { HowTo, MessageBlock, OUTCOME_LABELS, STATUS_OPTIONS, WordChips, fill, patternToWords } from "./shared";
 
 let counter = 0;
 const newId = () => `step_${Date.now().toString(36)}_${(counter += 1)}`;
@@ -37,11 +37,11 @@ const setAt = (root, path, node) => {
   return { ...root, branches };
 };
 
-function Box({ node, path, onOpen, selected }) {
+function Box({ node, path, onOpen, selected, actions }) {
   const escalates = (node.also || []).includes("dealership_action_required");
   const isSelected = selected && selected.join(".") === path.join(".");
   return (
-    <div role="button" onClick={() => onOpen(path)} className="shadow-sm"
+    <div className="shadow-sm"
       style={{ width: 230, flexShrink: 0, minHeight: 70, borderRadius: 10, padding: "8px 10px", background: "#fff",
         border: `2px solid ${isSelected ? "#0d6efd" : path.length ? "#c9d3e6" : "#0d6efd"}` }}>
       <div className="fw-semibold small">
@@ -49,6 +49,17 @@ function Box({ node, path, onOpen, selected }) {
         {escalates && <span title="Also sets Dealership Action Required"> ⚠</span>}
       </div>
       <div className="small text-muted" style={{ lineHeight: 1.25 }}>{firstLine(node.message)}</div>
+      <div className="d-flex gap-1 mt-2">
+        <button type="button" className="btn btn-sm btn-outline-primary py-0 px-2" onClick={() => onOpen(path)}>✎ Edit</button>
+        {actions && !actions.readOnly && (
+          <>
+            <button type="button" className="btn btn-sm btn-outline-success py-0 px-2"
+              onClick={() => actions.addNext(path)}>+ Next step</button>
+            {path.length > 0 && <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2"
+              onClick={() => actions.remove(path)}>🗑</button>}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -61,11 +72,11 @@ function Pill({ then }) {
   );
 }
 
-function MapNode({ node, path, onOpen, selected }) {
+function MapNode({ node, path, onOpen, selected, actions }) {
   const branches = node.branches || [];
   return (
     <div className="d-flex align-items-start">
-      <Box node={node} path={path} onOpen={onOpen} selected={selected} />
+      <Box node={node} path={path} onOpen={onOpen} selected={selected} actions={actions} />
       {branches.length > 0 && (
         <div className="d-flex flex-column gap-3 ps-2" style={{ borderLeft: "2px solid #c9d3e6", marginLeft: 0 }}>
           {branches.map((b, i) => (
@@ -78,7 +89,8 @@ function MapNode({ node, path, onOpen, selected }) {
               </div>
               <div style={{ paddingTop: b.then?.action === "ask" ? 0 : 18 }}>
                 {b.then?.action === "ask" && b.then.node
-                  ? <MapNode node={b.then.node} path={[...path, i]} onOpen={onOpen} selected={selected} />
+                  ? <MapNode node={b.then.node} path={[...path, i]} onOpen={onOpen} selected={selected}
+                    actions={actions} />
                   : <Pill then={b.then} />}
               </div>
             </div>
@@ -166,6 +178,15 @@ export function WorkflowEditor({ content, onChange, placeholders, readOnly }) {
   const tree = content.tree;
   const node = open ? getAt(tree, open) : null;
   const update = (path, next) => onChange({ ...content, tree: setAt(tree, path, next) });
+  const addNext = (path) => {
+    const parent = getAt(tree, path);
+    const used = new Set((parent.branches || []).map((b) => b.when?.value));
+    const answer = ["yes", "no", "anything_else"].find((a) => !used.has(a)) || "no_reply";
+    const branches = [...(parent.branches || []).filter((b) => !(b.when?.value === answer && b.then?.action !== "ask")),
+      { when: { type: "reply", value: answer }, then: { action: "ask", node: newNode() } }];
+    update(path, { ...parent, branches });
+    setOpen([...path, branches.length - 1]);
+  };
   const removeAt = (path) => {
     const parent = path.slice(0, -1);
     const parentNode = getAt(tree, parent);
@@ -178,15 +199,15 @@ export function WorkflowEditor({ content, onChange, placeholders, readOnly }) {
     <div>
       <div className="p-3 mb-3 rounded" style={{ background: "#f3f6fb" }}>
         <div className="fw-semibold mb-1">Starts when the customer says…</div>
-        <Form.Control size="sm" placeholder="Words or phrases, separated by commas (e.g. buyer's order, purchase order)"
-          disabled={readOnly} value={phrases.join(", ")}
-          onChange={(e) => onChange({ ...content, trigger: { ...trigger, type: "customer_says",
-            phrases: e.target.value.split(",").map((p) => p.trim()).filter(Boolean) } })} />
-        {trigger.pattern && !phrases.length && <div className="small text-muted mt-1">Using the built-in match.</div>}
+        <WordChips words={phrases.length ? phrases : patternToWords(trigger.pattern)} readOnly={readOnly}
+          placeholder="Add a phrase the customer would use (e.g. purchase order) and press Enter"
+          onChange={(next) => onChange({ ...content, trigger: { ...trigger, type: "customer_says", phrases: next } })} />
       </div>
-      <div className="small text-muted mb-2">Click a box to edit that message and what happens after it.</div>
+      <HowTo>each box is one message the AI sends; the arrows are the customer&apos;s answers. <b>✎ Edit</b> changes a
+        message and what happens after each answer. <b>+ Next step</b> adds a new message after this one (you choose the
+        answer that leads to it). <b>🗑</b> removes a step and everything after it. Then Save draft and Publish.</HowTo>
       <div className="p-3 border rounded" style={{ overflowX: "auto", background: "#fafbfd" }}>
-        {tree && <MapNode node={tree} path={[]} onOpen={setOpen} selected={open} />}
+        {tree && <MapNode node={tree} path={[]} onOpen={setOpen} selected={open} actions={{ readOnly, addNext, remove: removeAt }} />}
       </div>
       {node && (
         <StepPanel node={node} placeholders={placeholders} readOnly={readOnly} onClose={() => setOpen(null)}
