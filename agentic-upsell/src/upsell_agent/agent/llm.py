@@ -422,6 +422,9 @@ Rules:
   details", no budget, deal, wallet, payment or "just browsing" details from the portal's lead, nothing about how
   they found us. Use the lead only to know what they want. touch1.price_line (when given) is placed by the
   dealership right after the introduction: don't repeat or change the price.
+- ask_name (only when true): we don't have the customer's name. Greet them without a name ("Hi there," / "Hi,") and
+  ask "May I have your name?" once - it counts as one of the message's (at most two) questions. Never write a
+  placeholder like "Null", "Name" or "Customer" as their name.
 - touch (only when this message is a scheduled follow-up - MASTER_PLAN_3 C4, Omnichannel PDF §3-§4):
   touch.label and touch.instruction say what this one is about. Follow the instruction, keep it short and
   easy to answer, and don't repeat a question they have already answered. If touch.fixed_text is given, that

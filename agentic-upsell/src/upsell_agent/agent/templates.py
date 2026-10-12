@@ -10,6 +10,7 @@ the never-invent rule. They ask one question, matching the first slot the
 lead type needs.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -109,13 +110,29 @@ def first_name(full_name: str | None) -> str:
     """First word of the customer's name, title-cased and capped in length, or
     a neutral greeting when there's nothing usable (e.g. an SMS-only lead
     whose name the platform never learned)."""
-    if not full_name:
-        return FALLBACK_NAME
-    first = str(full_name).strip().split()[0] if str(full_name).strip() else ""
-    first = "".join(ch for ch in first if ch.isalpha() or ch in "-'")
-    if not first:
-        return FALLBACK_NAME
-    return first[:FIRST_NAME_MAX_CHARS].capitalize()
+    return known_first_name(full_name) or FALLBACK_NAME
+
+
+# Client, 12 Oct 2026 (Betsy: "Hello again, Null" and "Sorry for the wait, Name" went to customers): what portals and
+# forms put in the name field when there is no name. Never a name.
+NOT_A_NAME = frozenset({"null", "none", "nil", "undefined", "name", "names", "first", "firstname", "last",
+                        "lastname", "fullname", "customer", "client", "guest", "lead", "unknown", "na", "n/a", "nobody",
+                        "noname", "test", "there", "sir", "madam", "mr", "mrs", "ms"})
+
+
+def known_first_name(full_name: str | None) -> str | None:
+    """The customer's real first name, or None when the record has none (empty, "null null", "Name", an email or a
+    number) - then the AI greets without a name and asks for it."""
+    text = str(full_name or "").strip()
+    if not text or "@" in text:
+        return None
+    for word in text.replace(",", " ").split():
+        first = "".join(ch for ch in word if ch.isalpha() or ch in "-'")
+        if first and first.lower().strip("-'") not in NOT_A_NAME and len(first) > 1:
+            return first[:FIRST_NAME_MAX_CHARS].capitalize()
+        if first.lower() not in NOT_A_NAME:
+            break
+    return None
 
 
 def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dict[str, str]:
@@ -207,7 +224,7 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
         line, asked = CONTINUE_NOTED.format(name=name), []
     body = f"Hi {name},\n\n{line.split('. ', 1)[1] if '. ' in line else line}" + _SIGN_OFF.format(team="Customer Care")
     return {
-        "sms_text": line,
+        "sms_text": without_missing_name(line),
         "email_subject": "Following up",
         "email_body": body,
         "template": "continue",
@@ -250,13 +267,19 @@ HOLDING_REPLIES: dict[str, Template] = {
 HOLDING_PROMISE = "A member of the team will reach out shortly."
 
 
+def without_missing_name(text: str) -> str:
+    """With no real name (known_first_name is None), ", there" in a sentence reads oddly ("Sorry for the wait,
+    there."): drop it. "Hi there," stays."""
+    return re.sub(r",\s+there(?=[.!?])", "", text)
+
+
 def render_holding_reply(kind: str, full_name: str | None) -> dict[str, Any]:
     template = HOLDING_REPLIES[kind]
     name = first_name(full_name)
     return {
-        "sms_text": template.sms.format(name=name),
+        "sms_text": without_missing_name(template.sms.format(name=name)),
         "email_subject": template.email_subject,
-        "email_body": template.email_body.format(name=name),
+        "email_body": without_missing_name(template.email_body.format(name=name)),
         "template": kind,
         "asks": {"sms": [], "email": []},
         "promises": [HOLDING_PROMISE],

@@ -111,7 +111,7 @@ export function customerFromLeadEmail(text, senderEmail) {
     try {
       const adf = parseAdfLeadEmail(text);
       if (adf) {
-        return { kind: 'adf', name: adf.name || undefined, email: adf.email ? adf.email.toLowerCase() : undefined,
+        return { kind: 'adf', name: realName(adf.name), email: adf.email ? adf.email.toLowerCase() : undefined,
           phone: adf.phone ? String(adf.phone).replace(/\D/g, '').slice(-10) || undefined : undefined,
           comments: adf.comments || '', source: adf.source || 'ADF/XML', vehicle: adfVehicle(adf.vehicle) };
       }
@@ -121,10 +121,20 @@ export function customerFromLeadEmail(text, senderEmail) {
   }
   const plain = parsePlainLeadEmail(text, senderEmail);
   if (plain && (isPortalSender(senderEmail) || !senderEmail)) {
-    return { kind: 'portal', ...plain, vehicle: plainVehicle(text), comments: String(text || '').slice(0, 2000),
+    return { kind: 'portal', ...plain, name: realName(plain.name), vehicle: plainVehicle(text), comments: String(text || '').slice(0, 2000),
       source: String(senderEmail || '').split('@')[1] || 'email' };
   }
   return null;
+}
+
+// What portals put in the name field when there is no name ("null null", "Name", "undefined"): never saved as the
+// customer's name (client, 12 Oct 2026 - a customer got "Hello again, Null").
+export function realName(value) {
+  const name = String(value || '').replace(/\b(null|undefined|none|nil|n\/a)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (!name || /^(name|customer|client|guest|lead|unknown|first name|last name)$/i.test(name) || /@/.test(name)) {
+    return undefined;
+  }
+  return name;
 }
 
 // The vehicle a lead email is about, kept on the Lead so the AI never asks "which vehicle" (client, 12 Oct 2026).

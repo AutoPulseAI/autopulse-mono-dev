@@ -30,11 +30,15 @@ _ONE = re.compile(r"\b(just one|only one|one (car|vehicle|of them)|comparing|com
 
 def vehicle_label(lead: dict | None) -> str | None:
     lead = lead or {}
-    parts = [str(lead.get(k) or "").strip() for k in ("year", "make", "model")]
-    if any(parts):
-        return " ".join(p for p in parts if p)
     data = lead.get("data") or {}
-    return str(data.get("vehicle") or lead.get("vehicle") or "").strip() or None
+    # The lead's own fields, else the lead email's vehicle the CRM keeps in data.vehicle (a dict since 12 Oct 2026 -
+    # read field by field: printing the dict sent "{'year': ... 'vin': ...}" to a customer).
+    vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
+    parts = [str(lead.get(k) or vehicle.get(k) or "").strip() for k in ("year", "make", "model")]
+    if parts[1] or parts[2]:
+        return " ".join(p for p in parts if p)
+    text = data.get("vehicle") if isinstance(data.get("vehicle"), str) else lead.get("vehicle")
+    return str(text or "").strip() or None
 
 
 def question_text(first_name: str | None, vehicle: str | None) -> dict[str, str]:

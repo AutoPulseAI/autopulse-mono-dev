@@ -192,7 +192,7 @@ async def run_turn(
         channel=channel, turn_id=tracer.turn_id, inbound_text=inbound_text, shadow=shadow,
         new_message_ids=[str(m["id"]) for m in batch],
         first_reply_via_template=(trigger == "lead_created" and settings.first_reply_mode == "template"),
-        customer_name=(customer or {}).get("name") or (lead or {}).get("name"),
+        customer_name=await _customer_name(db, customer_id, lead_id, customer, lead),
     )
     deadline = settings.first_reply_deadline_s if trigger == "lead_created" else settings.reply_deadline_s
 
@@ -339,6 +339,9 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            if decision.get("ask_name"):
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                                         {"$set": {"name_asked": clock.now()}})
             if "buyers_order" in decision:
                 # The buyer's order sequence's next step (agent/buyers_order.py), kept once the reply went out.
                 step = decision["buyers_order"]
@@ -659,6 +662,22 @@ async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decisi
         return
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": kind, "text": text}}})
+
+
+async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead_id: str | None,
+                         customer: dict | None, lead: dict | None) -> str | None:
+    """The name to greet the customer by: the CRM's, unless it isn't a real name ("null null", "Name" - client,
+    12 Oct 2026), then the one the customer gave us in the conversation (slot contact.name), else none."""
+    from upsell_agent.agent.templates import known_first_name
+    for name in ((customer or {}).get("name"), (lead or {}).get("name")):
+        if known_first_name(name):
+            return name
+    if customer_id:
+        from upsell_agent.slots.store import current_facts
+        for fact in await current_facts(db, customer_id, lead_id):
+            if fact.get("path") == "contact.name" and known_first_name(fact.get("value")):
+                return str(fact["value"])
+    return None
 
 
 async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:

@@ -911,6 +911,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["cannot_supply"] = {"topic": "buyers_order", "text": order.text, "offers_times": False,
                                      "escalates": order.escalates}
         decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
+    # Client, 12 Oct 2026 (Betsy): "If the name is null please ask for the customer's name. We need to obtain data to
+    # make an appointment." Once per conversation, never over a script, a handoff or a stop.
+    from upsell_agent.agent.templates import known_first_name
+    decision["ask_name"] = bool(
+        not known_first_name(state.customer_name) and not (ctx.lead_state or {}).get("name_asked")
+        and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
+        and decision["action"] not in ("stop", "handoff", "offer_human"))
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
