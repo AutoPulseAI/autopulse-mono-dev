@@ -136,7 +136,7 @@ export default function AiStudioPage() {
       )}
 
       <Row>
-        <Col md={3}>
+        <Col md={section === "workflows" ? 2 : 3}>
           {!list && <Spinner size="sm" />}
           {current.types.map((type) => {
             const rows = inSection.filter((i) => i.type === type);
@@ -160,7 +160,7 @@ export default function AiStudioPage() {
             );
           })}
         </Col>
-        <Col md={9}>
+        <Col md={section === "workflows" ? 10 : 9}>
           {item && draft && current.types.includes(item.type) && (
             <Card>
               <Card.Header className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
