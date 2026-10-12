@@ -117,6 +117,9 @@ SLOTS: list[SlotDef] = [
     SlotDef("service.last_visit", "Last service visit", "service", "date", "customer", None, None),
     SlotDef("appointment.next_date", "Next appointment", "appointment", "date", "customer", None, None),
     # --- Contact ---
+    # Client, 12 Oct 2026 (Betsy: "If the name is null please ask for the customer's name"): taken when they give it,
+    # asked by the AI when the lead has no real name (agent/nodes/decide.py).
+    SlotDef("contact.name", "Customer's name", "contact", "text", "customer", None, None, volunteered=True),
     SlotDef("contact.best_time", "Best time to reach", "contact", "enum", "customer", 90, 180 * DAYS,
             "what time of day works best for you",
             ("morning", "afternoon", "evening", "weekend", "anytime")),

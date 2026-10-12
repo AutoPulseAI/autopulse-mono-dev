@@ -18,7 +18,7 @@ from typing import Any
 from upsell_agent import clock
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
-from upsell_agent.agent.templates import render_holding_reply
+from upsell_agent.agent.templates import known_first_name, render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
     find_customer,
@@ -183,7 +183,6 @@ async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: Le
     """agent/multi_vehicle.py: the "Hello again" question on the customer's conversation, when their open lead is
     under 30 days old. Fixed wording, text and email, once per new lead; not while staff own the conversation."""
     from upsell_agent.agent import multi_vehicle
-    from upsell_agent.agent.templates import first_name
     from upsell_agent.scheduler.sold_lifecycles import _send_both
 
     if event.shadow:
@@ -198,7 +197,7 @@ async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: Le
     turn_id = f"multi-vehicle-{event.lead_id}"
     if await _already_sent(db, turn_id):
         return {"status": "already_answered", "turn_id": turn_id}
-    text = multi_vehicle.question_text(first_name((lead or {}).get("name")) if (lead or {}).get("name") else None,
+    text = multi_vehicle.question_text(known_first_name((lead or {}).get("name")),
                                        multi_vehicle.vehicle_label(lead))
     tracer = TurnTracer(sink=deps.sink, dealer_id=db.dealer_id, lead_id=primary_id, customer_id=event.customer_id,
                         trigger="multi_vehicle_question", channel=event.channel, store_prompts=deps.store_prompts,

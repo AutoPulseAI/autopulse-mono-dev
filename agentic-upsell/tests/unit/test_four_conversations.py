@@ -151,3 +151,26 @@ def test_a_dealer_website_form_is_the_customer_reaching_out():
     assert origin_from_records({"source": "Dealer Inspire/Get E-Price"}, {}, from_campaign=False).origin == "inbound"
     assert origin_from_records({"source": "?", "data": {"created_by": "ai_live_inbound_adf"}}, {},
                                from_campaign=False).origin == "inbound"
+
+
+def test_a_placeholder_name_is_never_used():
+    # Client, 12 Oct 2026 (Betsy): "Hello again, Null" and "Sorry for the wait, Name" went to customers.
+    from upsell_agent.agent.templates import first_name, known_first_name, render_holding_reply
+    for junk in ("null null", "Null", "Name", "undefined", "", None, "customer", "jane@x.com", "12345"):
+        assert known_first_name(junk) is None, junk
+        assert first_name(junk) == "there"
+    assert known_first_name("Megan NoLastName140826066") == "Megan"
+    assert known_first_name("FERRIOLO,ANTONI") == "Ferriolo"
+    held = render_holding_reply("still_waiting", "Name")["sms_text"]
+    assert held.startswith("Sorry for the wait.") and "Name" not in held
+
+
+def test_the_repeat_lead_question_names_the_vehicle_not_its_record():
+    # Betsy, 12 Oct 2026: "thank you for inquiring about our {'year': ... 'vin': ...}".
+    from upsell_agent.agent.multi_vehicle import question_text, vehicle_label
+    lead = {"name": "null null", "data": {"vehicle": {"year": "2020", "make": "Mercedes-Benz", "model": "C-Class",
+                                                      "vin": "WDDWF8DB7LR556332", "stock": "2634CT", "trim": "C 300"}}}
+    assert vehicle_label(lead) == "2020 Mercedes-Benz C-Class"
+    text = question_text(None, vehicle_label(lead))["sms_text"]
+    assert text.startswith("Hello again, thank you for inquiring about our 2020 Mercedes-Benz C-Class.")
+    assert "{" not in text and "Null" not in text

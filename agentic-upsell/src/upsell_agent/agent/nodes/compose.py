@@ -226,6 +226,7 @@ def compose_payload(state: AgentState, link_plan: LinkPlan | None = None) -> dic
         # that we're checking back as they asked.
         # MASTER_PLAN_3 C4: Touch 1's required opening and closing, and the cadence touch's theme.
         "touch1": decision.get("touch1"),
+        "ask_name": bool(decision.get("ask_name")),
         "touch": decision.get("touch"),
         "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
         # MASTER_PLAN_4 F3 / conversation_7: which link placeholder(s) to write, if any (agent/link_resolver.py).
