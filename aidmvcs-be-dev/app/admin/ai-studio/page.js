@@ -107,7 +107,7 @@ export default function AiStudioPage() {
   const published = item?.versions.find((v) => v.version === item.published_version);
 
   return (
-    <div className="container-fluid py-3">
+    <div className="container-fluid py-3" style={{ background: "#f7f8fb", minHeight: "100vh" }}>
       <div className="d-flex justify-content-between align-items-center mb-2">
         <div>
           <h4 className="mb-0">AI Studio</h4>
@@ -123,7 +123,7 @@ export default function AiStudioPage() {
         isn&apos;t reading these settings yet, so nothing here changes a customer message until the next update connects it.
       </Alert>
 
-      <Nav variant="tabs" activeKey={section} onSelect={(k) => { setSection(k); setSelected(null); setItem(null); }}
+      <Nav variant="pills" activeKey={section} onSelect={(k) => { setSection(k); setSelected(null); setItem(null); }}
         className="mb-3">
         {SECTIONS.map((s) => <Nav.Item key={s.key}><Nav.Link eventKey={s.key}>{s.label}</Nav.Link></Nav.Item>)}
       </Nav>
@@ -147,12 +147,16 @@ export default function AiStudioPage() {
                   {TYPE_TITLES[type]}</div>}
                 {rows.map((i) => (
                   <div key={i.id} role="button" onClick={() => setSelected(i.id)}
-                    className={`p-2 rounded mb-1 ${selected === i.id ? "bg-primary text-white" : "bg-light"}`}>
-                    <div className="small fw-semibold">{i.name}</div>
-                    <div className="d-flex gap-1 mt-1">
-                      {i.published_version && <Badge bg="success">v{i.published_version} live</Badge>}
-                      {i.draft_version && <Badge bg="warning" text="dark">draft v{i.draft_version}</Badge>}
-                      {i.locked && <Badge bg="secondary">locked</Badge>}
+                    className="mb-1" style={{ padding: "9px 12px", borderRadius: 10, cursor: "pointer",
+                      background: selected === i.id ? "#3b7ddd" : "#fff", color: selected === i.id ? "#fff" : "#1f2a44",
+                      boxShadow: selected === i.id ? "none" : "0 1px 2px rgba(30,60,120,.08)" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{i.name}</div>
+                    <div className="d-flex gap-3 mt-1" style={{ fontSize: 11.5,
+                      color: selected === i.id ? "rgba(255,255,255,.85)" : "#6b7a90" }}>
+                      {i.published_version && <span><span style={{ color: selected === i.id ? "#b9f5c9" : "#27ae60" }}>●</span>
+                        {" "}Live · v{i.published_version}</span>}
+                      {i.draft_version && <span><span style={{ color: "#f0a500" }}>●</span> Draft v{i.draft_version}</span>}
+                      {i.locked && <span>🔒 Locked</span>}
                     </div>
                   </div>
                 ))}

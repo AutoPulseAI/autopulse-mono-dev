@@ -28,7 +28,8 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly }) {
       {steps.map((s, i) => (
         <div key={i} className="d-flex gap-3">
           <div className="text-center" style={{ width: 90 }}>
-            <Badge bg="primary" className="w-100 py-2">{s.when || (s.day ? `Day ${s.day}` : `Touch ${i + 1}`)}</Badge>
+            <span className="d-block w-100 py-1" style={{ background: "#e8f0fd", color: "#2c5aa0", borderRadius: 20,
+              fontSize: 12, fontWeight: 600 }}>{s.when || (s.day ? `Day ${s.day}` : `Touch ${i + 1}`)}</span>
             {i < steps.length - 1 && <div className="mx-auto" style={{ width: 2, height: "100%", minHeight: 24,
               background: "#c9d3e6" }} />}
           </div>
