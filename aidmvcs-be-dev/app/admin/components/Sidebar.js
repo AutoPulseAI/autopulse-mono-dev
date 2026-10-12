@@ -59,6 +59,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-chart-column"></i>Dashboard
           </Link>
         </li>
+        {/* Client, 13 Oct 2026: everything the AI uses, editable with full history (super admin). */}
+        <li>
+          <Link href="/admin/ai-studio" className={getLinkClass("/admin/ai-studio")}>
+            <i className="fa-regular fa-robot"></i>AI Studio
+          </Link>
+        </li>
 
         {useCan("Manage Agency") && (
           <li>
