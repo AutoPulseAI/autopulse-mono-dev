@@ -173,6 +173,18 @@ async def find_stock(dealer_id: str, criteria: InventoryCriteria, source: Invent
         search.excluded = found.excluded
         if found.records:
             break
+        if step == "exact" and c.model and not c.trim and not c.exterior_color and not found.matched:
+            # Client, 12 Oct 2026 (Betsy: "if the trim matches, offer a matched trim, since the customer referred to a
+            # Mach-E"): a name that isn't a model in this feed may be a trim - the same vehicle, so still exact.
+            as_trim = c.model_copy(update={"model": None, "trim": c.model})
+            again = await _try(dealer_id, as_trim, source)
+            search.attempts.append({"step": "model_as_trim", "params": again.params, "matched": again.matched,
+                                    "found": len(again.records)})
+            if again.records:
+                c = as_trim
+                search.records, search.matched, search.params = again.records, again.matched, again.params
+                search.excluded = again.excluded
+                break
         step, c = await _loosen(dealer_id, c, source, loosened)
     search.final_query = c.model_dump(exclude_none=True)
     search.cached = cached
