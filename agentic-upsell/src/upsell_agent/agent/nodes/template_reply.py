@@ -23,8 +23,20 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     """The first-reply template, or (PLAN_4 stream Q) once the conversation has started, the continue template
     built from Decide's plan (agent/templates.render_continue_reply) - never "new or used?" out of the blue."""
     spanish = (decision or {}).get("reply_language") == "Spanish"
-    draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
-             if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
+    touch1 = (decision or {}).get("touch1") or {}
+    if not mid_conversation and not spanish and touch1.get("intro"):
+        # Client, 12 Oct 2026 (Betsy: "why is AI not introducing self based on FTC compliance? why is it passing to the
+        # team?"): even the safety-net first reply opens with the FTC introduction ("this is Angela, <Dealer>'s AI Sales
+        # Manager, following up on your interest in ...") and asks the closing question - it never says the team
+        # will follow up instead of the AI working the lead.
+        ending = touch1.get("ending") or "How can I help you today?"
+        line = f"{touch1['intro']} {ending}".strip()
+        draft = {"sms_text": line, "email_subject": "Your inquiry",
+                 "email_body": f"{touch1['intro']}\n\n{ending}\n\nThank you",
+                 "template": "first_reply_ftc", "asks": {"sms": [], "email": []}, "promises": []}
+    else:
+        draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
+                 if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
     draft["why"] = why
     return draft
 

@@ -12,6 +12,11 @@ def test_handoffs_that_need_a_manager():
 
 
 def test_handoffs_that_are_not_escalations():
-    for reason in ("Customer asked for a person - wants a call", "Customer asked for a person",
-                   "AI couldn't write a safe reply", "", None):
+    for reason in ("AI couldn't write a safe reply", "", None):
         assert manager_escalation(reason) is None, reason
+
+
+def test_asking_for_a_person_is_dealership_action_required():
+    # Client, 12 Oct 2026 (Betsy).
+    for reason in ("Customer asked for a person - wants a call", "Customer asked for a person"):
+        assert manager_escalation(reason), reason

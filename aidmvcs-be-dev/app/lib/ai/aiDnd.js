@@ -180,7 +180,7 @@ export async function markLeadClosedFromAi(body, {
     // The same follow-ups as when staff set it (app/api/conversations/lead/status): one escalation flow.
     await createManagerialReviewMessages(lead._id, body.dealer_id);
     await notifyManagers({ dealerId: body.dealer_id, leadId: body.lead_id,
-      title: 'A lead needs a manager (Managerial Review)', detail: body.reason || '' });
+      title: 'Dealership action required', detail: body.reason || '' });
   }
   return { found: true, updated: true, previous: current };
 }

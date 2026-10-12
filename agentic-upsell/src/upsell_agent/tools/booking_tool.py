@@ -350,7 +350,7 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
             if fresh:
                 return PickResult(matched=fresh)
         wanted = datetime.combine(date.fromisoformat(days[0]), at, tzinfo=dealer.tz)
-        return PickResult(ambiguous=True, note=f"{days[0]} at {at.strftime('%H:%M')} isn't an open time", wanted=wanted)
+        return PickResult(ambiguous=True, note=f"{days[0]} at {at.strftime('%I:%M %p').lstrip('0')} isn't an open time", wanted=wanted)
     day = resolved.day
     same_day = [o for o in offered if o["date"] == day.isoformat()]
     if isinstance(resolved.value, datetime):
@@ -361,7 +361,8 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
         candidate = datetime.combine(day, resolved.value.time(), tzinfo=dealer.tz)
         if fresh := _fresh_pick(candidate, dealer, available):
             return PickResult(matched=fresh)
-        return PickResult(ambiguous=True, note=f"{day.isoformat()} at {target} isn't an open time", wanted=candidate)
+        shown = f"{day.strftime('%A')}, {day.strftime('%B')} {day.day} at {resolved.value.strftime('%I:%M %p').lstrip('0')}"
+        return PickResult(ambiguous=True, note=f"{shown} isn't an open time", wanted=candidate)
     if len(same_day) == 1:
         return PickResult(matched=same_day[0])
     if len(same_day) > 1:

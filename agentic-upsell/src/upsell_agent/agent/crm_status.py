@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # The AI's own closing events and the CRM status each one shows.
 CRM_STATUS_FOR_EVENT = {
     "day_91": "Closed - Lost",
+    "one_vehicle": "Closed - Lost",  # agent/multi_vehicle.py
     "no_longer_owns": "Closed - No Longer Owns",
 }
 # Client, 8 Oct 2026: the SOW's working stages shown as CRM statuses, set by the AI as the lead moves. The CRM

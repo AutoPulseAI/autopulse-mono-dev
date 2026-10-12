@@ -149,7 +149,11 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
         # linked to it; no first reply, no cadence, no second workflow.
         linked = await duplicates.link_duplicate(db, event.lead_id, event.customer_id, primary)
         restarted = await _restart_opportunity_clock(db, event, primary["lead_id"])
-        answered = await _answer_new_inquiry_on_primary(db, deps, event, lead, primary["lead_id"], received_at)
+        # Client, 12 Oct 2026: a second lead within 30 days gets "Hello again ... comparing models, or more than one
+        # vehicle?" (agent/multi_vehicle.py); after that, the new inquiry is answered as usual.
+        answered = await _ask_multi_vehicle(db, deps, event, lead, primary["lead_id"])
+        if answered.get("status") != "done":
+            answered = await _answer_new_inquiry_on_primary(db, deps, event, lead, primary["lead_id"], received_at)
         if restarted.get("cadence_started") and answered.get("status") == "done":
             restarted["cadence_touch"] = await plan_cadence_touch(
                 db, lead_id=primary["lead_id"], customer_id=event.customer_id, channel=event.channel,
@@ -172,6 +176,80 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     return await _first_reply(db, deps, customer_id=event.customer_id, lead_id=event.lead_id, lead=lead,
                               channel=event.channel, shadow=event.shadow,
                               received_at=_parse_received_at(received_at), turn_id=turn_id)
+
+
+async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent, lead: dict | None,
+                             primary_id: str) -> dict[str, Any]:
+    """agent/multi_vehicle.py: the "Hello again" question on the customer's conversation, when their open lead is
+    under 30 days old. Fixed wording, text and email, once per new lead; not while staff own the conversation."""
+    from upsell_agent.agent import multi_vehicle
+    from upsell_agent.agent.templates import first_name
+    from upsell_agent.scheduler.sold_lifecycles import _send_both
+
+    if event.shadow:
+        return {"status": "skipped", "reason": "shadow"}
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    primary_state = await states.find_one({"lead_id": primary_id}) or {}
+    if primary_state.get("status") in SILENT_STATUSES:
+        return {"status": "skipped", "reason": "staff own the conversation"}
+    started = lifecycle._aware(primary_state.get("opportunity_created_at"))
+    if not multi_vehicle.within_window(started, clock.now()):
+        return {"status": "skipped", "reason": "the open lead is older than 30 days"}
+    turn_id = f"multi-vehicle-{event.lead_id}"
+    if await _already_sent(db, turn_id):
+        return {"status": "already_answered", "turn_id": turn_id}
+    text = multi_vehicle.question_text(first_name((lead or {}).get("name")) if (lead or {}).get("name") else None,
+                                       multi_vehicle.vehicle_label(lead))
+    tracer = TurnTracer(sink=deps.sink, dealer_id=db.dealer_id, lead_id=primary_id, customer_id=event.customer_id,
+                        trigger="multi_vehicle_question", channel=event.channel, store_prompts=deps.store_prompts,
+                        turn_id=turn_id)
+    await tracer.start({"new_lead_id": event.lead_id, "text": text["sms_text"]})
+    doc = {"_id": event.lead_id, "kind": "multi_vehicle", "lead_id": primary_id, "customer_id": event.customer_id,
+           "to_channel": "sms" if event.channel == "sms" else "email"}
+    outcomes = await _send_both(db, deps, tracer, doc, text, "lead_response")
+    sent = any(o.status in ("sent", "duplicate") for o in outcomes)
+    await states.update_one({"lead_id": primary_id}, {"$set": {"multi_vehicle_question": {
+        "new_lead_id": event.lead_id, "asked_at": clock.now(), "answered": None}}})
+    log = await tracer.finish("multi_vehicle_question" if sent else "multi_vehicle_question_not_sent",
+                              {"sent": [{"channel": o.channel, "status": o.status} for o in outcomes]})
+    await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
+    return {"status": "done" if sent else "not_sent", "turn_id": turn_id}
+
+
+async def _resolve_multi_vehicle(db: DealerScopedDatabase, event: InboundMessageEvent, lead_id: str, state: dict,
+                                 text: str, lead: dict | None) -> dict[str, Any] | None:
+    """The customer's answer to the "Hello again" question (agent/multi_vehicle.py)."""
+    from upsell_agent.agent import multi_vehicle
+    question = multi_vehicle.open_question(state, clock.now())
+    if not question or event.shadow:
+        return None
+    answer = multi_vehicle.classify(text)
+    if answer is None:
+        return None
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    new_lead_id = question["new_lead_id"]
+    await states.update_one({"lead_id": lead_id}, {"$set": {"multi_vehicle_question.answered": answer,
+                                                             "multi_vehicle_question.answered_at": clock.now()}})
+    if answer == "one":
+        # The original lead closes as Closed - Lost; finishing it releases the new lead as the working lead.
+        change = await lifecycle.apply(db, lead_id, [lifecycle.Event(
+            "one_vehicle", source="customer_answer", reason=f"The customer is shopping for one vehicle: {text[:120]!r}")],
+            lead=lead, customer_id=event.customer_id)
+        return {"answer": "one", "closed": lead_id, "stage_change": change}
+    # Both: the new lead runs its own workflow too.
+    now = clock.now()
+    new_lead = await find_lead(db, new_lead_id)
+    await states.update_one({"lead_id": new_lead_id}, {
+        "$set": {"status": "active", "status_reason": None, "status_at": now, "duplicate_released_at": now,
+                 "released_from": lead_id},
+        "$unset": {"duplicate_of": ""}})
+    await lifecycle.apply(db, new_lead_id, [lifecycle.Event(
+        "lead_created", source="multi_vehicle_both", reason="The customer is interested in both vehicles")],
+        lead=new_lead, customer_id=event.customer_id)
+    await plan_cadence_touch(db, lead_id=new_lead_id, customer_id=event.customer_id,
+                             channel=((new_lead or {}).get("data") or {}).get("channel") or "sms",
+                             turn_id=f"multi-vehicle-both-{new_lead_id}", lead=new_lead, first_contact_done=True)
+    return {"answer": "both", "kept_open": [lead_id, new_lead_id]}
 
 
 async def _restart_opportunity_clock(db: DealerScopedDatabase, event: LeadCreatedEvent,
@@ -655,6 +733,8 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     # A possible opt-out under review is no longer resolved just because the customer wrote again (PLAN_4 stream
     # X1 item 3): the AI turn resolves it only on a clearly non-opt-out message that answers it
     # (agent/turn.py _resolve_review_if_answered); otherwise staff or an admin resume do (decision 72).
+
+    _multi = await _resolve_multi_vehicle(db, event, lead_id, state, "\n".join(m["text"] for m in unanswered), lead)
 
     meaningful_now, _ = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
     if meaningful_now and not event.shadow:

@@ -120,12 +120,22 @@ def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
     """This turn's link plan (agent/link_resolver.py), from what Extract said and this turn's stock."""
     pack = state.context_pack or {}
     info = (pack.get("dealer") or {}).get("info") or {}
+    lead_vin = lead_vehicle_vin(ctx.lead, ctx.lead_state) if ctx else None
+    if (state.decision or {}).get("touch1") and lead_vin:
+        # Client, 12 Oct 2026 (Betsy): "if there is a vehicle of interest in the lead, the AI should send an image
+        # or link to the vehicle and name it" - the first reply carries that vehicle's page when it's in stock.
+        record = next((r for r in pack.get("inventory") or [] if r.get("vin") == lead_vin), None)
+        page = str((record or {}).get("page_url") or "").strip()
+        if page:
+            from upsell_agent.agent.link_resolver import LinkPlan, _describe
+            return LinkPlan(kind="vehicle", vin=lead_vin, description=_describe(record), vehicle_url=page,
+                            confidence=1.0, reasons=["First reply: the vehicle the lead is about, in stock: its page."])
     return resolve_link(state.extraction, inventory=pack.get("inventory") or [], website=info.get("website"),
                         # Dealer Setup's own pages (client, 8 Oct 2026; integrations/dealer_profile.py).
                         dealer_links={"credit_application": info.get("credit_application_link"),
                                       "trade_in": info.get("trade_in_link")},
                         referred_vin=(pack.get("referred_vehicle") or {}).get("vin"),
-                        lead_vin=lead_vehicle_vin(ctx.lead, ctx.lead_state) if ctx else None)
+                        lead_vin=lead_vin)
 
 
 def compose_payload(state: AgentState, link_plan: LinkPlan | None = None) -> dict[str, Any]:
@@ -152,6 +162,7 @@ def compose_payload(state: AgentState, link_plan: LinkPlan | None = None) -> dic
         "bucket": decision.get("bucket"),
         # Client, 8 Oct 2026: the specialist answering this turn (agent/specialists.py).
         "specialist": decision.get("specialist"),
+        "departments": decision.get("departments"),
         # MASTER_PLAN_3 C3: a dated next step to confirm back, and (on a scheduled next-step turn)
         # that we're checking back as they asked.
         # MASTER_PLAN_3 C4: Touch 1's required opening and closing, and the cadence touch's theme.

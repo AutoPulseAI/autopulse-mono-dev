@@ -920,7 +920,7 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-light fa-bell"
               count={aiAlertCount}
-              label="AI Alerts"
+              label="Dealer Action Required"
               link="/dealer/ai/alerts"
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
