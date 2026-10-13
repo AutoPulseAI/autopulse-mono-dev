@@ -95,10 +95,19 @@ def phase(touch_number: int) -> str:
     return "weekly" if touch_number <= WEEKLY_TOUCHES else "every_two_weeks"
 
 
+# The days set in AI Studio for touches 1..N (client, 13 Oct 2026); after the last one, the same gap repeats.
+STUDIO_DAYS: list[int] | None = None
+
+
 def touch_due_day(touch_number: int) -> int:
     """Days after SOLD PENDING started that touch `touch_number` (1-based) is due: one a week for weeks 1-4, then
     every two weeks after the week-4 touch, forever (§4, §6)."""
     n = max(1, touch_number)
+    if STUDIO_DAYS:
+        if n <= len(STUDIO_DAYS):
+            return STUDIO_DAYS[n - 1]
+        gap = (STUDIO_DAYS[-1] - STUDIO_DAYS[-2]) if len(STUDIO_DAYS) > 1 else BIWEEKLY_EVERY_DAYS
+        return STUDIO_DAYS[-1] + max(gap, 1) * (n - len(STUDIO_DAYS))
     if n <= WEEKLY_TOUCHES:
         return FIRST_TOUCH_AFTER_DAYS + WEEKLY_EVERY_DAYS * (n - 1)
     last_weekly = FIRST_TOUCH_AFTER_DAYS + WEEKLY_EVERY_DAYS * (WEEKLY_TOUCHES - 1)
@@ -166,6 +175,17 @@ def asks_documents(touch_number: int, state: SoldPendingState) -> bool:
 
 def render_touch(touch_number: int, *, first_name: str | None, dealership: str | None, vehicle: str | None,
                  documents: bool) -> dict[str, str]:
+    """The touch's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in."""
+    built = _render_built_in(touch_number, first_name=first_name, dealership=dealership, vehicle=vehicle,
+                             documents=documents)
+    from upsell_agent import ai_studio
+    values = {"first_name": first_name, "dealership": dealership, "vehicle": vehicle or "vehicle"}
+    return ai_studio.render(ai_studio.step_message("cadences", "sold_pending", f"week_{touch_number}"), values,
+                            built) or built
+
+
+def _render_built_in(touch_number: int, *, first_name: str | None, dealership: str | None, vehicle: str | None,
+                     documents: bool) -> dict[str, str]:
     """The client's own intent for each touch (§5, §6), as {sms_text, email_subject, email_body}. Only what we
     know is used: no vehicle on record -> "your vehicle"; never a document, a date, a status or a reason."""
     hi = f"Hi {first_name}" if first_name else "Hi there"

@@ -192,6 +192,10 @@ def _after_hours_fallback(name: str, after_hours: dict[str, Any]) -> dict[str, A
         line = f"Thanks, {name}! I'll pick this up when we open" + (f" at {opens_at}" if opens_at else "") + "."
     else:
         return None
+    from upsell_agent import ai_studio  # the wording published in AI Studio, when edited there
+    edited = ai_studio.fixed_text(ai_studio.message("messages", f"after_hours_{mode}"))
+    if edited:
+        line = ai_studio.fill(edited, {"first_name": name, "opens_at": opens_at})
     body_line = line.split("! ", 1)[1] if "! " in line else line
     return {"sms_text": line, "email_subject": "Following up",
             "email_body": f"Hi {name},\n\n{body_line}" + _SIGN_OFF.format(team="Customer Care"),
@@ -216,7 +220,10 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
                 "asks": {"sms": [], "email": []},
                 "promises": []}
     if decision.get("answer_questions"):
-        line, asked = CONTINUE_CHECKING.format(name=name), []
+        from upsell_agent import ai_studio  # the wording published in AI Studio, when edited there
+        edited = ai_studio.fixed_text(ai_studio.message("messages", "safety_net"))
+        line, asked = (ai_studio.fill(edited, {"first_name": name}) if edited
+                       else CONTINUE_CHECKING.format(name=name)), []
         promises = []
     elif asks:
         line, asked = CONTINUE_ASK.format(name=name, question=asks[0]["question"]), list(asks[0].get("slots") or [])

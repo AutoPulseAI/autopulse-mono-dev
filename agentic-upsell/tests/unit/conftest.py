@@ -39,6 +39,15 @@ def mongo():
 
 
 @pytest.fixture(autouse=True)
+def built_in_ai_settings():
+    """Every test starts on the code's own settings; one that publishes AI Studio edits puts them in itself."""
+    from upsell_agent import ai_studio
+    ai_studio.reset()
+    yield
+    ai_studio.reset()
+
+
+@pytest.fixture(autouse=True)
 def reset_clock():
     # The eval harness pins every customer to New York (evals/harness.py); a
     # run with both suites mustn't carry that into the unit tests.

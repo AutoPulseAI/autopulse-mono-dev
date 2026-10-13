@@ -15,7 +15,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from upsell_agent import clock
+from upsell_agent import ai_studio, clock
+from upsell_agent.scheduler import studio_cadences
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import known_first_name, render_holding_reply
@@ -79,7 +80,9 @@ async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, c
         # only an outcome or the stage does (scheduler/sold_lifecycles.py re-checks them when they fire).
         # PLAN_4 stream T: nor the Days 1-7 human call tasks - they are for staff anyway; cancel_call_task ends this
         # half-day's one and the stage decides the rest.
-        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, "daily_call_task"]}
+        # A cadence added in AI Studio checks the lead's status itself when it fires (it may be the status change
+        # that started it).
+        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, "daily_call_task", "studio_touch"]}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
@@ -141,7 +144,10 @@ async def _already_sent(db: DealerScopedDatabase, turn_id: str) -> dict | None:
 
 async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
                               received_at: str | datetime | None = None) -> dict[str, Any]:
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     db = dealer_scoped_db(event.dealer_id)
+    await studio_cadences.start(db, lead_id=event.lead_id, customer_id=event.customer_id, channel=event.channel,
+                                trigger={"type": "lead_created"})  # cadences added in AI Studio
     lead = await find_lead(db, event.lead_id)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
     if not state.get("duplicate_of") and (primary := await duplicates.find_primary(db, lead)):
@@ -590,10 +596,13 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
 
 async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                  received_at: str | datetime | None = None) -> dict[str, Any]:
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     db = dealer_scoped_db(event.dealer_id)
     lead_id = await record_inbound(event)
     if not lead_id:
         return {"status": "saved_only", "reason": "no lead found for this customer"}
+    await studio_cadences.start(db, lead_id=lead_id, customer_id=event.customer_id, channel=event.channel,
+                                trigger={"type": "customer_says", "text": event.text})  # cadences added in AI Studio
 
     # Everything this customer sent that no turn has answered yet: three
     # quick texts get one reply, not three (architecture §5 step 5).
@@ -922,6 +931,11 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     db = dealer_scoped_db(event.dealer_id)
     staff_status = lifecycle.staff_status_from_reason(event.reason)
     outcome_status = lifecycle.manager_outcome_from_reason(event.reason)
+    if staff_status or outcome_status:
+        # A cadence added in AI Studio that starts when staff set this status (scheduler/studio_cadences.py).
+        status_lead = await find_lead(db, event.lead_id)
+        await studio_cadences.start(db, lead_id=event.lead_id, customer_id=lead_customer_id(status_lead, db.dealer_id),
+                                    channel="sms", trigger={"type": "status", "status": staff_status or outcome_status})
     if not staff_status and not outcome_status and (primary := await duplicates.workflow_lead_id(
             db, event.lead_id)) not in (None, event.lead_id):
         # The AI switch on a repeat lead: the AI works the customer on their open lead, so it's turned off there.

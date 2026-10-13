@@ -246,6 +246,18 @@ TIPS = (
 
 def render(touch: str, *, first_name: str | None, dealership: str | None, vehicle: dict | None,
            tip_number: int = 0, year: int = 1, items: list[str] | None = None) -> dict[str, str]:
+    """The touch's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in."""
+    built = _render_built_in(touch, first_name=first_name, dealership=dealership, vehicle=vehicle,
+                             tip_number=tip_number, year=year, items=items)
+    from upsell_agent import ai_studio
+    values = {"first_name": first_name, "dealership": dealership or "our dealership",
+              "vehicle": sold_delivered.vehicle_label(vehicle), "model": sold_delivered.model_label(vehicle),
+              "recommended_work": ", ".join(items or []) or None}
+    return ai_studio.render(ai_studio.step_message("cadences", "owner_lifecycle", touch), values, built) or built
+
+
+def _render_built_in(touch: str, *, first_name: str | None, dealership: str | None, vehicle: dict | None,
+                     tip_number: int = 0, year: int = 1, items: list[str] | None = None) -> dict[str, str]:
     hi = f"Hi {first_name}! " if first_name else "Hi! "
     place = dealership or "our dealership"
     label = sold_delivered.vehicle_label(vehicle) or "vehicle"

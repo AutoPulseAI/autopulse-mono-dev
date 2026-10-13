@@ -31,22 +31,53 @@ export function requireStudioAdmin(request) {
 // Version 1 of every item is the AI's built-in setting. Added once; an item someone edited is never overwritten. A
 // built-in item nobody has touched follows a newer built-in shape (defaults.revision), and one the built-ins no longer
 // have (and nobody edited) is retired.
+// The version is the built-in setting: seeded, reset, or reverted to one of those (the AI reads it the same way,
+// agentic-upsell upsell_agent/ai_studio.py).
+async function isBuiltInVersion(version) {
+  for (let i = 0; i < 20 && version; i += 1) {
+    if (/^(Built-in setting|Reset to the AutoPulse default)/.test(version.note || '')) return true;
+    if (!version.reverted_from) return false;
+    version = await AiConfigVersion.findOne({ item_id: version.item_id, version: version.reverted_from }).lean();
+  }
+  return false;
+}
+
 export async function seedDefaults({ by = 'AutoPulse default' } = {}) {
   let added = 0;
   const revision = defaults.revision || 1;
   const builtIn = new Set(defaults.items.map((row) => `${row.type}:${row.key}`));
   const stale = await AiConfigItem.find({ dealer_id: null, deleted: { $ne: true }, latest_version: 1,
-    defaults_revision: { $not: { $gte: revision } } }).lean();
+    custom: { $ne: true }, defaults_revision: { $not: { $gte: revision } } }).lean();
   for (const item of stale) {
+    const first = await AiConfigVersion.findOne({ item_id: item._id, version: 1 }).lean();
+    if (first?.note === 'Created') {
+      // Made in AI Studio (before items were marked): never a built-in to retire or upgrade.
+      await AiConfigItem.updateOne({ _id: item._id }, { $set: { custom: true } });
+      continue;
+    }
     if (!builtIn.has(`${item.type}:${item.key}`)) {
-      // Its history stays; the name is freed, so a new item can be made with it.
-  await AiConfigItem.updateOne({ _id: item._id },
-    { $set: { deleted: true, deleted_at: new Date(), key: `${item.key}__deleted_${Date.now()}` } });
+      // A built-in that no longer exists: retired, its history kept and its name freed.
+      await AiConfigItem.updateOne({ _id: item._id },
+        { $set: { deleted: true, deleted_at: new Date(), key: `${item.key}__deleted_${Date.now()}` } });
       continue;
     }
     const row = defaults.items.find((r) => r.type === item.type && r.key === item.key);
     await AiConfigVersion.updateOne({ item_id: item._id, version: 1 }, { $set: { content: row.content } });
     await AiConfigItem.updateOne({ _id: item._id }, { $set: { name: row.name, defaults_revision: revision } });
+  }
+  // An item reset to the default (or reverted to it) is the built-in too: it takes the new built-in, as a new version.
+  const reset = await AiConfigItem.find({ dealer_id: null, deleted: { $ne: true }, latest_version: { $gt: 1 },
+    custom: { $ne: true }, defaults_revision: { $not: { $gte: revision } } }).lean();
+  for (const item of reset) {
+    const row = defaults.items.find((r) => r.type === item.type && r.key === item.key);
+    const live = await AiConfigVersion.findOne({ item_id: item._id, version: item.published_version }).lean();
+    if (row && live && await isBuiltInVersion(live)) {
+      await newVersion(item, row.content, { status: 'published', note: 'Reset to the AutoPulse default (updated)',
+        by: { name: by } });
+      // A draft someone is working on stays theirs.
+      if (item.draft_version) await AiConfigItem.updateOne({ _id: item._id }, { $set: { draft_version: item.draft_version } });
+    }
+    await AiConfigItem.updateOne({ _id: item._id }, { $set: { defaults_revision: revision } });
   }
   for (const row of defaults.items) {
     const existing = await AiConfigItem.findOne({ type: row.type, key: row.key, dealer_id: null }).lean();
@@ -109,9 +140,43 @@ function treeProblems(node, path, problems, seen) {
   });
 }
 
-export function contentProblems(type, content) {
+// A wait (client, 13 Oct 2026: "minutes, hours, days, weeks, months, years ... how much time they want").
+export const UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years'];
+const AT = /^\s*\d{1,2}(:\d{2})?\s*([ap]\.?m\.?)?\s*$/i;
+
+function waitProblems(wait, where) {
+  if (!wait) return [];
+  const problems = [];
+  const amount = Number(wait.amount);
+  if (!Number.isFinite(amount) || amount < 0) problems.push(`${where}: the wait must be a number (0 or more).`);
+  if (!UNITS.includes(wait.unit)) problems.push(`${where}: choose minutes, hours, days, weeks, months or years.`);
+  if (wait.at && !AT.test(wait.at)) problems.push(`${where}: the send time should look like 10:00 or 2:30 PM.`);
+  return problems;
+}
+
+export function contentProblems(type, content, key = null) {
   if (!content || typeof content !== 'object') return ['Nothing to save.'];
   const problems = [];
+  const builtIn = key ? !!defaultContent(type, key) : true;
+  if (Array.isArray(content.steps)) {
+    content.steps.forEach((step, i) => problems.push(...waitProblems(step.wait, `Step ${i + 1} timing`)));
+  }
+  if (content.repeat) {
+    for (const part of ['first', 'every', 'until']) problems.push(...waitProblems(content.repeat[part], `Repeat (${part})`));
+    if (!(Number(content.repeat.every?.amount) > 0)) problems.push('Repeat: "every" must be more than 0.');
+  }
+  if (content.closes_after) problems.push(...waitProblems(content.closes_after, 'Closes after'));
+  if (type === 'cadences' && !builtIn) {
+    const start = content.starts_when || {};
+    if (!['status', 'lead_created', 'customer_says'].includes(start.type)) {
+      problems.push('Choose when this cadence starts.');
+    } else if (start.type === 'status' && !start.status) {
+      problems.push('Choose the status that starts this cadence.');
+    } else if (start.type === 'customer_says' && !(start.phrases || []).length) {
+      problems.push('Add the words that start this cadence.');
+    }
+    if (!(content.steps || []).length) problems.push('Add at least one touch.');
+  }
   if (content.tree) {
     treeProblems(content.tree, 'First step', problems, new Set());
     if (type === 'workflows' && !content.trigger?.pattern && !(content.trigger?.phrases || []).length) {
@@ -190,7 +255,7 @@ export async function saveDraft(id, content, { note, by }) {
   if (!item) return { status: 404, error: 'Not found.' };
   if (item.locked) return { status: 409, error: 'This one is locked: it keeps the AI legal and safe.' };
   // A draft always saves, half-finished or not; what's wrong is shown, and only publishing waits for it.
-  const problems = contentProblems(item.type, content);
+  const problems = contentProblems(item.type, content, item.key);
   return { version: await newVersion(item, content, { status: 'draft', note, by }), problems };
 }
 
@@ -200,7 +265,7 @@ export async function publish(id, version, { by }) {
   if (item.locked) return { status: 409, error: 'This one is locked.' };
   const draft = await AiConfigVersion.findOne({ item_id: item._id, version: Number(version) || item.draft_version });
   if (!draft) return { status: 404, error: 'No draft to publish.' };
-  const problems = contentProblems(item.type, draft.content);
+  const problems = contentProblems(item.type, draft.content, item.key);
   if (problems.length) return { status: 422, error: 'Please fix these first.', problems };
   await AiConfigVersion.updateMany({ item_id: item._id, status: 'published' }, { $set: { status: 'archived' } });
   await AiConfigVersion.updateOne({ _id: draft._id }, { $set: { status: 'published', published_at: new Date(),
@@ -238,7 +303,7 @@ export async function createItem({ type, key, name, content }, { by }) {
     await AiConfigItem.updateOne({ _id: taken._id }, { $set: { key: `${taken.key}__deleted_${Date.now()}` } });
   }
   const item = await AiConfigItem.create({ type, key: slug, name: String(name).trim(), published_version: null,
-    latest_version: 0 });
+    latest_version: 0, custom: true });
   const version = await newVersion(item, content, { status: 'draft', note: 'Created', by });
   return { id: String(item._id), version };
 }

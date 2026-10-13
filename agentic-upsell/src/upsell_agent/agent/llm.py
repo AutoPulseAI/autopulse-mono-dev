@@ -477,6 +477,8 @@ Rules:
     <opens_at>. Would you like to chat now, or would you prefer to continue during business hours?" (without
     opens_at: "We're closed right now. Would you like to chat now, or would you prefer to continue during business
     hours?"). This question is never dropped, never paraphrased and never replaced by a closing line.
+  after_hours.wording / after_hours.instruction (only when given - the dealership's own settings): the offer's
+    question to use word for word instead of the one above / what to say when closed instead of the rule above.
   later: they chose business hours. Thank them briefly and say you'll pick this up when we open (at <opens_at> if
     given). Answer any answer_questions first. Ask nothing and offer nothing.
   resume: the dealership has just opened and they chose to wait until now. Start with a short greeting that fits
@@ -717,9 +719,15 @@ def summary_agent(model_name: str) -> Agent[None, ConversationSummary]:
                  name="summary", defer_model_check=True, retries=1)
 
 
-@lru_cache
 def compose_agent(model_name: str) -> Agent[None, ComposedMessage]:
-    return Agent(_model(model_name), output_type=ComposedMessage, instructions=COMPOSE_INSTRUCTIONS,
+    """The writer, with the prompt published in AI Studio when it was edited there (upsell_agent/ai_studio.py)."""
+    from upsell_agent import ai_studio
+    return _compose_agent(model_name, ai_studio.compose_prompt() or COMPOSE_INSTRUCTIONS)
+
+
+@lru_cache(maxsize=8)
+def _compose_agent(model_name: str, instructions: str) -> Agent[None, ComposedMessage]:
+    return Agent(_model(model_name), output_type=ComposedMessage, instructions=instructions,
                  name="compose", defer_model_check=True, retries=1)
 
 

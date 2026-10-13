@@ -155,8 +155,8 @@ async def choose_for_touch(db: DealerScopedDatabase, planned: cadence.PlannedTou
     extra: dict[str, Any] = {"choice": {}}
     due = planned.due_at
 
-    # 1. Send time.
-    if send_time_ab:
+    # 1. Send time (never over a timing the super admin set in AI Studio).
+    if send_time_ab and cadence.SCHEDULE is None:
         dealer, platform = await _counts(db, "time_variant", now)
         options = list(variants.SEND_TIMES)
         pick = bandit.choose(options, levels_for(dealer, platform, context, skip=("time_band",)),

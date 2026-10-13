@@ -55,6 +55,12 @@ _TEXT = {
     (CALL, "yes"): ("Perfect, I'm getting our sales manager to call you right now.", None),
 }
 ESCALATE_REASON = "Customer asked for a call to complete the buyer's order"
+# The answers that need the dealership (her "call? YES -> Dealership Action Required"), the first step, and the yes / no
+# workflows added in AI Studio ({key, asks, start, start_step}; their steps are "<key>:<step>" in _TEXT) - all
+# replaced by the published versions when edited there (upsell_agent/ai_studio.py).
+ESCALATE_AT = frozenset({(CALL, "yes")})
+START_STEP = DELIVERY
+FLOWS: list[dict[str, Any]] = []
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,7 @@ class Step:
     text: str
     next_step: str | None  # None: the sequence ends here
     escalates: bool = False
+    flow: str | None = None  # a workflow added in AI Studio (None: the buyer's order)
 
 
 def answer_of(text: str | None) -> str | None:
@@ -93,11 +100,16 @@ def plan(state: dict | None, text: str | None, now: datetime, *, credit_link: st
             link = f" Here is a link: {credit_link}" if credit_link else ""
             if step == RATE:
                 link = f" {credit_link}" if credit_link else " I'll send it right over."
-            return Step(reply.replace("{link}", link), nxt, escalates=(step, answer) == (CALL, "yes"))
+            return Step(reply.replace("{link}", link), nxt, escalates=(step, answer) in ESCALATE_AT,
+                        flow=step.split(":", 1)[0] if ":" in step else None)
         if answer == "no" and step in (DELIVERY, RATE, CALL):
             return None  # her email has no "no" branch here: the conversation carries on toward the appointment
     if ASKS.search(text or ""):
-        return Step(START, DELIVERY)
+        return Step(START, START_STEP)
+    for flow in FLOWS:
+        if flow["asks"].search(text or ""):
+            return Step(flow["start"].replace("{link}", f" {credit_link}" if credit_link else ""), flow["start_step"],
+                        flow=flow["key"])
     return None
 
 

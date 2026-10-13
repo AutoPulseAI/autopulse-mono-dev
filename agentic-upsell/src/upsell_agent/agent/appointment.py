@@ -209,6 +209,22 @@ def _when(appt: datetime) -> tuple[str, str]:
 def render_message(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
                    appt: datetime | None, model: str | None = None, address: str | None = None,
                    agent_phone: str | None = None) -> dict[str, str]:
+    """The step's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in."""
+    built = _render_built_in(step, customer_name=customer_name, dealership=dealership, agent_name=agent_name,
+                             appt=appt, model=model, address=address, agent_phone=agent_phone)
+    from upsell_agent import ai_studio
+    from upsell_agent.agent.templates import FALLBACK_NAME
+    day, at = _when(appt) if appt else ("", "")
+    first = _first(customer_name)
+    values = {"first_name": first if first != FALLBACK_NAME else None, "dealership": dealership or "the dealership",
+              "agent_name": agent_name, "model": model, "address": address, "dealer_phone": agent_phone,
+              "date": day, "time": at}
+    return ai_studio.render(ai_studio.step_message("cadences", "appointment", step), values, built) or built
+
+
+def _render_built_in(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
+                     appt: datetime | None, model: str | None = None, address: str | None = None,
+                     agent_phone: str | None = None) -> dict[str, str]:
     """{sms_text, email_subject, email_body} for one appointment step, in the client's words (Omnichannel
     PDF §7, §9). A name the record doesn't have is left out rather than invented."""
     first = _first(customer_name)
