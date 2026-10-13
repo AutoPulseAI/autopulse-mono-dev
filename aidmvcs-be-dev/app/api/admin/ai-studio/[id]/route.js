@@ -25,7 +25,8 @@ export async function PUT(request, { params }) {
   await dbConnect();
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  return reply(await saveDraft(id, body.content, { note: body.note, by: await studioUser(auth.decoded) }));
+  return reply(await saveDraft(id, body.content, { note: body.note, by: await studioUser(auth.decoded),
+    baseVersion: body.base_version ?? null, force: !!body.force }));
 }
 
 export async function POST(request, { params }) {

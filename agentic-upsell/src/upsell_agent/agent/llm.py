@@ -179,7 +179,8 @@ class ComposedMessage(BaseModel):
 
 EXTRACT_INSTRUCTIONS = """You read a car dealership customer's message and pull out facts they stated.
 Input is JSON: customer_text (the customer's new message or messages), lead_type, allowed_slots (path, label, kind,
-choices), recently_asked (the slots our last message asked for), awaiting_contact_choice (our last message asked
+choices), recently_asked (the slots our last message asked for), our_last_message (the exact text of the message the
+customer is answering), awaiting_contact_choice (our last message asked
 whether to chat now or continue during business hours), and context: the conversation so far
 (working_memory, oldest first, with our messages as "outbound"), what we already know (profile), the conversation
 state (asks, open questions, promises) and the dealer's local date and time (now).
@@ -201,6 +202,12 @@ Rules:
 - Asking what their own car is worth while shopping ("what's the value of my civic", "how much would you give me
   for my car", "what can I get for my Accord") means they have a trade: trade_in.has_trade = true, and the car
   they name is trade_in.make / trade_in.model.
+- A short reply means what our_last_message asked for - read it as a person would, never as a different kind of
+  value. A bare number after "what time" / "when will you arrive" is a clock time ("520" = 5:20, "530" = 5:30,
+  "10" = 10:00), never money; after a budget or payment question it's money; after a mileage question it's miles;
+  after "what year" it's a year. A time is not a slot here (the dealership's system books it): extract nothing for it.
+  The value goes only into a slot of the same kind (miles into a mileage slot, money into a money slot); if no slot
+  of that kind is in allowed_slots, extract nothing - never put it into a slot of another kind.
 - Short replies ("yes", "no", "used", "the second one", "same as before", "it's a 2019", "about 60k") answer
   our last outbound message: map them to the slot in recently_asked they answer. The quote is still the
   customer's own words (e.g. quote "yes" for trade_in.has_trade = true). If it's unclear which slot a short

@@ -261,7 +261,8 @@ export async function listItems() {
   await seedDefaults();
   const items = await AiConfigItem.find({ deleted: { $ne: true }, dealer_id: null }).sort({ type: 1, name: 1 }).lean();
   return items.map((i) => ({ id: String(i._id), type: i.type, key: i.key, name: i.name, locked: i.locked,
-    published_version: i.published_version, draft_version: i.draft_version, updated_at: i.updatedAt }));
+    published_version: i.published_version, draft_version: i.draft_version, updated_at: i.updatedAt,
+    ai_applied_version: i.ai_applied_version ?? null, ai_applied_at: i.ai_applied_at ?? null }));
 }
 
 export async function getItem(id) {
@@ -271,6 +272,8 @@ export async function getItem(id) {
   return {
     id: String(item._id), type: item.type, key: item.key, name: item.name, locked: item.locked,
     published_version: item.published_version, draft_version: item.draft_version,
+    latest_version: item.latest_version, updated_at: item.updatedAt,
+    ai_applied_version: item.ai_applied_version ?? null, ai_applied_at: item.ai_applied_at ?? null,
     has_default: !!defaultContent(item.type, item.key),
     versions: versions.map((v) => ({ version: v.version, status: v.status, content: v.content, note: v.note,
       created_by_name: v.created_by_name, created_at: v.createdAt, published_at: v.published_at,
@@ -297,10 +300,18 @@ async function newVersion(item, content, { status, note, by, revertedFrom = null
   return version;
 }
 
-export async function saveDraft(id, content, { note, by }) {
+// `baseVersion`: the version the editor opened. If someone saved or published since, nothing is overwritten
+// silently: who and when is returned (client, 13 Oct 2026), and `force` saves on top anyway.
+export async function saveDraft(id, content, { note, by, baseVersion = null, force = false }) {
   const item = await AiConfigItem.findById(id);
   if (!item) return { status: 404, error: 'Not found.' };
   if (item.locked) return { status: 409, error: 'This one is locked: it keeps the AI legal and safe.' };
+  if (!force && baseVersion != null && Number(item.latest_version) > Number(baseVersion)) {
+    const latest = await AiConfigVersion.findOne({ item_id: item._id, version: item.latest_version }).lean();
+    return { status: 409, conflict: true, latest_version: item.latest_version,
+      changed_by: latest?.created_by_name || 'someone', changed_at: latest?.createdAt || null,
+      error: `Changed by ${latest?.created_by_name || 'someone'} after you opened it (version ${item.latest_version}).` };
+  }
   // A draft always saves, half-finished or not; what's wrong is shown, and only publishing waits for it.
   const problems = contentProblems(item.type, content, item.key);
   return { version: await newVersion(item, content, { status: 'draft', note, by }), problems };

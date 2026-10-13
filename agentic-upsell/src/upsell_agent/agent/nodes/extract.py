@@ -46,6 +46,10 @@ def extract_payload(state: AgentState) -> dict[str, Any]:
         "lead_type": (state.profile or {}).get("effective_lead_type") or "general",
         "allowed_slots": _allowed_slots(awaiting),
         "recently_asked": (pack.get("conversation") or {}).get("last_asked", []),
+        # Client, 13 Oct 2026 (Artem: "About what time will you arrive?" -> "520" was read as a $520 budget): the
+        # question the customer is answering, word for word, whoever wrote it.
+        "our_last_message": next((m.get("text") for m in reversed(pack.get("working_memory") or [])
+                                  if m.get("direction") == "outbound" and m.get("text")), None),
         "awaiting_contact_choice": awaiting,
         "context": {k: v for k, v in pack.items() if k not in HELD_FROM_MODELS},
     }
@@ -69,7 +73,7 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     extraction = result.model_dump()
     lift_contact_preference(extraction, awaiting=payload["awaiting_contact_choice"])
     lift_wants_visit(extraction)
-    drop_time_read_as_money(extraction, getattr(state, "inbound_text", "") or "")
+    drop_values_of_the_wrong_kind(extraction, payload["customer_text"] or "", payload.get("our_last_message"))
     ctx.model_calls.append({"step": "extract", **call.as_metrics()})
     span.output = extraction
     span.metrics = call.as_metrics()
@@ -95,18 +99,33 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     return {"extraction": extraction}
 
 
-_MONEY_PATH = re.compile(r"budget|payment|price|down|amount|monthly", re.IGNORECASE)
+# What our last message asked for, by its words -> the only kind of value a short answer can be (None: a clock time,
+# which is never a slot - the booking reads it).
+_ASKED_KIND = [
+    (re.compile(r"\bwhat time\b|\bwhen will you (?:arrive|be here|get here)\b|\bwhat time works\b", re.IGNORECASE), None),
+    (re.compile(r"\bmiles?\b|\bmileage\b|\bodometer\b", re.IGNORECASE), "mileage"),
+    (re.compile(r"\bwhat year\b|\byear is\b", re.IGNORECASE), "year"),
+    (re.compile(r"\bspend\b|\bbudget\b|\bpayment\b|\bper month\b|\ba month\b|\bhow much\b|\bdown\b", re.IGNORECASE), "money"),
+]
 
 
-def drop_time_read_as_money(extraction: dict[str, Any], text: str) -> None:
-    """Client, 13 Oct 2026 (Artem Petrov answered "what time will you arrive?" with "520"; the reply then spoke of "your
-    $520-a-month target"): a message that is only a clock time is never an amount of money."""
-    from upsell_agent.tools.booking_tool import bare_time
-    if not text.strip() or len(text.strip()) > 12 or bare_time(text) is None:
-        return
-    digits = re.sub(r"\D", "", text)
-    extraction["values"] = [v for v in extraction.get("values", []) if not (
-        _MONEY_PATH.search(str(v.get("path") or "")) and digits and digits in re.sub(r"\D", "", str(v.get("value"))))]
+def drop_values_of_the_wrong_kind(extraction: dict[str, Any], text: str, asked: str | None) -> None:
+    """Client, 13 Oct 2026 (Artem answered "About what time will you arrive?" with "520" and the AI then spoke of
+    "your $520-a-month target"; "it should understand the answer from the conversation"): a short reply is what our
+    last message asked for. A value of another kind (money for a time, a budget for miles) is dropped, whatever the
+    model said."""
+    said = (text or "").strip()
+    if not said or len(said.split()) > 4 or not asked or not re.search(r"\d", said):
+        return  # only a number can be misread as another kind of number; words ("in red") always stay
+    kinds = {k for pattern, k in _ASKED_KIND if pattern.search(asked)}
+    if len(kinds) != 1:
+        return  # nothing recognised, or several things asked at once ("what year, and how many miles?")
+    kind = kinds.pop()
+    # Only stored facts are checked: what isn't a slot (visit_when - the time the booking reads) always stays.
+    numeric = {"money", "mileage", "year"}
+    extraction["values"] = [v for v in extraction.get("values", [])
+                            if v.get("path") not in SCHEMA or SCHEMA[v["path"]].kind not in numeric
+                            or SCHEMA[v["path"]].kind == kind]
 
 
 def lift_wants_visit(extraction: dict[str, Any]) -> None:

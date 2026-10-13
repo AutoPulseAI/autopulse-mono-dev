@@ -20,6 +20,9 @@ const aiConfigItemSchema = new mongoose.Schema({
   deleted: { type: Boolean, default: false },
   deleted_at: { type: Date, default: null },
   custom: { type: Boolean, default: false },  // made in AI Studio (not a built-in setting)
+  // When the AI (agentic-upsell upsell_agent/ai_studio.py) started using a published version, and which one.
+  ai_applied_version: { type: Number, default: null },
+  ai_applied_at: { type: Date, default: null },
 }, { timestamps: true });
 aiConfigItemSchema.index({ type: 1, key: 1, dealer_id: 1 }, { unique: true });
 

@@ -31,6 +31,7 @@ _defaults: dict[tuple[str, str], dict[str, Any]] | None = None  # (type, key) ->
 _pristine: dict[str, Any] = {}  # the code's own settings, before anything was applied
 _changed: dict[tuple[str, str], dict[str, Any]] = {}  # published content that differs from the built-in
 _names: dict[tuple[str, str], str] = {}
+_failed: set[tuple[str, str]] = set()  # published items that couldn't be applied (the built-in stays)
 # Rules the dealership added in AI Studio (SMS, Email & Compliance -> "+ New rule"): (rule, applies_to, banned phrases).
 CUSTOM_RULES: list[dict[str, Any]] = []  # each item's name in the Studio (an added agent's or workflow's label)
 _loaded_at = 0.0
@@ -57,8 +58,21 @@ async def refresh(*, force: bool = False) -> None:
                 published[(item["type"], item["key"])] = version["content"]
                 _names[(item["type"], item["key"])] = str(item.get("name") or item["key"])
         load(published)
+        await _mark_applied(db, items)
     except Exception:  # the AI keeps what it has (built-in or the last good read)
         logger.exception("could not read the AI Studio settings")
+
+
+async def _mark_applied(db: Any, items: list[dict[str, Any]]) -> None:
+    """Shown in AI Studio (client, 13 Oct 2026): which published version the AI is using, and since when. An item that
+    couldn't be applied isn't marked (the built-in setting is in use)."""
+    from upsell_agent import clock
+    now = clock.now()
+    for item in items:
+        if (item["type"], item["key"]) in _failed or item.get("ai_applied_version") == item.get("published_version"):
+            continue
+        await db[ITEMS_COLLECTION].update_one({"_id": item["_id"]}, {"$set": {
+            "ai_applied_version": item.get("published_version"), "ai_applied_at": now}})
 
 
 _BUILT_IN_NOTES = ("Built-in setting", "Reset to the AutoPulse default")
@@ -88,10 +102,12 @@ def load(published: dict[tuple[str, str], dict[str, Any]]) -> None:
     _restore()
     _changed = changed
     CUSTOM_RULES.clear()
+    _failed.clear()
     for (kind, key), content in sorted(changed.items()):
         try:
             _APPLY.get(kind, lambda *_: None)(key, content, defaults.get((kind, key)))
         except Exception:  # one broken item never takes the others down
+            _failed.add((kind, key))
             logger.exception("AI Studio item %s/%s could not be applied; the built-in setting stays", kind, key)
     try:
         _apply_custom_banned()
