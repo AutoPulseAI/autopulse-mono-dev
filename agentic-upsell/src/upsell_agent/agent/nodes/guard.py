@@ -373,7 +373,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     # ("Good morning, the team is in now") whatever the turn (MASTER_PLAN_3 B1
     # decision 95): exempt from the no-repeated-greeting check.
     is_resume = ((state.decision or {}).get("after_hours") or {}).get("mode") == "resume"
-    conversation_turn = 0 if is_resume else ((state.context_pack or {}).get("conversation") or {}).get("turn", 0)
+    # The first text opens with the client's FTC greeting even after a night email went first (13 Oct 2026).
+    first_text = bool((state.decision or {}).get("touch1"))
+    conversation_turn = 0 if is_resume or first_text else (
+        ((state.context_pack or {}).get("conversation") or {}).get("turn", 0))
     greeted_again = repeats_greeting(conversation_turn, state.draft or {})
     if greeted_again and scripted and str((state.draft or {}).get("sms_text") or "") == scripted:
         greeted_again = []  # the wording the client (or the super admin in AI Studio) wrote, greeting and all

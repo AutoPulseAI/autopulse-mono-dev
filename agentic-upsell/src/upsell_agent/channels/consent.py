@@ -331,9 +331,16 @@ def _primary_first(entries: list | None) -> list[str]:
     return [e.get("value") for e in ordered]
 
 
+# A lead portal's relay / placeholder address (client, 13 Oct 2026, Betsy: "the email provided on that lead was that
+# bogus CarGurus placeholder email" - no-reply+19292404033@cargurus.com): nobody reads it, so it isn't an email to use.
+_PLACEHOLDER_EMAIL = re.compile(r"^(no-?reply|do-?not-?reply|donotreply|noemail|no-?email|none|test)[+.@_-]",
+                                re.IGNORECASE)
+
+
 def _plausible(value: str, channel: Channel) -> bool:
     if channel == "email":
-        return bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value)) and value.lower() not in {"na", "n/a"}
+        return (bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value)) and value.lower() not in {"na", "n/a"}
+                and not _PLACEHOLDER_EMAIL.match(value))
     return len(re.sub(r"\D", "", value)) >= 10
 
 

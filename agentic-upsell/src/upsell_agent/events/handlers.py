@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.scheduler import studio_cadences
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import known_first_name, render_holding_reply
@@ -48,6 +47,7 @@ from upsell_agent.integrations.mongodb import (
 )
 from upsell_agent.learning import touches
 from upsell_agent.observability.trace import TurnTracer
+from upsell_agent.scheduler import studio_cadences
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
     SOLD_LIFECYCLE_KINDS,
@@ -325,6 +325,7 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
                                   purpose="lead_response", is_reply=False, lead=lead, customer=customer,
                                   record=False)
         other = "email" if channel == "sms" else "sms"
+        text_held = check if channel == "sms" and check.outcome == "HOLD" and check.until else None
         # Client, 12 Oct 2026: a lead that arrives at night is answered at once by EMAIL (no quiet hours for email), with
         # the after-hours choice; only the text waits for the customer's legal texting hours.
         if check.outcome in ("BLOCK", "REVIEW", "HOLD") and await consent.usable_recipient(db, lead, customer, other):
@@ -364,6 +365,20 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
     if followup:
         await _close_followup(db, followup, "sent" if sent in ("sent", "duplicate") else (sent or "failed"),
                               log["outcome"])
+    if not shadow and channel == "email" and text_held is not None and sent in ("sent", "duplicate"):
+        # Client, 13 Oct 2026 (Timi Gabice, 11:10 PM, phone on the lead, only an email ever went out; Betsy: "email at
+        # that time ... the text waits"): the first TEXT goes out when the customer's texting hours open - the full
+        # first message (FTC introduction), so the morning "we're open" email isn't sent on top of it. Dropped if the
+        # customer writes first (fire_held_first_reply).
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+            {"lead_id": lead_id, "kind": "resume_at_opening", "status": "pending"},
+            {"$set": {"status": "superseded", "reason": "the first text goes out when texting hours open",
+                      "closed_at": clock.now()}})
+        held = await _hold_first_reply(db, customer_id=customer_id, lead_id=lead_id, channel="sms",
+                                       until=text_held.until, reason=text_held.reason, followup=None,
+                                       turn_id=f"{turn_id}:text")
+        return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"], "send_status": sent,
+                "text_held": held}
     return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"], "send_status": sent}
 
 

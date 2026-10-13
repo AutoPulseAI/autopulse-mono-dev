@@ -961,8 +961,10 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                             )}
                             <span className={`badge ${
                               isNote ? (email.internal_use === true ? "bg-info" : "bg-warning") :
-                              email.status === "sent" ? "bg-success" :
-                              email.status === "incoming" ? "bg-warning" : "bg-danger"
+                              // Client, 13 Oct 2026 (Betsy / Bibi): the customer's messages green, ours red, failed gray.
+                              ["received", "incoming"].includes(email.status) ? "bg-success" :
+                              ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" :
+                              "bg-danger"
                             }`}>
                               {isNote ? "Note" : email.status}
                             </span>

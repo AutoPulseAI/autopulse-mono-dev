@@ -275,8 +275,16 @@ _BARE_TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-
                         r"(?:\s+(?:works|is good|is fine|would work|please|o'?clock|then))?\s*[.!?]?\s*$", re.IGNORECASE)
 
 
+# Client, 13 Oct 2026 (Artem Petrov answered "About what time will you arrive?" with "520"): a time written without the
+# colon - "520", "1130", "5 20", "at 520pm" - when it is the whole message.
+_NO_COLON = re.compile(r"^\s*(?:at|around|about|maybe|by)?\s*(\d{1,2})[\s.]?(\d{2})\s*(am|pm|a\.m\.|p\.m\.)?\s*[.!?]?\s*$",
+                       re.IGNORECASE)
+
+
 def bare_time(text: str) -> time | None:
     """The clock time a message names without a day, or None."""
+    if (m := _NO_COLON.match(text or "")) and int(m.group(2)) < 60:
+        text = f"{m.group(1)}:{m.group(2)}{(' ' + m.group(3)) if m.group(3) else ''}"
     m = _BARE_TIME.search(text or "")
     if not m:
         return None

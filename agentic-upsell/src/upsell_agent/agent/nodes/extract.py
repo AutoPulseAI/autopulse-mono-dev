@@ -7,6 +7,7 @@ the turn to the template (architecture §7: a limit sends the template,
 never nothing).
 """
 
+import re
 from typing import Any
 
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
@@ -68,6 +69,7 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     extraction = result.model_dump()
     lift_contact_preference(extraction, awaiting=payload["awaiting_contact_choice"])
     lift_wants_visit(extraction)
+    drop_time_read_as_money(extraction, getattr(state, "inbound_text", "") or "")
     ctx.model_calls.append({"step": "extract", **call.as_metrics()})
     span.output = extraction
     span.metrics = call.as_metrics()
@@ -91,6 +93,20 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     n = len(extraction["values"])
     span.edge_label = f"{n} value{'s' if n != 1 else ''} found"
     return {"extraction": extraction}
+
+
+_MONEY_PATH = re.compile(r"budget|payment|price|down|amount|monthly", re.IGNORECASE)
+
+
+def drop_time_read_as_money(extraction: dict[str, Any], text: str) -> None:
+    """Client, 13 Oct 2026 (Artem Petrov answered "what time will you arrive?" with "520"; the reply then spoke of "your
+    $520-a-month target"): a message that is only a clock time is never an amount of money."""
+    from upsell_agent.tools.booking_tool import bare_time
+    if not text.strip() or len(text.strip()) > 12 or bare_time(text) is None:
+        return
+    digits = re.sub(r"\D", "", text)
+    extraction["values"] = [v for v in extraction.get("values", []) if not (
+        _MONEY_PATH.search(str(v.get("path") or "")) and digits and digits in re.sub(r"\D", "", str(v.get("value"))))]
 
 
 def lift_wants_visit(extraction: dict[str, Any]) -> None:
