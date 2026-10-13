@@ -35,7 +35,7 @@ class Template:
 
 
 # What every template tells the customer the team will do.
-TEMPLATE_PROMISE = "A member of the team will follow up shortly."
+TEMPLATE_PROMISE = "Our sales manager will follow up shortly."
 
 # MASTER_PLAN_3 Phase 5: sent only when a mentioned vehicle sold and, despite
 # the instruction to always write one, Compose left no stock-free version to
@@ -245,33 +245,34 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
 # timeout fired and staff haven't taken the lead over yet.
 HOLDING_REPLIES: dict[str, Template] = {
     "holding": Template(
-        sms="Thanks, {name}! I've passed this to the team, and someone will reach out shortly.",
+        sms="Thanks, {name}! I've passed this to our sales manager, who will reach out to you shortly.",
         email_subject="We've got your message",
         email_body=(
-            "Hi {name},\n\nThanks for your message. I've passed it to the team, and someone will reach out "
-            "shortly." + _SIGN_OFF.format(team="Customer Care")
+            "Hi {name},\n\nThanks for your message. I've passed it to our sales manager, who will reach out to "
+            "you shortly." + _SIGN_OFF.format(team="Customer Care")
         ),
     ),
     # PLAN_4 stream X3 item 4: the customer asked to book while a person owns the lead.
     "holding_booking": Template(
-        sms="Thanks, {name}! I've passed your request to come in to the team, and someone will confirm the time "
+        sms="Thanks, {name}! I've passed your request to come in to our sales manager, who will confirm the time "
             "with you shortly.",
         email_subject="We've got your request",
         email_body=(
-            "Hi {name},\n\nThanks for your message. I've passed your request to come in to the team, and someone "
+            "Hi {name},\n\nThanks for your message. I've passed your request to come in to our sales manager, who "
             "will confirm the time with you shortly." + _SIGN_OFF.format(team="Customer Care")
         ),
     ),
     "still_waiting": Template(
-        sms="Sorry for the wait, {name}. The team has your messages and will get back to you as soon as they can.",
+        sms="Sorry for the wait, {name}. Our sales manager has your messages and will get back to you as soon as "
+            "possible.",
         email_subject="Still on it",
         email_body=(
-            "Hi {name},\n\nSorry for the wait. The team has your messages and will get back to you as soon as "
-            "they can." + _SIGN_OFF.format(team="Customer Care")
+            "Hi {name},\n\nSorry for the wait. Our sales manager has your messages and will get back to you as "
+            "soon as possible." + _SIGN_OFF.format(team="Customer Care")
         ),
     ),
 }
-HOLDING_PROMISE = "A member of the team will reach out shortly."
+HOLDING_PROMISE = "Our sales manager will reach out shortly."
 
 
 def without_missing_name(text: str) -> str:

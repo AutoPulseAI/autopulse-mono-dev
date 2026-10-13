@@ -191,7 +191,7 @@ async def test_holding_reply_by_email_uses_the_email_version(mongo, dealers):
     _move(150)
     assert (await _say(created, "Still waiting for that call", channel="email"))["status"] == "holding_reply"
     last = (await _outbox(mongo, created, "email"))[-1]
-    assert last["subject"] == HOLDING_REPLIES["holding"].email_subject and "passed it to the team" in last["text"]
+    assert last["subject"] == HOLDING_REPLIES["holding"].email_subject and "passed it to our sales manager" in last["text"]
 
 
 async def test_customer_message_does_not_cancel_the_staff_check(mongo, dealers):

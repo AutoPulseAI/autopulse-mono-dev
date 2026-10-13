@@ -743,7 +743,9 @@ def reasons(model_name: str) -> bool:
 
 # Measured on gpt-5-mini (stream G, 4 Oct 2026): Compose wrote ~180-250 output tokens at effort "minimal" and
 # ~600-810 at "low" (the extra is reasoning). A reasoning model's output budget gets this much on top.
-REASONING_HEADROOM_TOKENS = 1500
+# Live, 13 Oct 2026 (Timi Gabice's first reply): gpt-5 at "low" used 2,174 against the old 2,100 cap and the customer
+# got the template instead. It is only a ceiling (billing is per token used), so it sits well above what gpt-5 needs.
+REASONING_HEADROOM_TOKENS = 6000
 
 
 def prompt_cache_key(agent_name: str) -> str:

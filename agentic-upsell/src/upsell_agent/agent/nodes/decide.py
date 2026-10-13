@@ -217,6 +217,35 @@ def _live_asked_day(conversation: ConversationState, dealer: DealerProfile, now:
     return asked if day >= now.astimezone(dealer.tz).date() else None
 
 
+_COMING_TODAY = re.compile(
+    r"\bon (?:my|our) way\b|\bheading (?:over|in|there|your way)\b|\b(?:coming|come|stopping|stop|swing|swinging|"
+    r"heading|headed|be there|be over|going)\b[^.?!]{0,40}\b(?:now|today|tonight|this (?:afternoon|evening)|soon|"
+    r"shortly|in a (?:bit|few))\b", re.IGNORECASE)
+_ASKED_ARRIVAL = re.compile(r"\bwhat time (?:will|would|do|can|are) you\b[^?]{0,30}\b(?:arrive|be here|get here|come|"
+                            r"stop by|be in)\b|\bwhen (?:will|would) you (?:arrive|be here|get here)\b", re.IGNORECASE)
+
+
+def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: datetime) -> dict[str, str] | None:
+    """Client, 13 Oct 2026 (Artem Petrov: "We coming to look at it now" ... "520" - the AI "didn't acknowledge the time
+    and didn't confirm an appt nor book it"): a customer on their way today who gives the time they'll arrive has that
+    time booked, as a pick - when it is today, still ahead and inside opening hours. A visit, not a slot on the grid."""
+    at = booking_tool.bare_time(text)
+    if at is None:
+        return None
+    memory = (state.context_pack or {}).get("working_memory") or []
+    said = [m.get("text") or "" for m in memory[-6:] if m.get("direction") == "inbound"] + [text]
+    asked = [m.get("text") or "" for m in memory[-3:] if m.get("direction") == "outbound"]
+    if not (any(_COMING_TODAY.search(t) for t in said) or any(_ASKED_ARRIVAL.search(t) for t in asked)):
+        return None
+    local = now.astimezone(dealer.tz)
+    when = datetime.combine(local.date(), at, tzinfo=dealer.tz)
+    hours = dealer.hours.get(local.weekday())
+    if when <= local or not hours or not (hours[0] <= at <= hours[1]):
+        return None
+    return {"iso": when.isoformat(), "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"),
+            "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
+
+
 def _part_on_known_day(text: str, asked_day: str | None, offered: list[dict[str, str]], dealer: DealerProfile,
                        now: datetime) -> booking_tool.DayRequest | None:
     """"Morning is better" with no day named: that part of the day they asked for, else of the day we offered."""
@@ -317,6 +346,8 @@ async def _visit_and_booking(
     # No active booking: is the customer's message a pick against what we just offered, or the
     # email/phone we asked for to book a time they already picked?
     pending = conversation.visit.pending_pick if conversation.visit else None
+    if not pending and not active_booking and (arrival := arrival_today(text, state, dealer, now)):
+        pending = arrival  # "we're coming now" ... "520": that time today, booked like a time they picked
     asked_day = _live_asked_day(conversation, dealer, now)
     slot_taken = False
     # B5 item 8: a visit request that names its own time ("can I come see it tomorrow at 10?"),
@@ -363,7 +394,7 @@ async def _visit_and_booking(
                 visit_ctx["day_request"] = info
                 return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
                                                  why=_day_offer_why(info), asked_day=request.day.isoformat())
-        if picked and datetime.fromisoformat(picked["iso"]) not in available:
+        if picked and not picked.get("arrival") and datetime.fromisoformat(picked["iso"]) not in available:
             # B5 item 3: taken since we offered it - fresh times instead, not a booking.
             slot_taken = True
             visit_ctx["slot_taken"] = picked["display"]

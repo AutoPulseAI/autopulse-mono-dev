@@ -8,7 +8,7 @@ The register these come from: agentic-upsell/src/upsell_agent/docs/plans/SOW_AUD
 """
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -284,3 +284,61 @@ async def test_stop_opts_out_and_the_ai_starts_nothing_more(mongo):
     assert stopped["status"] == "opted_out" and stopped["followups_cancelled"] >= 1
     assert len(await _sent(mongo, created)) == 1  # nothing from us after STOP
     assert await consent.is_opted_out(dealer_scoped_db(DEALER), created["customer_id"], "sms")
+
+
+# --- 13 Oct 2026 (Bibi / Betsy, the overnight leads and Artem Petrov) ----------------------------------------------
+
+async def test_a_night_lead_gets_the_email_now_and_its_first_text_in_the_morning(mongo):
+    """Timi Gabice, 11:10 PM, a phone on the lead: only an email ever went out. Betsy: email at night, the text when
+    texting hours open - the full first text, not the "we're open" email on top of it."""
+    from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION
+    set_clock(datetime(2026, 9, 23, 3, 10, tzinfo=UTC))  # 11:10 PM New York
+    created = await _new_lead(mongo, vehicle=RAV4)
+    assert not await _sent(mongo, created) and (await _sent(mongo, created, "email"))
+    pending = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "status": "pending"}).to_list(None)
+    held = [p for p in pending if p["kind"] == "first_reply_held"]
+    assert len(held) == 1 and held[0]["to_channel"] == "sms"
+    assert not [p for p in pending if p["kind"] == "resume_at_opening"]
+    from tests.unit.test_booking_flow import _deps as deps
+    from upsell_agent.scheduler import followups
+    set_clock(held[0]["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    await followups.fire_due(deps())
+    first_text = (await _sent(mongo, created))[0]
+    assert first_text.startswith("Hi Maria, this is ") and "AI Sales Manager" in first_text
+
+
+async def test_a_lead_portal_placeholder_email_is_never_used(mongo):
+    """Betsy: "the email provided on that lead was that bogus CarGurus placeholder email"."""
+    from upsell_agent.channels.consent import resolve_recipient
+    lead = {"email": "no-reply+19292404033@cargurus.com", "phone": "+19292404033"}
+    assert resolve_recipient(lead, {}, "email") is None
+    assert resolve_recipient({"email": "teg7580@aol.com"}, {}, "email") == "teg7580@aol.com"
+
+
+@pytest.mark.parametrize(("said", "hhmm"), [("520", "17:20"), ("1130", "11:30"), ("5 20", "17:20"),
+                                            ("at 520pm", "17:20"), ("5:20", "17:20")])
+def test_a_time_without_a_colon_is_read(said, hhmm):
+    from upsell_agent.tools.booking_tool import bare_time
+    assert bare_time(said).strftime("%H:%M") == hhmm
+
+
+async def test_on_my_way_and_a_time_books_that_time_today(mongo):
+    """Artem Petrov: "We coming to look at it now" -> "About what time will you arrive?" -> "520": the AI "didn't
+    acknowledge the time and didn't confirm an appt nor book it"."""
+    set_clock(datetime(2026, 9, 22, 18, 0, tzinfo=UTC))  # 2:00 PM New York, a Tuesday
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "We coming to look at it now")
+    await _say(created, "520")
+    lead = await _lead_doc(mongo, created)
+    assert lead["data"].get("bookingId"), lead.get("data")
+    assert "5:20 PM" in await _last_sms(mongo, created)
+
+
+def test_no_template_promises_the_team():
+    """Betsy, 12 Oct: never "the team" - the holding replies said "The team has your messages" (Jean Castro)."""
+    from upsell_agent.agent import templates
+    every = [t for group in (templates.FIRST_REPLY, templates.HOLDING_REPLIES) for t in group.values()]
+    for template in every:
+        for text in (template.sms, template.email_body):
+            assert not TEAM.search(text.replace("_SIGN_OFF", "")), text
