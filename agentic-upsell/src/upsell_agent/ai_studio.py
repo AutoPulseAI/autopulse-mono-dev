@@ -253,23 +253,38 @@ _ATTRS = {
     "lead_bucket": ("BUCKET_SOURCES", "WORD_TRACKS"),
     "origin": ("INBOUND_SOURCES", "DMS_SOURCES"),
     "cannot_supply": ("_PATTERNS", "_COMPILED", "_REPLIES", "ESCALATES", "CUSTOM_LABELS"),
-    "buyers_order": ("ASKS", "START", "START_STEP", "_TEXT", "ESCALATE_AT", "FLOWS"),
+    "buyers_order": ("ASKS", "START", "START_STEP", "_TEXT", "ESCALATE_AT", "FLOWS", "ACTIONS"),
     "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID", "SCHEDULE", "LAST_DAY"),
     "escalation": ("MANAGER_ESCALATIONS",),
     "lifecycle": ("STAFF_STATUS_EVENTS", "OPPORTUNITY_DAYS"),
     "sold_pending": ("STUDIO_DAYS",),
     "owner_touches": ("OWNER_TOUCH_DAYS",),
     "appointment": ("DETAILS_AFTER", "NO_SHOW_AFTER", "NO_SHOW_FOLLOWUP_AFTER"),
+    "engine": ("REPLY_WINDOW", "TRANSACTIONAL_WINDOW", "MARKETING_WINDOW", "MARKETING_SMS_CAP", "CAP_PERIOD",
+               "DND_STATUSES"),
+    "state_hours": ("STATE_RULES",),
+    "opt_out": ("STOP_WORDS", "_STOP_TOKENS", "START_WORDS", "NL_CONFIRMATION", "_PHRASES"),
+    "text_consent": ("INVITE", "CONFIRMATION"),
+    "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
+    "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
+    "guard": ("_TEAM",),
+    "templates": ("FIRST_REPLY", "HOLDING_REPLIES", "CONTINUE_NOTED", "CONTINUE_VARIANTS"),
     "crm_status": ("CRM_STATUS_FOR_STAGE", "CRM_STATUS_FOR_EVENT"),
 }
 
 
 def _by_name() -> dict[str, Any]:
     b, cad, cs, crm, esc, lb, lc, sp, org = _modules()
-    from upsell_agent.agent import appointment, owner_touches, sold_pending
+    from upsell_agent.agent import appointment, owner_touches, sold_pending, templates
+    from upsell_agent.agent.nodes import guard
+    from upsell_agent.channels import consent
+    from upsell_agent.compliance import engine, opt_out, state_hours, text_consent
+    from upsell_agent.guardrails import draft_guard
     return {"specialists": sp, "lead_bucket": lb, "origin": org, "cannot_supply": cs, "buyers_order": b,
             "cadence": cad, "escalation": esc, "lifecycle": lc, "crm_status": crm, "sold_pending": sold_pending,
-            "owner_touches": owner_touches, "appointment": appointment}
+            "owner_touches": owner_touches, "appointment": appointment, "engine": engine,
+            "state_hours": state_hours, "opt_out": opt_out, "text_consent": text_consent, "consent": consent,
+            "draft_guard": draft_guard, "guard": guard, "templates": templates}
 
 
 def _snapshot() -> None:
@@ -292,7 +307,8 @@ def _restore() -> None:
             current.clear()
             current.update(value)
         else:
-            setattr(modules[name], attr, value)
+            # A fresh copy: a set edited in place later must never change the built-in kept here.
+            setattr(modules[name], attr, copy.copy(value))
 
 
 # --- Applying each kind of item -----------------------------------------------------------------------------------
@@ -372,7 +388,7 @@ def _apply_workflow(key: str, c: dict[str, Any], built_in: dict[str, Any] | None
     if trigger:
         re.compile(trigger)
     if key == "buyers_order":
-        start, start_step, text, escalate_at = _flow(tree, prefix="")
+        start, start_step, text, escalate_at = _flow(tree, prefix="", actions=bo.ACTIONS)
         if start:
             bo.START = start
             bo._TEXT.clear()
@@ -384,7 +400,8 @@ def _apply_workflow(key: str, c: dict[str, Any], built_in: dict[str, Any] | None
         return
     topic = key.removeprefix("cannot_supply_")
     built_topics = {t for t, _ in _pristine[("cannot_supply", "_PATTERNS")]}
-    nested = any((b.get("then") or {}).get("action") == "ask" for b in tree.get("branches") or [])
+    # A tree that waits for a yes / no (to send a next message, set a status, create a call task...) runs step by step.
+    nested = any((b.get("when") or {}).get("value") in ("yes", "no") for b in tree.get("branches") or [])
     if topic in built_topics or not nested:
         # A one-message answer (Betsy's can't-supply scripts, or one added like them): code places it, and offers
         # two open times when it has {times}.
@@ -406,7 +423,7 @@ def _apply_workflow(key: str, c: dict[str, Any], built_in: dict[str, Any] | None
     # A workflow with yes / no steps, added in the Studio: it runs like the buyer's order.
     if not trigger:
         return
-    start, start_step, text, escalate_at = _flow(tree, prefix=f"{key}:")
+    start, start_step, text, escalate_at = _flow(tree, prefix=f"{key}:", actions=bo.ACTIONS)
     if start:
         bo.FLOWS.append({"key": key, "asks": re.compile(trigger, re.IGNORECASE), "start": start,
                          "start_step": start_step})
@@ -414,7 +431,8 @@ def _apply_workflow(key: str, c: dict[str, Any], built_in: dict[str, Any] | None
         bo.ESCALATE_AT = frozenset({*bo.ESCALATE_AT, *escalate_at})
 
 
-def _flow(tree: dict[str, Any], *, prefix: str) -> tuple[str | None, str | None, dict, set]:
+def _flow(tree: dict[str, Any], *, prefix: str, actions: dict | None = None
+          ) -> tuple[str | None, str | None, dict, set]:
     """A yes / no tree as (first message, its step, {(step, answer): (reply, next step)}, the escalating answers).
     A step whose answer leads to another question names that question's step; one that ends, None."""
     text: dict[tuple[str, str], tuple[str, str | None]] = {}
@@ -428,6 +446,14 @@ def _flow(tree: dict[str, Any], *, prefix: str) -> tuple[str | None, str | None,
         step = prefix + str(node.get("id") or "start")
         for branch in node.get("branches") or []:
             answer, then = (branch.get("when") or {}).get("value"), branch.get("then") or {}
+            if answer in ("yes", "no") and then.get("action") in ("set_status", "call_task", "escalate", "end"):
+                # An end step: what the answer does, and the AI carries the conversation on (no reply of its own).
+                text[(step, answer)] = ("", None)
+                if actions is not None and then["action"] != "end":
+                    actions[(step, answer)] = {
+                        "set_status": then.get("status") if then["action"] == "set_status" else None,
+                        "call_task": then["action"] == "call_task", "escalate": then["action"] == "escalate"}
+                continue
             if answer not in ("yes", "no") or then.get("action") != "ask":
                 continue
             child = then.get("node") or {}
@@ -587,8 +613,11 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
 def _apply_message(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
     """An added message is sent when the customer says one of its words (like a one-message workflow); the built-in
     ones are read where they're used (message())."""
+    if built_in is not None:
+        _apply_template_message(key, c)
+        return
     send_when = c.get("send_when") or {}
-    if built_in is not None or not (send_when.get("phrases") or send_when.get("words")):
+    if not (send_when.get("phrases") or send_when.get("words")):
         return
     _apply_workflow(f"message_{key}", {"name": _names.get(("messages", key)), "trigger": send_when,
                                        "tree": {"id": "answer", "message": c.get("message") or {}, "branches": [
@@ -596,6 +625,139 @@ def _apply_message(key: str, c: dict[str, Any], built_in: dict[str, Any] | None)
                     None)
 
 
-_APPLY = {"messages": _apply_message, "agents": _apply_agent, "buckets": _apply_bucket, "sources": _apply_sources,
+def _to_template_text(text: str | None) -> str:
+    return str(text or "").replace("{first_name}", "{name}")
+
+
+def _apply_template_message(key: str, c: dict[str, Any]) -> None:
+    """The fixed texts the AI sends without writing them (agent/templates.py, compliance/opt_out.py)."""
+    mods = _by_name()
+    tpl, oo = mods["templates"], mods["opt_out"]
+    msg = c.get("message") or {}
+    text = fixed_text(msg)
+    if not text:
+        return
+    if key.startswith(("first_reply_", "holding_")):
+        table = tpl.FIRST_REPLY if key.startswith("first_reply_") else tpl.HOLDING_REPLIES
+        name = key.removeprefix("first_reply_").removeprefix("holding_")
+        slot = next((k for k in table if getattr(k, "value", k) == name), None)
+        if slot is None:
+            return
+        old = table[slot]
+        table[slot] = type(old)(sms=_to_template_text(text),
+                                email_subject=_to_template_text(msg.get("email_subject")) or old.email_subject,
+                                email_body=_to_template_text(msg.get("email_text"))
+                                or "Hi {name},\n\n" + _to_template_text(text) + "\n\nThank you")
+    elif key == "continue_noted":
+        tpl.CONTINUE_NOTED = _to_template_text(text)
+    elif key.startswith("continue_variant_"):
+        i = int(key.rsplit("_", 1)[1]) - 1
+        if 0 <= i < len(tpl.CONTINUE_VARIANTS):
+            tpl.CONTINUE_VARIANTS[i] = _to_template_text(text)
+    elif key == "opt_out_confirmation":
+        oo.NL_CONFIRMATION = text
+
+
+def _time(value: Any) -> "Any":
+    from upsell_agent.agent.timing import parse_at
+    return parse_at(value)
+
+
+_FEDERAL = ("08:00", "21:00")
+
+
+def _window(value: Any, *, legal: bool = True) -> "Any":
+    """["08:00", "21:00"] as a window; None when not given. Never wider than federal 8 AM - 9 PM."""
+    if not value or len(value) != 2:
+        return None
+    start, end = _time(value[0]), _time(value[1])
+    if start is None or end is None or end <= start:
+        raise ValueError(f"not a window: {value}")
+    if legal:
+        start, end = max(start, _time(_FEDERAL[0])), min(end, _time(_FEDERAL[1]))
+    return (start, end)
+
+
+def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
+    from datetime import timedelta
+    mods = _by_name()
+    if key == "texting_hours":
+        eng = mods["engine"]
+        eng.REPLY_WINDOW = _window(c.get("reply_window")) or eng.REPLY_WINDOW
+        eng.TRANSACTIONAL_WINDOW = _window(c.get("first_message_window")) or eng.TRANSACTIONAL_WINDOW
+        eng.MARKETING_WINDOW = _window(c.get("follow_up_window")) or eng.MARKETING_WINDOW
+        if c.get("follow_up_texts_per_period"):
+            eng.MARKETING_SMS_CAP = int(c["follow_up_texts_per_period"])
+        if c.get("period_hours"):
+            eng.CAP_PERIOD = timedelta(hours=float(c["period_hours"]))
+        if isinstance(c.get("dnd_statuses"), list):
+            eng.DND_STATUSES.clear()
+            eng.DND_STATUSES.update(str(s).strip().lower() for s in c["dnd_statuses"] if str(s).strip())
+    elif key == "state_rules":
+        sh = mods["state_hours"]
+        rows = {}
+        for row in c.get("rows") or []:
+            state = str(row.get("state") or "").strip().upper()
+            if not state:
+                continue
+            cap = (int(row["cap_texts"]), timedelta(hours=float(row.get("cap_hours") or 24))) \
+                if row.get("cap_texts") else None
+            auto = None
+            if row.get("automated_weekday") or row.get("automated_cap_texts"):
+                auto = {"weekday": _window(row.get("automated_weekday")),
+                        "saturday": _window(row.get("automated_saturday")),
+                        "sunday": _window(row.get("automated_sunday")),
+                        "cap": (int(row["automated_cap_texts"]),
+                                timedelta(hours=float(row.get("automated_cap_hours") or 24)))
+                        if row.get("automated_cap_texts") else None, "cite": row.get("cite") or ""}
+            old = _pristine[("state_hours", "STATE_RULES")].get(state)
+            rows[state] = sh.StateRule(
+                state, _window(row.get("weekday")) or _window(list(_FEDERAL)), _window(row.get("saturday")),
+                _window(row.get("sunday")), bool(row.get("holidays_banned")), cap,
+                old.verified if old else True, str(row.get("cite") or ""), str(row.get("note") or ""), auto,
+                bool(row.get("no_unsolicited_sales_texts")))
+        if rows:
+            sh.STATE_RULES.clear()
+            sh.STATE_RULES.update(rows)
+    elif key == "opt_out":
+        oo = mods["opt_out"]
+        if isinstance(c.get("stop_words"), list) and c["stop_words"]:
+            oo.STOP_WORDS.clear()
+            oo.STOP_WORDS.update(str(w).strip().lower() for w in c["stop_words"] if str(w).strip())
+            oo._STOP_TOKENS = {w.replace(" ", "").replace("-", "") for w in oo.STOP_WORDS}
+        if isinstance(c.get("start_words"), list) and c["start_words"]:
+            oo.START_WORDS.clear()
+            oo.START_WORDS.update(str(w).strip().lower() for w in c["start_words"] if str(w).strip())
+        if (pattern := words_to_pattern(c.get("extra_stop_phrases") or [])):
+            oo._PHRASES.append((re.compile(pattern, re.IGNORECASE), None))
+        if str(c.get("confirmation") or "").strip():
+            oo.NL_CONFIRMATION = c["confirmation"].strip()
+    elif key == "text_invite":
+        tc = mods["text_consent"]
+        tc.INVITE = str(c.get("invite") or tc.INVITE)
+        tc.CONFIRMATION = str(c.get("confirmation") or tc.CONFIRMATION)
+    elif key == "channels":
+        cons = mods["consent"]
+        if c.get("first_channel") in ("text", "email"):
+            cons.FIRST_CHANNEL = c["first_channel"]
+        if c.get("at_night") in ("email_now_text_when_open", "wait_for_text", "email_only"):
+            cons.AT_NIGHT = c["at_night"]
+        words = [re.escape(str(w).strip()).replace("\\-", "-?") for w in c.get("placeholder_emails") or []
+                 if str(w).strip()]
+        if words:
+            cons._PLACEHOLDER_EMAIL = re.compile(r"^(?:" + "|".join(words) + r")[+.@_-]", re.IGNORECASE)
+    elif key == "writing":
+        dg, gd = mods["draft_guard"], mods["guard"]
+        for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),
+                            ("cars_per_text", "SMS_MAX_VEHICLES"), ("cars_per_email", "EMAIL_MAX_VEHICLES")):
+            if c.get(field):
+                setattr(dg, attr, int(c[field]))
+        if isinstance(c.get("banned_phrases"), list) and c["banned_phrases"] != (built_in or {}).get("banned_phrases"):
+            pattern = words_to_pattern(c["banned_phrases"])
+            gd._TEAM = re.compile(pattern or r"(?!x)x", re.IGNORECASE)
+    # "contacted" is read by the CRM itself (aidmvcs-be-dev app/lib/contactedLeads.js).
+
+
+_APPLY = {"compliance": _apply_compliance, "messages": _apply_message, "agents": _apply_agent, "buckets": _apply_bucket, "sources": _apply_sources,
           "workflows": _apply_workflow, "cadences": _apply_cadence, "status_rules": _apply_status_rules}
 # Built-in messages and the prompts are read where they're used: message(), step_message(), compose_prompt().

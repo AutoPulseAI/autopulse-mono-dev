@@ -30,7 +30,8 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.language import message_language
 from upsell_agent.agent.nodes.compose import just_captured
 from upsell_agent.agent.state import AgentState
-from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX, check_draft
+from upsell_agent.guardrails import draft_guard
+from upsell_agent.guardrails.draft_guard import check_draft
 from upsell_agent.guardrails.grammar import check_draft_grammar
 from upsell_agent.guardrails.link_guard import disallowed_links
 from upsell_agent.guardrails.plain_language import find_jargon
@@ -313,8 +314,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     result = check_draft(checked, customer_texts=customer_texts, known_values=known, inventory=inventory,
                          # Three segments for Touch 1, and for a reply in Spanish (stream Q: the same message runs
                          # about a fifth longer, and two over-length drafts handed a Spanish lead to staff).
-                         sms_max=TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") or (
-                             state.decision or {}).get("reply_language") else SMS_MAX,
+                         sms_max=draft_guard.TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") or (
+                             state.decision or {}).get("reply_language") else draft_guard.SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
     # The client's own wording placed by code: a script, or a touch written as fixed text in AI Studio.

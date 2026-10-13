@@ -337,6 +337,13 @@ _PLACEHOLDER_EMAIL = re.compile(r"^(no-?reply|do-?not-?reply|donotreply|noemail|
                                 re.IGNORECASE)
 
 
+# Channel rules, set in AI Studio (client, 13 Oct 2026): which channel a new lead hears from first ("text" / "email"),
+# and what a lead arriving outside texting hours gets: "email_now_text_when_open" (Betsy's rule), "wait_for_text"
+# (nothing until texting hours open) or "email_only".
+FIRST_CHANNEL = "text"
+AT_NIGHT = "email_now_text_when_open"
+
+
 def _plausible(value: str, channel: Channel) -> bool:
     if channel == "email":
         return (bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value)) and value.lower() not in {"na", "n/a"}

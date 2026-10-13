@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-13T00:59:41.128454+00:00",
- "revision": 4,
+ "exported_at": "2026-10-13T12:33:38.658537+00:00",
+ "revision": 5,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1152,6 +1152,198 @@
    "locked": false
   },
   {
+   "type": "messages",
+   "key": "first_reply_sales",
+   "name": "Fallback first reply: sales lead",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Hi {first_name}, thanks for reaching out! Are you looking for a new or a used vehicle?",
+     "email_text": "Hi {first_name},\n\nThanks for reaching out! So I can pull together the right options, are you looking for a new or a used vehicle, and do you have a timeline in mind?\n\nThank you",
+     "email_subject": "Thanks for your inquiry",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "first_reply_trade_in",
+   "name": "Fallback first reply: trade in lead",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Hi {first_name}, thanks for reaching out about your trade-in! What year, make and model is it, and about how many miles?",
+     "email_text": "Hi {first_name},\n\nThanks for reaching out about your trade-in! To get started: what year, make and model is your vehicle, and roughly how many miles are on it?\n\nThank you",
+     "email_subject": "About your trade-in",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "first_reply_service",
+   "name": "Fallback first reply: service lead",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Hi {first_name}, thanks for contacting our service department! Which vehicle is this for, and what day works best for you?",
+     "email_text": "Hi {first_name},\n\nThanks for contacting our service department! Which vehicle is this for (year, make and model), and what day works best for you?\n\nThank you",
+     "email_subject": "Your service request",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "first_reply_general",
+   "name": "Fallback first reply: general lead",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Hi {first_name}, thanks for reaching out! Are you shopping for a vehicle, trading one in, or booking service?",
+     "email_text": "Hi {first_name},\n\nThanks for reaching out! Are you shopping for a vehicle, trading one in, or booking service?\n\nThank you",
+     "email_subject": "Thanks for reaching out",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "holding_holding",
+   "name": "While a person has the lead",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Thanks, {first_name}! I've passed this to our sales manager, who will reach out to you shortly.",
+     "email_text": "Hi {first_name},\n\nThanks for your message. I've passed it to our sales manager, who will reach out to you shortly.\n\nThank you",
+     "email_subject": "We've got your message",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "holding_holding_booking",
+   "name": "While a person has it: asked to come in",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Thanks, {first_name}! I've passed your request to come in to our sales manager, who will confirm the time with you shortly.",
+     "email_text": "Hi {first_name},\n\nThanks for your message. I've passed your request to come in to our sales manager, who will confirm the time with you shortly.\n\nThank you",
+     "email_subject": "We've got your request",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "holding_still_waiting",
+   "name": "While a person has it: still waiting",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Sorry for the wait, {first_name}. Our sales manager has your messages and will get back to you as soon as possible.",
+     "email_text": "Hi {first_name},\n\nSorry for the wait. Our sales manager has your messages and will get back to you as soon as possible.\n\nThank you",
+     "email_subject": "Still on it",
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "continue_noted",
+   "name": "Fallback reply: noted",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Thanks, {first_name}. I've made a note of that.",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "continue_variant_1",
+   "name": "Fallback reply: variant 1",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Got it, {first_name}. We can cover that in person. Would a weekday or the weekend work better for you to come in?",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "continue_variant_2",
+   "name": "Fallback reply: variant 2",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Thank you, {first_name}. I've made a note of that. When would be a good time for you to stop by?",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "continue_variant_3",
+   "name": "Fallback reply: variant 3",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Thanks, {first_name}. Is there anything else I can help you with before your visit?",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
+   "key": "opt_out_confirmation",
+   "name": "Opt-out confirmation",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Understood, we won't contact you again.",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
    "type": "workflows",
    "key": "cannot_supply_credit_score",
    "name": "Can't supply: credit score",
@@ -1813,6 +2005,1458 @@
     "editable_sections": []
    },
    "locked": true
+  },
+  {
+   "type": "compliance",
+   "key": "texting_hours",
+   "name": "Texting hours & limits",
+   "content": {
+    "reply_window": [
+     "08:00",
+     "21:00"
+    ],
+    "first_message_window": [
+     "08:00",
+     "21:00"
+    ],
+    "follow_up_window": [
+     "08:00",
+     "20:00"
+    ],
+    "follow_up_texts_per_period": 3,
+    "period_hours": 24,
+    "dnd_statuses": [
+     "dnd",
+     "do not contact",
+     "do not disturb"
+    ]
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "state_rules",
+   "name": "State texting rules",
+   "content": {
+    "rows": [
+     {
+      "state": "AL",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": null,
+      "holidays_banned": true,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Ala. Admin. Code r. 770-X-5-.17",
+      "note": ""
+     },
+     {
+      "state": "AK",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "AZ",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": "Table 2: registration + bond state; hours are the federal default"
+     },
+     {
+      "state": "AR",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "CA",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "CO",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "CT",
+      "weekday": [
+       "09:00",
+       "20:00"
+      ],
+      "saturday": [
+       "09:00",
+       "20:00"
+      ],
+      "sunday": [
+       "09:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Conn. Gen. Stat. \u00a7 42-288a(c) (PA 23-98)",
+      "note": "Table 2: PEWC default for telephonic sales calls, with carve-outs for consumer inquiries"
+     },
+     {
+      "state": "DE",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "FL",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": 3,
+      "cap_hours": 24,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Fla. Stat. \u00a7 501.616(6)",
+      "note": "Table 2: PEWC for automated selection and dialing (FTSA, \u00a7 501.059)"
+     },
+     {
+      "state": "GA",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "HI",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "ID",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "IL",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "IN",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": [
+       "09:00",
+       "20:00"
+      ],
+      "automated_saturday": [
+       "09:00",
+       "20:00"
+      ],
+      "automated_sunday": [
+       "09:00",
+       "20:00"
+      ],
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Ind. Code \u00a7 24-5-14-8",
+      "note": "Live calls: federal default. Autodialed (ADAD) calls 9:00-20:00 - applied to AI texts (X1 item 10)"
+     },
+     {
+      "state": "IA",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "KS",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "KY",
+      "weekday": [
+       "10:00",
+       "21:00"
+      ],
+      "saturday": [
+       "10:00",
+       "21:00"
+      ],
+      "sunday": [
+       "10:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "KRS 367.46955(16)",
+      "note": "Latest start in the country"
+     },
+     {
+      "state": "LA",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": null,
+      "holidays_banned": true,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "LPSC DNC General Order R-29617 \u00a7 V(A)(2); La. R.S. 45:811",
+      "note": ""
+     },
+     {
+      "state": "ME",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": [
+       "09:00",
+       "17:00"
+      ],
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": 1,
+      "automated_cap_hours": 8,
+      "no_unsolicited_sales_texts": false,
+      "cite": "10 M.R.S. \u00a7 1498(3)",
+      "note": "Live calls: federal default. Automated devices: weekdays 9:00-17:00, 1 per 8h - applied to AI texts (X1 item 10)"
+     },
+     {
+      "state": "MD",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": 3,
+      "cap_hours": 24,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Md. Com. Law \u00a7 14-4502(c)",
+      "note": "Table 2: PEWC for automated selection or dialing (calls, texts, voicemail)"
+     },
+     {
+      "state": "MA",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "201 CMR 12.02(2)",
+      "note": ""
+     },
+     {
+      "state": "MI",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "MN",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "MS",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": null,
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Miss. Code \u00a7\u00a7 77-3-603, 77-3-723",
+      "note": ""
+     },
+     {
+      "state": "MO",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "MT",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "NE",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Neb. Rev. Stat. \u00a7 86-248(1)(a)",
+      "note": ""
+     },
+     {
+      "state": "NV",
+      "weekday": [
+       "09:00",
+       "20:00"
+      ],
+      "saturday": [
+       "09:00",
+       "20:00"
+      ],
+      "sunday": [
+       "09:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "NRS 598.0918(3)",
+      "note": ""
+     },
+     {
+      "state": "NH",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": "State telemarketing law has no hours rule"
+     },
+     {
+      "state": "NJ",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": true,
+      "cite": "16 C.F.R. \u00a7 310.4(c); N.J.S.A. 56:8-130",
+      "note": "Table 2: no calls 21:00-8:00; outright ban on unsolicited sales calls to cell phones (N.J.S.A. 56:8-130) - applied to marketing texts without the customer's own inquiry or express consent (X1 item 10), for counsel"
+     },
+     {
+      "state": "NM",
+      "weekday": [
+       "09:00",
+       "21:00"
+      ],
+      "saturday": [
+       "09:00",
+       "21:00"
+      ],
+      "sunday": [
+       "09:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "NMSA \u00a7 57-12-22(B)(5)",
+      "note": ""
+     },
+     {
+      "state": "NY",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "N.Y. Gen. Bus. Law \u00a7 399-z(2), (5-a)",
+      "note": ""
+     },
+     {
+      "state": "NC",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "ND",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "N.D.C.C. \u00a7 51-28-05",
+      "note": ""
+     },
+     {
+      "state": "OH",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "OK",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": 3,
+      "cap_hours": 24,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "15 O.S. \u00a7 775C.4(A)",
+      "note": "Table 2: PEWC for automated selection or dialing"
+     },
+     {
+      "state": "OR",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "PA",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "73 P.S. \u00a7 2245(a)(1)",
+      "note": ""
+     },
+     {
+      "state": "RI",
+      "weekday": [
+       "09:00",
+       "18:00"
+      ],
+      "saturday": [
+       "10:00",
+       "17:00"
+      ],
+      "sunday": null,
+      "holidays_banned": true,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "R.I. Gen. Laws \u00a7\u00a7 5-61-2(2), 5-61-3.6",
+      "note": "State holidays as well as federal (Victory Day, X1 item 10)"
+     },
+     {
+      "state": "SC",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "S.C. Code \u00a7 37-21-30",
+      "note": ""
+     },
+     {
+      "state": "SD",
+      "weekday": [
+       "09:00",
+       "21:00"
+      ],
+      "saturday": [
+       "09:00",
+       "21:00"
+      ],
+      "sunday": null,
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "SDCL 37-30A-3(2)",
+      "note": ""
+     },
+     {
+      "state": "TN",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "TX",
+      "weekday": [
+       "09:00",
+       "21:00"
+      ],
+      "saturday": [
+       "09:00",
+       "21:00"
+      ],
+      "sunday": [
+       "12:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Tex. Bus. & Com. Code \u00a7 301.051",
+      "note": ""
+     },
+     {
+      "state": "UT",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Utah Code \u00a7 13-25a-103",
+      "note": ""
+     },
+     {
+      "state": "VT",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "VA",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Va. Code \u00a7 59.1-511",
+      "note": ""
+     },
+     {
+      "state": "WA",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "RCW 80.36.390(8)",
+      "note": ""
+     },
+     {
+      "state": "WV",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     },
+     {
+      "state": "WI",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Wis. Admin. Code ATCP 127.16(3)",
+      "note": ""
+     },
+     {
+      "state": "WY",
+      "weekday": [
+       "08:00",
+       "20:00"
+      ],
+      "saturday": [
+       "08:00",
+       "20:00"
+      ],
+      "sunday": [
+       "08:00",
+       "20:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "Wyo. Stat. \u00a7 40-12-302(d)",
+      "note": ""
+     },
+     {
+      "state": "DC",
+      "weekday": [
+       "08:00",
+       "21:00"
+      ],
+      "saturday": [
+       "08:00",
+       "21:00"
+      ],
+      "sunday": [
+       "08:00",
+       "21:00"
+      ],
+      "holidays_banned": false,
+      "cap_texts": null,
+      "cap_hours": null,
+      "automated_weekday": null,
+      "automated_saturday": null,
+      "automated_sunday": null,
+      "automated_cap_texts": null,
+      "automated_cap_hours": null,
+      "no_unsolicited_sales_texts": false,
+      "cite": "16 C.F.R. \u00a7 310.4(c)",
+      "note": ""
+     }
+    ]
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "opt_out",
+   "name": "Opt-out & opt-in",
+   "content": {
+    "stop_words": [
+     "cancel",
+     "end",
+     "opt out",
+     "opt-out",
+     "optout",
+     "quit",
+     "revoke",
+     "stop",
+     "stopall",
+     "unsubscribe"
+    ],
+    "start_words": [
+     "start",
+     "unstop"
+    ],
+    "extra_stop_phrases": [],
+    "confirmation": "Understood, we won't contact you again."
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "text_invite",
+   "name": "Text invite (email customers)",
+   "content": {
+    "invite": "Prefer texts? Text YES to {number} to get our messages by text. Msg & data rates may apply. Reply STOP anytime to stop.",
+    "confirmation": "Thanks! You'll now get our messages by text too. Reply STOP anytime to stop."
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "channels",
+   "name": "Channels: text or email first, nights",
+   "content": {
+    "first_channel": "text",
+    "at_night": "email_now_text_when_open",
+    "placeholder_emails": [
+     "no-reply",
+     "noreply",
+     "do-not-reply",
+     "donotreply",
+     "noemail",
+     "no-email",
+     "none",
+     "test"
+    ]
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "contacted",
+   "name": "What counts as Contacted",
+   "content": {
+    "customer_texts": 1,
+    "customer_emails": 2,
+    "note": "The lead's own arrival email counts as one of the customer's emails."
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "writing",
+   "name": "Message limits & banned phrases",
+   "content": {
+    "sms_max_characters": 320,
+    "first_text_max_characters": 480,
+    "cars_per_text": 2,
+    "cars_per_email": 3,
+    "banned_phrases": [
+     "the team",
+     "our team",
+     "a team",
+     "your team",
+     "sales team",
+     "finance team",
+     "team member",
+     "someone from",
+     "someone at",
+     "someone on"
+    ],
+    "banned_pattern": "\\b(?:the|our|a|your)\\s+(?:sales\\s+|finance\\s+)?team\\b|\\bteam\\s+member|\\bsomeone\\s+(?:from|at|on)\\s+(?:our|the)\\b|\\bsomeone\\s+will\\s+(?:reach|get|call|follow|be)\\b"
+   },
+   "locked": false
   }
  ]
 }
