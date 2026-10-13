@@ -179,6 +179,7 @@ class PlannedTouch:
     day: int = 0
     due_at: datetime | None = None
     why: str = ""
+    channels: list[str] | None = None  # the channels ticked for the touch in AI Studio (None: every channel)
 
     @property
     def scheduled(self) -> bool:
@@ -188,7 +189,8 @@ class PlannedTouch:
         return {"touch_number": self.touch_number, "theme": self.theme.id if self.theme else None,
                 "theme_label": self.theme.label if self.theme else None,
                 "instruction": self.theme.instruction if self.theme else None,
-                "day": self.day, "due_at": self.due_at.isoformat() if self.due_at else None, "why": self.why}
+                "day": self.day, "due_at": self.due_at.isoformat() if self.due_at else None, "why": self.why,
+                **({"channels": self.channels} if self.channels else {})}
 
 
 def _aware(value: Any, tz) -> datetime | None:
@@ -242,6 +244,8 @@ def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bo
         return PlannedTouch(why="The first reply hasn't gone out yet.")
     local_now = now.astimezone(tz)
     touch = max(state.touch_number, 3 if state.reentered else 2)
+    if SCHEDULE is not None:
+        return _plan_from_schedule(state, now=now, tz=tz, touch=touch)
 
     if touch == 2:
         due = now + NAME_NUDGE_AFTER
@@ -284,6 +288,99 @@ def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bo
     theme = pick_theme(touch, state.themes_used, day=day)
     return PlannedTouch(touch_number=touch, theme=theme, day=day, due_at=due,
                         why=f"Touch {touch} on day {day} of the cadence: {theme.label.lower()}.")
+
+
+# --- The timing set in AI Studio (client, 13 Oct 2026: "give them the option of the timing") ---------------------
+#
+# None: the client's schedule above. Set (upsell_agent/ai_studio.py) when the sales cadence was edited there:
+#   {"steps": [touch 1, the name nudge (or None when removed), the touches after it ...],
+#    "phases": [{"first": wait, "every": wait, "until": wait, "themes": [Theme, ...]}, ...]}
+# each step {"theme": Theme, "wait": {...}, "channels": [...]}; a wait as agent/timing.py reads it.
+SCHEDULE: dict[str, Any] | None = None
+
+
+@dataclass
+class _Slot:
+    touch_number: int
+    due_at: datetime
+    theme: Theme | None
+    phase_themes: list[Theme] | None
+    channels: list[str] | None
+    calendar: bool
+
+
+def _slots(started: datetime, tz, last_sent: datetime | None, touch: int) -> list[_Slot]:
+    from upsell_agent.agent import timing
+    out: list[_Slot] = []
+    previous = started
+    for i, step in enumerate(SCHEDULE["steps"]):
+        if step is None:  # the name nudge was removed: its place is kept so touch numbers stay put
+            out.append(_Slot(i + 1, started, None, None, None, False))
+            continue
+        wait = step.get("wait") or {}
+        anchor = started if wait.get("after") == "start" else (
+            last_sent if last_sent is not None and i + 1 == touch else previous)
+        due = timing.due(anchor, wait, tz) if i else started
+        out.append(_Slot(i + 1, due, step.get("theme"), None, step.get("channels"), timing.calendar_unit(wait)))
+        previous = due
+    for phase in SCHEDULE.get("phases") or []:
+        first, every, until = phase.get("first") or {}, phase.get("every") or {}, phase.get("until") or {}
+        if not every.get("amount") or not phase.get("themes"):
+            continue
+        due = timing.due(started if first.get("after") == "start" else previous, first, tz)
+        end = timing.due(started, {**until, "at": None}, tz) if until.get("amount") else due
+        by_date = timing.calendar_unit(every)
+        for _ in range(500):
+            if (due.date() > end.date()) if by_date else (due > end + timedelta(minutes=1)):
+                break
+            out.append(_Slot(len(out) + 1, due, None, phase["themes"], phase.get("channels"),
+                             timing.calendar_unit(every)))
+            due = timing.due(due, {**every, "at": every.get("at") or first.get("at")}, tz)
+        previous = out[-1].due_at if out else previous
+    return out
+
+
+def _plan_from_schedule(state: CadenceState, *, now: datetime, tz, touch: int) -> PlannedTouch:
+    started = _aware(state.started_at, tz) or now.astimezone(tz)
+    last_sent = _aware(state.last_touch_at, tz)
+    last_date = last_sent.date() if last_sent else None
+    if touch == 3 and last_sent is not None and (last_sent.date() <= started.date()
+                                                 or last_sent.hour < NUDGE_HELD_FROM_HOUR):
+        last_date = None  # the name nudge belongs to Day 1 (as in the client's schedule)
+    for slot in _slots(started, tz, last_sent, touch)[touch - 1:]:
+        if slot.theme is None and slot.phase_themes is None:
+            continue
+
+        def taken(at: datetime, calendar: bool = slot.calendar) -> bool:
+            return at <= now or (calendar and last_date is not None and at.date() <= last_date)
+
+        if slot.theme is not None and taken(slot.due_at):
+            # A touch of its own (not a rotating phase) is never dropped: as in the client's schedule, a day already
+            # used moves it to the next day; a wait in minutes / hours that has passed sends it now.
+            if slot.calendar:
+                for _ in range(14):
+                    if not taken(slot.due_at):
+                        break
+                    slot.due_at += timedelta(days=1)
+            else:
+                slot.due_at = max(slot.due_at, now + timedelta(minutes=1))
+        if taken(slot.due_at):
+            continue
+        day = (slot.due_at.astimezone(tz).date() - started.date()).days + 1
+        theme = slot.theme or _least_used(slot.phase_themes, state.themes_used)
+        planned = PlannedTouch(touch_number=slot.touch_number, theme=theme, day=day, due_at=slot.due_at,
+                               why=f"Touch {slot.touch_number} on day {day} (the timing set in AI Studio): "
+                                   f"{theme.label.lower()}.")
+        planned.channels = slot.channels
+        return planned
+    return PlannedTouch(touch_number=touch, day=0, why="Past the last touch of the cadence (timing set in AI Studio).")
+
+
+def _least_used(themes: list[Theme], used: list[str]) -> Theme:
+    unused = [t for t in themes if t.id not in used]
+    if unused:
+        return unused[0]
+    return min(themes, key=lambda t: used.index(t.id) if t.id in used else -1)
 
 
 def after_touch(state: CadenceState, planned: PlannedTouch, *, at: datetime) -> CadenceState:

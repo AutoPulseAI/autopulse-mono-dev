@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-13T00:44:30.903104+00:00",
- "revision": 3,
+ "exported_at": "2026-10-13T00:59:41.128454+00:00",
+ "revision": 4,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -152,6 +152,11 @@
        "sms",
        "email"
       ],
+      "wait": {
+       "amount": 0,
+       "unit": "minutes",
+       "after": "start"
+      },
       "message": {
        "mode": "fixed_opening_ai",
        "text": "Hi {first_name}, this is {agent_name}, {dealership}'s AI Sales Manager, following up on your interest in the {vehicle}. {price_line} Tell me, what are you driving now?",
@@ -170,6 +175,11 @@
        "sms",
        "email"
       ],
+      "wait": {
+       "amount": 3,
+       "unit": "hours",
+       "after": "previous"
+      },
       "message": {
        "mode": "fixed",
        "text": "{first_name}?",
@@ -196,6 +206,12 @@
        "email_subject": null,
        "instruction": "Show them the vehicle they asked about and ask one simple question about it (color, trim, whether they want to see it in person). Use only what the inventory records say.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 1,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      },
      {
@@ -215,6 +231,12 @@
        "email_subject": null,
        "instruction": "Ask whether they'd like help with financing or payment options. Never state a rate, a term, a payment or an approval - the team confirms all of that.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 2,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      },
      {
@@ -234,6 +256,12 @@
        "email_subject": null,
        "instruction": "Ask about a trade-in using what they've already told us: if we know their current vehicle, ask whether they want it appraised; if not, ask what they're driving now. Never a value or an estimate.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 3,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      },
      {
@@ -253,6 +281,12 @@
        "email_subject": null,
        "instruction": "Highlight one verified feature, trim detail or fact about the vehicle from the inventory records, and why it fits what they told us. Nothing invented.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 4,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      },
      {
@@ -272,6 +306,12 @@
        "email_subject": null,
        "instruction": "Give one truthful reason to come in that fits their own situation - an appraisal, comparing it with another vehicle, a financing review, meeting the right person - and ask for the visit.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 5,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      },
      {
@@ -291,6 +331,12 @@
        "email_subject": null,
        "instruction": "Ask whether they're still considering the vehicle, and offer to set a time - ask what day suits them.",
        "fallback": null
+      },
+      "wait": {
+       "amount": 6,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
       }
      }
     ],
@@ -308,7 +354,25 @@
    "key": "sales_days_8_30",
    "name": "Sales follow-up: Days 8-30 (weekly)",
    "content": {
-    "every": "7 days",
+    "repeat": {
+     "first": {
+      "amount": 13,
+      "unit": "days",
+      "after": "start",
+      "at": "10:00"
+     },
+     "every": {
+      "amount": 7,
+      "unit": "days",
+      "after": "previous",
+      "at": "10:00"
+     },
+     "until": {
+      "amount": 29,
+      "unit": "days",
+      "after": "start"
+     }
+    },
     "steps": [
      {
       "id": "price_or_offer",
@@ -412,14 +476,37 @@
   {
    "type": "cadences",
    "key": "sales_days_31_90",
-   "name": "Sales follow-up: Days 31-90 (every 2 weeks)",
+   "name": "Sales follow-up: Days 31-90 (monthly)",
    "content": {
-    "every": "14 days",
+    "repeat": {
+     "first": {
+      "amount": 57,
+      "unit": "days",
+      "after": "start",
+      "at": "10:00"
+     },
+     "every": {
+      "amount": 30,
+      "unit": "days",
+      "after": "previous",
+      "at": "10:00"
+     },
+     "until": {
+      "amount": 89,
+      "unit": "days",
+      "after": "start"
+     }
+    },
+    "closes_after": {
+     "amount": 90,
+     "unit": "days",
+     "after": "start"
+    },
     "steps": [
      {
       "id": "price_or_offer",
       "day": "31-90",
-      "when": "Every 2 weeks",
+      "when": "Monthly",
       "label": "Verified price change or offer",
       "channels": [
        "sms",
@@ -438,7 +525,7 @@
      {
       "id": "what_did_we_miss",
       "day": "31-90",
-      "when": "Every 2 weeks",
+      "when": "Monthly",
       "label": "What did we miss?",
       "channels": [
        "sms",
@@ -457,7 +544,7 @@
      {
       "id": "credit_tips",
       "day": "31-90",
-      "when": "Every 2 weeks",
+      "when": "Monthly",
       "label": "Credit tips",
       "channels": [
        "sms",
@@ -476,7 +563,7 @@
      {
       "id": "trade_market",
       "day": "31-90",
-      "when": "Every 2 weeks",
+      "when": "Monthly",
       "label": "Trade-in market",
       "channels": [
        "sms",
@@ -495,7 +582,7 @@
      {
       "id": "still_shopping",
       "day": "31-90",
-      "when": "Every 2 weeks",
+      "when": "Monthly",
       "label": "Still shopping?",
       "channels": [
        "sms",
@@ -525,6 +612,11 @@
      {
       "id": "week_1",
       "when": "Touch 1 (day 1)",
+      "wait": {
+       "amount": 1,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Documentation + questions",
       "channels": [
        "sms",
@@ -543,6 +635,11 @@
      {
       "id": "week_2",
       "when": "Touch 2 (day 8)",
+      "wait": {
+       "amount": 8,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Support check-in",
       "channels": [
        "sms",
@@ -561,6 +658,11 @@
      {
       "id": "week_3",
       "when": "Touch 3 (day 15)",
+      "wait": {
+       "amount": 15,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Purchase / vehicle check-in",
       "channels": [
        "sms",
@@ -579,6 +681,11 @@
      {
       "id": "week_4",
       "when": "Touch 4 (day 22)",
+      "wait": {
+       "amount": 22,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Relationship check-in",
       "channels": [
        "sms",
@@ -597,6 +704,11 @@
      {
       "id": "week_5",
       "when": "Touch 5 (day 36)",
+      "wait": {
+       "amount": 36,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Every-two-weeks check-in",
       "channels": [
        "sms",
@@ -615,6 +727,11 @@
      {
       "id": "week_6",
       "when": "Touch 6 (day 50)",
+      "wait": {
+       "amount": 50,
+       "unit": "days",
+       "after": "start"
+      },
       "label": "Every-two-weeks check-in",
       "channels": [
        "sms",
@@ -676,6 +793,11 @@
      },
      {
       "id": "first_30",
+      "wait": {
+       "amount": 30,
+       "unit": "days",
+       "after": "start"
+      },
       "when": "Day 30",
       "label": "First 30",
       "channels": [
@@ -693,6 +815,11 @@
      },
      {
       "id": "review_referral",
+      "wait": {
+       "amount": 14,
+       "unit": "days",
+       "after": "start"
+      },
       "when": "Day 14",
       "label": "Review Referral",
       "channels": [
@@ -710,6 +837,11 @@
      },
      {
       "id": "first_90",
+      "wait": {
+       "amount": 85,
+       "unit": "days",
+       "after": "start"
+      },
       "when": "About day 90",
       "label": "First 90",
       "channels": [
@@ -811,6 +943,11 @@
        "sms",
        "email"
       ],
+      "wait": {
+       "amount": 15,
+       "unit": "minutes",
+       "after": "start"
+      },
       "message": {
        "mode": "fixed",
        "text": "{first_name}, we are all set to meet on {date} at {time} at {dealership}, {address}. Please make sure to call or text us if anything changes at {dealer_phone}. Looking forward to assisting you!",
@@ -862,6 +999,11 @@
        "sms",
        "email"
       ],
+      "wait": {
+       "amount": 1,
+       "unit": "hours",
+       "after": "start"
+      },
       "message": {
        "mode": "fixed",
        "text": "Hello, this is {agent_name} with {dealership}. I am looking for you in the showroom - are you here and working with someone?",
@@ -879,6 +1021,11 @@
        "sms",
        "email"
       ],
+      "wait": {
+       "amount": 24,
+       "unit": "hours",
+       "after": "previous"
+      },
       "message": {
        "mode": "fixed",
        "text": "Hi! This is {agent_name} at {dealership} regarding your {model} purchase. How did everything go when you came in? Did you get a chance to stop by?",

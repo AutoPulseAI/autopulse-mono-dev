@@ -27,11 +27,11 @@ const TYPE_TITLES = { buckets: "Buckets", agents: "Agents", sources: "Lead sourc
 function Editor({ item, content, onChange, placeholders, readOnly, agents }) {
   const props = { content, onChange, placeholders, readOnly };
   if (item.type === "workflows") return <WorkflowEditor {...props} />;
-  if (item.type === "cadences") return <CadenceTimeline {...props} />;
+  if (item.type === "cadences") return <CadenceTimeline {...props} builtIn={item.has_default} />;
   if (item.type === "buckets") return <BucketEditor {...props} agents={agents} />;
   if (item.type === "agents") return <AgentEditor {...props} />;
   if (item.type === "sources") return <SourceEditor {...props} />;
-  if (item.type === "messages") return <SingleMessage {...props} />;
+  if (item.type === "messages") return <SingleMessage {...props} builtIn={item.has_default} />;
   if (item.type === "prompts") return <PromptEditor {...props} />;
   return <RulesEditor {...props} />;
 }
@@ -95,7 +95,8 @@ export default function AiStudioPage() {
   const create = async () => {
     const content = creating.type === "workflows"
       ? { trigger: { type: "customer_says", phrases: [] }, tree: newNode("First message") }
-      : creating.type === "cadences" ? { steps: [] }
+      : creating.type === "cadences" ? { starts_when: { type: "status", status: "" },
+        stops_when: ["customer replies", "appointment set", "opt-out"], steps: [] }
         : creating.type === "agents" ? { playbook: "", never: "", steps_in_when: "", examples: [] }
           : { message: { mode: "fixed", text: "" } };
     const res = await run(() => api("/api/admin/ai-studio", { method: "POST",

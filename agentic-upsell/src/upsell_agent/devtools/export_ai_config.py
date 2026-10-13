@@ -83,37 +83,51 @@ def sources() -> list[dict[str, Any]]:
              "content": {"pattern": origin.DMS_SOURCES.pattern}}]
 
 
-def _theme_step(day: int | str, theme: cadence.Theme, when: str) -> dict[str, Any]:
+def _wait(amount: float, unit: str, after: str = "previous", at: str | None = None) -> dict[str, Any]:
+    """A touch's timing (client, 13 Oct 2026): any number of minutes ... years after the previous touch or the start."""
+    return {"amount": amount, "unit": unit, "after": after, **({"at": at} if at else {})}
+
+
+def _theme_step(day: int | str, theme: cadence.Theme, when: str, wait: dict[str, Any] | None = None
+                ) -> dict[str, Any]:
     return {"id": theme.id, "day": day, "when": when, "label": theme.label, "channels": ["sms", "email", "call_task"],
-            "message": ai(theme.instruction)}
+            "message": ai(theme.instruction), **({"wait": wait} if wait else {})}
 
 
 def cadences() -> list[dict[str, Any]]:
     sales_steps = [
         {"id": "touch1", "day": 1, "when": "Immediately (or the next allowed time)", "label": "First message (FTC)",
-         "channels": ["sms", "email"], "message": {
+         "channels": ["sms", "email"], "wait": _wait(0, "minutes", "start"), "message": {
              **fixed("Hi {first_name}, this is {agent_name}, {dealership}'s AI Sales Manager, following up on your "
                      "interest in the {vehicle}. {price_line} Tell me, what are you driving now?"),
              "mode": "fixed_opening_ai",
              "instruction": "Answer what the lead form asked (mileage, CARFAX, availability) between the opening and "
                             "the closing question."}},
         {"id": cadence.NAME_NUDGE.id, "day": 1, "when": "3 hours after the first message", "label": "Name nudge",
-         "channels": ["sms", "email"],
+         "channels": ["sms", "email"], "wait": _wait(3, "hours"),
          "message": fixed("{first_name}?", email="Hi {first_name},\n\nJust checking that you saw my last message about "
                                                  "the {vehicle}. Is there anything I can help you with?\n\nThank you",
                           subject="Just checking in")},
-        *[_theme_step(i + 2, t, f"Day {i + 2}") for i, t in enumerate(cadence.DAY_THEMES)],
+        *[_theme_step(i + 2, t, f"Day {i + 2}", _wait(i + 1, "days", "start", "10:00"))
+          for i, t in enumerate(cadence.DAY_THEMES)],
     ]
     return [
         {"key": "sales_days_1_7", "name": "Sales follow-up: Days 1-7", "content": {"steps": sales_steps,
          "stops_when": ["customer replies", "appointment set", "opt-out", "sales visit"]}},
+        # The client's grid (agent/cadence.py EXTENDED_GRID): days 14, 21, 28, then 58 and 88; closes after day 90.
         {"key": "sales_days_8_30", "name": "Sales follow-up: Days 8-30 (weekly)", "content": {
-            "every": "7 days", "steps": [_theme_step("8-30", t, "Weekly") for t in cadence.NURTURE_THEMES]}},
-        {"key": "sales_days_31_90", "name": "Sales follow-up: Days 31-90 (every 2 weeks)", "content": {
-            "every": "14 days", "steps": [_theme_step("31-90", t, "Every 2 weeks") for t in cadence.DEEPER_THEMES],
+            "repeat": {"first": _wait(13, "days", "start", "10:00"), "every": _wait(7, "days", at="10:00"),
+                       "until": _wait(29, "days", "start")},
+            "steps": [_theme_step("8-30", t, "Weekly") for t in cadence.NURTURE_THEMES]}},
+        {"key": "sales_days_31_90", "name": "Sales follow-up: Days 31-90 (monthly)", "content": {
+            "repeat": {"first": _wait(57, "days", "start", "10:00"), "every": _wait(30, "days", at="10:00"),
+                       "until": _wait(89, "days", "start")},
+            "closes_after": _wait(90, "days", "start"),
+            "steps": [_theme_step("31-90", t, "Monthly") for t in cadence.DEEPER_THEMES],
             "day_91": "The opportunity closes (Closed - Lost); the customer stays in the CRM."}},
         {"key": "sold_pending", "name": "Sold Pending", "content": {
             "steps": [{"id": f"week_{n}", "when": f"Touch {n} (day {sold_pending.touch_due_day(n)})",
+                       "wait": _wait(sold_pending.touch_due_day(n), "days", "start"),
                        "label": sold_pending.theme_for(n).label if hasattr(sold_pending.theme_for(n), "label") else
                        f"Touch {n}", "channels": ["sms", "email", "call_task"],
                        "message": _placeholdered(sold_pending.render_touch(
@@ -121,7 +135,9 @@ def cadences() -> list[dict[str, Any]]:
                            {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "VEHICLE": "{vehicle}"})}
                       for n in range(1, 7)]}},
         {"key": "owner_lifecycle", "name": "Sold Delivered: owner lifecycle", "content": {
-            "steps": [{"id": t, "when": {"review_referral": "Day 14", "first_30": "Day 30", "first_90": "About day 90",
+            "steps": [{"id": t, **({"wait": _wait(owner_touches.OWNER_TOUCH_DAYS[t], "days", "start")}
+                                   if t in owner_touches.OWNER_TOUCH_DAYS else {}),
+                       "when": {"review_referral": "Day 14", "first_30": "Day 30", "first_90": "About day 90",
                                          "birthday": "Every year (month and day)", "anniversary": "Every year, 10 years",
                                          "lease_end": "90 days before the lease ends", "payoff": "When finance is paid off",
                                          "tip": "Every 60 days in year 1, then every 90",
@@ -135,6 +151,11 @@ def cadences() -> list[dict[str, Any]]:
                       for t in owner_touches.ALL_TOUCHES]}},
         {"key": "appointment", "name": "Appointment: details, confirmation, no-show", "content": {
             "steps": [{"id": s, "when": w, "label": s.replace("_", " ").title(), "channels": ["sms", "email"],
+                       **({"wait": {appointment.STEP_DETAILS: _wait(15, "minutes", "start"),
+                                    appointment.STEP_NO_SHOW_CHECK: _wait(1, "hours", "start"),
+                                    appointment.STEP_NO_SHOW_FOLLOWUP: _wait(24, "hours")}[s]}
+                          if s in (appointment.STEP_DETAILS, appointment.STEP_NO_SHOW_CHECK,
+                                   appointment.STEP_NO_SHOW_FOLLOWUP) else {}),
                        "message": _placeholdered(appointment.render_message(
                            s, customer_name="Qzfirst", dealership="DEALERSHIP", agent_name="AGENTNAME",
                            appt=_SAMPLE_APPT, model="MODEL", address="ADDRESS", agent_phone="PHONE"),
@@ -243,7 +264,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 3
+DEFAULTS_REVISION = 4
 
 
 def export() -> dict[str, Any]:

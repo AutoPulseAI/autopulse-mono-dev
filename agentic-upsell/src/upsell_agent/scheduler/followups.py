@@ -165,7 +165,9 @@ KIND_OWNER_TOUCH = "owner_touch"
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
                                       KIND_DAILY_CALL_TASK, KIND_OWNER_TOUCH, *APPOINTMENT_KINDS,
-                                      *SOLD_LIFECYCLE_KINDS]}}
+                                      *SOLD_LIFECYCLE_KINDS,
+                                      # A cadence added in AI Studio stops on its own "stops when" (studio_cadences).
+                                      "studio_touch"]}}
 HANDOFF_TIMEOUT_BUSINESS_MINUTES = 30
 # The visit_followup fires at this dealer-local hour on its due date (B4 item 4's date, or +3 days).
 VISIT_FOLLOWUP_HOUR = 10
@@ -557,6 +559,9 @@ async def plan_cadence_touch(
     # PLAN_4 stream L: the learned angle (Days 8-90), wording variant and send time (learning/optimizer.py).
     planned, touch = await optimizer.plan(db, planned, lead_id=lead_id, state=cadence_state, lead=lead,
                                           lead_state=state, tz=profile.tz, now=now)
+    ticked = [c for c in (touch.get("channels") or []) if c in ("sms", "email")]
+    if ticked and channel not in ticked:
+        channel = ticked[0]  # AI Studio: the touch leads with a channel ticked for it
     channel, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
                                               channel=channel, at=planned.due_at, lead=lead, customer=customer)
     if check.outcome in ("BLOCK", "REVIEW"):
@@ -933,6 +938,9 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     if doc.get("kind") == KIND_OWNER_TOUCH:
         from upsell_agent.scheduler import owner_lifecycle
         fire_locked = owner_lifecycle.fire
+    if doc.get("kind") == "studio_touch":
+        from upsell_agent.scheduler import studio_cadences  # a cadence added in AI Studio
+        fire_locked = studio_cadences.fire
     try:
         async with lock(dealer_id, lead_id):
             return await fire_locked(db, doc, deps)

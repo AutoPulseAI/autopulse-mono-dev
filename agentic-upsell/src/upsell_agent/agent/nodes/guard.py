@@ -317,7 +317,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
                              state.decision or {}).get("reply_language") else SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
-    scripted = ((state.decision or {}).get("cannot_supply") or {}).get("text")
+    # The client's own wording placed by code: a script, or a touch written as fixed text in AI Studio.
+    scripted = (((state.decision or {}).get("cannot_supply") or {}).get("text")
+                or ((state.decision or {}).get("touch") or {}).get("fixed_text"))
     if scripted and str(draft.get("sms_text") or "") == scripted:
         # The client's own can't-supply wording, placed by code (agent/cannot_supply.py): her payment answer runs
         # past one text and says "incentives you qualify for" - her words, not a consent claim.
@@ -373,6 +375,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     is_resume = ((state.decision or {}).get("after_hours") or {}).get("mode") == "resume"
     conversation_turn = 0 if is_resume else ((state.context_pack or {}).get("conversation") or {}).get("turn", 0)
     greeted_again = repeats_greeting(conversation_turn, state.draft or {})
+    if greeted_again and scripted and str((state.draft or {}).get("sms_text") or "") == scripted:
+        greeted_again = []  # the wording the client (or the super admin in AI Studio) wrote, greeting and all
     result["checks"]["no_repeated_greeting"] = not greeted_again
     if greeted_again:
         result["passed"] = False

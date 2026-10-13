@@ -660,6 +660,7 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
     agent/cadence.py), written onto the lead state by the scheduler just
     before the turn runs. The name nudge is a fixed text, not a written
     message: the client calls it non-negotiable (Omnichannel PDF §3)."""
+    from upsell_agent.agent.templates import known_first_name
     pending = (lead_state or {}).get("pending_touch")
     if not pending:
         return None
@@ -676,8 +677,20 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
     elif theme_id in cadence.BY_ID:
         # The touch's angle as it is now (AI Studio edits apply to touches already scheduled).
         instruction = cadence.BY_ID[theme_id].instruction or instruction
+    # AI Studio (client, 13 Oct 2026): a touch written as fixed text goes out word for word - a touch of an added
+    # cadence (its message rides on the touch), or an edited sales touch.
+    message = pending.get("message") if pending.get("studio_cadence") else next(
+        (m for key in ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90")
+         if (m := ai_studio.step_message("cadences", key, str(theme_id)))), None)
+    if theme_id != cadence.NAME_NUDGE.id and (text := ai_studio.fixed_text(message)) and (
+            not message or message.get("mode") == "fixed"):
+        given = first_name(customer_first_name) if known_first_name(customer_first_name) else None
+        fixed = ai_studio.fill(text, {"first_name": given})
+    elif message and (said := ai_studio.instruction(message)):
+        instruction = said
     return {"touch_number": pending.get("touch_number"), "day": pending.get("day"), "theme": theme_id,
-            "label": pending.get("theme_label"), "instruction": instruction, "fixed_text": fixed}
+            "label": pending.get("theme_label"), "instruction": instruction, "fixed_text": fixed,
+            "channels": pending.get("channels")}
 
 
 def _customer_summary(profile: Profile) -> str:

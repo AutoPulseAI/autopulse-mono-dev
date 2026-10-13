@@ -90,6 +90,11 @@ def load(published: dict[tuple[str, str], dict[str, Any]]) -> None:
             _APPLY.get(kind, lambda *_: None)(key, content, defaults.get((kind, key)))
         except Exception:  # one broken item never takes the others down
             logger.exception("AI Studio item %s/%s could not be applied; the built-in setting stays", kind, key)
+    try:
+        _build_schedule()
+    except Exception:
+        logger.exception("the sales cadence timing set in AI Studio could not be applied; the built-in one stays")
+        _by_name()["cadence"].SCHEDULE = None
     if changed:
         logger.info("AI Studio: %d edited setting(s) in use: %s", len(changed), sorted(changed))
 
@@ -249,17 +254,22 @@ _ATTRS = {
     "origin": ("INBOUND_SOURCES", "DMS_SOURCES"),
     "cannot_supply": ("_PATTERNS", "_COMPILED", "_REPLIES", "ESCALATES", "CUSTOM_LABELS"),
     "buyers_order": ("ASKS", "START", "START_STEP", "_TEXT", "ESCALATE_AT", "FLOWS"),
-    "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID"),
+    "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID", "SCHEDULE", "LAST_DAY"),
     "escalation": ("MANAGER_ESCALATIONS",),
-    "lifecycle": ("STAFF_STATUS_EVENTS",),
+    "lifecycle": ("STAFF_STATUS_EVENTS", "OPPORTUNITY_DAYS"),
+    "sold_pending": ("STUDIO_DAYS",),
+    "owner_touches": ("OWNER_TOUCH_DAYS",),
+    "appointment": ("DETAILS_AFTER", "NO_SHOW_AFTER", "NO_SHOW_FOLLOWUP_AFTER"),
     "crm_status": ("CRM_STATUS_FOR_STAGE", "CRM_STATUS_FOR_EVENT"),
 }
 
 
 def _by_name() -> dict[str, Any]:
     b, cad, cs, crm, esc, lb, lc, sp, org = _modules()
+    from upsell_agent.agent import appointment, owner_touches, sold_pending
     return {"specialists": sp, "lead_bucket": lb, "origin": org, "cannot_supply": cs, "buyers_order": b,
-            "cadence": cad, "escalation": esc, "lifecycle": lc, "crm_status": crm}
+            "cadence": cad, "escalation": esc, "lifecycle": lc, "crm_status": crm, "sold_pending": sold_pending,
+            "owner_touches": owner_touches, "appointment": appointment}
 
 
 def _snapshot() -> None:
@@ -443,8 +453,11 @@ def _link(text: str) -> str:
 
 def _apply_cadence(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
     cad = _by_name()["cadence"]
+    if key in ("sold_pending", "owner_lifecycle", "appointment"):
+        _apply_timing(key, c)  # their texts are placed where they're written (step_message)
+        return
     if key not in ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90"):
-        return  # the other cadences' touches are fixed texts, placed where they're written (step_message)
+        return  # an added cadence: scheduler/studio_cadences.py runs it
     pristine_by_id = _pristine[("cadence", "BY_ID")]
 
     def theme(step: dict[str, Any]) -> Any:
@@ -464,10 +477,96 @@ def _apply_cadence(key: str, c: dict[str, Any], built_in: dict[str, Any] | None)
         pristine = _pristine[("cadence", "DAY_THEMES")]
         # Days 2-7 go out on fixed days: one theme each, the built-in one where a day was removed.
         cad.DAY_THEMES[:] = (themes + pristine[len(themes):])[:len(pristine)]
+        cad.BY_ID.update({t.id: t for t in themes})  # added touches too (the timing places them)
     elif themes:
         (cad.NURTURE_THEMES if key == "sales_days_8_30" else cad.DEEPER_THEMES)[:] = themes
     cad.EXTENDED_THEMES[:] = list(dict.fromkeys([*cad.NURTURE_THEMES, *cad.DEEPER_THEMES]))
     cad.BY_ID.update({t.id: t for t in (*cad.DAY_THEMES, *cad.EXTENDED_THEMES)})
+
+
+def _span(wait: dict[str, Any]) -> "Any":
+    """A wait as a length of time (months and years as calendar ones, from a fixed date)."""
+    from datetime import UTC, datetime
+
+    from upsell_agent.agent import timing
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    return timing.add(start, float(wait.get("amount") or 0), wait.get("unit")) - start
+
+
+def _apply_timing(key: str, c: dict[str, Any]) -> None:
+    mods = _by_name()
+    waits = {s.get("id"): s.get("wait") for s in c.get("steps") or [] if (s.get("wait") or {}).get("amount")}
+    if key == "sold_pending":
+        days, total = [], 0
+        for step in c.get("steps") or []:
+            wait = step.get("wait") or {}
+            if not wait.get("amount"):
+                continue
+            span = _span(wait).days
+            total = span if wait.get("after") == "start" else total + span
+            days.append(max(total, (days[-1] + 1) if days else 0))
+        mods["sold_pending"].STUDIO_DAYS = days or None
+    elif key == "owner_lifecycle":
+        owner = mods["owner_touches"]
+        owner.OWNER_TOUCH_DAYS.update({t: _span(w).days for t, w in waits.items() if t in owner.OWNER_TOUCH_DAYS})
+    elif key == "appointment":
+        appt = mods["appointment"]
+        for step_id, attr in ((appt.STEP_DETAILS, "DETAILS_AFTER"), (appt.STEP_NO_SHOW_CHECK, "NO_SHOW_AFTER"),
+                              (appt.STEP_NO_SHOW_FOLLOWUP, "NO_SHOW_FOLLOWUP_AFTER")):
+            if step_id in waits:
+                setattr(appt, attr, _span(waits[step_id]))
+
+
+SALES_CADENCES = ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90")
+
+
+def _default_wait(step: dict[str, Any], index: int) -> dict[str, Any]:
+    """A touch saved before timing could be set: the client's own schedule."""
+    if index == 0:
+        return {"amount": 0, "unit": "minutes", "after": "start"}
+    if step.get("id") == "name_nudge":
+        return {"amount": 3, "unit": "hours", "after": "previous"}
+    day = step.get("day") if isinstance(step.get("day"), int) else index + 1
+    return {"amount": max(day - 1, 0), "unit": "days", "after": "start", "at": "10:00"}
+
+
+def _build_schedule() -> None:
+    """The sales cadence's timing as set in AI Studio (agent/cadence.py SCHEDULE); None while nobody changed any of
+    the three sales cadences, so the client's own schedule runs exactly as before."""
+    mods = _by_name()
+    cad, lc = mods["cadence"], mods["lifecycle"]
+    if not any(("cadences", k) in _changed for k in SALES_CADENCES):
+        return
+    defaults = _built_in()
+    first, nurture, deeper = (_changed.get(("cadences", k)) or defaults[("cadences", k)] for k in SALES_CADENCES)
+    steps: list[dict[str, Any] | None] = []
+    nudge = None
+    for i, step in enumerate(first.get("steps") or []):
+        wait = step.get("wait") or _default_wait(step, i)
+        channels = [c for c in step.get("channels") or [] if c in ("sms", "email", "call_task")] or None
+        if step.get("id") == "touch1":
+            steps.insert(0, {"theme": None, "wait": wait, "channels": channels})
+        elif step.get("id") == cad.NAME_NUDGE.id:
+            nudge = {"theme": cad.NAME_NUDGE, "wait": wait, "channels": channels}
+        elif (theme := cad.BY_ID.get(step.get("id"))) is not None:
+            steps.append({"theme": theme, "wait": wait, "channels": channels})
+    if not steps or steps[0].get("theme") is not None:
+        steps.insert(0, {"theme": None, "wait": {"amount": 0, "unit": "minutes"}, "channels": None})
+    steps.insert(1, nudge)
+    phases = []
+    for content_, themes in ((nurture, list(cad.NURTURE_THEMES)), (deeper, list(cad.DEEPER_THEMES))):
+        repeat = content_.get("repeat") or {}
+        if repeat.get("every"):
+            phases.append({**repeat, "themes": themes})
+    cad.SCHEDULE = {"steps": steps, "phases": phases}
+    closes = deeper.get("closes_after") or {}
+    if closes.get("amount"):
+        from datetime import UTC, datetime
+
+        from upsell_agent.agent import timing
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        days = max(1, (timing.add(start, float(closes["amount"]), closes.get("unit")) - start).days)
+        lc.OPPORTUNITY_DAYS, cad.LAST_DAY = days + 1, days
 
 
 def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
@@ -485,6 +584,18 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
             mods["crm_status"].CRM_STATUS_FOR_EVENT.update({k: v for k, v in c["closings"].items() if v})
 
 
-_APPLY = {"agents": _apply_agent, "buckets": _apply_bucket, "sources": _apply_sources,
+def _apply_message(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
+    """An added message is sent when the customer says one of its words (like a one-message workflow); the built-in
+    ones are read where they're used (message())."""
+    send_when = c.get("send_when") or {}
+    if built_in is not None or not (send_when.get("phrases") or send_when.get("words")):
+        return
+    _apply_workflow(f"message_{key}", {"name": _names.get(("messages", key)), "trigger": send_when,
+                                       "tree": {"id": "answer", "message": c.get("message") or {}, "branches": [
+                                           {"when": {"value": "picks_a_time"}, "then": {"action": "book"}}]}},
+                    None)
+
+
+_APPLY = {"messages": _apply_message, "agents": _apply_agent, "buckets": _apply_bucket, "sources": _apply_sources,
           "workflows": _apply_workflow, "cadences": _apply_cadence, "status_rules": _apply_status_rules}
-# "messages" and "prompts" are read where they're used: message(), step_message(), compose_prompt().
+# Built-in messages and the prompts are read where they're used: message(), step_message(), compose_prompt().

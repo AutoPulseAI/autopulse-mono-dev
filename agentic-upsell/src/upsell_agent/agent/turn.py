@@ -455,6 +455,11 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     if trigger not in OMNICHANNEL_TRIGGERS:
         return None
     other = "email" if channel == "sms" else "sms"
+    ticked = ((decision or {}).get("touch") or {}).get("channels")
+    if ticked and other not in ticked:
+        # AI Studio (client, 13 Oct 2026): this touch goes out only on the channels ticked for it.
+        await tracer.skipped(f"send_{other}", f"This touch isn't sent by {other} (its AI Studio channels).")
+        return None
     text = draft.get("sms_text") if other == "sms" else draft.get("email_body")
     if not text:
         await tracer.skipped(f"send_{other}", f"The draft has no {other} version.")
@@ -487,6 +492,9 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
     both channels; Plan 1's one-channel 24h switch is what it replaces
     (decision 147). A lead with no cadence - one from before C4, or a dealer
     whose cadence never started - keeps the old switch."""
+    # The channels ticked for this touch in AI Studio (none: every channel, as the client's PDF has it).
+    ticked = ((lead_state or {}).get("pending_touch") or {}).get("channels") if trigger == TRIGGER_CADENCE_TOUCH \
+        else None
     if shadow:
         return {"created": False, "reason": "shadow mode: nothing is scheduled"}
     state = cadence.CadenceState.load(lead_state)
@@ -499,7 +507,12 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": lead_id}, {"$set": {"cadence": state.as_dict()}})
         lead_state = {**(lead_state or {}), "cadence": state.as_dict()}
-    if trigger == TRIGGER_CADENCE_TOUCH:
+    if trigger == TRIGGER_CADENCE_TOUCH and ((lead_state or {}).get("pending_touch") or {}).get("studio_cadence"):
+        # A touch of a cadence added in AI Studio (scheduler/studio_cadences.py plans its next one itself): the
+        # sales cadence's own count doesn't move.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                                 {"$unset": {"pending_touch": ""}})
+    elif trigger == TRIGGER_CADENCE_TOUCH:
         # This turn WAS a touch: it used up its theme, so the next one moves on (agent/cadence.py).
         pending = (lead_state or {}).get("pending_touch") or {}
         planned_touch = cadence.PlannedTouch(
@@ -533,7 +546,7 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
                                        turn_id=turn_id, lead=lead, customer=customer, lead_state=lead_state,
                                        first_contact_done=True)
     call_task = None
-    if trigger in CALL_TASK_TRIGGERS and sent.status in ("sent", "duplicate"):
+    if trigger in CALL_TASK_TRIGGERS and sent.status in ("sent", "duplicate") and (not ticked or "call_task" in ticked):
         call_task = await plan_call_task(db, lead_id=lead_id, customer_id=customer_id, turn_id=turn_id, lead=lead,
                                          customer=customer, lead_state=lead_state, sent_channels=[channel])
     return {"cadence": True, "fallback": fallback, "call_task": call_task, **planned}

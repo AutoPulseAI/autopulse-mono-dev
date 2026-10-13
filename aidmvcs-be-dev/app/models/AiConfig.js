@@ -19,6 +19,7 @@ const aiConfigItemSchema = new mongoose.Schema({
   defaults_revision: { type: Number, default: 1 },
   deleted: { type: Boolean, default: false },
   deleted_at: { type: Date, default: null },
+  custom: { type: Boolean, default: false },  // made in AI Studio (not a built-in setting)
 }, { timestamps: true });
 aiConfigItemSchema.index({ type: 1, key: 1, dealer_id: 1 }, { unique: true });
 

@@ -152,7 +152,7 @@ def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) ->
 
 
 def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_first_name: str | None,
-                     vehicle: str | None = None) -> bool:
+                     vehicle: str | None = None, *, nudge: bool = True) -> bool:
     """Touch 2's name nudge (decide.py plan_cadence_touch_context: "the client calls it non-negotiable",
     Omnichannel PDF §3) is overwritten here rather than trusted to the model, the same reasoning as Touch 1's
     intro (place_touch1_intro): seen live, 6 Oct 2026, gpt-5-mini wrote a full qualifying question instead of
@@ -170,7 +170,7 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
     about = f" about the {vehicle}" if vehicle else ""
     draft["email_subject"] = "Just checking in"
     draft["email_body"] = (f"Hi {name},\n\nJust checking that you saw my last message{about}. Is there anything I can "
-                           f"help you with?\n\nThank you")
+                           f"help you with?\n\nThank you") if nudge else f"Hi {name},\n\n{fixed_text}\n\nThank you"
     draft["promises"] = []
     return changed
 
@@ -348,8 +348,9 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     place_after_hours_wording(draft, state.decision or {})
-    nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
-                              vehicle=vehicle_label(ctx.lead) if ctx else None)
+    touch_ = (state.decision or {}).get("touch") or {}
+    nudged = place_fixed_text(draft, touch_.get("fixed_text"), state.customer_name,
+                              vehicle=vehicle_label(ctx.lead) if ctx else None, nudge=touch_.get("theme") == "name_nudge")
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
     decision = state.decision or {}
     linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
