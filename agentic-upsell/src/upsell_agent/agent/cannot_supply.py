@@ -68,6 +68,8 @@ _BOOKED = "We'll go over it together at your visit on {booked}."
 # Client, 12 Oct 2026: her out-of-state script ends "> Dealership Action Required" (shipping / pick-up is staff's).
 ESCALATES = frozenset({CUSTOM_MEDIA, OUT_OF_STATE})
 ESCALATION_REASON = "Customer asked for something the AI can't supply"
+# One-message answers added in AI Studio (topic -> its name there), placed like hers (upsell_agent/ai_studio.py).
+CUSTOM_LABELS: dict[str, str] = {}
 
 
 @dataclass(frozen=True)

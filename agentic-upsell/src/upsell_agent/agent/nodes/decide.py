@@ -23,7 +23,7 @@ import re
 from datetime import date, datetime
 from typing import Any
 
-from upsell_agent import clock
+from upsell_agent import ai_studio, clock
 from upsell_agent.agent import (
     buyers_order,
     cadence,
@@ -539,12 +539,23 @@ def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: st
     (cadence.touch1_intro)."""
     service = is_service_lead(profile)
     ending = cadence.touch1_ending(_trade_in_known(profile), service=service)
+    intro = cadence.touch1_intro(
+        customer_first_name=first_name(customer_first_name), agent_name=dealer.agent_name,
+        dealership=dealer.name, city=dealer.city, state_code=dealer.state,
+        vehicle=_service_vehicle(profile) if service else _vehicle_of_interest(profile), service=service,
+        origin=origin)
+    edited = ai_studio.fixed_text(ai_studio.step_message("cadences", "sales_days_1_7", "touch1"))
+    if edited and not service and origin != "outbound":
+        # AI Studio (client, 13 Oct 2026): the first message as published there - its opening before {price_line},
+        # its closing question after (still left out once a trade-in is known).
+        opening, _, closing = edited.partition("{price_line}")
+        values = {"first_name": first_name(customer_first_name), "agent_name": dealer.agent_name,
+                  "dealership": dealer.name, "vehicle": _vehicle_of_interest(profile), "dealer_phone": dealer.phone}
+        intro = ai_studio.fill(opening, values) or intro
+        if ending:
+            ending = ai_studio.fill(closing, values) or None
     return {
-        "intro": cadence.touch1_intro(
-            customer_first_name=first_name(customer_first_name), agent_name=dealer.agent_name,
-            dealership=dealer.name, city=dealer.city, state_code=dealer.state,
-            vehicle=_service_vehicle(profile) if service else _vehicle_of_interest(profile), service=service,
-            origin=origin),
+        "intro": intro,
         "ending": ending,
         "ending_slot": TOUCH1_ENDING_SLOT if ending else None,
         "why": ("The client's required Touch 1 structure: the opening, the answers, then "
@@ -599,6 +610,13 @@ def first_reply_extras(ctx: TurnContext, state: AgentState, dealer: DealerProfil
                      f"What is the best phone number to reach you?{reach}\n\nBy the way, what are you driving now?"
                      "\n\nI look forward to hearing from you."),
         }
+        edited = ai_studio.message("messages", "no_phone_email")
+        if text := ai_studio.fixed_text(edited):  # AI Studio: her email as published there
+            values = {"first_name": name, "dealership": dealer.name or "us", "vehicle": model,
+                      "dealer_phone": dealer.phone}
+            extras["no_phone_email"] = {
+                "subject": ai_studio.fill(edited.get("email_subject"), values) or extras["no_phone_email"]["subject"],
+                "body": f"Hello {name},\n\n" + ai_studio.fill(edited.get("email_text") or text, values)}
     return extras
 
 
@@ -613,6 +631,30 @@ async def _assigned_name(ctx: TurnContext) -> str | None:
     return name.split()[0] if name else None
 
 
+def studio_after_hours(decision: dict[str, Any], customer_name: str | None) -> None:
+    """AI Studio (client, 13 Oct 2026): an after-hours message edited there. "Customer chose business hours" and the
+    morning message are sent word for word (placed by code, like her scripts); the offer's question is the one
+    published; "closed but we can help now" follows the published instruction."""
+    from upsell_agent.agent.templates import known_first_name
+    after = decision.get("after_hours") or {}
+    mode = after.get("mode")
+    if not mode or decision.get("action") in ("stop", "handoff", "offer_human"):
+        return
+    edited = ai_studio.message("messages", f"after_hours_{mode}")
+    if not edited:
+        return
+    values = {"first_name": first_name(customer_name) if known_first_name(customer_name) else None,
+              "opens_at": after.get("opens_at")}
+    text = ai_studio.fixed_text(edited)
+    if mode in ("later", "resume") and text and not decision.get("cannot_supply"):
+        decision["cannot_supply"] = {"topic": f"after_hours_{mode}", "text": ai_studio.fill(text, values),
+                                     "offers_times": False, "escalates": False}
+    elif mode == "offer" and text:
+        after["wording"] = ai_studio.fill(text, values)
+    elif mode == "closed" and (said := ai_studio.instruction(edited)):
+        after["instruction"] = said
+
+
 def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str | None) -> dict[str, Any] | None:
     """The theme this cadence touch is about (MASTER_PLAN_3 C4,
     agent/cadence.py), written onto the lead state by the scheduler just
@@ -623,12 +665,19 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
         return None
     theme_id = pending.get("theme")
     fixed = None
+    instruction = pending.get("instruction")
     if theme_id == cadence.NAME_NUDGE.id:
         # The client's exact nudge: the customer's first name and a question mark (Omnichannel PDF §3).
         given = first_name(customer_first_name) if customer_first_name else None
         fixed = f"{given}?" if given else "Are you still there?"
+        edited = ai_studio.fixed_text(ai_studio.step_message("cadences", "sales_days_1_7", theme_id))
+        if edited and given:  # AI Studio: the nudge as published there
+            fixed = ai_studio.fill(edited, {"first_name": given}) or fixed
+    elif theme_id in cadence.BY_ID:
+        # The touch's angle as it is now (AI Studio edits apply to touches already scheduled).
+        instruction = cadence.BY_ID[theme_id].instruction or instruction
     return {"touch_number": pending.get("touch_number"), "day": pending.get("day"), "theme": theme_id,
-            "label": pending.get("theme_label"), "instruction": pending.get("instruction"), "fixed_text": fixed}
+            "label": pending.get("theme_label"), "instruction": instruction, "fixed_text": fixed}
 
 
 def _customer_summary(profile: Profile) -> str:
@@ -908,9 +957,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                                  ("stop", "handoff", "offer_human") else None)
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
-        decision["cannot_supply"] = {"topic": "buyers_order", "text": order.text, "offers_times": False,
+        decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",
+                                     "text": order.text, "offers_times": False,
                                      "escalates": order.escalates}
         decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
+    studio_after_hours(decision, state.customer_name)
     # Client, 12 Oct 2026 (Betsy): "If the name is null please ask for the customer's name. We need to obtain data to
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.
     from upsell_agent.agent.templates import known_first_name

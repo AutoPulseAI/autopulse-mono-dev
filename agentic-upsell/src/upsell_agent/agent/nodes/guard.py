@@ -116,9 +116,11 @@ def missing_after_hours_choice(decision: dict[str, Any], draft: dict[str, Any]) 
         # Stream Q: translated, so its English words can't be checked; it is still a question.
         return [f"the {name} doesn't offer the after-hours choice" for name, key in
                 (("SMS", "sms_text"), ("email", "email_body")) if "?" not in str(draft.get(key) or "")]
+    # The question as published in AI Studio, when edited there (agent/nodes/decide.py studio_after_hours).
+    wording = str((decision.get("after_hours") or {}).get("wording") or "would you like to chat now").lower()
     return [f"the {name} doesn't offer the after-hours choice" for name, key in
             (("SMS", "sms_text"), ("email", "email_body"))
-            if "would you like to chat now" not in str(draft.get(key) or "").lower()]
+            if wording not in str(draft.get(key) or "").lower()]
 
 
 # A resume message just needs to signal "we're available now" before it carries on - not literally "the team

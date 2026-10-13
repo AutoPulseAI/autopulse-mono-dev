@@ -69,7 +69,7 @@ from typing import Any
 
 from pymongo import ReturnDocument
 
-from upsell_agent import clock
+from upsell_agent import ai_studio, clock
 from upsell_agent.agent import appointment, cadence, call_tasks, lifecycle
 from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_SUBJECT,
@@ -908,6 +908,7 @@ async def _fresh_followup_text(dealer_id: str, doc: dict[str, Any]) -> tuple[str
 
 
 async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     dealer_id, lead_id = doc["dealer_id"], doc["lead_id"]
     db = dealer_scoped_db(dealer_id)
     fire_locked = {**{kind: _fire_appointment_locked for kind in APPOINTMENT_KINDS},

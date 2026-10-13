@@ -46,7 +46,10 @@ def question_text(first_name: str | None, vehicle: str | None) -> dict[str, str]
     about = f"our {vehicle}" if vehicle else "another vehicle"
     body = (f"Hello again{who}, thank you for inquiring about {about}. Are you comparing models, or are you in the "
             f"market for more than one vehicle?")
-    return {"sms_text": body, "email_subject": "Thanks for your inquiry", "email_body": f"{body}\n\nThank you"}
+    built = {"sms_text": body, "email_subject": "Thanks for your inquiry", "email_body": f"{body}\n\nThank you"}
+    from upsell_agent import ai_studio  # the wording published in AI Studio, when edited there
+    return ai_studio.render(ai_studio.message("messages", "repeat_lead"),
+                            {"first_name": first_name, "vehicle": vehicle}, built) or built
 
 
 def within_window(primary_started: datetime | None, now: datetime) -> bool:

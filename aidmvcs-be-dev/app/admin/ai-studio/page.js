@@ -119,8 +119,8 @@ export default function AiStudioPage() {
         </Button>
       </div>
       <Alert variant="info" className="py-2 small">
-        <strong>Preview phase:</strong> you can see, edit, publish and revert everything here, with full history. The AI
-        isn&apos;t reading these settings yet, so nothing here changes a customer message until the next update connects it.
+        <strong>Live:</strong> what you <strong>publish</strong> here is what the AI uses, within a minute. Drafts are
+        never sent to customers. &quot;Reset to default&quot; or reverting puts the earlier version back the same way.
       </Alert>
 
       <Nav variant="pills" activeKey={section} onSelect={(k) => { setSection(k); setSelected(null); setItem(null); }}

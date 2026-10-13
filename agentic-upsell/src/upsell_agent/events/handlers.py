@@ -15,7 +15,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from upsell_agent import clock
+from upsell_agent import ai_studio, clock
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.templates import known_first_name, render_holding_reply
@@ -141,6 +141,7 @@ async def _already_sent(db: DealerScopedDatabase, turn_id: str) -> dict | None:
 
 async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
                               received_at: str | datetime | None = None) -> dict[str, Any]:
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     db = dealer_scoped_db(event.dealer_id)
     lead = await find_lead(db, event.lead_id)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
@@ -590,6 +591,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
 
 async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                  received_at: str | datetime | None = None) -> dict[str, Any]:
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     db = dealer_scoped_db(event.dealer_id)
     lead_id = await record_inbound(event)
     if not lead_id:

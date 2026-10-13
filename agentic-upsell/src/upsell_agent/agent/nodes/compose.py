@@ -59,7 +59,28 @@ def _after_hours(decision: dict[str, Any]) -> dict[str, Any] | None:
     """What Compose needs of the after-hours plan (MASTER_PLAN_3 B1): which
     message this is, and when the dealership opens (None: not on record)."""
     plan = decision.get("after_hours") or {}
-    return {"mode": plan["mode"], "opens_at": plan.get("opens_at")} if plan.get("mode") else None
+    if not plan.get("mode"):
+        return None
+    # AI Studio (client, 13 Oct 2026): the offer's question / the "closed" rule as published there.
+    return {"mode": plan["mode"], "opens_at": plan.get("opens_at"),
+            **{k: plan[k] for k in ("wording", "instruction") if plan.get(k)}}
+
+
+_BUILT_IN_OFFER = re.compile(r"\s*(?:We're closed right now[^?]*?\.\s*)?Would you like to chat now[^?]*\?", re.IGNORECASE)
+
+
+def place_after_hours_wording(draft: dict[str, Any], decision: dict[str, Any]) -> bool:
+    """The after-hours offer's question as published in AI Studio ends the message, in place of the built-in one."""
+    plan = decision.get("after_hours") or {}
+    wording = plan.get("wording") if plan.get("mode") == "offer" else None
+    if not wording or decision.get("reply_language"):
+        return False
+    for key in ("sms_text", "email_body"):
+        text = _BUILT_IN_OFFER.sub("", str(draft.get(key) or "")).rstrip()
+        if wording not in text:
+            text = f"{text} {wording}".strip() if key == "sms_text" else f"{text}\n\n{wording}".strip()
+        draft[key] = text
+    return True
 
 
 _SALUTATION_LINE = re.compile(r"^\s*(?:hello|hi|hey|dear|good (?:morning|afternoon|evening))\b[^\n]{0,40}\n+",
@@ -326,6 +347,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
+    place_after_hours_wording(draft, state.decision or {})
     nudged = place_fixed_text(draft, ((state.decision or {}).get("touch") or {}).get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)

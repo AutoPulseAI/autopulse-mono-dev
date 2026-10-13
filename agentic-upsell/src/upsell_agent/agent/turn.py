@@ -24,7 +24,7 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from upsell_agent import clock
+from upsell_agent import ai_studio, clock
 from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
@@ -152,6 +152,7 @@ async def run_turn(
 
     `batch`: the stored customer messages this turn answers ({id, channel,
     text, at}), listed in the trace and in the context pack one by one."""
+    await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
     settings = deps.config
     purpose = purpose or ("reply" if is_reply else "marketing")
     if purpose != "reply":
@@ -694,7 +695,11 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
         await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=ESCALATE_REASON,
                                      event_kind="buyers_order")
         return
-    what = ("an out-of-state customer (pick-up or shipping)" if cannot.get("topic") == "out_of_state"
+    topic = str(cannot.get("topic") or "")
+    custom = cannot_supply.CUSTOM_LABELS.get(topic) or (topic.split(":", 1)[1].replace("_", " ")
+                                                        if topic.startswith("workflow:") else None)
+    what = (f"the {custom!r} workflow (AI Studio)" if custom else
+            "an out-of-state customer (pick-up or shipping)" if topic == "out_of_state"
             else "custom photos or a video") if cannot.get("escalates") else (
         f"confirm {check.get('vehicle')} is available before scheduling")
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,

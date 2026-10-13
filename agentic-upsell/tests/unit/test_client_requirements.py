@@ -19,7 +19,6 @@ from upsell_agent.devtools import simulate
 from upsell_agent.events import handlers
 from upsell_agent.events.models import LeadCreatedEvent
 from upsell_agent.integrations.mongodb import (
-    AI_LEAD_STATE_COLLECTION,
     DEV_OUTBOX_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,

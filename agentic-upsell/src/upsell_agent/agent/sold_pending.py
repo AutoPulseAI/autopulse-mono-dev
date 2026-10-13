@@ -166,6 +166,17 @@ def asks_documents(touch_number: int, state: SoldPendingState) -> bool:
 
 def render_touch(touch_number: int, *, first_name: str | None, dealership: str | None, vehicle: str | None,
                  documents: bool) -> dict[str, str]:
+    """The touch's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in."""
+    built = _render_built_in(touch_number, first_name=first_name, dealership=dealership, vehicle=vehicle,
+                             documents=documents)
+    from upsell_agent import ai_studio
+    values = {"first_name": first_name, "dealership": dealership, "vehicle": vehicle or "vehicle"}
+    return ai_studio.render(ai_studio.step_message("cadences", "sold_pending", f"week_{touch_number}"), values,
+                            built) or built
+
+
+def _render_built_in(touch_number: int, *, first_name: str | None, dealership: str | None, vehicle: str | None,
+                     documents: bool) -> dict[str, str]:
     """The client's own intent for each touch (§5, §6), as {sms_text, email_subject, email_body}. Only what we
     know is used: no vehicle on record -> "your vehicle"; never a document, a date, a status or a reason."""
     hi = f"Hi {first_name}" if first_name else "Hi there"
