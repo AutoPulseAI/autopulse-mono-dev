@@ -192,7 +192,39 @@ def messages() -> list[dict[str, Any]]:
             "from you.", subject="{vehicle} Update")}},
         {"key": "safety_net", "name": "Fallback when the AI's draft fails its checks", "content": {"message": fixed(
             templates.CONTINUE_CHECKING.replace("{name}", "{first_name}"))}},
+        *_template_messages(),
     ]
+
+
+def _named(text: str) -> str:
+    return text.replace("{name}", "{first_name}")
+
+
+def _template_messages() -> list[dict[str, Any]]:
+    """The fixed texts the AI sends without writing them: first replies per lead type, the holding replies while a
+    person has the lead, the fallback variants, the opt-out confirmation."""
+    from upsell_agent.compliance import opt_out
+    rows = []
+    for lead_type, t in templates.FIRST_REPLY.items():
+        kind = getattr(lead_type, "value", str(lead_type))
+        rows.append({"key": f"first_reply_{kind}", "name": f"Fallback first reply: {kind.replace('_', ' ')} lead",
+                     "content": {"message": fixed(_named(t.sms), email=_named(t.email_body),
+                                                  subject=_named(t.email_subject))}})
+    for kind, t in templates.HOLDING_REPLIES.items():
+        rows.append({"key": f"holding_{kind}", "name": {"holding": "While a person has the lead",
+                                                        "holding_booking": "While a person has it: asked to come in",
+                                                        "still_waiting": "While a person has it: still waiting"
+                                                        }.get(kind, kind.replace("_", " ")),
+                     "content": {"message": fixed(_named(t.sms), email=_named(t.email_body),
+                                                  subject=_named(t.email_subject))}})
+    rows.append({"key": "continue_noted", "name": "Fallback reply: noted", "content": {
+        "message": fixed(_named(templates.CONTINUE_NOTED))}})
+    for i, text in enumerate(templates.CONTINUE_VARIANTS, 1):
+        rows.append({"key": f"continue_variant_{i}", "name": f"Fallback reply: variant {i}", "content": {
+            "message": fixed(_named(text))}})
+    rows.append({"key": "opt_out_confirmation", "name": "Opt-out confirmation", "content": {
+        "message": fixed(opt_out.NL_CONFIRMATION)}})
+    return rows
 
 
 def _branch(when: str, then: dict[str, Any]) -> dict[str, Any]:
@@ -260,16 +292,73 @@ def prompts() -> list[dict[str, Any]]:
              "content": {"text": llm.EXTRACT_INSTRUCTIONS, "editable_sections": []}}]
 
 
+def _hhmm(t: Any) -> str:
+    return t.strftime("%H:%M")
+
+
+def _window(w: Any) -> list[str] | None:
+    return [_hhmm(w[0]), _hhmm(w[1])] if w else None
+
+
+def _state_row(rule: Any) -> dict[str, Any]:
+    auto = rule.automated or {}
+    return {"state": rule.state, "weekday": _window(rule.weekday), "saturday": _window(rule.saturday),
+            "sunday": _window(rule.sunday), "holidays_banned": rule.holidays_banned,
+            "cap_texts": rule.cap[0] if rule.cap else None,
+            "cap_hours": int(rule.cap[1].total_seconds() // 3600) if rule.cap else None,
+            "automated_weekday": _window(auto.get("weekday")), "automated_saturday": _window(auto.get("saturday")),
+            "automated_sunday": _window(auto.get("sunday")),
+            "automated_cap_texts": auto["cap"][0] if auto.get("cap") else None,
+            "automated_cap_hours": int(auto["cap"][1].total_seconds() // 3600) if auto.get("cap") else None,
+            "no_unsolicited_sales_texts": rule.unsolicited_sales_ban, "cite": rule.cite, "note": rule.note}
+
+
+def compliance() -> list[dict[str, Any]]:
+    """Client, 13 Oct 2026: "each and every rule ... add, update, delete" - the SMS / email rules too. Hours can move
+    inside the federal 8 AM - 9 PM window (16 C.F.R. 310.4(c)), never past it."""
+    from upsell_agent.agent.nodes import guard
+    from upsell_agent.compliance import engine, opt_out, state_hours, text_consent
+    from upsell_agent.guardrails import draft_guard
+    return [
+        {"key": "texting_hours", "name": "Texting hours & limits", "content": {
+            "reply_window": _window(engine.REPLY_WINDOW), "first_message_window": _window(engine.TRANSACTIONAL_WINDOW),
+            "follow_up_window": _window(engine.MARKETING_WINDOW), "follow_up_texts_per_period": engine.MARKETING_SMS_CAP,
+            "period_hours": int(engine.CAP_PERIOD.total_seconds() // 3600),
+            "dnd_statuses": sorted(engine.DND_STATUSES)}},
+        {"key": "state_rules", "name": "State texting rules", "content": {
+            "rows": [_state_row(r) for r in state_hours.STATE_RULES.values()]}},
+        {"key": "opt_out", "name": "Opt-out & opt-in", "content": {
+            "stop_words": sorted(opt_out.STOP_WORDS), "start_words": sorted(opt_out.START_WORDS),
+            "extra_stop_phrases": [], "confirmation": opt_out.NL_CONFIRMATION}},
+        {"key": "text_invite", "name": "Text invite (email customers)", "content": {
+            "invite": text_consent.INVITE, "confirmation": text_consent.CONFIRMATION}},
+        {"key": "channels", "name": "Channels: text or email first, nights", "content": {
+            "first_channel": "text", "at_night": "email_now_text_when_open",
+            "placeholder_emails": ["no-reply", "noreply", "do-not-reply", "donotreply", "noemail", "no-email", "none",
+                                   "test"]}},
+        {"key": "contacted", "name": "What counts as Contacted", "content": {
+            "customer_texts": 1, "customer_emails": 2,
+            "note": "The lead's own arrival email counts as one of the customer's emails."}},
+        {"key": "writing", "name": "Message limits & banned phrases", "content": {
+            "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
+            "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
+            "banned_phrases": ["the team", "our team", "a team", "your team", "sales team", "finance team",
+                               "team member", "someone from", "someone at", "someone on"],
+            "banned_pattern": guard._TEAM.pattern}},
+    ]
+
+
 LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 4
+DEFAULTS_REVISION = 5
 
 
 def export() -> dict[str, Any]:
     groups = {"agents": agents(), "buckets": buckets(), "sources": sources(), "cadences": cadences(),
-              "messages": messages(), "workflows": workflows(), "status_rules": status_rules(), "prompts": prompts()}
+              "messages": messages(), "workflows": workflows(), "status_rules": status_rules(), "prompts": prompts(),
+              "compliance": compliance()}
     items = []
     for kind, rows in groups.items():
         for row in rows:

@@ -61,6 +61,9 @@ ESCALATE_REASON = "Customer asked for a call to complete the buyer's order"
 ESCALATE_AT = frozenset({(CALL, "yes")})
 START_STEP = DELIVERY
 FLOWS: list[dict[str, Any]] = []
+# What an answer does besides (or instead of) a reply, set in AI Studio: {(step, answer): {"set_status": "...",
+# "call_task": True, "escalate": True}}. An answer with no reply text leaves the conversation to the AI.
+ACTIONS: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,7 @@ class Step:
     next_step: str | None  # None: the sequence ends here
     escalates: bool = False
     flow: str | None = None  # a workflow added in AI Studio (None: the buyer's order)
+    actions: dict[str, Any] | None = None  # set a status / create a call task (AI Studio)
 
 
 def answer_of(text: str | None) -> str | None:
@@ -100,8 +104,10 @@ def plan(state: dict | None, text: str | None, now: datetime, *, credit_link: st
             link = f" Here is a link: {credit_link}" if credit_link else ""
             if step == RATE:
                 link = f" {credit_link}" if credit_link else " I'll send it right over."
-            return Step(reply.replace("{link}", link), nxt, escalates=(step, answer) in ESCALATE_AT,
-                        flow=step.split(":", 1)[0] if ":" in step else None)
+            actions = ACTIONS.get((step, answer)) or {}
+            return Step(reply.replace("{link}", link), nxt,
+                        escalates=(step, answer) in ESCALATE_AT or bool(actions.get("escalate")),
+                        flow=step.split(":", 1)[0] if ":" in step else None, actions=actions or None)
         if answer == "no" and step in (DELIVERY, RATE, CALL):
             return None  # her email has no "no" branch here: the conversation carries on toward the appointment
     if ASKS.search(text or ""):

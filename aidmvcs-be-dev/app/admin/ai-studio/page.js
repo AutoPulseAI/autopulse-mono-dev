@@ -8,6 +8,7 @@ import { api, clone, when } from "./components/shared";
 import { newNode, WorkflowEditor } from "./components/TreeEditor";
 import { AgentEditor, BucketEditor, CadenceTimeline, PromptEditor, RulesEditor, SingleMessage, SourceEditor }
   from "./components/Editors";
+import ComplianceEditor from "./components/ComplianceEditor";
 
 const SECTIONS = [
   { key: "buckets", label: "Buckets & Agents", types: ["buckets", "agents", "sources"],
@@ -20,9 +21,15 @@ const SECTIONS = [
     about: "Single messages the AI sends in set moments (after hours, repeat lead, no phone number…)." },
   { key: "rules", label: "Rules & Prompts", types: ["status_rules", "prompts"],
     about: "Statuses, when a lead needs the dealership, and the AI's instructions." },
+  { key: "compliance", label: "SMS, Email & Compliance", types: ["compliance"],
+    about: "Texting hours and limits, state rules, opt-out words, text or email first, what counts as Contacted, "
+      + "message length and banned phrases." },
 ];
+// What "+ New" makes in each section (rules and compliance are added as rows inside their items).
+const NEW_TYPE = { buckets: "agents", cadences: "cadences", workflows: "workflows", messages: "messages" };
 const TYPE_TITLES = { buckets: "Buckets", agents: "Agents", sources: "Lead sources", cadences: "Cadences",
-  workflows: "Workflows", messages: "Messages", status_rules: "Statuses & escalations", prompts: "AI prompts" };
+  workflows: "Workflows", messages: "Messages", status_rules: "Statuses & escalations", prompts: "AI prompts",
+  compliance: "SMS, email & compliance" };
 
 function Editor({ item, content, onChange, placeholders, readOnly, agents }) {
   const props = { content, onChange, placeholders, readOnly };
@@ -33,6 +40,7 @@ function Editor({ item, content, onChange, placeholders, readOnly, agents }) {
   if (item.type === "sources") return <SourceEditor {...props} />;
   if (item.type === "messages") return <SingleMessage {...props} builtIn={item.has_default} />;
   if (item.type === "prompts") return <PromptEditor {...props} />;
+  if (item.type === "compliance") return <ComplianceEditor {...props} itemKey={item.key} />;
   return <RulesEditor {...props} />;
 }
 
@@ -98,6 +106,7 @@ export default function AiStudioPage() {
       : creating.type === "cadences" ? { starts_when: { type: "status", status: "" },
         stops_when: ["customer replies", "appointment set", "opt-out"], steps: [] }
         : creating.type === "agents" ? { playbook: "", never: "", steps_in_when: "", examples: [] }
+        : creating.type === "buckets" ? { sources: [], word_track: "", agent: "sales" }
           : { message: { mode: "fixed", text: "" } };
     const res = await run(() => api("/api/admin/ai-studio", { method: "POST",
       body: JSON.stringify({ type: creating.type, name: creating.name, content }) }), "Created as a draft.");
@@ -114,10 +123,11 @@ export default function AiStudioPage() {
           <h4 className="mb-0">AI Studio</h4>
           <div className="small text-muted">{current.about}</div>
         </div>
-        <Button onClick={() => setCreating({ type: current.types[0], name: "" })}>
-          + New {current.key === "workflows" ? "workflow" : current.key === "cadences" ? "cadence"
-            : current.key === "buckets" ? "agent" : "message"}
-        </Button>
+        {NEW_TYPE[current.key] && (
+          <Button onClick={() => setCreating({ type: NEW_TYPE[current.key], name: "" })}>
+            + New {TYPE_TITLES[NEW_TYPE[current.key]].replace(/s$/, "").toLowerCase()}
+          </Button>
+        )}
       </div>
       <Alert variant="info" className="py-2 small">
         <strong>Live:</strong> what you <strong>publish</strong> here is what the AI uses, within a minute. Drafts are
@@ -240,7 +250,7 @@ export default function AiStudioPage() {
         <Modal.Body>
           <Form.Select className="mb-2" value={creating?.type || "workflows"}
             onChange={(e) => setCreating({ ...creating, type: e.target.value })}>
-            {["workflows", "cadences", "agents", "messages"].map((t) => <option key={t} value={t}>{TYPE_TITLES[t]}</option>)}
+            {["workflows", "cadences", "agents", "buckets", "messages"].map((t) => <option key={t} value={t}>{TYPE_TITLES[t]}</option>)}
           </Form.Select>
           <Form.Control placeholder="Name (e.g. Trade-in follow-up)" value={creating?.name || ""}
             onChange={(e) => setCreating({ ...creating, name: e.target.value })} />

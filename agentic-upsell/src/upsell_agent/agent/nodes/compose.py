@@ -25,7 +25,7 @@ from upsell_agent.agent.multi_vehicle import vehicle_label
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.templates import first_name
 from upsell_agent.agent.vehicle_media import lead_vehicle_vin, wants_link
-from upsell_agent.guardrails.draft_guard import SMS_MAX, TOUCH1_SMS_MAX
+from upsell_agent.guardrails import draft_guard
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.display import about_customer, display_value
 from upsell_agent.slots.schema import SCHEMA
@@ -353,8 +353,8 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
                               vehicle=vehicle_label(ctx.lead) if ctx else None, nudge=touch_.get("theme") == "name_nudge")
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
     decision = state.decision or {}
-    linked = fill_links(draft, link_plan, sms_limit=TOUCH1_SMS_MAX if decision.get("touch1") or
-                        decision.get("reply_language") else SMS_MAX)
+    linked = fill_links(draft, link_plan, sms_limit=draft_guard.TOUCH1_SMS_MAX if decision.get("touch1") or
+                        decision.get("reply_language") else draft_guard.SMS_MAX)
     draft["link_plan"] = link_plan.as_dict()
     placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
                                                   ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))

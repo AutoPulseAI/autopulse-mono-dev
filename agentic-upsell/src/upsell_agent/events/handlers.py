@@ -321,14 +321,20 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
 
     if not shadow:
         customer = await find_customer(db, customer_id)
+        if (followup is None and consent.FIRST_CHANNEL == "email" and channel == "sms"
+                and await consent.usable_recipient(db, lead, customer, "email")):
+            channel = "email"  # AI Studio channel rule: a new lead hears from us by email first
         check = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=channel,
                                   purpose="lead_response", is_reply=False, lead=lead, customer=customer,
                                   record=False)
         other = "email" if channel == "sms" else "sms"
-        text_held = check if channel == "sms" and check.outcome == "HOLD" and check.until else None
+        night = channel == "sms" and check.outcome == "HOLD" and check.until
+        # AI Studio channel rule for a lead outside texting hours (consent.AT_NIGHT).
+        text_held = check if night and consent.AT_NIGHT == "email_now_text_when_open" else None
         # Client, 12 Oct 2026: a lead that arrives at night is answered at once by EMAIL (no quiet hours for email), with
         # the after-hours choice; only the text waits for the customer's legal texting hours.
-        if check.outcome in ("BLOCK", "REVIEW", "HOLD") and await consent.usable_recipient(db, lead, customer, other):
+        if check.outcome in ("BLOCK", "REVIEW", "HOLD") and not (night and consent.AT_NIGHT == "wait_for_text") \
+                and await consent.usable_recipient(db, lead, customer, other):
             alt = await can_contact(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id, channel=other,
                                     purpose="lead_response", is_reply=False, lead=lead, customer=customer,
                                     record=False)

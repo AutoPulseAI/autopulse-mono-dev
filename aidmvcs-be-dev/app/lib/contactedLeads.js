@@ -4,13 +4,34 @@
 //   - any text from the customer, or
 //   - an email from the customer that isn't the lead's own arrival (the portal's lead email / ADF file is the
 //     first inbound email of an email lead, so it doesn't count).
+// The numbers are set in AI Studio (SMS, Email & Compliance -> "What counts as Contacted"; client, 13 Oct 2026).
 import Email from '../models/Email.js';
+import { AiConfigItem, AiConfigVersion } from '../models/AiConfig.js';
 
 const INBOUND = ['received', 'incoming'];
 const ADF = /<\?adf|<adf[\s>]/i;
+const DEFAULT_RULE = { customer_texts: 1, customer_emails: 2 };
+let cached = { at: 0, rule: DEFAULT_RULE };
 
-export async function contactedLeadIds(leadIds, { EmailModel = Email } = {}) {
+export async function contactedRule() {
+  if (Date.now() - cached.at < 60000) return cached.rule;
+  let rule = DEFAULT_RULE;
+  try {
+    const item = await AiConfigItem.findOne({ type: 'compliance', key: 'contacted', dealer_id: null,
+      deleted: { $ne: true } }).lean();
+    const version = item?.published_version
+      ? await AiConfigVersion.findOne({ item_id: item._id, version: item.published_version }).lean() : null;
+    const c = version?.content || {};
+    rule = { customer_texts: Number(c.customer_texts) > 0 ? Number(c.customer_texts) : DEFAULT_RULE.customer_texts,
+      customer_emails: Number(c.customer_emails) > 0 ? Number(c.customer_emails) : DEFAULT_RULE.customer_emails };
+  } catch { /* the built-in rule */ }
+  cached = { at: Date.now(), rule };
+  return rule;
+}
+
+export async function contactedLeadIds(leadIds, { EmailModel = Email, rule = null } = {}) {
   if (!leadIds?.length) return [];
+  const { customer_texts: minTexts, customer_emails: minEmails } = rule || await contactedRule();
   const rows = await EmailModel.aggregate([
     { $match: { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true }, is_lead_email: { $ne: true } } },
     { $project: { lead_id: 1, communication_type: 1,
@@ -21,7 +42,7 @@ export async function contactedLeadIds(leadIds, { EmailModel = Email } = {}) {
     { $group: { _id: '$lead_id',
       sms: { $sum: { $cond: [{ $eq: ['$communication_type', 'sms'] }, 1, 0] } },
       email: { $sum: { $cond: [{ $eq: ['$communication_type', 'email'] }, 1, 0] } } } },
-    { $match: { $or: [{ sms: { $gt: 0 } }, { email: { $gt: 1 } }] } },
+    { $match: { $or: [{ sms: { $gte: minTexts } }, { email: { $gte: minEmails } }] } },
   ]);
   return rows.map((r) => r._id);
 }

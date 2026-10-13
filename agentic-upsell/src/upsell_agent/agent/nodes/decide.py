@@ -1002,7 +1002,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
         decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",
-                                     "text": order.text, "offers_times": False,
+                                     "text": order.text, "offers_times": False, "actions": order.actions,
                                      "escalates": order.escalates}
         decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
     studio_after_hours(decision, state.customer_name)

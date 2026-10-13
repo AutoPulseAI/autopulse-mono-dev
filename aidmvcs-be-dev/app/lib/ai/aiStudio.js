@@ -7,7 +7,8 @@ import { AiConfigItem, AiConfigVersion } from '@models/AiConfig';
 import defaults from './aiStudioDefaults.json';
 
 export const PLACEHOLDERS = defaults.placeholders;
-export const TYPES = ['agents', 'buckets', 'sources', 'cadences', 'workflows', 'messages', 'status_rules', 'prompts'];
+export const TYPES = ['agents', 'buckets', 'sources', 'cadences', 'workflows', 'messages', 'status_rules', 'prompts',
+  'compliance'];
 // What a workflow branch can wait for, and what it can lead to (the tree editor's dropdowns).
 export const CONDITIONS = ['yes', 'no', 'anything_else', 'picks_a_time', 'mentions_trade', 'mentions_credit',
   'mentions_price', 'no_reply'];
@@ -154,6 +155,46 @@ function waitProblems(wait, where) {
   return problems;
 }
 
+// Texting hours: federal law (16 C.F.R. 310.4(c)) allows 8 AM - 9 PM customer time; the AI never goes past it.
+const HHMM = /^([01]?\d|2[0-3]):[0-5]\d$/;
+function windowProblems(win, where) {
+  if (win === null || win === undefined) return [];
+  if (!Array.isArray(win) || win.length !== 2 || !win.every((t) => HHMM.test(String(t)))) {
+    return [`${where}: set a start and an end time.`];
+  }
+  const [a, b] = win.map((t) => t.padStart(5, '0'));
+  const problems = [];
+  if (a >= b) problems.push(`${where}: the end must be after the start.`);
+  if (a < '08:00' || b > '21:00') problems.push(`${where}: texts are only allowed between 8:00 AM and 9:00 PM (federal law).`);
+  return problems;
+}
+
+function complianceProblems(key, c) {
+  const problems = [];
+  for (const [k, v] of Object.entries(c || {})) {
+    if (k.endsWith('_window')) problems.push(...windowProblems(v, k.replace(/_/g, ' ')));
+  }
+  if (key === 'state_rules') {
+    const seen = new Set();
+    (c.rows || []).forEach((r, i) => {
+      const where = `Row ${i + 1}${r.state ? ` (${r.state})` : ''}`;
+      if (!/^[A-Z]{2}$/.test(r.state || '')) problems.push(`${where}: the state is two letters (e.g. NY).`);
+      if (seen.has(r.state)) problems.push(`${where}: ${r.state} is listed twice.`);
+      seen.add(r.state);
+      for (const day of ['weekday', 'saturday', 'sunday']) problems.push(...windowProblems(r[day], `${where} ${day}`));
+    });
+  }
+  if (key === 'opt_out' && !(c.stop_words || []).length) problems.push('Keep at least one STOP word (STOP is required by carriers).');
+  if (key === 'opt_out' && !(c.stop_words || []).map((w) => String(w).toLowerCase()).includes('stop')) {
+    problems.push('"stop" must stay a STOP word (carriers require it).');
+  }
+  for (const k of ['follow_up_texts_per_period', 'period_hours', 'sms_max_characters', 'first_text_max_characters',
+    'customer_texts', 'customer_emails']) {
+    if (k in (c || {}) && !(Number(c[k]) > 0)) problems.push(`${k.replace(/_/g, ' ')}: must be more than 0.`);
+  }
+  return problems;
+}
+
 export function contentProblems(type, content, key = null) {
   if (!content || typeof content !== 'object') return ['Nothing to save.'];
   const problems = [];
@@ -201,6 +242,7 @@ export function contentProblems(type, content, key = null) {
       problems.push('The flow has no way to finish: at least one step must end it or hand back to the AI.');
     }
   }
+  if (type === 'compliance') problems.push(...complianceProblems(key, content));
   if (type === 'agents' && !String(content.playbook || '').trim()) problems.push('The agent needs a playbook.');
   if (type === 'prompts' && content.text && !/never|TCPA|consent/i.test(content.text)) {
     problems.push('The compliance rules can\'t be removed from a prompt.');
