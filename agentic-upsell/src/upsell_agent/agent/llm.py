@@ -722,7 +722,7 @@ def summary_agent(model_name: str) -> Agent[None, ConversationSummary]:
 def compose_agent(model_name: str) -> Agent[None, ComposedMessage]:
     """The writer, with the prompt published in AI Studio when it was edited there (upsell_agent/ai_studio.py)."""
     from upsell_agent import ai_studio
-    return _compose_agent(model_name, ai_studio.compose_prompt() or COMPOSE_INSTRUCTIONS)
+    return _compose_agent(model_name, (ai_studio.compose_prompt() or COMPOSE_INSTRUCTIONS) + ai_studio.dealer_rules())
 
 
 @lru_cache(maxsize=8)

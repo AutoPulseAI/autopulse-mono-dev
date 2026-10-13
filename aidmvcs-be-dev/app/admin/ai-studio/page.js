@@ -26,7 +26,8 @@ const SECTIONS = [
       + "message length and banned phrases." },
 ];
 // What "+ New" makes in each section (rules and compliance are added as rows inside their items).
-const NEW_TYPE = { buckets: "agents", cadences: "cadences", workflows: "workflows", messages: "messages" };
+const NEW_TYPE = { buckets: "agents", cadences: "cadences", workflows: "workflows", messages: "messages",
+  compliance: "compliance" };
 const TYPE_TITLES = { buckets: "Buckets", agents: "Agents", sources: "Lead sources", cadences: "Cadences",
   workflows: "Workflows", messages: "Messages", status_rules: "Statuses & escalations", prompts: "AI prompts",
   compliance: "SMS, email & compliance" };
@@ -40,7 +41,7 @@ function Editor({ item, content, onChange, placeholders, readOnly, agents }) {
   if (item.type === "sources") return <SourceEditor {...props} />;
   if (item.type === "messages") return <SingleMessage {...props} builtIn={item.has_default} />;
   if (item.type === "prompts") return <PromptEditor {...props} />;
-  if (item.type === "compliance") return <ComplianceEditor {...props} itemKey={item.key} />;
+  if (item.type === "compliance") return <ComplianceEditor {...props} itemKey={item.key} builtIn={item.has_default} />;
   return <RulesEditor {...props} />;
 }
 
@@ -107,6 +108,7 @@ export default function AiStudioPage() {
         stops_when: ["customer replies", "appointment set", "opt-out"], steps: [] }
         : creating.type === "agents" ? { playbook: "", never: "", steps_in_when: "", examples: [] }
         : creating.type === "buckets" ? { sources: [], word_track: "", agent: "sales" }
+        : creating.type === "compliance" ? { rule: "", applies_to: ["text", "email"], banned_phrases: [] }
           : { message: { mode: "fixed", text: "" } };
     const res = await run(() => api("/api/admin/ai-studio", { method: "POST",
       body: JSON.stringify({ type: creating.type, name: creating.name, content }) }), "Created as a draft.");
@@ -125,7 +127,7 @@ export default function AiStudioPage() {
         </div>
         {NEW_TYPE[current.key] && (
           <Button onClick={() => setCreating({ type: NEW_TYPE[current.key], name: "" })}>
-            + New {TYPE_TITLES[NEW_TYPE[current.key]].replace(/s$/, "").toLowerCase()}
+            + New {current.key === "compliance" ? "rule" : TYPE_TITLES[NEW_TYPE[current.key]].replace(/s$/, "").toLowerCase()}
           </Button>
         )}
       </div>
@@ -195,6 +197,12 @@ export default function AiStudioPage() {
                     {item.has_default && <Button size="sm" variant="outline-secondary" disabled={busy}
                       onClick={() => run(() => call("POST", { action: "reset" }), "Reset to the AutoPulse default.")}>
                       Reset to default</Button>}
+                    {!item.has_default && !item.locked && <Button size="sm" variant="outline-danger" disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Delete "${item.name}"? The AI stops using it within a minute.`)) return;
+                        const res = await run(() => call("DELETE"), `Deleted "${item.name}".`);
+                        if (res?.deleted) { setSelected(null); setItem(null); }
+                      }}>Delete</Button>}
                   </div>
                 )}
               </Card.Header>
@@ -250,7 +258,8 @@ export default function AiStudioPage() {
         <Modal.Body>
           <Form.Select className="mb-2" value={creating?.type || "workflows"}
             onChange={(e) => setCreating({ ...creating, type: e.target.value })}>
-            {["workflows", "cadences", "agents", "buckets", "messages"].map((t) => <option key={t} value={t}>{TYPE_TITLES[t]}</option>)}
+            {["workflows", "cadences", "agents", "buckets", "messages", "compliance"].map((t) => <option key={t} value={t}>
+              {t === "compliance" ? "Rule (SMS / email)" : TYPE_TITLES[t]}</option>)}
           </Form.Select>
           <Form.Control placeholder="Name (e.g. Trade-in follow-up)" value={creating?.name || ""}
             onChange={(e) => setCreating({ ...creating, name: e.target.value })} />

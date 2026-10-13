@@ -142,9 +142,11 @@ def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[s
         return []
     if ((decision.get("visit") or {}).get("service_request") or {}).get("passed_this_turn"):
         return []
-    return [f"the {name} mentions the team or someone else following up - speak for yourself and move toward "
-            f"the visit instead" for name, key in (("SMS", "sms_text"), ("email", "email_body"))
-            if _TEAM.search(str(draft.get(key) or ""))]
+    found = [(name, m.group(0)) for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+             if (m := _TEAM.search(str(draft.get(key) or "")))]
+    # "the team" (client, 12 Oct 2026) and the phrases set in AI Studio (Message limits / the dealership's own rules).
+    return [f"the {name} uses a phrase the dealership doesn't allow ({said!r}) - leave it out; for 'the team', speak "
+            f"for yourself and move toward the visit instead" for name, said in found]
 
 
 def missing_alternatives(context_pack: dict[str, Any], draft: dict[str, Any]) -> list[str]:
