@@ -137,3 +137,18 @@ async def test_workflow_end_steps_set_a_status_and_create_a_call_task(mongo):
     tasks = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find({"lead_id": other["lead_id"], "kind": "call_task"}
                                                              ).to_list(None)
     assert tasks
+
+
+async def test_a_rule_the_dealership_adds(mongo):
+    """Client, 13 Oct 2026: "I am not seeing any add button to add new rules" - "+ New rule" in SMS, Email &
+    Compliance: an instruction the AI follows in every message, and phrases it must never say."""
+    from upsell_agent.agent import llm
+    await _publish(mongo, "compliance", "no_discount_by_text", {
+        "rule": "Never offer a discount by text.", "applies_to": ["text"], "banned_phrases": ["best price guaranteed"]})
+    instructions = str(llm.compose_agent("test")._instructions)
+    assert "Never offer a discount by text. (text messages only)" in instructions
+    assert '"best price guaranteed"' in instructions
+    assert guard._TEAM.search("Best price guaranteed on this one!") and guard._TEAM.search("our team will call")
+    ai_studio.reset()
+    assert "Never offer a discount" not in str(llm.compose_agent("test")._instructions)
+    assert not guard._TEAM.search("Best price guaranteed")

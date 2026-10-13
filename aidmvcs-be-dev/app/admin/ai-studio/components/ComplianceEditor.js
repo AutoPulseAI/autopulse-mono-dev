@@ -136,7 +136,40 @@ function StateRules({ content, onChange, readOnly }) {
   );
 }
 
-export default function ComplianceEditor({ content, onChange, readOnly, itemKey }) {
+// A rule the dealership adds: an instruction the AI follows in every message, and phrases it must never use.
+function CustomRule({ content, onChange, readOnly }) {
+  const applies = content.applies_to || ["text", "email"];
+  return (
+    <div>
+      <HowTo>write the rule in plain English - the AI follows it in every message it writes. Add phrases it must never
+        say (press Enter after each). Choose where it applies, then Save draft and Publish. Delete removes the rule.</HowTo>
+      <Form.Group className="mb-3">
+        <Form.Label className="fw-semibold mb-1">The rule</Form.Label>
+        <Form.Control as="textarea" rows={3} disabled={readOnly} value={content.rule || ""}
+          placeholder='e.g. "Never offer a discount by text." or "Always mention we are family-owned since 1985."'
+          onChange={(e) => onChange({ ...content, rule: e.target.value })} />
+      </Form.Group>
+      <Form.Group className="mb-3">
+        <Form.Label className="fw-semibold mb-1">Applies to</Form.Label>
+        <div>
+          {[["text", "Text messages"], ["email", "Emails"]].map(([k, l]) => (
+            <Form.Check key={k} inline label={l} disabled={readOnly} checked={applies.includes(k)}
+              onChange={(e) => onChange({ ...content, applies_to: e.target.checked ? [...applies, k]
+                : applies.filter((x) => x !== k) })} />
+          ))}
+        </div>
+      </Form.Group>
+      <Form.Group className="mb-3">
+        <Form.Label className="fw-semibold mb-1">Phrases the AI must never say (optional)</Form.Label>
+        <WordChips words={content.banned_phrases || []} readOnly={readOnly}
+          onChange={(next) => onChange({ ...content, banned_phrases: next })} />
+      </Form.Group>
+    </div>
+  );
+}
+
+export default function ComplianceEditor({ content, onChange, readOnly, itemKey, builtIn = true }) {
+  if (!builtIn) return <CustomRule content={content} onChange={onChange} readOnly={readOnly} />;
   if (itemKey === "state_rules") return <StateRules content={content} onChange={onChange} readOnly={readOnly} />;
   return (
     <div>

@@ -242,7 +242,12 @@ export function contentProblems(type, content, key = null) {
       problems.push('The flow has no way to finish: at least one step must end it or hand back to the AI.');
     }
   }
-  if (type === 'compliance') problems.push(...complianceProblems(key, content));
+  if (type === 'compliance' && !builtIn) {
+    if (!String(content.rule || '').trim() && !(content.banned_phrases || []).length) {
+      problems.push('Write the rule, or add a phrase the AI must never say.');
+    }
+    if (!(content.applies_to || []).length) problems.push('Choose where the rule applies (text, email or both).');
+  } else if (type === 'compliance') problems.push(...complianceProblems(key, content));
   if (type === 'agents' && !String(content.playbook || '').trim()) problems.push('The agent needs a playbook.');
   if (type === 'prompts' && content.text && !/never|TCPA|consent/i.test(content.text)) {
     problems.push('The compliance rules can\'t be removed from a prompt.');

@@ -30,7 +30,9 @@ TTL_SECONDS = 60.0
 _defaults: dict[tuple[str, str], dict[str, Any]] | None = None  # (type, key) -> the built-in content
 _pristine: dict[str, Any] = {}  # the code's own settings, before anything was applied
 _changed: dict[tuple[str, str], dict[str, Any]] = {}  # published content that differs from the built-in
-_names: dict[tuple[str, str], str] = {}  # each item's name in the Studio (an added agent's or workflow's label)
+_names: dict[tuple[str, str], str] = {}
+# Rules the dealership added in AI Studio (SMS, Email & Compliance -> "+ New rule"): (rule, applies_to, banned phrases).
+CUSTOM_RULES: list[dict[str, Any]] = []  # each item's name in the Studio (an added agent's or workflow's label)
 _loaded_at = 0.0
 
 
@@ -85,11 +87,16 @@ def load(published: dict[tuple[str, str], dict[str, Any]]) -> None:
         return
     _restore()
     _changed = changed
+    CUSTOM_RULES.clear()
     for (kind, key), content in sorted(changed.items()):
         try:
             _APPLY.get(kind, lambda *_: None)(key, content, defaults.get((kind, key)))
         except Exception:  # one broken item never takes the others down
             logger.exception("AI Studio item %s/%s could not be applied; the built-in setting stays", kind, key)
+    try:
+        _apply_custom_banned()
+    except Exception:
+        logger.exception("the banned phrases of the dealership's own rules could not be applied")
     try:
         _build_schedule()
     except Exception:
@@ -104,6 +111,7 @@ def reset() -> None:
     global _changed, _loaded_at
     if _pristine:
         _restore()
+    CUSTOM_RULES.clear()
     _changed, _loaded_at = {}, 0.0
 
 
@@ -152,6 +160,30 @@ def message(kind: str, key: str) -> dict[str, Any] | None:
     """An edited single message (the Messages section), or None."""
     edited = content(kind, key)
     return (edited or {}).get("message") or None
+
+
+def dealer_rules() -> str:
+    """The dealership's own rules, as the lines added to the writer's instructions."""
+    lines = []
+    for r in CUSTOM_RULES:
+        where = "" if set(r["applies_to"]) == {"text", "email"} else (
+            " (text messages only)" if r["applies_to"] == ["text"] else " (emails only)")
+        if r["rule"]:
+            lines.append(f"- {r['rule']}{where}")
+        if r["banned"]:
+            lines.append(f"- Never use these words or phrases{where}: " + "; ".join(f'"{p}"' for p in r["banned"]))
+    return ("\n\nTHE DEALERSHIP'S OWN RULES (set by the dealership; always follow them, after the rules above):\n"
+            + "\n".join(lines)) if lines else ""
+
+
+def _apply_custom_banned() -> None:
+    """The banned phrases of the dealership's own rules join the guard's list (agent/nodes/guard.py _TEAM)."""
+    words = [p for r in CUSTOM_RULES for p in r["banned"]]
+    if not words:
+        return
+    gd = _by_name()["guard"]
+    extra = words_to_pattern(words)
+    gd._TEAM = re.compile(f"(?:{gd._TEAM.pattern})|{extra}", re.IGNORECASE)
 
 
 def compose_prompt() -> str | None:
@@ -681,6 +713,12 @@ def _window(value: Any, *, legal: bool = True) -> "Any":
 def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
     from datetime import timedelta
     mods = _by_name()
+    if built_in is None:  # a rule the dealership added
+        applies = [a for a in c.get("applies_to") or ["text", "email"] if a in ("text", "email")]
+        CUSTOM_RULES.append({"name": _names.get(("compliance", key), key), "rule": str(c.get("rule") or "").strip(),
+                             "applies_to": applies or ["text", "email"],
+                             "banned": [str(p).strip() for p in c.get("banned_phrases") or [] if str(p).strip()]})
+        return
     if key == "texting_hours":
         eng = mods["engine"]
         eng.REPLY_WINDOW = _window(c.get("reply_window")) or eng.REPLY_WINDOW
