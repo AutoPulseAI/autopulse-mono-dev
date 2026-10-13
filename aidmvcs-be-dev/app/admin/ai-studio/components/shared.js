@@ -7,7 +7,7 @@ export const api = async (url, options = {}) => {
   const res = await fetch(url, { ...options, headers: { "Content-Type": "application/json",
     Authorization: `Bearer ${localStorage.getItem("token")}`, ...(options.headers || {}) } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { problems: data.problems });
+  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { problems: data.problems, data });
   return data;
 };
 
@@ -39,7 +39,20 @@ const SAMPLE = {
   opens_at: "9:00 AM tomorrow", recommended_work: "front brake pads",
 };
 export const fill = (text) => String(text || "").replace(/\{([a-z_]+)\}/g, (m, k) => SAMPLE[k] ?? m);
-export const when = (d) => (d ? new Date(d).toLocaleString() : "");
+// Every time in AI Studio, the same for everyone wherever they are (client, 13 Oct 2026): the dealership's time
+// (New York) and UTC, e.g. "Oct 13, 2026, 5:43 PM ET (21:43 UTC)".
+export const STUDIO_TZ = "America/New_York";
+export const when = (d) => {
+  if (!d) return "";
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return "";
+  const local = t.toLocaleString("en-US", { timeZone: STUDIO_TZ, month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit" });
+  const zone = t.toLocaleString("en-US", { timeZone: STUDIO_TZ, timeZoneName: "short" }).split(" ").pop()
+    .replace(/^E[SD]T$/, "ET");
+  const utc = t.toLocaleString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" });
+  return `${local} ${zone} (${utc} UTC)`;
+};
 export const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
 
 export function MessageBlock({ message, onChange, placeholders, readOnly, compact }) {

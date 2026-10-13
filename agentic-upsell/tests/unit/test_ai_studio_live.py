@@ -233,3 +233,14 @@ async def test_a_broken_item_is_skipped_and_the_rest_still_apply(mongo):
     await _publish(mongo, "workflows", "cannot_supply_apr", _tree_text(content, "Edited APR answer. {times}"))
     assert origin.INBOUND_SOURCES.search("website")  # the built-in list stayed
     assert cannot_supply._REPLIES["apr"].startswith("Edited APR answer.")
+
+
+async def test_ai_studio_shows_when_the_ai_started_using_each_version(mongo):
+    """Client, 13 Oct 2026: date and time on every change, the same for everyone - including when the AI picked it up.
+    A version that couldn't be applied isn't marked (the built-in setting is in use)."""
+    await _publish(mongo, "workflows", "cannot_supply_apr", _tree_text(
+        _default("workflows", "cannot_supply_apr"), "Edited APR answer. {times}"))
+    await _publish(mongo, "sources", "inbound_sources", {"pattern": "([unclosed"})
+    marked = {i["key"]: i for i in await mongo.ai_config_items.find({}).to_list(None)}
+    assert marked["cannot_supply_apr"]["ai_applied_version"] == 2 and marked["cannot_supply_apr"]["ai_applied_at"]
+    assert marked["inbound_sources"].get("ai_applied_version") is None

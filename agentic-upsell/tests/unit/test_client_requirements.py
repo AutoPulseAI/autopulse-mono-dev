@@ -342,3 +342,23 @@ def test_no_template_promises_the_team():
     for template in every:
         for text in (template.sms, template.email_body):
             assert not TEAM.search(text.replace("_SIGN_OFF", "")), text
+
+
+@pytest.mark.parametrize(("asked", "said", "values", "kept"), [
+    ("About what time will you arrive?", "520", [("interest.monthly_payment", 520), ("visit_when", "520")],
+     ["visit_when"]),
+    ("Roughly how much would you like to spend?", "520", [("interest.monthly_payment", 520)],
+     ["interest.monthly_payment"]),
+    ("How many miles are on your current car?", "45k", [("interest.budget", 45000)], []),
+    ("What year is your trade-in?", "19", [("trade_in.year", 2019)], ["trade_in.year"]),
+    ("What year is it, and how many miles?", "2019", [("trade_in.year", 2019)], ["trade_in.year"]),
+    ("Roughly how much would you like to spend?", "Ideally in red", [("interest.color", "red")],
+     ["interest.color"]),
+])
+def test_a_short_answer_means_what_we_asked(asked, said, values, kept):
+    """Bibi / client, 13 Oct 2026: "520" after "what time will you arrive?" was read as a $520 budget - a short answer
+    is read against the question it answers (times, money, miles, years)."""
+    from upsell_agent.agent.nodes.extract import drop_values_of_the_wrong_kind
+    extraction = {"values": [{"path": p, "value": v} for p, v in values]}
+    drop_values_of_the_wrong_kind(extraction, said, asked)
+    assert [v["path"] for v in extraction["values"]] == kept

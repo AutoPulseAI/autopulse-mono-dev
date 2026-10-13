@@ -183,6 +183,15 @@ export default function AiStudioPage() {
               <Card.Header className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                 <div>
                   <strong>{item.name}</strong>
+                  {published && (
+                    <div className="small text-muted">
+                      Live v{published.version} · published {when(published.published_at || published.created_at)}
+                      {published.published_by_name ? ` by ${published.published_by_name}` : ""} ·{" "}
+                      {item.ai_applied_version === published.version
+                        ? <span style={{ color: "#27ae60" }}>AI using it since {when(item.ai_applied_at)}</span>
+                        : <span style={{ color: "#b07800" }}>AI picks it up within a minute</span>}
+                    </div>
+                  )}
                   {item.locked && <Badge bg="secondary" className="ms-2">Locked: keeps the AI legal and safe</Badge>}
                 </div>
                 {!readOnly && (
@@ -190,7 +199,20 @@ export default function AiStudioPage() {
                     <Form.Control size="sm" placeholder="What did you change? (optional)" value={note}
                       onChange={(e) => setNote(e.target.value)} style={{ width: 240 }} />
                     <Button size="sm" variant="outline-primary" disabled={busy}
-                      onClick={() => run(() => call("PUT", { content: draft, note }), "Draft saved.")}>Save draft</Button>
+                      onClick={() => run(async () => {
+                        try {
+                          return await call("PUT", { content: draft, note, base_version: item.latest_version });
+                        } catch (e) {
+                          if (!e.data?.conflict) throw e;
+                          // Someone saved since this was opened: never overwrite them without asking.
+                          if (!window.confirm(`${e.data.changed_by} changed this on ${when(e.data.changed_at)}, `
+                            + "after you opened it. Save your version on top? (Theirs stays in History.)")) {
+                            throw new Error(`Not saved. ${e.data.changed_by} changed it on ${when(e.data.changed_at)}; `
+                              + "open it again to see their change.");
+                          }
+                          return call("PUT", { content: draft, note, force: true });
+                        }
+                      }, "Draft saved.")}>Save draft</Button>
                     {item.draft_version && <Button size="sm" variant="success" disabled={busy}
                       onClick={() => run(() => call("POST", { action: "publish" }), "Published.")}>
                       Publish draft v{item.draft_version}</Button>}
