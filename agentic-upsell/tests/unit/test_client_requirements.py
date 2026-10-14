@@ -150,8 +150,11 @@ async def test_a_custom_video_request_needs_the_dealership(mongo):
 # --- Buyer's order (email 12 Oct) ----------------------------------------------------------------------------------
 
 async def test_the_buyers_order_sequence(mongo):
+    """Email 12 Oct + "always APPOINTMENT FIRST" (confirmed 13 Oct): the invitation, then her sequence if they insist."""
     created = await _new_lead(mongo, vehicle=RAV4)
     await _say(created, "Can you please send me a buyer's order for this car?")
+    assert "It's most accurate in person" in await _last_sms(mongo, created)
+    await _say(created, "I'd rather you just email it to me")
     assert await _last_sms(mongo, created) == ("That is great; that must mean you are ready to buy today! Are you "
                                                "ready to take delivery today?")
     await _say(created, "yes")

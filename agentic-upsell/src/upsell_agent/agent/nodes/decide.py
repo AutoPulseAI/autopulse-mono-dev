@@ -1005,6 +1005,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                                      "text": order.text, "offers_times": False, "actions": order.actions,
                                      "escalates": order.escalates}
         decision["buyers_order"] = buyers_order.record(order, now) or {"step": None}
+    elif (decision.get("cannot_supply") or {}).get("topic") == cannot_supply.BUYERS_ORDER:
+        # The invitation went out: the next "send it anyway" starts her question sequence (agent/buyers_order.py).
+        decision["buyers_order"] = {"step": buyers_order.INVITE_STEP, "at": now}
     studio_after_hours(decision, state.customer_name)
     # Client, 12 Oct 2026 (Betsy): "If the name is null please ask for the customer's name. We need to obtain data to
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.

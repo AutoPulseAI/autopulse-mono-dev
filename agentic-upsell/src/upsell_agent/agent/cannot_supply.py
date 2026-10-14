@@ -19,9 +19,14 @@ from dataclasses import dataclass
 
 CREDIT_SCORE, APR, PAYMENT, OTD, CUSTOM_MEDIA, OUT_OF_STATE = (
     "credit_score", "apr", "payment", "out_the_door", "custom_media", "out_of_state")
+# Client, 12-13 Oct 2026 (Betsy: "as an initial response, autopulse should invite the customer in for a buyer's order
+# ... always APPOINTMENT FIRST"; confirmed "Correct!"): a buyer's order request is first answered with the visit; her
+# question sequence (agent/buyers_order.py) runs only if the customer insists.
+BUYERS_ORDER = "buyers_order_invite"
 
 # Checked in this order: the first match decides (a payment question that mentions the rate is a payment question).
 _PATTERNS: tuple[tuple[str, str], ...] = (
+    (BUYERS_ORDER, r"\bbuyer'?s?\s+order\b|\bpurchase\s+order\b|\bbuyers?\s+agreement\b|\bbill\s+of\s+sale\b"),
     (CREDIT_SCORE, (r"\bcredit\s+score\b|\bwhat(?:'s| is)\s+my\s+(?:credit|score)\b|\bcheck\s+my\s+credit\b|"
                    r"\bpull\s+my\s+credit\b")),
     (PAYMENT, (r"\bmonthly\s+payments?\b|\bpayments?\s+(?:be|would\s+be|is|on|for)\b|\bper\s+month\b|\ba\s+month\b|"
@@ -42,6 +47,8 @@ _COMPILED = tuple((topic, re.compile(p, re.IGNORECASE)) for topic, p in _PATTERN
 # Betsy's words (typos corrected). {times}: "Tuesday at 10:00 AM or Wednesday at 2:00 PM".
 _ASK_DAY = "What day this week works best for you to meet with us? I have {times} available."
 _REPLIES: dict[str, str] = {
+    BUYERS_ORDER: ("We'd be happy to prepare your buyer's order! It's most accurate in person, since we confirm your "
+                   "trade, taxes and fees together. What day works best for you to come in? I have {times} available."),
     CREDIT_SCORE: ("We need to meet with you in person to discuss your credit because we have to confirm your "
                    "identity. What day this week works best for you to meet with our business manager? I have {times} "
                    "available."),
