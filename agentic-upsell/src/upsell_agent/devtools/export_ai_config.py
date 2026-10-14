@@ -263,13 +263,15 @@ def workflows() -> list[dict[str, Any]]:
     out = []
     for topic, pattern in cannot_supply._PATTERNS:
         escalates = topic in cannot_supply.ESCALATES
-        out.append({"key": f"cannot_supply_{topic}", "name": f"Can't supply: {topic.replace('_', ' ')}", "content": {
+        name = ("Buyer's order: invite in first (appointment)" if topic == cannot_supply.BUYERS_ORDER
+                else f"Can't supply: {topic.replace('_', ' ')}")
+        out.append({"key": f"cannot_supply_{topic}", "name": name, "content": {
             "trigger": {"type": "customer_says", "pattern": pattern},
             "tree": {"id": "answer", "label": "Answer", "also": ["dealership_action_required"] if escalates else [],
                      "message": fixed(cannot_supply._REPLIES[topic].replace("{calculator}", " {vehicle_link}")),
                      "branches": [_branch("picks_a_time", {"action": "book"}),
                                   _branch("anything_else", {"action": "ai"})]}}})
-    out.append({"key": "buyers_order", "name": "Buyer's order", "content": {
+    out.append({"key": "buyers_order", "name": "Buyer's order: if the customer insists", "content": {
         "trigger": {"type": "customer_says", "pattern": buyers_order.ASKS.pattern},
         "tree": _buyers_order_node(None, buyers_order.START)}})
     return out
@@ -352,7 +354,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 5
+DEFAULTS_REVISION = 6
 
 
 def export() -> dict[str, Any]:

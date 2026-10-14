@@ -82,7 +82,8 @@ async def test_an_edited_buyers_order_step(mongo):
     yes["message"]["text"] = "Wonderful. Do you have a car to trade in?"
     await _publish(mongo, "workflows", "buyers_order", content)
     created = await _new_lead(mongo, vehicle=RAV4)
-    await _say(created, "Can you send me a buyer's order?")
+    await _say(created, "Can you send me a buyer's order?")  # the invitation first (appointment first)
+    await _say(created, "Can you just email it to me?")
     assert await _last_sms(mongo, created) == "Great! Are you ready to pick it up today?"
     await _say(created, "yes")
     assert await _last_sms(mongo, created) == "Wonderful. Do you have a car to trade in?"

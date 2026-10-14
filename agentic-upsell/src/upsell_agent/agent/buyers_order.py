@@ -47,10 +47,11 @@ _TEXT = {
                       "a lien holder. Will there be a lien holder associated with this transaction?"), LIEN),
     (LIEN, "yes"): (("What is the lien holder name and address? Often, we can obtain a more competitive interest rate. "
                     "Would you like to explore that option?"), RATE),
-    (LIEN, "no"): (("Great! In order to generate your purchase order, please provide me with a copy of your driver's "
-                   "license and insurance ID card as well as your social security number. Each of these items must "
-                   "appear on the purchase order. Can we get on a quick call right now to ensure all of your "
-                   "information is secured?"), CALL),
+    # Client, 13 Oct 2026 (Betsy agreed): never ask for the social security number by text - they bring it.
+    (LIEN, "no"): (("Great! In order to generate your purchase order, we will need your driver's license, insurance "
+                   "ID card and social security number, as each must appear on the purchase order. Please don't send "
+                   "your social security number by text or email; bring these with you. Can we get on a quick call "
+                   "right now to ensure all of your information is secured?"), CALL),
     (RATE, "yes"): ("Here is our credit application:{link} Please let me know once this step is complete.", None),
     (CALL, "yes"): ("Perfect, I'm getting our sales manager to call you right now.", None),
 }
@@ -61,6 +62,25 @@ ESCALATE_REASON = "Customer asked for a call to complete the buyer's order"
 ESCALATE_AT = frozenset({(CALL, "yes")})
 START_STEP = DELIVERY
 FLOWS: list[dict[str, Any]] = []
+# Client, 13 Oct 2026 (Betsy: "always APPOINTMENT FIRST ... if the customer insists, do what I originally emailed"):
+# the first answer invites them in (agent/cannot_supply.py BUYERS_ORDER, with two open times); the lead state then holds
+# INVITE_STEP and the sequence starts only when they insist. False: the sequence starts at once (AI Studio).
+INVITE_STEP = "invite"
+INVITE_FIRST = True
+_INSISTS = re.compile(
+    r"\b(?:just|please|can you|could you|can u|pls)\b[^.?!]{0,30}\b(?:send|email|e-mail|text|mail)\b|"
+    r"\b(?:send|email|e-mail|text)\b[^.?!]{0,20}\b(?:it|order|numbers|paperwork|over|me)\b|"
+    r"\bcan'?t (?:come|make it|get there|come in)\b|\bcannot (?:come|make it)\b|\bnot able to (?:come|make it)\b|"
+    r"\b(?:don'?t|do not) (?:want|have time|have the time) to (?:come|drive|go)\b|\bno time\b|\btoo far\b|"
+    r"\b(?:out of state|live far|far away)\b|\b(?:rather|prefer) (?:not|to do it|do it)\b|"
+    r"\b(?:i )?(?:still )?(?:need|want) (?:the|a) (?:buyer'?s )?order\b|\bnumbers first\b|\bbefore (?:i|we) come\b",
+    re.IGNORECASE)
+
+
+def insists(text: str | None) -> bool:
+    """After the invitation: they ask again, can't or won't come in, or want it sent."""
+    said = text or ""
+    return bool(ASKS.search(said) or _INSISTS.search(said))
 # What an answer does besides (or instead of) a reply, set in AI Studio: {(step, answer): {"set_status": "...",
 # "call_task": True, "escalate": True}}. An answer with no reply text leaves the conversation to the AI.
 ACTIONS: dict[tuple[str, str], dict[str, Any]] = {}
@@ -96,6 +116,9 @@ def open_step(state: dict | None, now: datetime) -> str | None:
 def plan(state: dict | None, text: str | None, now: datetime, *, credit_link: str | None) -> Step | None:
     """The reply for this message, or None when the sequence doesn't apply (the normal conversation carries on)."""
     step = open_step(state, now)
+    if step == INVITE_STEP:
+        # We invited them in for it: only a customer who insists gets the question sequence; a time they pick books.
+        return Step(START, START_STEP) if insists(text) else None
     if step:
         answer = answer_of(text)
         found = _TEXT.get((step, answer)) if answer else None
@@ -111,7 +134,8 @@ def plan(state: dict | None, text: str | None, now: datetime, *, credit_link: st
         if answer == "no" and step in (DELIVERY, RATE, CALL):
             return None  # her email has no "no" branch here: the conversation carries on toward the appointment
     if ASKS.search(text or ""):
-        return Step(START, START_STEP)
+        # Appointment first (agent/cannot_supply.py BUYERS_ORDER answers it); the sequence once they insist.
+        return None if INVITE_FIRST else Step(START, START_STEP)
     for flow in FLOWS:
         if flow["asks"].search(text or ""):
             return Step(flow["start"].replace("{link}", f" {credit_link}" if credit_link else ""), flow["start_step"],
