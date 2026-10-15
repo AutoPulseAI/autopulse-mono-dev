@@ -157,7 +157,9 @@ def render_first_reply(lead_type: LeadType | None, full_name: str | None) -> dic
 # never one they just gave. Still no numbers, prices or promises beyond the team following up.
 CONTINUE_CHECKING = ("Thanks, {name}. That's something we can go over together when you come in. What day this week "
                      "works best for you?")
-CONTINUE_NOTED = "Thanks, {name}. I've made a note of that."
+# Client, 16 Oct 2026 (Betsy: "appointment centric"; "Thanks, George. I've made a note of that." ended the conversation):
+# even the fallback moves to the visit.
+CONTINUE_NOTED = "Thanks, {name}, I've made a note of that. What day this week works best for you to come in?"
 # Client, 12 Oct 2026 (Jean got "Let me check on that with the team" twice in a row): the safety net never sends the
 # same words again - the next unused one of these instead (agent/nodes/template_reply.py avoid_repeat).
 CONTINUE_VARIANTS = [

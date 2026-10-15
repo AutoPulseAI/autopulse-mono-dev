@@ -245,3 +245,18 @@ async def test_ai_studio_shows_when_the_ai_started_using_each_version(mongo):
     marked = {i["key"]: i for i in await mongo.ai_config_items.find({}).to_list(None)}
     assert marked["cannot_supply_apr"]["ai_applied_version"] == 2 and marked["cannot_supply_apr"]["ai_applied_at"]
     assert marked["inbound_sources"].get("ai_applied_version") is None
+
+
+async def test_the_buyers_order_invitation_is_editable(mongo):
+    """Client, 14 Oct 2026: the appointment-first buyer's order "also reflected in AI Studio, editable"."""
+    content = _default("workflows", "cannot_supply_buyers_order_invite")
+    content["tree"]["message"]["text"] = ("Happy to! Your buyer's order is quickest at the dealership. "
+                                          "I have {times} available - which works for you?")
+    await _publish(mongo, "workflows", "cannot_supply_buyers_order_invite", content)
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "Can you send me a buyer's order?")
+    reply = await _last_sms(mongo, created)
+    assert reply.startswith("Happy to! Your buyer's order is quickest at the dealership. I have ") and "{times}" not in reply
+    await _say(created, "Can you just email it to me?")
+    assert await _last_sms(mongo, created) == ("That is great; that must mean you are ready to buy today! Are you "
+                                               "ready to take delivery today?")

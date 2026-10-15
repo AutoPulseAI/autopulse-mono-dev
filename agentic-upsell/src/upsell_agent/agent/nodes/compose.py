@@ -120,6 +120,17 @@ def place_touch1_intro(draft: dict[str, Any], intro: str | None) -> list[str]:
     return changed
 
 
+def _without_own_price(text: str, price_line: str | None) -> str:
+    """Client, 16 Oct 2026 (George's first text said the price twice): code places her price line, so a sentence the
+    model wrote with the same price is dropped."""
+    price = re.search(r"\$\d[\d,]*\d", price_line or "")
+    if not price or text.count(price.group(0)) < 1:
+        return text
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    kept = [s for s in sentences if price.group(0) not in s or s.strip() == (price_line or "").strip()]
+    return " ".join(kept)
+
+
 def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) -> list[str]:
     """Client, 12 Oct 2026 (Betsy): the first reply about an in-stock vehicle carries its listed price (tax,
     documentation and DMV not included) and its photo, right after the introduction; a customer with no phone gets
@@ -131,7 +142,7 @@ def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) ->
     if line and vin:
         for key, vins, media in (("sms_text", "sms_vins", "sms_media_vin"), ("email_body", "email_vins",
                                                                              "email_media_vin")):
-            text = str(draft.get(key) or "")
+            text = _without_own_price(str(draft.get(key) or ""), touch1.get("price_line"))
             if line not in text:
                 text = (f"{intro} {line}{text[len(intro):]}" if intro and text.startswith(intro)
                         else f"{line} {text}").replace("  ", " ")

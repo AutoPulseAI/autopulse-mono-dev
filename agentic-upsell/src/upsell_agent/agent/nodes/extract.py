@@ -109,6 +109,14 @@ _ASKED_KIND = [
 ]
 
 
+_SAID_KIND = [
+    ("money", re.compile(r"\$|\b(?:a|per) month\b|/\s*mo\b|\bmonthly\b|\bbudget\b|\bdown\b|\bpayment\b|\bdollars?\b|"
+                         r"\bbucks\b|\bcash\b", re.IGNORECASE)),
+    ("mileage", re.compile(r"\bmiles?\b|\bmi\b|\bmileage\b|\bodometer\b", re.IGNORECASE)),
+    ("year", re.compile(r"\b(?:19[89]\d|20[0-3]\d)\b")),
+]
+
+
 def drop_values_of_the_wrong_kind(extraction: dict[str, Any], text: str, asked: str | None) -> None:
     """Client, 13 Oct 2026 (Artem answered "About what time will you arrive?" with "520" and the AI then spoke of
     "your $520-a-month target"; "it should understand the answer from the conversation"): a short reply is what our
@@ -123,9 +131,11 @@ def drop_values_of_the_wrong_kind(extraction: dict[str, Any], text: str, asked: 
     kind = kinds.pop()
     # Only stored facts are checked: what isn't a slot (visit_when - the time the booking reads) always stays.
     numeric = {"money", "mileage", "year"}
+    # Their own words can say what the number is ("around 500 a month" is money whatever we asked - George, 16 Oct).
+    stated = {k for k, pattern in _SAID_KIND if pattern.search(said)}
     extraction["values"] = [v for v in extraction.get("values", [])
                             if v.get("path") not in SCHEMA or SCHEMA[v["path"]].kind not in numeric
-                            or SCHEMA[v["path"]].kind == kind]
+                            or SCHEMA[v["path"]].kind in ({kind} | stated)]
 
 
 def lift_wants_visit(extraction: dict[str, Any]) -> None:

@@ -13,15 +13,20 @@ from typing import Any
 from upsell_agent import clock
 
 # What each action is for - the one goal the writer is writing toward.
+# Client, 16 Oct 2026 (Betsy: "the AI is not appointment centric at all ... all agents need to be appointment
+# oriented"): every goal ends with the visit.
 _GOALS = {
-    "answer": "Answer their question fully and naturally, then move toward the appointment.",
-    "ask": "Get the one detail we still need, asked the way a person would ask it, and say why it helps them.",
-    "confirm": "Check one thing they said, lightly, then keep going.",
+    "answer": "Answer their question fully and naturally, then take the next step: present visit_offer's times when "
+              "given, otherwise one qualifying question.",
+    "ask": "Get the one detail we still need - asked the way a person would, saying how it helps them (it qualifies "
+           "the lead for the visit).",
+    "confirm": "Check one thing they said, lightly, then take the next step.",
     "clarify": "Explain what our last question meant, simply, and ask it again.",
     "offer_visit": "Get them to pick one of the offered times. Give them a real reason to come in, from what they told us.",
-    "acknowledge": "Reply warmly and briefly - no question.",
+    "acknowledge": "Reply warmly and briefly, then take the next step: one qualifying question, or the visit if they "
+                   "sound ready.",
     "qualified": "Thank them and lock in the next step (the visit).",
-    "partly_qualified": "Thank them; keep the door open for the visit.",
+    "partly_qualified": "Thank them and ask for the visit - what day works best?",
     "handoff": "Tell them, warmly, how a person will reach them.",
     "offer_human": "Offer a call or a text from a person.",
     "ask_why": "Gently find out what changed for them - one question.",
@@ -62,7 +67,14 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
     fired = [r for r in decision.get("rules") or [] if r.get("result") == "fired"]
 
     from upsell_agent.agent.multi_vehicle import vehicle_label
+    from upsell_agent.agent.templates import known_first_name
     vehicle = vehicle_label(lead)
+    # Client, 16 Oct 2026: "get the user's missing information - name, number, email - whatever is missing in our CRM".
+    missing = [what for what, have in (
+        ("their first name", known_first_name(lead.get("name"))),
+        ("a phone number", str(lead.get("phone") or "").strip() not in ("", "N/A", "n/a")),
+        ("an email address", "@" in str(lead.get("email") or "") and not str(lead.get("email")).lower().startswith(
+            ("no-reply", "noreply", "do-not-reply", "donotreply")))) if not have]
     return {
         "customer": {
             "came_from": lead.get("source") or lead.get("lead_source"),
@@ -72,6 +84,7 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
                                         or None),
             "vehicle_they_want": vehicle,
             "known_about_them": known[:12],
+            "missing_contact": missing,
         },
         "where_it_stands": {
             "stage": lead_state.get("stage_label") or lead_state.get("stage"),

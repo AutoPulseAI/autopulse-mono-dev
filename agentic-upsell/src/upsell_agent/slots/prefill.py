@@ -77,7 +77,35 @@ def facts_from_lead(lead: dict[str, Any] | None) -> dict[str, Any]:
     label = " ".join(p for p in parts if p)
     if not (parts[1] or parts[2]):
         label = str(data.get("vehicle") if isinstance(data.get("vehicle"), str) else "").strip()
-    return {"interest.model": label[:120]} if label else {}
+    out = {"interest.model": label[:120]} if label else {}
+    # Client, 16 Oct 2026 (George asked "new or used?" about a used BMW): the lead's own new / used, when it says.
+    condition = _new_or_used(lead.get("condition") or lead.get("vehicle_status") or vehicle.get("condition")
+                             or vehicle.get("status"))
+    if condition:
+        out["interest.new_or_used"] = condition
+    return out
+
+
+def _new_or_used(value: Any) -> str | None:
+    said = str(value or "").strip().lower()
+    if not said:
+        return None
+    if said.startswith("new"):
+        return "new"
+    return "used" if any(w in said for w in ("used", "pre-owned", "preowned", "certified", "cpo")) else None
+
+
+async def _stock_condition(db: DealerScopedDatabase, lead: dict[str, Any] | None) -> str | None:
+    """New or used from the dealer's own stock record of the car the lead is about (by VIN)."""
+    from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION, get_db
+    lead = lead or {}
+    vehicle = (lead.get("data") or {}).get("vehicle")
+    vin = str(lead.get("vin") or (vehicle.get("vin") if isinstance(vehicle, dict) else "") or "").strip()
+    if len(vin) != 17:
+        return None
+    record = await get_db()[PLATFORM_VEHICLES_COLLECTION].find_one({"dealerId": db.dealer_id, "vin": vin},
+                                                                     {"condition": 1})
+    return _new_or_used((record or {}).get("condition"))
 
 
 async def prefill_from_360(db: DealerScopedDatabase, *, customer_id: str, lead_id: str | None,
@@ -85,6 +113,12 @@ async def prefill_from_360(db: DealerScopedDatabase, *, customer_id: str, lead_i
                            lead: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Saves the lead's and the 360's facts that aren't already known. Returns what was added."""
     found = {**facts_from_360(data), **facts_from_lead(lead)} if data else facts_from_lead(lead)
+    if lead and "interest.new_or_used" not in found:
+        try:
+            if condition := await _stock_condition(db, lead):
+                found["interest.new_or_used"] = condition
+        except Exception:  # noqa: BLE001 - a stock lookup is never worth a failed turn
+            pass
     if not found:
         return []
     known = {f["path"] for f in await current_facts(db, customer_id, lead_id)}

@@ -365,3 +365,36 @@ def test_a_short_answer_means_what_we_asked(asked, said, values, kept):
     extraction = {"values": [{"path": p, "value": v} for p, v in values]}
     drop_values_of_the_wrong_kind(extraction, said, asked)
     assert [v["path"] for v in extraction["values"]] == kept
+
+
+async def test_a_day_they_name_gets_that_days_times(mongo):
+    """Betsy, 16 Oct 2026: "appointment centric" - "Probably Saturday" is answered with Saturday's open times."""
+    set_clock(datetime(2026, 9, 22, 14, 0, tzinfo=UTC))  # a Tuesday morning in New York
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "My budget is $35,000")
+    await _say(created, "Probably Saturday")
+    assert "Saturday at" in await _last_sms(mongo, created)
+
+
+def test_the_lead_and_stock_say_new_or_used():
+    """George's BMW was used: the AI never asks "new or used?" about the car the lead is about."""
+    from upsell_agent.slots.prefill import _new_or_used, facts_from_lead
+    assert facts_from_lead({"model": "430i", "make": "BMW", "condition": "Used"})["interest.new_or_used"] == "used"
+    assert _new_or_used("Certified Pre-Owned") == "used" and _new_or_used("New") == "new" and _new_or_used("") is None
+
+
+def test_their_own_words_say_what_a_number_is():
+    """George, 16 Oct 2026: "Around 500 a month" after a mileage question is his budget, and is kept."""
+    from upsell_agent.agent.nodes.extract import drop_values_of_the_wrong_kind
+    extraction = {"values": [{"path": "interest.monthly_payment", "value": 500}]}
+    drop_values_of_the_wrong_kind(extraction, "Around 500 a month", "How many miles are on your Accord?")
+    assert [v["path"] for v in extraction["values"]] == ["interest.monthly_payment"]
+
+
+def test_the_price_is_said_once():
+    from upsell_agent.agent.nodes.compose import place_touch1_extras
+    line = "It's listed at $27,995, not including tax, documentation and DMV fees."
+    draft = {"sms_text": "Hi George, this is the AI Sales Manager. It's here, listed at $27,995 before fees. What do you "
+                         "drive now?", "email_body": ""}
+    place_touch1_extras(draft, {"price_line": line, "vin": "V1", "intro": "Hi George, this is the AI Sales Manager."})
+    assert draft["sms_text"].count("$27,995") == 1 and line in draft["sms_text"]

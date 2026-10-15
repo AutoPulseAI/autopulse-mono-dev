@@ -68,3 +68,11 @@ async def test_a_payment_question_gets_her_answer_and_a_pick_books(mongo):
     lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
     assert lead["data"].get("bookingId") and lead["status"] == "Appointment Booked"
     assert DEALER
+
+
+def test_a_budget_they_state_is_not_a_payment_question():
+    """Client, 16 Oct 2026: George said "Around 500 a month" (his budget) and got her "lowest possible payment" script."""
+    for said in ("Around 500 a month", "I want to stay under 500 a month", "Payment of 400 a month max",
+                 "my credit score is 700"):
+        assert cs.detect(said) is None, said
+    assert cs.detect("how much per month") == cs.PAYMENT and cs.detect("what credit score do I need") == cs.CREDIT_SCORE
