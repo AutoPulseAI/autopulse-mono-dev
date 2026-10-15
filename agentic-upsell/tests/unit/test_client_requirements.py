@@ -365,3 +365,19 @@ def test_a_short_answer_means_what_we_asked(asked, said, values, kept):
     extraction = {"values": [{"path": p, "value": v} for p, v in values]}
     drop_values_of_the_wrong_kind(extraction, said, asked)
     assert [v["path"] for v in extraction["values"]] == kept
+
+
+async def test_a_day_they_name_gets_that_days_times(mongo):
+    """Betsy, 16 Oct 2026: "appointment centric" - "Probably Saturday" is answered with Saturday's open times."""
+    set_clock(datetime(2026, 9, 22, 14, 0, tzinfo=UTC))  # a Tuesday morning in New York
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "My budget is $35,000")
+    await _say(created, "Probably Saturday")
+    assert "Saturday at" in await _last_sms(mongo, created)
+
+
+def test_the_lead_and_stock_say_new_or_used():
+    """George's BMW was used: the AI never asks "new or used?" about the car the lead is about."""
+    from upsell_agent.slots.prefill import _new_or_used, facts_from_lead
+    assert facts_from_lead({"model": "430i", "make": "BMW", "condition": "Used"})["interest.new_or_used"] == "used"
+    assert _new_or_used("Certified Pre-Owned") == "used" and _new_or_used("New") == "new" and _new_or_used("") is None

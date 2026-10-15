@@ -211,7 +211,8 @@ def test_the_mid_conversation_fallback_follows_decide_not_the_first_reply():
     # Client, 12 Oct 2026: never "the team" - the question is for the visit, and the reply asks for one.
     assert "go over together when you come in" in checking["sms_text"] and not checking["promises"]
     assert "team" not in checking["sms_text"]
-    assert render_continue_reply("Jordan", {})["sms_text"] == "Thanks, Jordan. I've made a note of that."
+    assert render_continue_reply("Jordan", {})["sms_text"] == ("Thanks, Jordan, I've made a note of that. What day this week "
+                                                             "works best for you to come in?")  # appointment first
 
 
 # --- 9. Language -------------------------------------------------------------------------------------------

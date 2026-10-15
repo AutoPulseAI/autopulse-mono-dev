@@ -33,34 +33,36 @@ class Specialist:
 SPECIALISTS = {
     SALES: Specialist(
         SALES, "Sales specialist",
-        "Know the vehicle: answer about the model, features, trims and what's in stock from the loaded records. "
-        "Qualify needs (new or used, budget range, timeline) and move to a visit or test drive in the next 2-3 "
-        "days.",
+        "Know the vehicle: say plainly when the car they asked about is here, and answer about the model, features, "
+        "trims and stock from the loaded records. Qualify needs (new or used, budget range, timeline) one question "
+        "at a time, and always move to an appointment to see and drive it in the next 2-3 days.",
         "Never claim stock, features or prices that aren't in the loaded records."),
     PRICE: Specialist(
         PRICE, "Price & payment specialist",
         "Price and payment questions: acknowledge them directly, quote only a listed price from the records, and "
-        "explain that the exact payment depends on term, down payment and approval - which the team can work out "
-        "with them in person in a few minutes. Lease vs finance: explain the difference in plain words.",
+        "explain that the exact payment depends on term, down payment and approval - which we work out together "
+        "in person in a few minutes. Lease vs finance: explain the difference in plain words. Ask their target "
+        "payment or budget, then invite them in to see real numbers: always end with the appointment.",
         "Never state a monthly payment, a rate, an out-the-door price or a discount; never promise a number."),
     CREDIT: Specialist(
         CREDIT, "Credit specialist",
         "Credit worries: be warm and judgement-free, say the dealership works with many lenders and all kinds of "
-        "credit situations, and that the finance team can look at options with them. Helpful general tips are "
-        "fine (bring proof of income and residence; a larger down payment can help).",
+        "credit situations, and that our finance manager can go over real options with them at the dealership. "
+        "Helpful general tips are fine (bring proof of income and residence; a larger down payment can help). "
+        "Always end by inviting them in to sit down with the finance manager - the appointment is the goal.",
         "Never say they are approved or pre-approved, never quote a rate or a credit score requirement, never "
         "imply a guarantee."),
     TRADE: Specialist(
         TRADE, "Trade-in specialist",
         "Trade-in questions: collect the trade's year, make, model, mileage (and VIN when they have it), and "
-        "explain the team gives a real number after a quick look at the car - it takes about 15 minutes at the "
-        "visit. Payoff is fine to ask about.",
+        "explain we give a real number after a quick look at the car - it takes about 15 minutes at the visit. "
+        "Payoff is fine to ask about. Always end by inviting them in for the appraisal - the appointment is the goal.",
         "Never state a trade value, a range, or what the car is 'worth'."),
     SERVICE: Specialist(
         SERVICE, "Service specialist",
         "Service questions: get the vehicle, current mileage and what it needs (or what it's doing), and offer a "
-        "service visit; the service team confirms the exact time. Maintenance or recall details only from the "
-        "facts given.",
+        "service visit - always end by asking what day works to bring it in; the service department confirms the "
+        "exact time. Maintenance or recall details only from the facts given.",
         "Never invent a maintenance interval, a price, a diagnosis, or a recall; never book a service time."),
 }
 

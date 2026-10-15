@@ -440,6 +440,17 @@ async def _visit_and_booking(
                    or visit_wants_visit(extraction))
     if not hold and not after_hours_blocking and (slot_taken or (
             offers_left and (buying_urgency or visit_eligible(profile, extraction)))):
+        # Client, 16 Oct 2026 (appointment first): a day they named ("Probably Saturday") gets that day's times, whatever
+        # the reader made of the message - never the earliest times plus "or would you prefer Saturday?".
+        request = (booking_tool.preferred_day(text, dealer, now)
+                   if text and not slot_taken and state.trigger in _BOOKS_FROM_OWN_REPLY
+                   and not visit_declines(extraction) and not _NOT_READY.search(text) else None)
+        if request is not None:
+            built, info = await _times_for_day(ctx, state, dealer, now, request)
+            if built:
+                visit_ctx["day_request"] = info
+                return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
+                                                 why=_day_offer_why(info), asked_day=request.day.isoformat())
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
         customer_zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
