@@ -90,9 +90,19 @@ class CannotSupply:
                 "escalates": self.topic in ESCALATES}
 
 
+# Her payment / APR / credit-score / out-the-door answers are for a customer ASKING (client, 16 Oct 2026: "Around 500 a
+# month" is George telling us his budget, not asking what his payment would be - it got her payment script).
+ASKED_ONLY = frozenset({CREDIT_SCORE, APR, PAYMENT, OTD})
+_ASKING = re.compile(r"\?|^\W*(?:what|what's|whats|how|can|could|would|will|is|are|do|does|did|any|give me|tell me|"
+                     r"send me|i (?:want|need|would like) to know)\b|\b(?:what(?:'s| is| would| will)?|how much|"
+                     r"how many|wondering|curious|let me know|tell me|quote|(?:want|need|like) to know)\b", re.IGNORECASE)
+
+
 def detect(text: str | None) -> str | None:
     said = text or ""
-    return next((topic for topic, pattern in _COMPILED if pattern.search(said)), None)
+    asking = bool(_ASKING.search(said))
+    return next((topic for topic, pattern in _COMPILED if pattern.search(said)
+                 and (asking or topic not in ASKED_ONLY)), None)
 
 
 def needs_times(topic: str) -> bool:

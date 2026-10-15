@@ -16,14 +16,15 @@ from upsell_agent import clock
 # Client, 16 Oct 2026 (Betsy: "the AI is not appointment centric at all ... all agents need to be appointment
 # oriented"): every goal ends with the visit.
 _GOALS = {
-    "answer": "Answer their question fully and naturally, then ask for the appointment (visit_offer's times when given, "
-              "else what day works to come in).",
-    "ask": "Get the one detail we still need - asked the way a person would, saying how it makes their visit better - "
-           "and tie it to coming in.",
-    "confirm": "Check one thing they said, lightly, then move to the appointment.",
+    "answer": "Answer their question fully and naturally, then take the next step: present visit_offer's times when "
+              "given, otherwise one qualifying question.",
+    "ask": "Get the one detail we still need - asked the way a person would, saying how it helps them (it qualifies "
+           "the lead for the visit).",
+    "confirm": "Check one thing they said, lightly, then take the next step.",
     "clarify": "Explain what our last question meant, simply, and ask it again.",
     "offer_visit": "Get them to pick one of the offered times. Give them a real reason to come in, from what they told us.",
-    "acknowledge": "Reply warmly and briefly, then invite them in - what day works best for them to come by?",
+    "acknowledge": "Reply warmly and briefly, then take the next step: one qualifying question, or the visit if they "
+                   "sound ready.",
     "qualified": "Thank them and lock in the next step (the visit).",
     "partly_qualified": "Thank them and ask for the visit - what day works best?",
     "handoff": "Tell them, warmly, how a person will reach them.",
