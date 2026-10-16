@@ -154,8 +154,7 @@ ACTION_KINDS = frozenset({
 
 
 def needs_action(notice: dict[str, Any]) -> bool:
-    import upsell_agent.api.staff_view as me  # the set AI Studio publishes replaces the module's own
-    return notice.get("kind") in me.ACTION_KINDS
+    return notice.get("kind") in ACTION_KINDS  # read at call time: AI Studio's published set replaces it
 
 
 class Handled(BaseModel):
