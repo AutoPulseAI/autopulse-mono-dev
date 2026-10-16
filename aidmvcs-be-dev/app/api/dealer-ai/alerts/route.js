@@ -23,7 +23,8 @@ export async function GET(req) {
   const assignedTo = await assignedOnlyUserId(session.user);
   const notices = await keepAssignedRows(session.dealerId, assignedTo, result.body?.notices || []);
   const unhandledCount = assignedTo
-    ? notices.filter((n) => !n.handled).length
+    // Leads that need a person, once each (client, 16 Oct 2026) - the same count the AI gives the whole dealership.
+    ? new Set(notices.filter((n) => !n.handled).map((n) => n.lead_id)).size
     : (result.body?.unhandled_count ?? 0);
   if (url.searchParams.get("count_only") === "1") {
     return NextResponse.json({ unhandled_count: unhandledCount });
