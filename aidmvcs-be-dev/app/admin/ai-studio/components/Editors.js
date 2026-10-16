@@ -268,6 +268,22 @@ export function SourceEditor({ content, onChange, readOnly }) {
 }
 
 export function RulesEditor({ content, onChange, readOnly }) {
+  if (content.kinds && Array.isArray(content.counts)) {
+    // Dealership Action Required: which alerts count (client, 16 Oct 2026).
+    const counts = content.counts;
+    return (
+      <div>
+        <HowTo>tick what should land in Dealership Action Required (and its count on the dashboard). Unticked
+          alerts still show on the lead itself. Then Save draft and Publish.</HowTo>
+        {Object.entries(content.kinds).map(([kind, label]) => (
+          <Form.Check key={kind} id={`kind-${kind}`} className="mb-2" disabled={readOnly} label={label}
+            checked={counts.includes(kind)}
+            onChange={(e) => onChange({ ...content, counts: e.target.checked ? [...counts, kind]
+              : counts.filter((k) => k !== kind) })} />
+        ))}
+      </div>
+    );
+  }
   if (content.rules) {
     return (
       <Table size="sm" bordered>

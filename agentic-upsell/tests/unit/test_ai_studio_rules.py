@@ -152,3 +152,18 @@ async def test_a_rule_the_dealership_adds(mongo):
     ai_studio.reset()
     assert "Never offer a discount" not in str(llm.compose_agent("test")._instructions)
     assert not guard._TEAM.search("Best price guaranteed")
+
+
+async def test_what_counts_as_dealership_action_required_is_editable(mongo):
+    """Client, 16 Oct 2026: the alerts that count are set in AI Studio too."""
+    from upsell_agent.api.staff_view import list_notices, needs_action
+    c = _default("status_rules", "alert_kinds")
+    c["counts"] = [k for k in c["counts"] if k != "possible_opt_out"] + ["call_task"]
+    await _publish(mongo, "status_rules", "alert_kinds", c)
+    assert needs_action({"kind": "call_task"}) and not needs_action({"kind": "possible_opt_out"})
+    await mongo["ai_lead_state"].insert_one({"lead_id": "L9", "dealer_id": "d9",
+                                             "staff_notice": {"at": datetime(2026, 10, 1, tzinfo=UTC), "kind": "call_task",
+                                                              "text": "Call them"}})
+    assert (await list_notices("d9"))["unhandled_count"] == 1
+    ai_studio.reset()
+    assert not needs_action({"kind": "call_task"}) and needs_action({"kind": "possible_opt_out"})

@@ -277,12 +277,19 @@ def workflows() -> list[dict[str, Any]]:
     return out
 
 
+def _staff_view():
+    from upsell_agent.api import staff_view
+    return staff_view
+
+
 def status_rules() -> list[dict[str, Any]]:
     from upsell_agent.agent import crm_status, lifecycle
     return [{"key": "escalations", "name": "Dealership Action Required: when", "content": {
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
+                "counts": sorted(_staff_view().ACTION_KINDS), "kinds": _staff_view().ALERT_KINDS}},
             {"key": "ai_statuses", "name": "Statuses the AI sets", "content": {
                 "stages": crm_status.CRM_STATUS_FOR_STAGE, "closings": crm_status.CRM_STATUS_FOR_EVENT}}]
 
@@ -354,7 +361,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 7
+DEFAULTS_REVISION = 8
 
 
 def export() -> dict[str, Any]:
