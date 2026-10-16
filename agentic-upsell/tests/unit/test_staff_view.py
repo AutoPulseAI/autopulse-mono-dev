@@ -28,7 +28,7 @@ async def test_notices_alerts_and_handoffs_are_listed_newest_first(mongo):
     out = await list_notices(DEALER)
     assert [(n["lead_id"], n["source"]) for n in out["notices"]] == [("L2", "alert"), ("L2", "handoff"),
                                                                      ("L1", "notice")]
-    assert out["unhandled_count"] == 3
+    assert out["unhandled_count"] == 2  # leads that need a person: L2's handoff and its alert are one lead
     assert (await list_notices(OTHER))["notices"] == []
 
 
@@ -100,3 +100,13 @@ def test_routes_need_the_shared_secret(mongo):
     assert ok.status_code == 200 and ok.json() == {"notices": [], "unhandled_count": 0}
     assert client.get("/v1/staff/call-tasks", params={"dealer_id": DEALER, "view": "done"},
                       headers={"Authorization": "Bearer test-secret"}).json() == []
+
+
+def test_dealer_action_required_counts_leads_that_need_a_person():
+    """Client, 16 Oct 2026 (Bibi: 223 alerts): call tasks (their own page), repeat leads, booked visits and other
+    information are not Dealership Action Required; a handoff and its no-response alert are one lead."""
+    from upsell_agent.api.staff_view import needs_action
+    for kind in ("call_task", "duplicate_lead", "team_promise", "visit_booked", "after_hours_resume", "not_interested"):
+        assert not needs_action({"kind": kind}), kind
+    for kind in ("handoff", "no_staff_response", "call_requested", "possible_opt_out", "reply_on_closed_lead"):
+        assert needs_action({"kind": kind}), kind

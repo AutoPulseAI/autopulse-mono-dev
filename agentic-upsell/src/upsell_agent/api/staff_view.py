@@ -103,12 +103,30 @@ async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[st
         projection={"lead_id": 1, "customer_id": 1, "staff_notice": 1, "staff_alert": 1, "status": 1,
                     "status_at": 1, "status_reason": 1, "stage": 1, "handled_notices": 1, "last_turn_at": 1,
                     "conversation.not_interested": 1}).to_list(None)
-    rows = [n for s in states for n in notices_for(s)]
-    unhandled = sum(1 for n in rows if not n["handled"])
+    rows = [n for s in states for n in notices_for(s) if needs_action(n)]
+    # The count is leads that need a person, once each (a handoff and its "no response" alert are one lead).
+    unhandled = len({n["lead_id"] for n in rows if not n["handled"]})
     if not include_handled:
         rows = [n for n in rows if not n["handled"]]
     rows.sort(key=lambda n: n["at"] or "", reverse=True)
     return {"notices": rows[:LIMIT], "unhandled_count": unhandled}
+
+
+# Client, 12 Oct 2026 (Betsy): Dealership Action Required is only an upset customer, appointments declined more than once,
+# a customer asking for a person, or something the AI can't supply - i.e. a handoff - plus what needs a person to
+# decide (a possible opt-out, a call escalation, a reply on a closed lead). Client, 16 Oct 2026 (Bibi: 223 alerts):
+# call tasks have their own page; repeat leads, booked visits, morning messages and "not interested" are information
+# on the lead, not actions.
+ACTION_KINDS = frozenset({
+    "handoff", "no_staff_response",           # the AI handed the lead to a person (Betsy's cases), and no one answered
+    "call_requested", "text_requested",       # the customer asked for a person to call / text them
+    "call_escalation", "sold_pending_escalation", "service_request",  # a person has to act on it
+    "possible_opt_out", "bad_contact", "reply_on_closed_lead",        # a person has to decide
+})
+
+
+def needs_action(notice: dict[str, Any]) -> bool:
+    return notice.get("kind") in ACTION_KINDS
 
 
 class Handled(BaseModel):
