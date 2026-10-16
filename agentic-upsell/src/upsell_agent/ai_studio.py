@@ -318,6 +318,7 @@ _ATTRS = {
     "guard": ("_TEAM",),
     "templates": ("FIRST_REPLY", "HOLDING_REPLIES", "CONTINUE_NOTED", "CONTINUE_VARIANTS"),
     "crm_status": ("CRM_STATUS_FOR_STAGE", "CRM_STATUS_FOR_EVENT"),
+    "staff_view": ("ACTION_KINDS",),
 }
 
 
@@ -332,7 +333,12 @@ def _by_name() -> dict[str, Any]:
             "cadence": cad, "escalation": esc, "lifecycle": lc, "crm_status": crm, "sold_pending": sold_pending,
             "owner_touches": owner_touches, "appointment": appointment, "engine": engine,
             "state_hours": state_hours, "opt_out": opt_out, "text_consent": text_consent, "consent": consent,
-            "draft_guard": draft_guard, "guard": guard, "templates": templates}
+            "draft_guard": draft_guard, "guard": guard, "templates": templates, "staff_view": _staff_view_module()}
+
+
+def _staff_view_module():
+    from upsell_agent.api import staff_view
+    return staff_view
 
 
 def _snapshot() -> None:
@@ -651,6 +657,9 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
             if str(r.get("reason_starts_with") or "").strip())
     elif key == "status_workflows" and isinstance(c.get("map"), dict):
         mods["lifecycle"].STAFF_STATUS_EVENTS.update({k: v for k, v in c["map"].items() if v})
+    elif key == "alert_kinds" and isinstance(c.get("counts"), list):
+        from upsell_agent.api import staff_view
+        staff_view.ACTION_KINDS = frozenset(str(k) for k in c["counts"])
     elif key == "ai_statuses":
         if isinstance(c.get("stages"), dict):
             mods["crm_status"].CRM_STATUS_FOR_STAGE.update({k: v for k, v in c["stages"].items() if v})

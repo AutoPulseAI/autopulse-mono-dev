@@ -96,6 +96,8 @@ def notices_for(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[str, Any]:
+    from upsell_agent import ai_studio
+    await ai_studio.refresh()  # what counts can be changed in AI Studio
     db = dealer_scoped_db(dealer_id)
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"$or": [{"staff_notice": {"$ne": None}}, {"staff_alert": {"$ne": None}}, {"status": "handoff"},
@@ -117,6 +119,32 @@ async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[st
 # decide (a possible opt-out, a call escalation, a reply on a closed lead). Client, 16 Oct 2026 (Bibi: 223 alerts):
 # call tasks have their own page; repeat leads, booked visits, morning messages and "not interested" are information
 # on the lead, not actions.
+# Every kind the AI writes for staff, in plain words (AI Studio shows these as tick boxes).
+ALERT_KINDS: dict[str, str] = {
+    "handoff": "The AI handed the lead to a person (upset, asked for a person, declined appointments, can't supply)",
+    "no_staff_response": "Nobody answered a handoff",
+    "call_requested": "The customer asked for a call",
+    "text_requested": "The customer asked for a text from a person",
+    "call_escalation": "A call task was escalated",
+    "sold_pending_escalation": "Sold Pending needs a person",
+    "service_request": "The customer asked for a service visit",
+    "possible_opt_out": "Possible opt-out to check",
+    "bad_contact": "Phone or email is invalid",
+    "reply_on_closed_lead": "The customer replied on a closed lead",
+    "call_task": "Call this customer (60-minute call task)",
+    "duplicate_lead": "Repeat lead linked to the open one",
+    "duplicate_released": "Repeat lead released",
+    "visit_booked": "Visit booked",
+    "visit_moved": "Visit moved",
+    "visit_cancelled": "Visit cancelled",
+    "after_hours_resume": "Morning message sent",
+    "team_promise": "A reply promised a follow-up",
+    "not_interested": "The customer said they're not interested",
+    "do_not_call": "The customer asked not to be called",
+    "text_consent_missing": "No text consent",
+    "sold_pending_info": "Sold Pending information",
+}
+# Which kinds count (set in AI Studio: Rules & Prompts -> "Dealership Action Required: what counts").
 ACTION_KINDS = frozenset({
     "handoff", "no_staff_response",           # the AI handed the lead to a person (Betsy's cases), and no one answered
     "call_requested", "text_requested",       # the customer asked for a person to call / text them
@@ -126,7 +154,7 @@ ACTION_KINDS = frozenset({
 
 
 def needs_action(notice: dict[str, Any]) -> bool:
-    return notice.get("kind") in ACTION_KINDS
+    return notice.get("kind") in ACTION_KINDS  # read at call time: AI Studio's published set replaces it
 
 
 class Handled(BaseModel):
