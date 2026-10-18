@@ -140,6 +140,38 @@ _TEAM = re.compile(r"\b(?:the|our|a|your)\s+(?:sales\s+|finance\s+)?team\b|\btea
                    r"(?:our|the)\b|\bsomeone\s+will\s+(?:reach|get|call|follow|be)\b", re.IGNORECASE)
 
 
+# Client, 18 Oct 2026 (Freder: "I'll write up your full out-the-door ... and send it here shortly"; Steven: "I'll send
+# the video link Monday"): the AI never promises to send what it can't - a video, a written or itemized price, a buyer's
+# order, paperwork.
+_CANT_SEND = re.compile(
+    r"\b(?:i'?ll|i will|we'?ll|we will|let me|i can|going to)\b[^.?!]{0,40}\b(?:send|write\s*up|put|email|text|get)\b"
+    r"[^.?!]{0,60}\b(?:video|walk-?around|out[\s-]the[\s-]door|itemi[sz]|doc fee|buyer'?s order|purchase order|"
+    r"paperwork|in writing|breakdown|quote)\b", re.IGNORECASE)
+
+
+_ASKS_WHERE = re.compile(r"\bwhere\b[^?]{0,40}\b(?:located|location|are you|is it|is the|car|vehicle|dealership|you guys)\b|"
+                         r"\baddress\b|\bdirections?\b|\bhow (?:do|can) i get (?:there|to you)\b", re.IGNORECASE)
+
+
+def missing_address(decision: dict[str, Any], draft: dict[str, Any], customer_text: str | None) -> list[str]:
+    """Client, 17 Oct 2026 (Zack: "Where is the vehicle located?"): the answer is the street address, never "in town"."""
+    address = str(decision.get("dealer_address") or "").strip()
+    if not address or not _ASKS_WHERE.search(customer_text or ""):
+        return []
+    street = address.split(",")[0].strip().lower()
+    return [f"the {name} doesn't give the address they asked for: write {address!r}"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if street and street not in str(draft.get(key) or "").lower()]
+
+
+def promises_what_it_cannot_send(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if (decision.get("cannot_supply") or {}).get("text"):
+        return []  # the client's own script, placed by code
+    return [f"the {name} promises to send something the AI can't ({m.group(0)[:60]!r}) - invite them in instead"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _CANT_SEND.search(str(draft.get(key) or "")))]
+
+
 def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     if decision.get("action") in ("handoff", "offer_human") or decision.get("reply_language"):
         return []
@@ -390,6 +422,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if greeted_again:
         result["passed"] = False
         result["violations"] += greeted_again
+    no_address = missing_address(state.decision or {}, state.draft or {}, state.customer_text or state.inbound_text)
+    result["checks"]["gives_the_address"] = not no_address
+    if no_address:
+        result["passed"] = False
+        result["violations"] += no_address
+    cant_send = promises_what_it_cannot_send(state.decision or {}, state.draft or {})
+    result["checks"]["no_promise_it_cannot_keep"] = not cant_send
+    if cant_send:
+        result["passed"] = False
+        result["violations"] += cant_send
     bad_booking_wording = invalid_booking_wording(state.decision or {}, state.draft or {})
     result["checks"]["booking_wording_matches_status"] = not bad_booking_wording
     if bad_booking_wording:

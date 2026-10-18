@@ -421,3 +421,24 @@ def test_portal_boilerplate_is_not_the_customers_words():
     from upsell_agent.agent.portal_text import clean_comments
     said = "I'd like to see the A4. For notification changes, please contact support@cars.com."
     assert clean_comments(said) == "I'd like to see the A4."
+
+
+def test_no_promise_to_send_what_the_ai_cannot():
+    """Freder / Steven, 18 Oct 2026."""
+    from upsell_agent.agent.nodes.guard import promises_what_it_cannot_send
+    for text in ("I'll write up your full out-the-door with the doc fee and send it here shortly.",
+                 "Sounds good. I'll send the video link Monday around midday."):
+        assert promises_what_it_cannot_send({}, {"sms_text": text}), text
+    assert not promises_what_it_cannot_send({}, {"sms_text": "We'll go over the numbers together when you come in."})
+
+
+def test_where_is_it_must_get_the_street_address():
+    """Zack, 17 Oct 2026: "It's here at our dealership in town" is not an answer to "Where is the vehicle located"."""
+    from upsell_agent.agent.nodes.guard import missing_address
+    decision = {"dealer_address": "3914 Hempstead Tpke, Levittown, NY 11756"}
+    vague = {"sms_text": "It's here at our dealership in town. What day works?", "email_body": ""}
+    good = {"sms_text": "We're at 3914 Hempstead Tpke, Levittown. What day works?",
+            "email_body": "We're at 3914 Hempstead Tpke, Levittown, NY 11756."}
+    assert missing_address(decision, vague, "Where is the vehicle located")
+    assert not missing_address(decision, good, "Where is the vehicle located")
+    assert not missing_address(decision, vague, "Is it still available?")
