@@ -442,3 +442,17 @@ def test_where_is_it_must_get_the_street_address():
     assert missing_address(decision, vague, "Where is the vehicle located")
     assert not missing_address(decision, good, "Where is the vehicle located")
     assert not missing_address(decision, vague, "Is it still available?")
+
+
+def test_awd_on_an_xdrive_is_not_unverified():
+    """19 Oct 2026: "AWD" on a BMW xDrive / Audi quattro was rejected as a feature the stock record doesn't show."""
+    from upsell_agent.guardrails.wording import unverified_features
+    stock = [{"vin": "V1", "make": "BMW", "model": "3 Series", "trim": "330i xDrive"}]
+    assert not unverified_features({"sms_text": "It's the 330i xDrive with AWD.", "email_body": ""}, stock)
+    assert unverified_features({"sms_text": "It has a panoramic roof.", "email_body": ""}, stock)
+
+
+def test_still_available_answered_in_plain_words():
+    from upsell_agent.agent.nodes.guard import unanswered_questions
+    decision = {"action": "answer", "answer_questions": [{"text": "I'd like to know if it's still available."}]}
+    assert not unanswered_questions(decision, {"sms_text": "Yes, it's here and available.", "answered_questions": []})
