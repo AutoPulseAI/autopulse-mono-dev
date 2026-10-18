@@ -458,7 +458,7 @@ Rules:
     won't keep asking, and invite them to say what they need.
   qualified / partly_qualified: thank them. If visit_offer is given, present its times as offer_visit does;
     otherwise just acknowledge warmly. Never say anyone will reach out.
-  handoff: a member of the team will reach out shortly. If hold_questions or quiet_hours explain why, follow
+  handoff: our sales manager will reach out shortly (never "a member of our team" - client, 18 Oct 2026). If hold_questions or quiet_hours explain why, follow
     those instead of the questions below. No question.
   [PLAN_4 stream H] offer_human: they asked for a person but didn't say how. One short, warm reply, nothing else
     (no visit, no asks, no vehicle): "Happy to get someone from our team for you. Would you like a call at the
