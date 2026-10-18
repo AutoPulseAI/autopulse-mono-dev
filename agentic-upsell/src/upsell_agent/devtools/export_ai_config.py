@@ -322,6 +322,11 @@ def _state_row(rule: Any) -> dict[str, Any]:
             "no_unsolicited_sales_texts": rule.unsolicited_sales_ban, "cite": rule.cite, "note": rule.note}
 
 
+def _policy():
+    from upsell_agent.slots import policy
+    return policy
+
+
 def compliance() -> list[dict[str, Any]]:
     """Client, 13 Oct 2026: "each and every rule ... add, update, delete" - the SMS / email rules too. Hours can move
     inside the federal 8 AM - 9 PM window (16 C.F.R. 310.4(c)), never past it."""
@@ -348,6 +353,9 @@ def compliance() -> list[dict[str, Any]]:
         {"key": "contacted", "name": "What counts as Contacted", "content": {
             "customer_texts": 1, "customer_emails": 2,
             "note": "The lead's own arrival email counts as one of the customer's emails."}},
+        {"key": "conversation_rules", "name": "Conversation rules", "content": {
+            "questions_per_message": _policy().MAX_ASKS_PER_MESSAGE,
+            "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS}},
         {"key": "writing", "name": "Message limits & banned phrases", "content": {
             "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
             "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
@@ -361,7 +369,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 8
+DEFAULTS_REVISION = 9
 
 
 def export() -> dict[str, Any]:

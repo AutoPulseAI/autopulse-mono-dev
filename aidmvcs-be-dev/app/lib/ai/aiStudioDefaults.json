@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-18T20:02:24.126304+00:00",
- "revision": 8,
+ "exported_at": "2026-10-18T20:14:47.184556+00:00",
+ "revision": 9,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3519,6 +3519,16 @@
     "customer_texts": 1,
     "customer_emails": 2,
     "note": "The lead's own arrival email counts as one of the customer's emails."
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "conversation_rules",
+   "name": "Conversation rules",
+   "content": {
+    "questions_per_message": 1,
+    "switch_ai_off_after_failed_drafts": false
    },
    "locked": false
   },

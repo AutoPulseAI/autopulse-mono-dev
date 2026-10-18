@@ -39,9 +39,11 @@ def mongo():
 
 
 @pytest.fixture(autouse=True)
-def two_questions_for_the_ordering_tests(monkeypatch, request):
+def two_questions_for_the_ordering_tests(monkeypatch, request, built_in_ai_settings):
     """The ask-ordering tests were written for two questions per message; production asks one (client, 18 Oct 2026 -
     slots/policy.py MAX_ASKS_PER_MESSAGE). Tests marked `one_question` run with the production limit."""
+    from upsell_agent import ai_studio
+    ai_studio._snapshot()  # the built-in settings are kept before this test changes any
     if "one_question" not in request.keywords:
         from upsell_agent.slots import policy
         monkeypatch.setattr(policy, "MAX_ASKS_PER_MESSAGE", 2)

@@ -315,7 +315,8 @@ _ATTRS = {
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
-    "guard": ("_TEAM",),
+    "guard": ("_TEAM", "HANDOFF_AFTER_FAILED_DRAFTS"),
+    "policy": ("MAX_ASKS_PER_MESSAGE",),
     "templates": ("FIRST_REPLY", "HOLDING_REPLIES", "CONTINUE_NOTED", "CONTINUE_VARIANTS"),
     "crm_status": ("CRM_STATUS_FOR_STAGE", "CRM_STATUS_FOR_EVENT"),
     "staff_view": ("ACTION_KINDS",),
@@ -333,7 +334,13 @@ def _by_name() -> dict[str, Any]:
             "cadence": cad, "escalation": esc, "lifecycle": lc, "crm_status": crm, "sold_pending": sold_pending,
             "owner_touches": owner_touches, "appointment": appointment, "engine": engine,
             "state_hours": state_hours, "opt_out": opt_out, "text_consent": text_consent, "consent": consent,
-            "draft_guard": draft_guard, "guard": guard, "templates": templates, "staff_view": _staff_view_module()}
+            "draft_guard": draft_guard, "guard": guard, "templates": templates, "staff_view": _staff_view_module(),
+            "policy": _policy_module()}
+
+
+def _policy_module():
+    from upsell_agent.slots import policy
+    return policy
 
 
 def _staff_view_module():
@@ -809,6 +816,11 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
                  if str(w).strip()]
         if words:
             cons._PLACEHOLDER_EMAIL = re.compile(r"^(?:" + "|".join(words) + r")[+.@_-]", re.IGNORECASE)
+    elif key == "conversation_rules":
+        if c.get("questions_per_message"):
+            mods["policy"].MAX_ASKS_PER_MESSAGE = max(1, min(3, int(c["questions_per_message"])))
+        if isinstance(c.get("switch_ai_off_after_failed_drafts"), bool):
+            mods["guard"].HANDOFF_AFTER_FAILED_DRAFTS = c["switch_ai_off_after_failed_drafts"]
     elif key == "writing":
         dg, gd = mods["draft_guard"], mods["guard"]
         for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),

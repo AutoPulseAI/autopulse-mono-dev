@@ -47,6 +47,8 @@ from upsell_agent.observability.trace import NodeSpan
 # The AI chooses one question per message (slots/policy.py); a fixed one (touch1's closing, the after-hours choice)
 # can come with it, so a draft may carry two.
 MAX_QUESTIONS_IN_DRAFT = 2
+# AI Studio: hand the lead to staff after failed drafts in a row (client, 18 Oct 2026: off - "we don't want escalations").
+HANDOFF_AFTER_FAILED_DRAFTS = False
 from upsell_agent.tools.vehicle_catalog import dealer_catalog
 
 MAX_REWRITES = 1
@@ -520,7 +522,8 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # Client, 18 Oct 2026 (Betsy: "we don't want escalations"; Ramiro, Alan, Jason were left with the AI off after
         # "AI couldn't write a safe reply"): a failed draft never hands the lead off - the template goes out and the AI
         # stays on, working toward the appointment.
-        if repeated:
-            span.reasoning.append("Not handed off (client, 18 Oct 2026): the AI stays on.")
-        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": False}
+        hand_off = repeated and HANDOFF_AFTER_FAILED_DRAFTS
+        if repeated and not hand_off:
+            span.reasoning.append("Not handed off (AI Studio setting): the AI stays on.")
+        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": hand_off}
     return {"guard_result": result}
