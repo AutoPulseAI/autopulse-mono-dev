@@ -109,6 +109,8 @@ class PlatformClient(Protocol):
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None: ...
 
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool: ...
+
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
     """The same value route.js's `moment.tz(bookingDate, 'YYYY-MM-DD',
@@ -220,6 +222,16 @@ class StubPlatformClient:
                       "statusChangedAt": clock.now(), "status_source": "ai", "status_reason": reason}})
         return {"found": result.matched_count > 0, "updated": result.matched_count > 0}
 
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool:
+        """What `POST /api/internal/ai/leads/name` does: a placeholder name ("N/A", "null") becomes the real one."""
+        from upsell_agent.agent.templates import known_first_name
+        db = dealer_scoped_db(dealer_id)
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+        if not lead or known_first_name(lead.get("name")):
+            return False
+        await db.collection(PLATFORM_LEADS_COLLECTION).update_one({"_id": lead["_id"]}, {"$set": {"name": name}})
+        return True
+
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:
         """What `POST /api/internal/ai/leads/owner` does (aidmvcs-be-dev app/lib/ai/aiOwnerLead.js): the customer's
@@ -232,7 +244,7 @@ class StubPlatformClient:
             {"customer_id": {"$in": [as_object_id(customer_id), customer_id]}}).to_list(500)
         if rows:
             return str(max(rows, key=lambda r: str(r["_id"]))["_id"])
-        first = lambda key: ((customer.get(key) or [{}])[0] or {}).get("value")  # noqa: E731
+        first = lambda key: ((customer.get(key) or [{}])[0] or {}).get("value")
         inserted = await db.collection(PLATFORM_LEADS_COLLECTION).insert_one({
             "customer_id": as_object_id(customer_id), "name": customer.get("name"), "email": first("emails"),
             "phone": first("phones"), "source": "DealerVault", "fe_lead_status": "Sold Delivered",
@@ -321,6 +333,12 @@ class LivePlatformClient:
                                 {"dealer_id": dealer_id, "lead_id": lead_id, "text": text, "kind": kind,
                                  **({"idempotency_key": idempotency_key} if idempotency_key else {})})
         return str(body.get("id") or "")
+
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool:
+        """`POST /api/internal/ai/leads/name`: the name the customer gave, on a lead that had none (client, 18 Oct)."""
+        body = await self._post("/api/internal/ai/leads/name", {"dealer_id": dealer_id, "lead_id": lead_id,
+                                                                  "name": name})
+        return bool(body.get("updated"))
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:
         """`POST /api/internal/ai/leads/owner` (client, 9 Oct 2026): an owner lead for a DealerVault customer with

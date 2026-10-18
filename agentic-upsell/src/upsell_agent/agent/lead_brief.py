@@ -34,6 +34,11 @@ _GOALS = {
 }
 
 
+def _clean(text) -> str:
+    from upsell_agent.agent.portal_text import clean_comments
+    return clean_comments(text)
+
+
 def _first(items: list[Any] | None) -> Any:
     return items[0] if items else None
 
@@ -80,8 +85,7 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
             "came_from": lead.get("source") or lead.get("lead_source"),
             "bucket": bucket.get("bucket") or bucket.get("name"),
             "why_they_reached_out": bucket.get("intent"),
-            "what_the_lead_form_said": (str(data.get("comments") or lead.get("comments") or "").strip()[:400]
-                                        or None),
+            "what_the_lead_form_said": (_clean(data.get("comments") or lead.get("comments"))[:400] or None),
             "vehicle_they_want": vehicle,
             "known_about_them": known[:12],
             "missing_contact": missing,

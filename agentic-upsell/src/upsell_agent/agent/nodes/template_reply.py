@@ -29,12 +29,13 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     built from Decide's plan (agent/templates.render_continue_reply) - never "new or used?" out of the blue."""
     spanish = (decision or {}).get("reply_language") == "Spanish"
     touch1 = (decision or {}).get("touch1") or {}
-    if not mid_conversation and not spanish and touch1.get("intro"):
+    if not spanish and touch1.get("intro"):
         # Client, 12 Oct 2026 (Betsy: "why is AI not introducing self based on FTC compliance? why is it passing to the
         # team?"): even the safety-net first reply opens with the FTC introduction ("this is Angela, <Dealer>'s AI Sales
         # Manager, following up on your interest in ...") and asks the closing question - it never says the team
         # will follow up instead of the AI working the lead.
-        ending = touch1.get("ending") or "How can I help you today?"
+        # Client, 18 Oct 2026 (Othniel got "How can I help you today?"): her question, else the appointment.
+        ending = touch1.get("ending") or "What day this week works best for you to come in?"
         line = f"{touch1['intro']} {ending}".strip()
         draft = {"sms_text": line, "email_subject": "Your inquiry",
                  "email_body": f"{touch1['intro']}\n\n{ending}\n\nThank you",
@@ -42,7 +43,7 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     else:
         draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
                  if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
-    if not mid_conversation and not spanish and touch1:
+    if not spanish and touch1:
         from upsell_agent.agent.nodes.compose import place_touch1_extras
         place_touch1_extras(draft, touch1)
     draft["why"] = why

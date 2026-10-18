@@ -66,15 +66,14 @@ async def test_first_reply_runs_the_ai_pipeline_on_the_lead_comments(mongo):
     log = await _turn(created, "Hi, I want a new Toyota RAV4", trigger="lead_created")
     assert _done(log) == AI_PATH
     assert log["outcome"] == "ask"
-    # two asks per message (MASTER_PLAN_3 Bq): one detail, plus Touch 1's own closing question
-    # ("what are you driving now?", MASTER_PLAN_3 C4 - the client's required ending, decision 34 reversed)
-    assert log["summary"]["asked"] == ["interest.budget", "interest.monthly_payment", "trade_in.has_trade"]
+    # Client, 18 Oct 2026 (one question at a time): Touch 1's own closing question only ("what are you driving now?")
+    assert log["summary"]["asked"] == ["trade_in.has_trade"]
     facts = await _facts(mongo, created)
     assert facts["interest.new_or_used"]["value"] == "new"
     assert facts["interest.model"]["value"] == "Toyota RAV4"
     assert facts["interest.model"]["source"] == "bot_extracted" and facts["interest.model"]["source_message_id"]
     outbox = await mongo[DEV_OUTBOX_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert "how much would you like to spend" in outbox["text"]
+    assert outbox["text"].endswith("Tell me, what are you driving now?") and outbox["text"].count("?") == 1
 
 
 async def test_template_mode_skips_the_ai(mongo):
@@ -193,9 +192,10 @@ async def test_second_guard_failure_sends_the_template_and_flags_a_human(mongo):
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
     assert state["status"] != "handoff" and state["conversation"]["fallbacks_in_a_row"] == 1
     log = await _turn(created, "hello again #fallback")
-    assert log["outcome"] == "fallback" and log["summary"]["flag_human"] is True
+    # Client, 18 Oct 2026 ("we don't want escalations"): a second fallback never hands the lead off.
+    assert log["outcome"] == "fallback" and log["summary"]["flag_human"] is False
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
-    assert state["status"] == "handoff" and state["status_reason"] == "AI couldn't write a safe reply"
+    assert state["status"] != "handoff"
 
 
 async def test_a_slow_model_hits_the_turn_deadline_and_the_template_goes_out(mongo):

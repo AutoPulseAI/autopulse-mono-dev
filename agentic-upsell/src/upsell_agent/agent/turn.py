@@ -342,6 +342,7 @@ async def run_turn(
             await _escalate_cannot_supply(db, lead_id, result)
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
+            await _save_name(deps, dealer_id, lead_id, lead, result)
             if decision.get("ask_name"):
                 await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
                                                                          {"$set": {"name_asked": clock.now()}})
@@ -694,6 +695,21 @@ async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead
             if fact.get("path") == "contact.name" and known_first_name(fact.get("value")):
                 return str(fact["value"])
     return None
+
+
+async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, result: dict[str, Any]) -> None:
+    """Client, 18 Oct 2026: the name the customer gave goes onto a lead that had none ("N/A", "null"). Never raises."""
+    from upsell_agent.agent.templates import known_first_name
+    if known_first_name((lead or {}).get("name")):
+        return
+    said = next((v.get("value") for v in (result.get("extraction") or {}).get("values") or []
+                 if v.get("path") == "contact.name" and v.get("value")), None)
+    if not said or not known_first_name(str(said)):
+        return
+    try:
+        await deps.platform.set_lead_name(dealer_id, lead_id, " ".join(str(said).split()).title()[:80])
+    except Exception:
+        logger.exception("could not save the customer's name on lead %s", lead_id)
 
 
 async def _workflow_actions(db: DealerScopedDatabase, lead_id: str, customer_id: str, result: dict[str, Any], *,

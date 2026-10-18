@@ -261,16 +261,15 @@ async def test_handoff_after_closing_waits_for_opening_hours(mongo, dealers):
     assert abs((check["due_at"].replace(tzinfo=UTC) - ny(23, 9, 30)).total_seconds()) < 5
 
 
-async def test_guard_failing_twice_also_gets_a_staff_check(mongo, dealers):
+async def test_failed_drafts_never_switch_the_ai_off(mongo, dealers):
+    """Client, 18 Oct 2026 (Betsy: "we don't want escalations"; leads were left with the AI off after "AI couldn't
+    write a safe reply"): failed drafts send the template and the AI stays on."""
     set_clock(ny(22, 10))
     created = await _lead()
     await _say(created, "What's the best price? #fallback")
-    assert (await _state(mongo, created))["status"] != "handoff"  # stream Q: the first fallback carries on
     await _say(created, "Hello? #fallback")
-    state = await _state(mongo, created)
-    assert state["status"] == "handoff" and state["status_reason"] == "AI couldn't write a safe reply"
-    [check] = await _scheduled(mongo, created, followups.KIND_HANDOFF_CHECK)
-    assert check["handoff_reason"] == "AI couldn't write a safe reply"
+    await _say(created, "Still there? #fallback")
+    assert (await _state(mongo, created))["status"] != "handoff"
 
 
 async def test_shadow_handoff_schedules_no_check(mongo, dealers):

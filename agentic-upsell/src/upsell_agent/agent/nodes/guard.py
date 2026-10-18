@@ -43,7 +43,10 @@ from upsell_agent.guardrails.wording import (
     vin_in_text,
 )
 from upsell_agent.observability.trace import NodeSpan
-from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
+
+# The AI chooses one question per message (slots/policy.py); a fixed one (touch1's closing, the after-hours choice)
+# can come with it, so a draft may carry two.
+MAX_QUESTIONS_IN_DRAFT = 2
 from upsell_agent.tools.vehicle_catalog import dealer_catalog
 
 MAX_REWRITES = 1
@@ -93,10 +96,10 @@ def unanswered_questions(decision: dict[str, Any], draft: dict[str, Any]) -> lis
 
 
 def too_many_questions(draft: dict[str, Any]) -> list[str]:
-    """Versions of the draft that ask more than MAX_ASKS_PER_MESSAGE questions."""
-    return [f"the {name} asks {count} questions (at most {MAX_ASKS_PER_MESSAGE})"
+    """Versions of the draft that ask more than MAX_QUESTIONS_IN_DRAFT questions."""
+    return [f"the {name} asks {count} questions (at most {MAX_QUESTIONS_IN_DRAFT})"
             for name, key in (("SMS", "sms_text"), ("email", "email_body"))
-            if (count := str(draft.get(key) or "").count("?")) > MAX_ASKS_PER_MESSAGE]
+            if (count := str(draft.get(key) or "").count("?")) > MAX_QUESTIONS_IN_DRAFT]
 
 
 def repeats_greeting(conversation_turn: int, draft: dict[str, Any]) -> list[str]:
@@ -472,5 +475,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         repeated = in_a_row >= FALLBACKS_BEFORE_HANDOFF
         span.reasoning.append("A template fallback twice in a row: handing the lead to staff." if repeated else
                               "The first fallback in a row: the template goes out and the AI carries on (stream Q).")
-        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": repeated}
+        # Client, 18 Oct 2026 (Betsy: "we don't want escalations"; Ramiro, Alan, Jason were left with the AI off after
+        # "AI couldn't write a safe reply"): a failed draft never hands the lead off - the template goes out and the AI
+        # stays on, working toward the appointment.
+        if repeated:
+            span.reasoning.append("Not handed off (client, 18 Oct 2026): the AI stays on.")
+        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": False}
     return {"guard_result": result}

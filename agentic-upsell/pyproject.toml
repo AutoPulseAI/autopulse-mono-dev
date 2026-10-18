@@ -76,6 +76,7 @@ packages = ["src/upsell_agent"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "evals"]
+markers = ["one_question: run with the production limit of one question per message"]
 
 [tool.ruff]
 line-length = 100
