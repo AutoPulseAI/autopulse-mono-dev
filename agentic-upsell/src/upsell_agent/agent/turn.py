@@ -937,7 +937,7 @@ async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision
     return await photo_for_draft(
         ctx.db.dealer_id, draft, channel, settings=ctx.settings, source=ctx.inventory,
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
-        stock_free=stock_free, customer_text=customer_text, db=ctx.db)
+        stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")))
 
 
 def _hands_off(result: dict[str, Any]) -> bool:

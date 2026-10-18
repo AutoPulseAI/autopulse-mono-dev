@@ -944,7 +944,7 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-solid fa-calendar-days"
               count={appointmentBookedCount}
-              label="All-Time Appointments"
+              label="Appointments Made"
               link={getAppointmentsLink()}
               description={getAppointmentsDescription()}
             />
@@ -952,8 +952,8 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-regular fa-calendar-check"
               count={todayAppointmentsCount}
-              label="Appointments Scheduled"
-              link={getTodayAppointmentsLink()}
+              label="Visits Scheduled (on these dates)"
+              link="/dealer/booking"
               description={getDateRangeDescription()}
             />
           </div>

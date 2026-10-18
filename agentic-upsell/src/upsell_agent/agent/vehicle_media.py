@@ -241,7 +241,7 @@ def lead_vehicle_vin(lead: dict | None, lead_state: dict | None) -> str | None:
 async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *, settings: Settings,
                           source: InventorySource | None = None, theme: str | None = None,
                           lead: dict | None = None, lead_state: dict | None = None,
-                          stock_free: bool = False, customer_text: str | None = None, db: Any = None) -> MediaPick:
+                          stock_free: bool = False, customer_text: str | None = None, db: Any = None, first_reply: bool = False) -> MediaPick:
     """The photo for one version of an AI-written message (first reply, a reply, a cadence touch). The vehicle
     is the one Compose named for that version. A Day 2 / Day 5 touch (PHOTO_THEMES) that names none still
     shows the vehicle the lead is about. `stock_free`: the vehicle sold since drafting and the stock-free
@@ -249,6 +249,10 @@ async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *
     if stock_free:
         return MediaPick(vin=None, reasons=["The vehicle sold since this was written: no photo."])
     vin = media_vin(draft, channel)
+    if not vin and first_reply:
+        # Client, 19 Oct 2026 (Betsy: "for the first response email we are sending the vehicle image, can we also do it
+        # with the text?"): the first message shows the car the lead is about whenever it has photos.
+        vin = lead_vehicle_vin(lead, lead_state)
     if asks_about_interior(customer_text) and (vin := vin or lead_vehicle_vin(lead, lead_state)):
         # Client, 12 Oct 2026: asked about the inside, the inside is what they see - from that vehicle's own photos.
         pick = await _labeled_pick(dealer_id, vin, channel, INTERIOR, "The customer asked about the inside",
