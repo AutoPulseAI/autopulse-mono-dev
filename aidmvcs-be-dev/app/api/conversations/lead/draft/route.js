@@ -43,7 +43,7 @@ async function getConversationThread(leadId) {
  * translation already calls OpenAI the same way). Same contract as before: { draft, subject? }. */
 const DRAFT_MODEL = process.env.OPENAI_DRAFT_MODEL || "gpt-4o-mini";
 
-function draftPrompt({ lead, dealerName, channel, language, thread, prompt }) {
+function draftPrompt({ lead, dealerName, dealerAddress, dealerPhone, channel, language, thread, prompt }) {
   const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || lead?.name || "the customer";
   const history = (thread || []).slice(-20)
     .map((m) => `${m.direction === "IN" ? "Customer" : "Dealership"}: ${m.subject ? `[${m.subject}] ` : ""}${m.body}`)
@@ -54,7 +54,10 @@ function draftPrompt({ lead, dealerName, channel, language, thread, prompt }) {
   return [
     { role: "system", content: `You write for ${dealerName}, a car dealership, replying to ${name}. Write ${kind} in ${language}. `
       + "Be warm, short and specific to the conversation. Never invent prices, payments, approvals, trade values, "
-      + "availability or appointment times that aren't in the conversation. Output only the message." },
+      + "availability or appointment times that aren't in the conversation. Output only the message. "
+      // Client, 18 Oct 2026 (a staff email said "Our address is [insert address]"): the real details, never a blank.
+      + `The dealership's address: ${dealerAddress || "not on file"}. Its phone: ${dealerPhone || "not on file"}. `
+      + "Never write a placeholder like [insert address] - leave out what isn't on file." },
     { role: "user", content: `Conversation so far:\n${history || "(no messages yet)"}\n\n`
       + `What the staff member wants to say: ${prompt || "a helpful next reply"}` },
   ];
@@ -180,9 +183,16 @@ export async function POST(request) {
 
     const dealerId = lead.dealer_id;
     let dealerName = "Dealer";
+    let dealerAddress = "";
+    let dealerPhone = "";
     if (dealerId) {
-      const dealer = await User.findById(dealerId).select("name").lean();
+      const dealer = await User.findById(dealerId).select("name dealer_account_information").lean();
       if (dealer?.name) dealerName = dealer.name;
+      const info = dealer?.dealer_account_information || {};
+      dealerName = info.store_name || dealerName;
+      const region = [info.store_state, info.store_postal].filter(Boolean).join(" ");
+      dealerAddress = info.store_address ? [info.store_address, info.store_city, region].filter(Boolean).join(", ") : "";
+      dealerPhone = info.store_phone || info.phone || "";
     }
 
     const normalizedLanguage =
@@ -194,6 +204,8 @@ export async function POST(request) {
     const providerPayload = {
       lead,
       dealerName,
+      dealerAddress,
+      dealerPhone,
       channel,
       language: normalizedLanguage,
       thread: threadSummary,

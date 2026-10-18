@@ -108,6 +108,11 @@ const WORKING_FROM = Object.freeze([null, '', 'Lead', 'New', 'Contacted', ...AI_
 // No Show, never over a status staff chose for a later step (Appointment Booked, Visited, Sold, DND, ...).
 export const AI_ESCALATION_STATUSES = Object.freeze(['Managerial Review']);
 const ESCALATION_FROM = Object.freeze([...WORKING_FROM, 'Unsold', 'No Show']);
+// Client, 18 Oct 2026 (Betsy: "the AI made the appointment ... but did not change the status, so the dashboard was not
+// updated"): a booking the AI made shows as Appointment Booked - over a working status, Managerial Review, Unsold or
+// No Show; never over Visited, Sold, DND or a closing.
+export const AI_BOOKING_STATUSES = Object.freeze(['Appointment Booked']);
+const BOOKING_FROM = Object.freeze([...ESCALATION_FROM, 'Managerial Review', 'Appointment Booked']);
 
 // PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2; SOLD PENDING PDF §2): "Closed - Lost" is for a transaction that won't
 // complete. A delivered car's opportunity stays active until the customer no longer owns it, and it leaves only as
@@ -130,7 +135,7 @@ const FROM_FOR_NO_LONGER_OWNS = Object.freeze(['Sold Delivered', 'Sold']);
 
 export function validateClosedStatusPayload(body) {
   const { errors } = validateDndPayload(body);
-  const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES];
+  const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES, ...AI_BOOKING_STATUSES];
   if (!allowed.includes(body?.status)) errors.push(`status must be one of ${allowed.join(', ')}`);
   if (body?.closed_at != null && Number.isNaN(Date.parse(body.closed_at))) errors.push('closed_at must be a date');
   return { errors };
@@ -144,6 +149,7 @@ export function closedStatusConflict({ status, current, changedAt, closedAt }) {
   if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
   if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)) return 'staff_status_kept';
   if (AI_ESCALATION_STATUSES.includes(status) && !ESCALATION_FROM.includes(current ?? null)) return 'staff_status_kept';
+  if (AI_BOOKING_STATUSES.includes(status) && !BOOKING_FROM.includes(current ?? null)) return 'staff_status_kept';
   return null;
 }
 

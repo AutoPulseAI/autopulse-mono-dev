@@ -343,6 +343,7 @@ async def run_turn(
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
             await _save_name(deps, dealer_id, lead_id, lead, result)
+            await _show_booking(db, lead_id, decision)
             if decision.get("ask_name"):
                 await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
                                                                          {"$set": {"name_asked": clock.now()}})
@@ -695,6 +696,22 @@ async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead
             if fact.get("path") == "contact.name" and known_first_name(fact.get("value")):
                 return str(fact["value"])
     return None
+
+
+async def _show_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[str, Any]) -> None:
+    """Client, 18 Oct 2026 (Evan: the AI moved his visit to Sunday 3 PM, the status stayed "Contacted - No Next
+    Action"): a visit the AI booked or moved shows as Appointment Booked on the lead and on the customer's linked
+    repeat leads, so the dashboard counts it. The CRM keeps a later staff status (Visited, Sold, DND...)."""
+    visit = decision.get("visit") or {}
+    if not (visit.get("just_booked") or visit.get("moved_this_turn")):
+        return
+    from upsell_agent.agent import crm_status
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+    linked = [r.get("lead_id") for r in state.get("linked_leads") or [] if r.get("lead_id")]
+    for each in [lead_id, *linked]:
+        await crm_status.sync_status(db, each, "Appointment Booked",
+                                     reason=f"The AI booked the visit for {visit.get('display') or 'the customer'}",
+                                     event_kind="appointment_set")
 
 
 async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, result: dict[str, Any]) -> None:

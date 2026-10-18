@@ -74,6 +74,22 @@ def _sent_texts(state: AgentState) -> list[str]:
     return [m.get("text") or "" for m in memory if m.get("direction") == "outbound"]
 
 
+_NOT_A_REPLY = frozenset({"cadence_touch", "next_action", "visit_followup"})  # the morning message has its own
+
+
+def _check_in(state: AgentState) -> dict:
+    from upsell_agent.agent.multi_vehicle import vehicle_label
+    from upsell_agent.agent.templates import first_name, known_first_name
+    name = first_name(state.customer_name) if known_first_name(state.customer_name) else None
+    vehicle = vehicle_label((state.context_pack or {}).get("lead") or {}) or ((state.profile or {}).get("values") or {
+        }).get("interest.model")
+    hi = f"Hi {name}" if name else "Hi there"
+    about = f" about the {vehicle}" if vehicle else ""
+    line = f"{hi}, just checking in{about}. What day this week works best for you to come in?"
+    return {"sms_text": line, "email_subject": "Checking in", "email_body": f"{line}\n\nThank you",
+            "template": "check_in", "asks": {"sms": [], "email": []}, "promises": [], "why": "follow-up check-in"}
+
+
 def mid_conversation(state: AgentState) -> bool:
     """We've already written to this customer (the conversation has at least one reply of ours)."""
     return int(((state.context_pack or {}).get("conversation") or {}).get("turn") or 0) > 0
@@ -104,6 +120,11 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
     if later:
         draft = avoid_repeat(draft, _sent_texts(state), state.customer_name)
+    if state.trigger in _NOT_A_REPLY and not (state.decision or {}).get("touch1") and not (
+            (state.decision or {}).get("touch") or {}).get("fixed_text"):
+        # Client, 18 Oct 2026 (Othniel, Mandi: a follow-up opened "Thanks, Othniel..." as if the customer had written):
+        # a message we start never thanks them; it checks in and asks for the visit.
+        draft = _check_in(state)
     from upsell_agent.agent.nodes.compose import place_cannot_supply
     place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     span.output = draft
