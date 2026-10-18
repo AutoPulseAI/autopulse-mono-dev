@@ -85,14 +85,23 @@ _NO_CLAIM = re.compile(
 
 def unverified_features(draft: dict[str, Any], inventory: list[dict[str, Any]]) -> list[str]:
     """Seating, drivetrain or equipment stated as a fact when no named record shows it."""
-    on_record = " ".join(str(r.get(k) or "") for r in inventory for k in ("model", "trim", "body_type")).lower()
+    # Client, 19 Oct 2026 (a third of the fallbacks were "AWD"/"FWD" on cars that have it): the whole record counts -
+    # drivetrain, options, description - and the brands' own names for all-wheel drive.
+    on_record = " ".join(str(v) for r in inventory for v in r.values() if isinstance(v, (str, int, float))
+                         or isinstance(v, list)).lower()
+    if re.search(r"xdrive|quattro|4matic|4motion|sh-awd|all4|awd|all[- ]wheel|4x4|4wd|four[- ]wheel", on_record):
+        on_record += " awd all-wheel drive all wheel drive 4wd 4x4 four-wheel drive four wheel drive"
+    if re.search(r"\bfwd\b|front[- ]wheel", on_record):
+        on_record += " fwd front-wheel drive front wheel drive"
+    if re.search(r"\brwd\b|rear[- ]wheel|sdrive", on_record):
+        on_record += " rwd rear-wheel drive rear wheel drive"
     out = []
     for name, key in _VERSIONS:
         claims = sorted({m.group(0).lower() for s in _sentences(str(draft.get(key) or "")) if not _NO_CLAIM.search(s)
                          for m in _FEATURE.finditer(s) if m.group(0).lower() not in on_record})
         if claims:
             out.append(f"the {name} states a vehicle feature our stock record doesn't show ({', '.join(claims)}): "
-                       "say the team will confirm it instead")
+                       "leave it out, or say you'll confirm it")
     return out
 
 

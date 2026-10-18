@@ -94,7 +94,14 @@ def unanswered_questions(decision: dict[str, Any], draft: dict[str, Any]) -> lis
     if decision.get("action") not in ANSWERING_ACTIONS:
         return []
     answered = {_key(q) for q in draft.get("answered_questions") or []}
-    return [q["text"] for q in decision.get("answer_questions") or [] if _key(q["text"]) not in answered]
+    said = f"{draft.get('sms_text') or ''} {draft.get('email_body') or ''}".lower()
+    # Client, 19 Oct 2026 (12 fallbacks: "is it still available?" answered with "it's here" but not listed): an
+    # availability question is answered when the reply says it plainly.
+    availability_said = bool(re.search(r"\b(?:available|still here|is here|it'?s here|in stock|on (?:our|the) lot|"
+                                       r"we have it|we still have|has sold|was sold|no longer available)\b", said))
+    return [q["text"] for q in decision.get("answer_questions") or [] if _key(q["text"]) not in answered
+            and not (availability_said and re.search(r"\bavailab|\bstill (?:there|have|for sale)|\bin stock\b",
+                                                      str(q.get("text") or ""), re.IGNORECASE))]
 
 
 def too_many_questions(draft: dict[str, Any]) -> list[str]:
@@ -299,6 +306,15 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     pack = state.context_pack or {}
     customer_texts = [state.customer_text or state.inbound_text] + [
         m["text"] for m in pack.get("working_memory", []) if m["direction"] == "inbound"]
+    # Client, 19 Oct 2026 ("a make not on the named vehicle: infiniti" on Jason's INFINITI QX60 lead): the car the lead
+    # is about, the lead form's words and what the customer told us (their trade-in) are theirs, not claims about stock.
+    lead = getattr(ctx, "lead", None) or {}
+    from upsell_agent.agent.multi_vehicle import vehicle_label
+    customer_texts += [t for t in (vehicle_label(lead), str((lead.get("data") or {}).get("comments") or ""),
+                                   str(lead.get("trim") or ""))
+                       if t]
+    customer_texts += [str(sl["value"]) for sl in (state.profile or {}).get("slots", [])
+                       if isinstance(sl.get("value"), str)]
     known = [s["value"] for s in (state.profile or {}).get("slots", []) if s.get("value") is not None]
     if state.campaign:
         # The dealer wrote the campaign: its name and offer may be repeated.
@@ -343,6 +359,17 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         # with (its year stays sayable even once it has sold and is no longer in this turn's stock).
         known += [referred.get("description"), *[o.get("description") for o in referred.get("ambiguous") or []]]
     inventory = pack.get("inventory") or []
+    # Client, 19 Oct 2026 (a third of the fallbacks since Oct 16 were "numbers the customer never gave us" - the
+    # dealership's own address, phone and zip, a car from this turn's stock, an earlier message): all real, never
+    # invented. The dealership's details, every loaded vehicle's year / miles / price, the whole conversation so far.
+    dealer_info = (pack.get("dealer") or {}).get("info") or {}
+    known += [v for v in dealer_info.values() if isinstance(v, (str, int, float)) and not isinstance(v, bool)]
+    known.append((state.decision or {}).get("dealer_address"))
+    known += [r.get(k) for r in inventory for k in ("year", "miles", "price", "msrp") if r.get(k) is not None]
+    known += [m.get("text") for m in pack.get("working_memory") or [] if m.get("text")]
+    touch1 = (state.decision or {}).get("touch1") or {}
+    known += [touch1.get(k) for k in ("price_line", "lead_answers", "intro") if touch1.get(k)]
+    known = [k for k in known if k is not None]
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
