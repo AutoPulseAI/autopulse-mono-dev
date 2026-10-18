@@ -13,7 +13,8 @@ export default function EmailReplyModal({
     leadUserLanguage = "English",
     showTranslationEnabled = false,
     onReplySuccess,
-    conversationThread = []
+    conversationThread = [],
+    lead = null
 }) {
     const [content, setContent] = useState("");
     const [message, setMessage] = useState("");
@@ -207,6 +208,9 @@ export default function EmailReplyModal({
 
     // Determine recipient display name (extract from email format if needed)
     const getRecipientDisplay = () => {
+        // The customer on the lead - where the reply really goes (client, 19 Oct 2026), never the lead portal.
+        if (communicationType === "sms" && lead?.phone) return `${lead.name || "Customer"} (${lead.phone})`;
+        if (communicationType !== "sms" && lead?.email) return `${lead.name || "Customer"} (${lead.email})`;
         if (!selectedConversation) return "";
 
         // Determine which field to use based on message status

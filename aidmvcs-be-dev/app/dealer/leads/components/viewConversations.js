@@ -1348,6 +1348,7 @@ export default function ViewConversations({
 
       {showReplyModal && selectedConversation && (
         <EmailReplyModal
+          lead={lead}
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
           selectedConversation={selectedConversation}
