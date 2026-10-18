@@ -18,6 +18,7 @@ from typing import Any
 from upsell_agent import ai_studio, clock
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
+from upsell_agent.agent.portal_text import clean_comments
 from upsell_agent.agent.templates import known_first_name, render_holding_reply
 from upsell_agent.agent.turn import (
     TurnDeps,
@@ -109,7 +110,7 @@ def _comments(lead: dict | None) -> str:
     if not lead:
         return ""
     data = lead.get("data") or {}
-    return str(data.get("comments") or lead.get("comments") or "")
+    return clean_comments(data.get("comments") or lead.get("comments") or "")
 
 
 def _parse_received_at(value: str | datetime | None) -> datetime | None:

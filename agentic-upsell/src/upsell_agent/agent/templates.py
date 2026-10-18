@@ -221,7 +221,14 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
                 "email_body": f"Hola {name},\n\n{_upper_first(line.split(', ' if first else '. ', 1)[1])}" + _SIGN_OFF_ES, "template": "continue",
                 "asks": {"sms": [], "email": []},
                 "promises": []}
-    if decision.get("answer_questions"):
+    asked_where = any(re.search(r"\bwhere\b|\blocat|\baddress\b|\bdirections?\b", str(q.get("text") or ""), re.IGNORECASE)
+                      for q in decision.get("answer_questions") or [])
+    if asked_where and decision.get("dealer_address"):
+        # Client, 17 Oct 2026 (Zack: "Where is the vehicle located?" got "we can go over that together"): the address,
+        # then the appointment.
+        line, asked = (f"Thanks, {name}. We're at {decision['dealer_address']}. What day this week works best for you "
+                       f"to come in?"), []
+    elif decision.get("answer_questions"):
         from upsell_agent import ai_studio  # the wording published in AI Studio, when edited there
         edited = ai_studio.fixed_text(ai_studio.message("messages", "safety_net"))
         line, asked = (ai_studio.fill(edited, {"first_name": name}) if edited

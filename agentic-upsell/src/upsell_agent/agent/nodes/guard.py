@@ -43,7 +43,12 @@ from upsell_agent.guardrails.wording import (
     vin_in_text,
 )
 from upsell_agent.observability.trace import NodeSpan
-from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE
+
+# The AI chooses one question per message (slots/policy.py); a fixed one (touch1's closing, the after-hours choice)
+# can come with it, so a draft may carry two.
+MAX_QUESTIONS_IN_DRAFT = 2
+# AI Studio: hand the lead to staff after failed drafts in a row (client, 18 Oct 2026: off - "we don't want escalations").
+HANDOFF_AFTER_FAILED_DRAFTS = False
 from upsell_agent.tools.vehicle_catalog import dealer_catalog
 
 MAX_REWRITES = 1
@@ -93,10 +98,10 @@ def unanswered_questions(decision: dict[str, Any], draft: dict[str, Any]) -> lis
 
 
 def too_many_questions(draft: dict[str, Any]) -> list[str]:
-    """Versions of the draft that ask more than MAX_ASKS_PER_MESSAGE questions."""
-    return [f"the {name} asks {count} questions (at most {MAX_ASKS_PER_MESSAGE})"
+    """Versions of the draft that ask more than MAX_QUESTIONS_IN_DRAFT questions."""
+    return [f"the {name} asks {count} questions (at most {MAX_QUESTIONS_IN_DRAFT})"
             for name, key in (("SMS", "sms_text"), ("email", "email_body"))
-            if (count := str(draft.get(key) or "").count("?")) > MAX_ASKS_PER_MESSAGE]
+            if (count := str(draft.get(key) or "").count("?")) > MAX_QUESTIONS_IN_DRAFT]
 
 
 def repeats_greeting(conversation_turn: int, draft: dict[str, Any]) -> list[str]:
@@ -135,6 +140,38 @@ _RESUME_PHRASES = ("team is in", "we're open", "we are open", "we're back", "we 
 # passed on (service visits are requested, never booked, in this SOW).
 _TEAM = re.compile(r"\b(?:the|our|a|your)\s+(?:sales\s+|finance\s+)?team\b|\bteam\s+member|\bsomeone\s+(?:from|at|on)\s+"
                    r"(?:our|the)\b|\bsomeone\s+will\s+(?:reach|get|call|follow|be)\b", re.IGNORECASE)
+
+
+# Client, 18 Oct 2026 (Freder: "I'll write up your full out-the-door ... and send it here shortly"; Steven: "I'll send
+# the video link Monday"): the AI never promises to send what it can't - a video, a written or itemized price, a buyer's
+# order, paperwork.
+_CANT_SEND = re.compile(
+    r"\b(?:i'?ll|i will|we'?ll|we will|let me|i can|going to)\b[^.?!]{0,40}\b(?:send|write\s*up|put|email|text|get)\b"
+    r"[^.?!]{0,60}\b(?:video|walk-?around|out[\s-]the[\s-]door|itemi[sz]|doc fee|buyer'?s order|purchase order|"
+    r"paperwork|in writing|breakdown|quote)\b", re.IGNORECASE)
+
+
+_ASKS_WHERE = re.compile(r"\bwhere\b[^?]{0,40}\b(?:located|location|are you|is it|is the|car|vehicle|dealership|you guys)\b|"
+                         r"\baddress\b|\bdirections?\b|\bhow (?:do|can) i get (?:there|to you)\b", re.IGNORECASE)
+
+
+def missing_address(decision: dict[str, Any], draft: dict[str, Any], customer_text: str | None) -> list[str]:
+    """Client, 17 Oct 2026 (Zack: "Where is the vehicle located?"): the answer is the street address, never "in town"."""
+    address = str(decision.get("dealer_address") or "").strip()
+    if not address or not _ASKS_WHERE.search(customer_text or ""):
+        return []
+    street = address.split(",")[0].strip().lower()
+    return [f"the {name} doesn't give the address they asked for: write {address!r}"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if street and street not in str(draft.get(key) or "").lower()]
+
+
+def promises_what_it_cannot_send(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if (decision.get("cannot_supply") or {}).get("text"):
+        return []  # the client's own script, placed by code
+    return [f"the {name} promises to send something the AI can't ({m.group(0)[:60]!r}) - invite them in instead"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _CANT_SEND.search(str(draft.get(key) or "")))]
 
 
 def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
@@ -387,6 +424,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if greeted_again:
         result["passed"] = False
         result["violations"] += greeted_again
+    no_address = missing_address(state.decision or {}, state.draft or {}, state.customer_text or state.inbound_text)
+    result["checks"]["gives_the_address"] = not no_address
+    if no_address:
+        result["passed"] = False
+        result["violations"] += no_address
+    cant_send = promises_what_it_cannot_send(state.decision or {}, state.draft or {})
+    result["checks"]["no_promise_it_cannot_keep"] = not cant_send
+    if cant_send:
+        result["passed"] = False
+        result["violations"] += cant_send
     bad_booking_wording = invalid_booking_wording(state.decision or {}, state.draft or {})
     result["checks"]["booking_wording_matches_status"] = not bad_booking_wording
     if bad_booking_wording:
@@ -472,5 +519,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         repeated = in_a_row >= FALLBACKS_BEFORE_HANDOFF
         span.reasoning.append("A template fallback twice in a row: handing the lead to staff." if repeated else
                               "The first fallback in a row: the template goes out and the AI carries on (stream Q).")
-        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": repeated}
+        # Client, 18 Oct 2026 (Betsy: "we don't want escalations"; Ramiro, Alan, Jason were left with the AI off after
+        # "AI couldn't write a safe reply"): a failed draft never hands the lead off - the template goes out and the AI
+        # stays on, working toward the appointment.
+        hand_off = repeated and HANDOFF_AFTER_FAILED_DRAFTS
+        if repeated and not hand_off:
+            span.reasoning.append("Not handed off (AI Studio setting): the AI stays on.")
+        return {"guard_result": result, "fallback_reason": "guard rejected the draft twice", "flag_human": hand_off}
     return {"guard_result": result}

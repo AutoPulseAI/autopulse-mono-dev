@@ -281,8 +281,15 @@ _NO_COLON = re.compile(r"^\s*(?:at|around|about|maybe|by)?\s*(\d{1,2})[\s.]?(\d{
                        re.IGNORECASE)
 
 
+_AROUND = re.compile(r"\b(?:around|about|at|by|after|maybe)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?![\d:])",
+                     re.IGNORECASE)
+
+
 def bare_time(text: str) -> time | None:
     """The clock time a message names without a day, or None."""
+    if (m := _AROUND.search(text or "")) and not _BARE_TIME.search(text or "") and int(m.group(1)) <= 12:
+        # Client, 18 Oct 2026 ("Today around 5 works" was offered times instead of booked): "around 5" is 5.
+        return _clock(m.group(1), m.group(2), (m.group(3) or "").replace(".", "").lower() or None)
     if (m := _NO_COLON.match(text or "")) and int(m.group(2)) < 60:
         text = f"{m.group(1)}:{m.group(2)}{(' ' + m.group(3)) if m.group(3) else ''}"
     m = _BARE_TIME.search(text or "")
@@ -371,6 +378,16 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
             return PickResult(matched=fresh)
         shown = f"{day.strftime('%A')}, {day.strftime('%B')} {day.day} at {resolved.value.strftime('%I:%M %p').lstrip('0')}"
         return PickResult(ambiguous=True, note=f"{shown} isn't an open time", wanted=candidate)
+    if (at := bare_time(text)) is not None:
+        # A day and a time in their words ("today around 5"): that time on that day, when it is open.
+        candidate = datetime.combine(day, at, tzinfo=dealer.tz)
+        exact = next((o for o in same_day if o["time"] == at.strftime("%H:%M")), None)
+        if exact:
+            return PickResult(matched=exact)
+        if fresh := _fresh_pick(candidate, dealer, available):
+            return PickResult(matched=fresh)
+        return PickResult(ambiguous=True, note=f"{day.isoformat()} at {at.strftime('%I:%M %p').lstrip('0')} isn't an "
+                                               "open time", wanted=candidate)
     if len(same_day) == 1:
         return PickResult(matched=same_day[0])
     if len(same_day) > 1:

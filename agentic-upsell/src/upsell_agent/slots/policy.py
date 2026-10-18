@@ -58,7 +58,7 @@ from upsell_agent.slots.requirements import Requirement
 from upsell_agent.slots.schema import SCHEMA
 
 # Questions per message, a confirmation included (MASTER_PLAN_3 Bq, decision 35).
-MAX_ASKS_PER_MESSAGE = 2
+MAX_ASKS_PER_MESSAGE = 1  # client, 18 Oct 2026 (Betsy): "one question at a time"
 MAX_ASKS_PER_SLOT = 2
 # A pending value is asked to be confirmed once (PLAN_4 stream Q). If the customer moves on without a yes or a
 # no, it stays unconfirmed for the team to see, and it is neither confirmed again nor asked for again.

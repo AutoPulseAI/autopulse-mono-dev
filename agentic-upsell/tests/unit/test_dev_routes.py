@@ -159,7 +159,6 @@ def test_slots_come_with_the_conversation_state(client):
     conversation = body["conversation"]
     assert conversation["turn"] == 2 and conversation["max_asks"] == 2
     statuses = {a["path"]: a["status"] for a in conversation["asks"]}
-    assert statuses["interest.new_or_used"] == ""               # asked in the first reply only
     assert "just asked" in statuses.values()                     # the second reply's ask
     assert all(a["label"] and a["count"] == 1 for a in conversation["asks"])
     assert body["summary"]["text"] == ""                         # nothing to summarize yet

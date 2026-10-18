@@ -78,7 +78,7 @@ const EXTRA_SECTIONS = [
   ["sold_pending", "Sold Pending"],
 ];
 
-export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
+export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_card mb-2" }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -225,6 +225,9 @@ export default function AiLeadPanel({ leadId, className = "w_card mb-2" }) {
           {profile && (
             <>
               <Section title="Where the lead stands" icon="fa-signal-bars">
+                {/* Client, 18 Oct 2026 (Betsy changed the status and the panel still showed the old one): the lead's
+                    own status first, the AI's stage under it. */}
+                {leadStatus && <Row label="Lead status"><strong>{leadStatus}</strong></Row>}
                 {life.label ? (
                   <p className="mb-1">
                     <Badge bg={stageVariant(life.stage)} className="me-2">{life.label}</Badge>

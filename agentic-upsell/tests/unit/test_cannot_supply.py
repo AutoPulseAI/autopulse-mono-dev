@@ -76,3 +76,12 @@ def test_a_budget_they_state_is_not_a_payment_question():
                  "my credit score is 700"):
         assert cs.detect(said) is None, said
     assert cs.detect("how much per month") == cs.PAYMENT and cs.detect("what credit score do I need") == cs.CREDIT_SCORE
+
+
+def test_itemized_fees_in_writing_are_her_out_the_door_answer():
+    """Client, 18 Oct 2026 (Freder): the AI promised to write up an itemized out-the-door - same as buyer's order:
+    her answer and the appointment."""
+    for said in ("Yes, put y full out-the-door in writing with the doc fee, Suffolk tax estimate and DMV listed",
+                 "Can you itemize the fees?", "what are the doc fees"):
+        assert cs.detect(said) == cs.OTD, said
+    assert cs.detect("Around 500 a month") is None

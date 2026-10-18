@@ -240,10 +240,9 @@ async def test_clarify_re_explains_and_asks_the_same_question_again(mongo):
     reply = await _last_sms(mongo, created)
     # The first reply asked two things (MASTER_PLAN_3 Bq): one detail, plus Touch 1's own closing question
     # (MASTER_PLAN_3 C4). Both are explained and asked again.
-    assert asked_first == ["interest.new_or_used", "trade_in.has_trade"]
+    # Client, 18 Oct 2026: one question at a time - the first text asks only Touch 1's closing question.
+    assert asked_first == ["trade_in.has_trade"]
     assert reply.startswith("Sorry, I should have been clearer")
-    # MASTER_PLAN_2 Phase 7: the slot's own explanation, then the same question - nothing new.
-    assert "New means nobody has owned it before" in reply and "Are you looking for a new or a used vehicle?" in reply
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["conversation"]["last_asked"] == asked_first
 

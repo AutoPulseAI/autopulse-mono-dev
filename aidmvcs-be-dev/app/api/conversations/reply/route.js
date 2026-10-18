@@ -136,6 +136,19 @@ export async function POST(request) {
       to = referenceMessage.recipient;
     }
 
+    // Client, 18 Oct 2026 (Betsy: "I cannot text the customers myself"; her replies went to dealerdirect@edmunds.com and
+    // CarGurus' lead address and failed): a reply to the lead email goes to the customer on the lead, never to the
+    // portal that sent the lead.
+    const leadContact = parentMessage.lead_id
+      ? await Lead.findById(parentMessage.lead_id).select('email').lean() : null;
+    const customerEmail = String(leadContact?.email || '').trim();
+    const addressOf = (v) => (String(v || '').match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase();
+    const isRelay = /^(no-?reply|do-?not-?reply|donotreply|dealer-?leads?|dealerdirect|leads?)[+.@_-]/i;
+    if (/@/.test(customerEmail) && !isRelay.test(customerEmail) && String(to || '').includes('@')
+        && addressOf(to) !== customerEmail.toLowerCase()) {
+      to = customerEmail;
+    }
+
     let sentMessageId = null;
     let status = 'sent';
 

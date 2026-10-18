@@ -34,7 +34,11 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
     (APR, (r"\bapr\b|\binterest\s+rates?\b|\bwhat\s+(?:rate|rates)\b|\bfinance\s+rate\b|\brates?\s+(?:would|will|do|can)"
           r"\s+(?:i|you)\b")),
     (OTD, (r"\bout[\s-]the[\s-]door\b|\botd\b|\btotal\s+(?:price|cost)\b|\ball[\s-]in\s+(?:price|cost)\b|"
-          r"\bwith\s+(?:tax|taxes)\s+and\s+fees\b")),
+          r"\bwith\s+(?:tax|taxes)\s+and\s+fees\b|"
+          # Client, 18 Oct 2026 (Freder: "put the full out-the-door in writing with the doc fee, tax and DMV listed" -
+          # the AI promised to write it up): itemized fees are the same answer - appointment first.
+          r"\bitemi[sz]\w*|\bdoc(?:umentation)?\s+fees?\b|\bbreak\s*down\b[^.?!]{0,30}\b(?:fees?|price|costs?)\b|"
+          r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b")),
     (CUSTOM_MEDIA, (r"\bvideos?\b|\bwalk[\s-]?around\b|\bmore\s+(?:photos|pictures|pics)\b|\bclose[\s-]?ups?\b|"
                    r"\b(?:photos?|pictures?|pics)\s+of\s+the\s+(?:engine|tires?|wheels?|interior|seats?|trunk|"
                    r"damage|scratch\w*|dent\w*|undercarriage|back|front|inside)\b|\bsend\s+(?:me\s+)?(?:a\s+)?"
@@ -95,7 +99,8 @@ class CannotSupply:
 ASKED_ONLY = frozenset({CREDIT_SCORE, APR, PAYMENT, OTD})
 _ASKING = re.compile(r"\?|^\W*(?:what|what's|whats|how|can|could|would|will|is|are|do|does|did|any|give me|tell me|"
                      r"send me|i (?:want|need|would like) to know)\b|\b(?:what(?:'s| is| would| will)?|how much|"
-                     r"how many|wondering|curious|let me know|tell me|quote|(?:want|need|like) to know)\b", re.IGNORECASE)
+                     r"how many|wondering|curious|let me know|tell me|quote|(?:want|need|like) to know|put|send|write|"
+                     r"itemi[sz]e|break\s*down|in writing|list)\b", re.IGNORECASE)
 
 
 def detect(text: str | None) -> str | None:

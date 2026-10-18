@@ -5,6 +5,8 @@ unchanged; the Guard sends back a draft with more than two questions."""
 
 from types import SimpleNamespace
 
+import pytest
+
 from tests.unit.test_slots import SALES_ALL, _fact, _profile
 from upsell_agent.agent.nodes.compose import compose_payload
 from upsell_agent.agent.nodes.guard import guard, too_many_questions
@@ -12,7 +14,7 @@ from upsell_agent.agent.offline_model import compose as offline_compose
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.state import AgentState
 from upsell_agent.observability.trace import MemoryTraceSink, NodeSpan, TurnTracer
-from upsell_agent.slots.policy import MAX_ASKS_PER_MESSAGE, Flags, next_action
+from upsell_agent.slots.policy import Flags, next_action
 
 Q = {"text": "Is it AWD?", "label": "answerable"}
 
@@ -25,8 +27,11 @@ def _asked(decision):
     return [a["requirement"] for a in decision["asks"]]
 
 
-def test_the_limit_is_two():
-    assert MAX_ASKS_PER_MESSAGE == 2
+@pytest.mark.one_question
+def test_production_asks_one_question():
+    """Client, 18 Oct 2026: "one question at a time" (these ordering tests run with two - tests/unit/conftest.py)."""
+    from upsell_agent.slots import policy
+    assert policy.MAX_ASKS_PER_MESSAGE == 1
 
 
 def test_two_asks_in_priority_order():

@@ -27,6 +27,10 @@ const LABELS = {
   cars_per_text: ["Most cars named in one text", ""],
   cars_per_email: ["Most cars named in one email", ""],
   banned_phrases: ["Phrases the AI must never say", "A draft that uses one is rewritten before it is sent."],
+  questions_per_message: ["Questions the AI asks per message (1-3)",
+    "Betsy's rule is 1. A required question (the first text's closing question, the after-hours choice) can come with it."],
+  switch_ai_off_after_failed_drafts: ["Switch the AI off when it can't write a safe reply twice in a row",
+    "Off (recommended): the AI sends a safe message and keeps working toward the appointment. On: the lead goes to staff."],
 };
 
 const CHOICES = {
@@ -61,7 +65,10 @@ const isWindow = (v) => v === null || (Array.isArray(v) && v.length === 2 && v.e
 function Field({ name, value, onChange, readOnly }) {
   const [label, hint] = LABELS[name] || [name.replace(/_/g, " "), ""];
   let input;
-  if (CHOICES[name]) {
+  if (typeof value === "boolean") {
+    input = <Form.Check type="switch" id={`sw-${name}`} disabled={readOnly} checked={value}
+      label={value ? "On" : "Off"} onChange={(e) => onChange(e.target.checked)} />;
+  } else if (CHOICES[name]) {
     input = (
       <Form.Select size="sm" disabled={readOnly} value={value} onChange={(e) => onChange(e.target.value)}>
         {Object.entries(CHOICES[name]).map(([k, l]) => <option key={k} value={k}>{l}</option>)}

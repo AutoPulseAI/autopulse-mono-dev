@@ -167,3 +167,16 @@ async def test_what_counts_as_dealership_action_required_is_editable(mongo):
     assert (await list_notices("d9"))["unhandled_count"] == 1
     ai_studio.reset()
     assert not needs_action({"kind": "call_task"}) and needs_action({"kind": "possible_opt_out"})
+
+
+@pytest.mark.one_question
+async def test_conversation_rules_are_editable(mongo):
+    """Client, 19 Oct 2026: questions per message and "switch the AI off after failed drafts" in AI Studio."""
+    from upsell_agent.slots import policy
+    assert policy.MAX_ASKS_PER_MESSAGE == 1 and guard.HANDOFF_AFTER_FAILED_DRAFTS is False
+    c = _default("compliance", "conversation_rules")
+    c.update(questions_per_message=2, switch_ai_off_after_failed_drafts=True)
+    await _publish(mongo, "compliance", "conversation_rules", c)
+    assert policy.MAX_ASKS_PER_MESSAGE == 2 and guard.HANDOFF_AFTER_FAILED_DRAFTS is True
+    ai_studio.reset()
+    assert policy.MAX_ASKS_PER_MESSAGE == 1 and guard.HANDOFF_AFTER_FAILED_DRAFTS is False

@@ -29,12 +29,13 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     built from Decide's plan (agent/templates.render_continue_reply) - never "new or used?" out of the blue."""
     spanish = (decision or {}).get("reply_language") == "Spanish"
     touch1 = (decision or {}).get("touch1") or {}
-    if not mid_conversation and not spanish and touch1.get("intro"):
+    if not spanish and touch1.get("intro"):
         # Client, 12 Oct 2026 (Betsy: "why is AI not introducing self based on FTC compliance? why is it passing to the
         # team?"): even the safety-net first reply opens with the FTC introduction ("this is Angela, <Dealer>'s AI Sales
         # Manager, following up on your interest in ...") and asks the closing question - it never says the team
         # will follow up instead of the AI working the lead.
-        ending = touch1.get("ending") or "How can I help you today?"
+        # Client, 18 Oct 2026 (Othniel got "How can I help you today?"): her question, else the appointment.
+        ending = touch1.get("ending") or "What day this week works best for you to come in?"
         line = f"{touch1['intro']} {ending}".strip()
         draft = {"sms_text": line, "email_subject": "Your inquiry",
                  "email_body": f"{touch1['intro']}\n\n{ending}\n\nThank you",
@@ -42,7 +43,7 @@ def template_draft(lead_type: LeadType | None, customer_name: str | None, why: s
     else:
         draft = (render_continue_reply(customer_name, decision, first=not mid_conversation)
                  if mid_conversation or spanish else render_first_reply(lead_type or LeadType.GENERAL, customer_name))
-    if not mid_conversation and not spanish and touch1:
+    if not spanish and touch1:
         from upsell_agent.agent.nodes.compose import place_touch1_extras
         place_touch1_extras(draft, touch1)
     draft["why"] = why
@@ -71,6 +72,22 @@ def avoid_repeat(draft: dict, sent: list[str], customer_name: str | None) -> dic
 def _sent_texts(state: AgentState) -> list[str]:
     memory = (state.context_pack or {}).get("working_memory") or []
     return [m.get("text") or "" for m in memory if m.get("direction") == "outbound"]
+
+
+_NOT_A_REPLY = frozenset({"cadence_touch", "next_action", "visit_followup"})  # the morning message has its own
+
+
+def _check_in(state: AgentState) -> dict:
+    from upsell_agent.agent.multi_vehicle import vehicle_label
+    from upsell_agent.agent.templates import first_name, known_first_name
+    name = first_name(state.customer_name) if known_first_name(state.customer_name) else None
+    vehicle = vehicle_label((state.context_pack or {}).get("lead") or {}) or ((state.profile or {}).get("values") or {
+        }).get("interest.model")
+    hi = f"Hi {name}" if name else "Hi there"
+    about = f" about the {vehicle}" if vehicle else ""
+    line = f"{hi}, just checking in{about}. What day this week works best for you to come in?"
+    return {"sms_text": line, "email_subject": "Checking in", "email_body": f"{line}\n\nThank you",
+            "template": "check_in", "asks": {"sms": [], "email": []}, "promises": [], "why": "follow-up check-in"}
 
 
 def mid_conversation(state: AgentState) -> bool:
@@ -103,6 +120,11 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     draft = template_draft(lead_type, state.customer_name, why, mid_conversation=later, decision=state.decision)
     if later:
         draft = avoid_repeat(draft, _sent_texts(state), state.customer_name)
+    if state.trigger in _NOT_A_REPLY and not (state.decision or {}).get("touch1") and not (
+            (state.decision or {}).get("touch") or {}).get("fixed_text"):
+        # Client, 18 Oct 2026 (Othniel, Mandi: a follow-up opened "Thanks, Othniel..." as if the customer had written):
+        # a message we start never thanks them; it checks in and asks for the visit.
+        draft = _check_in(state)
     from upsell_agent.agent.nodes.compose import place_cannot_supply
     place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     span.output = draft

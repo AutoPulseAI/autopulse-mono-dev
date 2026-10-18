@@ -116,6 +116,11 @@ export default function Dashboard() {
   }
 
   function getTodayDateParams() {
+    // The page's date range (client, 18 Oct 2026); today only when no range is set.
+    if (dateRange?.startDate && dateRange?.endDate) {
+      return `startDate=${encodeURIComponent(new Date(dateRange.startDate).toISOString())}`
+        + `&endDate=${encodeURIComponent(new Date(dateRange.endDate).toISOString())}`;
+    }
     // Get today's date in dealer timezone
     const nowInDealerTz = moment.tz(dealerTimezone);
     // Get start of day in dealer timezone
@@ -157,7 +162,10 @@ export default function Dashboard() {
       // Fetch all data in parallel (excluding managerial review, new_this_week, today's leads, and unread messages from main stats)
       // IMPORTANT: Get today's date range in DEALER TIMEZONE for today's leads count
       const todayRange = getTodayDateRange();
-      const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+      // Client, 18 Oct 2026 (Betsy: "the dates are Oct 1-16 and it's just showing me today ... if I want just today I
+      // will set the dates to today"): every card follows the date range on the page (month to date by default).
+      const viewRange = (startDate && endDate) ? { startDate, endDate } : getMtdDateRange();
+      const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       
       // Build MTD query params for the separate MTD total (always current month to date)
       const mtdRange = getMtdDateRange();
@@ -171,8 +179,7 @@ export default function Dashboard() {
         }
         // else cleared → all-time contacted (no date params)
       } else {
-        // Default view: always today's contacted
-        contactedQueryParams += `&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+        contactedQueryParams += `&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       }
 
       // Appointments: by booking.booking_date + status Appointment Booked (MTD default / selected range)
@@ -185,7 +192,7 @@ export default function Dashboard() {
       // else cleared → all Appointment Booked (no date params)
 
       // Today's appointments: scheduled for today with status Appointment Booked
-      const todayAppointmentsQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=false&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+      const todayAppointmentsQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=true&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       
       const [statsRes, commRes, messageStatsRes, managerialReviewRes, newThisWeekRes, todayLeadsRes, messageReadStatsRes, mtdLeadsRes, bookingStatusAppointmentRes, appointmentBookedRes, contactedRes, todayAppointmentsRes] = await Promise.all([
         fetchData(`/api/leads/stats?${queryParams}`,{headers: {
@@ -761,9 +768,6 @@ export default function Dashboard() {
 
   // Contacted: today by default; follows date range after user changes it
   const getContactedDescription = () => {
-    if (!hasUserChangedDateRange) {
-      return moment.tz(dealerTimezone).format('MMM D, YYYY');
-    }
     if (!dateRange.startDate || !dateRange.endDate) {
       return 'All-time count';
     }
@@ -771,9 +775,6 @@ export default function Dashboard() {
   };
 
   const getContactedLink = () => {
-    if (!hasUserChangedDateRange) {
-      return `/dealer/leads?status=Contacted&${getTodayDateParams()}`;
-    }
     if (!dateRange.startDate || !dateRange.endDate) {
       return '/dealer/leads?status=Contacted';
     }
@@ -833,11 +834,7 @@ export default function Dashboard() {
     return buildUrlWithBookingDateRange(base);
   };
 
-  const getTodayAppointmentsLink = () => {
-    const todayRange = getTodayDateRange();
-    const formatDate = (date) => encodeURIComponent(date.toISOString());
-    return `/dealer/leads?status=Appointment Booked&startDate=${formatDate(todayRange.startDate)}&endDate=${formatDate(todayRange.endDate)}`;
-  };
+  const getTodayAppointmentsLink = () => `/dealer/leads?status=Appointment Booked&${getTodayDateParams()}`;
 
   return (
     <div className="page_content">
@@ -904,9 +901,9 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-regular fa-calendar-day"
               count={todayLeadsCount}
-              label="Today's Leads"
+              label="Leads"
               link={`/dealer/leads?${getTodayDateParams()}`}
-              description={moment.tz(dealerTimezone).format('MMM D, YYYY')}
+              description={getDateRangeDescription()}
             />
 
             <CountCard
@@ -955,9 +952,9 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-regular fa-calendar-check"
               count={todayAppointmentsCount}
-              label="Today's Appointments"
+              label="Appointments Scheduled"
               link={getTodayAppointmentsLink()}
-              description={moment.tz(dealerTimezone).format('MMM D, YYYY')}
+              description={getDateRangeDescription()}
             />
           </div>
         </div>

@@ -953,6 +953,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         not_interested=not_interested,
         not_interested_reason=not_interested_reason,
     ))
+    decision["dealer_address"] = dealer.address  # the fallback answers "where are you?" with it
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
     touch1 = (plan_touch1(profile, dealer, state.customer_name,
                          origin=((ctx.compliance or {}).get("origin") or {}).get("origin"))
@@ -964,7 +965,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         if touch1["ending"]:
             # The closing question is one of the two, so at most one other ask fits (decision 35). A
             # confirmation or a visit offer is already that other question, so no slot ask is added.
-            room = 0 if decision.get("confirm") or decision.get("visit_offer") else 1
+            # Client, 18 Oct 2026 (Betsy: "one question at a time"): the closing question is the first text's only one.
+            room = 0
             decision["asks"] = [a for a in decision["asks"]
                                 if TOUCH1_ENDING_SLOT not in a.get("slots", [])][:room]
             decision["slots"] = [p for item in decision["asks"] for p in item["slots"]]

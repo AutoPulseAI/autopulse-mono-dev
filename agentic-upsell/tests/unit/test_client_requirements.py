@@ -398,3 +398,47 @@ def test_the_price_is_said_once():
                          "drive now?", "email_body": ""}
     place_touch1_extras(draft, {"price_line": line, "vin": "V1", "intro": "Hi George, this is the AI Sales Manager."})
     assert draft["sms_text"].count("$27,995") == 1 and line in draft["sms_text"]
+
+
+@pytest.mark.one_question
+async def test_one_question_per_message(mongo):
+    """Betsy, 18 Oct 2026: "it asked about budget and about trade in the same breath" - one question at a time."""
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "used")
+    reply = await _last_sms(mongo, created)
+    assert reply.count("?") == 1, reply
+
+
+async def test_where_is_it_gets_the_address_even_in_the_fallback(mongo):
+    """Zack, 17 Oct 2026: "Where is the vehicle located?" got "we can go over that together"."""
+    from upsell_agent.agent.templates import render_continue_reply
+    out = render_continue_reply("Zack Charles", {"answer_questions": [{"text": "Where is the vehicle located"}],
+                                                 "dealer_address": "3914 Hempstead Tpke, Levittown, NY 11756"})
+    assert "3914 Hempstead Tpke" in out["sms_text"] and out["sms_text"].endswith("come in?")
+
+
+def test_portal_boilerplate_is_not_the_customers_words():
+    from upsell_agent.agent.portal_text import clean_comments
+    said = "I'd like to see the A4. For notification changes, please contact support@cars.com."
+    assert clean_comments(said) == "I'd like to see the A4."
+
+
+def test_no_promise_to_send_what_the_ai_cannot():
+    """Freder / Steven, 18 Oct 2026."""
+    from upsell_agent.agent.nodes.guard import promises_what_it_cannot_send
+    for text in ("I'll write up your full out-the-door with the doc fee and send it here shortly.",
+                 "Sounds good. I'll send the video link Monday around midday."):
+        assert promises_what_it_cannot_send({}, {"sms_text": text}), text
+    assert not promises_what_it_cannot_send({}, {"sms_text": "We'll go over the numbers together when you come in."})
+
+
+def test_where_is_it_must_get_the_street_address():
+    """Zack, 17 Oct 2026: "It's here at our dealership in town" is not an answer to "Where is the vehicle located"."""
+    from upsell_agent.agent.nodes.guard import missing_address
+    decision = {"dealer_address": "3914 Hempstead Tpke, Levittown, NY 11756"}
+    vague = {"sms_text": "It's here at our dealership in town. What day works?", "email_body": ""}
+    good = {"sms_text": "We're at 3914 Hempstead Tpke, Levittown. What day works?",
+            "email_body": "We're at 3914 Hempstead Tpke, Levittown, NY 11756."}
+    assert missing_address(decision, vague, "Where is the vehicle located")
+    assert not missing_address(decision, good, "Where is the vehicle located")
+    assert not missing_address(decision, vague, "Is it still available?")

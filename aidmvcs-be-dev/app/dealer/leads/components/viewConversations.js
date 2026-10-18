@@ -122,13 +122,29 @@ export default function ViewConversations({
   // A note belongs to the lead, not to a channel (client, 10 Oct 2026: notes didn't show): it was filed under the
   // channel of the latest message, so it only appeared in one tab - usually not the open one. Both tabs show it.
   const isNoteRecord = (e) => Boolean(e?.is_note || e?.status === "note");
+  // Client, 18 Oct 2026 (Betsy: "color code blue for AI status change or yellow if human does it"): notes the AI wrote
+  // are blue, notes and status changes by a person are yellow.
+  const isAiNote = (e) => /by the AI\b|^AutoPulse AI\b|^\s*AI[: ]/.test(String(e?.mail_content || ""))
+    || /^(nicole|ai|autopulse)/i.test(String(e?.sender_name || e?.from_name || ""));
   const smsConversations = useMemo(
     () => sortedEmails.filter((e) => e.communication_type === "sms" || isNoteRecord(e)),
     [sortedEmails]
   );
+  // Client, 18 Oct 2026 (Betsy: "stop the lead email from going to the email conversation and put it with the raw
+  // lead"): the email a portal sent us about the lead (ADF file or a portal notification) is not the customer writing.
+  const leadEmailIds = useMemo(() => {
+    const inbound = sortedEmails.filter((e) => e.communication_type !== "sms" && !isNoteRecord(e)
+      && ["incoming", "received"].includes(e.status));
+    const created = lead?.createdAt ? new Date(lead.createdAt).getTime() : null;
+    const earliest = inbound.reduce((a, e) => (!a || new Date(e.createdAt || e.timestamp) < new Date(a.createdAt || a.timestamp) ? e : a), null);
+    return new Set(inbound.filter((e) => e.is_lead_email || looksLikeAdf(e.mail_content || "")
+      || (e === earliest && created && Math.abs(new Date(e.createdAt || e.timestamp).getTime() - created) < 10 * 60 * 1000))
+      .map((e) => String(e._id)));
+  }, [sortedEmails, lead?.createdAt]);
+  const leadEmails = useMemo(() => sortedEmails.filter((e) => leadEmailIds.has(String(e._id))), [sortedEmails, leadEmailIds]);
   const emailConversations = useMemo(
-    () => sortedEmails.filter((e) => e.communication_type !== "sms" || isNoteRecord(e)),
-    [sortedEmails]
+    () => sortedEmails.filter((e) => (e.communication_type !== "sms" || isNoteRecord(e)) && !leadEmailIds.has(String(e._id))),
+    [sortedEmails, leadEmailIds]
   );
   const activeChannelEmails = activeChannelTab === "sms" ? smsConversations : emailConversations;
 
@@ -894,7 +910,8 @@ export default function ViewConversations({
                   </div>
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && <AiLeadPanel key={lead._id} leadId={lead._id} />}
+                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id}
+                  leadStatus={lead.fe_lead_status || lead.lead_status || lead.status || null} />}
                 {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
@@ -1067,6 +1084,21 @@ export default function ViewConversations({
                       {translationError}
                     </div>
                   )}
+                  {activeChannelTab === "email" && leadEmails.length > 0 && (
+                    <details className="w_card mb-2 py-2 small" style={{ background: "#f6f7f9" }}>
+                      <summary className="fw-semibold" role="button">
+                        <i className="fa-regular fa-file-lines me-2"></i>Lead received{lead?.source ? ` from ${lead.source}` : ""} (raw lead)
+                      </summary>
+                      {leadEmails.map((e) => (
+                        <div key={e._id} className="mt-2">
+                          {looksLikeAdf(e.mail_content || "") ? <AdfLead raw={e.mail_content} />
+                            : <div style={{ whiteSpace: "pre-wrap" }}>{cleanEmailContent(e.mail_content || "").type === "html"
+                              ? <div className="html-body" dangerouslySetInnerHTML={{ __html: cleanEmailContent(e.mail_content || "").content }} />
+                              : cleanEmailContent(e.mail_content || "").content}</div>}
+                        </div>
+                      ))}
+                    </details>
+                  )}
                   {activeChannelEmails.map((email) => {
                       const cleaned = cleanEmailContent(email.mail_content || "");
                       const originalText = getMessageTextForTranslation(email);
@@ -1088,7 +1120,7 @@ export default function ViewConversations({
                             selectedConversation?._id === email._id ? 'selected-conversation' : ''
                           } ${isNote ? 'note-item' : ''}`}
                           onClick={() => setSelectedConversation(email)}
-                          style={isNote ? (email.internal_use === true ? {
+                          style={isNote ? (isAiNote(email) ? {
                             borderLeft: '4px solid #2196f3',
                             backgroundColor: '#e3f2fd',
                             border: '1px solid #2196f3'
@@ -1143,7 +1175,7 @@ export default function ViewConversations({
                                   </Button>
                                 )}
                                 <span className={`badge ${
-                                  isNote ? (email.internal_use === true ? "bg-info" : "bg-warning") :
+                                  isNote ? (isAiNote(email) ? "bg-info" : "bg-warning") :
                                   // Client, 13 Oct 2026 (Betsy / Bibi): the customer's messages green, ours red, failed gray.
                                   ["received", "incoming"].includes(email.status) ? "bg-success" :
                                   ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" :
