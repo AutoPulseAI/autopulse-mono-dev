@@ -140,11 +140,16 @@ export async function POST(request) {
     // CarGurus' lead address and failed): a reply to the lead email goes to the customer on the lead, never to the
     // portal that sent the lead.
     const leadContact = parentMessage.lead_id
-      ? await Lead.findById(parentMessage.lead_id).select('email').lean() : null;
+      ? await Lead.findById(parentMessage.lead_id).select('email phone').lean() : null;
+    // Same for a text (client, 19 Oct 2026: "sms failed to send ... Replying to: dealer-leads@messages.cargurus.com"):
+    // an SMS reply always goes to the customer's phone on the lead.
+    if (communicationType === 'sms' && String(leadContact?.phone || '').replace(/\D/g, '').length >= 10) {
+      to = leadContact.phone;
+    }
     const customerEmail = String(leadContact?.email || '').trim();
     const addressOf = (v) => (String(v || '').match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase();
     const isRelay = /^(no-?reply|do-?not-?reply|donotreply|dealer-?leads?|dealerdirect|leads?)[+.@_-]/i;
-    if (/@/.test(customerEmail) && !isRelay.test(customerEmail) && String(to || '').includes('@')
+    if (communicationType !== 'sms' && /@/.test(customerEmail) && !isRelay.test(customerEmail) && String(to || '').includes('@')
         && addressOf(to) !== customerEmail.toLowerCase()) {
       to = customerEmail;
     }
