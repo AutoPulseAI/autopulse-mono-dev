@@ -146,6 +146,10 @@ export async function POST(request) {
     if (communicationType === 'sms' && String(leadContact?.phone || '').replace(/\D/g, '').length >= 10) {
       to = leadContact.phone;
     }
+    if (communicationType === 'sms') {
+      // The dealership's texting number is the sender (client, 19 Oct 2026: a staff text showed "From: Leads@...").
+      from = dealer?.dealer_account_information?.sms_conversion_phone || process.env.TWILIO_PHONE_NUMBER || from;
+    }
     const customerEmail = String(leadContact?.email || '').trim();
     const addressOf = (v) => (String(v || '').match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase();
     const isRelay = /^(no-?reply|do-?not-?reply|donotreply|dealer-?leads?|dealerdirect|leads?)[+.@_-]/i;

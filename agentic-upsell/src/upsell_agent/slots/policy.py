@@ -181,7 +181,9 @@ def _ask_item(profile: Profile, requirement: Requirement) -> dict[str, Any]:
 def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     # A value already asked to be confirmed isn't confirmed again, and its detail isn't asked for again either.
     confirmed_once = {s.path for s in profile.pending() if flags.confirms.get(s.fact_id, 0) >= MAX_CONFIRMS_PER_VALUE}
-    pending = [s for s in profile.pending() if s.path not in confirmed_once]
+    # Client, 19 Oct 2026 (Rheonna said she has no car and got "is 'anytime' still the best time to reach you?"): only a
+    # detail that qualifies the visit is worth confirming - never how or when to contact them.
+    pending = [s for s in profile.pending() if s.path not in confirmed_once and not s.path.startswith("contact.")]
     missing = [r for r in profile.missing() if not (confirmed_once and set(_unfilled(profile, r)) <= confirmed_once)]
     filled, total = profile.progress()
     clarify_questions = [q for q in flags.questions if q.get("label") == "clarify"]
