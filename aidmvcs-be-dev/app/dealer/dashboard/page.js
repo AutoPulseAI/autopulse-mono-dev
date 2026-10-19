@@ -116,8 +116,8 @@ export default function Dashboard() {
   }
 
   function getTodayDateParams() {
-    // The page's date range (client, 18 Oct 2026); today only when no range is set.
-    if (dateRange?.startDate && dateRange?.endDate) {
+    // The range picked at the top; today until it is changed (Betsy, 19 Oct 2026).
+    if (hasUserChangedDateRange && dateRange?.startDate && dateRange?.endDate) {
       return `startDate=${encodeURIComponent(new Date(dateRange.startDate).toISOString())}`
         + `&endDate=${encodeURIComponent(new Date(dateRange.endDate).toISOString())}`;
     }
@@ -164,7 +164,9 @@ export default function Dashboard() {
       const todayRange = getTodayDateRange();
       // Client, 18 Oct 2026 (Betsy: "the dates are Oct 1-16 and it's just showing me today ... if I want just today I
       // will set the dates to today"): every card follows the date range on the page (month to date by default).
-      const viewRange = (startDate && endDate) ? { startDate, endDate } : getMtdDateRange();
+      // Betsy, 19 Oct 2026: "When we change the date at the top everything else should change except MTD leads and
+      // all-time appointments. The default is today unless the date changes."
+      const viewRange = (hasUserChangedDateRange && startDate && endDate) ? { startDate, endDate } : todayRange;
       const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       
       // Build MTD query params for the separate MTD total (always current month to date)
@@ -184,11 +186,7 @@ export default function Dashboard() {
 
       // Appointments: by booking.booking_date + status Appointment Booked (MTD default / selected range)
       let appointmentQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=false`;
-      if (typeof startDate === 'undefined' && typeof endDate === 'undefined') {
-        appointmentQueryParams += `&start_date=${mtdRange.startDate.toISOString()}&end_date=${mtdRange.endDate.toISOString()}`;
-      } else if (startDate && endDate) {
-        appointmentQueryParams += `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`;
-      }
+      appointmentQueryParams += `&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       // else cleared → all Appointment Booked (no date params)
 
       // Today's appointments: scheduled for today with status Appointment Booked
@@ -767,7 +765,12 @@ export default function Dashboard() {
   };
 
   // Contacted: today by default; follows date range after user changes it
+  // The cards' own range: today until the date at the top is changed (Betsy, 19 Oct 2026).
+  const cardRangeText = () => (hasUserChangedDateRange ? getDateRangeDescription()
+    : moment.tz(dealerTimezone).format('MMM D, YYYY'));
+
   const getContactedDescription = () => {
+    if (!hasUserChangedDateRange) return cardRangeText();
     if (!dateRange.startDate || !dateRange.endDate) {
       return 'All-time count';
     }
@@ -901,9 +904,9 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-regular fa-calendar-day"
               count={todayLeadsCount}
-              label="Leads"
+              label={hasUserChangedDateRange ? "Leads" : "Today's Leads"}
               link={`/dealer/leads?${getTodayDateParams()}`}
-              description={getDateRangeDescription()}
+              description={cardRangeText()}
             />
 
             <CountCard
@@ -944,17 +947,17 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-solid fa-calendar-days"
               count={appointmentBookedCount}
-              label="Appointments Made"
-              link={getAppointmentsLink()}
-              description={getAppointmentsDescription()}
+              label={hasUserChangedDateRange ? "Appointments Made" : "Appointments Made Today"}
+              link={`/dealer/leads?status=Appointment Booked&${getTodayDateParams()}`}
+              description={cardRangeText()}
             />
 
             <CountCard
               iconClass="fa-regular fa-calendar-check"
               count={todayAppointmentsCount}
-              label="Visits Scheduled (on these dates)"
+              label={hasUserChangedDateRange ? "Visits Scheduled (on these dates)" : "Today's Visits"}
               link="/dealer/booking"
-              description={getDateRangeDescription()}
+              description={cardRangeText()}
             />
           </div>
         </div>
