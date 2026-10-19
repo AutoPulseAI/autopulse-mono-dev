@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
 import Email from '@models/Email';
 import User from '@models/User';
@@ -164,6 +165,21 @@ export async function POST(request) {
     // Resolve lead user language (fallback English) and translate before sending/saving.
     const leadDoc = parentMessage.lead_id ? await Lead.findById(parentMessage.lead_id).select('user_language') : null;
     let leadUserLanguageRaw = latestReply?.user_language?latestReply.user_language:normalizeUserLanguage(leadDoc?.user_language);
+    // Client, 19 Oct 2026 (Bibi wrote in Spanish, replied in Spanish from AutoPulse and got English): the language the
+    // customer actually writes in, as the AI detects it on every message (ai_lead_state.customer_language).
+    if (parentMessage.lead_id) {
+      try {
+        const aiState = await mongoose.connection.db.collection('ai_lead_state')
+          .findOne({ lead_id: String(parentMessage.lead_id) }, { projection: { customer_language: 1 } });
+        const spoken = String(aiState?.customer_language || '').trim();
+        if (spoken) {
+          leadUserLanguageRaw = normalizeUserLanguage(spoken.toLowerCase());
+          if (leadDoc && String(leadDoc.user_language || '').toLowerCase() !== spoken.toLowerCase()) {
+            await Lead.updateOne({ _id: parentMessage.lead_id }, { $set: { user_language: spoken.toLowerCase() } });
+          }
+        }
+      } catch { /* keep the lead's own language */ }
+    }
     const leadUserLanguageDisplay = toDisplayLanguageName(leadUserLanguageRaw);
     const sourceHint = leadUserLanguageDisplay; // we don't know the agent language here; use lead language as hint
 
