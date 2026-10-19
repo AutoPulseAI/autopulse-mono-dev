@@ -33,6 +33,7 @@ from upsell_agent.agent.graph import build_graph
 from upsell_agent.agent.nodes.decide import possible_opt_out
 from upsell_agent.agent.nodes.template_reply import mid_conversation, template_draft
 from upsell_agent.agent.qualification import LeadType
+from upsell_agent.agent.reply_language import in_customer_language
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
 from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
@@ -120,6 +121,18 @@ async def find_customer(db: DealerScopedDatabase, customer_id: str | None) -> di
     if not customer_id:
         return None
     return await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(customer_id)})
+
+
+async def _in_customer_language(tracer: TurnTracer, decision: dict[str, Any], text: str | None, subject: str | None,
+                                settings: Settings) -> tuple[str | None, str | None]:
+    """Client, 20 Oct 2026 (Bibi): whatever wrote the reply, it goes out in the customer's language
+    (agent/reply_language.py)."""
+    language = decision.get("reply_language")
+    text, note = await in_customer_language(text, language, settings.model_extract)
+    subject, subject_note = await in_customer_language(subject, language, settings.model_extract)
+    if note or subject_note:
+        tracer.log.setdefault("translations", []).extend(n for n in (note, subject_note) if n)
+    return text, subject
 
 
 async def run_turn(
@@ -225,6 +238,7 @@ async def run_turn(
         else:
             subject = None if channel == "sms" else draft.get("email_subject")
             reply, subject, freshness = await _fresh_send_text(ctx, dealer_id, draft, channel, reply, subject)
+            reply, subject = await _in_customer_language(tracer, decision, reply, subject, settings)
             # MASTER_PLAN_4 F3: the named vehicle's own photo, checked, never a link in its place.
             photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]),
                                  customer_text=inbound_text)
@@ -468,10 +482,12 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     if not text:
         await tracer.skipped(f"send_{other}", f"The draft has no {other} version.")
         return None
+    subject = None if other == "sms" else draft.get("email_subject")
+    text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
     request = SendRequest(
         dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
-        text=text, subject=None if other == "sms" else draft.get("email_subject"), shadow=shadow,
+        text=text, subject=subject, shadow=shadow,
         event_received_at=event_received_at, is_reply=False, purpose="marketing",
         media_urls=photo.urls if photo else [],
     )
