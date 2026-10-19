@@ -38,3 +38,16 @@ async def test_a_failed_translation_never_stops_the_reply(monkeypatch):
 def test_a_spanish_text_is_seen_as_spanish():
     assert customer_language("Hola, ¿todavía tienen el carro?") == "Spanish"
     assert customer_language("ok", ["Quiero ver la camioneta el sábado"]) == "Spanish"
+
+
+async def test_a_message_held_while_a_person_handles_the_lead_records_its_language(mongo):
+    """Bibi, 19 Oct 2026: staff texted her by hand (the AI paused), she wrote "Hola, ¿puedo venir mañana a las 10 de
+    la mañana" - her language stayed English, so the replies after it went out in English."""
+    from tests.unit.test_booking_flow import _say
+    from tests.unit.test_client_requirements import RAV4, _new_lead
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await mongo["ai_lead_state"].update_one({"lead_id": created["lead_id"]},
+                                            {"$set": {"status": "paused", "status_reason": "Staff replied by hand"}})
+    await _say(created, "Hola, ¿puedo venir mañana a las 10 de la mañana")
+    state = await mongo["ai_lead_state"].find_one({"lead_id": created["lead_id"]})
+    assert state["customer_language"] == "Spanish" and state["reply_language"] == "Spanish"

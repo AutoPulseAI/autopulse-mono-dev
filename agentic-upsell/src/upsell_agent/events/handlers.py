@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
+from upsell_agent.config import get_settings
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.portal_text import clean_comments
@@ -563,6 +564,13 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
                         trigger="inbound_held", channel=channel, store_prompts=deps.store_prompts, turn_id=turn_id)
     await tracer.start({"text": "\n".join(r["text"] for r in rows), "channel": channel, "shadow": event.shadow,
                         "batch": [batch_entry(r) for r in rows]})
+    # Client, 20 Oct 2026 (Bibi wrote in Spanish while a person handled her lead; her language stayed "English" and
+    # the next replies went out in English): the language is recorded from every message, held or answered.
+    from upsell_agent.agent.reply_language import detect, in_customer_language
+    spoken = await detect("\n".join(r["text"] for r in rows), get_settings().model_extract)
+    if spoken:
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+            "customer_language": spoken, "reply_language": None if spoken == "English" else spoken}})
     async with tracer.node("hold", {"action": action, "messages": len(rows)}) as span:
         span.output = {"action": action, "reason": reason}
         span.reasoning = [reason]
@@ -582,6 +590,12 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
         else:
             text, subject, purpose = confirmation or confirmation_text(("sms", "email", "voice")), \
                 None if channel == "sms" else "Your request", "opt_out_confirmation"
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+        language = state.get("reply_language") or str(state.get("customer_language") or "").replace("English", "")
+        text, note = await in_customer_language(text, language, get_settings().model_extract)
+        subject, _ = await in_customer_language(subject, language, get_settings().model_extract)
+        if note:
+            tracer.log.setdefault("translations", []).append(note)
         request = SendRequest(
             dealer_id=event.dealer_id, lead_id=lead_id, customer_id=event.customer_id, turn_id=turn_id,
             channel=channel, text=text, subject=subject, shadow=event.shadow, event_received_at=received_at,

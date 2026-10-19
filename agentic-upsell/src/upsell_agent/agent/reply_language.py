@@ -25,6 +25,40 @@ links, vehicle names (year, make, model, trim) and stock numbers exactly as writ
 the way a native speaker would. Return only the translated message in `text`, nothing else."""
 
 
+class Detected(BaseModel):
+    language: str | None = Field(description="The language the message is written in, by its English name "
+                                             "(\"Spanish\", \"Urdu\"). Null when it is too short to tell.")
+
+
+DETECT_INSTRUCTIONS = """Name the language a customer's text message is written in, by its English name. Null when
+the message has no words to go on (a number, "ok", an emoji)."""
+
+
+@lru_cache
+def detect_agent(model_name: str) -> Agent[None, Detected]:
+    from upsell_agent.agent.llm import _model
+    return Agent(_model(model_name), output_type=Detected, instructions=DETECT_INSTRUCTIONS,
+                 name="detect_language", defer_model_check=True, retries=1)
+
+
+async def detect(text: str, model_name: str, *, timeout_s: float = 15.0) -> str | None:
+    """The language of a message the AI doesn't answer (held while a person handles the lead), so the next message
+    to the customer - from the AI or typed by staff - is in it. The plain word check first; the reader model when it
+    can't tell. None when nothing can be told."""
+    from upsell_agent.agent.language import message_language as by_words
+    from upsell_agent.agent.llm import OFFLINE, run_agent
+    found = by_words(text)
+    if found or model_name == OFFLINE or len(str(text or "").split()) < 2:
+        return found
+    try:
+        out, _ = await run_agent(detect_agent(model_name), model_name, {"message": text}, timeout_s=timeout_s,
+                                 output_tokens_limit=50)
+    except Exception as exc:
+        log.warning("language detection failed: %r", exc)
+        return None
+    return str(out.language or "").strip().title() or None
+
+
 class Translated(BaseModel):
     text: str = Field(description="The message, translated.")
 
