@@ -893,7 +893,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     elif said == "English":
         reply_language = None
     elif not reply_language:
-        previous = str((ctx.lead_state or {}).get("reply_language") or "").strip()
+        # Client, 20 Oct 2026 (Bibi): also the language recorded from a message the AI held while paused.
+        previous = str((ctx.lead_state or {}).get("reply_language") or "").strip() or str(
+            (ctx.lead_state or {}).get("customer_language") or "").strip().replace("English", "")
         reply_language = previous or (lead_language if lead_language not in ("", "English") else None)
     booking_text = dates_to_english(text) if reply_language == SPANISH else text
     visit_ctx, visit_plan = await _visit_and_booking(
