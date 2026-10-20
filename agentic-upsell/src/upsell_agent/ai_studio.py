@@ -545,6 +545,24 @@ def _link(text: str) -> str:
 
 def _apply_cadence(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -> None:
     cad = _by_name()["cadence"]
+    if key == "specific_followup":
+        # Client, 21 Oct 2026: "Contact Made - Specific Follow-Up" in AI Studio - its message is read where it's sent
+        # (agent/nodes/decide.py); the default time and the no-reply window are set here.
+        from upsell_agent.agent.nodes import decide as _decide
+        from upsell_agent.scheduler import followups as _fu
+        steps = {st.get("id"): st for st in c.get("steps") or []}
+        at = str(((steps.get("check_back") or {}).get("wait") or {}).get("at") or "").strip()
+        if m := re.fullmatch(r"(\d{1,2}):(\d{2})\s*([AaPp][Mm])?", at):
+            hour = int(m.group(1)) % 12 + (12 if (m.group(3) or "").lower() == "pm" else 0) if m.group(3) \
+                else int(m.group(1))
+            if hour < 24 and int(m.group(2)) < 60:
+                _decide.NEXT_ACTION_DEFAULT_TIME = f"{hour:02d}:{m.group(2)}"
+        wait = (steps.get("no_reply") or {}).get("wait") or {}
+        if wait.get("amount"):
+            _fu.NEXT_ACTION_REPLY_WINDOW = _span(wait)
+        return
+    if key == "unsold":
+        return  # its message is read where the first touch after an Unsold visit is written (agent/nodes/decide.py)
     if key in ("sold_pending", "owner_lifecycle", "appointment"):
         _apply_timing(key, c)  # their texts are placed where they're written (step_message)
         return
@@ -826,6 +844,13 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             mods["policy"].MAX_ASKS_PER_MESSAGE = max(1, min(3, int(c["questions_per_message"])))
         if isinstance(c.get("switch_ai_off_after_failed_drafts"), bool):
             mods["guard"].HANDOFF_AFTER_FAILED_DRAFTS = c["switch_ai_off_after_failed_drafts"]
+        if isinstance(c.get("ai_resumes_after_staff_minutes"), (int, float)) and not isinstance(
+                c["ai_resumes_after_staff_minutes"], bool):
+            from datetime import timedelta as _td
+
+            from upsell_agent.scheduler import followups as _fu
+            minutes = max(0, int(c["ai_resumes_after_staff_minutes"]))
+            _fu.STAFF_QUIET_AFTER = _td(minutes=minutes) if minutes else None
     elif key == "writing":
         dg, gd = mods["draft_guard"], mods["guard"]
         for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),

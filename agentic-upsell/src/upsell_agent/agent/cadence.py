@@ -154,6 +154,7 @@ SUBJECTS: dict[str, tuple[str, str]] = {
     "credit_tips": ("A quick tip before you finance", "A quick tip before you finance"),
     "trade_market": ("What your trade could be worth now", "What your trade could be worth now"),
     "still_shopping": ("Still shopping for a {vehicle}?", "Still shopping for a car?"),
+    "unsold_followup": ("Thanks for stopping by, {first_name}", "Thanks for stopping by"),
 }
 
 

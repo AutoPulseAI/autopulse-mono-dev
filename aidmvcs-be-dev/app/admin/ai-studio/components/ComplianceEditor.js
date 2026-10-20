@@ -31,6 +31,8 @@ const LABELS = {
     "Betsy's rule is 1. A required question (the first text's closing question, the after-hours choice) can come with it."],
   switch_ai_off_after_failed_drafts: ["Switch the AI off when it can't write a safe reply twice in a row",
     "Off (recommended): the AI sends a safe message and keeps working toward the appointment. On: the lead goes to staff."],
+  ai_resumes_after_staff_minutes: ["Minutes before the AI takes back a conversation staff replied to (0 = never)",
+    "When staff text a customer by hand and the customer writes back, the AI answers if no one replies within this long (at once after hours)."],
 };
 
 const CHOICES = {

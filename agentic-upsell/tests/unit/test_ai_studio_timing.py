@@ -212,3 +212,39 @@ def _db():
 async def _studio(mongo, created):
     return await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
         {"lead_id": created["lead_id"], "kind": "studio_touch", "status": "pending"}).to_list(None)
+
+
+@pytestmark_flow
+async def test_betsys_no_reply_nudge_starts_when_the_ai_asks_a_question(mongo):
+    """Client, 20 Oct 2026 (Betsy: "a 15 min nudge if the ai asks a question and the customer doesn't reply")."""
+    from tests.unit.test_cadence import _say
+    await _publish(mongo, "cadences", "no_reply_nudge", _added({"type": "ai_asked"}, [
+        {"id": "a", "channels": ["sms"], "wait": {"amount": 15, "unit": "minutes", "after": "start"},
+         "message": {"mode": "fixed", "text": "Still with me, {first_name}?"}}]))
+    created = await _new_lead()
+    await _say(created, "Is it still available?")  # the AI answers and asks a question
+    [doc] = await _studio(mongo, created)
+    set_clock(doc["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    assert (await followups.fire_due(_deps()))["results"].get("sent") == 1
+    rows = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
+    assert rows[-1]["text"] == "Still with me, Maria?"
+
+
+@pytestmark_flow
+async def test_a_deleted_added_cadence_stops(mongo):
+    await _publish(mongo, "cadences", "gone", _added({"type": "lead_created"}, [
+        {"id": "a", "channels": ["sms"], "wait": {"amount": 1, "unit": "days", "after": "start"},
+         "message": {"mode": "fixed", "text": "SHOULD NOT SEND"}}]), deleted=True)
+    created = await _new_lead()
+    assert await _studio(mongo, created) == []
+
+
+async def test_an_edited_subject_line_is_what_the_email_says(mongo):
+    content = _sales()
+    step = next(s for s in content["steps"] if s["id"] == "direct_close")
+    step["message"] = {**step["message"], "email_subject": "Your {vehicle} is waiting, {first_name}"}
+    await _publish(mongo, "cadences", "sales_days_1_7", content)
+    from upsell_agent.agent.nodes.decide import plan_cadence_touch_context
+    touch = plan_cadence_touch_context({"pending_touch": {"theme": "direct_close", "touch_number": 8}}, "Maria")
+    assert cadence.subject_for(touch["theme"], vehicle="2024 RAV4", first_name="Maria",
+                               edited=touch["email_subject"]) == "Your 2024 RAV4 is waiting, Maria"

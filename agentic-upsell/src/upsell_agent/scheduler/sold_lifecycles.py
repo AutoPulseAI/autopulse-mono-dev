@@ -502,12 +502,15 @@ async def _has_service_appointment(db: DealerScopedDatabase, customer_id: str, v
 
 
 def _studio(built: dict[str, str] | None, step: str, first_name: str | None, dealership: str | None,
-            vehicle: dict | None) -> dict[str, str] | None:
+            vehicle: dict | None, extra: dict[str, Any] | None = None) -> dict[str, str] | None:
     """The message as published in AI Studio (Cadences -> Sold Delivered: owner lifecycle) when it is edited there,
     else the built-in wording (client, 20-21 Oct 2026: Betsy's AI Studio edits must be what goes out)."""
     from upsell_agent import ai_studio
     values = {"first_name": first_name, "dealership": dealership or "our dealership",
-              "vehicle": sold_delivered.vehicle_label(vehicle), "model": sold_delivered.model_label(vehicle)}
+              "vehicle": sold_delivered.vehicle_label(vehicle), "model": sold_delivered.model_label(vehicle),
+              **(extra or {})}
+    if built is None:
+        return None  # nothing true to say (a recall without its facts): never sent from a template alone
     return ai_studio.render(ai_studio.step_message("cadences", "owner_lifecycle", step), values, built) or built
 
 
@@ -638,9 +641,14 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
             await _log(db, tracer, f"{kind}_suppressed", {"followup_id": doc_id, "reason": "appointment exists"})
             return "suppressed"
         outreach_kind = doc.get("outreach_kind") or "maintenance"
-        text = sold_delivered.render_service_outreach(
-            outreach_kind, sold_delivered.normalize_service_facts(outreach_kind, doc.get("facts") or {}),
-            first_name=name, dealership=profile.name, vehicle=vehicle)
+        facts = sold_delivered.normalize_service_facts(outreach_kind, doc.get("facts") or {})
+        text = sold_delivered.render_service_outreach(outreach_kind, facts, first_name=name, dealership=profile.name,
+                                                      vehicle=vehicle)
+        if outreach_kind == "recall":
+            # Client, 21 Oct 2026: the recall wording as set in AI Studio (Sold Delivered: owner lifecycle -> Open Recall).
+            text = _studio(text, "recall", name, profile.name, vehicle, {
+                "recall_id": facts.get("recall_id"), "recall_source": facts.get("source"),
+                "recall_summary": facts.get("component") or facts.get("summary")})
         # The facts as A4 gave them: a reply turn about this offer carries them as decision["service_facts"]
         # (agent/nodes/decide.py), so its guard allows exactly these recall / maintenance claims.
         lead_fields["service_offer"] = {"kind": outreach_kind, "ownership_id": doc.get("ownership_id"),

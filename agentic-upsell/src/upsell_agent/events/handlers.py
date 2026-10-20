@@ -46,6 +46,7 @@ from upsell_agent.integrations.mongodb import (
     AI_TURN_LOG_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
+    as_object_id,
     dealer_scoped_db,
 )
 from upsell_agent.learning import touches
@@ -1110,6 +1111,13 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                     db, lead_id=event.lead_id, customer_id=customer_id,
                     channel=((lead or {}).get("data") or {}).get("channel") or "sms",
                     turn_id=f"unsold-{event.event_id}", lead=lead, first_contact_done=True)
+                if final_event == "unsold" and (extra["cadence_touch"] or {}).get("followup_id"):
+                    # Client, 21 Oct 2026: AI Studio -> Cadences -> "Unsold" sets this first message.
+                    from upsell_agent.agent.nodes.decide import UNSOLD_INSTRUCTION, UNSOLD_THEME
+                    await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+                        {"_id": as_object_id(extra["cadence_touch"]["followup_id"])},
+                        {"$set": {"touch.theme": UNSOLD_THEME, "touch.theme_label": "After an Unsold visit",
+                                  "touch.instruction": UNSOLD_INSTRUCTION}})
         return {"status": "resumed_unsold", "stage_change": stage_change, **extra}
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
