@@ -758,7 +758,8 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
         instruction = said
     return {"touch_number": pending.get("touch_number"), "day": pending.get("day"), "theme": theme_id,
             "label": pending.get("theme_label"), "instruction": instruction, "fixed_text": fixed,
-            "channels": pending.get("channels")}
+            "channels": pending.get("channels"),
+            "email_subject": str((message or {}).get("email_subject") or "").strip() or None}
 
 
 def _customer_summary(profile: Profile) -> str:

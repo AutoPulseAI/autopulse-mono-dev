@@ -456,5 +456,18 @@ async def test_follow_up_touches_end_with_the_visit_not_nothing(mongo):
         {"lead_id": created["lead_id"], "trigger": "cadence_touch"}).sort("_id", 1).to_list(None)
     actions = [next(((n.get("output") or {}).get("action") for n in t["nodes"] if n["node"] == "decide"), None)
                for t in turns]
-    print("TOUCH_ACTIONS", actions)
+    subjects = [m.get("subject") for m in await _outbox(mongo, created) if m["channel"] == "email"]
+    assert any(str(sub or "").startswith(("A closer look at", "Making the numbers work")) for sub in subjects), subjects
     assert actions and not {"acknowledge", "qualified", "partly_qualified"} & set(actions[1:]), actions
+
+
+def test_every_ai_written_touch_has_a_real_subject():
+    """Client, 20 Oct 2026 (Betsy: "email subject lines are not effective ones")."""
+    from upsell_agent.agent import cadence as cad
+    assert cad.subject_for("direct_close", vehicle="2024 Toyota RAV4", first_name="Maria") == \
+        "Still thinking about the 2024 Toyota RAV4?"
+    assert cad.subject_for("objection_check", vehicle=None, first_name=None) == "Anything holding you back?"
+    assert cad.subject_for("direct_close", vehicle="X", first_name=None, edited="Your {vehicle} is waiting") == \
+        "Your X is waiting"
+    for theme in [*cad.DAY_THEMES, *cad.EXTENDED_THEMES]:
+        assert cad.subject_for(theme.id, vehicle="2024 Toyota RAV4", first_name="Maria"), theme.id

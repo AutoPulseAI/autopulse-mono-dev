@@ -23,6 +23,7 @@ from upsell_agent.agent import (
     llm,
     multi_vehicle,
     owner_touches,
+    sold_delivered,
     sold_pending,
     specialists,
     templates,
@@ -94,7 +95,8 @@ def _wait(amount: float, unit: str, after: str = "previous", at: str | None = No
 def _theme_step(day: int | str, theme: cadence.Theme, when: str, wait: dict[str, Any] | None = None
                 ) -> dict[str, Any]:
     return {"id": theme.id, "day": day, "when": when, "label": theme.label, "channels": ["sms", "email", "call_task"],
-            "message": ai(theme.instruction), **({"wait": wait} if wait else {})}
+            "message": {**ai(theme.instruction), "email_subject": (cadence.SUBJECTS.get(theme.id) or (None,))[0]},
+            **({"wait": wait} if wait else {})}
 
 
 def cadences() -> list[dict[str, Any]]:
@@ -151,7 +153,16 @@ def cadences() -> list[dict[str, Any]]:
                            vehicle={"year": "YEAR", "make": "MAKE", "model": "MODEL"}, items=["ITEM"]),
                            {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "YEAR MAKE MODEL": "{vehicle}",
                             "MODEL": "{model}", "ITEM": "{recommended_work}"})}
-                      for t in owner_touches.ALL_TOUCHES]}},
+                      for t in owner_touches.ALL_TOUCHES] + [
+                # Client, 21 Oct 2026: the Sold Delivered Day-3 check-in, visible and editable here like the others
+                # (scheduler/sold_lifecycles.py reads it).
+                {"id": "day3_checkin", "when": "Day 3 after delivery", "wait": _wait(3, "days", "start"),
+                 "label": "Day 3 Check-in", "channels": ["sms", "email"],
+                 "message": _placeholdered(sold_delivered.render_checkin(
+                     first_name="Qzfirst", dealership="DEALERSHIP", vehicle={"year": "YEAR", "make": "MAKE",
+                                                                             "model": "MODEL"},
+                     first_service=None, offer_service=False),
+                     {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "YEAR MAKE MODEL": "{vehicle}"})}]}},
         {"key": "appointment", "name": "Appointment: details, confirmation, no-show", "content": {
             "steps": [{"id": s, "when": w, "label": s.replace("_", " ").title(), "channels": ["sms", "email"],
                        **({"wait": {appointment.STEP_DETAILS: _wait(15, "minutes", "start"),
@@ -372,7 +383,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 9
+DEFAULTS_REVISION = 10
 
 
 def export() -> dict[str, Any]:

@@ -501,6 +501,16 @@ async def _has_service_appointment(db: DealerScopedDatabase, customer_id: str, v
     return False
 
 
+def _studio(built: dict[str, str] | None, step: str, first_name: str | None, dealership: str | None,
+            vehicle: dict | None) -> dict[str, str] | None:
+    """The message as published in AI Studio (Cadences -> Sold Delivered: owner lifecycle) when it is edited there,
+    else the built-in wording (client, 20-21 Oct 2026: Betsy's AI Studio edits must be what goes out)."""
+    from upsell_agent import ai_studio
+    values = {"first_name": first_name, "dealership": dealership or "our dealership",
+              "vehicle": sold_delivered.vehicle_label(vehicle), "model": sold_delivered.model_label(vehicle)}
+    return ai_studio.render(ai_studio.step_message("cadences", "owner_lifecycle", step), values, built) or built
+
+
 async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """followups.fire_one's handler for every kind in LIFECYCLE_KINDS (under the lead lock)."""
     from upsell_agent.scheduler.followups import _close, _log, _permitted_channel, plan_call_task
@@ -605,20 +615,23 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
                                          vehicle=sold_delivered.vehicle_label(vehicle), documents=asked_documents)
     elif kind == KIND_POST_DELIVERY_CHECKIN:
         booked = await _has_service_appointment(db, doc["customer_id"], (record or {}).get("vin"))
-        text = sold_delivered.render_checkin(first_name=name, dealership=profile.name, vehicle=vehicle,
-                                             first_service=((record or {}).get("maintenance") or {}).get(
-                                                 "first_service"), offer_service=not booked)
+        text = _studio(sold_delivered.render_checkin(first_name=name, dealership=profile.name, vehicle=vehicle,
+                                                     first_service=((record or {}).get("maintenance") or {}).get(
+                                                         "first_service"), offer_service=not booked),
+                       "day3_checkin", name, profile.name, vehicle)
         if not booked:
             lead_fields["service_offer"] = {"kind": "first_service", "ownership_id": doc.get("ownership_id"),
                                             "asked_at": now, "status": "offered"}
         lead_fields["checkin_sent_at"] = now
     elif kind == KIND_ANNIVERSARY:
-        text = sold_delivered.render_anniversary(first_name=name, dealership=profile.name, vehicle=vehicle,
-                                                 year=int(doc.get("year") or 1))
+        text = _studio(sold_delivered.render_anniversary(first_name=name, dealership=profile.name, vehicle=vehicle,
+                                                         year=int(doc.get("year") or 1)),
+                       "anniversary", name, profile.name, vehicle)
         lead_fields["ownership_prompt"] = {"kind": "anniversary", "ownership_id": doc.get("ownership_id"),
                                            "year": doc.get("year"), "asked_at": now}
     elif kind == KIND_BIRTHDAY:
-        text = sold_delivered.render_birthday(first_name=name, dealership=profile.name)
+        text = _studio(sold_delivered.render_birthday(first_name=name, dealership=profile.name), "birthday", name,
+                       profile.name, vehicle)
     else:
         if await _has_service_appointment(db, doc["customer_id"], (record or {}).get("vin")):
             await _close(db, doc, "suppressed", reason="a service appointment is already booked")

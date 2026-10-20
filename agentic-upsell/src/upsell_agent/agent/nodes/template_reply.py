@@ -128,6 +128,9 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
     from upsell_agent.agent.nodes.compose import place_cannot_supply, place_fixed_text
     place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     touch = (state.decision or {}).get("touch") or {}
+    from upsell_agent.agent.nodes.compose import place_touch_subject
+    from upsell_agent.agent.multi_vehicle import vehicle_label as _vehicle
+    place_touch_subject(draft, touch, state.customer_name, _vehicle(ctx.lead) if ctx else None)
     if touch.get("fixed_text"):
         # Client, 20 Oct 2026 (Betsy: "three hour nudge is wrong verbiage completely" - the draft failed and the template
         # sent "Thanks, that's something we can go over together..."): a fixed touch goes out word for word on the
