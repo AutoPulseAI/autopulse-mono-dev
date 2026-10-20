@@ -400,7 +400,7 @@ async def _fire_staff_quiet_locked(db: DealerScopedDatabase, doc: dict, deps: An
         return "cancelled"
     since = paused_at or doc["created_at"]
     rows = await db.collection(AI_MESSAGES_COLLECTION).find(
-        {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gt": since}}).sort("created_at", 1).to_list(None)
+        {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gte": since}}).sort("created_at", 1).to_list(None)
     if not rows:
         await _close(db, doc, "cancelled", reason="no customer message to answer")
         return "cancelled"
