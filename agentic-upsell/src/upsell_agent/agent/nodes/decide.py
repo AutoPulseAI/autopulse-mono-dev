@@ -21,7 +21,7 @@ after-hours morning message and the dated visit_followup)."""
 
 import dataclasses
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
@@ -92,6 +92,15 @@ UNSOLD_THEME = "unsold_followup"
 UNSOLD_INSTRUCTION = ("They visited the dealership and didn't buy. Thank them for coming in, ask one gentle question "
                       "about what held them back (the vehicle, the price or payment, their trade, timing) so you can "
                       "help, and offer a time to come back in.")
+
+
+def _visit_is_over(booking: dict[str, Any], dealer: DealerProfile, now: datetime) -> bool:
+    """The booking is in the past (beyond the no-show window) or already resolved."""
+    from upsell_agent.agent import appointment as _appointment
+    if str(booking.get("booking_status") or "").lower() in ("completed", "no_show", "noshow", "showed"):
+        return True
+    at = _appointment.appointment_at(tz=dealer.tz, booking=booking)
+    return at is not None and at < now - _appointment.NO_SHOW_AFTER - timedelta(hours=1)
 
 
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
@@ -306,6 +315,10 @@ async def _visit_and_booking(
     Returns (visit context for Compose/Guard, the VisitOfferPlan)."""
     lead_id = state.lead_id or ""
     active_booking = await booking_tool.find_active_booking(state.dealer_id, ctx.lead)
+    if active_booking is not None and _visit_is_over(active_booking, dealer, now):
+        # Live, 20 Oct 2026 (Sadhana: a follow-up on Oct 20 said "You're all set for Thursday, October 15"): a visit whose
+        # time has passed isn't one to confirm - the conversation goes on toward a new one.
+        active_booking = None
     booked_this_turn = False
     visit_ctx: dict[str, Any] = {"status": None, "display": None, "just_booked": False, "stopped": False,
                                  "ask_contact": None}

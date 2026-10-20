@@ -68,3 +68,21 @@ def test_a_time_to_come_in_with_no_day_is_booked():
     late = bt.match_pick("I can come at 7", [], dealer, now, available=open_)
     assert late.ambiguous and late.wanted  # not open: the nearest open times are offered, never silence
     assert not bt.match_pick("I get off work at 4", [], dealer, now, available=open_).matched
+
+
+def test_a_visit_in_the_past_is_not_one_to_confirm():
+    """Live, 20 Oct 2026 (Sadhana): "You're all set for Thursday, October 15" sent five days later."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from upsell_agent.agent.nodes.decide import _visit_is_over
+    from upsell_agent.devtools import simulate
+    from upsell_agent.integrations.dealer_profile import profile_from_record
+    dealer = profile_from_record("d", {"dealer_account_information": {
+        "time_zone": "America/New_York", "weekly_availability": simulate.DEV_WEEKLY_AVAILABILITY}})
+    now = datetime(2026, 10, 20, 15, 0, tzinfo=ZoneInfo("America/New_York"))
+    past = {"bookingDate": datetime(2026, 10, 15, 4, 0), "bookingTime": "14:00", "booking_status": "pending"}
+    soon = {"bookingDate": datetime(2026, 10, 22, 4, 0), "bookingTime": "14:00", "booking_status": "pending"}
+    assert _visit_is_over(past, dealer, now) and not _visit_is_over(soon, dealer, now)
+    assert _visit_is_over({**soon, "booking_status": "completed"}, dealer, now)
+    assert not _visit_is_over(soon, dealer, now - timedelta(days=1))
