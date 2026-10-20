@@ -19,6 +19,7 @@ Every plan travels in the decision dict; the turn (after the send) acts on
 the parts with a side effect still pending (scheduling / cancelling the
 after-hours morning message and the dated visit_followup)."""
 
+import dataclasses
 import re
 from datetime import date, datetime
 from typing import Any
@@ -796,19 +797,20 @@ async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profi
     topic = cannot_supply.detect(text)
     if topic is None:
         return None, None
-    from upsell_agent.agent.vehicle_media import lead_vehicle_vin
-    vin = lead_vehicle_vin(ctx.lead, ctx.lead_state)
-    record = next((r for r in (state.context_pack or {}).get("inventory") or [] if vin and r.get("vin") == vin), None)
-    url = str((record or {}).get("page_url") or "").strip() or None
+    from upsell_agent.agent.vehicle_media import vehicle_page_url, vehicle_record
+    inventory = (state.context_pack or {}).get("inventory")
+    url = vehicle_page_url(ctx.lead, ctx.lead_state, inventory, text)
+    car = vehicle_record(ctx.lead, ctx.lead_state, inventory, text)
     if visit_ctx.get("status") in ("pending", "confirmed"):
-        return cannot_supply.reply(topic, booked=visit_ctx.get("display") or "your visit", vehicle_url=url), None
+        return cannot_supply.reply(topic, booked=visit_ctx.get("display") or "your visit", vehicle_url=url,
+                                   vehicle=car), None
     if not cannot_supply.needs_times(topic):
-        return cannot_supply.reply(topic, vehicle_url=url), None
+        return cannot_supply.reply(topic, vehicle_url=url, vehicle=car), None
     existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
     available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=state.lead_id or "")
     zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
     built = booking_tool.format_offer(booking_tool.offer_times(available, count=2), dealer, customer_zones=zones)
-    answer = cannot_supply.reply(topic, times=[t["display"] for t in built], vehicle_url=url)
+    answer = cannot_supply.reply(topic, times=[t["display"] for t in built], vehicle_url=url, vehicle=car)
     if not answer.offers_times:
         return answer, None
     plan = plan_day_offer(profile=profile, conversation=conversation, built_times=built,
@@ -908,6 +910,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
              if state.trigger in ("inbound_message", "resume_at_opening") and not hold else None)
     if order is not None:
         cannot, cannot_plan = None, None
+        # Client, 20 Oct 2026 (Joel Clymer): her yes / no workflows' {vehicle_link} and car data are filled too, or the
+        # sentence promising them goes.
+        from upsell_agent.agent.vehicle_media import vehicle_page_url, vehicle_record
+        inventory = (state.context_pack or {}).get("inventory")
+        filled = cannot_supply.with_vehicle_link(order.text, vehicle_page_url(ctx.lead, ctx.lead_state, inventory, text))
+        order = dataclasses.replace(order, text=cannot_supply.with_vehicle_values(
+            filled, vehicle_record(ctx.lead, ctx.lead_state, inventory, text)))
     if cannot_plan is not None:
         visit_plan = cannot_plan
     if visit_ctx.get("day_request"):

@@ -110,16 +110,56 @@ def detect(text: str | None) -> str | None:
                  and (asking or topic not in ASKED_ONLY)), None)
 
 
+_LINK_SENTENCE = re.compile(r"[^.!?]*\b(?:link|here it is|click)\b[^.!?]*[.!?]?\s*", re.IGNORECASE)
+
+
+def with_vehicle_link(text: str, url: str | None) -> str:
+    """{vehicle_link} filled with the vehicle's page. With no page known, the sentences that promise a link go and
+    the placeholder with them: never "Here is a link" with nothing attached (client, 20 Oct 2026, Joel Clymer)."""
+    if "{vehicle_link}" not in text:
+        return text
+    if url:
+        return text.replace("{vehicle_link}", url)
+    text = text.replace("{vehicle_link}", "")
+    return re.sub(r"\s{2,}", " ", _LINK_SENTENCE.sub("", text)).strip()
+
+
 def needs_times(topic: str) -> bool:
     return "{times}" in _REPLIES[topic]
 
 
+def vehicle_values(record: dict | None) -> dict[str, str]:
+    """The car's data points an AI Studio answer can use (client, 20 Oct 2026: "where is vehicle image and vehicle
+    mileage and other data points in there that we can autofill?"). Only what the inventory feed says."""
+    r = record or {}
+    name = " ".join(str(v) for v in (r.get("year"), r.get("make"), r.get("model")) if v)
+    return {k: v for k, v in {
+        "vehicle": name, "model": str(r.get("model") or ""), "trim": str(r.get("trim") or ""),
+        "mileage": f"{int(r['miles']):,} miles" if isinstance(r.get("miles"), (int, float)) and r["miles"] else "",
+        "color": str(r.get("exterior_color") or ""), "vin": str(r.get("vin") or ""),
+        "price": f"${int(r['price']):,}" if isinstance(r.get("price"), (int, float)) and r["price"] else "",
+    }.items() if v}
+
+
+_VEHICLE_FIELDS = re.compile(r"\{(vehicle|model|trim|mileage|color|vin|price)\}")
+
+
+def with_vehicle_values(text: str, vehicle: dict | None) -> str:
+    """The car's data points filled in; a sentence needing one we don't have is left out rather than sent with a gap."""
+    values = vehicle_values(vehicle)
+    kept = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", text)
+                    if all(m in values for m in _VEHICLE_FIELDS.findall(sentence)))
+    return _VEHICLE_FIELDS.sub(lambda m: values[m.group(1)], kept)
+
+
 def reply(topic: str, *, times: list[str] | None = None, booked: str | None = None,
-          vehicle_url: str | None = None) -> CannotSupply:
+          vehicle_url: str | None = None, vehicle: dict | None = None) -> CannotSupply:
     """The reply for `topic`. `times`: two open times in words; `booked`: the visit already set, in words."""
     template = _REPLIES[topic]
+    template = with_vehicle_values(template, vehicle)
     calculator = _CALCULATOR.format(url=vehicle_url) if vehicle_url else ""
     template = template.replace("{calculator}", calculator)
+    template = with_vehicle_link(template, vehicle_url)
     if "{times}" not in template:
         return CannotSupply(topic, template, False)
     if booked:

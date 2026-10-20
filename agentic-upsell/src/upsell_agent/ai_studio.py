@@ -431,9 +431,14 @@ def _apply_sources(key: str, c: dict[str, Any], built_in: dict[str, Any] | None)
         org.DMS_SOURCES = compiled
 
 
-def _studio_to_script(text: str) -> str:
-    """A workflow message as the script engines write it: {vehicle_link} is the payment calculator's link."""
-    return str(text or "").replace(" {vehicle_link}", "{calculator}").replace("{vehicle_link}", "{calculator}")
+def _studio_to_script(text: str, topic: str = "") -> str:
+    """A workflow message as the script engines write it. Only Betsy's payment answer's {vehicle_link} is the payment
+    calculator sentence; anywhere else it is the vehicle's own page link (client, 20 Oct 2026, Joel Clymer: her CARFAX
+    answer "Here is a link to the vehicle..." went out with no link)."""
+    text = str(text or "")
+    if topic == "payment":
+        return text.replace(" {vehicle_link}", "{calculator}").replace("{vehicle_link}", "{calculator}")
+    return text
 
 
 def _escalates(node: dict[str, Any]) -> bool:
@@ -471,7 +476,7 @@ def _apply_workflow(key: str, c: dict[str, Any], built_in: dict[str, Any] | None
             cs.CUSTOM_LABELS[topic] = str(c.get("name") or _names.get(("workflows", key)) or key)
         text = fixed_text(tree.get("message") or {})
         if text:
-            cs._REPLIES[topic] = _studio_to_script(text)
+            cs._REPLIES[topic] = _studio_to_script(text, topic)
         patterns = [(t, p) for t, p in cs._PATTERNS if t != topic]
         pattern = trigger or dict(cs._PATTERNS).get(topic)
         if pattern:

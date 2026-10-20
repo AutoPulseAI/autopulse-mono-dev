@@ -27,6 +27,7 @@ machine, so the check stays offline (the URL's shape only) - unit tests never to
 """
 
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -236,6 +237,42 @@ def lead_vehicle_vin(lead: dict | None, lead_state: dict | None) -> str | None:
         return conversation["focus_vin"]  # the shown vehicle the customer referred to (PLAN_4 stream X3)
     shown = conversation.get("shown_vehicles") or []
     return shown[-1].get("vin") if shown and isinstance(shown[-1], dict) else None
+
+
+_VIN_IN_TEXT = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b", re.IGNORECASE)
+
+
+def vehicle_record(lead: dict | None, lead_state: dict | None, inventory: list[dict] | None,
+                   text: str | None = None) -> dict | None:
+    """The inventory record of the vehicle this lead is about, found the same way as its page (below)."""
+    return _find_vehicle(lead, lead_state, inventory or [], text)
+
+
+def vehicle_page_url(lead: dict | None, lead_state: dict | None, inventory: list[dict] | None,
+                     text: str | None = None) -> str | None:
+    """The vehicle's own page for a link the AI sends (client, 20 Oct 2026, Joel Clymer: "Here is a link" went out
+    with none). In order: the lead's / the shown vehicle's VIN, a VIN the customer wrote, the one car in stock
+    matching the lead's year, make and model. None: no link (never another vehicle's)."""
+    found = _find_vehicle(lead, lead_state, [r for r in inventory or [] if str(r.get("page_url") or "").strip()], text)
+    return str(found["page_url"]).strip() if found else None
+
+
+def _find_vehicle(lead: dict | None, lead_state: dict | None, records: list[dict], text: str | None) -> dict | None:
+    by_vin = {str(r.get("vin") or "").upper(): r for r in records}
+    for vin in (lead_vehicle_vin(lead, lead_state), *(_VIN_IN_TEXT.findall(text or ""))):
+        if vin and (hit := by_vin.get(str(vin).upper())):
+            return hit
+    data = (lead or {}).get("data") or {}
+    vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
+    want = {k: str((lead or {}).get(k) or data.get(k) or vehicle.get(k) or "").strip().lower()
+            for k in ("year", "make", "model")}
+    if want["make"] and want["model"]:
+        same = [r for r in records if str(r.get("make") or "").lower() == want["make"]
+                and str(r.get("model") or "").lower() == want["model"]
+                and (not want["year"] or str(r.get("year") or "") == want["year"])]
+        if len(same) == 1:
+            return same[0]
+    return None
 
 
 async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *, settings: Settings,
