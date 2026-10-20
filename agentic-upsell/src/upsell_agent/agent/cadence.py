@@ -35,6 +35,7 @@ function of the stored cadence state and `now`. scheduler/followups.py owns
 the scheduling and firing, agent/turn.py the sending.
 """
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any
@@ -135,6 +136,41 @@ def themes_for_day(day: int | None) -> list[Theme]:
 # Every Days 8-90 angle (the learning layer's catalogue, learning/optimizer.py).
 EXTENDED_THEMES: list[Theme] = list(dict.fromkeys([*NURTURE_THEMES, *DEEPER_THEMES]))
 BY_ID: dict[str, Theme] = {t.id: t for t in (*DAY_THEMES, *EXTENDED_THEMES, NAME_NUDGE)}
+
+# Client, 20-21 Oct 2026 (Betsy: "email subject lines are not effective ones" - the AI-written touches had none set):
+# each follow-up's email subject; AI Studio's subject for the step wins when one is set there. (with a vehicle,
+# without one)
+SUBJECTS: dict[str, tuple[str, str]] = {
+    "vehicle_visual": ("A closer look at your {vehicle}", "A closer look at the car you asked about"),
+    "financing_help": ("Making the numbers work on the {vehicle}", "Making the numbers work for you"),
+    "trade_in": ("Your current car could help with the {vehicle}", "What's your current car worth?"),
+    "vehicle_value": ("Why the {vehicle} stands out", "Why this one stands out"),
+    "appointment_value": ("Let's get you behind the wheel of the {vehicle}", "Let's get you behind the wheel"),
+    "direct_close": ("Still thinking about the {vehicle}?", "Still thinking it over?"),
+    "price_or_offer": ("Good news on the {vehicle}", "Good news on the car you asked about"),
+    "similar_arrivals": ("New arrivals like the {vehicle}", "New arrivals you might like"),
+    "objection_check": ("Anything holding you back, {first_name}?", "Anything holding you back?"),
+    "what_did_we_miss": ("Did we miss something, {first_name}?", "Did we miss something?"),
+    "credit_tips": ("A quick tip before you finance", "A quick tip before you finance"),
+    "trade_market": ("What your trade could be worth now", "What your trade could be worth now"),
+    "still_shopping": ("Still shopping for a {vehicle}?", "Still shopping for a car?"),
+}
+
+
+def subject_for(theme_id: str | None, *, vehicle: str | None, first_name: str | None,
+                edited: str | None = None) -> str | None:
+    """The touch's email subject, filled in; None for a theme without one (the AI writes it)."""
+    with_car, without = SUBJECTS.get(str(theme_id or ""), (None, None))
+    text = (edited or "").strip() or (with_car if vehicle else without)
+    if not text:
+        return None
+    if "{vehicle}" in text and not vehicle:
+        text = without or text
+    if "{first_name}" in text and not first_name:
+        text = re.sub(r",?\s*\{first_name\}", "", text)
+    out = text.replace("{vehicle}", vehicle or "").replace("{first_name}", first_name or "")
+    return re.sub(r"\s{2,}", " ", out).strip() or None
+
 
 # Touch number -> the day it goes out on, for the fixed part of the schedule (§3).
 # Touch 1 is the first reply itself; touch 2 is timed in hours, not days.

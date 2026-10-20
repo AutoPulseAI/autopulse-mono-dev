@@ -186,6 +186,20 @@ def place_fixed_text(draft: dict[str, Any], fixed_text: str | None, customer_fir
     return changed
 
 
+def place_touch_subject(draft: dict[str, Any], touch: dict[str, Any], customer_first_name: str | None,
+                        vehicle: str | None) -> None:
+    """A follow-up touch's email subject (agent/cadence.py SUBJECTS, or the step's in AI Studio), never one the AI
+    makes up (client, 20 Oct 2026: "email subject lines are not effective ones"). The name nudge keeps its own."""
+    if not touch or touch.get("theme") == "name_nudge":
+        return
+    from upsell_agent.agent import cadence
+    from upsell_agent.agent.templates import known_first_name
+    subject = cadence.subject_for(touch.get("theme"), vehicle=vehicle, first_name=known_first_name(customer_first_name),
+                                  edited=touch.get("email_subject"))
+    if subject:
+        draft["email_subject"] = subject
+
+
 def place_cannot_supply(draft: dict[str, Any], cannot: dict[str, Any] | None, customer_first_name: str | None,
                         allowed_urls: list[str] | None = None) -> bool:
     """Client, 12 Oct 2026 (Betsy): what the AI can't supply (credit score, APR, payment, custom photos/video,
@@ -362,6 +376,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     touch_ = (state.decision or {}).get("touch") or {}
     nudged = place_fixed_text(draft, touch_.get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None, nudge=touch_.get("theme") == "name_nudge")
+    place_touch_subject(draft, touch_, state.customer_name, vehicle_label(ctx.lead) if ctx else None)
     hinted = _apply_dev_hint(draft, payload, retry=retry, fallback=fallback, badtrim=badtrim)
     decision = state.decision or {}
     linked = fill_links(draft, link_plan, sms_limit=draft_guard.TOUCH1_SMS_MAX if decision.get("touch1") or

@@ -638,3 +638,17 @@ def test_anniversary_answers_starting_with_no_but_meaning_yes_are_yes():
         assert classify(text) == "no", text
     for text in ("No problem", "Thanks!", "Who is this?", "Happy anniversary to you too"):
         assert classify(text) == "other", text
+
+
+def test_sold_delivered_messages_use_the_wording_published_in_ai_studio(monkeypatch):
+    """Client, 20-21 Oct 2026: the Day-3 check-in, birthday and anniversary for a Sold Delivered lead went out in the
+    built-in wording even when Betsy edited them in AI Studio."""
+    from upsell_agent import ai_studio
+    from upsell_agent.agent import sold_delivered
+    from upsell_agent.scheduler import sold_lifecycles
+    built = sold_delivered.render_birthday(first_name="Maria", dealership="Victory")
+    assert sold_lifecycles._studio(built, "birthday", "Maria", "Victory", None) == built  # not edited: built-in
+    monkeypatch.setattr(ai_studio, "step_message", lambda kind, key, step: {"mode": "fixed", "text": "Happy birthday "
+                                                                            "{first_name} from {dealership}!"})
+    out = sold_lifecycles._studio(built, "birthday", "Maria", "Victory", None)
+    assert out["sms_text"] == "Happy birthday Maria from Victory!"
