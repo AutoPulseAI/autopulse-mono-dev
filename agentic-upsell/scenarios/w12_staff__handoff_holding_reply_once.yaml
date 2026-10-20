@@ -12,13 +12,9 @@ steps:
   - wait_turns: {lead: h, count: 3, timeout_s: 20}
   - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
   - expect_outbox: {lead: h, channel: sms, count: 2, contains: "a member of our team will call you"}
-  - reply: {lead: h, text: "Hello?"}
+  # Client, 7 Oct 2026 ("Have a manager call me at 9:30" followed by questions got silence): after asking for a call,
+  # the customer's question is answered by the AI until the call happens - never silence.
+  - reply: {lead: h, text: "Hello? Is the CR-V still there?"}
   - wait_turns: {lead: h, count: 4, timeout_s: 20}
-  - expect_turn: {lead: h, trigger: inbound_held, outcome: holding_reply}
-  - expect_outbox: {lead: h, channel: sms, count: 3, contains: "passed this to the team"}
-  - expect_lead: {lead: h, staff_notice: after_handoff_question}
-  - reply: {lead: h, text: "Is anyone there?"}
-  - wait_turns: {lead: h, count: 5, timeout_s: 20}
-  - expect_turn: {lead: h, trigger: inbound_held, outcome: saved_only}
+  - expect_turn: {lead: h, trigger: inbound_message}
   - expect_outbox: {lead: h, channel: sms, count: 3}
-  - expect_followup: {lead: h, kind: handoff_check, status: pending}

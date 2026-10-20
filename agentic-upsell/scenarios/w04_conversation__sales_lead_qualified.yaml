@@ -9,6 +9,6 @@ steps:
   - wait_turns: {lead: q, count: 2, timeout_s: 15}
   - reply: {lead: q, text: "No trade-in"}
   - wait_turns: {lead: q, count: 3, timeout_s: 15}
-  - expect_turn: {lead: q, outcome: qualified}
-  - wait_status: {lead: q, status: qualified}
+  # Client, 21 Oct 2026: qualified means the next step is the visit - two real times, never a dead end.
+  - expect_turn: {lead: q, outcome: offer_visit}
   - expect_slots: {lead: q, values: {interest.budget: 35000, interest.timeline: this_month, trade_in.has_trade: false}}

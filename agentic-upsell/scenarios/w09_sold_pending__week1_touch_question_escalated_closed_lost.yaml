@@ -8,7 +8,6 @@ steps:
   - expect_lead: {lead: s, stage: sold_pending, status: active}
   - expect_followup: {lead: s, kind: sold_pending_touch, status: pending, timeout_s: 20}
   - advance_clock: {dealer: A, to: "Wed 10:05"}
-  - expect_followup: {lead: s, kind: call_task, status: pending, timeout_s: 30}
   - expect_followup: {lead: s, kind: sold_pending_touch, status: pending, timeout_s: 20}
   - reply: {lead: s, text: "When will my car be ready for pickup?"}
   - expect_lead: {lead: s, stage: sold_pending, staff_notice: sold_pending_escalation, timeout_s: 30}

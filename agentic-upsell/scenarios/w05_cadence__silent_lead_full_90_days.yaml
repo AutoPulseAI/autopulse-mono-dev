@@ -9,7 +9,7 @@ steps:
   - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 2}}
   - run_next: {lead: s, kind: cadence_touch}
   - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 0, timeout_s: 45}
-  - expect_last_sent: {lead: s, contains: "Sid?"}
+  - expect_outbox: {lead: s, channel: sms, count: 2, contains: "Sid?"}
 
   # Touches 3-8, Days 2-7, in the client's order.
   - expect_followup: {lead: s, kind: cadence_touch, status: pending, touch: {touch_number: 3, theme: vehicle_visual}, timeout_s: 20}
@@ -36,15 +36,15 @@ steps:
   # replanned under the same touch_number before firing), so this only checks each one fires in turn, not its
   # exact number or day - the fixed-day touches above already prove the client-mandated schedule.
   - run_next: {lead: s, kind: cadence_touch}
-  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 7, timeout_s: 45}
   - run_next: {lead: s, kind: cadence_touch}
-  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 8, timeout_s: 45}
   - run_next: {lead: s, kind: cadence_touch}
-  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 9, timeout_s: 45}
   - run_next: {lead: s, kind: cadence_touch}
-  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 10, timeout_s: 45}
   - run_next: {lead: s, kind: cadence_touch}
-  - expect_followup: {lead: s, kind: cadence_touch, status: sent, timeout_s: 45}
+  - expect_followup: {lead: s, kind: cadence_touch, status: sent, index: 11, timeout_s: 45}
   # The first reply and all 12 touches went out by text, and the 12 touches by email too.
   - expect_outbox: {lead: s, channel: sms, count: 13}
   - expect_outbox: {lead: s, channel: email, count: 12}

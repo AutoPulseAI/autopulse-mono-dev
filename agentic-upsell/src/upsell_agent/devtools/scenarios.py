@@ -623,7 +623,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         return f"customer is {row['customer_status']}: {row.get('customer_status_reason')}"
 
     if kind == "expect_call_task":
-        # MASTER_PLAN_3 C2: {lead, status: open | none | cancelled | completed | dismissed, timeout_s?}
+        # MASTER_PLAN_3 C2: {lead, status: open | none | not_open | cancelled | completed | dismissed, timeout_s?}
+        # not_open: nothing waiting for staff (a task that was cancelled or done is fine).
         lead = ctx.lead(args["lead"])
         want = str(args.get("status", "open"))
 
@@ -632,6 +633,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 {"lead_id": lead["lead_id"]}).to_list(None)
             if want == "none":
                 return {"ok": True} if not rows else None
+            if want == "not_open":
+                return {"ok": True} if not any(r["status"] == "open" for r in rows) else None
             return rows[-1] if rows and rows[-1]["status"] == want else None
 
         try:
@@ -640,7 +643,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_CALL_TASKS_COLLECTION).find(
                 {"lead_id": lead["lead_id"]}).to_list(None)
             raise ScenarioFailed(f"call tasks: {[r['status'] for r in rows] or 'none'}, expected {want}") from None
-        return "no call task" if want == "none" else f"call task {found['status']} for {found['phone']}"
+        return ("no call task" if want == "none" else "nothing open for staff" if want == "not_open"
+                else f"call task {found['status']} for {found['phone']}")
 
     if kind == "call_outcome":
         # PLAN_4 stream H: staff finished the lead's open call task; the lead outcome reaches the AI.
