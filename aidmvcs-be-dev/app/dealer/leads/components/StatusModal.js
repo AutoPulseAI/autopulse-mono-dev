@@ -23,6 +23,11 @@ export default function StatusModal({
   const [managerOutcome, setManagerOutcome] = useState("");
   const [conflict, setConflict] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Client, 20 Oct 2026 (Betsy: staff set "Contact Made" without speaking to the customer - "Mercy is messing up
+  // reporting"): a contact status needs a confirmed conversation and a note of what was said, which the AI reads.
+  const [spoke, setSpoke] = useState(false);
+  const [contactNote, setContactNote] = useState("");
+  const needsContact = tempStatus === "Contacted - No Next Action" && currentStatus !== tempStatus;
 
   useEffect(() => {
     setTempStatus(currentStatus || "");
@@ -78,6 +83,13 @@ export default function StatusModal({
       extra.booking_date = date;
       extra.booking_time = time;
       if (appointmentType) extra.appointment_type = appointmentType;
+    }
+    if (needsContact) {
+      if (!spoke || !contactNote.trim()) {
+        alert("Please confirm you spoke with the customer and note what was discussed.");
+        return;
+      }
+      extra.contact_note = contactNote.trim();
     }
     if (tempStatus === "Visited") {
       if (!managerOutcome) {
@@ -155,6 +167,23 @@ export default function StatusModal({
           </div>
         )}
 
+        {needsContact && (
+          <div className="mt-3">
+            <Form.Check id="spokeWithCustomer" checked={spoke} onChange={(e) => setSpoke(e.target.checked)}
+              label="I spoke with the customer (call, text or in person)" />
+            <Form.Group controlId="contactNote" className="mt-2">
+              <Form.Label>What was discussed? (the AI reads this to continue the conversation)</Form.Label>
+              <Form.Control as="textarea" rows={2} value={contactNote} onChange={(e) => setContactNote(e.target.value)}
+                placeholder="e.g. Wants a lower payment, has a 2018 Altima to trade, call after 5" />
+            </Form.Group>
+            {!spoke && (
+              <p className="small text-secondary-light mt-1 mb-0">
+                If you haven&apos;t spoken with the customer yet, keep the current status: the AI keeps following up.
+              </p>
+            )}
+          </div>
+        )}
+
         {tempStatus === "Visited" && (
           <Form.Group controlId="managerOutcome" className="mt-3">
             <Form.Label>Outcome of the visit (required)</Form.Label>
@@ -175,7 +204,7 @@ export default function StatusModal({
           variant="custom"
           onClick={() => handleStatusUpdate()}
           disabled={busy || (tempStatus === "Appointment Booked" && (!bookingDate || !bookingTime)) ||
-            (tempStatus === "Visited" && !managerOutcome)}
+            (tempStatus === "Visited" && !managerOutcome) || (needsContact && (!spoke || !contactNote.trim()))}
         >
           Update Status
         </Button>
