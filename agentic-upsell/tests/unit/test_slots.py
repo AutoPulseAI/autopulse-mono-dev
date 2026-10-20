@@ -108,7 +108,7 @@ SERVICE_ALL = [_fact("vehicle.year", 2020), _fact("vehicle.make", "Subaru"), _fa
     (LeadType.SERVICE, [], "ask", ["interest.service_needed", "vehicle.year", "vehicle.make", "vehicle.model"]),
     (LeadType.GENERAL, [], "ask", ["interest.lead_type"]),
     # partly filled: the next missing ones, budget OR payment as one requirement
-    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment", "interest.timeline"]),
+    (LeadType.SALES, SALES_ALL[:2], "ask", ["interest.budget", "interest.monthly_payment", "trade_in.has_trade"]),
     (LeadType.TRADE_IN, TRADE_ALL[:4], "ask", ["trade_in.condition", "trade_in.payoff"]),
     # everything filled
     (LeadType.SALES, SALES_ALL, "qualified", []),
@@ -166,7 +166,7 @@ def test_decide_is_deterministic_and_passes_questions_through():
     flags = Flags(questions=[{"text": "Is it AWD?", "label": "answerable"}])
     assert next_action(profile, flags) == next_action(profile, flags)
     assert next_action(profile, flags)["answer_questions"] == [{"text": "Is it AWD?", "label": "answerable"}]
-    assert next_action(profile, flags)["required_filled"] == 2 and next_action(profile, flags)["required_total"] == 5
+    assert next_action(profile, flags)["required_filled"] == 2 and next_action(profile, flags)["required_total"] == 4
 
 
 def test_at_most_two_requirements_are_asked_per_message():

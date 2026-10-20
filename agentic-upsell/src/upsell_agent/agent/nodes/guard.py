@@ -194,6 +194,21 @@ def link_promised_but_missing(draft: dict[str, Any]) -> list[str]:
             if _SAYS_LINK.search(str(draft.get(key) or "")) and not _URL.search(str(draft.get(key) or ""))]
 
 
+# Client, 20-21 Oct 2026 (Betsy: "the AI gets the conversation going and abandons"; live: "I'm here ... when you're
+# ready", eval: "set up a drive when you're ready"): words that leave the next step to the customer. Never written.
+_DEAD_END = re.compile(r"\b(?:when(?:ever)?\s+you(?:'|\u2019)?re\s+ready|let\s+(?:me|us)\s+know\s+when|feel\s+free\s+to\s+"
+                       r"(?:reach\s+out|stop\s+by|contact)|just\s+say\s+when|reach\s+out\s+(?:any\s*time|whenever))\b",
+                       re.IGNORECASE)
+
+
+def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if (decision.get("cannot_supply") or {}).get("text"):
+        return []  # the client's own script, placed by code
+    return [f"the {name} leaves the next step to the customer ({m.group(0)!r}) - ask for the visit with specific "
+            "times instead" for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _DEAD_END.search(str(draft.get(key) or "")))]
+
+
 def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     if decision.get("action") in ("handoff", "offer_human") or decision.get("reply_language"):
         return []
@@ -382,7 +397,17 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     known += [m.get("text") for m in pack.get("working_memory") or [] if m.get("text")]
     touch1 = (state.decision or {}).get("touch1") or {}
     known += [touch1.get(k) for k in ("price_line", "lead_answers", "intro") if touch1.get(k)]
-    known = [k for k in known if k is not None]
+    # Found 21 Oct 2026 (appointment eval): "you're all set for Tuesday, September 22 at 4:00 PM" was rejected for
+    # "22" - the visit, the times offered, the date asked to follow up and today's date are real, never invented.
+    decision_ = state.decision or {}
+    known += [(decision_.get("visit") or {}).get("display"), (decision_.get("next_action") or {}).get("display")]
+    known += [t.get(k) for t in ((decision_.get("visit_offer") or {}).get("times") or []) for k in ("display", "date")]
+    from datetime import timedelta as _td
+
+    from upsell_agent import clock as _clock
+    today = _clock.now()
+    known += [f"{(today + _td(days=d)):%B} {(today + _td(days=d)).day}" for d in range(15)]
+    known = [k for k in known if k]
     draft = state.draft or {}
     # check_draft itself allows a mentioned vehicle's own year/miles and does
     # the vin/trim/make grounding check (MASTER_PLAN_3 Phase 3 decision C, Phase 4).
@@ -434,6 +459,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if no_alternatives:
         result["passed"] = False
         result["violations"] += no_alternatives
+    dead_end = dead_end_wording(state.decision or {}, state.draft or {})
+    result["checks"]["no_dead_end_wording"] = not dead_end
+    if dead_end:
+        result["passed"] = False
+        result["violations"] += dead_end
     team = mentions_the_team(state.decision or {}, state.draft or {})
     result["checks"]["no_team_mention"] = not team
     if team:

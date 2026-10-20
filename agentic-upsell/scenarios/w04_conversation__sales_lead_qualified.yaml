@@ -4,7 +4,7 @@ steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: q, dealer: A, lead_type: sales, channel: sms, name: Quinn Scenario, comments: "Looking for a new Toyota RAV4"}
   - wait_turns: {lead: q, count: 1, timeout_s: 15}
-  - expect_slots: {lead: q, filled: [interest.new_or_used, interest.model], missing: [interest.timeline]}
+  - expect_slots: {lead: q, filled: [interest.new_or_used, interest.model]}
   - reply: {lead: q, text: "My budget is $35,000 and I'd like to buy this month"}
   - wait_turns: {lead: q, count: 2, timeout_s: 15}
   - reply: {lead: q, text: "No trade-in"}

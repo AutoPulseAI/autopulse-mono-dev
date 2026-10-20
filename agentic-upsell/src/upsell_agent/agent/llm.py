@@ -65,7 +65,8 @@ class ExtractionResult(BaseModel):
     upset: bool = Field(default=False, description="Angry or upset with the dealership or their situation")
     upset_confidence: float = Field(default=0.0, ge=0, le=1, description="How sure you are they are upset")
     annoyed_at_bot: bool = Field(default=False, description=(
-        "Frustrated with this conversation itself: being asked the same thing, not getting an answer"))
+        "Frustrated with this conversation itself: being asked the same thing, not getting an answer. Never a worry "
+        "about the deal (approval, price, wasting their time) - that is an objection to answer"))
     possible_opt_out: bool = Field(default=False, description=(
         "They may be asking us to stop contacting them, but not in plain words"))
     opt_out_confidence: float = Field(default=0.0, ge=0, le=1, description=(
@@ -85,7 +86,9 @@ class ExtractionResult(BaseModel):
     visit_when_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are that those words are their answer to when they'd come in"))
     declines_visit: bool = Field(default=False, description=(
-        "They turn down a visit offer we just made (e.g. 'not yet', 'I'm just looking', 'maybe later')"))
+        "They turn down a visit offer we just made (e.g. 'not yet', 'I'm just looking', 'maybe later'). 'Just give me "
+        "your best price first', 'can't you just tell me what it's worth?', 'I don't want to waste my time if I can't "
+        "get approved' are objections: true, with visit_objection wants_numbers / trade_value_unsure / credit_worry"))
     declines_visit_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are they're declining the visit offer, not answering something else"))
     visit_objection: Literal["time_convenience", "just_looking", "wants_numbers", "credit_worry",
@@ -227,7 +230,10 @@ Rules:
   clear ("this is ridiculous", "worst service"); mild disappointment is below 0.8. Nervous, worried, anxious or
   unsure ("I'm nervous about this whole process", "buying a car stresses me out") is not upset: false.
 - annoyed_at_bot: frustrated with this conversation ("you keep asking the same thing", "that's not what I
-  asked", "just answer my question"). That is not `upset` and not a request for a person.
+  asked", "just answer my question"). That is not `upset` and not a request for a person. A worry about the DEAL is
+  never annoyed_at_bot - it is an objection the reply answers and turns into the reason to come in ("I'm not trying to
+  waste my time if I can't get approved", "just give me your best price", "can't you just tell me what it's worth?",
+  "my credit isn't great"; client, 21 Sep / 21 Oct 2026).
 - possible_opt_out (+ opt_out_confidence): they may want us to stop contacting them ("why do you keep
   messaging me", "I'm getting too many of these", "please stop"). "I'm not interested" or "not right now" is
   an objection, not an opt-out. Only ever report it; you never decide what may be sent.

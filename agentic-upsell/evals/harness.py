@@ -96,8 +96,12 @@ async def _setup(case: dict[str, Any]) -> dict[str, str]:
     # Each case runs in its own event loop (asyncio.run); a cached agent's OpenAI client is bound to the
     # previous one, and a real model then fails with "Event loop is closed" and the turn sends the template
     # (found by stream G's grammar eval). Fresh agents per case.
-    for agent in (llm.extract_agent, llm.compose_agent, llm.summary_agent):
-        agent.cache_clear()
+    # Every cached agent (the writer one level down, keyed by its prompt; the language / translation agents).
+    from upsell_agent.agent import reply_language
+    for module in (llm, reply_language):
+        for value in list(vars(module).values()):
+            if callable(value) and hasattr(value, "cache_clear"):
+                value.cache_clear()
     dealer_profile.clear_cache()
     # Dev customers have 555 phones and no DealerVault address, so the send
     # check would use only hours legal in every US zone, and a campaign reply

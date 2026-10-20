@@ -482,6 +482,7 @@ def test_price_range_rounds_to_500_either_side():
 
 async def test_live_source_shows_a_mapped_dealers_stock_as_ours():
     import httpx
+
     from upsell_agent.config import Settings
     from upsell_agent.tools.inventory_tool import LiveInventorySource
 

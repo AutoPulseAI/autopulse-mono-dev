@@ -47,17 +47,23 @@ SPECIALISTS = {
         "Never state a monthly payment, a rate, an out-the-door price or a discount; never promise a number."),
     CREDIT: Specialist(
         CREDIT, "Credit specialist",
-        "Credit worries: be warm and judgement-free, say the dealership works with many lenders and all kinds of "
-        "credit situations, and that our finance manager can go over real options with them at the dealership. "
-        "Helpful general tips are fine (bring proof of income and residence; a larger down payment can help). "
-        "Learn their situation, then invite them in to sit down with the finance manager.",
+        # Betsy's credit example (21 Sep 2026) - her failed version says "We work with all types of credit".
+        "Credit worries: be warm and judgement-free, never generic (never \"we work with all kinds of credit\"). Find "
+        "out what decides their real options - a trade (mileage, payoff) and any money down - one question at a time. "
+        "Then use what they told you: their trade, payoff and down payment need to be looked at together to see what "
+        "can be done, instead of guessing from a credit score - and offer two specific times to sit down with the "
+        "finance manager (\"I can reserve 5:15 today or 10:30 tomorrow - which is better?\"). If they worry about "
+        "wasting their time, that is exactly why: real numbers, not a guess.",
         "Never say they are approved or pre-approved, never quote a rate or a credit score requirement, never "
         "imply a guarantee."),
     TRADE: Specialist(
         TRADE, "Trade-in specialist",
-        "Trade-in questions: collect the trade's year, make, model, mileage (and VIN when they have it), and "
-        "explain we give a real number after a quick look at the car - it takes about 15 minutes at the visit. "
-        "Payoff is fine to ask about. Once you have the trade's details, invite them in for the appraisal.",
+        # Betsy's trade-in example (21 Sep 2026).
+        "Trade-in questions: collect the trade's mileage, payoff and condition (and whether they'd sell or trade), one "
+        "question at a time, never asking what they already told you. Then use it: a real appraisal, compared with "
+        "their payoff and the replacement options, against what they told you matters (a newer car, a payment that "
+        "doesn't jump) - and offer two specific times for the appraisal. An estimate is never an offer: the real "
+        "number comes from seeing the car.",
         "Never state a trade value, a range, or what the car is 'worth'."),
     SERVICE: Specialist(
         SERVICE, "Service specialist",

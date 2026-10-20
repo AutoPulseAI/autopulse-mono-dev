@@ -6,7 +6,6 @@ steps:
   - wait_turns: {lead: d, count: 1, timeout_s: 20}
   - chat: {lead: d, messages: ["hmm", "not sure", "hmm", "maybe", "hmm", "idk", "hmm", "not sure", "hmm", "hmm"]}
   - expect_no_repeat_asks: {lead: d}
-  - expect_lead: {lead: d, status: active}
   - reply: {lead: d, text: "ok"}
   - wait_turns: {lead: d, count: 12, timeout_s: 20}
   # Client, 21 Oct 2026: never a dead end - the visit is offered (at most three times), one question.

@@ -39,6 +39,8 @@ Angle = Literal["primary_interest", "objection", "value_proposition"]
 
 # Attempt 2's objection angle (B4 item 4, architecture §15 decision 108): a seen objection first,
 # else the customer's own stated priority (decided in _angle_for_attempt).
+# Objections answered and asked again in the same reply; a plain "not yet" / "just looking" / "I'm busy" parks the offer.
+ANSWER_THEN_ASK = frozenset({"wants_numbers", "credit_worry", "trade_value_unsure"})
 _OBJECTION_REASON = {
     "time_convenience": "we can work around your schedule",
     "just_looking": "there's no pressure - coming by just lets you see it in person, no obligation",
@@ -92,7 +94,7 @@ def _values(profile: Profile) -> dict[str, Any]:
     return profile.values(include_stale=True)
 
 
-def eligible(profile: Profile, extraction: dict[str, Any]) -> bool:
+def eligible(profile: Profile, extraction: dict[str, Any], replies: int = 0) -> bool:
     """B0.12: as soon as we know what they want (model or type) and roughly
     when, or right away on a buying signal. Applies to every lead type
     (decision 106): trade-in's "what" is their trade vehicle, service's is
@@ -108,7 +110,9 @@ def eligible(profile: Profile, extraction: dict[str, Any]) -> bool:
     # itself - "keep it under 400 a month" is answered with a visit built on it, not "I've made a note".
     has_objective = bool(values.get("interest.monthly_payment") or values.get("interest.budget")
                          or values.get("trade_in.payoff"))
-    return knows_what and (knows_when or has_objective)
+    # Scope (blueprint 3B step 4, "Assume ready now"; Betsy, 16 Oct 2026: qualify with one or two questions, then offer
+    # times): once the customer has answered twice, knowing the vehicle is enough - the timeline isn't a gate.
+    return knows_what and (knows_when or has_objective or replies >= 2)
 
 
 def _money(value: Any) -> str | None:
@@ -268,6 +272,18 @@ def plan_visit(
             why = f"Declined (attempt {record.attempts} of {MAX_ATTEMPTS}): not offered again for a few replies."
         if handoff:
             why += " Declined more than once: Dealership Action Required."
+        if objection in ANSWER_THEN_ASK and not stopped and not handoff and built_times:
+            # Scope (blueprint 3C; Betsy's examples, 21 Sep 2026): "Attempt 2: a different approach, based on the hot
+            # button or objection" - in the same reply ("Just give me your best price first" -> the price answered,
+            # then "Would 5:30 today or 12:15 tomorrow work better?"). Only a plain "not yet" parks the offer.
+            attempt = record.attempts + 1
+            angle, value_prop = _angle_for_attempt(attempt, objection, profile)
+            why = f"Objection ({objection}) answered, offered again (attempt {attempt} of {MAX_ATTEMPTS}, angle {angle})."
+            new_record = VisitState(attempts=attempt, angles_used=[*record.angles_used, angle],
+                                    offered_times=built_times, offered_turn=conversation.turn + 1, declined=False,
+                                    stopped=False, objections=objections, followup_due=None, why=why)
+            return VisitOfferPlan(fire=True, attempt=attempt, angle=angle, value_proposition=value_prop,
+                                  times=built_times, record=new_record.model_dump(), why=why)
         new_record = VisitState(attempts=record.attempts, angles_used=record.angles_used, offered_times=[],
                                 offered_turn=record.offered_turn, declined=True, declined_turn=conversation.turn + 1,
                                 stopped=stopped, objections=objections, followup_due=followup_due, why=why)

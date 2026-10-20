@@ -97,7 +97,7 @@ async def test_sales_lead_is_qualified_over_a_chat(mongo):
     assert second["outcome"] == "offer_visit"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]}) or {}
     assert state["conversation"]["visit"]["attempts"] == 1
-    assert state["required"] == {"filled": 4, "total": 5}
+    assert state["required"] == {"filled": 3, "total": 4}
 
 
 async def test_trade_in_lead_qualifies_from_one_detailed_message(mongo):

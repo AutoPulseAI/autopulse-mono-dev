@@ -36,9 +36,9 @@ Rules (Omnichannel PDF §2):
   with the user, 1 Oct 2026).
 """
 
+import dataclasses
 import logging
 import re
-import dataclasses
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum

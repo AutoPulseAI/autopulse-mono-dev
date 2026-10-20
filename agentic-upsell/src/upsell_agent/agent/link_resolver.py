@@ -47,8 +47,9 @@ NO_WEBSITE_LINE = "I don't have our website link handy right now."
 OTHER_LINE = "I don't have a link for that, but I can help you with it right here."
 # Dealer Setup's own pages (client, 8 Oct 2026): what each is, and the honest line when it isn't set up.
 DEALER_LINKS = {
-    "credit_application": ("credit application", "I don't have our online credit application link handy right now."),
-    "trade_in": ("trade-in appraisal", "I don't have our online trade-in appraisal link handy right now."),
+    # Client, 21 Oct 2026: never open with what we can't do - the visit takes care of it.
+    "credit_application": ("credit application", "We can take care of the credit application together at the dealership."),
+    "trade_in": ("trade-in appraisal", "We can do the appraisal together when you stop by."),
 }
 
 PlanKind = Literal["none", "vehicle", "vehicle_and_website", "website", "credit_application", "trade_in",
