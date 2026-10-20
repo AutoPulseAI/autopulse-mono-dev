@@ -1028,7 +1028,13 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": event.lead_id}, {"$set": {"status": "active", "status_reason": None,
                                                   "resumed_at": clock.now()}})
-        if (stage_change or {}).get("cadence_started"):
+        # Client, 20 Oct 2026 (Betsy: "nothing is happening with these leads the next day or in the same day. These
+        # are hot leads"): a lead that was already in Short-Term (New Lead -> staff "Contact Made - No Next Action")
+        # starts no new cadence, and a touch cancelled earlier left it with none. Whatever the stage did, the lead
+        # leaves here with a touch planned.
+        has_touch = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"lead_id": event.lead_id, "kind": "cadence_touch", "status": "pending"}, projection={"_id": 1})
+        if (stage_change or {}).get("cadence_started") or not has_touch:
             lead = lead if stage_event else await find_lead(db, event.lead_id)
             customer_id = lead_customer_id(lead, db.dealer_id)
             if customer_id:

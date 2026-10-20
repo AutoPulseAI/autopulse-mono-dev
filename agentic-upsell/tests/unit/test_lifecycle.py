@@ -78,8 +78,6 @@ def test_transitions(current, event, expected):
     (Stage.OPTED_OUT, Event("customer_replied")),
     (Stage.OPTED_OUT, Event("sales_visit")),
     # Closed - Lost is terminal: a new lead starts its own workflow (client, 1 Oct 2026).
-    (Stage.CLOSED_LOST, Event("customer_replied")),
-    (Stage.CLOSED_LOST, Event("appointment_set")),
     # Day 91 doesn't close a pending appointment (decided with the user, 1 Oct 2026)...
     (Stage.APPOINTMENT_SET, Event("day_91")),
     (Stage.NO_SHOW, Event("day_91")),
@@ -500,14 +498,15 @@ async def test_day_91_keeps_a_long_horizon_next_step(mongo):
 
 
 @pytestmark_flow
-async def test_a_reply_on_a_closed_lead_is_answered_and_staff_are_told(mongo):
+async def test_a_reply_on_a_closed_lead_reopens_it(mongo):
     created = await _new_lead(created_at=clock.now() - timedelta(days=92))
     await _say(created, "ok")
     await lifecycle.close_expired()
     await _say(created, "Hi, is the RAV4 still there?")
     state = await _state(mongo, created)
-    assert state["stage"] == "closed_lost"
-    assert state["staff_notice"]["kind"] == "reply_on_closed_lead"
+    # Client, 20 Oct 2026 (Betsy, Quincy Mack): the customer writing back reopens the lead as Contact Made.
+    assert state["stage"] == "contact_made_no_next_action"
+    assert not state.get("opportunity_closed_at")
 
 
 @pytestmark_flow
@@ -567,3 +566,19 @@ async def test_the_ais_working_stages_show_as_crm_statuses_and_staff_ones_are_no
         "staff_not_contacted", source="staff_status", reason='Staff set the lead to "Lead Not Contacted"')])
     assert (await _state(mongo, created))["stage"] == "no_contact_made"
     assert len(sent) == before  # staff's own status is never sent back
+
+
+@pytest.mark.parametrize("event, expected", [
+    (Event("customer_replied"), Stage.CONTACT_NO_ACTION),
+    (Event("appointment_set"), Stage.APPOINTMENT_SET),
+    (Event("staff_no_next_action"), Stage.CONTACT_NO_ACTION),
+    (Event("staff_not_contacted"), Stage.NO_CONTACT),
+])
+def test_closed_lost_reopens(event, expected):
+    """Client, 20 Oct 2026 (Betsy, Quincy Mack): a reply, a booking or a staff working status reopens Closed - Lost."""
+    result = lifecycle.transition(Stage.CLOSED_LOST, event)
+    assert result.stage == expected and result.rule.startswith("reopened_")
+
+
+def test_closed_no_longer_owns_stays_closed():
+    assert not lifecycle.transition(Stage.CLOSED_NO_LONGER_OWNS, Event("customer_replied")).changes

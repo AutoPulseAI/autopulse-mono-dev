@@ -76,6 +76,7 @@ export async function POST(request) {
     }
 
     const {
+        leadId,
         parent_message_id,
       content,
       subject,
@@ -84,23 +85,25 @@ export async function POST(request) {
     } = await request.json();
 
     // Validate required fields
-    if (!parent_message_id || !content || !communicationType) {
+    if ((!parent_message_id && !leadId) || !content || !communicationType) {
       return NextResponse.json(
         { message: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-
-
+    const notNote = { $or: [{ is_note: { $exists: false } }, { is_note: false }] };
     // Find the parent message and latest reply in the thread
-    const parentMessage = await Email.findOne({ 
-      message_id: parent_message_id,
-      $or: [
-        { is_note: { $exists: false } },
-        { is_note: false }
-      ]
-    });
+    let parentMessage = parent_message_id
+      ? await Email.findOne({ message_id: parent_message_id, ...notNote }) : null;
+    // Client, 20 Oct 2026 (Betsy, Quincy Mack: "Parent message not found"): the newest item on the lead was a status
+    // note, which isn't a message to reply to. The reply then hangs off the lead's latest real message - the
+    // recipient is the customer on the lead anyway (below).
+    if (!parentMessage && leadId && mongoose.Types.ObjectId.isValid(leadId)) {
+      const onLead = { lead_id: new mongoose.Types.ObjectId(leadId), message_id: { $exists: true, $ne: null }, ...notNote };
+      parentMessage = await Email.findOne({ ...onLead, communication_type: communicationType }).sort({ _id: -1 })
+        || await Email.findOne(onLead).sort({ _id: -1 });
+    }
     if (!parentMessage) {
       return NextResponse.json(
         { message: 'Parent message not found' },
@@ -113,7 +116,7 @@ export async function POST(request) {
         });
 
     const latestReply = await Email.findOne({ 
-      parent_message_id: parent_message_id,
+      parent_message_id: parentMessage.message_id,
       $or: [
         { is_note: { $exists: false } },
         { is_note: false }
@@ -148,6 +151,20 @@ export async function POST(request) {
       to = leadContact.phone;
     }
     if (communicationType === 'sms') {
+      // Client, 20 Oct 2026 (Betsy, Josh Opray texted STOP: "does not merit opt-in without customer consent. email
+      // should be available, NOT sms"): after a STOP only the customer's own START reopens texting - a staff text is
+      // refused, on the lead or the phone number (the AI's opt-out entries, ai_consent).
+      const digits = String(to || '').replace(/\D/g, '');
+      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+      const who = [{ address: e164 }];
+      if (parentMessage.lead_id) who.push({ lead_id: String(parentMessage.lead_id) });
+      const latest = await mongoose.connection.db.collection('ai_consent')
+        .find({ $or: who, channel: 'sms', consent_type: 'opt_out' }).sort({ _id: -1 }).limit(1).next();
+      if (latest?.consent_status === 'opted_out') {
+        return NextResponse.json(
+          { message: 'This customer texted STOP, so texting is off. Please reply by email or call instead.' },
+          { status: 403 });
+      }
       // The dealership's texting number is the sender (client, 19 Oct 2026: a staff text showed "From: Leads@...").
       from = dealer?.dealer_account_information?.sms_conversion_phone || process.env.TWILIO_PHONE_NUMBER || from;
     }
@@ -240,7 +257,7 @@ export async function POST(request) {
     // Create the conversation record
     const conversationRecord = new Email({
       message_id: sentMessageId || `local-${Date.now()}`,
-      parent_message_id: parent_message_id,
+      parent_message_id: parentMessage.message_id,
       parent_conversation: latestMessageId,
       sender: from,
       recipient: to,
