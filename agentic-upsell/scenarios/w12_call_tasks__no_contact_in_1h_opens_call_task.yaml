@@ -6,4 +6,5 @@ steps:
   - wait_turns: {lead: c, count: 1, timeout_s: 20}
   - expect_no_followup: {lead: c, kind: call_task, settle_s: 2}
   - advance_clock: {minutes: 65}
-  - expect_call_task: {lead: c, status: none}
+  # Still no 60-minute call task (the Days 1-7 morning / afternoon tasks are separate and may open on a workday).
+  - expect_no_followup: {lead: c, kind: call_task, settle_s: 2}

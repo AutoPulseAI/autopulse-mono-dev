@@ -1,0 +1,15 @@
+name: STOP stops every text, AI and follow-up; email carries on
+description: 'Betsy, 20 Oct 2026 (Josh Opray texted STOP): "Customer MUST opt back in to receive subsequent AI OR MANUAL SMS". After STOP no text goes out; the next follow-up goes by email only.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: j, dealer: A, lead_type: sales, channel: sms, name: Josh Stopper, comments: "Interested in a 2022 Ford Escape"}
+  - wait_turns: {lead: j, count: 1, timeout_s: 20}
+  - reply: {lead: j, text: "STOP"}
+  - wait_turns: {lead: j, count: 2, timeout_s: 20}
+  - expect_outbox: {lead: j, channel: sms, count: 1}
+  - expect_outbox: {lead: j, channel: email, count: 0}
+  - run_next: {lead: j, kind: cadence_touch}
+  - expect_followup: {lead: j, kind: cadence_touch, status: sent, index: 0, timeout_s: 45}
+  - expect_outbox: {lead: j, channel: sms, count: 1}
+  # The follow-up went by email only.
+  - expect_outbox: {lead: j, channel: email, count: 1}

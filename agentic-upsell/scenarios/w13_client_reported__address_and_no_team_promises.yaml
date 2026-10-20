@@ -1,0 +1,11 @@
+name: '"Where are you located?" gets the full address, and never "the team will..."'
+description: 'Client, 17-19 Oct 2026 (Zack: "Where is the vehicle located?" got "in town"; Betsy: "stop saying the team can do this and that").'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: a, dealer: A, lead_type: sales, channel: sms, name: Zack Where, comments: "Interested in a used Toyota Camry"}
+  - wait_turns: {lead: a, count: 1, timeout_s: 20}
+  - reply: {lead: a, text: "Where is the vehicle located?"}
+  - wait_turns: {lead: a, count: 2, timeout_s: 20}
+  - expect_last_sent: {lead: a, excludes: "the team will"}
+  - expect_last_sent: {lead: a, excludes: "a member of our team"}
+  - expect_last_sent: {lead: a, question_marks: 1}

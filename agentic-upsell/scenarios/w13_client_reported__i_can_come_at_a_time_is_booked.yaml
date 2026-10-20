@@ -1,0 +1,11 @@
+name: '"I can come at 4" books the visit'
+description: 'Betsy, 20 Oct 2026: "the customer says I can come at 7 and ai abandons". A time to come in with no day and no times offered is booked (today if still ahead), with the date, time and address.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: k, dealer: A, lead_type: sales, channel: sms, name: Kim Comein, comments: "Is the RAV4 still available?"}
+  - wait_turns: {lead: k, count: 1, timeout_s: 20}
+  - reply: {lead: k, text: "I can come in at 4"}
+  - wait_turns: {lead: k, count: 2, timeout_s: 20}
+  - expect_booking: {lead: k, status: pending}
+  - expect_lead: {lead: k, stage: appointment_set}
+  - expect_last_sent: {lead: k, contains: "4:00 PM"}

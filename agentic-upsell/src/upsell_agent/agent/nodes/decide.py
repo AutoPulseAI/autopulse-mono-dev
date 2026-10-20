@@ -1124,7 +1124,18 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["ask_name"] = bool(
         not known_first_name(state.customer_name) and not (ctx.lead_state or {}).get("name_asked")
         and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
-        and decision["action"] not in ("stop", "handoff", "offer_human"))
+        and decision["action"] not in ("stop", "handoff", "offer_human")
+        # Live, 21 Oct 2026: the first text's one question is "Tell me, what are you driving now?" (one question per
+        # message), so the name is asked in the next reply - it was marked asked here and then never asked.
+        and not ((decision.get("touch1") or {}).get("ending")))
+    if decision["ask_name"] and decision["action"] in ("ask", "acknowledge", "qualified", "partly_qualified", "confirm"):
+        # Betsy, 16 Oct 2026: "for n/a or null it needs to ask for the first and last name" - with one question per
+        # message, the name is this message's question (the other detail waits for the next reply).
+        decision["asks"] = [{"requirement": "customer_name", "label": "Name", "slots": [],
+                             "question": "May I have your first and last name?",
+                             "explanation": "so we know who to ask for and can get everything ready for you"}]
+        decision["slots"] = []
+        decision["action"] = "ask"
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
