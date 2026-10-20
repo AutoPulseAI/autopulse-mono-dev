@@ -42,3 +42,10 @@ def test_her_answers_can_use_the_cars_data(monkeypatch):
     _with("studio_miles", "It has {mileage} on it. Would you like to see it?", monkeypatch)
     assert cs.reply("studio_miles", vehicle=MAZDA).text == "It has 18,250 miles on it. Would you like to see it?"
     assert cs.reply("studio_miles", vehicle={}).text == "Would you like to see it?"
+
+
+def test_the_guard_stops_a_link_that_is_not_there():
+    from upsell_agent.agent.nodes.guard import link_promised_but_missing
+    assert link_promised_but_missing({"sms_text": "Here is a link to the vehicle. What day works?"})
+    assert not link_promised_but_missing({"sms_text": "Here is the link: https://dealer.example/vdp/x"})
+    assert not link_promised_but_missing({"sms_text": "What day works best for you?"})

@@ -181,6 +181,19 @@ def promises_what_it_cannot_send(decision: dict[str, Any], draft: dict[str, Any]
             if (m := _CANT_SEND.search(str(draft.get(key) or "")))]
 
 
+# Client, 20 Oct 2026 (Joel Clymer: "She told the customer, 'Here is the link,' but there was no link"): a message that
+# points to a link must carry one.
+_SAYS_LINK = re.compile(r"\b(?:here(?:'s| is| are)\b[^.?!]{0,40}\blinks?|links? (?:below|above|attached|here)|"
+                        r"(?:click|tap) (?:here|the link|below))\b", re.IGNORECASE)
+_URL = re.compile(r"https?://\S+|\bwww\.\S+", re.IGNORECASE)
+
+
+def link_promised_but_missing(draft: dict[str, Any]) -> list[str]:
+    return [f"the {name} says there is a link but has none - attach the real link or don't mention one"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if _SAYS_LINK.search(str(draft.get(key) or "")) and not _URL.search(str(draft.get(key) or ""))]
+
+
 def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     if decision.get("action") in ("handoff", "offer_human") or decision.get("reply_language"):
         return []
@@ -457,6 +470,7 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         result["passed"] = False
         result["violations"] += no_address
     cant_send = promises_what_it_cannot_send(state.decision or {}, state.draft or {})
+    cant_send += link_promised_but_missing(state.draft or {})
     result["checks"]["no_promise_it_cannot_keep"] = not cant_send
     if cant_send:
         result["passed"] = False
