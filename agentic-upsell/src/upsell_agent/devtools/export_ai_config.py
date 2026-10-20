@@ -35,6 +35,9 @@ PLACEHOLDERS = {
     "date": "Appointment date", "time": "Appointment time", "address": "Dealership address",
     "ask_for": "Who to ask for (assigned salesperson)", "dealer_phone": "Dealership phone",
     "credit_app_link": "Credit application link", "vehicle_link": "Vehicle page link", "opens_at": "When we open", "recommended_work": "Work the technicians recommended",
+    # Client, 20 Oct 2026 (Betsy: "where is vehicle image and vehicle mileage and other data points ... that we can
+    # autofill?"): the car's own data from the inventory feed (agent/cannot_supply.py vehicle_values).
+    "trim": "Trim", "mileage": "Mileage", "color": "Exterior color", "vin": "VIN",
 }
 _SAMPLE_APPT = datetime(2026, 10, 16, 14, 0, tzinfo=UTC)
 

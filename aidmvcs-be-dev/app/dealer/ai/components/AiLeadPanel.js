@@ -163,6 +163,9 @@ export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_
   const vehicleType = vehicleTypeText(profile?.vehicle_type ?? profile?.lead);
   const oppDay = typeof life.opportunity_age_days === "number" ? life.opportunity_age_days + 1 : null;
   const channels = data?.consent?.channels;
+  // Client, 20 Oct 2026 (Betsy, Josh Opray texted STOP and the panel still showed a text nudge): after a STOP the
+  // AI keeps working the lead by email and calls only - say so, and never show a text as the next touch.
+  const textsStopped = Boolean(channels?.sms?.opted_out);
 
   return (
     <div className={className}>
@@ -213,6 +216,13 @@ export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_
             </div>
           )}
 
+          {textsStopped && (
+            <Alert variant="warning" className="py-2 small mb-2">
+              <strong>Texts stopped by the customer (STOP).</strong> No texts are sent, by the AI or by staff. Follow-up
+              continues by email and call tasks only, unless the customer texts START.
+            </Alert>
+          )}
+
           {data.profile_status === "not_found" && (
             <p className="small text-secondary-light mb-0">The AI hasn&apos;t worked on this lead yet.</p>
           )}
@@ -252,6 +262,7 @@ export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_
                     <Row label="Next touch">
                       {nextTouch.theme_label || `Touch ${nextTouch.touch_number || ""}`.trim()}
                       {nextTouch.due_at && ` - ${formatDateTime(nextTouch.due_at)} (${fromNow(nextTouch.due_at)})`}
+                      {textsStopped && " - email only, no text"}
                     </Row>
                   )}
                   {nextAction && (

@@ -209,7 +209,7 @@ export function contentProblems(type, content, key = null) {
   if (content.closes_after) problems.push(...waitProblems(content.closes_after, 'Closes after'));
   if (type === 'cadences' && !builtIn) {
     const start = content.starts_when || {};
-    if (!['status', 'lead_created', 'customer_says'].includes(start.type)) {
+    if (!['status', 'lead_created', 'customer_says', 'ai_asked'].includes(start.type)) {
       problems.push('Choose when this cadence starts.');
     } else if (start.type === 'status' && !start.status) {
       problems.push('Choose the status that starts this cadence.');

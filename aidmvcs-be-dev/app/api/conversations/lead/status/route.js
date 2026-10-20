@@ -221,7 +221,7 @@ export async function PUT(request) {
     // Continue without token - messageBy will remain null
   }
   try {
-    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type } = await request.json();
+    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type, contact_note } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
@@ -366,6 +366,17 @@ export async function PUT(request) {
         is_note: true, internal_use: true, message_by: messageBy || undefined,
         message_id: `note_staff_status_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
       }).catch((error) => console.error('[status] could not add the status note', error?.message));
+      if (String(contact_note || '').trim()) {
+        // Client, 20 Oct 2026: what staff discussed with the customer when setting a contact status - a note the AI
+        // reads (not internal), so its next message carries on from the conversation.
+        await Email.create({
+          sender: actorName || 'Staff', recipient: 'staff', subject: 'Lead Note',
+          mail_content: `${actorName || 'Staff'} spoke with the customer: ${String(contact_note).trim().slice(0, 1000)}`,
+          dealer_id: String(updated.dealer_id), lead_id: updated._id, status: 'sent', communication_type: 'note',
+          is_note: true, internal_use: false, message_by: messageBy || undefined,
+          message_id: `note_staff_contact_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
+        }).catch((error) => console.error('[status] could not add the contact note', error?.message));
+      }
     }
 
     if (!updated) {

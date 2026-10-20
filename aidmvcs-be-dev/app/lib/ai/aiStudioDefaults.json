@@ -17,7 +17,11 @@
   "credit_app_link": "Credit application link",
   "vehicle_link": "Vehicle page link",
   "opens_at": "When we open",
-  "recommended_work": "Work the technicians recommended"
+  "recommended_work": "Work the technicians recommended",
+  "trim": "Trim",
+  "mileage": "Mileage",
+  "color": "Exterior color",
+  "vin": "VIN"
  },
  "items": [
   {

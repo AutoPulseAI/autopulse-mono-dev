@@ -12,6 +12,7 @@ HOLDING_REPLY_EVERY (architecture §15, decision 12).
 """
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,11 +53,13 @@ from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler import studio_cadences
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
+    STAFF_REPLY_REASON,
     SOLD_LIFECYCLE_KINDS,
     appointment_cancelled_on_platform,
     cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
+    plan_staff_quiet,
     replan_workflow,
     staff_no_show,
 )
@@ -144,6 +147,41 @@ async def _already_sent(db: DealerScopedDatabase, turn_id: str) -> dict | None:
     return await db.collection(AI_MESSAGES_COLLECTION).find_one({"turn_id": turn_id, "direction": "outbound"})
 
 
+OWNERSHIP_ALERTS_QUESTION = ("Ok, I can opt you out of messages regarding this inquiry. Would you still like ownership "
+                             "alerts regarding your current vehicle?")
+OWNERSHIP_ALERTS_YES = "Thank you! You'll only receive ownership and service alerts for your vehicle."
+_ALERTS_YES = re.compile(r"^\W*(?:y|yes|yeah|yep|yup|sure|ok|okay|please|yes please)\W*$", re.IGNORECASE)
+
+
+async def _owns_vehicle(db: DealerScopedDatabase, customer_id: str | None) -> bool:
+    """The customer has a vehicle from us: a Sold - Delivered lead, or the owner life cycle running for them."""
+    if not customer_id:
+        return False
+    if await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+            {"customer_id": customer_id, "stage": lifecycle.Stage.SOLD_DELIVERED.value}, projection={"_id": 1}):
+        return True
+    return bool(await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+        {"customer_id": customer_id, "kind": "owner_touch"}, projection={"_id": 1}))
+
+
+async def _opt_back_in_from_lead(db: DealerScopedDatabase, event: LeadCreatedEvent, lead: dict | None) -> None:
+    """Client, 20 Oct 2026 (Betsy: texting stays off "until the customer opts back in (with a lead or with a text or
+    email)"): a new lead whose form gives complete text consent reopens texting after the customer's own opt-out
+    phrase. After the keyword STOP the carrier blocks our number until the customer texts START, so that stays."""
+    provider = consent.lead_provider_consent(lead)
+    if not event.customer_id or not provider or not provider.get("opted_in"):
+        return
+    phone = (lead or {}).get("phone")
+    if consent.missing_provider_evidence(provider, phone):
+        return
+    last = await consent.latest_opt_out(db, event.customer_id, "sms", phone)
+    if not last or last.get("consent_status") != "opted_out" or last.get("consent_source") == "customer_stop":
+        return
+    await consent.record_consent(db, customer_id=event.customer_id, channel="sms", consent_type="opt_out",
+                                 status="opted_in", source="customer_new_lead_consent", lead_id=event.lead_id,
+                                 evidence={"provider": provider}, address=consent.address_key("sms", phone))
+
+
 async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
                               received_at: str | datetime | None = None) -> dict[str, Any]:
     await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
@@ -151,6 +189,8 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     await studio_cadences.start(db, lead_id=event.lead_id, customer_id=event.customer_id, channel=event.channel,
                                 trigger={"type": "lead_created"})  # cadences added in AI Studio
     lead = await find_lead(db, event.lead_id)
+    if not event.shadow:
+        await _opt_back_in_from_lead(db, event, lead)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
     if not state.get("duplicate_of") and (primary := await duplicates.find_primary(db, lead)):
         # MASTER_PLAN_3 C6: the same customer already has an open lead the AI is working. This one is
@@ -681,6 +721,22 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     # confirms it; a phrase stops the channel it names (every channel when it
     # names none) and gets one plain confirmation from us.
     customer = await find_customer(db, event.customer_id)
+    if state.get("alerts_question_at") and not event.shadow:
+        # Client, 20 Oct 2026 (Betsy): the answer to "Would you still like ownership alerts regarding your current
+        # vehicle?" after the customer asked us to stop texting about this inquiry.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
+                                                                 {"$unset": {"alerts_question_at": ""}})
+        if _ALERTS_YES.match("\n".join(m["text"] for m in unanswered)):
+            await consent.set_channel_consent(db, event.customer_id, "sms", True, source="customer_ownership_alerts",
+                                              lead_id=lead_id, address=_address(lead, customer, "sms"),
+                                              evidence={"message": unanswered[-1]["text"]})
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"sales_opted_out": True, "sales_opted_out_at": clock.now()}})
+            await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
+            return await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_in",
+                                      reason="The customer keeps ownership alerts only; no more sales messages on "
+                                             "this inquiry.", received_at=_parse_received_at(received_at),
+                                      reply={"text": OWNERSHIP_ALERTS_YES, "subject": "Your vehicle alerts"})
     for message in unanswered:
         keyword = consent.classify_keyword(message["text"])
         channel = message["channel"]
@@ -720,9 +776,16 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                 reason = (f"The customer asked us to stop ({opt_out.matched!r}): opted out of {scope}. One plain "
                           f"confirmation goes out on {channel}.")
                 action = "opt_out_confirmation"
+            confirm = confirmation_text(opt_out.channels)
+            if (opt_out.kind == "phrase" and channel == "sms" and "sms" in opt_out.channels and not event.shadow
+                    and await _owns_vehicle(db, event.customer_id)):
+                # Client, 20 Oct 2026 (Betsy): a customer who owns a vehicle from us is asked whether to keep its
+                # ownership alerts; only a yes keeps them (above), anything else leaves them fully opted out.
+                confirm = OWNERSHIP_ALERTS_QUESTION
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"alerts_question_at": clock.now()}})
             await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
-                               received_at=_parse_received_at(received_at),
-                               confirmation=confirmation_text(opt_out.channels))
+                               received_at=_parse_received_at(received_at), confirmation=confirm)
             return {"status": "opted_out", "channel": channel, "channels": list(opt_out.channels),
                     "kind": opt_out.kind, "followups_cancelled": cancelled}
         if wrong := suppression.detect_wrong_person(message["text"]):
@@ -817,6 +880,11 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                   received_at=_parse_received_at(received_at),
                                   holding_kind="holding_booking" if request == "booking" else "holding")
+        if (meaningful and not event.shadow and state["status"] == "paused"
+                and str(state.get("status_reason") or "").startswith(STAFF_REPLY_REASON)):
+            # Client, 20 Oct 2026 (Betsy approved, Jeffry Turman): if no person answers, the AI picks it back up.
+            await plan_staff_quiet(db, lead_id=lead_id, customer_id=event.customer_id,
+                                   channel=unanswered[-1]["channel"], paused_at=state.get("paused_at"))
         if request and held.get("send_status") == "sent":
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                 {"lead_id": lead_id}, {"$set": {"last_request_notice_at": clock.now()}})
@@ -1028,7 +1096,13 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": event.lead_id}, {"$set": {"status": "active", "status_reason": None,
                                                   "resumed_at": clock.now()}})
-        if (stage_change or {}).get("cadence_started"):
+        # Client, 20 Oct 2026 (Betsy: "nothing is happening with these leads the next day or in the same day. These
+        # are hot leads"): a lead that was already in Short-Term (New Lead -> staff "Contact Made - No Next Action")
+        # starts no new cadence, and a touch cancelled earlier left it with none. Whatever the stage did, the lead
+        # leaves here with a touch planned.
+        has_touch = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"lead_id": event.lead_id, "kind": "cadence_touch", "status": "pending"}, projection={"_id": 1})
+        if (stage_change or {}).get("cadence_started") or not has_touch:
             lead = lead if stage_event else await find_lead(db, event.lead_id)
             customer_id = lead_customer_id(lead, db.dealer_id)
             if customer_id:

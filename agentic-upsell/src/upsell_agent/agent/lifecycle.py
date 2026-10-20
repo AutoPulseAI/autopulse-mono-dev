@@ -38,6 +38,7 @@ Rules (Omnichannel PDF §2):
 
 import logging
 import re
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -303,6 +304,10 @@ def _stay(rule: str, reason: str, event: Event) -> Transition:
     return Transition(None, rule, reason, event)
 
 
+REOPENS_CLOSED_LOST = frozenset({"customer_replied", "appointment_set", "sales_visit", "reengaged",
+                                 "staff_no_next_action", "staff_not_contacted"})
+
+
 def transition(current: Stage | None, event: Event) -> Transition:
     """Where `event` moves a lead at `current`. Pure: no clock, no database."""
     kind, why = event.kind, event.reason
@@ -322,6 +327,14 @@ def transition(current: Stage | None, event: Event) -> Transition:
             return Transition(Stage.CLOSED_LOST, "staff_closed_lost", why or "Staff closed the lead as lost", event)
         new = Stage.SOLD_PENDING if kind == "sold_pending" else Stage.SOLD_DELIVERED
         return Transition(new, kind, why or f"Manager outcome: {STAGE_LABELS[new]}", event)
+    if current == Stage.CLOSED_LOST and kind in REOPENS_CLOSED_LOST and not event.detail.get("no_reopen"):
+        # Client, 20 Oct 2026 (Betsy, Quincy Mack: "A closed-lost lead was reactivated by messaging the ai, but the ai
+        # did not update the status ... I am unable to update the status manually"): a customer who writes back, books
+        # or comes in, or staff setting a working status, reopens a Closed - Lost lead. It moves as an open lead would.
+        reopened = transition(Stage.NO_CONTACT, event)
+        if reopened.changes:
+            return Transition(reopened.stage, f"reopened_{reopened.rule}",
+                              f"Reopened from Closed - Lost: {reopened.reason}", event)
     if current in CLOSED_STAGES:
         return _stay("closed", f"The lead is {STAGE_LABELS[current]}: nothing moves it (a new lead starts its own "
                                "workflow).", event)
@@ -569,6 +582,11 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         lead = lead if lead is not None else await db.collection(PLATFORM_LEADS_COLLECTION).find_one(
             {"_id": as_object_id(lead_id)})
         setup["opportunity_created_at"] = opportunity_start(lead, now)
+    if current == Stage.CLOSED_LOST and state.get("closed_reason") == "one_vehicle":
+        # The customer's shopping moved to their newer lead (agent/multi_vehicle.py): their messages belong there, so
+        # only staff reopen this one.
+        events = [e if e.kind.startswith("staff_") else dataclasses.replace(e, detail={**e.detail, "no_reopen": True})
+                  for e in events]
     result = resolve(current, events)
     out: dict[str, Any] = {"from": current.value if current else None, "rule": result.rule,
                            "reason": result.reason, "changed": result.changes}
@@ -607,7 +625,10 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
         unset["next_action"] = ""
     if new == Stage.APPOINTMENT_SET and event.detail.get("appointment"):
         fields["appointment"] = {**event.detail["appointment"], "set_at": now}
-    if event.kind in ("unsold", "reengaged"):
+    reopened = current in CLOSED_STAGES and new not in CLOSED_STAGES
+    if reopened:
+        unset.update(opportunity_closed_at="", closed_at="", closed_reason="")
+    if event.kind in ("unsold", "reengaged") or reopened:
         # Unsold restarts the Day 91 follow-up period from today (client, scope Q2). `opportunity_created_at`
         # itself is never touched (§12); the sweep counts from this anchor.
         fields["day91_anchor"] = now

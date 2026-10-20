@@ -528,3 +528,93 @@ async def test_closed_but_inside_texting_hours_helps_now_without_the_team(mongo,
     assert "business hours?" not in reply and "team" not in reply.lower()
     [turn] = await _turns(mongo, created)
     assert turn["summary"]["after_hours"] == "closed"
+
+
+async def _staff_replied(created):
+    await handle_lead_paused(LeadPausedEvent(event_id=f"p-{ObjectId()}", dealer_id=DEALER, lead_id=created["lead_id"],
+                                             reason="Staff replied by hand (Mercy)"), _deps())
+
+
+async def _quiet(mongo, created):
+    return await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "kind": followups.KIND_STAFF_QUIET}).to_list(None)
+
+
+async def test_the_ai_picks_the_conversation_back_up_when_staff_go_quiet(mongo, dealer_with_hours):
+    """Client, 20 Oct 2026 (Betsy approved; Jeffry Turman waited 15 hours after a staff text)."""
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _staff_replied(created)
+    await _say(created, "Can I come in at 4 today?")
+    [quiet] = await _quiet(mongo, created)
+    assert quiet["status"] == "pending"
+    due = quiet["due_at"].replace(tzinfo=UTC) - TUESDAY_NOON
+    assert followups.STAFF_QUIET_AFTER <= due < followups.STAFF_QUIET_AFTER + timedelta(seconds=5)
+    before = await _last_sms(mongo, created)
+
+    set_clock(TUESDAY_NOON + timedelta(minutes=16))
+    await followups.fire_due(_deps())
+    state = await _state(mongo, created)
+    [fired] = await _quiet(mongo, created)
+    assert fired["status"] == "sent", fired.get("reason")
+    # The AI took the lead back and answered: here it booked the 4 PM visit the customer asked for.
+    assert state["status"] == "active" and state["stage"] == "appointment_set"
+    assert await _last_sms(mongo, created) != before
+    [quiet] = await _quiet(mongo, created)
+    assert quiet["status"] == "sent"
+
+
+async def test_a_new_staff_reply_keeps_the_ai_off(mongo, dealer_with_hours):
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _staff_replied(created)
+    await _say(created, "Can I come in at 4 today?")
+    set_clock(TUESDAY_NOON + timedelta(minutes=5))
+    await _staff_replied(created)  # staff answered
+    set_clock(TUESDAY_NOON + timedelta(minutes=16))
+    await followups.fire_due(_deps())
+    assert (await _state(mongo, created))["status"] == "paused"
+
+
+async def test_the_ai_switch_turned_off_by_staff_stays_off(mongo, dealer_with_hours):
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await handle_lead_paused(LeadPausedEvent(event_id="p-switch", dealer_id=DEALER, lead_id=created["lead_id"],
+                                             reason="AI turned off for this lead by Betsy"), _deps())
+    await _say(created, "Can I come in at 4 today?")
+    assert await _quiet(mongo, created) == []
+
+
+async def test_opt_out_of_this_inquiry_but_keep_ownership_alerts(mongo, dealer_with_hours):
+    """Client, 20 Oct 2026 (Betsy): "Ok, I can opt you out of messages regarding this inquiry. Would you still like
+    ownership alerts regarding your current vehicle?" - a yes keeps ownership alerts, sales follow-up stops."""
+    from upsell_agent.events import handlers
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await mongo["ai_lead_state"].insert_one({"lead_id": "owned", "dealer_id": DEALER, "customer_id": created["customer_id"],
+                                             "stage": "sold_delivered"})
+    await _say(created, "Please stop texting me about this car")
+    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_QUESTION
+    await _say(created, "Yes")
+    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_YES
+    state = await _state(mongo, created)
+    assert state["sales_opted_out"] is True and "alerts_question_at" not in state
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
+
+
+async def test_no_vehicle_with_us_gets_the_plain_confirmation(mongo, dealer_with_hours):
+    from upsell_agent.events import handlers
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _say(created, "Please stop texting me")
+    assert await _last_sms(mongo, created) != handlers.OWNERSHIP_ALERTS_QUESTION
+
+
+async def test_i_can_come_at_a_time_books_it(mongo, dealer_with_hours):
+    """Client, 20 Oct 2026 (Betsy: "the customer says I can come at 7 and ai abandons")."""
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _say(created, "I can come in at 4")
+    state = await _state(mongo, created)
+    assert state["stage"] == "appointment_set", await _last_sms(mongo, created)

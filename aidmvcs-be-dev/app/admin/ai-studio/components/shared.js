@@ -37,6 +37,7 @@ const SAMPLE = {
   address: "3914 Hempstead Tpke, Levittown", ask_for: "Mercy", dealer_phone: "(347) 658-5466",
   credit_app_link: "https://dealer.example/credit", vehicle_link: "https://dealer.example/vdp/rav4",
   opens_at: "9:00 AM tomorrow", recommended_work: "front brake pads",
+  trim: "XLE", mileage: "24,850 miles", color: "Magnetic Gray", vin: "2T3P1RFV8RW123456",
 };
 export const fill = (text) => String(text || "").replace(/\{([a-z_]+)\}/g, (m, k) => SAMPLE[k] ?? m);
 // Every time in AI Studio, the same for everyone wherever they are (client, 13 Oct 2026): the dealership's time

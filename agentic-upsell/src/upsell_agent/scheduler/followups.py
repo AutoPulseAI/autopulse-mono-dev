@@ -161,8 +161,14 @@ SOLD_LIFECYCLE_KINDS = ("sold_pending_touch", "post_delivery_checkin", "ownershi
 KIND_DAILY_CALL_TASK = "daily_call_task"
 # Client, 8 Oct 2026: the owner life cycle for every DealerVault sale (scheduler/owner_lifecycle.py KIND).
 KIND_OWNER_TOUCH = "owner_touch"
+# Client, 20 Oct 2026 (Betsy approved; Jeffry Turman waited 15 hours after a staff text): a customer who writes while a
+# staff reply has the AI paused gets the AI back if no person answers within this long (dealer open; at once when
+# closed). A new staff reply cancels it (handle_lead_paused cancels pending follow-ups).
+KIND_STAFF_QUIET = "staff_quiet_resume"
+STAFF_QUIET_AFTER = timedelta(minutes=15)
+STAFF_REPLY_REASON = "Staff replied by hand"
 # Matches channel switches, including records from before `kind` existed.
-CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
+CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_STAFF_QUIET, KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                                       KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK,
                                       KIND_DAILY_CALL_TASK, KIND_OWNER_TOUCH, *APPOINTMENT_KINDS,
                                       *SOLD_LIFECYCLE_KINDS,
@@ -361,6 +367,61 @@ async def plan_resume(
                 f"{check.reason})" if due_at > opens else ", when the dealership opens") + "."}
 
 
+async def plan_staff_quiet(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, channel: str,
+                           paused_at: datetime | None) -> dict[str, Any]:
+    """The customer wrote while a staff reply has the AI paused: the AI takes the conversation back if nobody answers
+    within STAFF_QUIET_AFTER (at once when the dealership is closed). Replaces any older pending one."""
+    now = clock.now()
+    profile = await dealer_profile(db.dealer_id)
+    due_at = now + (STAFF_QUIET_AFTER if profile.is_open(now) else timedelta(minutes=1))
+    followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
+    await followups.update_many({"lead_id": lead_id, "status": "pending", "kind": KIND_STAFF_QUIET},
+                                {"$set": {"status": "superseded", "reason": "a newer customer message", "closed_at": now}})
+    doc = {"kind": KIND_STAFF_QUIET, "lead_id": lead_id, "customer_id": customer_id, "from_channel": channel,
+           "to_channel": channel, "text": None, "subject": None, "status": "pending", "due_at": due_at,
+           "created_at": now, "claim_count": 0, "paused_at": paused_at}
+    inserted = await followups.insert_one(doc)
+    return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat()}
+
+
+async def _fire_staff_quiet_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
+    """No person answered the customer since the staff reply: the AI is back on the lead and answers what they wrote
+    since (and tells staff on the lead)."""
+    from upsell_agent.agent.turn import run_turn
+
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+    paused_at = state.get("paused_at")
+    still = (state.get("status") == "paused" and str(state.get("status_reason") or "").startswith(STAFF_REPLY_REASON)
+             and (doc.get("paused_at") is None or paused_at == doc.get("paused_at")))
+    mode = await dealer_ai_mode(db.dealer_id)
+    if not still or mode != "live":
+        await _close(db, doc, "cancelled", reason="staff answered, or the AI was switched off" if not still
+                     else f"dealer AI mode is {mode}")
+        return "cancelled"
+    since = paused_at or doc["created_at"]
+    rows = await db.collection(AI_MESSAGES_COLLECTION).find(
+        {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gte": since}}).sort("created_at", 1).to_list(None)
+    if not rows:
+        await _close(db, doc, "cancelled", reason="no customer message to answer")
+        return "cancelled"
+    now = clock.now()
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": {
+        "status": "active", "status_reason": None, "status_at": now, "resumed_at": now,
+        "staff_notice": {"at": now, "kind": "ai_resumed",
+                         "text": f"No one answered the customer within {int(STAFF_QUIET_AFTER.total_seconds() // 60)} "
+                                 "minutes of their message, so the AI picked the conversation back up.",
+                         "reason": "AI resumed after staff went quiet"}}})
+    log = await run_turn(
+        dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"], trigger="inbound_message",
+        channel=rows[-1].get("channel") or doc["to_channel"], inbound_text="\n".join(str(r.get("text") or "") for r in rows),
+        shadow=False, deps=deps, turn_id=f"staff-quiet-{doc['_id']}", source_message_id=str(rows[-1]["_id"]))
+    await db.collection(AI_MESSAGES_COLLECTION).update_many(
+        {"_id": {"$in": [r["_id"] for r in rows]}}, {"$set": {"answered_turn_id": log["turn_id"]}})
+    status = log["summary"].get("send_status") or "sent"
+    await _close(db, doc, "sent" if status in ("sent", "duplicate") else status, fired_at=now)
+    return status
+
+
 async def cancel_resume(db: DealerScopedDatabase, lead_id: str, *, reason: str) -> int:
     """The customer carried on before the dealership opened: no morning message."""
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
@@ -544,8 +605,12 @@ async def plan_cadence_touch(
     # PLAN_4 stream T: the Days 1-7 human call tasks start (and restart) with the cadence. Idempotent.
     from upsell_agent.scheduler import daily_call_tasks
     await daily_call_tasks.plan(db, lead_id=lead_id, customer_id=customer_id, lead_state=state)
+    # Client, 20 Oct 2026 (Betsy approved; Nadina Singh replied "No trade in", then staff set a status and her next touch
+    # was the "Nadina?" nudge): a customer who has written to us never gets the name nudge.
+    replied = cadence_state.touch_number < 3 and bool(await db.collection(AI_MESSAGES_COLLECTION).find_one(
+        {"lead_id": lead_id, "direction": "inbound"}, projection={"_id": 1}))
     planned = cadence.plan_touch(
-        cadence_state, now=now, tz=profile.tz,
+        cadence_state, now=now, tz=profile.tz, customer_replied=replied,
         # The caller knows whether the message it just sent went out; the lead's own record is only
         # updated after this runs (agent/turn.py).
         first_contact_done=(bool((state or {}).get("last_outbound_at")) if first_contact_done is None
@@ -919,6 +984,7 @@ async def fire_one(doc: dict, deps: Any, *, lock: LeadLock = _no_lock) -> str:
     fire_locked = {**{kind: _fire_appointment_locked for kind in APPOINTMENT_KINDS},
                    KIND_HANDOFF_CHECK: _fire_handoff_check_locked,
                    KIND_RESUME: _fire_resume_locked,
+                   KIND_STAFF_QUIET: _fire_staff_quiet_locked,
                    KIND_VISIT_FOLLOWUP: _fire_visit_followup_locked,
                    KIND_NEXT_ACTION: _fire_next_action_locked,
                    KIND_NEXT_ACTION_CHECK: _fire_next_action_check_locked,
@@ -1737,6 +1803,10 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CADENCE_TOUCH),
+            # Client, 20 Oct 2026 (Betsy): opted out of this inquiry, kept ownership alerts only.
+            ("sales_followup_allowed", not state.get("sales_opted_out"),
+             "the customer opted out of sales messages on this inquiry" if state.get("sales_opted_out")
+             else "sales follow-up allowed"),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
             *await _cadence_touch_rechecks(db, doc),
         ]

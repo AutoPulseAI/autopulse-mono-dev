@@ -22,13 +22,16 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
+import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
 // that contact method on file.
-function getReplyChannel(lead, tab) {
-  const hasPhone = !!lead?.phone;
-  const hasEmail = !!lead?.email;
+function getReplyChannel(lead, tab, stopped = {}) {
+  // Client, 20 Oct 2026 (Betsy: "Customer opted out and I was allowed to still text ... Customer MUST opt back in to
+  // receive subsequent AI OR MANUAL SMS same goes for email"): a channel the customer opted out of is never offered.
+  const hasPhone = !!lead?.phone && !stopped.sms;
+  const hasEmail = !!lead?.email && !stopped.email;
   // The reply follows the tab staff have open (client, 10 Oct 2026), when the lead has that contact detail.
   if (tab === 'sms' && hasPhone) return 'sms';
   if (tab === 'email' && hasEmail) return 'email';
@@ -86,6 +89,19 @@ export default function ViewConversations({
   const sidebarRef = useRef(null);
   const previousLeadIdRef = useRef(null);
   const [activeChannelTab, setActiveChannelTab] = useState("sms");
+  // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
+  const [stoppedChannels, setStoppedChannels] = useState({});
+  useEffect(() => {
+    const id = lead?._id;
+    setStoppedChannels({});
+    if (!id) return undefined;
+    let live = true;
+    aiFetch(`/api/dealer-ai/leads/${id}`).then((data) => {
+      const channels = data?.consent?.channels || {};
+      if (live) setStoppedChannels({ sms: !!channels.sms?.opted_out, email: !!channels.email?.opted_out });
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [lead?._id, lead?.status]);
   const tabDefaultSetForLeadRef = useRef(null);
   const conversationGenerationRef = useRef(0);
   const initialRequestControllerRef = useRef(null);
@@ -846,14 +862,14 @@ export default function ViewConversations({
                   <div className="position-relative mt-3">
                     <Row className="align-items-center g-1">
                     <Col xxl={12} lg={3} md={12} xs={6}>
-                      {selectedConversation && getReplyChannel(lead, activeChannelTab) && (
+                      {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && (
                         <Button
                           variant="custom"
                           className="w-100"
                           onClick={() => setShowReplyModal(true)}
                         >
                           <i className="fa-regular fa-reply me-2"></i>
-                          {getReplyChannel(lead, activeChannelTab) === 'sms' ? 'SMS Reply' : 'Email Reply'}
+                          {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                         </Button>
                       )}
                     </Col>
@@ -1352,7 +1368,7 @@ export default function ViewConversations({
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
           selectedConversation={selectedConversation}
-          communicationType={getReplyChannel(lead, activeChannelTab) || selectedConversation.communication_type || 'email'}
+          communicationType={getReplyChannel(lead, activeChannelTab, stoppedChannels) || selectedConversation.communication_type || 'email'}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}
