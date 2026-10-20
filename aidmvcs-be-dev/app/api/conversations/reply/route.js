@@ -175,6 +175,19 @@ export async function POST(request) {
         && addressOf(to) !== customerEmail.toLowerCase()) {
       to = customerEmail;
     }
+    if (communicationType === 'email') {
+      // Same rule for email (Betsy, 20 Oct 2026: "same goes for email if email is an opt out").
+      const who = [];
+      if (addressOf(to)) who.push({ address: addressOf(to) });
+      if (parentMessage.lead_id) who.push({ lead_id: String(parentMessage.lead_id) });
+      const latest = who.length ? await mongoose.connection.db.collection('ai_consent')
+        .find({ $or: who, channel: 'email', consent_type: 'opt_out' }).sort({ _id: -1 }).limit(1).next() : null;
+      if (latest?.consent_status === 'opted_out') {
+        return NextResponse.json(
+          { message: 'This customer unsubscribed from email, so email is off. Please text or call instead.' },
+          { status: 403 });
+      }
+    }
 
     let sentMessageId = null;
     let status = 'sent';
