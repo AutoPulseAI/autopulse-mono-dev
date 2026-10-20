@@ -155,6 +155,10 @@ export function closedStatusConflict({ status, current, changedAt, closedAt }) {
 
 export async function markLeadClosedFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
+  // Live, 20-21 Oct 2026: these were used below but never taken here, so every "Managerial Review" the AI set failed
+  // with "createManagerialReviewMessages is not defined" - no status on the lead and no manager alert (Betsy: "said it
+  // would escalate but didn't actually escalate").
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id })
     .select('_id fe_lead_status lead_status status statusChangedAt').lean();
