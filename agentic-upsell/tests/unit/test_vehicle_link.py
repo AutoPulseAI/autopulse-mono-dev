@@ -49,3 +49,22 @@ def test_the_guard_stops_a_link_that_is_not_there():
     assert link_promised_but_missing({"sms_text": "Here is a link to the vehicle. What day works?"})
     assert not link_promised_but_missing({"sms_text": "Here is the link: https://dealer.example/vdp/x"})
     assert not link_promised_but_missing({"sms_text": "What day works best for you?"})
+
+
+def test_a_time_to_come_in_with_no_day_is_booked():
+    """Client, 20 Oct 2026 (Betsy: "the customer says I can come at 7 and ai abandons")."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from upsell_agent.devtools import simulate
+    from upsell_agent.integrations.dealer_profile import profile_from_record
+    from upsell_agent.tools import booking_tool as bt
+    dealer = profile_from_record("d", {"dealer_account_information": {
+        "time_zone": "America/New_York", "weekly_availability": simulate.DEV_WEEKLY_AVAILABILITY}})
+    now = datetime(2026, 10, 20, 11, 0, tzinfo=ZoneInfo("America/New_York"))
+    open_ = bt.available_times(dealer, [], now)
+    assert bt.match_pick("I can come at 4", [], dealer, now, available=open_).matched["display"] == "Tuesday at 4:00 PM"
+    assert bt.match_pick("4 works", [], dealer, now, available=open_).matched
+    late = bt.match_pick("I can come at 7", [], dealer, now, available=open_)
+    assert late.ambiguous and late.wanted  # not open: the nearest open times are offered, never silence
+    assert not bt.match_pick("I get off work at 4", [], dealer, now, available=open_).matched

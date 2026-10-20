@@ -330,6 +330,12 @@ def _fresh_pick(candidate: datetime, dealer: DealerProfile, available: list[date
             "display": display}
 
 
+# The customer saying they can come at a time ("I can come at 7", "7 works", "can I stop by at 6:30?"), not just naming
+# one ("I get off work at 7").
+_COMING = re.compile(r"\b(?:come|coming|come by|stop by|stop in|swing by|be there|make it|get there|visit|drop by|"
+                     r"head (?:over|in)|works|work for me|good for me|available|free|(?:see|look at) (?:it|the car))\b", re.IGNORECASE)
+
+
 def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
                *, available: list[datetime] | None = None, prefer_day: str | None = None) -> PickResult:
     """"the second one", "Saturday 10 works", "after 5 tomorrow" -> one of
@@ -353,9 +359,15 @@ def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, 
     if resolved is None:
         # A time with no day answers the times we offered: the first offered day that has it open (else the
         # first offered day, for the nearest open times).
-        at = bare_time(text) if offered or prefer_day else None
+        at = bare_time(text) if offered or prefer_day or _COMING.search(text or "") else None
         if at is None:
             return PickResult()
+        if not offered and not prefer_day:
+            # Client, 20 Oct 2026 (Betsy: "the customer says I can come at 7 and ai abandons"): a time to come in with
+            # no day is today when it's still ahead, else tomorrow.
+            local = now.astimezone(dealer.tz)
+            prefer_day = (local.date() if datetime.combine(local.date(), at, tzinfo=dealer.tz) > local
+                          else local.date() + timedelta(days=1)).isoformat()
         days = list(dict.fromkeys([*([prefer_day] if prefer_day else []), *(o["date"] for o in offered)]))
         for day_iso in days:
             exact = next((o for o in offered if o["date"] == day_iso and o["time"] == at.strftime("%H:%M")), None)

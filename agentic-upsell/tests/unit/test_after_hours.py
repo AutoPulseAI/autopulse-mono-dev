@@ -609,3 +609,12 @@ async def test_no_vehicle_with_us_gets_the_plain_confirmation(mongo, dealer_with
     created = await _lead()
     await _say(created, "Please stop texting me")
     assert await _last_sms(mongo, created) != handlers.OWNERSHIP_ALERTS_QUESTION
+
+
+async def test_i_can_come_at_a_time_books_it(mongo, dealer_with_hours):
+    """Client, 20 Oct 2026 (Betsy: "the customer says I can come at 7 and ai abandons")."""
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _say(created, "I can come in at 4")
+    state = await _state(mongo, created)
+    assert state["stage"] == "appointment_set", await _last_sms(mongo, created)
