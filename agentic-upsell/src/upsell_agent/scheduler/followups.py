@@ -165,7 +165,7 @@ KIND_OWNER_TOUCH = "owner_touch"
 # staff reply has the AI paused gets the AI back if no person answers within this long (dealer open; at once when
 # closed). A new staff reply cancels it (handle_lead_paused cancels pending follow-ups).
 KIND_STAFF_QUIET = "staff_quiet_resume"
-STAFF_QUIET_AFTER = timedelta(minutes=15)
+STAFF_QUIET_AFTER: timedelta | None = timedelta(minutes=15)  # AI Studio: Conversation rules (0 = never)
 STAFF_REPLY_REASON = "Staff replied by hand"
 # Matches channel switches, including records from before `kind` existed.
 CHANNEL_SWITCHES = {"kind": {"$nin": [KIND_STAFF_QUIET, KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
@@ -371,6 +371,8 @@ async def plan_staff_quiet(db: DealerScopedDatabase, *, lead_id: str, customer_i
                            paused_at: datetime | None) -> dict[str, Any]:
     """The customer wrote while a staff reply has the AI paused: the AI takes the conversation back if nobody answers
     within STAFF_QUIET_AFTER (at once when the dealership is closed). Replaces any older pending one."""
+    if STAFF_QUIET_AFTER is None:
+        return {"created": False, "reason": "AI Studio: the AI never takes back a lead staff replied to"}
     now = clock.now()
     profile = await dealer_profile(db.dealer_id)
     due_at = now + (STAFF_QUIET_AFTER if profile.is_open(now) else timedelta(minutes=1))
@@ -408,8 +410,7 @@ async def _fire_staff_quiet_locked(db: DealerScopedDatabase, doc: dict, deps: An
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": {
         "status": "active", "status_reason": None, "status_at": now, "resumed_at": now,
         "staff_notice": {"at": now, "kind": "ai_resumed",
-                         "text": f"No one answered the customer within {int(STAFF_QUIET_AFTER.total_seconds() // 60)} "
-                                 "minutes of their message, so the AI picked the conversation back up.",
+                         "text": "No one answered the customer's message, so the AI picked the conversation back up.",
                          "reason": "AI resumed after staff went quiet"}}})
     log = await run_turn(
         dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"], trigger="inbound_message",

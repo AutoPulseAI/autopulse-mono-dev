@@ -260,3 +260,60 @@ async def test_the_buyers_order_invitation_is_editable(mongo):
     await _say(created, "Can you just email it to me?")
     assert await _last_sms(mongo, created) == ("That is great; that must mean you are ready to buy today! Are you "
                                                "ready to take delivery today?")
+
+
+# --- Client, 21 Oct 2026: the cadences that ran in code only, now in AI Studio --------------------------------------
+
+async def test_specific_follow_up_timing_and_window_come_from_ai_studio(mongo):
+    from datetime import timedelta
+
+    from upsell_agent.agent.nodes import decide
+    from upsell_agent.scheduler import followups
+    content = _default("cadences", "specific_followup")
+    content["steps"][0]["wait"]["at"] = "3:30 PM"
+    content["steps"][1]["wait"] = {"amount": 48, "unit": "hours", "after": "previous"}
+    await _publish(mongo, "cadences", "specific_followup", content)
+    assert decide.NEXT_ACTION_DEFAULT_TIME == "15:30"
+    assert followups.NEXT_ACTION_REPLY_WINDOW == timedelta(hours=48)
+
+
+async def test_specific_follow_up_fixed_message_is_what_goes_out(mongo):
+    content = _default("cadences", "specific_followup")
+    content["steps"][0]["message"] = {"mode": "fixed", "text": "Hi {first_name}, checking back as promised!"}
+    await _publish(mongo, "cadences", "specific_followup", content)
+    step = ai_studio.step_message("cadences", "specific_followup", "check_back")
+    assert ai_studio.fixed_text(step) == "Hi {first_name}, checking back as promised!"
+
+
+async def test_unsold_first_message_comes_from_ai_studio(mongo):
+    from upsell_agent.agent.nodes import decide
+    content = _default("cadences", "unsold")
+    content["steps"][0]["message"] = {"mode": "fixed", "text": "Thanks for visiting, {first_name}! When can you come back?"}
+    await _publish(mongo, "cadences", "unsold", content)
+    touch = decide.plan_cadence_touch_context({"pending_touch": {"theme": decide.UNSOLD_THEME, "touch_number": 3}},
+                                              "Maria Lopez")
+    assert touch["fixed_text"] == "Thanks for visiting, Maria! When can you come back?"
+
+
+async def test_staff_quiet_minutes_come_from_ai_studio(mongo):
+    from datetime import timedelta
+
+    from upsell_agent.scheduler import followups
+    content = _default("compliance", "conversation_rules")
+    content["ai_resumes_after_staff_minutes"] = 30
+    await _publish(mongo, "compliance", "conversation_rules", content)
+    assert followups.STAFF_QUIET_AFTER == timedelta(minutes=30)
+    content["ai_resumes_after_staff_minutes"] = 0
+    await _publish(mongo, "compliance", "conversation_rules", content)
+    assert followups.STAFF_QUIET_AFTER is None
+
+
+async def test_the_recall_wording_comes_from_ai_studio(mongo):
+    from upsell_agent.scheduler import sold_lifecycles
+    content = _default("cadences", "owner_lifecycle")
+    step = next(s for s in content["steps"] if s["id"] == "recall")
+    step["message"] = {"mode": "fixed", "text": "{first_name}, recall {recall_id} ({recall_summary}). Want it fixed?"}
+    await _publish(mongo, "cadences", "owner_lifecycle", content)
+    out = sold_lifecycles._studio({"sms_text": "built", "email_body": "built", "email_subject": "s"}, "recall", "Maria",
+                                  "Victory", None, {"recall_id": "24V-1", "recall_summary": "camera"})
+    assert out["sms_text"] == "Maria, recall 24V-1 (camera). Want it fixed?"

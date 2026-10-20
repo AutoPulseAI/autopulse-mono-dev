@@ -620,6 +620,10 @@ async def test_unsold_goes_back_to_follow_up_for_90_days(mongo):
     assert state["day91_anchor"] > before["opportunity_created_at"] + timedelta(days=59)
     assert state["opportunity_created_at"] == before["opportunity_created_at"]  # never reset (§12)
     assert result["cadence_touch"]["created"] is True
+    # Client, 21 Oct 2026: the first touch after Unsold is the "Unsold" message from AI Studio.
+    touch = await mongo["scheduled_followups"].find_one({"lead_id": created["lead_id"], "kind": "cadence_touch",
+                                                         "status": "pending"})
+    assert touch["touch"]["theme"] == "unsold_followup"
     # The 91-day sweep counts from the Unsold date: the lead survives its original Day 91...
     assert (await lifecycle.close_expired(clock.now() + timedelta(days=40)))["closed"] == 0
     # ...and closes 91 days after Unsold.

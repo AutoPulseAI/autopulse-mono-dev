@@ -88,6 +88,12 @@ _CANCEL_BOOKING = re.compile(
     r"cancel (?:my|the|this) (?:appointment|visit|booking)|have to cancel)\b", re.IGNORECASE)
 # Client, 12 Oct 2026: a booking is made only from the customer's own reply picking or agreeing to a time - never
 # from the lead email's text (a portal's "Scheduled appointment" note) and never when they say they aren't ready.
+UNSOLD_THEME = "unsold_followup"
+UNSOLD_INSTRUCTION = ("They visited the dealership and didn't buy. Thank them for coming in, ask one gentle question "
+                      "about what held them back (the vehicle, the price or payment, their trade, timing) so you can "
+                      "help, and offer a time to come back in.")
+
+
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
     """The times we just offered, shown again: the customer answered something else ("thanks") and the offer stays
     open for this reply - the reply asks which one works instead of ending with nothing."""
@@ -745,6 +751,15 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
     elif theme_id in cadence.BY_ID:
         # The touch's angle as it is now (AI Studio edits apply to touches already scheduled).
         instruction = cadence.BY_ID[theme_id].instruction or instruction
+    elif theme_id == UNSOLD_THEME:
+        # Client, 21 Oct 2026: the first message after an Unsold visit, as set in AI Studio -> Cadences -> "Unsold".
+        step = ai_studio.step_message("cadences", "unsold", "first_touch")
+        if (text := ai_studio.fixed_text(step)) and (step or {}).get("mode") == "fixed":
+            from upsell_agent.agent.templates import known_first_name
+            fixed = ai_studio.fill(text, {"first_name": first_name(customer_first_name)
+                                          if known_first_name(customer_first_name) else None})
+        elif step and (said := ai_studio.instruction(step)):
+            instruction = said
     # AI Studio (client, 13 Oct 2026): a touch written as fixed text goes out word for word - a touch of an added
     # cadence (its message rides on the touch), or an edited sales touch.
     message = pending.get("message") if pending.get("studio_cadence") else next(
@@ -1045,6 +1060,16 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # A scheduled next step firing (scheduler/followups.py): not a reply, we're checking back as asked.
         planned = (ctx.lead_state or {}).get("next_action") or {}
         decision["reach_out"] = {"words": planned.get("words"), "notes": planned.get("context_notes")}
+        # Client, 21 Oct 2026: the message as set in AI Studio -> Cadences -> "Contact Made - Specific Follow-Up".
+        step = ai_studio.step_message("cadences", "specific_followup", "check_back")
+        if (fixed := ai_studio.fixed_text(step)) and (step or {}).get("mode") == "fixed":
+            from upsell_agent.agent.multi_vehicle import vehicle_label
+            from upsell_agent.agent.templates import known_first_name
+            decision["touch"] = {"theme": "specific_followup", "fixed_text": ai_studio.fill(fixed, {
+                "first_name": known_first_name(state.customer_name), "dealership": dealer.name,
+                "vehicle": vehicle_label(ctx.lead), "agent_name": dealer.agent_name})}
+        elif step and (said := ai_studio.instruction(step)):
+            decision["reach_out"]["instruction"] = said
     if (ctx.compliance or {}).get("quiet_hours"):
         decision["quiet_hours"] = {"resume_at": ctx.compliance.get("resume_at")}
     decision["human_contact"] = person.as_dict() if (person.mode or person.record) and decision["action"] in (

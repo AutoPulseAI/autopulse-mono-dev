@@ -28,7 +28,9 @@ from upsell_agent.agent import (
     specialists,
     templates,
 )
+from upsell_agent.agent.nodes import decide
 from upsell_agent.compliance import origin
+from upsell_agent.scheduler import followups
 
 PLACEHOLDERS = {
     "first_name": "Customer's first name", "dealership": "Dealership name", "agent_name": "AI agent's name",
@@ -39,6 +41,7 @@ PLACEHOLDERS = {
     # Client, 20 Oct 2026 (Betsy: "where is vehicle image and vehicle mileage and other data points ... that we can
     # autofill?"): the car's own data from the inventory feed (agent/cannot_supply.py vehicle_values).
     "trim": "Trim", "mileage": "Mileage", "color": "Exterior color", "vin": "VIN",
+    "recall_id": "Recall number", "recall_summary": "What the recall is about", "recall_source": "Where it's from (NHTSA)",
 }
 _SAMPLE_APPT = datetime(2026, 10, 16, 14, 0, tzinfo=UTC)
 
@@ -162,7 +165,31 @@ def cadences() -> list[dict[str, Any]]:
                      first_name="Qzfirst", dealership="DEALERSHIP", vehicle={"year": "YEAR", "make": "MAKE",
                                                                              "model": "MODEL"},
                      first_service=None, offer_service=False),
-                     {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "YEAR MAKE MODEL": "{vehicle}"})}]}},
+                     {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "YEAR MAKE MODEL": "{vehicle}"})},
+                {"id": "recall", "when": "When an open safety recall is found for the vehicle (NHTSA)",
+                 "label": "Open Recall", "channels": ["sms", "email"],
+                 "message": _placeholdered(sold_delivered.render_service_outreach(
+                     "recall", {"recall_id": "RECALLID", "source": "SOURCE", "component": "COMPONENT"},
+                     first_name="Qzfirst", dealership="DEALERSHIP",
+                     vehicle={"year": "YEAR", "make": "MAKE", "model": "MODEL"}),
+                     {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "YEAR MAKE MODEL": "{vehicle}",
+                      "RECALLID": "{recall_id}", "SOURCE": "{recall_source}", "COMPONENT": "{recall_summary}"})}]}},
+        # Client, 21 Oct 2026 (Betsy: "I don't see all the cadences I provided"): the two that ran in code only.
+        {"key": "specific_followup", "name": "Contact Made - Specific Follow-Up (the customer gave a date)",
+         "content": {"steps": [
+             {"id": "check_back", "when": "On the date the customer asked for (their time, or this time of day)",
+              "label": "Check back as they asked", "channels": ["sms", "email", "call_task"],
+              "wait": {"amount": 0, "unit": "days", "after": "start", "at": decide.NEXT_ACTION_DEFAULT_TIME},
+              "message": ai("Say you're checking back as they asked, pick up from what they told us, and ask for the "
+                            "appointment with a specific day.")},
+             {"id": "no_reply", "when": "No reply within this long: back to Short-Term follow-up (No Contact Made)",
+              "label": "No reply", "channels": [], "wait": _wait(int(followups.NEXT_ACTION_REPLY_WINDOW.total_seconds()
+                                                                     // 3600), "hours")}]}},
+        {"key": "unsold", "name": "Unsold (visited, didn't buy)", "content": {
+            "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold - then the Short-Term "
+                                                    "follow-up runs again (Days 1-7, weekly, monthly)",
+                       "label": "First message after the visit", "channels": ["sms", "email", "call_task"],
+                       "message": ai(decide.UNSOLD_INSTRUCTION)}]}},
         {"key": "appointment", "name": "Appointment: details, confirmation, no-show", "content": {
             "steps": [{"id": s, "when": w, "label": s.replace("_", " ").title(), "channels": ["sms", "email"],
                        **({"wait": {appointment.STEP_DETAILS: _wait(15, "minutes", "start"),
@@ -369,7 +396,8 @@ def compliance() -> list[dict[str, Any]]:
             "note": "The lead's own arrival email counts as one of the customer's emails."}},
         {"key": "conversation_rules", "name": "Conversation rules", "content": {
             "questions_per_message": _policy().MAX_ASKS_PER_MESSAGE,
-            "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS}},
+            "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS,
+            "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60)}},
         {"key": "writing", "name": "Message limits & banned phrases", "content": {
             "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
             "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
@@ -383,7 +411,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 10
+DEFAULTS_REVISION = 11
 
 
 def export() -> dict[str, Any]:
