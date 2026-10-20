@@ -1803,6 +1803,10 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CADENCE_TOUCH),
+            # Client, 20 Oct 2026 (Betsy): opted out of this inquiry, kept ownership alerts only.
+            ("sales_followup_allowed", not state.get("sales_opted_out"),
+             "the customer opted out of sales messages on this inquiry" if state.get("sales_opted_out")
+             else "sales follow-up allowed"),
             ("dealer_live", mode == "live", f"dealer AI mode is {mode}"),
             *await _cadence_touch_rechecks(db, doc),
         ]

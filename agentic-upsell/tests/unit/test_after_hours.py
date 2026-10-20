@@ -583,3 +583,29 @@ async def test_the_ai_switch_turned_off_by_staff_stays_off(mongo, dealer_with_ho
                                              reason="AI turned off for this lead by Betsy"), _deps())
     await _say(created, "Can I come in at 4 today?")
     assert await _quiet(mongo, created) == []
+
+
+async def test_opt_out_of_this_inquiry_but_keep_ownership_alerts(mongo, dealer_with_hours):
+    """Client, 20 Oct 2026 (Betsy): "Ok, I can opt you out of messages regarding this inquiry. Would you still like
+    ownership alerts regarding your current vehicle?" - a yes keeps ownership alerts, sales follow-up stops."""
+    from upsell_agent.events import handlers
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await mongo["ai_lead_state"].insert_one({"lead_id": "owned", "dealer_id": DEALER, "customer_id": created["customer_id"],
+                                             "stage": "sold_delivered"})
+    await _say(created, "Please stop texting me about this car")
+    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_QUESTION
+    await _say(created, "Yes")
+    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_YES
+    state = await _state(mongo, created)
+    assert state["sales_opted_out"] is True and "alerts_question_at" not in state
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
+
+
+async def test_no_vehicle_with_us_gets_the_plain_confirmation(mongo, dealer_with_hours):
+    from upsell_agent.events import handlers
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _say(created, "Please stop texting me")
+    assert await _last_sms(mongo, created) != handlers.OWNERSHIP_ALERTS_QUESTION
