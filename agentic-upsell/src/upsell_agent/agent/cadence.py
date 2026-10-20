@@ -237,13 +237,15 @@ def pick_theme(touch_number: int, used: list[str], exclude: frozenset[str] = fro
     return BY_ID[min(oldest, key=lambda k: oldest[k])]
 
 
-def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bool) -> PlannedTouch:
+def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bool,
+               customer_replied: bool = False) -> PlannedTouch:
     """The next touch to schedule for this lead, or a PlannedTouch saying why
-    there is none. `first_contact_done`: the first reply (Touch 1) has gone out."""
+    there is none. `first_contact_done`: the first reply (Touch 1) has gone out. `customer_replied`: the customer
+    has written to us - the name nudge is only for one who never answered (client, 20 Oct 2026, Nadina Singh)."""
     if not first_contact_done:
         return PlannedTouch(why="The first reply hasn't gone out yet.")
     local_now = now.astimezone(tz)
-    touch = max(state.touch_number, 3 if state.reentered else 2)
+    touch = max(state.touch_number, 3 if state.reentered or customer_replied else 2)
     if SCHEDULE is not None:
         return _plan_from_schedule(state, now=now, tz=tz, touch=touch)
 

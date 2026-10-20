@@ -125,7 +125,13 @@ async def template_reply(state: AgentState, span: NodeSpan, ctx: TurnContext | N
         # Client, 18 Oct 2026 (Othniel, Mandi: a follow-up opened "Thanks, Othniel..." as if the customer had written):
         # a message we start never thanks them; it checks in and asks for the visit.
         draft = _check_in(state)
-    from upsell_agent.agent.nodes.compose import place_cannot_supply
+    from upsell_agent.agent.nodes.compose import place_cannot_supply, place_fixed_text
     place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
+    touch = (state.decision or {}).get("touch") or {}
+    if touch.get("fixed_text"):
+        # Client, 20 Oct 2026 (Betsy: "three hour nudge is wrong verbiage completely" - the draft failed and the template
+        # sent "Thanks, that's something we can go over together..."): a fixed touch goes out word for word on the
+        # template path too - the 3-hour nudge is "{FirstName}?", nothing else.
+        place_fixed_text(draft, touch["fixed_text"], state.customer_name, nudge=touch.get("theme") == "name_nudge")
     span.output = draft
     return {"draft": draft, "used_template": True, "used_fallback": not first_reply}

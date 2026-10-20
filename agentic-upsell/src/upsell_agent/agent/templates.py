@@ -126,6 +126,10 @@ def known_first_name(full_name: str | None) -> str | None:
     text = str(full_name or "").strip()
     if not text or "@" in text:
         return None
+    if text.count(",") == 1 and (after := text.split(",", 1)[1].strip()):
+        # Client, 20 Oct 2026 (Betsy: "LAST NAME FIRST IS INDICATED WITH A COMMA ... AI USED THE LAST NAME";
+        # "ZENDEJAS,ANDREW" from CarGurus): "Last, First" - the first name is after the comma.
+        text = f"{after} {text.split(',', 1)[0]}"
     for word in text.replace(",", " ").split():
         first = "".join(ch for ch in word if ch.isalpha() or ch in "-'")
         if first and first.lower().strip("-'") not in NOT_A_NAME and len(first) > 1:

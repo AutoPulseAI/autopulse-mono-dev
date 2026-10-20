@@ -52,11 +52,13 @@ from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler import studio_cadences
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
+    STAFF_REPLY_REASON,
     SOLD_LIFECYCLE_KINDS,
     appointment_cancelled_on_platform,
     cancel_call_task,
     plan_appointment_timers,
     plan_cadence_touch,
+    plan_staff_quiet,
     replan_workflow,
     staff_no_show,
 )
@@ -817,6 +819,11 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                   received_at=_parse_received_at(received_at),
                                   holding_kind="holding_booking" if request == "booking" else "holding")
+        if (meaningful and not event.shadow and state["status"] == "paused"
+                and str(state.get("status_reason") or "").startswith(STAFF_REPLY_REASON)):
+            # Client, 20 Oct 2026 (Betsy approved, Jeffry Turman): if no person answers, the AI picks it back up.
+            await plan_staff_quiet(db, lead_id=lead_id, customer_id=event.customer_id,
+                                   channel=unanswered[-1]["channel"], paused_at=state.get("paused_at"))
         if request and held.get("send_status") == "sent":
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                 {"lead_id": lead_id}, {"$set": {"last_request_notice_at": clock.now()}})

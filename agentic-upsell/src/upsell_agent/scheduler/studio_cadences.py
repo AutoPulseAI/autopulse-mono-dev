@@ -11,6 +11,7 @@ A cadence the super admin adds runs when its `starts_when` happens:
     {"type": "status", "status": "Contacted - Specific Follow-up"}   staff set the lead to that status
     {"type": "lead_created"}                                           a new lead arrives
     {"type": "customer_says", "phrases": ["lease", ...]}               the customer writes any of these
+    {"type": "ai_asked"}                                               the AI asked a question in the conversation
 Each touch is sent on the channels ticked for it (text / email / call task), as written: fixed text word for word,
 "AI writes it" by the AI from its instruction. It stops when the customer replies, an appointment is set, they opt
 out or the AI is paused (`stops_when` can drop "customer replies").
@@ -52,7 +53,7 @@ def _matches(start: dict[str, Any], trigger: dict[str, Any]) -> bool:
     if kind == "customer_says":
         pattern = ai_studio.words_to_pattern(start.get("phrases") or start.get("words") or [])
         return bool(pattern and re.search(pattern, trigger.get("text") or "", re.IGNORECASE))
-    return kind == "lead_created"
+    return kind in ("lead_created", "ai_asked")
 
 
 async def start(db: DealerScopedDatabase, *, lead_id: str, customer_id: str | None, channel: str,

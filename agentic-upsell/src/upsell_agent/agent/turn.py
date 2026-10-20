@@ -583,6 +583,13 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
     check-back (`next_action`). Shadow turns change nothing."""
     if shadow or not lead_id:
         return None
+    asked = str((result.get("draft") or {}).get("sms_text") or (result.get("draft") or {}).get("email_body") or "")
+    if trigger == "inbound_message" and sent is not None and sent.status in ("sent", "duplicate") and "?" in asked:
+        # Client, 20 Oct 2026 (Betsy, approved): an AI Studio cadence can start when the AI asks the customer a
+        # question in the conversation (her 15-minute "no response to a question" nudge); a reply stops it.
+        from upsell_agent.scheduler import studio_cadences
+        await studio_cadences.start(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
+                                    trigger={"type": "ai_asked"})
     decision = result.get("decision") or {}
     visit = decision.get("visit") or {}
     dated = decision.get("next_action")

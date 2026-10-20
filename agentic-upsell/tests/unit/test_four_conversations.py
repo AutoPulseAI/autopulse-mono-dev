@@ -160,7 +160,9 @@ def test_a_placeholder_name_is_never_used():
         assert known_first_name(junk) is None, junk
         assert first_name(junk) == "there"
     assert known_first_name("Megan NoLastName140826066") == "Megan"
-    assert known_first_name("FERRIOLO,ANTONI") == "Ferriolo"
+    # Client, 20 Oct 2026 (Betsy): a comma means "Last, First".
+    assert known_first_name("FERRIOLO,ANTONI") == "Antoni"
+    assert known_first_name("Zendejas, Andrew") == "Andrew"
     held = render_holding_reply("still_waiting", "Name")["sms_text"]
     assert held.startswith("Sorry for the wait.") and "Name" not in held
 

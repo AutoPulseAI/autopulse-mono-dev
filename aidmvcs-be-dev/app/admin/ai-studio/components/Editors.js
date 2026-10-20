@@ -61,6 +61,7 @@ function StartsWhen({ content, onChange, readOnly }) {
             <option value="status">staff set the lead&apos;s status to</option>
             <option value="lead_created">a new lead comes in</option>
             <option value="customer_says">the customer says</option>
+            <option value="ai_asked">the AI asks a question (no reply yet)</option>
           </Form.Select>
           {start.type === "status" && (
             <Form.Select size="sm" style={{ width: 240 }} disabled={readOnly} value={start.status || ""}

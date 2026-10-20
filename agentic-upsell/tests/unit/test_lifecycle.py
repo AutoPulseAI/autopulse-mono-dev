@@ -582,3 +582,25 @@ def test_closed_lost_reopens(event, expected):
 
 def test_closed_no_longer_owns_stays_closed():
     assert not lifecycle.transition(Stage.CLOSED_NO_LONGER_OWNS, Event("customer_replied")).changes
+
+
+def test_the_name_nudge_is_never_planned_for_a_customer_who_replied():
+    """Client, 20 Oct 2026 (Nadina Singh): the nudge is only for a customer who never answered."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    from upsell_agent.agent import cadence
+    state = cadence.CadenceState.load({"cadence": {"started_at": datetime(2026, 10, 20, 14, tzinfo=UTC),
+                                                   "touch_number": 2}})
+    now = datetime(2026, 10, 20, 15, tzinfo=UTC)
+    tz = ZoneInfo("America/New_York")
+    assert cadence.plan_touch(state, now=now, tz=tz, first_contact_done=True).theme is cadence.NAME_NUDGE
+    replied = cadence.plan_touch(state, now=now, tz=tz, first_contact_done=True, customer_replied=True)
+    assert replied.theme is not cadence.NAME_NUDGE and replied.touch_number >= 3
+
+
+def test_form_fields_never_reach_the_ai():
+    """Client, 20 Oct 2026 (JJ: "That 'Initial Referring URL' line is just a form field")."""
+    from upsell_agent.agent.portal_text import clean_comments
+    out = clean_comments("Is the X7 still available?\nInitial Referring URL: https://cars.example/x\nutm_source=cg")
+    assert out == "Is the X7 still available?"
