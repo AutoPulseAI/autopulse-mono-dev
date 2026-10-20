@@ -441,3 +441,20 @@ def test_an_evening_leads_held_nudge_and_touch_3_never_share_a_day():
     plan = cadence.plan_touch(state, now=sent_at, tz=NY, first_contact_done=True)
     assert plan.touch_number == 3 and plan.due_at.date() > sent_at.date()
     assert plan.due_at == datetime(2026, 10, 8, 10, 0, tzinfo=NY)
+
+
+@pytestmark_flow
+async def test_follow_up_touches_end_with_the_visit_not_nothing(mongo):
+    """Live, 21 Oct 2026: touches said "a quick visit lets you see it ..." with no time and no question (decide's
+    action "acknowledge"). A touch the AI writes now offers the visit."""
+    created = await _new_lead()
+    for _ in range(8):
+        if not await _pending_touches(mongo, created):
+            break
+        await _fire_next_touch(mongo, created)
+    turns = await mongo[AI_TURN_LOG_COLLECTION].find(
+        {"lead_id": created["lead_id"], "trigger": "cadence_touch"}).sort("_id", 1).to_list(None)
+    actions = [next(((n.get("output") or {}).get("action") for n in t["nodes"] if n["node"] == "decide"), None)
+               for t in turns]
+    print("TOUCH_ACTIONS", actions)
+    assert actions and not {"acknowledge", "qualified", "partly_qualified"} & set(actions[1:]), actions

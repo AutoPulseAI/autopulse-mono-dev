@@ -226,6 +226,7 @@ def plan_visit(
     now: datetime,
     same_attempt: bool = False,
     service: bool = False,
+    force: bool = False,
 ) -> VisitOfferPlan:
     """`active_booking`: tools/booking_tool.find_active_booking()'s result,
     read fresh this turn. `built_times`: the offer already built with
@@ -277,11 +278,16 @@ def plan_visit(
         # Neither a pick nor a decline (a question, say): the times stay on the table for one more reply,
         # without a new offer or a used-up attempt; after that they come off it, and the next offer uses
         # the next angle (architecture §15 decision 115).
-        if record.held_over:
+        if record.held_over and not force:
             why = "The times offered went unanswered twice: they come off the table."
             return VisitOfferPlan(record={**record.model_dump(), "offered_times": [], "service_ask": False,
                                           "held_over": 0, "why": why},
                                   why=why)
+        if record.held_over:
+            # Client, 21 Oct 2026: the reply would otherwise end with nothing - a fresh offer, next angle (below).
+            record = record.model_copy(update={"offered_times": [], "service_ask": False, "held_over": 0})
+            just_offered = False
+    if just_offered:
         why = "The customer answered something else: the times offered stay on the table for one more reply."
         return VisitOfferPlan(record={**record.model_dump(), "offered_turn": conversation.turn + 1, "held_over": 1,
                                       "why": why}, why=why)
