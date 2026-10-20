@@ -88,6 +88,30 @@ _CANCEL_BOOKING = re.compile(
     r"cancel (?:my|the|this) (?:appointment|visit|booking)|have to cancel)\b", re.IGNORECASE)
 # Client, 12 Oct 2026: a booking is made only from the customer's own reply picking or agreeing to a time - never
 # from the lead email's text (a portal's "Scheduled appointment" note) and never when they say they aren't ready.
+def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
+    """The times we just offered, shown again: the customer answered something else ("thanks") and the offer stays
+    open for this reply - the reply asks which one works instead of ending with nothing."""
+    record = {**((conversation.visit.model_dump() if conversation.visit else {}) or {}), **(plan.record or {})}
+    times = record.get("offered_times") or []
+    if not times or record.get("declined") or record.get("stopped"):
+        return None
+    angles = record.get("angles_used") or []
+    return VisitOfferPlan(fire=True, attempt=int(record.get("attempts") or 1), angle=angles[-1] if angles else None,
+                          value_proposition=None, times=times, record=plan.record,
+                          why="The times we offered are still open: asking which one works.")
+
+
+def _touch_takes_an_offer(ctx: TurnContext, state: AgentState) -> bool:
+    """A scheduled follow-up the AI writes (not a fixed text such as the "{FirstName}?" nudge) ends with the visit and
+    two real times (live, 21 Oct 2026: touches said "a quick visit lets you see it" with no time and no question)."""
+    if state.trigger != CADENCE_TRIGGER:
+        return False
+    touch = plan_cadence_touch_context(ctx.lead_state, state.customer_name) or {}
+    return touch.get("theme") != cadence.NAME_NUDGE.id and not touch.get("fixed_text")
+
+
+# The actions that end a reply without a next step: when one fires, the visit is offered instead (Betsy, 20 Oct 2026).
+_DEAD_ENDS = frozenset({"acknowledge", "qualified", "partly_qualified"})
 _NOT_READY = re.compile(
     r"\b(numbers? first|price first|need (the |some )?(numbers|pricing|price|info|information|details)|"
     r"not (ready|yet|sure)|think about it|let me (think|check|see)|get back to you|(will|i'?ll) let you know|"
@@ -267,7 +291,7 @@ def _day_offer_why(info: dict[str, Any]) -> str:
 async def _visit_and_booking(
     ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
     extraction: dict[str, Any], *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
-    after_hours_blocking: bool, buying_urgency: bool = False,
+    after_hours_blocking: bool, buying_urgency: bool = False, force_offer: bool = False,
 ) -> tuple[dict[str, Any], Any]:
     """Everything B4/B5 needs the database for, done once: reads the active
     booking fresh (decision 60), matches a pick or a cancel/reschedule
@@ -440,7 +464,7 @@ async def _visit_and_booking(
     offers_left = (not conversation.visit or conversation.visit.attempts < MAX_VISIT_ATTEMPTS
                    or visit_wants_visit(extraction))
     if not hold and not after_hours_blocking and (slot_taken or (
-            offers_left and (buying_urgency or visit_eligible(profile, extraction)))):
+            offers_left and (buying_urgency or force_offer or visit_eligible(profile, extraction)))):
         # Client, 16 Oct 2026 (appointment first): a day they named ("Probably Saturday") gets that day's times, whatever
         # the reader made of the message - never the earliest times plus "or would you prefer Saturday?".
         request = (booking_tool.preferred_day(text, dealer, now)
@@ -458,7 +482,8 @@ async def _visit_and_booking(
         built_times = booking_tool.format_offer(booking_tool.offer_times(available), dealer,
                                                 customer_zones=customer_zones)
     plan = plan_visit(profile=profile, extraction=extraction, conversation=conversation, active_booking=None,
-                      built_times=built_times, booked_this_turn=False, now=now, same_attempt=slot_taken)
+                      built_times=built_times, booked_this_turn=False, now=now, same_attempt=slot_taken,
+                      force=force_offer)
     if slot_taken and plan.record:
         plan.record["pending_pick"] = None
     visit_ctx["stopped"] = bool((plan.record or {}).get("stopped")) if plan.record else bool(
@@ -939,31 +964,52 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         wants_human = True  # their answer to "call or text?" is the request for a person
     elif person.record and person.record.get("choice") == "withdrawn":
         wants_human = False
-    decision = next_action(profile, Flags(
-        hold_questions=hold,
-        contact_choice=after_hours.mode if after_hours.mode in ("offer", "later") else None,
-        opted_out=status == "opted_out",
-        already_qualified=status == "qualified",
-        stop_asking=status == "partly_qualified",
-        asks={path: (a.count, a.last_turn) for path, a in conversation.asks.items()},
-        confirms=dict(conversation.confirms),
-        last_asked=list(conversation.last_asked),
-        replies=conversation.turn,
-        wants_human=wants_human,
-        human_contact=person.mode,
-        upset=bool(extraction.get("upset")),
-        upset_confidence=float(extraction.get("upset_confidence") or 0.0),
-        upset_words=said_upset,
-        annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
-        questions=questions,
-        urgent=urgent,
-        urgent_confidence=urgent_confidence,
-        visit_offer=visit_plan.as_dict() if visit_plan.fire else None,
-        visit_handoff=visit_plan.handoff,
-        visit_pending=visit_plan.fire or conversation.awaiting_visit_pick,
-        not_interested=not_interested,
-        not_interested_reason=not_interested_reason,
-    ))
+    def decide_with(plan: Any) -> dict[str, Any]:
+        return next_action(profile, Flags(
+            hold_questions=hold,
+            contact_choice=after_hours.mode if after_hours.mode in ("offer", "later") else None,
+            opted_out=status == "opted_out",
+            already_qualified=status == "qualified",
+            stop_asking=status == "partly_qualified",
+            asks={path: (a.count, a.last_turn) for path, a in conversation.asks.items()},
+            confirms=dict(conversation.confirms),
+            last_asked=list(conversation.last_asked),
+            replies=conversation.turn,
+            wants_human=wants_human,
+            human_contact=person.mode,
+            upset=bool(extraction.get("upset")),
+            upset_confidence=float(extraction.get("upset_confidence") or 0.0),
+            upset_words=said_upset,
+            annoyed_at_bot=bool(extraction.get("annoyed_at_bot")),
+            questions=questions,
+            urgent=urgent,
+            urgent_confidence=urgent_confidence,
+            visit_offer=plan.as_dict() if plan.fire else None,
+            visit_handoff=plan.handoff,
+            visit_pending=plan.fire or conversation.awaiting_visit_pick,
+            not_interested=not_interested,
+            not_interested_reason=not_interested_reason,
+        ))
+
+    decision = decide_with(visit_plan)
+    if (decision["action"] in _DEAD_ENDS and not hold and not after_hours_blocking and not not_interested
+            and (state.trigger in ("inbound_message", "resume_at_opening") or _touch_takes_an_offer(ctx, state))
+            and not extraction.get("annoyed_at_bot")
+            and visit_ctx.get("status") not in ("pending", "confirmed", "cancelled") and not visit_ctx.get("just_booked")
+            and not visit_ctx.get("cancelled_this_turn") and not visit_ctx.get("moved_this_turn")
+            and not visit_declines(extraction) and not _NOT_READY.search(text or "")):
+        # Client, 20-21 Oct 2026 (Betsy: "it's supposed to QUALIFY for DATA and LEVERAGE DATA to get APPOINTMENTS";
+        # live, 68 of ~145 replies ended in "acknowledge" with no next step): a reply never ends with nothing - when
+        # there is nothing left to ask, it offers the visit with two real times.
+        forced_ctx, forced = await _visit_and_booking(
+            ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
+            after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying", force_offer=True)
+        if forced.fire:
+            visit_ctx, visit_plan = forced_ctx, forced
+            decision = decide_with(visit_plan)
+        elif on_table := _times_on_the_table(visit_plan, conversation):
+            visit_plan = on_table
+            decision = decide_with(visit_plan)
     decision["dealer_address"] = dealer.address  # the fallback answers "where are you?" with it
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
     touch1 = (plan_touch1(profile, dealer, state.customer_name,

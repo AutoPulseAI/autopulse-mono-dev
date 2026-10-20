@@ -618,3 +618,15 @@ async def test_i_can_come_at_a_time_books_it(mongo, dealer_with_hours):
     await _say(created, "I can come in at 4")
     state = await _state(mongo, created)
     assert state["stage"] == "appointment_set", await _last_sms(mongo, created)
+
+
+async def test_a_reply_never_ends_with_nothing(mongo):
+    """Client, 20-21 Oct 2026 (live: 68 of ~145 replies were "acknowledge", e.g. "Ok thanks" -> "I'm here ... when
+    you're ready"): short answers after an offer get the times again or a fresh offer, never a dead end."""
+    from tests.unit.test_turn_pipeline import _lead as _pipeline_lead
+    from tests.unit.test_turn_pipeline import _turn
+    created = await _pipeline_lead(comments="Looking for a new Toyota RAV4")
+    await _turn(created, "Looking for a new Toyota RAV4", trigger="lead_created")
+    outcomes = [(await _turn(created, said))["outcome"] for said in (
+        "My budget is $35,000 and I'd like to buy this month", "ok thanks", "cool", "ok", "thanks", "sounds good")]
+    assert "acknowledge" not in outcomes and outcomes.count("offer_visit") >= 4, outcomes
