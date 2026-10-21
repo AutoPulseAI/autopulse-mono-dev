@@ -26,10 +26,33 @@ async def test_notices_alerts_and_handoffs_are_listed_newest_first(mongo):
                  staff_alert={"at": T0 + timedelta(hours=2), "reason": "No staff response"})
     await _state(mongo, "L3", stage="no_contact_made")  # nothing to show
     out = await list_notices(DEALER)
-    assert [(n["lead_id"], n["source"]) for n in out["notices"]] == [("L2", "alert"), ("L2", "handoff"),
-                                                                     ("L1", "notice")]
-    assert out["unhandled_count"] == 2  # leads that need a person: L2's handoff and its alert are one lead
+    # One row per lead (Betsy, 21 Oct 2026): L2's 30-minute alert is a status on its handoff row, not a second row.
+    assert [(n["lead_id"], n["source"]) for n in out["notices"]] == [("L2", "handoff"), ("L1", "notice")]
+    l2 = out["notices"][0]
+    assert l2["still_no_reply"] is True and "Still no staff reply" in l2["text"] and l2["sources"] == ["handoff", "alert"]
+    assert out["unhandled_count"] == 2
     assert (await list_notices(OTHER))["notices"] == []
+
+
+async def test_ten_handoffs_with_their_alerts_are_ten_rows_and_one_click_handles_each(mongo):
+    for i in range(10):
+        await _state(mongo, f"H{i}", status="handoff", status_at=T0, status_reason="Asked for a person",
+                     staff_alert={"at": T0 + timedelta(minutes=30), "reason": "No staff response"},
+                     staff_notice={"at": T0, "kind": "text_requested", "text": "Wants a text"})
+    out = await list_notices(DEALER)
+    assert len(out["notices"]) == 10 and out["unhandled_count"] == 10
+    assert all(n["also"][0]["kind"] == "text_requested" for n in out["notices"])
+    done = await mark_handled("H0", Handled(dealer_id=DEALER, source="handoff", by="Sam"))
+    assert done["handled"] is True
+    out = await list_notices(DEALER)
+    assert len(out["notices"]) == 9 and "H0" not in {n["lead_id"] for n in out["notices"]}
+    [h0] = [n for n in (await list_notices(DEALER, include_handled=True))["notices"] if n["lead_id"] == "H0"]
+    assert h0["handled"] and h0["handled_by"] == "Sam"
+    # A newer alert on the handled lead opens the same one row again - still one row.
+    await mongo["ai_lead_state"].update_one({"lead_id": "H0"}, {"$set": {"staff_alert": {
+        "at": T0 + timedelta(hours=3), "reason": "No staff response"}}})
+    rows = [n for n in (await list_notices(DEALER))["notices"] if n["lead_id"] == "H0"]
+    assert len(rows) == 1 and rows[0]["handled"] is False
 
 
 async def test_marking_handled_hides_it_until_a_newer_notice_arrives(mongo):

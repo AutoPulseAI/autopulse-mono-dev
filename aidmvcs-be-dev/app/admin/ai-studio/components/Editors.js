@@ -55,6 +55,11 @@ function StartsWhen({ content, onChange, readOnly }) {
     <Card className="mb-3" style={{ borderColor: "#c9d3e6" }}>
       <Card.Body className="py-2 small">
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+          {"enabled" in content && (
+            <Form.Check type="switch" id="cadence-enabled" className="me-2" label={content.enabled === false ? "Off" : "On"}
+              disabled={readOnly} checked={content.enabled !== false}
+              onChange={(e) => onChange({ ...content, enabled: e.target.checked })} />
+          )}
           <span className="fw-semibold">Starts when</span>
           <Form.Select size="sm" style={{ width: 230 }} disabled={readOnly} value={start.type || "status"}
             onChange={(e) => set({ type: e.target.value })}>
@@ -102,7 +107,8 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly, bui
       <HowTo>click a touch to change <strong>when</strong> it goes out (any number of minutes, hours, days, weeks,
         months or years), its channels and its message. Use ↑ ↓ to change the order, ✕ to remove a touch, and
         &quot;+ Add touch&quot; to add one. Then Save draft and Publish.</HowTo>
-      {!builtIn && <StartsWhen content={content} onChange={onChange} readOnly={readOnly} />}
+      {/* A built-in cadence with its own trigger ("Still with me?") shows it, with its On/Off switch. */}
+      {(!builtIn || content.starts_when) && <StartsWhen content={content} onChange={onChange} readOnly={readOnly} />}
       {content.repeat && (
         <Card className="mb-3" style={{ borderColor: "#c9d3e6" }}>
           <Card.Body className="py-2 d-grid gap-2">

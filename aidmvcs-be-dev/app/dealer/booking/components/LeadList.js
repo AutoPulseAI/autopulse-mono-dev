@@ -1212,6 +1212,11 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                                 }
                               })()}
                             </p>
+                            {lead.booked_by && (
+                              <span className={`badge ${lead.booked_by === 'ai' ? 'bg-primary' : 'bg-secondary'}`}>
+                                {lead.booked_by === 'ai' ? 'Made by AI' : 'Made by Staff'}
+                              </span>
+                            )}
                           </div>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">

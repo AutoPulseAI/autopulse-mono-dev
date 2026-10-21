@@ -910,6 +910,12 @@ def compose(payload: dict[str, Any]) -> dict[str, Any]:
         lead_in = f"{answered} " if answered and action == "answer" else ""
         body = f"{lead_in}Sounds good, {name} - I'll check back with you around {planned['display']}."
         why = f"The customer asked us to get back to them later: confirm {planned['display']}, ask nothing else."
+    if payload.get("ask_when_free") and action not in ("handoff", "stop"):
+        # Item 9 (Betsy, 21 Oct 2026): busy, no time given - ask when, nothing else.
+        body = f"No problem, {name}! What time works best for me to check back with you?"
+        why = "The customer is busy right now: ask what time works, nothing else."
+    if (first := payload.get("ask_last_name")) and action not in ("handoff", "stop") and "?" not in body:
+        body = f"{body} And your last name, {first}?".strip()
     if payload.get("reach_out"):
         # MASTER_PLAN_3 C3: a scheduled next step firing - not a reply, we're checking back as asked.
         # No greeting line: only the first reply of a conversation greets (the guard's rule).

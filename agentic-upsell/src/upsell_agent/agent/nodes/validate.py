@@ -244,7 +244,7 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
             rejected.append({**item, "reason": outcome["reason"]})
             reasoning.append(f"✗ {value.get('path')} rejected: {outcome['reason']}")
             continue
-        confident = checks["confident"]
+        confident = checks["confident"] or value.get("path") in _DESCRIBED_ENOUGH
         await save_fact(ctx.db, customer_id=state.customer_id, lead_id=state.lead_id, path=value["path"],
                         value=outcome["value"], source=FactSource.BOT_EXTRACTED,
                         source_message_id=ctx.source_message_id, quote=value.get("quote"),
@@ -261,6 +261,11 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
     span.reasoning = reasoning or ["Nothing to validate."]
     span.edge_label = f"{len(accepted)} ok · {len(needs_confirming)} ? · {len(rejected)} ✗"
     return {"validation": validation, "profile": profile.to_api()}
+
+
+# The customer described it in their own words ("no accidents, a scrape on the bumper"): that is the answer - the
+# appraisal judges the car. Never "just to confirm, you'd rate it good?" (eval, 22 Oct 2026: asked three times).
+_DESCRIBED_ENOUGH = frozenset({"trade_in.condition", "vehicle.condition"})
 
 
 async def _timeline_from_confirmed_date(ctx: TurnContext, state: AgentState, slot: dict[str, Any],

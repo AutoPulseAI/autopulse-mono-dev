@@ -509,6 +509,11 @@ Rules:
 - next_action (only when given: display, the customer's date in plain words): they asked us to get back to them
   then. Confirm it briefly ("Sounds good - I'll check back with you around Friday, October 3."). Ask nothing else
   and offer nothing else.
+- ask_when_free (only when true): the customer is busy right now and didn't say when to get back to them. Reply
+  in one short, friendly line: no problem, and ask what time works best for you to text them back (e.g. "No
+  problem! What time works best for me to check back with you?"). Ask nothing else and offer nothing else.
+- ask_last_name (only when given: the first name they just told us): use that name, and end with a short ask for
+  their last name ("And your last name, Sal?"). That is the reply's one question.
 - reach_out (only when given: words, notes): this message isn't a reply to something they just sent - they
   asked us to get back to them (reach_out.words) and that time has come. Open by saying you're checking back as
   they asked (no "Hi <name>," greeting line in the SMS - the conversation already started), then do the action.

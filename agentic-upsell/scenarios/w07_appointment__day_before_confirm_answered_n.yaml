@@ -13,6 +13,10 @@ steps:
   - expect_booking: {lead: v, status: pending, time: "10:00"}
   - expect_followup: {lead: v, kind: appointment_no_show_check, status: pending, due_local: "11:00"}
   # Turns 4 and 5 by then: the 15-minute details message (stream R) and the confirmation are logged appointment steps.
+  # Time passes as it does for real: the 15-minute details message goes out on Tuesday, a day before the
+  # confirmation (one jump to Wednesday fired both in the same sweep, in either order).
+  - advance_clock: {dealer: A, to: "Tue 12:30"}
+  - expect_followup: {lead: v, kind: appointment_details, status: sent, timeout_s: 30}
   - advance_clock: {dealer: A, to: "Wed 10:05"}
   - expect_followup: {lead: v, kind: appointment_confirm, status: sent, timeout_s: 30}
   - reply: {lead: v, text: "N"}

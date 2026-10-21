@@ -689,7 +689,11 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
         mods["lifecycle"].STAFF_STATUS_EVENTS.update({k: v for k, v in c["map"].items() if v})
     elif key == "alert_kinds" and isinstance(c.get("counts"), list):
         from upsell_agent.api import staff_view
-        staff_view.ACTION_KINDS = frozenset(str(k) for k in c["counts"])
+        # A kind added after the list was saved can't have been unticked: it counts as the code says (e.g.
+        # person_requested, 22 Oct 2026). Kinds the saved list knew keep the saved choice.
+        known = set(c.get("kinds") or {}) or set(staff_view.ALERT_KINDS) - staff_view.KINDS_ADDED_LATER
+        added = {k for k in staff_view.ACTION_KINDS if k not in known}
+        staff_view.ACTION_KINDS = frozenset({str(k) for k in c["counts"]} | added)
     elif key == "ai_statuses":
         if isinstance(c.get("stages"), dict):
             mods["crm_status"].CRM_STATUS_FOR_STAGE.update({k: v for k, v in c["stages"].items() if v})

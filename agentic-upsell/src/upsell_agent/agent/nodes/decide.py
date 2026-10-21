@@ -565,7 +565,7 @@ def not_interested_mode(extraction: dict[str, Any], conversation: ConversationSt
 
 
 def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: DealerProfile, channel: str,
-                     text: str) -> dict[str, Any] | None:
+                     text: str, awaiting_when: bool = False) -> dict[str, Any] | None:
     """A dated next step the customer asked for (Omnichannel PDF §2 "specific
     timing wins", §6): their own words (`next_contact_when`, or the time they
     gave when declining a visit), resolved in code (slots/dates.py), never by
@@ -576,10 +576,22 @@ def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: Deale
     from upsell_agent.slots.dates import resolve as resolve_date
 
     words = extraction.get("next_contact_when") or (
-        extraction.get("visit_later_when") if extraction.get("declines_visit") else None)
+        extraction.get("visit_later_when") if extraction.get("declines_visit") else None) or (
+        # Their answer to "what time works best?" is the time, whatever Extract made of it.
+        text if awaiting_when else None)
+    local_now = now.astimezone(dealer.tz)
+    # Betsy, 21 Oct 2026 (item 9): "I'm busy, text me at 5" / "in 2 hours" - a time later today counts too, but only
+    # for getting back to them: "can I come in at 4 today?" is a visit (booking), never a check-back.
+    busy = awaiting_when or bool(BUSY_NOW.search(text or "") or _CHECK_BACK_ME.search(text or ""))
+    later = (later_today(str(words or ""), text, local_now, busy=True)
+             if busy and not _COMING_IN.search(text or "") else None)
+    if later:
+        return {**later, "channel": channel, "owner": "ai", "entered_by": "ai",
+                "call_requested": bool(_CALL_ME.search(text or "")),
+                "context_notes": f"The customer is busy and asked us to get back to them {later['words']!r}: "
+                                 f"{(text or '').strip()[:300]}"}
     if not words:
         return None
-    local_now = now.astimezone(dealer.tz)
     resolved = resolve_date(str(words), local_now)
     if resolved is None or resolved.day <= local_now.date():
         return None
@@ -592,6 +604,77 @@ def plan_next_action(extraction: dict[str, Any], *, now: datetime, dealer: Deale
             "channel": channel, "owner": "ai", "entered_by": "ai", "call_requested": call,
             "context_notes": (f"The customer asked us to {'call' if call else 'get back to'} them {words!r}: "
                               f"{text.strip()[:300]}")}
+
+
+# "My name is Sal" - a first name only (Betsy, 21 Oct 2026, item 10: the AI confirms the full name if needed).
+_FIRST_NAME_ONLY = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|call\s+me|i\s+go\s+by|this\s+is)\s+"
+                              r"([A-Z][a-z'-]+)\b(?!\s+[A-Z])")
+
+
+# Busy right now (Betsy, 21 Oct 2026, item 9): "I'm busy", "at work", "can't talk right now", "talk later",
+# "I'll text you tomorrow". Without a time the AI asks when; with one, it checks back then.
+BUSY_NOW = re.compile(
+    r"\b(?:i'?m|im|i\s+am)\s+(?:a\s+(?:little|bit)\s+)?(?:busy|at\s+work|driving|working|in\s+a\s+meeting|"
+    r"with\s+(?:a\s+)?(?:client|customer|patient)s?|tied\s+up)\b"
+    r"|\bcan'?t\s+(?:talk|text|chat|do\s+this)\s+(?:right\s+)?now\b"
+    r"|\b(?:talk|text|chat|speak)\s+(?:to\s+you\s+|with\s+you\s+)?later\b"
+    r"|\b(?:i'?ll|i\s+will|let\s+me)\s+(?:text|message|get\s+back\s+to|reach\s+out\s+to|hit)\s+(?:you|u)\b"
+    r"|\b(?:catch|hit)\s+you\s+(?:up\s+)?later\b|\bnot\s+(?:a\s+)?good\s+time\b", re.IGNORECASE)
+# "Text me at 5", "call me back in an hour", "check back with me later".
+_CHECK_BACK_ME = re.compile(r"\b(?:text|call|message|ping|msg|hit|reach|get\s+back\s+to|check\s+(?:back\s+)?(?:in\s+)?with)"
+                            r"\s+(?:me|us)\b", re.IGNORECASE)
+# Talking about a visit: their time is for coming in, not for us to get back to them.
+_COMING_IN = re.compile(r"\b(?:come\s+(?:in|by|over|down)|stop\s+by|swing\s+by|drop\s+by|visit|appointment|appt|"
+                        r"test\s+drive|see\s+(?:it|the\s+car|the\s+truck))\b", re.IGNORECASE)
+_IN_RELATIVE = re.compile(r"\bin\s+(?:about\s+|like\s+|an?\s+)?(\d+|an?|one|two|three|half\s+an?)?\s*"
+                          r"(minutes?|mins?|hours?|hrs?|hr)\b", re.IGNORECASE)
+_WORD_NUMBER = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3}
+# A check-back sooner than this isn't one: the conversation is still going.
+LATER_TODAY_MIN = timedelta(minutes=10)
+
+
+def later_today(words: str, text: str, local_now: datetime, *, busy: bool) -> dict[str, Any] | None:
+    """A check-back later today, in the dealer's time: "in 2 hours", "in 30 min", "at 5" (with "today"/"tonight"
+    or while saying they're busy). A bare time already past today means tomorrow at that time. None otherwise -
+    days after today are plan_next_action's usual dated step."""
+    from upsell_agent.slots.dates import _day_of, _time_of
+    said = " ".join(x for x in (words, text if busy or not words else "") if x)
+    # "after 5", "around 6", "by 7" name a time as surely as "at 5".
+    said = re.sub(r"\b(?:after|around|about|by)\s+(?=\d{1,2}(?::\d{2})?\b(?!\s*(?:min|hour|hr|mile|k\b)))", "at ",
+                  said, flags=re.IGNORECASE)
+    when: datetime | None = None
+    if m := _IN_RELATIVE.search(said):
+        raw = (m.group(1) or "1").lower()
+        amount = 0.5 if raw.startswith("half") else float(raw) if raw.isdigit() else float(_WORD_NUMBER.get(raw, 1))
+        unit = m.group(2).lower()
+        when = local_now + (timedelta(hours=amount) if unit.startswith("h") else timedelta(minutes=amount))
+        if when - local_now < LATER_TODAY_MIN:
+            return None
+        if when.date() != local_now.date():
+            return None
+        display = when.strftime("%-I:%M %p").replace(":00 ", " ")
+        return {"date": when.date().isoformat(), "time": when.strftime("%H:%M"), "time_given": True,
+                "approximate": True, "words": m.group(0), "display": f"today around {display}", "same_day": True}
+    at = _time_of(said)
+    if at is None:
+        return None
+    day = _day_of(said, local_now.date(), local_now)
+    if day is not None and day.day != local_now.date():
+        return None  # another day: the usual dated step
+    if day is None and not busy and not words:
+        return None
+    when = local_now.replace(hour=at.hour, minute=at.minute, second=0, microsecond=0)
+    tomorrow = False
+    if when - local_now < LATER_TODAY_MIN:
+        if day is not None:
+            return None  # "today at 9" said at 10: nothing to schedule today
+        when += timedelta(days=1)
+        tomorrow = True
+    display = when.strftime("%-I:%M %p").replace(":00 ", " ")
+    return {"date": when.date().isoformat(), "time": when.strftime("%H:%M"), "time_given": True,
+            "approximate": False, "words": str(words or text).strip()[:80],
+            "display": (f"tomorrow, {when.strftime('%A')}, at {display}" if tomorrow else f"today at {display}"),
+            "same_day": not tomorrow}
 
 
 #: "What are you driving now?" asks about the car they'd trade in, so it counts as that slot's ask.
@@ -929,7 +1012,14 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
 
     # MASTER_PLAN_3 C3: a dated next step the customer asked for. The reply confirms it and asks or
     # offers nothing else (they asked us to come back later, not to keep going now).
-    dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text)
+    dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text,
+                                               awaiting_when=conversation.awaiting_when_free)
+    # Betsy, 21 Oct 2026 (item 9): busy right now and no time given ("I'm busy, talk later") - the reply asks what
+    # time works best and nothing else; their answer becomes the check-back (plan_next_action, awaiting_when).
+    ask_when_free = bool(not dated and not hold and state.trigger == "inbound_message"
+                         and BUSY_NOW.search(text or "") and not conversation.awaiting_when_free)
+    if ask_when_free:
+        hold = "the customer is busy right now: the reply only asks what time works to get back to them"
     if dated:
         hold = f"the customer asked us to get back to them {dated['display']}: nothing more is asked now"
         if after_hours.mode == "offer":
@@ -1089,6 +1179,12 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # guard allows exactly these service claims in the reply and rejects any others.
         decision["service_facts"] = service_offer["facts"]
     decision["next_action"] = dated if decision["action"] not in ("stop", "handoff", "offer_human") else None
+    decision["ask_when_free"] = ask_when_free and decision["action"] not in ("stop", "handoff", "offer_human")
+    # A first name only, and nothing else is being asked or offered this reply: ask their last name, in a few words.
+    first_only = _FIRST_NAME_ONLY.search(text or "") if state.trigger == "inbound_message" else None
+    decision["ask_last_name"] = (first_only.group(1) if first_only and not hold and not decision.get("asks")
+                                 and decision["action"] not in ("stop", "handoff", "offer_human", "offer_visit")
+                                 and not (visit_plan and visit_plan.fire) else None)
     decision["not_interested"] = ({"mode": not_interested, "reason": not_interested_reason}
                                   if not_interested else None)
     if state.trigger == NEXT_ACTION_TRIGGER:

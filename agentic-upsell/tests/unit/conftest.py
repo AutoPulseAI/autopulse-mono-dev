@@ -132,3 +132,13 @@ def legacy_switch(monkeypatch):
     C4, decision 153)."""
     from upsell_agent.agent import lifecycle
     monkeypatch.setattr(lifecycle, "cadence_enabled", lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def _still_with_me_only_where_tested(request, monkeypatch):
+    """The built-in "Still with me?" cadence (Betsy, 21 Oct 2026, item 8) adds a pending touch after every question
+    the AI asks; unit tests about other features count their own follow-ups, so it is on only in tests marked
+    `still_with_me` (tests/unit/test_busy_and_still_with_me.py). The scenarios run it as in production."""
+    if request.node.get_closest_marker("still_with_me") is None:
+        from upsell_agent.scheduler import studio_cadences
+        monkeypatch.setattr(studio_cadences, "RUN_BUILT_INS", ())

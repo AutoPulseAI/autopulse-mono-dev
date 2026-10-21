@@ -95,6 +95,41 @@ def notices_for(state: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# Which notice leads the lead's one row: the handoff (the reason a person is needed), then a staff notice (a call
+# or text asked for, a possible opt-out...), then the "no staff response" alert, then "not interested".
+_ROW_ORDER = ("handoff", "notice", "alert", "not_interested")
+
+
+def merge_per_lead(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per lead (Betsy, 21 Oct 2026: "10 leads = 10 reminders, never 20"). The 30-minute "no staff
+    response" alert becomes a status on the handoff's row ("Still no staff reply") instead of a second row, and any
+    other notice on the lead is listed under it. The row is handled only when everything on it is."""
+    by_lead: dict[Any, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_lead.setdefault(row["lead_id"], []).append(row)
+    out = []
+    for group in by_lead.values():
+        group.sort(key=lambda n: _ROW_ORDER.index(n["source"]) if n["source"] in _ROW_ORDER else len(_ROW_ORDER))
+        row = dict(group[0])
+        others = group[1:]
+        if others:
+            alert = next((n for n in others if n["source"] == "alert"), None)
+            if alert:
+                row["still_no_reply"] = True
+                row["still_no_reply_at"] = alert["at"]
+                row["text"] = " ".join(t for t in (row.get("text"), f"Still no staff reply: {alert.get('text')}.")
+                                       if t)
+            row["also"] = [{"source": n["source"], "kind": n["kind"], "text": n.get("text"), "at": n["at"]}
+                           for n in others if n is not alert]
+            row["sources"] = [n["source"] for n in group]
+            row["at"] = max((n["at"] or "" for n in group), default=row["at"])
+            row["handled"] = all(n["handled"] for n in group)
+            if not row["handled"]:
+                row["handled_at"] = row["handled_by"] = None
+        out.append(row)
+    return out
+
+
 async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[str, Any]:
     from upsell_agent import ai_studio
     await ai_studio.refresh()  # what counts can be changed in AI Studio
@@ -105,7 +140,7 @@ async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[st
         projection={"lead_id": 1, "customer_id": 1, "staff_notice": 1, "staff_alert": 1, "status": 1,
                     "status_at": 1, "status_reason": 1, "stage": 1, "handled_notices": 1, "last_turn_at": 1,
                     "conversation.not_interested": 1}).to_list(None)
-    rows = [n for s in states for n in notices_for(s) if needs_action(n)]
+    rows = merge_per_lead([n for s in states for n in notices_for(s) if needs_action(n)])
     # The count is leads that need a person, once each (a handoff and its "no response" alert are one lead).
     unhandled = len({n["lead_id"] for n in rows if not n["handled"]})
     if not include_handled:
@@ -123,6 +158,7 @@ async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[st
 ALERT_KINDS: dict[str, str] = {
     "handoff": "The AI handed the lead to a person (upset, asked for a person, declined appointments, can't supply)",
     "no_staff_response": "Nobody answered a handoff",
+    "person_requested": "The customer asked to talk to a person (call or text not chosen yet)",
     "call_requested": "The customer asked for a call",
     "text_requested": "The customer asked for a text from a person",
     "call_escalation": "A call task was escalated",
@@ -147,10 +183,14 @@ ALERT_KINDS: dict[str, str] = {
 # Which kinds count (set in AI Studio: Rules & Prompts -> "Dealership Action Required: what counts").
 ACTION_KINDS = frozenset({
     "handoff", "no_staff_response",           # the AI handed the lead to a person (Betsy's cases), and no one answered
-    "call_requested", "text_requested",       # the customer asked for a person to call / text them
+    "person_requested", "call_requested", "text_requested",  # the customer asked for a person (to call / text)
     "call_escalation", "sold_pending_escalation", "service_request",  # a person has to act on it
     "possible_opt_out", "bad_contact", "reply_on_closed_lead",        # a person has to decide
 })
+
+# Kinds added after AI Studio's list could have been saved without them (a saved list without its "kinds" can't
+# say which kinds it knew).
+KINDS_ADDED_LATER = frozenset({"person_requested"})
 
 
 def needs_action(notice: dict[str, Any]) -> bool:
@@ -169,14 +209,22 @@ async def mark_handled(lead_id: str, body: Handled) -> dict[str, Any] | None:
     state = await states.find_one({"lead_id": lead_id})
     if state is None:
         return None
-    current = next((n for n in notices_for(state) if n["source"] == body.source), None)
+    notices = notices_for(state)
+    current = next((n for n in notices if n["source"] == body.source), None)
     if current is None:
         return {"handled": False, "reason": "That notice is no longer on the lead."}
-    mark: dict[str, Any] = {"notice_at": current["at"], "at": clock.now(), "by": body.by}
-    if body.source == "not_interested":
-        mark["reason"] = current.get("reason")
-    await states.update_one({"lead_id": lead_id}, {"$set": {f"handled_notices.{body.source}": mark}})
-    return {"handled": True, "id": current["id"], "handled_at": _iso(mark["at"])}
+    # The lead has one row (merge_per_lead): handling it handles everything on it that needs a person.
+    now = clock.now()
+    marks: dict[str, Any] = {}
+    for notice in notices:
+        if notice is not current and not needs_action(notice):
+            continue
+        mark: dict[str, Any] = {"notice_at": notice["at"], "at": now, "by": body.by}
+        if notice["source"] == "not_interested":
+            mark["reason"] = notice.get("reason")
+        marks[f"handled_notices.{notice['source']}"] = mark
+    await states.update_one({"lead_id": lead_id}, {"$set": marks})
+    return {"handled": True, "id": current["id"], "handled_at": _iso(now)}
 
 
 @router.get("/notices")

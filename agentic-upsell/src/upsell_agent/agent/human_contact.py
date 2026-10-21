@@ -60,6 +60,9 @@ REASON_CALL = "Customer asked for a call"
 REASON_TEXT = "Customer asked for a text from a person"
 NOTICE_TEXT_KIND = "text_requested"
 NOTICE_CALL_WAITING_KIND = "call_requested"
+# Asked for a person, didn't say how yet (Betsy, 21 Oct 2026: on Dealer Action Required straight away).
+NOTICE_PERSON_KIND = "person_requested"
+REASON_PERSON = "Customer asked for a person"
 
 
 def wants_no_calls(text: str) -> bool:

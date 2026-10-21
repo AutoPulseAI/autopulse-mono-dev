@@ -19,7 +19,7 @@ out or the AI is paused (`stops_when` can drop "customer replies").
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
@@ -37,11 +37,26 @@ KIND_STUDIO_TOUCH = "studio_touch"
 
 # --- Cadences added in the Studio ---------------------------------------------------------------------------------
 
+# Built-in cadences this engine runs (the others run in their own code): edited or not, unless switched Off.
+RUN_BUILT_INS = ("still_with_me",)
+
+
 def added_cadences() -> list[tuple[str, dict[str, Any]]]:
-    """(key, content) of every published cadence that isn't one of the built-in ones."""
+    """(key, content) of every published cadence that isn't one of the built-in ones, plus the built-in ones this
+    engine runs. "Still with me?" stays out when the dealership added its own "AI asks a question" cadence (Betsy's
+    15-minute nudge): one nudge per question, never two."""
     built_in = {k for (kind, k) in ai_studio._built_in() if kind == "cadences"}
-    return [(key, c) for (kind, key), c in ai_studio._changed.items()
-            if kind == "cadences" and key not in built_in and (c.get("steps") or [])]
+    added = [(key, c) for (kind, key), c in ai_studio._changed.items()
+             if kind == "cadences" and key not in built_in and (c.get("steps") or [])]
+    own_ai_asked = any((c.get("starts_when") or {}).get("type") == "ai_asked" for _, c in added)
+    for key in RUN_BUILT_INS:
+        c = ai_studio.content("cadences", key) or ai_studio._built_in().get(("cadences", key)) or {}
+        if c.get("enabled") is False or not c.get("steps"):
+            continue
+        if own_ai_asked and (c.get("starts_when") or {}).get("type") == "ai_asked":
+            continue
+        added.append((key, c))
+    return added
 
 
 def _matches(start: dict[str, Any], trigger: dict[str, Any]) -> bool:
@@ -54,6 +69,15 @@ def _matches(start: dict[str, Any], trigger: dict[str, Any]) -> bool:
         pattern = ai_studio.words_to_pattern(start.get("phrases") or start.get("words") or [])
         return bool(pattern and re.search(pattern, trigger.get("text") or "", re.IGNORECASE))
     return kind in ("lead_created", "ai_asked")
+
+
+def _content(key: str) -> dict[str, Any] | None:
+    """A cadence's content as it runs now: the published one, or a run built-in's own (None when switched Off or
+    gone - its pending touch is then cancelled)."""
+    for k, c in added_cadences():
+        if k == key:
+            return c
+    return None
 
 
 async def start(db: DealerScopedDatabase, *, lead_id: str, customer_id: str | None, channel: str,
@@ -85,7 +109,7 @@ async def start(db: DealerScopedDatabase, *, lead_id: str, customer_id: str | No
 async def plan_step(db: DealerScopedDatabase, *, lead_id: str, customer_id: str, channel: str, key: str,
                     index: int, started_at: datetime, previous_at: datetime) -> dict[str, Any]:
     from upsell_agent.integrations.dealer_profile import dealer_profile
-    content = ai_studio.content("cadences", key) or {}
+    content = _content(key) or {}
     steps = content.get("steps") or []
     if index >= len(steps):
         return {"cadence": key, "created": False, "reason": "the cadence's last touch has gone out"}
@@ -120,7 +144,7 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     )
 
     key = doc["studio_cadence"]
-    content = ai_studio.content("cadences", key)
+    content = _content(key)
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
     stops = content.get("stops_when") if content else None
     stops = stops if isinstance(stops, list) else ["customer replies", "appointment set", "opt-out"]
@@ -132,6 +156,12 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         ("customer replies" in stops and isinstance(replied, datetime) and replied > doc["started_at"].replace(
             tzinfo=replied.tzinfo), "the customer replied"),
         ("appointment set" in stops and state.get("stage") == "appointment_set", "an appointment is set"),
+        # "Still with me?" only while our question is the last thing they saw (Betsy, 22 Oct 2026: only a customer
+        # who was talking with us and went quiet mid-conversation): anything sent since - a staff text, a follow-up
+        # - means it isn't that moment any more.
+        (key == "still_with_me" and isinstance(state.get("last_outbound_at"), datetime)
+         and state["last_outbound_at"] > (doc["started_at"] + timedelta(minutes=1)).replace(
+             tzinfo=state["last_outbound_at"].tzinfo), "another message went out after the AI's question"),
     ]
     if why := next((w for failed, w in reasons if failed), None):
         await _close(db, doc, "cancelled", reason=why)
