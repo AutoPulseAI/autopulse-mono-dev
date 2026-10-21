@@ -461,5 +461,6 @@ def test_still_available_answered_in_plain_words():
 async def test_first_text_photo_falls_back_to_the_lead_vehicle():
     """Betsy, 19 Oct 2026: the first text shows the car's photo like the first email does."""
     import inspect
+
     from upsell_agent.agent.vehicle_media import photo_for_draft
     assert "first_reply" in inspect.signature(photo_for_draft).parameters

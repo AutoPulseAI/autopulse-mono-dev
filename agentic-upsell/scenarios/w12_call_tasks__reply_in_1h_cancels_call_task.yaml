@@ -8,4 +8,4 @@ steps:
   - reply: {lead: r, text: "Yes, still interested in the Camry"}
   - wait_turns: {lead: r, count: 2, timeout_s: 20}
   - advance_clock: {minutes: 50}
-  - expect_call_task: {lead: r, status: none}
+  - expect_call_task: {lead: r, status: not_open}

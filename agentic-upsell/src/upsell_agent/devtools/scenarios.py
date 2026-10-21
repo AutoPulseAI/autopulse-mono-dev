@@ -40,7 +40,8 @@ Steps (one key per step):
                       cadence / SOLD PENDING touch it plans (theme, day, week, phase, ...)
   expect_customer:    {lead, status: ACTIVE|INACTIVE, timeout_s}   the customer's status (SOLD-DELIVERED PDF §9)
   delivery_status:    {lead, status, channel?}   the provider reports on the lead's last message on that channel
-  expect_outbox:      {lead, channel, count, contains?, contains_any?: [str, ...], settle_s}   what actually left through the fake driver
+  expect_outbox:      {lead, channel, count?, min_count?, contains?, contains_any?: [str, ...], excludes?, subject_contains?,
+                       settle_s}   what actually left through the fake driver
   expect_no_followup: {lead, kind: channel_switch, settle_s}   nothing of that kind was scheduled for the lead
   expect_lead:        {lead, status?, staff_alert?: bool, summary_contains?, after_hours?: offered|now|later,
                        staff_notice?: <kind>, fields?: {dotted.path: value}, timeout_s}   the AI's state for the lead
@@ -137,7 +138,8 @@ def scenarios_dir() -> Path:
 
 
 # A scenario's file name says what it tests: `w05_cadence__touch1_then_name_nudge.yaml` is workflow 5 (the
-# scope PDF's numbering, docs/scope/scope.pdf), then what happens. w00 is the plumbing, w12 staff and call tasks.
+# scope PDF's numbering, docs/scope/scope.pdf), then what happens. w00 is the plumbing, w12 staff and call tasks,
+# w13 the problems the client reported.
 WORKFLOWS: dict[str, str] = {
     "w00": "System: pipeline, safety net, rollout",
     "w01": "Workflow 1 · Lead intake and classification",
@@ -152,6 +154,8 @@ WORKFLOWS: dict[str, str] = {
     "w10": "Workflow 10 · SOLD - DELIVERED and ownership",
     "w11": "Workflow 11 · Compliance, opt-out and delivery problems",
     "w12": "Staff: handoff, pause and call tasks",
+    # Client, 21 Oct 2026: one scenario per problem Betsy and Bibi reported, replayed so it can't come back.
+    "w13": "Client-reported problems (Betsy, Bibi)",
 }
 
 
@@ -248,6 +252,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
         KIND_NEXT_ACTION,
         KIND_NEXT_ACTION_CHECK,
         KIND_RESUME,
+        KIND_STAFF_QUIET,
         KIND_VISIT_FOLLOWUP,
         SOLD_LIFECYCLE_KINDS,
     )
@@ -255,7 +260,7 @@ def _kind_filter(args: dict[str, Any]) -> dict[str, Any]:
     flt: dict[str, Any] = {}
     if args.get("kind") in ("first_reply_held", KIND_HANDOFF_CHECK, KIND_RESUME, KIND_VISIT_FOLLOWUP, KIND_NEXT_ACTION,
                             KIND_NEXT_ACTION_CHECK, KIND_CADENCE_TOUCH, KIND_CALL_TASK, KIND_DAILY_CALL_TASK,
-                            *APPOINTMENT_KINDS,
+                            KIND_STAFF_QUIET, *APPOINTMENT_KINDS,
                             *SOLD_LIFECYCLE_KINDS):  # MASTER_PLAN_4 (stream A3)
         flt["kind"] = args["kind"]
     elif args.get("kind") != "any":  # "any": every kind (MASTER_PLAN_3 C3)
@@ -623,7 +628,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
         return f"customer is {row['customer_status']}: {row.get('customer_status_reason')}"
 
     if kind == "expect_call_task":
-        # MASTER_PLAN_3 C2: {lead, status: open | none | cancelled | completed | dismissed, timeout_s?}
+        # MASTER_PLAN_3 C2: {lead, status: open | none | not_open | cancelled | completed | dismissed, timeout_s?}
+        # not_open: nothing waiting for staff (a task that was cancelled or done is fine).
         lead = ctx.lead(args["lead"])
         want = str(args.get("status", "open"))
 
@@ -632,6 +638,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
                 {"lead_id": lead["lead_id"]}).to_list(None)
             if want == "none":
                 return {"ok": True} if not rows else None
+            if want == "not_open":
+                return {"ok": True} if not any(r["status"] == "open" for r in rows) else None
             return rows[-1] if rows and rows[-1]["status"] == want else None
 
         try:
@@ -640,7 +648,8 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_CALL_TASKS_COLLECTION).find(
                 {"lead_id": lead["lead_id"]}).to_list(None)
             raise ScenarioFailed(f"call tasks: {[r['status'] for r in rows] or 'none'}, expected {want}") from None
-        return "no call task" if want == "none" else f"call task {found['status']} for {found['phone']}"
+        return ("no call task" if want == "none" else "nothing open for staff" if want == "not_open"
+                else f"call task {found['status']} for {found['phone']}")
 
     if kind == "call_outcome":
         # PLAN_4 stream H: staff finished the lead's open call task; the lead outcome reaches the AI.
@@ -736,8 +745,16 @@ async def _step(ctx: RunContext, kind: str, args: dict[str, Any]) -> str:
             # what left is every message the sender saw go out (the CRM's own stubbed provider took it).
             rows = await dealer_scoped_db(lead["dealer_id"]).collection(AI_MESSAGES_COLLECTION).find(
                 sent_by_ai_filter(lead["lead_id"], args["channel"])).to_list(None)
-        if len(rows) != int(args["count"]):
+        if "count" in args and len(rows) != int(args["count"]):
             raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected {args['count']}")
+        if "min_count" in args and len(rows) < int(args["min_count"]):
+            raise ScenarioFailed(f"{len(rows)} {args['channel']} message(s) left, expected at least {args['min_count']}")
+        if "excludes" in args and any(args["excludes"].lower() in r["text"].lower() for r in rows):
+            raise ScenarioFailed(f"a {args['channel']} message says {args['excludes']!r}")
+        if "subject_contains" in args and not any(args["subject_contains"].lower() in str(r.get("subject") or "").lower()
+                                                  for r in rows):
+            raise ScenarioFailed(f"no {args['channel']} subject mentions {args['subject_contains']!r}: "
+                                 f"{[r.get('subject') for r in rows]}")
         if "contains" in args and rows and not any(args["contains"].lower() in r["text"].lower() for r in rows):
             raise ScenarioFailed(f"no {args['channel']} message mentions {args['contains']!r}")
         if "contains_any" in args and rows and not any(

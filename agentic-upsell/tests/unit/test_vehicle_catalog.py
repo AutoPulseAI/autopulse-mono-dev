@@ -142,3 +142,20 @@ async def test_what_vehicles_do_you_have_searches_the_stock_in_general(mongo):
     out = (await _search(mongo, created))["output"]
     assert out["trigger"] == "the customer asked what we have"
     assert "model" not in out["params"] and len(out["records"]) == 3
+
+
+async def test_a_model_the_dealer_list_lacks_keeps_the_customers_model_and_colour(mongo, monkeypatch):
+    """Found 21 Oct 2026 (scenario w04 no_exact_match): with RAV4 missing from the dealer's (cached) model list,
+    "Do you have a used white Toyota RAV4?" was searched as any used Toyota - model and colour dropped."""
+    from upsell_agent.agent.nodes import search_stock
+    async def toyotas_but_no_rav4(dealer_id):
+        return Catalog.from_rows([{"make": "Toyota", "model": "Camry"}, {"make": "Honda", "model": "CR-V"}])
+    monkeypatch.setattr(search_stock, "dealer_catalog", toyotas_but_no_rav4)
+    state = AgentState(dealer_id=DEALER, customer_id="c", trigger="lead_created",
+                       customer_text="Do you have a used white Toyota RAV4?",
+                       extraction={"asked_vehicle": "white Toyota RAV4"},
+                       profile={"slots": [{"path": "interest.model", "value": "Toyota RAV4", "state": "filled"},
+                                          {"path": "interest.color", "value": "white", "state": "filled"},
+                                          {"path": "interest.new_or_used", "value": "used", "state": "filled"}]})
+    criteria, _, _ = await turn_criteria(state, stock_question=True)
+    assert criteria.model and "RAV4" in criteria.model and criteria.exterior_color == "white"

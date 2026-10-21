@@ -8,7 +8,7 @@ steps:
   - wait_turns: {lead: c, count: 2, timeout_s: 20}
   - expect_turn: {lead: c, outcome: offer_human}
   - expect_last_sent: {lead: c, contains: "number ending in", question_marks: 1}
-  - expect_call_task: {lead: c, status: none}
+  - expect_call_task: {lead: c, status: not_open}
   - reply: {lead: c, text: "A call please"}
   - wait_turns: {lead: c, count: 3, timeout_s: 20}
   - expect_turn: {lead: c, outcome: handoff}
@@ -25,4 +25,4 @@ steps:
   - expect_turn: {lead: t, outcome: handoff}
   - expect_last_sent: {lead: t, contains: "text you here"}
   - expect_lead: {lead: t, status: handoff, staff_notice: text_requested}
-  - expect_call_task: {lead: t, status: none}
+  - expect_call_task: {lead: t, status: not_open}

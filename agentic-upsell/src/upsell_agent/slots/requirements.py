@@ -55,7 +55,8 @@ REQUIRED_BY_LEAD_TYPE: dict[LeadType, list[Requirement]] = {
         _single("interest.model"),
         Requirement("interest.budget_or_payment", "Budget or monthly payment",
                     ("interest.budget", "interest.monthly_payment"), mode="any"),
-        _single("interest.timeline"),
+        # Scope (blueprint 3B step 4, "Assume ready now ... change it only if they explicitly say otherwise"): the
+        # timeline is never asked for - noted when the customer gives it.
         _single("trade_in.has_trade"),
     ],
     LeadType.TRADE_IN: TRADE_IN_REQUIREMENTS,
@@ -69,6 +70,9 @@ REQUIRED_BY_LEAD_TYPE: dict[LeadType, list[Requirement]] = {
 }
 
 
+_SPECIFIC_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
 def required_for(lead_type: LeadType, values: dict[str, object]) -> list[Requirement]:
     """The requirements that apply now. `values` are the current slot values:
     a general lead that told us why it's here takes that type's list, and a
@@ -77,6 +81,10 @@ def required_for(lead_type: LeadType, values: dict[str, object]) -> list[Require
     if lead_type == LeadType.GENERAL and values.get("interest.lead_type") in LeadType._value2member_map_:
         effective = LeadType(values["interest.lead_type"])
     requirements = list(REQUIRED_BY_LEAD_TYPE[effective])
+    if effective == LeadType.SALES and _SPECIFIC_YEAR.search(str(values.get("interest.model") or "")):
+        # Betsy, 12-16 Oct 2026 ("why is it asking what vehicle - can the ai see the vehicle that's in the lead"; George
+        # asked "new or used?" about a used BMW): a specific vehicle with its year settles new or used - never asked.
+        requirements = [r for r in requirements if r.id != "interest.new_or_used"]
     if effective == LeadType.SALES and values.get("trade_in.has_trade") is True:
         requirements += TRADE_IN_REQUIREMENTS
     return requirements

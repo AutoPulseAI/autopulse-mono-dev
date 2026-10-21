@@ -56,7 +56,7 @@ def test_no_asks_for_a_frustrated_customer():
 def test_never_re_asks_what_our_last_message_asked():
     decision = _decide(last_asked=["interest.new_or_used", "interest.model"],
                        asks={"interest.new_or_used": (1, 1), "interest.model": (1, 1)}, replies=1)
-    assert _asked(decision) == ["interest.budget_or_payment", "interest.timeline"]
+    assert _asked(decision) == ["interest.budget_or_payment", "trade_in.has_trade"]
 
 
 def test_answer_then_one_ask():
@@ -74,8 +74,8 @@ def test_answer_then_a_confirmation_and_no_ask():
 def test_confirm_plus_one_ask():
     decision = _decide(*SALES_ALL[:2], _fact("interest.budget", 30000, pending=True))
     assert decision["action"] == "confirm" and decision["confirm"]["path"] == "interest.budget"
-    assert _asked(decision) == ["interest.timeline"]
-    assert decision["slots"] == ["interest.budget", "interest.timeline"]
+    assert _asked(decision) == ["trade_in.has_trade"]
+    assert decision["slots"] == ["interest.budget", "trade_in.has_trade"]
 
 
 def test_confirm_alone_when_nothing_else_is_missing():

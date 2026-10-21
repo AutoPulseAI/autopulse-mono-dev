@@ -18,6 +18,7 @@ customer): it also leaves the team a notice with the lead's details.
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
@@ -358,7 +359,10 @@ async def run_turn(
                                     customer=customer)
             await _save_name(deps, dealer_id, lead_id, lead, result)
             await _show_booking(db, lead_id, decision)
-            if decision.get("ask_name"):
+            asked = str(((result.get("draft") or {}).get("sms_text")) or "") + " " + str(
+                (result.get("draft") or {}).get("email_body") or "")
+            if decision.get("ask_name") and re.search(r"\bname\b", asked, re.IGNORECASE):
+                # Only once the message really asked for it.
                 await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
                                                                          {"$set": {"name_asked": clock.now()}})
             if "buyers_order" in decision:

@@ -94,7 +94,7 @@ def test_never_the_same_detail_twice_in_a_row():
 def test_asked_twice_is_parked_then_asked_again_after_three_other_replies():
     history = {"interest.new_or_used": (2, 3)}
     parked = _decide(asks=history, replies=4, last_asked=["interest.model"])
-    assert parked["slots"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
+    assert parked["slots"] == ["interest.budget", "interest.monthly_payment", "trade_in.has_trade"]
     assert any(n["why"].startswith("parked") for n in parked["not_asked"])
     # Once every other detail has had its asks, the cooled-down one comes back.
     everyone = {"interest.new_or_used": (2, 3), "interest.budget": (2, 4), "interest.monthly_payment": (2, 4),
@@ -105,7 +105,7 @@ def test_asked_twice_is_parked_then_asked_again_after_three_other_replies():
 
 def test_least_asked_detail_comes_first():
     decision = _decide(asks={"interest.new_or_used": (1, 1), "interest.model": (1, 2)}, replies=2, last_asked=[])
-    assert decision["slots"] == ["interest.budget", "interest.monthly_payment", "interest.timeline"]
+    assert decision["slots"] == ["interest.budget", "interest.monthly_payment", "trade_in.has_trade"]
 
 
 def test_everything_missing_parked_means_partly_qualified():
@@ -116,8 +116,8 @@ def test_everything_missing_parked_means_partly_qualified():
     # Still partly qualified once the cooldown has passed: asked out means asked twice.
     assert _decide(*SALES_ALL[:2], asks=asks, replies=20)["action"] == "partly_qualified"
     # One detail asked only once keeps the conversation going.
-    once = {**asks, "interest.timeline": (1, 5)}
-    assert _decide(*SALES_ALL[:2], asks=once, replies=6, last_asked=[])["slots"] == ["interest.timeline"]
+    once = {**asks, "trade_in.has_trade": (1, 6)}
+    assert _decide(*SALES_ALL[:2], asks=once, replies=6, last_asked=[])["slots"] == ["trade_in.has_trade"]
 
 
 def test_partly_qualified_lead_is_asked_nothing_more():

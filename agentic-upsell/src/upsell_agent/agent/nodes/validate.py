@@ -57,6 +57,18 @@ _OFFER_WORDS = re.compile(r"\b(offer(?:ed|ing|s)?|quote[ds]?|quoting|apprais\w*|
 _OWED_WORDS = re.compile(r"\b(owe[ds]?|owing|payoff|pay off|paid off|loan|balance|financed|left on)\b", re.IGNORECASE)
 
 
+def model_year_not_money(value: dict[str, Any], customer_text: str) -> bool:
+    """A money slot whose number is a model year sitting before a vehicle word ("the 2024 RAV4"), with no "$"."""
+    defn = SCHEMA.get(str(value.get("path") or ""))
+    if defn is None or defn.kind != "money":
+        return False
+    digits = re.sub(r"[^\d]", "", str(value.get("value") or ""))
+    if not digits or not 1980 <= int(digits) <= 2040:
+        return False
+    text = customer_text or ""
+    return bool(re.search(rf"(?<![$\d]){digits}\s+[A-Za-z]", text)) and not re.search(rf"\$\s?{digits}\b", text)
+
+
 def offer_not_payoff(path: str, customer_text: str) -> bool:
     """A payoff "value" taken from a message about someone's offer for the car, with nothing about a loan."""
     return path == "trade_in.payoff" and bool(_OFFER_WORDS.search(customer_text or "")) and not _OWED_WORDS.search(
@@ -88,9 +100,11 @@ def run_checks(value: dict[str, Any], customer_text: str) -> dict[str, Any]:
     # so checking year/make/model/condition the same way would hedge-flag them over an unrelated "about"
     # elsewhere in that shared quote.
     hedged = defn is not None and defn.kind in ("mileage", "money") and bool(_HEDGE.search(str(value.get("quote") or "")))
-    checks["confident"] = not hedged and float(value.get("confidence") or 0) >= CONFIDENCE_THRESHOLD
-    if hedged:
-        reason = reason or f"the customer's own words ({value.get('quote')!r}) are approximate: confirm before using it"
+    # Client, 21 Oct 2026 (Betsy's examples use "about 82,000 miles and about a $9,000 payoff" as said; live, the AI
+    # kept asking "Just to confirm, your payoff is about $9,000 - right?"): an approximate number is used as the
+    # customer said it (the reply says "about"); only an uncertain reading is confirmed.
+    checks["confident"] = float(value.get("confidence") or 0) >= CONFIDENCE_THRESHOLD
+    checks["approximate"] = hedged
     if not reason and not checks["quote_found"]:
         reason = "quoted words are not in the customer's message"
     return {"checks": checks, "value": normalised, "reason": reason}
@@ -219,6 +233,10 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
         outcome = run_checks(value, text)
         item = {**value, "checks": outcome["checks"]}
         checks = outcome["checks"]
+        if checks["slot_exists"] and model_year_not_money(value, text):
+            # Found 21 Oct 2026 (eval): "What's the payment on the 2024 RAV4?" was saved as a $2,024 payment target.
+            outcome["reason"] = "a model year next to a vehicle, not an amount of money"
+            checks["value_valid"] = False
         if checks["slot_exists"] and offer_not_payoff(str(value.get("path")), text):
             outcome["reason"] = "an offer for their car from someone else, not what they owe on it"
             checks["value_valid"] = False

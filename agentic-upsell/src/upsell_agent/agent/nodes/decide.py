@@ -22,6 +22,7 @@ after-hours morning message and the dated visit_followup)."""
 import dataclasses
 import re
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from upsell_agent import ai_studio, clock
@@ -101,6 +102,22 @@ def _visit_is_over(booking: dict[str, Any], dealer: DealerProfile, now: datetime
         return True
     at = _appointment.appointment_at(tz=dealer.tz, booking=booking)
     return at is not None and at < now - _appointment.NO_SHOW_AFTER - timedelta(hours=1)
+
+
+def _new_or_used_from_stock(profile: Profile, state: AgentState) -> None:
+    """Betsy, 12-16 Oct 2026 ("can the ai see the vehicle that's in the lead"): when this turn's stock search found
+    exactly the vehicle they want, its listing says new or used - never asked (held for this turn only)."""
+    from upsell_agent.slots.profile import SlotValue
+    if profile.is_current("interest.new_or_used"):
+        return
+    pack = state.context_pack or {}
+    wanted = str((profile.slots.get("interest.model") or SimpleNamespace(value="")).value or "").lower()
+    records = [r for r in pack.get("inventory") or []
+               if (pack.get("stock_search") or {}).get("exact") or (r.get("model") and str(r["model"]).lower() in wanted)]
+    conditions = {str(r.get("condition") or "").lower() for r in records} - {""}
+    if len(conditions) == 1 and (cond := conditions.pop()) in ("new", "used"):
+        profile.slots["interest.new_or_used"] = SlotValue(path="interest.new_or_used", value=cond, state="filled",
+                                                          source="stock", fact_id="stock")
 
 
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
@@ -483,7 +500,7 @@ async def _visit_and_booking(
     offers_left = (not conversation.visit or conversation.visit.attempts < MAX_VISIT_ATTEMPTS
                    or visit_wants_visit(extraction))
     if not hold and not after_hours_blocking and (slot_taken or (
-            offers_left and (buying_urgency or force_offer or visit_eligible(profile, extraction)))):
+            offers_left and (buying_urgency or force_offer or visit_eligible(profile, extraction, conversation.turn)))):
         # Client, 16 Oct 2026 (appointment first): a day they named ("Probably Saturday") gets that day's times, whatever
         # the reader made of the message - never the earliest times plus "or would you prefer Saturday?".
         request = (booking_tool.preferred_day(text, dealer, now)
@@ -1020,8 +1037,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             not_interested_reason=not_interested_reason,
         ))
 
+    _new_or_used_from_stock(profile, state)
     decision = decide_with(visit_plan)
-    if (decision["action"] in _DEAD_ENDS and not hold and not after_hours_blocking and not not_interested
+    offered_before = bool(conversation.visit and conversation.visit.attempts and not conversation.visit.declined
+                          and not conversation.visit.stopped)
+    after_an_offer = offered_before and (decision["action"] == "ask" or (
+        decision["action"] == "answer" and not decision.get("asks")))
+    if ((decision["action"] in _DEAD_ENDS or after_an_offer) and not hold and not after_hours_blocking and not not_interested
             and (state.trigger in ("inbound_message", "resume_at_opening") or _touch_takes_an_offer(ctx, state))
             and not extraction.get("annoyed_at_bot")
             and visit_ctx.get("status") not in ("pending", "confirmed", "cancelled") and not visit_ctx.get("just_booked")
@@ -1124,7 +1146,18 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["ask_name"] = bool(
         not known_first_name(state.customer_name) and not (ctx.lead_state or {}).get("name_asked")
         and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
-        and decision["action"] not in ("stop", "handoff", "offer_human"))
+        and decision["action"] not in ("stop", "handoff", "offer_human")
+        # Live, 21 Oct 2026: the first text's one question is "Tell me, what are you driving now?" (one question per
+        # message), so the name is asked in the next reply - it was marked asked here and then never asked.
+        and not ((decision.get("touch1") or {}).get("ending")))
+    if decision["ask_name"] and decision["action"] in ("ask", "acknowledge", "qualified", "partly_qualified", "confirm"):
+        # Betsy, 16 Oct 2026: "for n/a or null it needs to ask for the first and last name" - with one question per
+        # message, the name is this message's question (the other detail waits for the next reply).
+        decision["asks"] = [{"requirement": "customer_name", "label": "Name", "slots": [],
+                             "question": "May I have your first and last name?",
+                             "explanation": "so we know who to ask for and can get everything ready for you"}]
+        decision["slots"] = []
+        decision["action"] = "ask"
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).

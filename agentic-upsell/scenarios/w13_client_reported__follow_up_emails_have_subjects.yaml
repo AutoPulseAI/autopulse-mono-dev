@@ -1,0 +1,11 @@
+name: Every follow-up email has a real subject line
+description: 'Betsy, 20 Oct 2026: "email subject lines are not effective ones". Day 2 "A closer look at ...", Day 3 "Making the numbers work ..." - never one the AI makes up.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: e, dealer: A, lead_type: sales, channel: sms, name: Erin Email, comments: "Interested in a 2023 Toyota Camry"}
+  - wait_turns: {lead: e, count: 1, timeout_s: 20}
+  - run_next: {lead: e, kind: cadence_touch}
+  - expect_followup: {lead: e, kind: cadence_touch, status: sent, index: 0, timeout_s: 45}
+  - run_next: {lead: e, kind: cadence_touch}
+  - expect_followup: {lead: e, kind: cadence_touch, status: sent, index: 1, timeout_s: 45}
+  - expect_outbox: {lead: e, channel: email, subject_contains: "A closer look at", settle_s: 3}

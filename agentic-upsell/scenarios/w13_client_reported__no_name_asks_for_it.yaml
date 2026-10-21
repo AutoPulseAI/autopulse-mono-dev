@@ -1,0 +1,13 @@
+name: A lead with no real name is greeted without one and asked for it
+description: 'Betsy, 12 and 16 Oct 2026: "Hello again, Null" / "Sorry for the wait, Name" went to customers; "for n/a or null it needs to ask for the first and last name".'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: x, dealer: A, lead_type: sales, channel: sms, name: "null null", comments: "Is the 2020 BMW X7 still available?"}
+  - wait_turns: {lead: x, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: x, excludes: "Null"}
+  # One question per message (Betsy, 18 Oct): the first text's question is "what are you driving now?"; the name is
+  # asked in the next reply.
+  - reply: {lead: x, text: "A 2017 Honda Civic"}
+  - wait_turns: {lead: x, count: 2, timeout_s: 20}
+  - expect_last_sent: {lead: x, excludes: "Null"}
+  - expect_last_sent: {lead: x, contains_any: ["first and last name", "your name"]}

@@ -15,7 +15,8 @@ steps:
   - expect_lead: {lead: t, status: handoff, staff_alert: true}
   - expect_outbox: {lead: t, channel: sms, count: 3, contains: "Sorry for the wait"}
   - advance_clock: {hours: 2.1}
+  # Client, 7 Oct 2026: a customer waiting on a callback is answered by the AI, never left in silence.
   - reply: {lead: t, text: "Anyone there?"}
   - wait_turns: {lead: t, count: 4, timeout_s: 20}
-  - expect_turn: {lead: t, trigger: inbound_held, outcome: holding_reply}
-  - expect_outbox: {lead: t, channel: sms, count: 4, contains: "passed this to the team"}
+  - expect_turn: {lead: t, trigger: inbound_message}
+  - expect_outbox: {lead: t, channel: sms, count: 4}

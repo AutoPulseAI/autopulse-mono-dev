@@ -1,0 +1,11 @@
+name: A closed-lost customer who writes back reopens the lead
+description: 'Betsy, 20 Oct 2026 (Quincy Mack): "A closed-lost lead was reactivated by messaging the ai, but the ai did not update the status."'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: q, dealer: A, lead_type: sales, channel: sms, name: Quincy Back, comments: "Interested in a Nissan Sentra"}
+  - wait_turns: {lead: q, count: 1, timeout_s: 20}
+  - staff_status: {lead: q, status: "Closed Lost"}
+  - expect_lead: {lead: q, stage: closed_lost, timeout_s: 20}
+  - reply: {lead: q, text: "Is the Sentra still available? Where are you located again?"}
+  - wait_turns: {lead: q, count: 2, timeout_s: 20}
+  - expect_lead: {lead: q, stage: contact_made_no_next_action, timeout_s: 20}

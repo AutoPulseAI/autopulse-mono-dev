@@ -1,0 +1,13 @@
+name: Staff setting "Contacted - No Next Action" starts the follow-up the same day, no name nudge
+description: 'Betsy, 20 Oct 2026: "nothing is happening with these leads the next day or in the same day"; Nadina Singh got the "Nadina?" nudge after she had replied. The lead gets a planned touch, and a customer who replied never gets the name nudge.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: n, dealer: A, lead_type: sales, channel: sms, name: Nadia Replied, comments: "Interested in a 2022 BMW 3 Series"}
+  - wait_turns: {lead: n, count: 1, timeout_s: 20}
+  - reply: {lead: n, text: "No trade in"}
+  - wait_turns: {lead: n, count: 2, timeout_s: 20}
+  - staff_status: {lead: n, status: "Contacted - No Next Action"}
+  - expect_followup: {lead: n, kind: cadence_touch, status: pending, timeout_s: 20}
+  - run_next: {lead: n, kind: cadence_touch}
+  - expect_followup: {lead: n, kind: cadence_touch, status: sent, timeout_s: 45, index: -2}
+  - expect_outbox: {lead: n, channel: sms, excludes: "Nadia?", settle_s: 2}

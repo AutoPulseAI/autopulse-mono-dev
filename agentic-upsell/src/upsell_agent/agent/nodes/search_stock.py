@@ -206,7 +206,12 @@ async def turn_criteria(state: AgentState, stock_question: bool) -> tuple[Invent
             named.model.lower() == (profile_criteria.model or "").lower()
         if same:  # the vehicle the profile already has: its colour, trim and year still count
             return profile_criteria, None, notes
-        if named.found:
+        # The dealer's own model list didn't confirm the model ("make only", "as said"): not stocked, or not yet in the
+        # cached list. When the reader already has the customer's vehicle, that reading is searched (below) - "a white
+        # RAV4" is never searched as "any Toyota" or as a model called "White RAV4" (found 21 Oct 2026; Betsy,
+        # 12 Oct: say you'll make sure that vehicle is available).
+        unconfirmed = named.how == "make only" or named.how.startswith("as said")
+        if named.found and not (unconfirmed and profile_criteria.model):
             notes.append(f"This message asks about {(asked or text)!r}: searched as {named.describe()} ({named.how}).")
             return _with_vehicle(profile_criteria, named), "the customer asked about a vehicle", notes
         if extraction.get("browse_stock") or not (profile_criteria.make or profile_criteria.model):

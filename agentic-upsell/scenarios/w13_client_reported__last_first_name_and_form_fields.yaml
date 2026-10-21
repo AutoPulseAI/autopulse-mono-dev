@@ -1,0 +1,9 @@
+name: '"LAST,FIRST" names and lead-form fields'
+description: 'Betsy, 20 Oct 2026: "LAST NAME FIRST IS INDICATED WITH A COMMA ... AI USED THE LAST NAME"; JJ: the first text said "That Initial Referring URL line is just a form field".'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 10:00"}
+  - new_lead: {as: z, dealer: A, lead_type: sales, channel: sms, name: "ZENDEJAS,ANDREW", comments: "Is the X7 still available?\nInitial Referring URL: https://www.cargurus.com/abc\nutm_source=cargurus"}
+  - wait_turns: {lead: z, count: 1, timeout_s: 20}
+  - expect_last_sent: {lead: z, text_starts_with: "Hi Andrew"}
+  - expect_last_sent: {lead: z, excludes: "Referring"}
+  - expect_last_sent: {lead: z, excludes: "form field"}

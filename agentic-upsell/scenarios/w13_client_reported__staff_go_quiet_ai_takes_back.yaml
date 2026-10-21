@@ -1,0 +1,15 @@
+name: Staff texted once and went quiet - the AI picks the customer back up
+description: 'Betsy, 20 Oct 2026 (Jeffry Turman waited 15 hours after a staff text): if the customer writes and no person answers within 15 minutes, the AI answers and keeps going toward the appointment.'
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: t, dealer: A, lead_type: trade_in, channel: sms, name: Jeff Waiting, comments: "What is my 2019 Mazda CX-5 worth?"}
+  - wait_turns: {lead: t, count: 1, timeout_s: 20}
+  - pause: {lead: t, reason: "Staff replied by hand (Victory Cars Central)"}
+  - expect_lead: {lead: t, status: paused, timeout_s: 20}
+  - reply: {lead: t, text: "Yes but I am way upside down on it"}
+  - wait_turns: {lead: t, count: 2, timeout_s: 20}
+  - expect_followup: {lead: t, kind: staff_quiet_resume, status: pending, timeout_s: 20}
+  - run_next: {lead: t, kind: staff_quiet_resume}
+  - expect_followup: {lead: t, kind: staff_quiet_resume, status: sent, timeout_s: 45}
+  - expect_lead: {lead: t, status: active, timeout_s: 20}
+  - expect_outbox: {lead: t, channel: sms, count: 2}

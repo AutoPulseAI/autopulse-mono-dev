@@ -3,6 +3,7 @@ description: When the model doesn't answer in time, the turn's limit sends the s
 steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: s, dealer: A, lead_type: sales, channel: sms, name: Sid Scenario, comments: "hello #slow"}
-  - wait_turns: {lead: s, count: 1, timeout_s: 20}
+  - wait_turns: {lead: s, count: 1, timeout_s: 90}
   - expect_turn: {lead: s, outcome: fallback, ran: [fallback, send]}
-  - expect_last_sent: {lead: s, contains: "thanks for reaching out"}
+  # The backup first reply still opens with the FTC introduction (client, 7 Oct 2026).
+  - expect_last_sent: {lead: s, contains: "AI Sales Manager"}

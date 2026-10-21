@@ -26,15 +26,15 @@ from zoneinfo import ZoneInfo
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 os.environ.setdefault("MODEL_EXTRACT", "offline")
 
-import pytest  # noqa: E402
-from deepeval import assert_test  # noqa: E402
-from deepeval.metrics import BaseMetric  # noqa: E402
-from deepeval.test_case import LLMTestCase  # noqa: E402
+import pytest
+from deepeval import assert_test
+from deepeval.metrics import BaseMetric
+from deepeval.test_case import LLMTestCase
 
-from upsell_agent.agent.llm import OFFLINE, extract_agent, run_agent  # noqa: E402
-from upsell_agent.agent.nodes.extract import _allowed_slots  # noqa: E402
-from upsell_agent.agent.nodes.validate import resolve_dates, run_checks  # noqa: E402
-from upsell_agent.config import get_settings  # noqa: E402
+from upsell_agent.agent.llm import OFFLINE, extract_agent, run_agent
+from upsell_agent.agent.nodes.extract import _allowed_slots
+from upsell_agent.agent.nodes.validate import resolve_dates, run_checks
+from upsell_agent.config import get_settings
 
 CASES = [json.loads(line) for line in (Path(__file__).parent / "datasets" / "extraction_cases.jsonl")
          .read_text(encoding="utf-8").splitlines() if line.strip()]

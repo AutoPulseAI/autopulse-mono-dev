@@ -8,7 +8,11 @@ from bson import ObjectId
 
 from upsell_agent.agent.staff_schedule import agent_for, parse_schedule
 from upsell_agent.devtools import simulate
-from upsell_agent.integrations.mongodb import AI_CALL_TASKS_COLLECTION, PLATFORM_USERS_COLLECTION, dealer_scoped_db
+from upsell_agent.integrations.mongodb import (
+    AI_CALL_TASKS_COLLECTION,
+    PLATFORM_USERS_COLLECTION,
+    dealer_scoped_db,
+)
 
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 NY = ZoneInfo("America/New_York")

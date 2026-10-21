@@ -17,7 +17,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.config import get_settings
 from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.portal_text import clean_comments
@@ -33,6 +32,7 @@ from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
 from upsell_agent.compliance import text_consent
 from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
+from upsell_agent.config import get_settings
 from upsell_agent.events.models import (
     BookingChangedEvent,
     InboundMessageEvent,
@@ -54,8 +54,8 @@ from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler import studio_cadences
 from upsell_agent.scheduler.followups import (
     CHANNEL_SWITCHES,
-    STAFF_REPLY_REASON,
     SOLD_LIFECYCLE_KINDS,
+    STAFF_REPLY_REASON,
     appointment_cancelled_on_platform,
     cancel_call_task,
     plan_appointment_timers,

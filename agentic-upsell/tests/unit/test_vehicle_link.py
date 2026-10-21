@@ -72,7 +72,7 @@ def test_a_time_to_come_in_with_no_day_is_booked():
 
 def test_a_visit_in_the_past_is_not_one_to_confirm():
     """Live, 20 Oct 2026 (Sadhana): "You're all set for Thursday, October 15" sent five days later."""
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
     from zoneinfo import ZoneInfo
 
     from upsell_agent.agent.nodes.decide import _visit_is_over
@@ -81,8 +81,58 @@ def test_a_visit_in_the_past_is_not_one_to_confirm():
     dealer = profile_from_record("d", {"dealer_account_information": {
         "time_zone": "America/New_York", "weekly_availability": simulate.DEV_WEEKLY_AVAILABILITY}})
     now = datetime(2026, 10, 20, 15, 0, tzinfo=ZoneInfo("America/New_York"))
-    past = {"bookingDate": datetime(2026, 10, 15, 4, 0), "bookingTime": "14:00", "booking_status": "pending"}
-    soon = {"bookingDate": datetime(2026, 10, 22, 4, 0), "bookingTime": "14:00", "booking_status": "pending"}
+    past = {"bookingDate": datetime(2026, 10, 15, 4, 0, tzinfo=UTC).replace(tzinfo=None), "bookingTime": "14:00",
+            "booking_status": "pending"}  # the platform stores a naive UTC date
+    soon = {"bookingDate": datetime(2026, 10, 22, 4, 0, tzinfo=UTC).replace(tzinfo=None), "bookingTime": "14:00",
+            "booking_status": "pending"}
     assert _visit_is_over(past, dealer, now) and not _visit_is_over(soon, dealer, now)
     assert _visit_is_over({**soon, "booking_status": "completed"}, dealer, now)
     assert not _visit_is_over(soon, dealer, now - timedelta(days=1))
+
+
+def test_a_booked_date_is_not_an_invented_number():
+    """Found 21 Oct 2026: "you're all set for Tuesday, September 22 at 4:00 PM" failed the guard for "22"."""
+    from upsell_agent.guardrails.draft_guard import check_draft
+    draft = {"sms_text": "Great - you're all set for Tuesday, September 22 at 4:00 PM.", "email_body": "", "email_subject": ""}
+    bad = check_draft(draft, customer_texts=["I can come at 4"], known_values=[])
+    ok = check_draft(draft, customer_texts=["I can come at 4"], known_values=["September 22"])
+    assert any("22" in v for v in bad["violations"]) and not any("never gave" in v for v in ok["violations"])
+
+
+def test_a_model_year_is_never_a_payment():
+    """Found 21 Oct 2026 (eval): "What's the payment on the 2024 RAV4?" became a "$2,024/month goal"."""
+    from upsell_agent.agent.nodes.validate import model_year_not_money
+    said = "What's the payment on the 2024 RAV4?"
+    assert model_year_not_money({"path": "interest.monthly_payment", "value": 2024}, said)
+    assert not model_year_not_money({"path": "interest.monthly_payment", "value": 550}, "under $550 a month")
+    assert not model_year_not_money({"path": "interest.budget", "value": 2000}, "I can put $2000 down")
+    assert not model_year_not_money({"path": "interest.model", "value": "2024 RAV4"}, said)
+
+
+def test_a_price_objection_is_answered_and_the_visit_offered_again_at_once():
+    """Scope (blueprint 3C; Betsy's payment example): "Just give me your best price first" -> attempt 2 now."""
+    from datetime import UTC, datetime
+
+    from tests.unit.test_slots import SALES_ALL, _profile
+    from upsell_agent.agent.conversation import ConversationState
+    from upsell_agent.agent.qualification import LeadType
+    from upsell_agent.agent.visit_offer import VisitState, plan_visit
+    times = [{"iso": "2026-10-21T13:00:00-04:00", "date": "2026-10-21", "time": "13:00", "display": "Wednesday at 1:00 PM"},
+             {"iso": "2026-10-21T15:00:00-04:00", "date": "2026-10-21", "time": "15:00", "display": "Wednesday at 3:00 PM"}]
+    conversation = ConversationState(turn=3, visit=VisitState(attempts=1, offered_times=times, offered_turn=3,
+                                                              angles_used=["primary_interest"]))
+    objection = {"declines_visit": True, "declines_visit_confidence": 0.9, "visit_objection": "wants_numbers"}
+    plan = plan_visit(profile=_profile(LeadType.SALES, *SALES_ALL[:2]), extraction=objection, conversation=conversation,
+                      active_booking=None, built_times=times, booked_this_turn=False, now=datetime.now(UTC))
+    assert plan.fire and plan.attempt == 2 and plan.angle == "objection"
+    not_yet = {"declines_visit": True, "declines_visit_confidence": 0.9, "visit_objection": "time_convenience"}
+    parked = plan_visit(profile=_profile(LeadType.SALES, *SALES_ALL[:2]), extraction=not_yet, conversation=conversation,
+                        active_booking=None, built_times=times, booked_this_turn=False, now=datetime.now(UTC))
+    assert not parked.fire
+
+
+def test_the_guard_stops_dead_end_wording():
+    from upsell_agent.agent.nodes.guard import dead_end_wording
+    assert dead_end_wording({}, {"sms_text": "I can set up a drive when you’re ready."})
+    assert dead_end_wording({}, {"sms_text": "Let me know when you'd like to come in."})
+    assert not dead_end_wording({}, {"sms_text": "Would Tuesday at 1:00 PM or 3:00 PM work?"})

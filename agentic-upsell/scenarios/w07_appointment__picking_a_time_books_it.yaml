@@ -12,7 +12,7 @@ steps:
   - reply: {lead: v, text: "the second one works"}
   - wait_turns: {lead: v, count: 3, timeout_s: 20}
   - expect_booking: {lead: v, status: pending}
-  - expect_last_sent: {lead: v, contains: "requested"}
+  - expect_last_sent: {lead: v, contains: "all set"}
   - expect_lead: {lead: v, staff_notice: visit_booked}
   - reply: {lead: v, text: "what should I bring?"}
   - wait_turns: {lead: v, count: 4, timeout_s: 20}

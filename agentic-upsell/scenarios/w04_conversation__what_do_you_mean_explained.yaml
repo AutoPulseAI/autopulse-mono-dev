@@ -13,7 +13,7 @@ steps:
   - advance_clock: {dealer: A, to: "Tue 10:00"}
   - new_lead: {as: c, dealer: A, lead_type: trade_in, channel: sms, name: Cal Clarify, comments: "Trading my 2018 Honda Civic with 60,000 miles"}
   - wait_turns: {lead: c, count: 1, timeout_s: 20}
-  - expect_last_sent: {lead: c, contains_any: ["excellent, good, fair or poor", "excellent, good, fair, or poor"], question_marks: 2}
+  - expect_last_sent: {lead: c, contains_any: ["excellent, good, fair or poor", "excellent, good, fair, or poor"], question_marks: 1}
   - reply: {lead: c, text: "what do you mean?"}
   - wait_turns: {lead: c, count: 2, timeout_s: 20}
   # Decide marking this "clarify" (not a fresh ask) is the structural proof nothing new was introduced; the

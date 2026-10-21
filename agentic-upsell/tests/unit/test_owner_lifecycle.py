@@ -277,7 +277,10 @@ async def test_no_text_consent_means_email_with_an_invitation_and_their_yes_turn
 async def test_a_dealervault_customer_with_no_lead_gets_an_owner_lead_never_a_sales_cadence(mongo):
     """Client, 9 Oct 2026: "we will need to create their leads". Sold Delivered, source DealerVault; the AI marks it
     an owner at once, so reconciliation never starts a sales cadence on it."""
-    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, PLATFORM_CUSTOMERS_COLLECTION
+    from upsell_agent.integrations.mongodb import (
+        AI_LEAD_STATE_COLLECTION,
+        PLATFORM_CUSTOMERS_COLLECTION,
+    )
     from upsell_agent.scheduler import reconcile
     cid = "66f0000000000000000000bb"
     await mongo[PLATFORM_CUSTOMERS_COLLECTION].insert_one(
