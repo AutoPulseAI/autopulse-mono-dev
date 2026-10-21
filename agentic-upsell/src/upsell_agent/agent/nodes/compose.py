@@ -282,6 +282,8 @@ def compose_payload(state: AgentState, link_plan: LinkPlan | None = None,
         "ask_name": bool(decision.get("ask_name")),
         "touch": decision.get("touch"),
         "next_action": ({"display": decision["next_action"]["display"]} if decision.get("next_action") else None),
+        "ask_when_free": bool(decision.get("ask_when_free")),
+        "ask_last_name": decision.get("ask_last_name"),
         # MASTER_PLAN_4 F3 / conversation_7: which link placeholder(s) to write, if any (agent/link_resolver.py).
         "link_requested": wants_link(state.extraction),
         "link": link_plan.for_compose() if link_plan else None,

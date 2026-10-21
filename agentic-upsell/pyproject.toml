@@ -76,7 +76,8 @@ packages = ["src/upsell_agent"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "evals"]
-markers = ["one_question: run with the production limit of one question per message"]
+markers = ["one_question: run with the production limit of one question per message",
+           "still_with_me: run with the built-in \"Still with me?\" cadence on (off in other unit tests)"]
 
 [tool.ruff]
 line-length = 100

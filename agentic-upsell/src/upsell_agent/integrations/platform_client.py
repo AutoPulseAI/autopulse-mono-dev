@@ -109,7 +109,10 @@ class PlatformClient(Protocol):
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None: ...
 
-    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool: ...
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str, said: str | None = None) -> bool: ...
+
+    async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,
+                               phone: str | None = None, said: str | None = None) -> bool: ...
 
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
@@ -222,16 +225,44 @@ class StubPlatformClient:
                       "statusChangedAt": clock.now(), "status_source": "ai", "status_reason": reason}})
         return {"found": result.matched_count > 0, "updated": result.matched_count > 0}
 
-    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool:
-        """What `POST /api/internal/ai/leads/name` does: a placeholder name ("N/A", "null") becomes the real one."""
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str, said: str | None = None) -> bool:
+        """What `POST /api/internal/ai/leads/name` does: a placeholder name ("N/A", "null") becomes the real one; with
+        `said` (the customer's own "my name is ..."), a real name is replaced too, on the lead and the customer."""
         from upsell_agent.agent.templates import known_first_name
         db = dealer_scoped_db(dealer_id)
         lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
-        if not lead or known_first_name(lead.get("name")):
+        if not lead or (known_first_name(lead.get("name")) and not said):
+            return False
+        if str(lead.get("name") or "").strip().lower() == name.lower():
             return False
         await db.collection(PLATFORM_LEADS_COLLECTION).update_one({"_id": lead["_id"]}, {"$set": {"name": name}})
+        if said and lead.get("customer_id"):
+            await db.collection(PLATFORM_CUSTOMERS_COLLECTION).update_one(
+                {"_id": as_object_id(lead["customer_id"])}, {"$set": {"name": name}})
         return True
 
+
+    async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,
+                               phone: str | None = None, said: str | None = None) -> bool:
+        """What `POST /api/internal/ai/leads/contact` does: an email / phone the customer texted fills the lead's empty
+        field (and the customer's), never replacing one."""
+        db = dealer_scoped_db(dealer_id)
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+        if not lead:
+            return False
+        digits = "".join(c for c in str(phone or "") if c.isdigit())
+        number = f"+1{digits}" if len(digits) == 10 else f"+{digits}" if len(digits) == 11 and digits[0] == "1" else ""
+        fields = {k: v for k, v in (("email", (email or "").strip().lower()), ("phone", number))
+                  if v and not lead.get(k)}
+        if not fields:
+            return False
+        await db.collection(PLATFORM_LEADS_COLLECTION).update_one({"_id": lead["_id"]}, {"$set": fields})
+        if lead.get("customer_id"):
+            customers = db.collection(PLATFORM_CUSTOMERS_COLLECTION)
+            customer = await customers.find_one({"_id": as_object_id(lead["customer_id"])}) or {}
+            if empty := {k: v for k, v in fields.items() if not customer.get(k)}:
+                await customers.update_one({"_id": as_object_id(lead["customer_id"])}, {"$set": empty})
+        return True
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:
         """What `POST /api/internal/ai/leads/owner` does (aidmvcs-be-dev app/lib/ai/aiOwnerLead.js): the customer's
@@ -334,10 +365,20 @@ class LivePlatformClient:
                                  **({"idempotency_key": idempotency_key} if idempotency_key else {})})
         return str(body.get("id") or "")
 
-    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str) -> bool:
-        """`POST /api/internal/ai/leads/name`: the name the customer gave, on a lead that had none (client, 18 Oct)."""
+    async def set_lead_name(self, dealer_id: str, lead_id: str, name: str, said: str | None = None) -> bool:
+        """`POST /api/internal/ai/leads/name`: the name the customer gave, on a lead that had none (client, 18 Oct), or
+        replacing the stored one when they said it themselves (`said`, Betsy 21 Oct item 10)."""
         body = await self._post("/api/internal/ai/leads/name", {"dealer_id": dealer_id, "lead_id": lead_id,
-                                                                  "name": name})
+                                                                  "name": name, **({"said": said} if said else {})})
+        return bool(body.get("updated"))
+
+    async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,
+                               phone: str | None = None, said: str | None = None) -> bool:
+        """`POST /api/internal/ai/leads/contact` (Betsy, 21 Oct 2026, item 10): the email / phone the customer texted,
+        on a lead that had none."""
+        body = await self._post("/api/internal/ai/leads/contact", {
+            "dealer_id": dealer_id, "lead_id": lead_id, **({"email": email} if email else {}),
+            **({"phone": phone} if phone else {}), **({"said": said} if said else {})})
         return bool(body.get("updated"))
 
     async def ensure_owner_lead(self, dealer_id: str, customer_id: str, deal_number: str | None = None) -> str | None:

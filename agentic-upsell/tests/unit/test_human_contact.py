@@ -170,6 +170,12 @@ async def test_a_person_without_saying_how_is_offered_a_call_or_a_text_then_a_ca
     state = await _state(mongo, created)
     assert state["status"] != "handoff" and state["conversation"]["awaiting_human_choice"]
     assert not await _open_tasks(mongo, created)
+    # Betsy, 21 Oct 2026 (item 7): the request itself is on Dealer Action Required now, not only after the answer.
+    assert state["staff_notice"]["kind"] == "person_requested"
+    from upsell_agent.api.staff_view import list_notices
+    [row] = [n for n in (await list_notices(DEALER))["notices"] if n["lead_id"] == created["lead_id"]]
+    assert row["kind"] == "person_requested" and not row["handled"]
+    assert state["crm_status_sync"]["crm_status"] == "Managerial Review" and state["crm_status_sync"]["status"] in ("updated", "kept")
 
     await _say(created, "A call please")
     assert "will call you" in await _last_sms(mongo, created)
@@ -257,3 +263,12 @@ async def test_an_upset_customer_escalates_at_once_and_is_told_how(mongo, live_d
     [task] = await _open_tasks(mongo, created)
     assert "upset" in (await _state(mongo, created))["staff_notice"]["text"]
     assert task["requested"] is True
+
+
+async def test_a_person_asked_for_then_never_mind_takes_the_notice_back(mongo, live_dealer):
+    set_clock(TUESDAY_NOON)
+    created = await _lead("Nora Nevermind")
+    await _say(created, "I want to talk to a human")
+    assert (await _state(mongo, created))["staff_notice"]["kind"] == "person_requested"
+    await _say(created, "never mind, you can help")
+    assert ((await _state(mongo, created)).get("staff_notice") or {}).get("kind") != "person_requested"

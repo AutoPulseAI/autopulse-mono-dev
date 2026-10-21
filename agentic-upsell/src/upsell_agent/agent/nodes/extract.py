@@ -75,6 +75,11 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     lift_wants_visit(extraction)
     drop_values_of_the_wrong_kind(extraction, payload["customer_text"] or "", payload.get("our_last_message"))
     ctx.model_calls.append({"step": "extract", **call.as_metrics()})
+    from upsell_agent.agent.visit_offer import ANSWER_THEN_ASK
+    if extraction.get("annoyed_at_bot") and str(extraction.get("visit_objection") or "") in ANSWER_THEN_ASK:
+        # Eval, 22 Oct 2026 (Betsy's credit example): "I'm not trying to waste my time if I can't get approved" is a
+        # worry about the deal, answered and asked again - not annoyance with the AI ("I won't keep bugging you").
+        extraction["annoyed_at_bot"] = False
     span.output = extraction
     span.metrics = call.as_metrics()
     span.reasoning = [

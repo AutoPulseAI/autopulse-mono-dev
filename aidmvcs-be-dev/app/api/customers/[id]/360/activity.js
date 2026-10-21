@@ -57,6 +57,9 @@ export function staffEntry(a) {
   const who = a.actor_name || (a.actor_type === "staff" ? "Staff" : a.actor_type);
   const what = a.action === "status_changed" ? `changed the status${a.from ? ` from ${a.from}` : ""} to ${a.to}`
     : a.action === "ai_turned_off" ? "turned the AI off for this lead" : a.action === "ai_turned_on" ? "turned the AI back on for this lead" : a.action === "ai_turn_on_blocked" ? "tried to turn the AI back on (blocked: the customer opted out)"
+    : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
+      ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };

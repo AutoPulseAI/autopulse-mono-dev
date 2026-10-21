@@ -51,6 +51,9 @@ def fixed(text: str, *, email: str | None = None, subject: str | None = None) ->
             "fallback": None}
 
 
+STILL_WITH_ME = "still_with_me"
+
+
 def ai(instruction: str, *, fallback: str | None = None) -> dict[str, Any]:
     return {"mode": "ai", "text": None, "email_text": None, "email_subject": None, "instruction": instruction,
             "fallback": fallback}
@@ -185,6 +188,17 @@ def cadences() -> list[dict[str, Any]]:
              {"id": "no_reply", "when": "No reply within this long: back to Short-Term follow-up (No Contact Made)",
               "label": "No reply", "channels": [], "wait": _wait(int(followups.NEXT_ACTION_REPLY_WINDOW.total_seconds()
                                                                      // 3600), "hours")}]}},
+        # Betsy, 21 Oct 2026 (item 8): a customer who was texting with us and stopped mid-conversation gets one
+        # "still with me?" 15 minutes after the AI's question. Only then: never on a cadence touch, a "what time
+        # works?" or a dated check-back (agent/turn.py). Runs in scheduler/studio_cadences.py; Off in AI Studio.
+        {"key": STILL_WITH_ME, "name": "Still with me? (stopped replying mid-conversation)", "content": {
+            "enabled": True, "starts_when": {"type": "ai_asked"},
+            "stops_when": ["customer replies", "appointment set", "opt-out"],
+            "steps": [{"id": "nudge", "when": "15 minutes after the AI asked a question, if they haven't replied",
+                       "label": "Still with me?", "channels": ["sms"], "wait": _wait(15, "minutes", "start"),
+                       "message": ai("They were texting with us and stopped after our question. One short, friendly "
+                                     "line checking they're still there and repeating the question in a few words "
+                                     "(e.g. \"Still with me? Would Saturday at 11 work?\"). No new questions.")}]}},
         {"key": "unsold", "name": "Unsold (visited, didn't buy)", "content": {
             "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold - then the Short-Term "
                                                     "follow-up runs again (Days 1-7, weekly, monthly)",
@@ -410,8 +424,9 @@ def compliance() -> list[dict[str, Any]]:
 LOCKED = {"prompts": ["extract"]}
 
 
+
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 12
+DEFAULTS_REVISION = 13
 
 
 def export() -> dict[str, Any]:

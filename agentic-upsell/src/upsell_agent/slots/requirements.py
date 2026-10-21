@@ -81,7 +81,10 @@ def required_for(lead_type: LeadType, values: dict[str, object]) -> list[Require
     if lead_type == LeadType.GENERAL and values.get("interest.lead_type") in LeadType._value2member_map_:
         effective = LeadType(values["interest.lead_type"])
     requirements = list(REQUIRED_BY_LEAD_TYPE[effective])
-    if effective == LeadType.SALES and _SPECIFIC_YEAR.search(str(values.get("interest.model") or "")):
+    # The year may be in the model ("2024 RAV4") or kept on its own (interest.year) - eval, 22 Oct 2026: "new or used?"
+    # was asked twice about "the 2024 RAV4", once in place of answering "just give me your best price".
+    if effective == LeadType.SALES and (_SPECIFIC_YEAR.search(str(values.get("interest.model") or ""))
+                                        or _SPECIFIC_YEAR.search(str(values.get("interest.year") or ""))):
         # Betsy, 12-16 Oct 2026 ("why is it asking what vehicle - can the ai see the vehicle that's in the lead"; George
         # asked "new or used?" about a used BMW): a specific vehicle with its year settles new or used - never asked.
         requirements = [r for r in requirements if r.id != "interest.new_or_used"]

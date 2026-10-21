@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-import DateRangePickerComponent from "../components/DateRangePicker";
+import DashboardDatePicker, { presetRange } from "./components/DashboardDatePicker";
 import CountCard from "./components/CountCard";
 import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
@@ -40,12 +40,13 @@ export default function Dashboard() {
   const [todayLeadsCount, setTodayLeadsCount] = useState(0);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [readMessageCount, setReadMessageCount] = useState(0);
-  const [mtdTotalLeads, setMtdTotalLeads] = useState(0); // Month-till-date total leads
-  const [bookingStatusAppointmentCount, setBookingStatusAppointmentCount] = useState(0); // Old: all-time booking_status=true
   const [appointmentBookedCount, setAppointmentBookedCount] = useState(0); // New: status Appointment Booked by booking date (MTD / date range)
   const [todayAppointmentsCount, setTodayAppointmentsCount] = useState(0); // Today's scheduled appointments (status Appointment Booked)
-  const [contactedCount, setContactedCount] = useState(0); // Contacted: today by default, follows date range after user changes it
-  const [hasUserChangedDateRange, setHasUserChangedDateRange] = useState(false);
+  const [contactedCount, setContactedCount] = useState(0); // Customer Replied, in the picked range
+  // AI vs staff on the two appointment cards, and the Compare numbers (Betsy, 21 Oct 2026).
+  const [appointmentsMadeSplit, setAppointmentsMadeSplit] = useState(null);
+  const [appointmentsForSplit, setAppointmentsForSplit] = useState(null);
+  const [compareCounts, setCompareCounts] = useState(null);
   
   // Get dealer timezone
   const dealerTimezone = dealerParent?.dealer_account_information?.time_zone || 'America/New_York';
@@ -77,24 +78,21 @@ export default function Dashboard() {
     return { startDate: startOfDay, endDate: endOfDay };
   }, [dealerTimezone]);
 
-  // Month-to-Date: 1st of current month → end of today in dealer timezone
-  const getMtdDateRange = useCallback(() => {
-    const tz = dealerTimezone || 'America/New_York';
-    const now = moment.tz(tz);
-    return {
-      startDate: now.clone().startOf('month').startOf('day').toDate(),
-      endDate: now.clone().endOf('day').toDate()
-    };
-  }, [dealerTimezone]);
-
+  // The picked range (Betsy, 21 Oct 2026: default Today). startDate/endDate null = All time; compare = the
+  // previous period when Compare is on.
   const [dateRange, setDateRange] = useState(() => {
-    // Default view: Month-to-Date in dealer timezone
     const now = moment.tz(dealerTimezone || 'America/New_York');
     return {
-      startDate: now.clone().startOf('month').startOf('day').toDate(),
-      endDate: now.clone().endOf('day').toDate()
+      startDate: now.clone().startOf('day').toDate(),
+      endDate: now.clone().endOf('day').toDate(),
+      preset: 'today',
+      compare: null,
     };
   });
+  // The range is exactly today (dealer timezone): "Today's Leads" would repeat Total Leads, so it is hidden.
+  const isTodayRange = Boolean(dateRange.startDate && dateRange.endDate
+    && moment.utc(dateRange.startDate).tz(dealerTimezone).isSame(moment.tz(dealerTimezone), 'day')
+    && moment.utc(dateRange.endDate).tz(dealerTimezone).isSame(moment.tz(dealerTimezone), 'day'));
   const [chartVisibility, setChartVisibility] = useState({ emailCount: true, smsCount: true });
 
 
@@ -115,12 +113,15 @@ export default function Dashboard() {
     return `startDate=${formatDate(startDateUTC)}&endDate=${formatDate(endDateUTC)}`;
   }
 
+  // The picked range as list-page URL params ('' for All time).
+  function getRangeParams() {
+    if (!dateRange?.startDate || !dateRange?.endDate) return '';
+    return `startDate=${encodeURIComponent(new Date(dateRange.startDate).toISOString())}`
+      + `&endDate=${encodeURIComponent(new Date(dateRange.endDate).toISOString())}`;
+  }
+
+  // Today in the dealer's timezone, for the "Today's Leads" card.
   function getTodayDateParams() {
-    // The range picked at the top; today until it is changed (Betsy, 19 Oct 2026).
-    if (hasUserChangedDateRange && dateRange?.startDate && dateRange?.endDate) {
-      return `startDate=${encodeURIComponent(new Date(dateRange.startDate).toISOString())}`
-        + `&endDate=${encodeURIComponent(new Date(dateRange.endDate).toISOString())}`;
-    }
     // Get today's date in dealer timezone
     const nowInDealerTz = moment.tz(dealerTimezone);
     // Get start of day in dealer timezone
@@ -138,195 +139,97 @@ export default function Dashboard() {
   }
 
 
-  const fetchDashboardData = useCallback(async (startDate, endDate) => {
+  // The range-following counts (Customer Replied and the two appointment cards) for one range; null dates = All time.
+  const fetchRangeCounts = useCallback(async (startDate, endDate) => {
+    const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
+    const range = startDate && endDate ? `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}` : '';
+    const booked = encodeURIComponent('Appointment Booked');
+    const base = `/api/leads/stats?dealer_id=${dealerParent.id}`;
+    const [leadsRes, contactedRes, madeRes, forRes] = await Promise.all([
+      fetchData(`${base}${range}`, auth),
+      fetchData(`${base}&fe_lead_status=Contacted${range}`, auth),
+      // Appointments Made: by the lead's date; Appointments for (the day): by the appointment's date.
+      fetchData(`${base}&fe_lead_status=${booked}&use_booking_date=false&split_by=created_by${range}`, auth),
+      fetchData(`${base}&fe_lead_status=${booked}&use_booking_date=true&split_by=created_by${range}`, auth),
+    ]);
+    for (const res of [leadsRes, contactedRes, madeRes, forRes]) {
+      if (!res.ok) throw new Error('Failed to fetch dashboard counts');
+    }
+    const [leads, contacted, made, forDay] = await Promise.all([leadsRes.json(), contactedRes.json(), madeRes.json(), forRes.json()]);
+    return { leads, contacted, made, forDay };
+  }, [dealerParent?.id, fetchData]);
+
+  const fetchDashboardData = useCallback(async (startDate, endDate, compare) => {
     try {
       if (!dealerParent?.id) return;
       setLoading(true);
       setError(null);
 
+      // Everything follows the range picked at the top (Betsy, 21 Oct 2026: default Today, "All time" sends no
+      // dates), except Today's Leads (always today) and Dealer Action Required (open now).
       let queryParams = `dealer_id=${dealerParent.id}`;
-      
-      // Behaviour:
-      // - Initial load (no args): default to Month-to-Date
-      // - Explicit range (dates provided): use and pass them
-      // - Clear (startDate === null && endDate === null): do NOT send date filters
-      if (typeof startDate === 'undefined' && typeof endDate === 'undefined') {
-        // Initial load: default to Month-to-Date in dealer timezone
-        const mtdRange = getMtdDateRange();
-        queryParams += `&start_date=${mtdRange.startDate.toISOString()}&end_date=${mtdRange.endDate.toISOString()}`;
-      } else if (startDate && endDate) {
-        // User-selected range
+      if (startDate && endDate) {
         queryParams += `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`;
-      } // else explicit clear: no date params added
-
-      // Fetch all data in parallel (excluding managerial review, new_this_week, today's leads, and unread messages from main stats)
-      // IMPORTANT: Get today's date range in DEALER TIMEZONE for today's leads count
-      const todayRange = getTodayDateRange();
-      // Client, 18 Oct 2026 (Betsy: "the dates are Oct 1-16 and it's just showing me today ... if I want just today I
-      // will set the dates to today"): every card follows the date range on the page (month to date by default).
-      // Betsy, 19 Oct 2026: "When we change the date at the top everything else should change except MTD leads and
-      // all-time appointments. The default is today unless the date changes."
-      const viewRange = (hasUserChangedDateRange && startDate && endDate) ? { startDate, endDate } : todayRange;
-      const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
-      
-      // Build MTD query params for the separate MTD total (always current month to date)
-      const mtdRange = getMtdDateRange();
-      const mtdQueryParams = `dealer_id=${dealerParent.id}&start_date=${mtdRange.startDate.toISOString()}&end_date=${mtdRange.endDate.toISOString()}`;
-      
-      // Contacted: today by default; follow selected date range after user changes it
-      let contactedQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=Contacted`;
-      if (hasUserChangedDateRange) {
-        if (startDate && endDate) {
-          contactedQueryParams += `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`;
-        }
-        // else cleared → all-time contacted (no date params)
-      } else {
-        contactedQueryParams += `&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
       }
+      const todayRange = getTodayDateRange();
+      const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+      const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
 
-      // Appointments: by booking.booking_date + status Appointment Booked (MTD default / selected range)
-      let appointmentQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=false`;
-      appointmentQueryParams += `&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
-      // else cleared → all Appointment Booked (no date params)
-
-      // Today's appointments: scheduled for today with status Appointment Booked
-      const todayAppointmentsQueryParams = `dealer_id=${dealerParent.id}&fe_lead_status=${encodeURIComponent('Appointment Booked')}&use_booking_date=true&start_date=${viewRange.startDate.toISOString()}&end_date=${viewRange.endDate.toISOString()}`;
-      
-      const [statsRes, commRes, messageStatsRes, managerialReviewRes, newThisWeekRes, todayLeadsRes, messageReadStatsRes, mtdLeadsRes, bookingStatusAppointmentRes, appointmentBookedRes, contactedRes, todayAppointmentsRes] = await Promise.all([
-        fetchData(`/api/leads/stats?${queryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        fetchData(`/api/conversations/stats?${queryParams}&limit=50`,{ headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        fetchData(`/api/admin/message-stats?${queryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        /*fetchData(`/api/dealers/report-analytics?${queryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),*/
-        // Fetch managerial review count separately without date filter
-        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}&managerial_review_only=true`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch new_this_week count separately without date filter (always current week)
-        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}&new_this_week_only=true`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch today's leads count separately (always today's date)
-        fetchData(`/api/leads/stats?${todayQueryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch read/unread messages stats separately (not affected by date filter)
-        fetchData(`/api/conversations/message-stats?dealer_id=${dealerParent.id}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch month-till-date total leads
-        fetchData(`/api/leads/stats?${mtdQueryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Old: all-time appointments by booking_status=true
-        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}&all_appointment_booked=true`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // New: appointments by status Appointment Booked + booking date (MTD default / selected range)
-        fetchData(`/api/leads/stats?${appointmentQueryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch contacted count (today by default, or selected date range)
-        fetchData(`/api/leads/stats?${contactedQueryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }}),
-        // Fetch today's scheduled appointments (status Appointment Booked)
-        fetchData(`/api/leads/stats?${todayAppointmentsQueryParams}`,{headers: {
-          'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`
-        }})
+      const [commRes, messageStatsRes, managerialReviewRes, todayLeadsRes, counts, compared] = await Promise.all([
+        fetchData(`/api/conversations/stats?${queryParams}&limit=50`, auth),
+        fetchData(`/api/admin/message-stats?${queryParams}`, auth),
+        // Managerial review: open now, no date filter
+        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}&managerial_review_only=true`, auth),
+        fetchData(`/api/leads/stats?${todayQueryParams}`, auth),
+        fetchRangeCounts(startDate, endDate),
+        compare ? fetchRangeCounts(compare.startDate, compare.endDate) : Promise.resolve(null),
       ]);
 
-      if (!statsRes.ok) throw new Error('Failed to fetch lead statistics');
       if (!commRes.ok) throw new Error('Failed to fetch communications');
       if (!messageStatsRes.ok) throw new Error('Failed to fetch message statistics');
-      //if (!reportAnalyticsRes.ok) throw new Error('Failed to fetch report analytics');
       if (!managerialReviewRes.ok) throw new Error('Failed to fetch managerial review count');
-      if (!newThisWeekRes.ok) throw new Error('Failed to fetch new this week count');
       if (!todayLeadsRes.ok) throw new Error('Failed to fetch today leads count');
-      if (!messageReadStatsRes.ok) throw new Error('Failed to fetch message read/unread stats');
-      if (!mtdLeadsRes.ok) throw new Error('Failed to fetch month-till-date total leads');
-      if (!bookingStatusAppointmentRes.ok) throw new Error('Failed to fetch booking_status appointment count');
-      if (!appointmentBookedRes.ok) throw new Error('Failed to fetch appointment booked count');
-      if (!contactedRes.ok) throw new Error('Failed to fetch contacted count');
-      if (!todayAppointmentsRes.ok) throw new Error('Failed to fetch today appointments count');
 
-      const statsData = await statsRes.json();
-      const managerialReviewData = await managerialReviewRes.json();
-      const newThisWeekData = await newThisWeekRes.json();
-      const todayLeadsData = await todayLeadsRes.json();
-      const messageReadStatsData = await messageReadStatsRes.json();
-      const mtdLeadsData = await mtdLeadsRes.json();
-      const bookingStatusAppointmentData = await bookingStatusAppointmentRes.json();
-      const appointmentBookedData = await appointmentBookedRes.json();
-      const contactedData = await contactedRes.json();
-      const todayAppointmentsData = await todayAppointmentsRes.json();
-      
-      setLeadStats(statsData);
+      setLeadStats(counts.leads);
       setCommunicationData(await commRes.json());
       setMessageStats(await messageStatsRes.json());
-      //setReportAnalytics(await reportAnalyticsRes.json());
-      // Set managerial review count from separate API call (without date filter)
-      setManagerialReviewCount(managerialReviewData.managerial_review || 0);
-      // Set new this week count from separate API call (always current week, no date filter)
-      setNewThisWeekCount(newThisWeekData.new_this_week || 0);
-      // Set today's leads count from separate API call (always today's date)
-      setTodayLeadsCount(todayLeadsData.total_leads || 0);
-      // Set read/unread messages count from separate API call (not affected by date filter)
-      setUnreadMessageCount(messageReadStatsData.unread_count || 0);
-      setReadMessageCount(messageReadStatsData.read_count || 0);
-      // Set month-till-date total leads
-      setMtdTotalLeads(mtdLeadsData.total_leads || 0);
-      // Old: all-time booking_status=true
-      setBookingStatusAppointmentCount(bookingStatusAppointmentData.total_leads || 0);
-      // New: status Appointment Booked by booking date (MTD / selected range)
-      setAppointmentBookedCount(appointmentBookedData.total_leads || 0);
-      // Set contacted count (today by default, or selected date range after user changes it)
-      setContactedCount(contactedData.total_leads || 0);
-      // Set today's scheduled appointments
-      setTodayAppointmentsCount(todayAppointmentsData.total_leads || 0);
+      setManagerialReviewCount((await managerialReviewRes.json()).managerial_review || 0);
+      setTodayLeadsCount((await todayLeadsRes.json()).total_leads || 0);
+      setContactedCount(counts.contacted.total_leads || 0);
+      setAppointmentBookedCount(counts.made.total_leads || 0);
+      setAppointmentsMadeSplit({ ai: counts.made.by_ai || 0, staff: counts.made.by_staff || 0 });
+      setTodayAppointmentsCount(counts.forDay.total_leads || 0);
+      setAppointmentsForSplit({ ai: counts.forDay.by_ai || 0, staff: counts.forDay.by_staff || 0 });
+      setCompareCounts(compared ? {
+        leads: compared.leads.total_leads || 0,
+        contacted: compared.contacted.total_leads || 0,
+        made: compared.made.total_leads || 0,
+        forDay: compared.forDay.total_leads || 0,
+      } : null);
     } catch (err) {
       console.error("Dashboard fetch error:", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [dealerParent?.id, fetchData, getTodayDateRange, getMtdDateRange, hasUserChangedDateRange]);
+  }, [dealerParent?.id, fetchData, fetchRangeCounts, getTodayDateRange]);
 
   useEffect(() => {
-    // On initial mount we pass the current range (default Month-to-Date).
-    // After user clears the range, dateRange will be {null, null} and we call
-    // fetchDashboardData(null, null) so it sends NO date filters.
-    fetchDashboardData(dateRange.startDate, dateRange.endDate);
-  }, [dealerParent, dateRange.startDate, dateRange.endDate, fetchDashboardData]);
+    fetchDashboardData(dateRange.startDate, dateRange.endDate, dateRange.compare);
+  }, [dealerParent, dateRange.startDate, dateRange.endDate, dateRange.compare, fetchDashboardData]);
 
-  // Align default date range to dealer timezone MTD once dealer data is ready
-  const hasSyncedMtdRange = useRef(false);
+  // The first range is today in the browser's clock; once the dealer's timezone is known it becomes the dealer's today.
+  const hasSyncedToday = useRef(false);
   useEffect(() => {
-    if (!dealerParent?.id || !dealerTimezone || hasSyncedMtdRange.current) return;
-    hasSyncedMtdRange.current = true;
-    setDateRange(getMtdDateRange());
-  }, [dealerParent?.id, dealerTimezone, getMtdDateRange]);
+    if (!dealerParent?.id || !dealerTimezone || hasSyncedToday.current) return;
+    hasSyncedToday.current = true;
+    const [start, end] = presetRange('today', dealerTimezone);
+    setDateRange({ startDate: start.clone().startOf('day').utc().toDate(), endDate: end.clone().endOf('day').utc().toDate(),
+      preset: 'today', compare: null });
+  }, [dealerParent?.id, dealerTimezone]);
 
-  const handleDateRangeChange = ({ startDate, endDate }) => {
-    setHasUserChangedDateRange(true);
-
-    // If no date is selected, clear filters (Total Leads → all-time, Contacted → all-time)
-    if (!startDate && !endDate) {
-      setDateRange({ startDate: null, endDate: null });
-      return;
-    }
-    
-    // The DateRangePicker already converts dates to UTC with proper start/end of day
-    // We just need to store them as-is for the API call
-    // The dates are already in UTC format representing the correct start/end of day in dealer timezone
-    setDateRange({ startDate, endDate });
+  const handleDateRangeChange = ({ startDate, endDate, preset, compare }) => {
+    setDateRange({ startDate: startDate || null, endDate: endDate || null, preset: preset || 'custom', compare: compare || null });
   };
 
   if (loadingParent || !dealerParent) {
@@ -764,82 +667,31 @@ export default function Dashboard() {
     }
   };
 
-  // Contacted: today by default; follows date range after user changes it
-  // The cards' own range: today until the date at the top is changed (Betsy, 19 Oct 2026).
-  const cardRangeText = () => (hasUserChangedDateRange ? getDateRangeDescription()
-    : moment.tz(dealerTimezone).format('MMM D, YYYY'));
+  // The picked range under each range-following card: "Oct 21, 2026", "Oct 1 - Oct 21, 2026" or "All time".
+  const cardRangeText = () => getDateRangeDescription().replace('All-time', 'All time');
 
-  const getContactedDescription = () => {
-    if (!hasUserChangedDateRange) return cardRangeText();
-    if (!dateRange.startDate || !dateRange.endDate) {
-      return 'All-time count';
-    }
-    return getDateRangeDescription();
+  // Compare on: "vs 12 (Sep 30)" under a card - the same count for the previous period.
+  const compareText = (key) => {
+    if (!compareCounts || !dateRange.compare) return '';
+    const start = moment.utc(dateRange.compare.startDate).tz(dealerTimezone);
+    const end = moment.utc(dateRange.compare.endDate).tz(dealerTimezone);
+    const when = start.isSame(end, 'day') ? start.format('MMM D') : `${start.format('MMM D')} - ${end.format('MMM D')}`;
+    return ` · vs ${compareCounts[key]} (${when})`;
   };
 
-  const getContactedLink = () => {
-    if (!dateRange.startDate || !dateRange.endDate) {
-      return '/dealer/leads?status=Contacted';
-    }
-    return buildUrlWithDateRange('/dealer/leads?status=Contacted');
+  const splitText = (split) => (split ? `AI ${split.ai} · Staff ${split.staff}` : '');
+
+  const withRange = (base) => {
+    const range = getRangeParams();
+    return range ? `${base}${base.includes('?') ? '&' : '?'}${range}` : base;
   };
 
-  // Appointments: same date-range logic as Total Leads (MTD default)
-  const getAppointmentsDescription = () => {
-    if (!dateRange.startDate || !dateRange.endDate) {
-      return 'All-time appointments';
-    }
-
-    const start = moment.utc(dateRange.startDate).tz(dealerTimezone);
-    const end = moment.utc(dateRange.endDate).tz(dealerTimezone);
-    const mtdStart = moment.tz(dealerTimezone).startOf('month');
-    const today = moment.tz(dealerTimezone).startOf('day');
-
-    if (
-      start.isSame(mtdStart, 'day') &&
-      end.isSame(today, 'day')
-    ) {
-      return `Month-to-Date: ${start.format('MMM D')} - ${end.format('MMM D, YYYY')}`;
-    }
-
-    if (start.isSame(end, 'day')) {
-      return start.format('MMM D, YYYY');
-    }
-
-    return `Date Range: ${start.format('MMM D')} - ${end.format('MMM D, YYYY')}`;
+  // Only the appointments counted on the card: booked, with the appointment on these dates (Bibi/Betsy, 21 Oct 2026).
+  const getAppointmentsForLink = () => {
+    const base = `/dealer/booking?fe_lead_status=${encodeURIComponent('Appointment Booked')}`;
+    const range = getRangeParams();
+    return range ? `${base}&${range.replace('startDate=', 'bookingStartDate=').replace('endDate=', 'bookingEndDate=')}` : base;
   };
-
-  const buildUrlWithBookingDateRange = (baseUrl) => {
-    if (!dateRange.startDate || !dateRange.endDate) {
-      return baseUrl;
-    }
-
-    try {
-      const url = baseUrl.startsWith('http')
-        ? new URL(baseUrl)
-        : new URL(baseUrl, window.location.origin);
-
-      url.searchParams.set('startDate', dateRange.startDate.toISOString());
-      url.searchParams.set('endDate', dateRange.endDate.toISOString());
-
-      return url.pathname + url.search;
-    } catch (e) {
-      const separator = baseUrl.includes('?') ? '&' : '?';
-      return `${baseUrl}${separator}startDate=${encodeURIComponent(dateRange.startDate.toISOString())}&endDate=${encodeURIComponent(dateRange.endDate.toISOString())}`;
-    }
-  };
-
-  const getAppointmentsLink = () => {
-    const base = '/dealer/leads?status=Appointment Booked';
-    if (!dateRange.startDate || !dateRange.endDate) {
-      return base;
-    }
-    return buildUrlWithBookingDateRange(base);
-  };
-
-  // Only the appointments counted on the card: booked, scheduled on these dates (Bibi/Betsy, 21 Oct 2026).
-  const getTodayAppointmentsLink = () => `/dealer/booking?fe_lead_status=${encodeURIComponent('Appointment Booked')}&`
-    + getTodayDateParams().replace('startDate=', 'bookingStartDate=').replace('endDate=', 'bookingEndDate=');
 
   return (
     <div className="page_content">
@@ -856,11 +708,9 @@ export default function Dashboard() {
                 )}
               </h3>
               <div className="d-flex align-items-center gap-2 flex-wrap">
-                <DateRangePickerComponent
-                  onDateRangeChange={handleDateRangeChange}
-                  dateRange={dateRange}
-                  initialStartDate={getMtdDateRange().startDate}
-                  initialEndDate={getMtdDateRange().endDate}
+                <DashboardDatePicker
+                  value={dateRange}
+                  onChange={handleDateRangeChange}
                   timezone={dealerTimezone}
                 />
                 <small className="text-muted" style={{fontSize: '0.75rem'}} title={`All dates are interpreted in your business timezone: ${dealerTimezone}`}>
@@ -885,7 +735,7 @@ export default function Dashboard() {
               count={leadStats?.total_leads || 0}
               label="Total Leads"
               link={buildUrlWithDateRange("/dealer/leads")}
-              description={getTotalLeadsDescription()}
+              description={`${getTotalLeadsDescription()}${compareText('leads')}`}
             />
            {/* <CountCard
               iconClass="fa-regular fa-magnet"
@@ -903,20 +753,23 @@ export default function Dashboard() {
               link={`/dealer/leads?${getCurrentWeekDateParams()}`}
             />
             */}
-            <CountCard
-              iconClass="fa-regular fa-calendar-day"
-              count={todayLeadsCount}
-              label={hasUserChangedDateRange ? "Leads" : "Today's Leads"}
-              link={`/dealer/leads?${getTodayDateParams()}`}
-              description={cardRangeText()}
-            />
+            {/* Hidden when the range is today: it would repeat Total Leads (Betsy, 21 Oct 2026). */}
+            {!isTodayRange && (
+              <CountCard
+                iconClass="fa-regular fa-calendar-day"
+                count={todayLeadsCount}
+                label="Today's Leads"
+                link={`/dealer/leads?${getTodayDateParams()}`}
+                description={moment.tz(dealerTimezone).format('MMM D, YYYY')}
+              />
+            )}
 
             <CountCard
               iconClass="fa-light fa-hand"
               count={contactedCount}
               label="Customer Replied"
-              link={getContactedLink()}
-              description={getContactedDescription()}
+              link={withRange('/dealer/leads?status=Contacted')}
+              description={`${cardRangeText()}${compareText('contacted')}`}
             />
 
             <CountCard
@@ -938,28 +791,21 @@ export default function Dashboard() {
               description="Current read count"
             /> */}
             
-            <CountCard
-              iconClass="fa-solid fa-calendar-check"
-              count={bookingStatusAppointmentCount}
-              label="Appointment Booked"
-              link="/dealer/booking"
-              description="All-time count"
-            />
-
+            {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
               iconClass="fa-solid fa-calendar-days"
               count={appointmentBookedCount}
-              label={hasUserChangedDateRange ? "Appointments Made" : "Appointments Made Today"}
-              link={`/dealer/leads?status=Appointment Booked&${getTodayDateParams()}`}
-              description={cardRangeText()}
+              label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
+              link={withRange(`/dealer/leads?status=${encodeURIComponent('Appointment Booked')}`)}
+              description={`${splitText(appointmentsMadeSplit)} · ${cardRangeText()}${compareText('made')}`}
             />
 
             <CountCard
               iconClass="fa-regular fa-calendar-check"
               count={todayAppointmentsCount}
-              label={hasUserChangedDateRange ? "Appointments Scheduled (on these dates)" : "Appointments Scheduled Today"}
-              link={getTodayAppointmentsLink()}
-              description={cardRangeText()}
+              label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
+              link={getAppointmentsForLink()}
+              description={`${splitText(appointmentsForSplit)} · ${cardRangeText()}${compareText('forDay')}`}
             />
           </div>
         </div>

@@ -104,6 +104,8 @@ export const AI_MODE_LABELS = {
 export const ALERT_KINDS = {
   handoff: { label: "Handed to staff", icon: "fa-hand", variant: "danger" },
   no_staff_response: { label: "No staff response", icon: "fa-triangle-exclamation", variant: "danger" },
+  // Betsy, 21 Oct 2026: asked for a person, call or text not chosen yet - on the page straight away.
+  person_requested: { label: "Asked for a person", icon: "fa-user", variant: "danger" },
   call_requested: { label: "Call requested", icon: "fa-phone", variant: "primary" },
   // PLAN_4 stream H: the customer asked for a person and chose a text over a call.
   text_requested: { label: "Wants a text from a person", icon: "fa-comment-sms", variant: "primary" },

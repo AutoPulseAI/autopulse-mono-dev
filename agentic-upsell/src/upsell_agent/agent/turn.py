@@ -355,9 +355,12 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
+                                           or (lead or {}).get("name"))
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
-            await _save_name(deps, dealer_id, lead_id, lead, result)
+            await _save_name(deps, dealer_id, lead_id, lead, result, inbound_text=inbound_text)
+            await _save_contact(deps, dealer_id, lead_id, lead, inbound_text)
             await _show_booking(db, lead_id, decision)
             asked = str(((result.get("draft") or {}).get("sms_text")) or "") + " " + str(
                 (result.get("draft") or {}).get("email_body") or "")
@@ -533,9 +536,12 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
         lead_state = {**(lead_state or {}), "cadence": state.as_dict()}
     if trigger == TRIGGER_CADENCE_TOUCH and ((lead_state or {}).get("pending_touch") or {}).get("studio_cadence"):
         # A touch of a cadence added in AI Studio (scheduler/studio_cadences.py plans its next one itself): the
-        # sales cadence's own count doesn't move.
+        # sales cadence's own count doesn't move, and the touch it already planned stays (scenarios, 22 Oct 2026:
+        # the 15-minute "Still with me?" re-planned and superseded the Day 2 touch).
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
                                                                  {"$unset": {"pending_touch": ""}})
+        return {"cadence": True, "created": False,
+                "reason": "An AI Studio cadence touch: the regular follow-up keeps its own schedule."}
     elif trigger == TRIGGER_CADENCE_TOUCH:
         # This turn WAS a touch: it used up its theme, so the next one moves on (agent/cadence.py).
         pending = (lead_state or {}).get("pending_touch") or {}
@@ -588,7 +594,11 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
     if shadow or not lead_id:
         return None
     asked = str((result.get("draft") or {}).get("sms_text") or (result.get("draft") or {}).get("email_body") or "")
-    if trigger == "inbound_message" and sent is not None and sent.status in ("sent", "duplicate") and "?" in asked:
+    decision_now = result.get("decision") or {}
+    if (trigger == "inbound_message" and sent is not None and sent.status in ("sent", "duplicate") and "?" in asked
+            and not decision_now.get("ask_when_free") and not decision_now.get("next_action")
+            and not (decision_now.get("visit") or {}).get("just_booked")
+            and (decision_now.get("visit") or {}).get("status") not in ("pending", "confirmed")):
         # Client, 20 Oct 2026 (Betsy, approved): an AI Studio cadence can start when the AI asks the customer a
         # question in the conversation (her 15-minute "no response to a question" nudge); a reply stops it.
         from upsell_agent.scheduler import studio_cadences
@@ -741,19 +751,62 @@ async def _show_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[s
                                      event_kind="appointment_set")
 
 
-async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, result: dict[str, Any]) -> None:
-    """Client, 18 Oct 2026: the name the customer gave goes onto a lead that had none ("N/A", "null"). Never raises."""
+# "My name is Sal", "this is Sal Romano", "call me Sal", "it's Sal" - the customer saying who they are.
+_NAME_STATED = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|name\s+is|this\s+is|it'?s|call\s+me|i\s+go\s+by|i'?m|i\s+am)"
+                          r"\s+([A-Za-z][A-Za-z'.-]+(?:\s+[A-Za-z][A-Za-z'.-]+)?)", re.IGNORECASE)
+
+
+# The unmistakable ones, read without the model ("I'm" / "it's" / "this is" need it: "I'm busy", "it's fine").
+_NAME_SAID_PLAINLY = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|call\s+me|i\s+go\s+by)\s+"
+                                r"([A-Z][a-z'.-]+(?:\s+[A-Z][a-z'.-]+)?)")
+
+
+def stated_name(text: str | None, extracted: str | None) -> bool:
+    """The name Extract read is one the customer stated about themselves in this message (not a salesperson's or
+    a spouse's name mentioned in passing)."""
+    first = str(extracted or "").split()[:1]
+    if not first:
+        return False
+    return any(m.group(1).split()[0].lower() == first[0].lower() for m in _NAME_STATED.finditer(text or ""))
+
+
+async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, result: dict[str, Any],
+                     inbound_text: str | None = None) -> None:
+    """Client, 18 Oct 2026: the name the customer gave goes onto a lead that had none ("N/A", "null"). Betsy, 21 Oct
+    2026 (item 10, Sal): one they state themselves ("my name is Sal") replaces the stored name too - lead and customer
+    profile, logged on the timeline as updated by the AI - and is used from then on. Never raises."""
     from upsell_agent.agent.templates import known_first_name
-    if known_first_name((lead or {}).get("name")):
-        return
     said = next((v.get("value") for v in (result.get("extraction") or {}).get("values") or []
                  if v.get("path") == "contact.name" and v.get("value")), None)
+    if not said and (m := _NAME_SAID_PLAINLY.search(inbound_text or "")):
+        said = m.group(1)  # "my name is Sal" needs no model to read it
     if not said or not known_first_name(str(said)):
         return
+    stated = stated_name(inbound_text, str(said))
+    if known_first_name((lead or {}).get("name")) and not stated:
+        return
     try:
-        await deps.platform.set_lead_name(dealer_id, lead_id, " ".join(str(said).split()).title()[:80])
+        await deps.platform.set_lead_name(dealer_id, lead_id, " ".join(str(said).split()).title()[:80],
+                                          said=(inbound_text or "").strip()[:300] if stated else None)
     except Exception:
         logger.exception("could not save the customer's name on lead %s", lead_id)
+
+
+async def _save_contact(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, inbound_text: str | None) -> None:
+    """Betsy, 21 Oct 2026 (item 10): an email or phone the customer texted (Decide asks for the missing one before
+    booking) goes onto the lead and the customer when they had none - read from their words, never replacing one.
+    A phone saved this way is for staff to call; texting consent is the AI's own record and doesn't change. Never
+    raises."""
+    from upsell_agent.agent.nodes.decide import _EMAIL, _PHONE
+    text = inbound_text or ""
+    email = None if (lead or {}).get("email") else (m.group(0) if (m := _EMAIL.search(text)) else None)
+    phone = None if (lead or {}).get("phone") else (m.group(0) if (m := _PHONE.search(text)) else None)
+    if not email and not phone:
+        return
+    try:
+        await deps.platform.set_lead_contact(dealer_id, lead_id, email=email, phone=phone, said=text.strip()[:300])
+    except Exception:
+        logger.exception("could not save the customer's contact details on lead %s", lead_id)
 
 
 async def _workflow_actions(db: DealerScopedDatabase, lead_id: str, customer_id: str, result: dict[str, Any], *,
@@ -768,6 +821,33 @@ async def _workflow_actions(db: DealerScopedDatabase, lead_id: str, customer_id:
     if actions.get("call_task"):
         await plan_call_task(db, lead_id=lead_id, customer_id=customer_id, turn_id=turn_id, lead=lead,
                              customer=customer, lead_state=None, sent_channels=[])
+
+
+async def _escalate_person_request(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any], *,
+                                   customer_name: str | None) -> None:
+    """Betsy, 21 Oct 2026 (item 7): "I want to talk to a person" always reaches Dealer Action Required with a manager
+    alert. When they didn't say call or text, the AI asks which first (agent/human_contact.py) and used to hand off
+    only on the answer - a customer who never answered never reached anyone. Now the request itself puts the lead
+    into Managerial Review (the CRM's one escalation flow: one manager alert, never repeated while the lead is in
+    it) and leaves a staff notice; the AI still asks call-or-text, and the answer adds the call task or text notice.
+    "Never mind" takes the notice back (the lead stays in Managerial Review for staff to clear)."""
+    from upsell_agent.agent import crm_status, escalation, human_contact
+    person = (result.get("decision") or {}).get("human_contact") or {}
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    if (person.get("record") or {}).get("choice") == "withdrawn":
+        await states.update_one({"lead_id": lead_id, "staff_notice.kind": human_contact.NOTICE_PERSON_KIND},
+                                {"$unset": {"staff_notice": ""}})
+        return
+    if person.get("mode") != human_contact.OFFER:
+        return
+    who = customer_name or "The customer"
+    await states.update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": human_contact.NOTICE_PERSON_KIND, "reason": human_contact.REASON_PERSON,
+        "text": f"{who} asked to talk to a person. The AI asked whether they'd like a call or a text - please "
+                f"reach out."}}})
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                 reason=f"{human_contact.REASON_PERSON}: the customer asked to talk to a person",
+                                 event_kind="person_requested")
 
 
 async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
@@ -1053,6 +1133,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         channel=channel,
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
         human_contact=_human_contact_record(result),
+        asked_when_free=bool(decision.get("ask_when_free")),
         confirmed_fact=(decision.get("confirm") or {}).get("fact_id"),
         used_fallback=bool(result.get("used_fallback")),
     )

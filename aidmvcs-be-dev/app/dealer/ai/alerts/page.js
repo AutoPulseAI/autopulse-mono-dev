@@ -150,8 +150,14 @@ function AlertsContent() {
                     <strong>{item.lead?.name || "Unknown customer"}</strong>
                     {item.lead?.vehicle && <small className="text-secondary-light">{item.lead.vehicle}</small>}
                     {item.stage_label && <Badge bg={stageVariant(item.stage)} className="fw-normal">{item.stage_label}</Badge>}
+                    {item.still_no_reply && <Badge bg="danger"><i className="fa-solid fa-clock me-1" />Still no staff reply</Badge>}
                   </div>
                   {item.text && <p className="mb-1">{item.text}</p>}
+                  {(item.also || []).map((other) => (
+                    <p key={other.source} className="mb-1 small">
+                      <strong>{alertKind(other.kind).label}:</strong> {other.text}
+                    </p>
+                  ))}
                   {details.map(([key, label]) => (
                     <p key={key} className="mb-1 small"><strong>{label}:</strong> {String(item[key])}</p>
                   ))}

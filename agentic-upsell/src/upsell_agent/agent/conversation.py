@@ -169,6 +169,8 @@ class ConversationState(BaseModel):
     # staff only on the second in a row (agent/nodes/guard.py): one rejected draft is a safe template and the AI
     # carries on, instead of the lead going cold with the team.
     fallbacks_in_a_row: int = 0
+    # Betsy, 21 Oct 2026 (item 9): the reply (turn) that asked a busy customer what time works to get back to them.
+    asked_when_free_turn: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -183,6 +185,12 @@ class ConversationState(BaseModel):
         """Our last reply offered "now or when we open?" (Extract reads the answer against it)."""
         return bool(self.after_hours and self.after_hours.choice in ("offered", "later")
                     and self.after_hours.offered_turn == self.turn and self.turn > 0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def awaiting_when_free(self) -> bool:
+        """Our last reply asked a busy customer what time works (their answer is a check-back time, not a visit)."""
+        return bool(self.asked_when_free_turn and self.asked_when_free_turn == self.turn)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -262,6 +270,7 @@ def after_turn(
     used_fallback: bool = False,
     shown_details: dict[str, dict] | None = None,
     focus_vin: str | None = None,
+    asked_when_free: bool = False,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -319,6 +328,8 @@ def after_turn(
         updated.fallbacks_in_a_row = updated.fallbacks_in_a_row + 1 if used_fallback else 0
         if confirmed_fact and not used_template:
             updated.confirms[confirmed_fact] = updated.confirms.get(confirmed_fact, 0) + 1
+        if asked_when_free and not used_template:
+            updated.asked_when_free_turn = updated.turn
         if action == "ask_why" and not used_template:
             updated.not_interested = NotInterestedState(asked_turn=updated.turn)
     if not_interested_reason:

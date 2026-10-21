@@ -4,6 +4,7 @@ import Lead from "@models/Lead";
 import Email from "@models/Email";
 import User from "@models/User";
 import moment from "moment-timezone";
+import { bookingCreatorSplit } from "@lib/bookingCreator";
 
 export async function GET(request) {
   try {
@@ -19,6 +20,8 @@ export async function GET(request) {
     const month_till_date = searchParams.get('month_till_date') === 'true';
     const fe_lead_status = searchParams.get('fe_lead_status');
     const use_booking_date = searchParams.get('use_booking_date') === 'true';
+    // Appointment cards show who booked (Betsy, 21 Oct 2026): AI vs staff, from the lead's latest booking.
+    const split_by_creator = searchParams.get('split_by') === 'created_by';
     
     if (!dealer_id) {
       return new Response(JSON.stringify({ error: 'Dealer ID is required' }), {
@@ -113,6 +116,15 @@ export async function GET(request) {
         status_count = (await contactedLeadIds(ids)).length;
       } else {
         status_count = await Lead.countDocuments(statusQuery);
+      }
+
+      if (split_by_creator) {
+        const ids = (await Lead.find(statusQuery).select('_id').lean()).map((l) => String(l._id));
+        const split = await bookingCreatorSplit(ids);
+        return new Response(JSON.stringify({ total_leads: status_count, ...split }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
 
       return new Response(JSON.stringify({
