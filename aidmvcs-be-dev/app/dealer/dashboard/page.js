@@ -837,7 +837,9 @@ export default function Dashboard() {
     return buildUrlWithBookingDateRange(base);
   };
 
-  const getTodayAppointmentsLink = () => `/dealer/leads?status=Appointment Booked&${getTodayDateParams()}`;
+  // Only the appointments counted on the card: booked, scheduled on these dates (Bibi/Betsy, 21 Oct 2026).
+  const getTodayAppointmentsLink = () => `/dealer/booking?fe_lead_status=${encodeURIComponent('Appointment Booked')}&`
+    + getTodayDateParams().replace('startDate=', 'bookingStartDate=').replace('endDate=', 'bookingEndDate=');
 
   return (
     <div className="page_content">
@@ -955,8 +957,8 @@ export default function Dashboard() {
             <CountCard
               iconClass="fa-regular fa-calendar-check"
               count={todayAppointmentsCount}
-              label={hasUserChangedDateRange ? "Visits Scheduled (on these dates)" : "Today's Visits"}
-              link="/dealer/booking"
+              label={hasUserChangedDateRange ? "Appointments Scheduled (on these dates)" : "Appointments Scheduled Today"}
+              link={getTodayAppointmentsLink()}
               description={cardRangeText()}
             />
           </div>

@@ -65,6 +65,11 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     }
   };
 
+  // From the dashboard card: only the appointments it counted (booking date + status)
+  const cardFilter = ['bookingStartDate', 'bookingEndDate', 'fe_lead_status']
+    .filter((k) => urlSearchParams.get(k))
+    .map((k) => `&${k}=${encodeURIComponent(urlSearchParams.get(k))}`).join('');
+
   // Initialize filters and pagination from URL
   const [filters, setFilters] = useState({
     name: urlSearchParams.get('name') || '',
@@ -159,6 +164,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
+      queryParams += cardFilter;
 
       const token = localStorage.getItem('dealertoken');
       const res = await fetch(`/api/leads?${queryParams}`, {
@@ -193,7 +199,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     } finally {
       setLoading(false);
     }
-  }, [activeEntity?.id, assignmentFilter, pagination.itemsPerPage, filters]);
+  }, [activeEntity?.id, assignmentFilter, pagination.itemsPerPage, filters, cardFilter]);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -463,6 +469,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
+      queryParams += cardFilter;
       
       const token = localStorage.getItem('dealertoken');
       const res = await fetch(`/api/leads?${queryParams}`, {
