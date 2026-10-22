@@ -61,6 +61,10 @@ DEALER_LINKS = {
     "oem_incentives": ("manufacturer incentives", "We can go over the current manufacturer incentives together."),
 }
 
+# Which of the dealership's links the AI may share at all (AI Studio -> Compliance -> Photos & links). Off: the
+# honest line instead, never the link.
+SHAREABLE: dict[str, bool] = {"website": True, **{k: True for k in DEALER_LINKS}}
+
 PlanKind = Literal["none", "vehicle", "vehicle_and_website", "website", "credit_application", "trade_in",
                    "prequalification", "hours_map", "service_scheduler", "new_car_specials", "used_car_specials",
                    "service_specials", "parts_specials", "oem_incentives", "unavailable", "ask_which"]
@@ -118,7 +122,7 @@ def resolve_link(extraction: dict[str, Any] | None, *, inventory: list[dict[str,
     sure = plan.confidence >= TARGET_CONFIDENCE
 
     if target == "website" and sure:
-        if website:
+        if website and SHAREABLE.get("website", True):
             plan.kind, plan.website_url = "website", website
             plan.reasons.append("They asked for the dealership's website: the homepage.")
         else:
@@ -128,7 +132,7 @@ def resolve_link(extraction: dict[str, Any] | None, *, inventory: list[dict[str,
         return plan
     if target in DEALER_LINKS and sure:
         what, missing_line = DEALER_LINKS[target]
-        if url := (dealer_links or {}).get(target):
+        if (url := (dealer_links or {}).get(target)) and SHAREABLE.get(target, True):
             plan.kind, plan.dealer_url = target, url
             plan.reasons.append(f"They asked for the {what}: Dealer Setup's page.")
         else:

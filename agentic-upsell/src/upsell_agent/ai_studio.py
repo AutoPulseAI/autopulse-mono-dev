@@ -312,7 +312,11 @@ _ATTRS = {
                "DND_STATUSES"),
     "state_hours": ("STATE_RULES",),
     "opt_out": ("STOP_WORDS", "_STOP_TOKENS", "START_WORDS", "NL_CONFIRMATION", "_PHRASES", "INQUIRY_CONFIRMATION",
-                "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES"),
+                "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES", "INQUIRY_ONLY", "STOP_EVERYTHING_PHRASES"),
+    "vehicle_media": ("PHOTO_ON_FIRST_MESSAGE", "PHOTOS_ON_REQUEST"),
+    "short_links": ("ENABLED",),
+    "link_resolver": ("SHAREABLE",),
+    "decide": ("BUSY_RULE", "BUSY_PHRASES"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -336,7 +340,14 @@ def _by_name() -> dict[str, Any]:
             "owner_touches": owner_touches, "appointment": appointment, "engine": engine,
             "state_hours": state_hours, "opt_out": opt_out, "text_consent": text_consent, "consent": consent,
             "draft_guard": draft_guard, "guard": guard, "templates": templates, "staff_view": _staff_view_module(),
-            "policy": _policy_module()}
+            "policy": _policy_module(), **_media_modules()}
+
+
+def _media_modules() -> dict[str, Any]:
+    from upsell_agent.agent import link_resolver, short_links, vehicle_media
+    from upsell_agent.agent.nodes import decide
+    return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
+            "decide": decide}
 
 
 def _policy_module():
@@ -830,6 +841,10 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             oo._PHRASES.append((re.compile(pattern, re.IGNORECASE), None))
         if str(c.get("confirmation") or "").strip():
             oo.NL_CONFIRMATION = c["confirmation"].strip()
+        if isinstance(c.get("inquiry_only"), bool):
+            oo.INQUIRY_ONLY = c["inquiry_only"]
+        if isinstance(c.get("stop_everything_phrases"), list):
+            oo.STOP_EVERYTHING_PHRASES = [str(p).strip() for p in c["stop_everything_phrases"] if str(p).strip()]
         for field, name in (("inquiry_confirmation", "INQUIRY_CONFIRMATION"),
                             ("vehicle_updates_question", "VEHICLE_UPDATES_QUESTION"),
                             ("vehicle_updates_yes", "VEHICLE_UPDATES_YES")):
@@ -861,6 +876,20 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             from upsell_agent.scheduler import followups as _fu
             minutes = max(0, int(c["ai_resumes_after_staff_minutes"]))
             _fu.STAFF_QUIET_AFTER = _td(minutes=minutes) if minutes else None
+        if isinstance(c.get("busy_rule"), bool):
+            mods["decide"].BUSY_RULE = c["busy_rule"]
+        if isinstance(c.get("busy_phrases"), list):
+            mods["decide"].BUSY_PHRASES = [str(p).strip() for p in c["busy_phrases"] if str(p).strip()]
+    elif key == "photos_and_links":
+        vm, sl, lr = mods["vehicle_media"], mods["short_links"], mods["link_resolver"]
+        if isinstance(c.get("photo_on_first_message"), bool):
+            vm.PHOTO_ON_FIRST_MESSAGE = c["photo_on_first_message"]
+        if isinstance(c.get("photos_when_asked"), (int, float)) and not isinstance(c["photos_when_asked"], bool):
+            vm.PHOTOS_ON_REQUEST = max(0, min(5, int(c["photos_when_asked"])))
+        if isinstance(c.get("short_links"), bool):
+            sl.ENABLED = c["short_links"]
+        lr.SHAREABLE = {**lr.SHAREABLE, **{k.removeprefix("share_"): v for k, v in c.items()
+                                            if k.startswith("share_") and isinstance(v, bool)}}
     elif key == "writing":
         dg, gd = mods["draft_guard"], mods["guard"]
         for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),

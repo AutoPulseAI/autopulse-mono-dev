@@ -202,6 +202,8 @@ _ASKS_FOR_PHOTOS = re.compile(r"\b(?:photos?|pictures?|pics?|images?|fotos?)\b",
 _NOT_PHOTOS = re.compile(r"\b(?:videos?|walk[\s-]?around|facetime|video\s+call)\b", re.IGNORECASE)
 # Photos in one picture message: within Twilio's 5 MB for the whole message (each photo is checked).
 PHOTOS_ON_REQUEST = 3
+# On: the first message to a new lead shows the car's photo (Betsy, 22 Oct 2026). Both editable in AI Studio.
+PHOTO_ON_FIRST_MESSAGE = True
 
 
 def asks_for_photos(text: str | None) -> bool:
@@ -329,14 +331,14 @@ async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *
     if stock_free:
         return MediaPick(vin=None, reasons=["The vehicle sold since this was written: no photo."])
     vin = media_vin(draft, channel)
-    if not vin and (first_reply or asks_for_photos(customer_text)):
+    if not vin and ((first_reply and PHOTO_ON_FIRST_MESSAGE) or asks_for_photos(customer_text)):
         # Client, 19 Oct 2026 (Betsy: "for the first response email we are sending the vehicle image, can we also do it
         # with the text?"); 22 Oct 2026: "our first outbound message ... should automatically include an image of the
         # vehicle. Not a link", and "if a customer asks for photos ... we send the images via MMS". The car the lead
         # is about: its VIN, else the one car in stock matching the lead's year, make and model.
         vin = lead_vehicle_vin(lead, lead_state) or (vehicle_record(lead, lead_state, inventory, customer_text)
                                                      or {}).get("vin")
-    if asks_for_photos(customer_text) and vin and not asks_about_interior(customer_text):
+    if asks_for_photos(customer_text) and vin and not asks_about_interior(customer_text) and PHOTOS_ON_REQUEST > 0:
         pick = await pick_vehicle_photos(dealer_id, vin, channel=channel, settings=settings, source=source,
                                          count=PHOTOS_ON_REQUEST)
         if pick.urls:

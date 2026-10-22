@@ -1,5 +1,6 @@
 "use client";
-// The links the AI can share at the right time (Betsy, 22 Oct 2026), edited by the dealership itself. Saved with
+// The links the AI can share at the right time (Betsy, 22 Oct 2026), set by AutoPulse for each dealership (which of
+// them the AI may share at all is in AI Studio -> Compliance -> Photos & links). Saved with
 // PUT /api/dealer-ai/settings { links } (app/lib/ai/dealerLinks.js); the AI shares one when the customer asks for it.
 import { useState } from "react";
 import { Alert, Button, Form, Spinner } from "react-bootstrap";
@@ -66,7 +67,7 @@ export default function DealerLinksCard({ links, canEdit, onSaved }) {
           {status === "success" && <small className="text-success">Saved</small>}
         </div>
       ) : (
-        <small className="text-secondary-light">Only the dealership account can change these links.</small>
+        <small className="text-secondary-light">These links are managed by AutoPulse. Please contact us to change them.</small>
       )}
     </div>
   );
