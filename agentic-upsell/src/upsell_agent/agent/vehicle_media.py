@@ -59,6 +59,7 @@ PHOTO_THEMES = frozenset({"vehicle_visual", "vehicle_value"})
 class ImageCheck:
     ok: bool
     reason: str
+    size: int = 0  # bytes, when known (several photos in one MMS must stay within MAX_IMAGE_BYTES together)
 
 
 class ImageChecker(Protocol):
@@ -92,7 +93,7 @@ class HttpImageChecker:
             return ImageCheck(False, "size not stated (can't show it's within 5 MB)")
         if int(size) > MAX_IMAGE_BYTES:
             return ImageCheck(False, f"too large ({int(size) / 1024 / 1024:.1f} MB, limit 5 MB)")
-        return ImageCheck(True, f"{kind}, {int(size) / 1024:.0f} KB")
+        return ImageCheck(True, f"{kind}, {int(size) / 1024:.0f} KB", int(size))
 
 
 class OfflineImageChecker:
@@ -194,6 +195,47 @@ async def pick_vehicle_photo(dealer_id: str, vin: str | None, *, channel: str, s
     return pick
 
 
+# Betsy, 22 Oct 2026: "If a customer asks for photos of a vehicle we can send the images of the vehicle via mms.
+# Instead of sending the vehicle link. Then we ask for the appointment."
+_ASKS_FOR_PHOTOS = re.compile(r"\b(?:photos?|pictures?|pics?|images?|fotos?)\b", re.IGNORECASE)
+# A video or a walk-around is something only staff can make (agent/cannot_supply.py) - not this.
+_NOT_PHOTOS = re.compile(r"\b(?:videos?|walk[\s-]?around|facetime|video\s+call)\b", re.IGNORECASE)
+# Photos in one picture message: within Twilio's 5 MB for the whole message (each photo is checked).
+PHOTOS_ON_REQUEST = 3
+
+
+def asks_for_photos(text: str | None) -> bool:
+    return bool(text and _ASKS_FOR_PHOTOS.search(text) and not _NOT_PHOTOS.search(text))
+
+
+async def pick_vehicle_photos(dealer_id: str, vin: str, *, channel: str, settings: Settings,
+                              source: InventorySource | None = None, count: int = PHOTOS_ON_REQUEST,
+                              checker: ImageChecker | None = None) -> MediaPick:
+    """Up to `count` of the vehicle's own photos, each passing the image check, together within MAX_IMAGE_BYTES."""
+    pick = MediaPick(vin=vin)
+    if channel == "sms" and not (on := await mms_enabled(dealer_id, settings))[0]:
+        pick.reasons.append(f"{on[1]}: no photos by text.")
+        return pick
+    try:
+        record = await get_vehicle(dealer_id, vin, source or get_inventory_source(settings))
+    except Exception as exc:  # noqa: BLE001 - a photo is never worth a failed send
+        pick.reasons.append(f"Couldn't read {vin}'s record ({exc!r}): no photos.")
+        return pick
+    checker = checker or get_image_checker(settings)
+    total = 0
+    for url in photo_candidates(vin, [record] if record else [])[:count * 2]:
+        if len(pick.urls) >= count:
+            break
+        result = await checker.check(url)
+        size = result.size
+        if not result.ok or total + size > MAX_IMAGE_BYTES:
+            continue
+        pick.urls.append(url)
+        total += size
+    pick.reasons.append(f"The customer asked for photos: {len(pick.urls)} of {vin}'s own photos attached.")
+    return pick
+
+
 async def _labeled_pick(dealer_id: str, vin: str, channel: str, views: frozenset[str], why: str, *,
                         settings: Settings, source: InventorySource | None, db: Any) -> MediaPick | None:
     """That vehicle's own photo showing one of `views`, checked like any other; None to fall back to the usual
@@ -278,7 +320,8 @@ def _find_vehicle(lead: dict | None, lead_state: dict | None, records: list[dict
 async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *, settings: Settings,
                           source: InventorySource | None = None, theme: str | None = None,
                           lead: dict | None = None, lead_state: dict | None = None,
-                          stock_free: bool = False, customer_text: str | None = None, db: Any = None, first_reply: bool = False) -> MediaPick:
+                          stock_free: bool = False, customer_text: str | None = None, db: Any = None, first_reply: bool = False,
+                          inventory: list[dict] | None = None) -> MediaPick:
     """The photo for one version of an AI-written message (first reply, a reply, a cadence touch). The vehicle
     is the one Compose named for that version. A Day 2 / Day 5 touch (PHOTO_THEMES) that names none still
     shows the vehicle the lead is about. `stock_free`: the vehicle sold since drafting and the stock-free
@@ -286,10 +329,18 @@ async def photo_for_draft(dealer_id: str, draft: dict[str, Any], channel: str, *
     if stock_free:
         return MediaPick(vin=None, reasons=["The vehicle sold since this was written: no photo."])
     vin = media_vin(draft, channel)
-    if not vin and first_reply:
+    if not vin and (first_reply or asks_for_photos(customer_text)):
         # Client, 19 Oct 2026 (Betsy: "for the first response email we are sending the vehicle image, can we also do it
-        # with the text?"): the first message shows the car the lead is about whenever it has photos.
-        vin = lead_vehicle_vin(lead, lead_state)
+        # with the text?"); 22 Oct 2026: "our first outbound message ... should automatically include an image of the
+        # vehicle. Not a link", and "if a customer asks for photos ... we send the images via MMS". The car the lead
+        # is about: its VIN, else the one car in stock matching the lead's year, make and model.
+        vin = lead_vehicle_vin(lead, lead_state) or (vehicle_record(lead, lead_state, inventory, customer_text)
+                                                     or {}).get("vin")
+    if asks_for_photos(customer_text) and vin and not asks_about_interior(customer_text):
+        pick = await pick_vehicle_photos(dealer_id, vin, channel=channel, settings=settings, source=source,
+                                         count=PHOTOS_ON_REQUEST)
+        if pick.urls:
+            return pick
     if asks_about_interior(customer_text) and (vin := vin or lead_vehicle_vin(lead, lead_state)):
         # Client, 12 Oct 2026: asked about the inside, the inside is what they see - from that vehicle's own photos.
         pick = await _labeled_pick(dealer_id, vin, channel, INTERIOR, "The customer asked about the inside",

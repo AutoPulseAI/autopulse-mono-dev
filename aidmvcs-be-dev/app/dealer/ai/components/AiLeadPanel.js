@@ -219,7 +219,16 @@ export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_
           {textsStopped && (
             <Alert variant="warning" className="py-2 small mb-2">
               <strong>Texts stopped by the customer (STOP).</strong> No texts are sent, by the AI or by staff. Follow-up
-              continues by email and call tasks only, unless the customer texts START.
+              continues by email and call tasks only, until the customer writes to us again.
+            </Alert>
+          )}
+
+          {data?.consent?.inquiry_opt_out && (
+            <Alert variant="warning" className="py-2 small mb-2">
+              <strong>The customer asked us to stop about this inquiry</strong>
+              {` (${Object.keys(data.consent.inquiry_opt_out).map((c) => (c === "sms" ? "texts" : c)).join(", ")})`}.
+              Nothing more is sent on this lead until they write again; their vehicle and service updates are not affected.
+              {Object.values(data.consent.inquiry_opt_out)[0]?.message && ` They wrote: "${Object.values(data.consent.inquiry_opt_out)[0].message}"`}
             </Alert>
           )}
 

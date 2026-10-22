@@ -322,7 +322,12 @@ async def lead_consent(dealer_id: str, lead_id: str) -> dict[str, Any] | None:
             "address_invalid": await consent.is_invalid(db, check_channel, address) if address else False,
         }
     review = await consent.open_review(db, customer_id) if customer_id else None
-    return {"lead_id": lead_id, "channels": channels,
+    # Betsy, 22 Oct 2026: "don't text me" stops this inquiry only - the channels it stopped, and what they said.
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
+                                                                   projection={"inquiry_opt_out": 1}) or {}
+    inquiry = {c: {"since": _iso(v.get("at")), "message": v.get("said")}
+               for c, v in (state.get("inquiry_opt_out") or {}).items() if isinstance(v, dict)}
+    return {"lead_id": lead_id, "channels": channels, "inquiry_opt_out": inquiry or None,
             "possible_opt_out_review": ({"since": _iso(review.get("recorded_at")),
                                          "message": (review.get("evidence") or {}).get("message")}
                                         if review else None)}

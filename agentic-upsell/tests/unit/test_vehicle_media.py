@@ -23,7 +23,7 @@ import httpx
 import pytest
 from bson import ObjectId
 
-from tests.unit.conftest import make_settings
+from tests.unit.conftest import expand_short_links, make_settings
 from tests.unit.test_appointment import (  # noqa: F401 - fixture
     _booked_friday,
     _fire,
@@ -391,6 +391,7 @@ async def test_send_me_the_link_gets_that_vehicles_page_only(mongo):
     created = await _lead(deps)
     await _say(created, "Do you have a Toyota RAV4? Can you send me the link?", deps)
     sms = await _last_sms(mongo, created)
+    sms["text"] = await expand_short_links(mongo, sms["text"])  # sent as a short link (22 Oct 2026)
     assert PAGE in sms["text"] and sms["media_urls"]  # the photo still goes with it
     turn = (await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]})
             .sort("created_at", -1).to_list(1))[0]
@@ -407,6 +408,7 @@ async def test_a_link_to_look_on_a_lead_about_one_vehicle_gets_its_page(mongo):
                                                      {"$set": {"data.vin": VIN}})
     await _say(created, "Can you send me a link to look please", deps)
     sms = await _last_sms(mongo, created)
+    sms["text"] = await expand_short_links(mongo, sms["text"])  # sent as a short link (22 Oct 2026)
     assert PAGE in sms["text"] and "autopulse" not in sms["text"].lower()
     turn = (await mongo[AI_TURN_LOG_COLLECTION].find({"lead_id": created["lead_id"]})
             .sort("created_at", -1).to_list(1))[0]

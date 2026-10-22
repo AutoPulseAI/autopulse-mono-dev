@@ -39,10 +39,12 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
           # the AI promised to write it up): itemized fees are the same answer - appointment first.
           r"\bitemi[sz]\w*|\bdoc(?:umentation)?\s+fees?\b|\bbreak\s*down\b[^.?!]{0,30}\b(?:fees?|price|costs?)\b|"
           r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b")),
-    (CUSTOM_MEDIA, (r"\bvideos?\b|\bwalk[\s-]?around\b|\bmore\s+(?:photos|pictures|pics)\b|\bclose[\s-]?ups?\b|"
-                   r"\b(?:photos?|pictures?|pics)\s+of\s+the\s+(?:engine|tires?|wheels?|interior|seats?|trunk|"
-                   r"damage|scratch\w*|dent\w*|undercarriage|back|front|inside)\b|\bsend\s+(?:me\s+)?(?:a\s+)?"
-                   r"(?:video|more\s+photos|more\s+pictures)\b|\bfacetime\b|\bvideo\s+call\b")),
+    # Betsy, 22 Oct 2026: "more photos" of the car is answered with its photos by MMS (agent/vehicle_media.py) - a
+    # video, a walk-around or close-ups of a part are what only staff can make.
+    (CUSTOM_MEDIA, (r"\bvideos?\b|\bwalk[\s-]?around\b|\bclose[\s-]?ups?\b|"
+                   r"\b(?:photos?|pictures?|pics)\s+of\s+the\s+(?:engine|tires?|wheels?|seats?|trunk|"
+                   r"damage|scratch\w*|dent\w*|undercarriage)\b|\bsend\s+(?:me\s+)?(?:a\s+)?video\b"
+                   r"|\bfacetime\b|\bvideo\s+call\b")),
     (OUT_OF_STATE, (r"\bout\s+of\s+state\b|\bout-of-state\b|\b(?:another|a\s+different|different)\s+state\b|"
                    r"\bship(?:ped|ping)?\s+(?:it|the\s+(?:car|vehicle|truck)|to\s+me)\b|\bdeliver\w*\s+to\s+my\s+state\b")),
 )

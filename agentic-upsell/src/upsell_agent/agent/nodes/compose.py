@@ -226,18 +226,13 @@ def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
     pack = state.context_pack or {}
     info = (pack.get("dealer") or {}).get("info") or {}
     lead_vin = lead_vehicle_vin(ctx.lead, ctx.lead_state) if ctx else None
-    if (state.decision or {}).get("touch1") and lead_vin:
-        # Client, 12 Oct 2026 (Betsy): "if there is a vehicle of interest in the lead, the AI should send an image
-        # or link to the vehicle and name it" - the first reply carries that vehicle's page when it's in stock.
-        record = next((r for r in pack.get("inventory") or [] if r.get("vin") == lead_vin), None)
-        page = str((record or {}).get("page_url") or "").strip()
-        if page:
-            from upsell_agent.agent.link_resolver import LinkPlan, _describe
-            return LinkPlan(kind="vehicle", vin=lead_vin, description=_describe(record), vehicle_url=page,
-                            confidence=1.0, reasons=["First reply: the vehicle the lead is about, in stock: its page."])
+    # Betsy, 22 Oct 2026: "our first outbound message ... should automatically include an image of the vehicle. Not a
+    # link." (12 Oct it was "an image or link".) The photo goes with the first reply (agent/vehicle_media.py); a link
+    # only when the customer asks for one, like any other reply.
     return resolve_link(state.extraction, inventory=pack.get("inventory") or [], website=info.get("website"),
                         # Dealer Setup's own pages (client, 8 Oct 2026; integrations/dealer_profile.py).
-                        dealer_links={"credit_application": info.get("credit_application_link"),
+                        dealer_links={**(info.get("links") or {}),
+                                      "credit_application": info.get("credit_application_link"),
                                       "trade_in": info.get("trade_in_link")},
                         referred_vin=(pack.get("referred_vehicle") or {}).get("vin"),
                         lead_vin=lead_vin)

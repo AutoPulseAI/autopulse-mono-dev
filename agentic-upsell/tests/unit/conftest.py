@@ -142,3 +142,14 @@ def _still_with_me_only_where_tested(request, monkeypatch):
     if request.node.get_closest_marker("still_with_me") is None:
         from upsell_agent.scheduler import studio_cadences
         monkeypatch.setattr(studio_cadences, "RUN_BUILT_INS", ())
+
+
+async def expand_short_links(mongo, text: str) -> str:
+    """A sent message with each short link (agent/short_links.py) put back as the full URL it opens."""
+    import re
+    out = text or ""
+    for code in re.findall(r"https?://[^\s/]+/l/([A-Za-z0-9]+)", out):
+        row = await mongo["ai_short_links"].find_one({"code": code})
+        if row:
+            out = re.sub(rf"https?://[^\s/]+/l/{code}\b", row["url"], out)
+    return out

@@ -50,20 +50,32 @@ async def _no_email(mongo, created):
                                                           {"$set": {"emails": []}})
 
 
-async def test_p1_a_phone_that_texted_stop_under_an_older_record_gets_no_first_text(mongo, dealers):
+async def test_p1_a_new_lead_from_a_phone_that_texted_stop_opts_it_back_in(mongo, dealers):
+    """Betsy, 22 Oct 2026: "submitting a lead opts the customer back in" - the opt-out under an older record of the
+    same phone is reversed by the new lead, with the lead as evidence, and the first text goes."""
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     await _no_email(mongo, created)
     db = dealer_scoped_db(DEALER)
-    await consent.set_channel_consent(db, "older-customer-record", "sms", False, "customer_stop",
-                                      address=await _phone(mongo, created))
+    phone = await _phone(mongo, created)
+    await consent.set_channel_consent(db, "older-customer-record", "sms", False, "customer_stop", address=phone)
     result = await handlers.handle_lead_created(_created(created), _deps())
-    assert result["status"] == "not_sent" and result["rule"] == "opted_out"
-    assert await _outbox(mongo, created) == []
-    # Never silent: a turn says why, and the decision is in the compliance log.
-    assert await mongo[AI_TURN_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "outcome": "not_sent"})
-    logged = await mongo[AI_COMPLIANCE_LOG_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert logged["purpose"] == "lead_response" and logged["decision"] == "BLOCK"
+    assert result["status"] != "not_sent"
+    entry = await consent.latest_opt_out(db, created["customer_id"], "sms", phone)
+    assert entry["consent_status"] == "opted_in" and entry["consent_source"] == "customer_new_lead"
+
+
+async def test_p1_an_email_the_provider_reports_unsubscribed_stays_off_after_a_new_lead(mongo, dealers):
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="website")
+    db = dealer_scoped_db(DEALER)
+    lead = await mongo["leads"].find_one({"_id": ObjectId(created["lead_id"])})
+    if not lead.get("email"):
+        pytest.skip("this lead has no email")
+    await consent.set_channel_consent(db, created["customer_id"], "email", False, "sendgrid_unsubscribe",
+                                      address=lead["email"])
+    await handlers.handle_lead_created(_created(created), _deps())
+    assert await consent.is_opted_out(db, created["customer_id"], "email")
 
 
 async def test_p2_a_dealervault_style_lead_without_consent_is_not_texted_at_23_30(mongo, dealers):

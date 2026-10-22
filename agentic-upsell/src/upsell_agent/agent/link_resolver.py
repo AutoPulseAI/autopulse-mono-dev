@@ -50,10 +50,20 @@ DEALER_LINKS = {
     # Client, 21 Oct 2026: never open with what we can't do - the visit takes care of it.
     "credit_application": ("credit application", "We can take care of the credit application together at the dealership."),
     "trade_in": ("trade-in appraisal", "We can do the appraisal together when you stop by."),
+    # Betsy, 22 Oct 2026: the rest of "Links we can share at the right time" (AI Settings -> Links the AI can share).
+    "prequalification": ("prequalification", "We can see what you prequalify for together at the dealership."),
+    "hours_map": ("hours and map", "I'm happy to give you our address and hours right here."),
+    "service_scheduler": ("service scheduler", "I can set up your service visit for you right here."),
+    "new_car_specials": ("new car specials", "I can tell you about our current new car specials right here."),
+    "used_car_specials": ("used car specials", "I can tell you about our current used car specials right here."),
+    "service_specials": ("service specials", "I can tell you about our current service specials right here."),
+    "parts_specials": ("parts specials", "I can tell you about our current parts specials right here."),
+    "oem_incentives": ("manufacturer incentives", "We can go over the current manufacturer incentives together."),
 }
 
 PlanKind = Literal["none", "vehicle", "vehicle_and_website", "website", "credit_application", "trade_in",
-                   "unavailable", "ask_which"]
+                   "prequalification", "hours_map", "service_scheduler", "new_car_specials", "used_car_specials",
+                   "service_specials", "parts_specials", "oem_incentives", "unavailable", "ask_which"]
 
 
 @dataclass
