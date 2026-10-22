@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     # `ai_mms_enabled: false` turns it off for that dealer (agent/vehicle_media.py). Off: SMS carries no
     # image and still no link. MMS costs about 3x an SMS: the cost review comes before rollout.
     mms_enabled: bool = Field(default=True, alias="MMS_ENABLED")
+    # Betsy, 22 Oct 2026: a link the AI sends goes out as <this>/l/<code> (agent/short_links.py; the CRM's app/l/[code]
+    # redirects). Empty: links go out in full.
+    short_link_base_url: str = Field(default="https://autopulse.ai", alias="SHORT_LINK_BASE_URL")
 
     # --- MASTER_PLAN_4 D5/D6 (stream A4): service outreach from external data -------------------
     # NHTSA safety recalls (SOLD-DELIVERED PDF §6): the free public API, no key. The sweep re-checks each

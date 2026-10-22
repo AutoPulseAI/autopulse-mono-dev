@@ -398,7 +398,11 @@ def compliance() -> list[dict[str, Any]]:
             "rows": [_state_row(r) for r in state_hours.STATE_RULES.values()]}},
         {"key": "opt_out", "name": "Opt-out & opt-in", "content": {
             "stop_words": sorted(opt_out.STOP_WORDS), "start_words": sorted(opt_out.START_WORDS),
-            "extra_stop_phrases": [], "confirmation": opt_out.NL_CONFIRMATION}},
+            "extra_stop_phrases": [], "confirmation": opt_out.NL_CONFIRMATION,
+            # Betsy, 22 Oct 2026: "don't text me" stops this inquiry; the reply and the vehicle-updates question.
+            "inquiry_confirmation": opt_out.INQUIRY_CONFIRMATION,
+            "vehicle_updates_question": opt_out.VEHICLE_UPDATES_QUESTION,
+            "vehicle_updates_yes": opt_out.VEHICLE_UPDATES_YES}},
         {"key": "text_invite", "name": "Text invite (email customers)", "content": {
             "invite": text_consent.INVITE, "confirmation": text_consent.CONFIRMATION}},
         {"key": "channels", "name": "Channels: text or email first, nights", "content": {
@@ -426,7 +430,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 13
+DEFAULTS_REVISION = 14
 
 
 def export() -> dict[str, Any]:

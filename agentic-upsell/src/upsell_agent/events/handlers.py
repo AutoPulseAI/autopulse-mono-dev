@@ -31,7 +31,8 @@ from upsell_agent.agent.turn import (
 from upsell_agent.channels import consent, suppression
 from upsell_agent.channels.sender import SendRequest
 from upsell_agent.compliance import text_consent
-from upsell_agent.compliance.opt_out import confirmation_text, detect_opt_in, detect_opt_out
+from upsell_agent.compliance import opt_out as opt_out_rules
+from upsell_agent.compliance.opt_out import OptIn, confirmation_text, detect_opt_in, detect_opt_out
 from upsell_agent.config import get_settings
 from upsell_agent.events.models import (
     BookingChangedEvent,
@@ -148,9 +149,8 @@ async def _already_sent(db: DealerScopedDatabase, turn_id: str) -> dict | None:
     return await db.collection(AI_MESSAGES_COLLECTION).find_one({"turn_id": turn_id, "direction": "outbound"})
 
 
-OWNERSHIP_ALERTS_QUESTION = ("Ok, I can opt you out of messages regarding this inquiry. Would you still like ownership "
-                             "alerts regarding your current vehicle?")
-OWNERSHIP_ALERTS_YES = "Thank you! You'll only receive ownership and service alerts for your vehicle."
+# The old (20 Oct) ownership-alerts question; Betsy's 22 Oct wording replaced it (compliance/opt_out.py). Leads asked
+# it before still have their answer read (alerts_question_at).
 _ALERTS_YES = re.compile(r"^\W*(?:y|yes|yeah|yep|yup|sure|ok|okay|please|yes please)\W*$", re.IGNORECASE)
 
 
@@ -161,26 +161,34 @@ async def _owns_vehicle(db: DealerScopedDatabase, customer_id: str | None) -> bo
     if await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
             {"customer_id": customer_id, "stage": lifecycle.Stage.SOLD_DELIVERED.value}, projection={"_id": 1}):
         return True
-    return bool(await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
-        {"customer_id": customer_id, "kind": "owner_touch"}, projection={"_id": 1}))
+    if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+            {"customer_id": customer_id, "kind": "owner_touch"}, projection={"_id": 1}):
+        return True
+    # Betsy, 22 Oct 2026 ("your current vehicle(s) on file"): a vehicle they bought from us in DealerVault counts too.
+    from upsell_agent.integrations.mongodb import PLATFORM_DEALS_COLLECTION, as_object_id
+    ids = [customer_id] + ([oid] if (oid := as_object_id(customer_id)) is not None else [])
+    return bool(await db.collection(PLATFORM_DEALS_COLLECTION).find_one(
+        {"customer_id": {"$in": ids}, "vin": {"$nin": [None, ""]}}, projection={"_id": 1}))
 
 
 async def _opt_back_in_from_lead(db: DealerScopedDatabase, event: LeadCreatedEvent, lead: dict | None) -> None:
-    """Client, 20 Oct 2026 (Betsy: texting stays off "until the customer opts back in (with a lead or with a text or
-    email)"): a new lead whose form gives complete text consent reopens texting after the customer's own opt-out
-    phrase. After the keyword STOP the carrier blocks our number until the customer texts START, so that stays."""
-    provider = consent.lead_provider_consent(lead)
-    if not event.customer_id or not provider or not provider.get("opted_in"):
+    """Betsy, 22 Oct 2026: "the customer sending any text, even just 'hi', and/or submitting a lead, opts the customer
+    back in". A new lead from them reverses their text and email opt-outs (a "don't call me" stays, and an address
+    the email provider itself reports unsubscribed stays: it keeps refusing it - decision 143). Every other check
+    still applies to the new lead (a form that says no to texts, texting hours, DND)."""
+    if not event.customer_id:
         return
-    phone = (lead or {}).get("phone")
-    if consent.missing_provider_evidence(provider, phone):
-        return
-    last = await consent.latest_opt_out(db, event.customer_id, "sms", phone)
-    if not last or last.get("consent_status") != "opted_out" or last.get("consent_source") == "customer_stop":
-        return
-    await consent.record_consent(db, customer_id=event.customer_id, channel="sms", consent_type="opt_out",
-                                 status="opted_in", source="customer_new_lead_consent", lead_id=event.lead_id,
-                                 evidence={"provider": provider}, address=consent.address_key("sms", phone))
+    for channel in ("sms", "email"):
+        address = (lead or {}).get("phone" if channel == "sms" else "email")
+        last = await consent.latest_opt_out(db, event.customer_id, channel, address)
+        if not last or last.get("consent_status") != "opted_out":
+            continue
+        if channel == "email" and str(last.get("consent_source") or "").startswith("sendgrid_"):
+            continue
+        await consent.record_consent(db, customer_id=event.customer_id, channel=channel, consent_type="opt_out",
+                                     status="opted_in", source="customer_new_lead", lead_id=event.lead_id,
+                                     evidence={"lead_id": event.lead_id, "source": (lead or {}).get("source")},
+                                     address=consent.address_key(channel, address))
 
 
 async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
@@ -722,26 +730,43 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     # confirms it; a phrase stops the channel it names (every channel when it
     # names none) and gets one plain confirmation from us.
     customer = await find_customer(db, event.customer_id)
-    if state.get("alerts_question_at") and not event.shadow:
-        # Client, 20 Oct 2026 (Betsy): the answer to "Would you still like ownership alerts regarding your current
-        # vehicle?" after the customer asked us to stop texting about this inquiry.
-        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
-                                                                 {"$unset": {"alerts_question_at": ""}})
-        if _ALERTS_YES.match("\n".join(m["text"] for m in unanswered)):
-            await consent.set_channel_consent(db, event.customer_id, "sms", True, source="customer_ownership_alerts",
-                                              lead_id=lead_id, address=_address(lead, customer, "sms"),
-                                              evidence={"message": unanswered[-1]["text"]})
-            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
-                {"lead_id": lead_id}, {"$set": {"sales_opted_out": True, "sales_opted_out_at": clock.now()}})
-            await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
+    asked = state.get("vehicle_updates_question") or (
+        {"channels": ["sms"], "at": state["alerts_question_at"]} if state.get("alerts_question_at") else None)
+    if asked and not event.shadow:
+        # Betsy, 22 Oct 2026: the answer to "Is it still ok to send updates regarding your current vehicle(s) on file
+        # (service & market values)?" after they asked us to stop about this inquiry. Yes: their vehicle updates carry
+        # on (consent was never removed). No: every message we start on those channels stops. Anything else is a
+        # new message, handled as one (it also turns this inquiry back on, below).
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$unset": {"vehicle_updates_question": "", "alerts_question_at": ""}})
+        said = "\n".join(m["text"] for m in unanswered)
+        channels = tuple(asked.get("channels") or ["sms"])
+        if _ALERTS_YES.match(said):
             return await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="opted_in",
-                                      reason="The customer keeps ownership alerts only; no more sales messages on "
-                                             "this inquiry.", received_at=_parse_received_at(received_at),
-                                      reply={"text": OWNERSHIP_ALERTS_YES, "subject": "Your vehicle alerts"})
+                                      reason="The customer keeps updates about their vehicle(s) on file; this inquiry "
+                                             "stays stopped.", received_at=_parse_received_at(received_at),
+                                      reply={"text": opt_out_rules.VEHICLE_UPDATES_YES,
+                                             "subject": "Your vehicle updates"})
+        if _UPDATES_NO.match(said):
+            for stopped in channels:
+                await consent.set_channel_consent(
+                    db, event.customer_id, stopped, False, source="customer_vehicle_updates_no", lead_id=lead_id,
+                    address=_address(lead, customer, stopped), evidence={"message": unanswered[-1]["text"]})
+            await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
+            return await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered,
+                                      action="opt_out_confirmation",
+                                      reason=f"No vehicle updates either: opted out of {', '.join(channels)}.",
+                                      received_at=_parse_received_at(received_at),
+                                      confirmation=confirmation_text(channels))
     for message in unanswered:
         keyword = consent.classify_keyword(message["text"])
         channel = message["channel"]
         opt_out = detect_opt_out(message["text"], channel)
+        if opt_out and opt_out.kind == "phrase" and opt_out.channels != ("voice",) and not opt_out_rules.stops_everything(
+                opt_out, message["text"]):
+            return await _stop_this_inquiry(db, event, deps, lead=lead, customer=customer, lead_id=lead_id,
+                                            rows=unanswered, opt_out=opt_out, message=message,
+                                            received_at=received_at, cancelled=cancelled)
         if opt_out:
             # The lead's status isn't touched: the opt-out entries stop what we start on those
             # channels, and a later message from the customer still gets a reply (decision 137).
@@ -777,14 +802,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                 reason = (f"The customer asked us to stop ({opt_out.matched!r}): opted out of {scope}. One plain "
                           f"confirmation goes out on {channel}.")
                 action = "opt_out_confirmation"
+            # A clear "stop everything" asks nothing back (Betsy, 22 Oct 2026); "don't text me" about this inquiry
+            # took the branch above and asks about their vehicle updates.
             confirm = confirmation_text(opt_out.channels)
-            if (opt_out.kind == "phrase" and channel == "sms" and "sms" in opt_out.channels and not event.shadow
-                    and await _owns_vehicle(db, event.customer_id)):
-                # Client, 20 Oct 2026 (Betsy): a customer who owns a vehicle from us is asked whether to keep its
-                # ownership alerts; only a yes keeps them (above), anything else leaves them fully opted out.
-                confirm = OWNERSHIP_ALERTS_QUESTION
-                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
-                    {"lead_id": lead_id}, {"$set": {"alerts_question_at": clock.now()}})
             await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                received_at=_parse_received_at(received_at), confirmation=confirm)
             return {"status": "opted_out", "channel": channel, "channels": list(opt_out.channels),
@@ -837,6 +857,18 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             # "You can text me again": reverse it and carry on into a normal turn, so the rest of the
             # message is answered (decision 138).
             await _opt_back_in(db, event, lead, customer, lead_id, state, opt_in, message)
+        if keyword is None and not event.shadow:
+            # Betsy, 22 Oct 2026: "the customer sending any text, even just 'hi', opts the customer back in" - texts
+            # and emails (a "don't call me" stays), and this inquiry if they had stopped it. The status then follows
+            # from the conversation the turn below has with them.
+            await _opt_back_in(db, event, lead, customer, lead_id, state,
+                               OptIn(("sms", "email"), "any message from the customer"), message,
+                               source="customer_message")
+        if not event.shadow and state.get("inquiry_opt_out"):
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$unset": {"inquiry_opt_out": ""}, "$set": {
+                    "inquiry_opted_back_in": {"at": clock.now(), "message": message["text"][:300]}}})
+            state = {**state, "inquiry_opt_out": None}
 
     # A possible opt-out under review is no longer resolved just because the customer wrote again (PLAN_4 stream
     # X1 item 3): the AI turn resolves it only on a clearly non-opt-out message that answers it
@@ -1189,7 +1221,8 @@ def _address(lead: dict | None, customer: dict | None, channel: str) -> str | No
 
 
 async def _opt_back_in(db: DealerScopedDatabase, event: InboundMessageEvent, lead: dict | None,
-                       customer: dict | None, lead_id: str, state: dict, opt_in: Any, message: dict) -> list[str]:
+                       customer: dict | None, lead_id: str, state: dict, opt_in: Any, message: dict,
+                       source: str = "customer_opt_in_phrase") -> list[str]:
     """A natural-language opt-in (decision 138): the channel it names, or every channel the customer
     is opted out of when it names none. An email unsubscribe reported by the email provider isn't
     reversed: the provider keeps refusing that address, and the client's rule is "if email is
@@ -1203,18 +1236,52 @@ async def _opt_back_in(db: DealerScopedDatabase, event: InboundMessageEvent, lea
             continue
         if channel == "email" and str(entry.get("consent_source") or "").startswith("sendgrid_"):
             continue
-        await consent.set_channel_consent(db, event.customer_id, channel, True, source="customer_opt_in_phrase",
+        await consent.set_channel_consent(db, event.customer_id, channel, True, source=source,
                                           lead_id=lead_id, address=address,
                                           evidence={"message": message["text"], "matched": opt_in.matched,
                                                     "message_id": str(message["_id"])})
         reversed_.append(channel)
     if reversed_ and every_off and not event.shadow:
         await lifecycle.apply(db, lead_id, [lifecycle.Event(
-            "opted_in", source="customer_opt_in_phrase",
+            "opted_in", source=source,
             reason=f"The customer opted back in ({opt_in.matched!r}): {', '.join(reversed_)}",
             detail={"previous": state.get("previous_stage"),  # X2: delivered -> never back to Sold Pending
                             "delivered": bool(state.get("sold_delivered_at"))})], lead=lead, customer_id=event.customer_id)
     return reversed_
+
+
+_UPDATES_NO = re.compile(r"^\W*(?:n|no|nope|nah|no\s+thanks?|no\s+thank\s+you|not\s+interested|don'?t|do\s+not|"
+                         r"no\s+updates?|nothing|none)\W*$", re.IGNORECASE)
+
+
+async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *,
+                             lead: dict | None, customer: dict | None, lead_id: str, rows: list[dict], opt_out: Any,
+                             message: dict, received_at: Any, cancelled: int) -> dict[str, Any]:
+    """Betsy, 22 Oct 2026: "don't text me" stops THIS inquiry on that channel (compliance/engine.py blocks every
+    message we start on this lead and channel), not the customer: their consent stays, so the owner and service side
+    and a later inquiry carry on, and any message from them turns it back on. The reply is her wording, plus the
+    vehicle-updates question when they have a vehicle on file."""
+    channels = tuple(c for c in opt_out.channels if c != "voice")
+    now = clock.now()
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    if not event.shadow:
+        await states.update_one({"lead_id": lead_id}, {"$set": {
+            **{f"inquiry_opt_out.{c}": {"at": now, "said": message["text"][:300], "matched": opt_out.matched}
+               for c in channels}}})
+        await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
+    confirm = opt_out_rules.INQUIRY_CONFIRMATION.format(verb=opt_out_rules.inquiry_verb(channels))
+    owner = not event.shadow and await _owns_vehicle(db, event.customer_id)
+    if owner:
+        confirm = f"{confirm} {opt_out_rules.VEHICLE_UPDATES_QUESTION}"
+        await states.update_one({"lead_id": lead_id}, {"$set": {
+            "vehicle_updates_question": {"at": now, "channels": list(channels)}}})
+    await _record_held(db, event, deps, lead_id=lead_id, rows=rows, action="opt_out_confirmation",
+                       reason=(f"The customer asked us to stop about this inquiry ({opt_out.matched!r}): nothing more "
+                               f"is started on {', '.join(channels)} for this lead; their consent stays"
+                               + ("; asked whether to keep updates about their vehicle(s) on file." if owner else ".")),
+                       received_at=_parse_received_at(received_at), confirmation=confirm)
+    return {"status": "opted_out", "scope": "inquiry", "channel": message["channel"], "channels": list(channels),
+            "kind": opt_out.kind, "followups_cancelled": cancelled, "asked_vehicle_updates": owner}
 
 
 async def _mark_lead_dnd(deps: TurnDeps | None, dealer_id: str, lead_id: str, reason: str) -> None:

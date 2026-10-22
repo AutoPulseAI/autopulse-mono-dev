@@ -41,6 +41,37 @@ START_WORD_CAPS = "YES"
 POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE = 0.5
 
 NL_CONFIRMATION = "Understood, we won't contact you again."
+
+# Betsy, 22 Oct 2026: "don't text me" stops THIS inquiry on that channel, not the customer - their consent stays,
+# so it can carry on when they come back. Every message is editable in AI Studio (Compliance -> Opt-out & opt-in).
+# {verb}: "text" / "email" / "contact" for the channel it named.
+INQUIRY_CONFIRMATION = "Ok, we will not {verb} you again regarding this inquiry."
+# Added when the customer has a vehicle on file (a Sold - Delivered lead, a DealerVault deal, the owner life cycle).
+VEHICLE_UPDATES_QUESTION = ("Is it still ok to send updates regarding your current vehicle(s) on file (service & "
+                            "market values)? We wouldn't want you missing out on important information. Just let me "
+                            "know and I'll update your settings.")
+VEHICLE_UPDATES_YES = "Thank you! You'll only receive updates about your vehicle(s) on file (service & market values)."
+# A clear "stop everything" - never ask, stop every message we start on those channels (with the exact STOP keyword and
+# a short "please stop" / "unsubscribe").
+_EVERYTHING = re.compile(
+    r"\bnever\s+(?:\w+\s+){0,2}(?:contact|text|txt|message|e-?mail|call|reach)\w*\s+(?:me\s+)?again\b"
+    r"|\b(?:do\s*n[o']?t|dont|do\s+not)\s+(?:want|need)\s+(?:any\s*more|any|no\s+more)\s+(?:messages|contact)\b"
+    r"|\bno\s+more\s+messages\b|\b(?:all|any)\s+(?:messages|communications?|contact)\s+(?:from\s+you|at\s+all)\b"
+    r"|\bstop\s*all\b|\beverything\b|\b(?:completely|altogether|permanently|forever)\b"
+    r"|\bremove\s+me\s+from\b|\btake\s+me\s+off\b|\bunsubscribe\b|\blose\s+my\s+(?:number|contact)\b"
+    r"|\bleave\s+me\s+alone\b|\bno\s+mas\b")
+
+
+def inquiry_verb(channels: tuple[Channel, ...]) -> str:
+    """The word for what stops: "text" / "email", "contact" when it's more than one."""
+    named = [c for c in channels if c != "voice"] or list(channels)
+    return _CONFIRM_VERBS[named[0]] if len(named) == 1 else "contact"
+
+
+def stops_everything(opt: "OptOut", text: str) -> bool:
+    """The customer wants every message stopped, not just this inquiry (Betsy, 22 Oct 2026; clarified 21 Oct: "STOP",
+    "never text me again", "I don't want any messages")."""
+    return opt.kind == "keyword" or opt.short or bool(_EVERYTHING.search(_normalize(text)))
 _CONFIRM_VERBS = {"sms": "text", "email": "email", "voice": "call"}
 
 _NOT = r"(?:do\s*n[o']?t|dont|don't|never|no\s+more|stop|quit)"
@@ -123,6 +154,7 @@ class OptOut:
     kind: Literal["keyword", "phrase"]
     channels: tuple[Channel, ...]
     matched: str
+    short: bool = False  # the whole message only says stop ("please stop", "STOP ALL")
 
     @property
     def confirm(self) -> bool:
@@ -251,5 +283,5 @@ def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
     if matched := _short_opt_out(lowered):
         # PLAN_4 stream X1 item 2: "please stop", "STOP ALL", "unsubscribe please": every channel, as the
         # customer didn't limit it, with our one confirmation (the carrier's keyword match needs the bare word).
-        return OptOut("phrase", ALL_CHANNELS, matched)
+        return OptOut("phrase", ALL_CHANNELS, matched, short=True)
     return None

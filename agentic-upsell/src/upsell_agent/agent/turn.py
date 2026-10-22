@@ -242,7 +242,9 @@ async def run_turn(
             reply, subject = await _in_customer_language(tracer, decision, reply, subject, settings)
             # MASTER_PLAN_4 F3: the named vehicle's own photo, checked, never a link in its place.
             photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]),
-                                 customer_text=inbound_text)
+                                 customer_text=inbound_text,
+                                 inventory=(result.get("context_pack") or {}).get("inventory"))
+            reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
                 channel=channel, text=reply or "", subject=subject,
@@ -492,6 +494,7 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     subject = None if other == "sms" else draft.get("email_subject")
     text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
+    text = await _short_links(tracer, dealer_scoped_db(dealer_id), text, lead_id, get_settings())
     request = SendRequest(
         dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
         text=text, subject=subject, shadow=shadow,
@@ -1039,12 +1042,25 @@ async def _fresh_send_text(ctx: TurnContext, dealer_id: str, draft: dict[str, An
 
 
 async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision: dict[str, Any], *,
-                 stock_free: bool = False, customer_text: str | None = None) -> MediaPick:
+                 stock_free: bool = False, customer_text: str | None = None,
+                 inventory: list[dict] | None = None) -> MediaPick:
     """MASTER_PLAN_4 F3 (agent/vehicle_media.py): the photo for this channel's version of the draft."""
     return await photo_for_draft(
         ctx.db.dealer_id, draft, channel, settings=ctx.settings, source=ctx.inventory,
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
-        stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")))
+        stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")),
+        inventory=inventory)
+
+
+async def _short_links(tracer: TurnTracer, db: DealerScopedDatabase, text: str | None, lead_id: str | None,
+                       settings: Any) -> str | None:
+    """Betsy, 22 Oct 2026: every link goes out as a short AutoPulse link (agent/short_links.py)."""
+    from upsell_agent.agent.short_links import shorten_links
+    shortened, notes = await shorten_links(db, text, base=getattr(settings, "short_link_base_url", None),
+                                           lead_id=lead_id)
+    if notes:
+        tracer.log.setdefault("short_links", []).extend(notes)
+    return shortened
 
 
 def _hands_off(result: dict[str, Any]) -> bool:

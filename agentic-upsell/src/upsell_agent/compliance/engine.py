@@ -408,6 +408,20 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                                  "leads)", "do_not_contact")
     check("do_not_contact", True, "not on the dealer's do-not-contact list")
 
+    # 3b. This inquiry stopped on this channel (Betsy, 22 Oct 2026: "don't text me" stops this inquiry, not the
+    # customer). Nothing we start on this lead goes out on it - follow-ups, reminders, AI Studio cadences - while a
+    # reply to the customer's own message still does, and so do their other leads (owner, service).
+    if lead_id and not is_reply:
+        from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+        row = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
+                                                                     projection={"inquiry_opt_out": 1})
+        stopped = ((row or {}).get("inquiry_opt_out") or {}).get("email" if channel == "email" else "sms")
+        if stopped:
+            check("inquiry_opt_out", False, f"the customer asked us to stop {channel} about this inquiry")
+            return Decision("BLOCK", f"the customer asked us to stop {channel} about this inquiry",
+                            "inquiry_opt_out")
+        check("inquiry_opt_out", True, f"this inquiry isn't stopped on {channel}")
+
     marketing_sms = purpose == "marketing" and channel == "sms" and not is_reply
     lead_response_sms = purpose == "lead_response" and channel == "sms"
     # 4. An explicit no (marketing texts and the first message on a lead; a reply still goes out).

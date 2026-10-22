@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import { AI_MODE_LABELS, aiFetch } from "../../ai/components/aiShared";
+import DealerLinksCard from "./DealerLinksCard";
 
 const MODES = ["off", "shadow", "live"];
 const MODE_TITLES = { off: "Off", shadow: "Shadow (drafts only)", live: "On" };
@@ -234,6 +235,9 @@ export default function AiSettingsPage() {
                     ))}
                   </div>
                 </div>
+
+                <DealerLinksCard links={settings?.links} canEdit={Boolean(settings?.can_edit_links)}
+                  onSaved={(data) => setSettings(data)} />
 
                 <div className="w_card">
                   <h3 className="w_card_title mb-0">Appointment capacity</h3>

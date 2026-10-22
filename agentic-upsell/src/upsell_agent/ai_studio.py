@@ -311,7 +311,8 @@ _ATTRS = {
     "engine": ("REPLY_WINDOW", "TRANSACTIONAL_WINDOW", "MARKETING_WINDOW", "MARKETING_SMS_CAP", "CAP_PERIOD",
                "DND_STATUSES"),
     "state_hours": ("STATE_RULES",),
-    "opt_out": ("STOP_WORDS", "_STOP_TOKENS", "START_WORDS", "NL_CONFIRMATION", "_PHRASES"),
+    "opt_out": ("STOP_WORDS", "_STOP_TOKENS", "START_WORDS", "NL_CONFIRMATION", "_PHRASES", "INQUIRY_CONFIRMATION",
+                "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -829,6 +830,11 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             oo._PHRASES.append((re.compile(pattern, re.IGNORECASE), None))
         if str(c.get("confirmation") or "").strip():
             oo.NL_CONFIRMATION = c["confirmation"].strip()
+        for field, name in (("inquiry_confirmation", "INQUIRY_CONFIRMATION"),
+                            ("vehicle_updates_question", "VEHICLE_UPDATES_QUESTION"),
+                            ("vehicle_updates_yes", "VEHICLE_UPDATES_YES")):
+            if str(c.get(field) or "").strip():
+                setattr(oo, name, c[field].strip())
     elif key == "text_invite":
         tc = mods["text_consent"]
         tc.INVITE = str(c.get("invite") or tc.INVITE)

@@ -34,6 +34,7 @@ import { jsonError, requireDealerSession, staffName } from "../_lib/dealerAi";
 import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
 import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
 import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
+import { dealerLinksUpdate, dealerLinksView } from "@lib/ai/dealerLinks";
 
 // What a dealership may switch between itself (client, 9 Oct 2026); "shadow" is AutoPulse's.
 export const DEALER_AI_MODES = ["off", "live"];
@@ -64,6 +65,7 @@ function describe(dealer) {
     ai_daily_call_tasks: dailyCallTasksView(dealer), // stream T
     // Client, 12 Oct 2026: what the dealership offers; the AI keeps the rest off limits (unset = offered).
     departments: Object.fromEntries(DEPARTMENTS.map((d) => [d, info.departments?.[d] !== false])),
+    links: dealerLinksView(dealer), // Betsy, 22 Oct 2026: the links the AI can share, edited by the dealership
   };
 }
 
@@ -84,7 +86,8 @@ export async function GET(req) {
   if (session.error) return session.error;
   const dealer = await loadDealer(session.dealerId);
   if (!dealer) return jsonError("Dealership not found", 404);
-  return NextResponse.json({ ...describe(dealer), can_change: await canChange(req), can_toggle_ai: true });
+  return NextResponse.json({ ...describe(dealer), can_change: await canChange(req), can_toggle_ai: true,
+    can_edit_links: (await canChange(req)) || session.user?.type === "dealer" && !session.user?.parent_id });
 }
 
 export async function PUT(req) {
@@ -100,7 +103,10 @@ export async function PUT(req) {
   if (!superAdmin) {
     const keys = Object.keys(body || {}).filter((k) => k !== "dealer_id");
     const onOffOnly = keys.length === 1 && keys[0] === "ai_mode" && DEALER_AI_MODES.includes(body.ai_mode);
-    if (!onOffOnly) return jsonError(SETTINGS_VIEW_ONLY_MESSAGE, 403);
+    // Betsy, 22 Oct 2026: "we need to be able to have the dealership edit in the UI" the links - the dealership's own
+    // account (not every staff member) may change them.
+    const linksOnly = keys.length === 1 && keys[0] === "links" && session.user?.type === "dealer" && !session.user?.parent_id;
+    if (!onOffOnly && !linksOnly) return jsonError(SETTINGS_VIEW_ONLY_MESSAGE, 403);
   }
 
   const set = {};
@@ -132,6 +138,11 @@ export async function PUT(req) {
       }
     }
   }
+  if (body.links !== undefined) {
+    const links = dealerLinksUpdate(body.links);
+    if (links.errors.length) return jsonError(links.errors.join("; "), 422);
+    Object.assign(set, links.set);
+  }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 
   const before = await loadDealer(session.dealerId);
@@ -150,5 +161,5 @@ export async function PUT(req) {
   });
   const dealer = await loadDealer(session.dealerId);
   return NextResponse.json({ ...describe(dealer), can_change: superAdmin, can_toggle_ai: true,
-    follow_up_jobs_cleared: followUpJobsCleared });
+    can_edit_links: superAdmin || session.user?.type === "dealer" && !session.user?.parent_id, follow_up_jobs_cleared: followUpJobsCleared });
 }

@@ -331,31 +331,39 @@ def _inbound(created, text, channel="sms"):
                                received_at=clock.now())
 
 
-async def test_a_general_opt_out_phrase_stops_every_channel_with_one_confirmation(mongo, dealers):
+async def test_a_general_opt_out_phrase_stops_this_inquiry_on_every_channel(mongo, dealers):
+    """Betsy, 22 Oct 2026: "please stop contacting me" stops THIS inquiry (text and email), not the customer."""
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     result = await handlers.handle_inbound_message(_inbound(created, "Please stop contacting me"), _deps())
-    assert result["status"] == "opted_out" and result["kind"] == "phrase"
+    assert result["status"] == "opted_out" and result["scope"] == "inquiry"
+    db = dealer_scoped_db(DEALER)
+    for channel in ("sms", "email"):
+        assert not await consent.is_opted_out(db, created["customer_id"], channel)  # their consent stays
+    [sent] = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
+    assert sent["text"] == "Ok, we will not contact you again regarding this inquiry." and sent["channel"] == "sms"
+    assert (await _check(created)).rule == "inquiry_opt_out"
+    assert (await _check(created, channel="email")).rule == "inquiry_opt_out"
+
+
+async def test_never_contact_me_again_stops_everything(mongo, dealers):
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="website")
+    await handlers.handle_inbound_message(_inbound(created, "Never contact me again"), _deps())
     db = dealer_scoped_db(DEALER)
     for channel in ("sms", "email", "voice"):
         assert await consent.is_opted_out(db, created["customer_id"], channel)
     [sent] = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
-    assert sent["text"] == NL_CONFIRMATION and sent["channel"] == "sms"
-    # The lead isn't silenced (decision 137): the opt-out entries do the stopping.
-    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert state["status"] != "opted_out"
-
+    assert sent["text"] == NL_CONFIRMATION
 
 async def test_a_channel_named_phrase_stops_only_that_channel(mongo, dealers):
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     await handlers.handle_inbound_message(_inbound(created, "don't email me, text is fine", channel="sms"), _deps())
-    db = dealer_scoped_db(DEALER)
-    assert await consent.is_opted_out(db, created["customer_id"], "email")
-    assert not await consent.is_opted_out(db, created["customer_id"], "sms")
+    assert (await _check(created, channel="email")).rule == "inquiry_opt_out"
+    assert (await _check(created)).rule != "inquiry_opt_out"
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert state["status"] != "opted_out"
-
+    assert list(state["inquiry_opt_out"]) == ["email"] and state["status"] != "opted_out"
 
 async def test_keyword_stop_gets_no_confirmation_from_us(mongo, dealers):
     created = await _lead(mongo, source="website")
@@ -485,20 +493,19 @@ def test_answers_are_not_opt_ins(text):
     assert detect_opt_in(text) is None
 
 
-async def test_a_reply_goes_out_after_an_opt_out_and_follow_ups_dont(mongo, dealers):
+async def test_after_dont_text_me_any_message_turns_this_inquiry_back_on(mongo, dealers):
+    """Betsy, 22 Oct 2026: her wording, nothing started on that channel, and any message from them (even "hi")
+    opts them back in."""
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     await handlers.handle_inbound_message(_inbound(created, "don't text me"), _deps())
     [confirmation] = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
-    assert confirmation["text"] == "Understood, we won't text you again."
-    later = await handlers.handle_inbound_message(_inbound(created, "Actually, is the CR-V still there?"), _deps())
+    assert confirmation["text"] == "Ok, we will not text you again regarding this inquiry."
+    assert (await _check(created)).rule == "inquiry_opt_out"
+    assert not await mongo["scheduled_followups"].find_one({"lead_id": created["lead_id"], "status": "pending"})
+    later = await handlers.handle_inbound_message(_inbound(created, "hi"), _deps())
     assert later["status"] == "done"
-    sent = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
-    assert len(sent) == 2 and sent[1]["channel"] == "sms"
-    # Still opted out: nothing the system starts goes by text.
-    assert (await _check(created)).rule == "opted_out"
-    assert await consent.is_opted_out(dealer_scoped_db(DEALER), created["customer_id"], "sms")
-
+    assert (await _check(created)).rule != "inquiry_opt_out"
 
 async def test_never_contact_me_is_every_channel_and_still_answers(mongo, dealers):
     # Decision 135: "do not contact" is the every-channel opt-out; decision 137: replies still go.
@@ -512,19 +519,19 @@ async def test_never_contact_me_is_every_channel_and_still_answers(mongo, dealer
     assert later["status"] == "done"
 
 
-async def test_an_opt_in_phrase_reverses_its_channel_and_the_message_is_answered(mongo, dealers):
+async def test_an_opt_in_phrase_reverses_and_the_message_is_answered(mongo, dealers):
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
-    db = dealer_scoped_db(DEALER)
-    await handlers.handle_inbound_message(_inbound(created, "stop contacting me"), _deps())
+    await handlers.handle_inbound_message(_inbound(created, "Never contact me again"), _deps())
     result = await handlers.handle_inbound_message(
         _inbound(created, "you can text me again, is the CR-V still there?"), _deps())
     assert result["status"] == "done"
+    db = dealer_scoped_db(DEALER)
     assert not await consent.is_opted_out(db, created["customer_id"], "sms")
-    assert await consent.is_opted_out(db, created["customer_id"], "email")  # only the channel it named
     entry = await consent.latest_opt_out(db, created["customer_id"], "sms")
     assert entry["consent_source"] == "customer_opt_in_phrase" and entry["evidence"]["matched"]
-
+    assert not await consent.is_opted_out(db, created["customer_id"], "email")  # any message: email back on too
+    assert await consent.is_opted_out(db, created["customer_id"], "voice")  # "never contact me" calls stay off
 
 async def test_a_general_opt_in_reverses_every_channel_but_not_an_email_unsubscribe(mongo, dealers):
     set_clock(ny(22, 12))
@@ -538,16 +545,17 @@ async def test_a_general_opt_in_reverses_every_channel_but_not_an_email_unsubscr
     assert await consent.is_opted_out(db, created["customer_id"], "email")
 
 
-async def test_a_lowercase_yes_does_not_opt_back_in(mongo, dealers):
+async def test_after_stop_any_text_opts_back_in(mongo, dealers):
+    """Betsy, 22 Oct 2026 ("the customer sending any text, even just 'hi', opts the customer back in")."""
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     db = dealer_scoped_db(DEALER)
     await handlers.handle_inbound_message(_inbound(created, "STOP"), _deps())
-    await handlers.handle_inbound_message(_inbound(created, "yes"), _deps())
     assert await consent.is_opted_out(db, created["customer_id"], "sms")
-    result = await handlers.handle_inbound_message(_inbound(created, "YES"), _deps())
-    assert result["status"] == "opted_in" and not await consent.is_opted_out(db, created["customer_id"], "sms")
-
+    await handlers.handle_inbound_message(_inbound(created, "hi"), _deps())
+    assert not await consent.is_opted_out(db, created["customer_id"], "sms")
+    entry = await consent.latest_opt_out(db, created["customer_id"], "sms")
+    assert entry["consent_source"] == "customer_message"
 
 async def test_an_opt_out_is_kept_by_phone_for_a_reimported_customer(mongo, dealers):
     # Decision 140 (TCPA PDF §12: re-imported records don't erase suppression).

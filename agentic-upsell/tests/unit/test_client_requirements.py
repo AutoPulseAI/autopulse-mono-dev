@@ -86,8 +86,10 @@ async def test_first_text_answers_mileage_and_carfax_from_the_lead_form(mongo):
     """Review 12 Oct (Yvette Miller): "Please provide CarFax and mileage of car" got no answer."""
     await _stock(mongo, _vehicle("VIN0000000000CR01", miles=31250))
     created = await _new_lead(mongo, vehicle=RAV4, comments="Please provide CarFax and mileage of car")
-    first = (await _sent(mongo, created))[0]
+    from tests.unit.conftest import expand_short_links
+    first = await expand_short_links(mongo, (await _sent(mongo, created))[0])
     assert "31,250 miles" in first and "https://dealer.example/v/VIN0000000000CR01" in first
+    assert "https://autopulse.ai/l/" in (await _sent(mongo, created))[0]  # sent as a short link (22 Oct 2026)
 
 
 async def test_a_website_form_lead_is_inbound(mongo):

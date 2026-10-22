@@ -22,6 +22,7 @@ from upsell_agent.devtools import simulate
 from upsell_agent.events.handlers import handle_inbound_message, handle_lead_paused
 from upsell_agent.events.models import InboundMessageEvent, LeadPausedEvent
 from upsell_agent.integrations.dealer_profile import profile_from_record
+from upsell_agent.integrations.mongodb import dealer_scoped_db  # noqa: E402
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
     AI_TURN_LOG_COLLECTION,
@@ -585,30 +586,46 @@ async def test_the_ai_switch_turned_off_by_staff_stays_off(mongo, dealer_with_ho
     assert await _quiet(mongo, created) == []
 
 
-async def test_opt_out_of_this_inquiry_but_keep_ownership_alerts(mongo, dealer_with_hours):
-    """Client, 20 Oct 2026 (Betsy): "Ok, I can opt you out of messages regarding this inquiry. Would you still like
-    ownership alerts regarding your current vehicle?" - a yes keeps ownership alerts, sales follow-up stops."""
-    from upsell_agent.events import handlers
+async def test_dont_text_me_with_a_vehicle_on_file_asks_about_vehicle_updates(mongo, dealer_with_hours):
+    """Betsy, 22 Oct 2026: "Ok we will not text you again regarding this inquiry. Is it still ok to send updates
+    regarding your current vehicle(s) on file (service & market values)? ..." - yes keeps them, this inquiry stays
+    stopped; no stops texts entirely."""
+    from upsell_agent.channels import consent
+    from upsell_agent.compliance import opt_out
     set_clock(TUESDAY_NOON)
     created = await _lead()
     await mongo["ai_lead_state"].insert_one({"lead_id": "owned", "dealer_id": DEALER, "customer_id": created["customer_id"],
                                              "stage": "sold_delivered"})
     await _say(created, "Please stop texting me about this car")
-    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_QUESTION
+    assert await _last_sms(mongo, created) == (
+        f"{opt_out.INQUIRY_CONFIRMATION.format(verb='text')} {opt_out.VEHICLE_UPDATES_QUESTION}")
     await _say(created, "Yes")
-    assert await _last_sms(mongo, created) == handlers.OWNERSHIP_ALERTS_YES
+    assert await _last_sms(mongo, created) == opt_out.VEHICLE_UPDATES_YES
     state = await _state(mongo, created)
-    assert state["sales_opted_out"] is True and "alerts_question_at" not in state
+    assert state["inquiry_opt_out"]["sms"] and "vehicle_updates_question" not in state
+    assert not await consent.is_opted_out(dealer_scoped_db(DEALER), created["customer_id"], "sms")
     assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
         {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"})
 
 
-async def test_no_vehicle_with_us_gets_the_plain_confirmation(mongo, dealer_with_hours):
-    from upsell_agent.events import handlers
+async def test_no_to_vehicle_updates_stops_texts_entirely(mongo, dealer_with_hours):
+    from upsell_agent.channels import consent
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await mongo["deals"].insert_one({"dealer_id": DEALER, "customer_id": created["customer_id"], "deal_number": "D1",
+                                     "vin": "1HGCM82633A004352"})  # a DealerVault deal counts as a vehicle on file
+    await _say(created, "don't text me anymore")
+    assert "vehicle(s) on file" in await _last_sms(mongo, created)
+    await _say(created, "no")
+    assert await _last_sms(mongo, created) == "Understood, we won't text you again."
+    assert await consent.is_opted_out(dealer_scoped_db(DEALER), created["customer_id"], "sms")
+
+
+async def test_no_vehicle_with_us_gets_only_the_inquiry_confirmation(mongo, dealer_with_hours):
     set_clock(TUESDAY_NOON)
     created = await _lead()
     await _say(created, "Please stop texting me")
-    assert await _last_sms(mongo, created) != handlers.OWNERSHIP_ALERTS_QUESTION
+    assert await _last_sms(mongo, created) == "Ok, we will not text you again regarding this inquiry."
 
 
 async def test_i_can_come_at_a_time_books_it(mongo, dealer_with_hours):

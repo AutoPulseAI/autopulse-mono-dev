@@ -21,7 +21,7 @@ dealer id itself. Cached for 60 seconds.
 
 import re
 import time as monotonic_time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -82,6 +82,9 @@ class DealerProfile:
     # the customer asks for them (agent/llm.py, guardrails/link_guard.py).
     credit_application_url: str | None = None
     trade_in_url: str | None = None
+    # Betsy, 22 Oct 2026: the links the dealership edits itself (AI Settings -> Links the AI can share), by kind
+    # (agent/link_resolver.py DEALER_LINKS). Trade estimate, credit application and website are the fields above.
+    links: dict[str, str] = field(default_factory=dict)
     # MASTER_PLAN_3 C4: Touch 1's required opening names the city and state, and the agent the
     # message comes from (Omnichannel PDF §3). The dealer record has no agent/persona name today,
     # so `agent_name` is usually None and the opening simply doesn't claim one (decision 150).
@@ -125,6 +128,7 @@ class DealerProfile:
         """What the AI may tell a customer; `missing` lists what the team must confirm."""
         info = {"name": self.name, "address": self.address, "phone": self.phone, "website": self.website,
                 "credit_application_link": self.credit_application_url, "trade_in_link": self.trade_in_url,
+                "links": dict(self.links),
                 "hours": self.hours_text() if self.hours_from_record else None,
                 "hours_summary": self.hours_summary() if self.hours_from_record else None}
         info["missing"] = [k for k in ("name", "address", "phone", "website", "hours") if not info[k]]
@@ -246,6 +250,8 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         website=str(info.get("store_website") or "").strip() or None,
         credit_application_url=str(info.get("credit_finance_application_url") or "").strip() or None,
         trade_in_url=str(info.get("trade_in_appraisal_url") or "").strip() or None,
+        links={k: str(v).strip() for k, v in (info.get("ai_links") or {}).items()
+               if isinstance(v, str) and v.strip().lower().startswith(("https://", "http://"))},
         city=str(info.get("store_city") or "").strip() or None,
         state=str(info.get("store_state") or "").strip() or None,
         # Set by the dealer when they give their AI assistant a name; never invented (decision 150).
