@@ -68,6 +68,13 @@ async def can_call(*, dealer_id: str, customer_id: str | None, lead_id: str, at:
         return await done(engine.Decision("BLOCK", "the customer opted out of calls", "opted_out"))
     check("opt_out", True, "not opted out of calls")
 
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+    state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
+                                                                   projection={"inquiry_opt_out": 1}) or {}
+    if (state.get("inquiry_opt_out") or {}).get("voice"):
+        check("inquiry_opt_out", False, "the customer asked us to stop contacting them about this inquiry")
+        return await done(engine.Decision("BLOCK", "the customer asked us to stop contacting them about this inquiry",
+                                          "inquiry_opt_out"))
     if engine._is_dnd(lead):
         check("do_not_contact", False, "staff set the lead to DND")
         return await done(engine.Decision("BLOCK", "the lead is on the dealer's do-not-contact list", "do_not_contact"))

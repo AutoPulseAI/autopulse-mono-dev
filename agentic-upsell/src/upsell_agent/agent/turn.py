@@ -764,6 +764,23 @@ _NAME_SAID_PLAINLY = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|call\s+me|i\s
                                 r"([A-Z][a-z'.-]+(?:\s+[A-Z][a-z'.-]+)?)")
 
 
+# "Call me Monday", "call me back", "call me later": never a name (review 23 Oct 2026).
+_NOT_A_NAME = frozenset({
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "mon", "tue", "tues", "wed", "thu",
+    "thur", "thurs", "fri", "sat", "sun", "today", "tomorrow", "tonight", "later", "back", "asap", "anytime",
+    "after", "before", "around", "now", "soon", "please", "pls", "again", "morning", "afternoon", "evening", "noon",
+    "this", "next", "at", "on", "in", "when", "if", "instead", "sometime", "whenever", "maybe", "the", "a", "an",
+    "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november",
+    "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "sir", "maam",
+    "ma'am", "busy", "here", "there", "ready", "interested", "good", "fine", "ok", "okay",
+})
+
+
+def _name_word_ok(said: str) -> bool:
+    words = str(said or "").split()
+    return bool(words) and not any(w.lower().strip(".,!?") in _NOT_A_NAME for w in words)
+
+
 def stated_name(text: str | None, extracted: str | None) -> bool:
     """The name Extract read is one the customer stated about themselves in this message (not a salesperson's or
     a spouse's name mentioned in passing)."""
@@ -783,7 +800,7 @@ async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | 
                  if v.get("path") == "contact.name" and v.get("value")), None)
     if not said and (m := _NAME_SAID_PLAINLY.search(inbound_text or "")):
         said = m.group(1)  # "my name is Sal" needs no model to read it
-    if not said or not known_first_name(str(said)):
+    if not said or not known_first_name(str(said)) or not _name_word_ok(str(said)):
         return
     stated = stated_name(inbound_text, str(said))
     if known_first_name((lead or {}).get("name")) and not stated:

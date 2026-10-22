@@ -797,7 +797,7 @@ export default function Dashboard() {
               count={appointmentBookedCount}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
               link={withRange(`/dealer/leads?status=${encodeURIComponent('Appointment Booked')}`)}
-              description={`${splitText(appointmentsMadeSplit)} · ${cardRangeText()}${compareText('made')}`}
+              description={[splitText(appointmentsMadeSplit), `${cardRangeText()}${compareText('made')}`].filter(Boolean).join(" · ")}
             />
 
             <CountCard
@@ -805,7 +805,7 @@ export default function Dashboard() {
               count={todayAppointmentsCount}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
               link={getAppointmentsForLink()}
-              description={`${splitText(appointmentsForSplit)} · ${cardRangeText()}${compareText('forDay')}`}
+              description={[splitText(appointmentsForSplit), `${cardRangeText()}${compareText('forDay')}`].filter(Boolean).join(" · ")}
             />
           </div>
         </div>

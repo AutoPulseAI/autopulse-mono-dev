@@ -234,6 +234,11 @@ TURN_LOG_TTL_S = 90 * 24 * 3600
 COMPLIANCE_RETENTION_S = 5 * 366 * 24 * 3600
 
 INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
+    # agent/short_links.py: the CRM's /l/<code> looks a code up on every click; one code per lead and URL.
+    "ai_short_links": [
+        ([("code", 1)], {"unique": True}),
+        ([("dealer_id", 1), ("lead_id", 1), ("url", 1)], {}),
+    ],
     AI_LEAD_STATE_COLLECTION: [
         ([("dealer_id", 1), ("lead_id", 1)], {"unique": True}),
     ],
