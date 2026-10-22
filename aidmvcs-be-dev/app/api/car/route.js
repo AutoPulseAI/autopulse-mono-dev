@@ -129,7 +129,12 @@ export async function GET(request) {
     // Handle ranges (unchanged)
     if (priceRange) {
       const [min, max] = priceRange.split('-').map(Number);
-      filter.internetreduced = { $gte: min, $lte: max };
+      // The same price the listing shows (below): the advertised price, else the "Price" staff see (customerprice,
+      // stored as text) - 23 Oct 2026: 456 vehicles had only the second and never matched a budget.
+      const toNumber = (field) => ({ $convert: { input: field, to: 'double', onError: 0, onNull: 0 } });
+      const shown = { $cond: [{ $gt: [toNumber('$internetreduced'), 0] }, toNumber('$internetreduced'),
+        toNumber('$customerprice')] };
+      filter.$expr = { $and: [{ $gte: [shown, min] }, { $lte: [shown, max] }] };
     }
     
     if (yearRange) {
