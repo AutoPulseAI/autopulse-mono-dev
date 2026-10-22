@@ -129,7 +129,12 @@ export async function GET(request) {
     // Handle ranges (unchanged)
     if (priceRange) {
       const [min, max] = priceRange.split('-').map(Number);
-      filter.internetreduced = { $gte: min, $lte: max };
+      // The same price the listing shows (below): the advertised price, else the "Price" staff see (customerprice,
+      // stored as text) - 23 Oct 2026: 456 vehicles had only the second and never matched a budget.
+      const toNumber = (field) => ({ $convert: { input: field, to: 'double', onError: 0, onNull: 0 } });
+      const shown = { $cond: [{ $gt: [toNumber('$internetreduced'), 0] }, toNumber('$internetreduced'),
+        toNumber('$customerprice')] };
+      filter.$expr = { $and: [{ $gte: [shown, min] }, { $lte: [shown, max] }] };
     }
     
     if (yearRange) {
@@ -238,7 +243,9 @@ export async function GET(request) {
         is_certified: !!doc.certified,
         vin: doc.vin || '',
         heading: `${doc.year} ${doc.make} ${doc.model} ${doc.trim || ''}`,
-        price: parseFloat(doc.internetreduced || 0),
+        // The advertised price; the "Price" staff see on the vehicle (customerprice) when the feed left it empty
+        // (23 Oct 2026: 765 of 4,176 vehicles had only one of the two).
+        price: parseFloat(doc.internetreduced || doc.customerprice || 0),
         miles: parseInt(doc.mileage || 0),
         msrp: parseFloat(doc.instoreprice || 0),
         vdp_url: doc.inventoryUrl || '',

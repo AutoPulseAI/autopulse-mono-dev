@@ -272,7 +272,7 @@ def to_listing(doc: dict[str, Any]) -> dict[str, Any]:
         "miles": int(doc.get("mileage") or 0), "vdp_url": doc.get("inventoryUrl") or "",
         # route.js: parseFloat(doc.internetreduced || 0). Read only by the price snapshots (learning/price_watch.py),
         # never put on the typed record.
-        "price": float(doc.get("internetreduced") or 0),
+        "price": float(doc.get("internetreduced") or doc.get("customerprice") or 0),
         "exterior_color": doc.get("exteriorcolor") or "", "inventory_type": doc.get("condition") or "used",
         "media": {"photo_links": photos},
         "dealer": {"id": str(doc["dealerId"]) if doc.get("dealerId") else None},
