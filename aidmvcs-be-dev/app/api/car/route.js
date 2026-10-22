@@ -238,7 +238,9 @@ export async function GET(request) {
         is_certified: !!doc.certified,
         vin: doc.vin || '',
         heading: `${doc.year} ${doc.make} ${doc.model} ${doc.trim || ''}`,
-        price: parseFloat(doc.internetreduced || 0),
+        // The advertised price; the "Price" staff see on the vehicle (customerprice) when the feed left it empty
+        // (23 Oct 2026: 765 of 4,176 vehicles had only one of the two).
+        price: parseFloat(doc.internetreduced || doc.customerprice || 0),
         miles: parseInt(doc.mileage || 0),
         msrp: parseFloat(doc.instoreprice || 0),
         vdp_url: doc.inventoryUrl || '',

@@ -173,3 +173,11 @@ async def test_ai_studio_controls_the_new_rules(mongo, monkeypatch):
         ai_studio.load({})
     assert vehicle_media.PHOTOS_ON_REQUEST == 3 and short_links.ENABLED is True and decide.BUSY_RULE is True
     assert opt_out.INQUIRY_ONLY is True and link_resolver.SHAREABLE["prequalification"] is True
+
+
+def test_the_price_staff_see_is_used_when_the_advertised_one_is_empty():
+    """23 Oct 2026 (live: 765 of 4,176 vehicles had only one of internetreduced / customerprice)."""
+    only_staff_price = _vehicle("VIN00000000000CP1", internetreduced=None, customerprice="5645")
+    assert to_record(to_listing(only_staff_price)).price == 5645
+    both = _vehicle("VIN00000000000CP2", customerprice="27995")
+    assert to_record(to_listing(both)).price == 27995
