@@ -613,13 +613,30 @@ _FIRST_NAME_ONLY = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|call\s+me|i\s+g
 
 # Busy right now (Betsy, 21 Oct 2026, item 9): "I'm busy", "at work", "can't talk right now", "talk later",
 # "I'll text you tomorrow". Without a time the AI asks when; with one, it checks back then.
-BUSY_NOW = re.compile(
-    r"\b(?:i'?m|im|i\s+am)\s+(?:a\s+(?:little|bit)\s+)?(?:busy|at\s+work|driving|working|in\s+a\s+meeting|"
-    r"with\s+(?:a\s+)?(?:client|customer|patient)s?|tied\s+up)\b"
-    r"|\bcan'?t\s+(?:talk|text|chat|do\s+this)\s+(?:right\s+)?now\b"
-    r"|\b(?:talk|text|chat|speak)\s+(?:to\s+you\s+|with\s+you\s+)?later\b"
-    r"|\b(?:i'?ll|i\s+will|let\s+me)\s+(?:text|message|get\s+back\s+to|reach\s+out\s+to|hit)\s+(?:you|u)\b"
-    r"|\b(?:catch|hit)\s+you\s+(?:up\s+)?later\b|\bnot\s+(?:a\s+)?good\s+time\b", re.IGNORECASE)
+BUSY_PHRASES = [
+    "i'm busy", "im busy", "i am busy", "a bit busy", "at work", "i'm working", "i'm driving", "im driving",
+    "in a meeting", "with a client", "with a customer", "tied up", "can't talk right now", "cant talk right now",
+    "can't talk now", "can't text right now", "can't chat right now", "talk later", "talk to you later",
+    "text you later", "text me later", "chat later", "i'll text you", "i will text you", "i'll message you",
+    "i'll get back to you", "let me get back to you", "catch you later", "hit you up later", "not a good time",
+]
+# On: a busy customer is asked what time works and checked back then (AI Studio -> Conversation rules).
+BUSY_RULE = True
+
+
+class _Busy:
+    """Matches a message in which the customer says they're busy (BUSY_PHRASES), read at call time so AI Studio's
+    list applies at once."""
+
+    def search(self, text: str | None):
+        if not BUSY_RULE or not text:
+            return None
+        lowered = re.sub(r"\s+", " ", str(text).lower().replace("\u2019", "'"))
+        return next((m for p in BUSY_PHRASES if p.strip()
+                     and (m := re.search(rf"\b{re.escape(p.strip().lower())}\b", lowered))), None)
+
+
+BUSY_NOW = _Busy()
 # "Text me at 5", "call me back in an hour", "check back with me later".
 _CHECK_BACK_ME = re.compile(r"\b(?:text|call|message|ping|msg|hit|reach|get\s+back\s+to|check\s+(?:back\s+)?(?:in\s+)?with)"
                             r"\s+(?:me|us)\b", re.IGNORECASE)

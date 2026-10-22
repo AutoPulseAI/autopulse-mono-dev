@@ -18,6 +18,8 @@ from upsell_agent import clock
 logger = logging.getLogger(__name__)
 
 SHORT_LINKS_COLLECTION = "ai_short_links"
+# On/Off in AI Studio (Compliance -> Photos & links).
+ENABLED = True
 CODE_LENGTH = 7
 _ALPHABET = string.ascii_letters + string.digits
 _URL = re.compile(r"https?://[^\s<>\"')\]]+")
@@ -44,7 +46,7 @@ async def short_url(db: Any, url: str, *, base: str, lead_id: str | None) -> str
 async def shorten_links(db: Any, text: str | None, *, base: str | None, lead_id: str | None) -> tuple[str | None, list[str]]:
     """`text` with each link replaced by its short link, and a note per link for the trace."""
     base = (base or "").rstrip("/")
-    if not text or not base:
+    if not text or not base or not ENABLED:
         return text, []
     notes: list[str] = []
     out = text

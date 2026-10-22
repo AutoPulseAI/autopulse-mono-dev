@@ -402,7 +402,15 @@ def compliance() -> list[dict[str, Any]]:
             # Betsy, 22 Oct 2026: "don't text me" stops this inquiry; the reply and the vehicle-updates question.
             "inquiry_confirmation": opt_out.INQUIRY_CONFIRMATION,
             "vehicle_updates_question": opt_out.VEHICLE_UPDATES_QUESTION,
-            "vehicle_updates_yes": opt_out.VEHICLE_UPDATES_YES}},
+            "vehicle_updates_yes": opt_out.VEHICLE_UPDATES_YES,
+            "inquiry_only": opt_out.INQUIRY_ONLY,
+            "stop_everything_phrases": list(opt_out.STOP_EVERYTHING_PHRASES)}},
+        # Betsy, 22 Oct 2026: photos and links, controlled by AutoPulse (the dealership only edits nothing here).
+        {"key": "photos_and_links", "name": "Photos & links", "content": {
+            "photo_on_first_message": _media().PHOTO_ON_FIRST_MESSAGE,
+            "photos_when_asked": _media().PHOTOS_ON_REQUEST,
+            "short_links": _short_links().ENABLED,
+            **{f"share_{k}": v for k, v in _links().SHAREABLE.items()}}},
         {"key": "text_invite", "name": "Text invite (email customers)", "content": {
             "invite": text_consent.INVITE, "confirmation": text_consent.CONFIRMATION}},
         {"key": "channels", "name": "Channels: text or email first, nights", "content": {
@@ -415,7 +423,9 @@ def compliance() -> list[dict[str, Any]]:
         {"key": "conversation_rules", "name": "Conversation rules", "content": {
             "questions_per_message": _policy().MAX_ASKS_PER_MESSAGE,
             "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS,
-            "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60)}},
+            "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60),
+            # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
+            "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
         {"key": "writing", "name": "Message limits & banned phrases", "content": {
             "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
             "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
@@ -425,12 +435,32 @@ def compliance() -> list[dict[str, Any]]:
     ]
 
 
+def _media():
+    from upsell_agent.agent import vehicle_media
+    return vehicle_media
+
+
+def _short_links():
+    from upsell_agent.agent import short_links
+    return short_links
+
+
+def _links():
+    from upsell_agent.agent import link_resolver
+    return link_resolver
+
+
+def _decide():
+    from upsell_agent.agent.nodes import decide
+    return decide
+
+
 LOCKED = {"prompts": ["extract"]}
 
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 14
+DEFAULTS_REVISION = 15
 
 
 def export() -> dict[str, Any]:

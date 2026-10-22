@@ -138,3 +138,38 @@ def test_dealer_cost_invoice_and_wholesale_never_reach_the_ai():
     seen = repr(record)
     for secret in ("21000", "21500", "22000", "20000", "20500"):
         assert secret not in seen
+
+
+# --- Everything above is AutoPulse's to change in AI Studio (23 Oct 2026) ------------------------------------------
+
+async def test_ai_studio_controls_the_new_rules(mongo, monkeypatch):
+    from upsell_agent import ai_studio
+    from upsell_agent.agent import link_resolver, vehicle_media
+    from upsell_agent.agent.nodes import decide
+    from upsell_agent.compliance import opt_out
+    built = ai_studio._built_in()
+    links = dict(built[("compliance", "photos_and_links")])
+    rules = dict(built[("compliance", "conversation_rules")])
+    oo = dict(built[("compliance", "opt_out")])
+    assert links["photos_when_asked"] == 3 and links["short_links"] is True and links["share_prequalification"] is True
+    assert rules["busy_rule"] is True and "at work" in rules["busy_phrases"]
+    assert oo["inquiry_only"] is True and "never contact me again" in oo["stop_everything_phrases"]
+    ai_studio.load({("compliance", "photos_and_links"): {**links, "photos_when_asked": 1, "short_links": False,
+                                                         "share_prequalification": False},
+                    ("compliance", "conversation_rules"): {**rules, "busy_rule": False},
+                    ("compliance", "opt_out"): {**oo, "inquiry_only": False,
+                                                "stop_everything_phrases": ["go away forever"]}})
+    try:
+        assert vehicle_media.PHOTOS_ON_REQUEST == 1 and short_links.ENABLED is False
+        assert link_resolver.SHAREABLE["prequalification"] is False
+        assert decide.BUSY_NOW.search("I'm busy, talk later") is None
+        stop = opt_out.detect_opt_out("don't text me about this car", "sms")
+        assert opt_out.stops_everything(stop, "don't text me about this car")  # inquiry-only off
+        plan = resolve_link({"wants_link": True, "wants_link_confidence": 0.95, "link_target": "prequalification",
+                             "link_target_confidence": 0.95}, inventory=[], website=None,
+                            dealer_links={"prequalification": "https://d.example/pq"})
+        assert plan.kind == "unavailable" and not plan.dealer_url
+    finally:
+        ai_studio.load({})
+    assert vehicle_media.PHOTOS_ON_REQUEST == 3 and short_links.ENABLED is True and decide.BUSY_RULE is True
+    assert opt_out.INQUIRY_ONLY is True and link_resolver.SHAREABLE["prequalification"] is True

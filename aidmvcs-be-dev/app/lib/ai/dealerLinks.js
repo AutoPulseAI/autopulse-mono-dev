@@ -1,4 +1,4 @@
-// The links the AI can share "at the right time" (Betsy, 22 Oct 2026), edited by the dealership on AI Settings.
+// The links the AI can share "at the right time" (Betsy, 22 Oct 2026), set by AutoPulse on each dealership's AI Settings.
 // Three are Dealer Setup's existing fields (the AI already read them); the rest live in
 // dealer_account_information.ai_links. The AI reads both (agentic-upsell integrations/dealer_profile.py).
 
