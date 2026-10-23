@@ -647,3 +647,17 @@ async def test_a_reply_never_ends_with_nothing(mongo):
     outcomes = [(await _turn(created, said))["outcome"] for said in (
         "My budget is $35,000 and I'd like to buy this month", "ok thanks", "cool", "ok", "thanks", "sounds good")]
     assert "acknowledge" not in outcomes and outcomes.count("offer_visit") >= 4, outcomes
+
+
+async def test_yes_on_the_delivered_vehicles_own_lead_keeps_its_updates_coming(mongo, dealer_with_hours):
+    """Review 23 Oct 2026: the stopped inquiry is the Sold - Delivered lead itself - its yes must not leave the
+    updates it agreed to blocked."""
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await mongo["ai_lead_state"].update_one({"lead_id": created["lead_id"]},
+                                            {"$set": {"stage": "sold_delivered", "sold_delivered_at": TUESDAY_NOON}},
+                                            upsert=True)
+    await _say(created, "please stop texting me")
+    assert "vehicle(s) on file" in await _last_sms(mongo, created)
+    await _say(created, "yes")
+    assert not (await _state(mongo, created)).get("inquiry_opt_out")

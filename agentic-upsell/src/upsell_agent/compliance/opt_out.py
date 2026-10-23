@@ -262,6 +262,12 @@ _REVIEW_DOUBT = re.compile(
 _BARE = re.compile(r"^(?:ok(?:ay)?|k|kk|yes|yeah|yep|no|nah|sure|fine|thanks|thank\s+you|ty|hm+|what|huh|why|lol)$")
 
 
+def sounds_like_stop(text: str) -> bool:
+    """A complaint or a stop in other words ("why do you keep texting me", "this is spam", "leave me alone") - never
+    read as the customer opting back in (review 23 Oct 2026: "any message opts back in" must not mean that)."""
+    return bool(_REVIEW_DOUBT.search(_normalize(text)))
+
+
 def answers_review(text: str) -> bool:
     """A message that clearly isn't an opt-out and engages with the conversation, so it can resolve an open
     review (decision 72): at least three words (or a question of two), none of the stop / remove / "too many"

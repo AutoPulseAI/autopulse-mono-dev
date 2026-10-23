@@ -174,6 +174,11 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         return await _next(db, doc, "sent")
     channel_now, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=doc["customer_id"],
                                                   lead_id=doc["lead_id"], channel=doc["to_channel"], at=None)
+    if check.outcome == "HOLD" and key == "still_with_me":
+        # A "still with me?" only makes sense in the moment: held to the next texting window (night), it's dropped -
+        # the regular follow-up picks the conversation up (review 23 Oct 2026).
+        await _close(db, doc, "cancelled", reason=f"held by the send check ({check.reason}): too late for it")
+        return "cancelled"
     if check.outcome == "HOLD" and check.until:
         await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
             {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},

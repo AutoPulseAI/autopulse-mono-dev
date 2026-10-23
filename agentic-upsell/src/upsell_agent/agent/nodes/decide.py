@@ -1033,8 +1033,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                                                awaiting_when=conversation.awaiting_when_free)
     # Betsy, 21 Oct 2026 (item 9): busy right now and no time given ("I'm busy, talk later") - the reply asks what
     # time works best and nothing else; their answer becomes the check-back (plan_next_action, awaiting_when).
+    # A visit in the same message wins ("I'm at work till 5, can I come in at 6?" books 6 PM - review 23 Oct 2026).
     ask_when_free = bool(not dated and not hold and state.trigger == "inbound_message"
-                         and BUSY_NOW.search(text or "") and not conversation.awaiting_when_free)
+                         and BUSY_NOW.search(text or "") and not conversation.awaiting_when_free
+                         and not _COMING_IN.search(text or "") and not visit_wants_visit(extraction))
     if ask_when_free:
         hold = "the customer is busy right now: the reply only asks what time works to get back to them"
     if dated:
@@ -1199,6 +1201,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["ask_when_free"] = ask_when_free and decision["action"] not in ("stop", "handoff", "offer_human")
     # A first name only, and nothing else is being asked or offered this reply: ask their last name, in a few words.
     first_only = _FIRST_NAME_ONLY.search(text or "") if state.trigger == "inbound_message" else None
+    if first_only:
+        from upsell_agent.agent.turn import _name_word_ok  # "Call me Monday" is no name
+        if not _name_word_ok(first_only.group(1)):
+            first_only = None
     decision["ask_last_name"] = (first_only.group(1) if first_only and not hold and not decision.get("asks")
                                  and decision["action"] not in ("stop", "handoff", "offer_human", "offer_visit")
                                  and not (visit_plan and visit_plan.fire) else None)

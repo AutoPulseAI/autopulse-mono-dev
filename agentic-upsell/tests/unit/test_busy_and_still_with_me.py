@@ -179,3 +179,23 @@ async def test_still_with_me_never_starts_from_a_follow_up_and_stops_if_anything
     await followups.fire_due(_deps())
     doc = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": touches[0]["_id"]})
     assert doc["status"] == "cancelled" and "another message" in doc["reason"]
+
+
+async def test_busy_but_wanting_to_come_in_is_a_visit_not_a_what_time_question(mongo, live_dealer):
+    set_clock(TUESDAY_NOON)
+    created = await _lead("Vic Visit")
+    await _say(created, "I'm at work until 5, can I come in at 6 today?")
+    sms = await _last_sms(mongo, created)
+    assert "What time works best" not in sms
+    state = await _state(mongo, created)
+    assert not (state.get("conversation") or {}).get("asked_when_free_turn")
+
+
+async def test_call_me_monday_is_not_a_name(mongo, live_dealer):
+    from bson import ObjectId
+    set_clock(TUESDAY_NOON)
+    created = await _lead("John Smith")
+    for text in ("Call me Monday", "call me Back later", "Call me Tomorrow morning"):
+        await _say(created, text)
+    assert (await mongo["leads"].find_one({"_id": ObjectId(created["lead_id"])}))["name"] == "John Smith"
+    assert "last name" not in await _last_sms(mongo, created)

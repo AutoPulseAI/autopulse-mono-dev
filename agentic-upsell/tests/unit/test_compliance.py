@@ -596,3 +596,27 @@ async def test_leads_silenced_by_an_old_opt_out_are_made_active(mongo, dealers):
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
     assert state["status"] == "active"
     assert await consent.migrate_silenced_opt_outs() == 0
+
+
+async def test_a_complaint_never_opts_back_in(mongo, dealers):
+    """Review 23 Oct 2026: "why do you keep texting me" after "never contact me again" is no opt-in."""
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="website")
+    db = dealer_scoped_db(DEALER)
+    await handlers.handle_inbound_message(_inbound(created, "Never contact me again"), _deps())
+    await handlers.handle_inbound_message(_inbound(created, "why do you keep texting me??"), _deps())
+    assert await consent.is_opted_out(db, created["customer_id"], "sms")
+
+
+async def test_stop_contacting_me_stops_this_leads_calls_until_they_write_again(mongo, dealers):
+    from upsell_agent.compliance.call_check import can_call
+    set_clock(ny(22, 12))
+    other = await _lead(mongo, source="website")
+    await handlers.handle_inbound_message(_inbound(other, "Please stop contacting me"), _deps())
+    decision = await can_call(dealer_id=DEALER, customer_id=other["customer_id"], lead_id=other["lead_id"],
+                              record=False)
+    assert decision.rule == "inquiry_opt_out"
+    await handlers.handle_inbound_message(_inbound(other, "ok actually is the CR-V still there?"), _deps())
+    decision = await can_call(dealer_id=DEALER, customer_id=other["customer_id"], lead_id=other["lead_id"],
+                              record=False)
+    assert decision.rule != "inquiry_opt_out"
