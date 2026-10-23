@@ -144,6 +144,12 @@ def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) ->
                                                                              "email_media_vin")):
             text = _without_own_price(str(draft.get(key) or ""), touch1.get("price_line"))
             if line not in text:
+                # Live, 23 Oct 2026 (Ryanne: "It's listed at $26,149..." twice, 586 characters): the model's own copy
+                # of the price line or the answers goes before the whole line is placed once.
+                for part in (touch1.get("price_line"), touch1.get("lead_answers")):
+                    if part and part in text and (not intro or part not in intro):
+                        text = text.replace(part, "", 1)
+                text = re.sub(r"[ \t]{2,}", " ", text)
                 text = (f"{intro} {line}{text[len(intro):]}" if intro and text.startswith(intro)
                         else f"{line} {text}").replace("  ", " ")
                 draft[key] = text

@@ -379,6 +379,8 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            if trigger == "lead_created":
+                await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
                                            or (lead or {}).get("name"))
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
@@ -901,6 +903,22 @@ async def _escalate_person_request(db: DealerScopedDatabase, lead_id: str, resul
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
                                  reason=f"{human_contact.REASON_PERSON}: the customer asked to talk to a person",
                                  event_kind="person_requested")
+
+
+async def _escalate_form_request(db: DealerScopedDatabase, lead_id: str, form_text: str | None) -> None:
+    """Live, 23 Oct 2026 (Ryanne's form: "Is there any way I could get a video of the car?"): what only staff can
+    provide (a video, a walk-around, an out-of-state customer) puts the lead into Dealership Action Required from the
+    lead form too, as it does from a text - the first reply itself stays as written."""
+    from upsell_agent.agent import cannot_supply, crm_status, escalation
+    from upsell_agent.agent.portal_text import clean_comments
+    topic = cannot_supply.detect(clean_comments(form_text))
+    if not topic or topic not in cannot_supply.ESCALATES:
+        return
+    what = "custom photos or a video" if topic == cannot_supply.CUSTOM_MEDIA else (
+        "an out-of-state customer (pick-up or shipping)" if topic == cannot_supply.OUT_OF_STATE else topic)
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                 reason=f"{cannot_supply.ESCALATION_REASON}: {what} (asked on the lead form)",
+                                 event_kind="cannot_supply")
 
 
 async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
