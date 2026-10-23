@@ -1291,7 +1291,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     missing = [d for d in ("new", "used", "service", "parts") if offered and d not in offered]
     decision["departments"] = {"offered": list(offered), "not_offered": missing} if missing else None
     # Stream Q: a customer writing in Spanish is answered in Spanish (agent/language.py).
-    decision["reply_language"] = reply_language
+    # Live, 23 Oct 2026: "the SMS isn't written in Unknown" - a language that couldn't be told is no language to write in.
+    decision["reply_language"] = None if str(reply_language or "").strip().lower() in (
+        "", "unknown", "english", "none", "n/a", "undetermined") else reply_language
     span.output = decision
     span.reasoning = [f"Rule {i + 1} ({r['id']}): {r['result']}{' - ' + r['why'] if r['why'] else ''}"
                       for i, r in enumerate(decision["rules"])]

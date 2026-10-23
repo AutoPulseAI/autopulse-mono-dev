@@ -72,6 +72,9 @@ __all__ = ["EMPTY_360", "LivePlatformClient", "PlatformClient", "PlatformError",
            "StubPlatformClient", "get_platform_client"]
 
 RECORD_TIMEOUT_S = 5.0
+# Creating or moving a booking also sends its confirmation in the CRM: it can take longer (live, 23 Oct 2026: a 5 s
+# timeout lost a customer's "11am").
+BOOKING_TIMEOUT_S = 20.0
 
 
 class PlatformError(RuntimeError):
@@ -394,7 +397,8 @@ class LivePlatformClient:
         return str(body.get("lead_id") or "") or None
 
     async def _post(self, path: str, payload: dict[str, Any], method: str = "POST") -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=RECORD_TIMEOUT_S) as client:
+        timeout = BOOKING_TIMEOUT_S if path.startswith("/api/booking") else RECORD_TIMEOUT_S
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.request(method, f"{self._base_url}{path}", json=payload, headers=self._headers)
         if response.status_code == 409 and path == "/api/booking":
             try:
