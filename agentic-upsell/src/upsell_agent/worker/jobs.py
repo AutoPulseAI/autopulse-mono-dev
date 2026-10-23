@@ -272,6 +272,12 @@ async def check_ai_provider(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return {"status": "back_on", "replayed": replayed}
 
 
+async def monitor_conversations(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """Every 15 minutes: the developers are emailed what needs a look (scheduler/monitor.py)."""
+    from upsell_agent.scheduler import monitor
+    return await monitor.run(platform=ctx["deps"].platform)
+
+
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,

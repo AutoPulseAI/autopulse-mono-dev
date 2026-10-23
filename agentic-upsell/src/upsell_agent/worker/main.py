@@ -26,6 +26,7 @@ from upsell_agent.scheduler.followups import worker_id
 from upsell_agent.worker.jobs import (
     FUNCTIONS,
     check_ai_provider,
+    monitor_conversations,
     close_expired_leads,
     fire_due_followups,
     plan_birthdays,
@@ -117,7 +118,9 @@ def settings() -> dict[str, Any]:
                       # PLAN_4 stream X3: leads / messages the AI never heard about (scheduler/reconcile.py).
                       CronJob(reconcile_events, cron="*/5 * * * *", timeout=600),
                       # Betsy, 23 Oct 2026: while the AI is off (no credit), check every 2 minutes; back on by itself.
-                      CronJob(check_ai_provider, cron="*/2 * * * *", timeout=600)],
+                      CronJob(check_ai_provider, cron="*/2 * * * *", timeout=600),
+                      # 23 Oct 2026: the developers are emailed what needs a look, every 15 minutes.
+                      CronJob(monitor_conversations, cron="*/15 * * * *", timeout=600)],
         # SAQ's sweep re-delivers a job it moved to "active" but never started
         # (seen twice in 300 during the Stage 12 burst test: a reply waited
         # 30-40s). Every 10s instead of 60s bounds that wait; a re-delivered
