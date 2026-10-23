@@ -5,6 +5,7 @@ import Email from "@models/Email";
 import User from "@models/User";
 import moment from "moment-timezone";
 import { bookingCreatorSplit } from "@lib/bookingCreator";
+import { appointmentFunnel } from "@lib/appointmentFunnel";
 
 export async function GET(request) {
   try {
@@ -80,6 +81,21 @@ export async function GET(request) {
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // The dashboard's appointment funnel, from the bookings themselves (Betsy, 23 Oct 2026).
+    if (searchParams.get('appointment_funnel') === 'true') {
+      let start = null;
+      let end = null;
+      if (start_date && end_date) {
+        const s = moment.utc(start_date).tz(dealerTimezone).format('YYYY-MM-DD');
+        const e = moment.utc(end_date).tz(dealerTimezone).format('YYYY-MM-DD');
+        start = moment.tz(s, 'YYYY-MM-DD', dealerTimezone).startOf('day').utc().toDate();
+        end = moment.tz(e, 'YYYY-MM-DD', dealerTimezone).endOf('day').utc().toDate();
+      }
+      return new Response(JSON.stringify(await appointmentFunnel({ dealerId: dealer_id, start, end })), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }
 
