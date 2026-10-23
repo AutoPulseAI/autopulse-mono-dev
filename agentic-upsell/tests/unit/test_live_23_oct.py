@@ -177,3 +177,18 @@ async def test_open_questions_get_a_real_touch_not_the_name_nudge(mongo, live_de
     touch = await mongo["scheduled_followups"].find_one({"lead_id": created["lead_id"], "kind": "cadence_touch",
                                                          "status": "pending"}, sort=[("_id", -1)])
     assert touch and (touch.get("touch") or {}).get("touch_number") != 2  # never the "Ryanne?" name nudge
+
+
+def test_everyday_words_are_not_trims():
+    """Live, 23 Oct 2026: "in your $400-500 range" rejected as a trim; "RAV4 Limited" still is one."""
+    rav4 = {"vin": "VIN0000000000RAV4", "year": 2022, "make": "Toyota", "model": "RAV4", "trim": "XLE",
+            "miles": 20000, "price": 25000}
+    ok = {"sms_text": "The 2022 Toyota RAV4 XLE fits your $400-500 range. Want to see it Friday at 1:00 PM?",
+          "sms_vins": ["VIN0000000000RAV4"], "email_body": "", "email_subject": ""}
+    v = draft_guard.check_draft(ok, customer_texts=["400-500"], known_values=["Friday at 1:00 PM", 2022, 20000, 25000],
+                                inventory=[rav4])["violations"]
+    assert not any("trim" in x for x in v)
+    bad = {**ok, "sms_text": "The 2022 Toyota RAV4 Limited fits your budget. Want to see it Friday at 1:00 PM?"}
+    v = draft_guard.check_draft(bad, customer_texts=["400-500"], known_values=["Friday at 1:00 PM", 2022, 20000, 25000],
+                                inventory=[rav4])["violations"]
+    assert any("trim not on the named vehicle(s): limited" in x for x in v)
