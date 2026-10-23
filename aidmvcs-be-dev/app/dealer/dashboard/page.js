@@ -40,12 +40,10 @@ export default function Dashboard() {
   const [todayLeadsCount, setTodayLeadsCount] = useState(0);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [readMessageCount, setReadMessageCount] = useState(0);
-  const [appointmentBookedCount, setAppointmentBookedCount] = useState(0); // New: status Appointment Booked by booking date (MTD / date range)
-  const [todayAppointmentsCount, setTodayAppointmentsCount] = useState(0); // Today's scheduled appointments (status Appointment Booked)
   const [contactedCount, setContactedCount] = useState(0); // Customer Replied, in the picked range
   // AI vs staff on the two appointment cards, and the Compare numbers (Betsy, 21 Oct 2026).
-  const [appointmentsMadeSplit, setAppointmentsMadeSplit] = useState(null);
-  const [appointmentsForSplit, setAppointmentsForSplit] = useState(null);
+  // Betsy, 23 Oct 2026: {made, scheduled, showed, sold}, each {total, ai, staff} (app/lib/appointmentFunnel.js).
+  const [funnel, setFunnel] = useState(null);
   const [compareCounts, setCompareCounts] = useState(null);
   
   // Get dealer timezone
@@ -143,20 +141,19 @@ export default function Dashboard() {
   const fetchRangeCounts = useCallback(async (startDate, endDate) => {
     const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
     const range = startDate && endDate ? `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}` : '';
-    const booked = encodeURIComponent('Appointment Booked');
     const base = `/api/leads/stats?dealer_id=${dealerParent.id}`;
-    const [leadsRes, contactedRes, madeRes, forRes] = await Promise.all([
+    const [leadsRes, contactedRes, funnelRes] = await Promise.all([
       fetchData(`${base}${range}`, auth),
       fetchData(`${base}&fe_lead_status=Contacted${range}`, auth),
-      // Appointments Made: by the lead's date; Appointments for (the day): by the appointment's date.
-      fetchData(`${base}&fe_lead_status=${booked}&use_booking_date=false&split_by=created_by${range}`, auth),
-      fetchData(`${base}&fe_lead_status=${booked}&use_booking_date=true&split_by=created_by${range}`, auth),
+      // Betsy, 23 Oct 2026: appointments counted from the bookings themselves (made, set for these dates, showed,
+      // sold), so one stays counted when its lead moves on to Visited or Sold.
+      fetchData(`${base}&appointment_funnel=true${range}`, auth),
     ]);
-    for (const res of [leadsRes, contactedRes, madeRes, forRes]) {
+    for (const res of [leadsRes, contactedRes, funnelRes]) {
       if (!res.ok) throw new Error('Failed to fetch dashboard counts');
     }
-    const [leads, contacted, made, forDay] = await Promise.all([leadsRes.json(), contactedRes.json(), madeRes.json(), forRes.json()]);
-    return { leads, contacted, made, forDay };
+    const [leads, contacted, funnel] = await Promise.all([leadsRes.json(), contactedRes.json(), funnelRes.json()]);
+    return { leads, contacted, funnel };
   }, [dealerParent?.id, fetchData]);
 
   const fetchDashboardData = useCallback(async (startDate, endDate, compare) => {
@@ -196,15 +193,14 @@ export default function Dashboard() {
       setManagerialReviewCount((await managerialReviewRes.json()).managerial_review || 0);
       setTodayLeadsCount((await todayLeadsRes.json()).total_leads || 0);
       setContactedCount(counts.contacted.total_leads || 0);
-      setAppointmentBookedCount(counts.made.total_leads || 0);
-      setAppointmentsMadeSplit({ ai: counts.made.by_ai || 0, staff: counts.made.by_staff || 0 });
-      setTodayAppointmentsCount(counts.forDay.total_leads || 0);
-      setAppointmentsForSplit({ ai: counts.forDay.by_ai || 0, staff: counts.forDay.by_staff || 0 });
+      setFunnel(counts.funnel);
       setCompareCounts(compared ? {
         leads: compared.leads.total_leads || 0,
         contacted: compared.contacted.total_leads || 0,
-        made: compared.made.total_leads || 0,
-        forDay: compared.forDay.total_leads || 0,
+        made: compared.funnel.made?.total || 0,
+        forDay: compared.funnel.scheduled?.total || 0,
+        showed: compared.funnel.showed?.total || 0,
+        sold: compared.funnel.sold?.total || 0,
       } : null);
     } catch (err) {
       console.error("Dashboard fetch error:", err);
@@ -680,6 +676,7 @@ export default function Dashboard() {
   };
 
   const splitText = (split) => (split ? `AI ${split.ai} · Staff ${split.staff}` : '');
+  const step = (key) => funnel?.[key] || null;
 
   const withRange = (base) => {
     const range = getRangeParams();
@@ -794,18 +791,34 @@ export default function Dashboard() {
             {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
               iconClass="fa-solid fa-calendar-days"
-              count={appointmentBookedCount}
+              count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
               link={withRange(`/dealer/leads?status=${encodeURIComponent('Appointment Booked')}`)}
-              description={[splitText(appointmentsMadeSplit), `${cardRangeText()}${compareText('made')}`].filter(Boolean).join(" · ")}
+              description={[splitText(step('made')), `${cardRangeText()}${compareText('made')}`].filter(Boolean).join(" · ")}
             />
 
             <CountCard
               iconClass="fa-regular fa-calendar-check"
-              count={todayAppointmentsCount}
+              count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
               link={getAppointmentsForLink()}
-              description={[splitText(appointmentsForSplit), `${cardRangeText()}${compareText('forDay')}`].filter(Boolean).join(" · ")}
+              description={[splitText(step('scheduled')), `${cardRangeText()}${compareText('forDay')}`].filter(Boolean).join(" · ")}
+            />
+
+            <CountCard
+              iconClass="fa-solid fa-person-walking"
+              count={step('showed')?.total || 0}
+              label="Appointments Showed"
+              link={withRange('/dealer/leads?status=Visited')}
+              description={[splitText(step('showed')), `${cardRangeText()}${compareText('showed')}`].filter(Boolean).join(" · ")}
+            />
+
+            <CountCard
+              iconClass="fa-solid fa-handshake"
+              count={step('sold')?.total || 0}
+              label="Appointments Sold"
+              link={withRange(`/dealer/leads?status=${encodeURIComponent('Sold Pending')}`)}
+              description={[splitText(step('sold')), `${cardRangeText()}${compareText('sold')}`].filter(Boolean).join(" · ")}
             />
           </div>
         </div>

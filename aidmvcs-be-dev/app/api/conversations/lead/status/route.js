@@ -408,11 +408,13 @@ export async function PUT(request) {
         console.error('Error saving the staff booking:', bookingError);
       }
     }
-    // Visited / No Show: did the customer come to the appointment?
-    if (status === 'Visited' || status === 'No Show') {
+    // Visited / No Show: did the customer come to the appointment? A sale means they came (Betsy, 23 Oct 2026:
+    // "APPT SET BY AUTOPULSE, APPT SHOWED, APPT SOLD" went straight from Appointment Set to Sold Pending).
+    const SOLD = ['Sold', 'Sold Pending', 'Sold Delivered'];
+    if (status === 'Visited' || status === 'No Show' || (SOLD.includes(status) && !SOLD.includes(originalLead?.fe_lead_status))) {
       try {
         const dealerForShowed = await User.findById(updated.dealer_id).select('dealer_account_information').lean();
-        await markLeadBookingShowed(Booking, { leadId: updated._id, dealer: dealerForShowed, showed: status === 'Visited' });
+        await markLeadBookingShowed(Booking, { leadId: updated._id, dealer: dealerForShowed, showed: status !== 'No Show' });
       } catch (showedError) {
         console.error('Error recording whether the customer showed:', showedError);
       }
