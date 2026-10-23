@@ -564,7 +564,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         "features_grounded": unverified_features(draft, inventory),
         "no_invented_names": invented_names(
             draft, customer_texts=customer_texts,
-            allowed=[t for t in (dealer_layer.get("name"), dealer_layer.get("agent_name"), state.customer_name) if t]),
+            # The stock record's own words ("It's Dark Graphite" - replay of live messages, 24 Oct 2026) aren't names.
+            allowed=[t for t in (dealer_layer.get("name"), dealer_layer.get("agent_name"), state.customer_name) if t]
+            + [" ".join(str(v) for v in (car or {}).values() if isinstance(v, str)) for car in inventory or []]),
     }
     if (getattr(ctx, "lead_state", None) or {}).get("stage") == "sold_pending":
         # PLAN_4 stream X2 (SOLD PENDING PDF §7, §12): an AI-written reply on a Sold Pending lead never blames the
