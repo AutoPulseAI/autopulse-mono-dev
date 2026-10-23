@@ -478,6 +478,26 @@ def touch1_ending(trade_in_known: bool, *, service: bool = False) -> str | None:
     return None if trade_in_known or service else "Tell me, what are you driving now?"
 
 
+# Live, 23 Oct 2026 (an Edmunds trade lead: "following up on your interest in the 1900 None None"): a feed's stand-ins
+# for "no vehicle" are not a vehicle.
+_NO_VALUE = {"none", "null", "nil", "n/a", "na", "undefined", "unknown", "0", "-", "--", "other", "tbd"}
+
+
+def clean_vehicle(text: str | None) -> str | None:
+    """A vehicle's name without placeholder words or an impossible year; None when nothing real is left."""
+    words = []
+    for word in str(text or "").split():
+        bare = word.strip(".,;:()").lower()
+        if bare in _NO_VALUE:
+            continue
+        if bare.isdigit() and len(bare) == 4 and not 1950 <= int(bare) <= 2100:
+            continue
+        words.append(word)
+    cleaned = " ".join(words).strip()
+    # A year alone ("2019") is no vehicle to name.
+    return cleaned if cleaned and not (cleaned.isdigit() and len(cleaned) == 4) else None
+
+
 def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dealership: str | None,
                  city: str | None, state_code: str | None, vehicle: str | None, service: bool = False,
                  origin: str | None = None) -> str:
@@ -501,6 +521,7 @@ def touch1_intro(*, customer_first_name: str | None, agent_name: str | None, dea
     # FTC (client email, 7 Oct 2026, "this basically needs to be said BEFORE ANYTHING"): "Hi [First Name], this is
     # Angela, [Dealership Name]'s AI Sales Manager, following up on your interest in the [Year Make Model]. Tell me,
     # what are you driving now?" - the AI says it is AI in its very first words. City / state are no longer part of it.
+    vehicle = clean_vehicle(vehicle)
     who = f"Hi {customer_first_name}" if customer_first_name else "Hi"
     role = AI_SERVICE_ROLE if service else AI_SALES_ROLE
     owner = (f"{dealership}'" if dealership.endswith("s") else f"{dealership}'s") if dealership else None

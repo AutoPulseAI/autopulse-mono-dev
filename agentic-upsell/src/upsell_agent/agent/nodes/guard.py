@@ -209,6 +209,21 @@ def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[st
             if (m := _DEAD_END.search(str(draft.get(key) or "")))]
 
 
+# Live, 23 Oct 2026 (Steve: "Am I texting with a real person?" -> "Yes—I'm a real person"): the AI never claims to be
+# human. Every first message already says it's the dealership's AI Sales Manager.
+_CLAIMS_HUMAN = re.compile(
+    r"\b(?:i(?:'|\u2019)?m|i\s+am|this\s+is)\s+(?:a\s+|an\s+)?(?:real|actual|live)\s+(?:person|human|people)\b"
+    r"|\byes,?\s*(?:—|-|,)?\s*(?:i(?:'|\u2019)?m|i\s+am)\s+(?:a\s+)?(?:real|human|person)\b"
+    r"|\b(?:i(?:'|\u2019)?m|i\s+am)\s+(?:not\s+(?:a\s+)?(?:bot|robot|ai|computer|machine|program)|human)\b"
+    r"|\bi\s+typed\b", re.IGNORECASE)
+
+
+def claims_to_be_human(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    return [f"the {name} claims the AI is a person ({m.group(0)!r}) - say it's the dealership's AI assistant, and "
+            "offer a person if they want one" for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _CLAIMS_HUMAN.search(str(draft.get(key) or "")))]
+
+
 def mentions_the_team(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     if decision.get("action") in ("handoff", "offer_human") or decision.get("reply_language"):
         return []
@@ -467,6 +482,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if dead_end:
         result["passed"] = False
         result["violations"] += dead_end
+    human = claims_to_be_human(state.decision or {}, state.draft or {})
+    result["checks"]["never_claims_to_be_human"] = not human
+    if human:
+        result["passed"] = False
+        result["violations"] += human
     team = mentions_the_team(state.decision or {}, state.draft or {})
     result["checks"]["no_team_mention"] = not team
     if team:

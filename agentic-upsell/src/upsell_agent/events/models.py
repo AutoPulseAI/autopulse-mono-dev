@@ -10,7 +10,7 @@ retried event is recognised as a duplicate.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Channel = Literal["sms", "email"]
 
@@ -38,6 +38,16 @@ class InboundMessageEvent(BaseEvent):
     shadow: bool = False
     # PLAN_4 stream X3 item 10: the CRM saw auto-responder headers on this email (agent/auto_reply.py).
     auto_reply: bool = False
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _readable(cls, value: object) -> object:
+        """An email arrives as the words the customer wrote, not its HTML or the quoted older message (live,
+        23 Oct 2026)."""
+        if not isinstance(value, str):
+            return value
+        from upsell_agent.agent.email_text import plain_text
+        return plain_text(value) or value
 
 
 class LeadPausedEvent(BaseEvent):

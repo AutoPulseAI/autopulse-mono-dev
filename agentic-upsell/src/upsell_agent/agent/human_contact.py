@@ -88,8 +88,9 @@ def said_method(text: str, *, answering: bool = False) -> str | None:
     return None
 
 
-_PERSON = re.compile(r"\b(?:a\s+(?:real\s+|actual\s+)?person|human|someone|somebody|manager|salesperson|sales\s+rep|"
-                     r"team\s+member)\b", re.IGNORECASE)
+_PERSON = re.compile(r"\b(?:a\s+(?:real\s+|actual\s+|live\s+)?person|human|someone|somebody|manager|salesperson|"
+                     r"sales\s+rep|rep|representative|live\s+agent|real\s+agent|staff|team\s+member|employee|"
+                     r"(?:real|actual|live)\s+people)\b", re.IGNORECASE)
 
 
 def asks_for_person(text: str) -> bool:

@@ -749,13 +749,24 @@ async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead
     """The name to greet the customer by: the CRM's, unless it isn't a real name ("null null", "Name" - client,
     12 Oct 2026), then the one the customer gave us in the conversation (slot contact.name), else none."""
     from upsell_agent.agent.templates import known_first_name
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    # Live, 23 Oct 2026 (Steve was greeted "Thanks, Central"): the dealership's own name is never the customer's.
+    try:
+        dealer_words = {w.lower() for w in str((await dealer_profile(db.dealer_id)).name or "").split()}
+    except Exception:  # noqa: BLE001 - a name check is never worth a failed turn
+        dealer_words = set()
+
+    def real(name: Any) -> bool:
+        first = known_first_name(name)
+        return bool(first) and first.lower() not in dealer_words
+
     for name in ((customer or {}).get("name"), (lead or {}).get("name")):
-        if known_first_name(name):
+        if real(name):
             return name
     if customer_id:
         from upsell_agent.slots.store import current_facts
         for fact in await current_facts(db, customer_id, lead_id):
-            if fact.get("path") == "contact.name" and known_first_name(fact.get("value")):
+            if fact.get("path") == "contact.name" and real(fact.get("value")):
                 return str(fact["value"])
     return None
 

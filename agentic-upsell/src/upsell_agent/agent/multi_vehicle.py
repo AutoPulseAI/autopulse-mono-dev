@@ -34,11 +34,12 @@ def vehicle_label(lead: dict | None) -> str | None:
     # The lead's own fields, else the lead email's vehicle the CRM keeps in data.vehicle (a dict since 12 Oct 2026 -
     # read field by field: printing the dict sent "{'year': ... 'vin': ...}" to a customer).
     vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
+    from upsell_agent.agent.cadence import clean_vehicle
     parts = [str(lead.get(k) or vehicle.get(k) or "").strip() for k in ("year", "make", "model")]
-    if parts[1] or parts[2]:
-        return " ".join(p for p in parts if p)
+    if named := clean_vehicle(" ".join(p for p in parts if p)):
+        return named
     text = data.get("vehicle") if isinstance(data.get("vehicle"), str) else lead.get("vehicle")
-    return str(text or "").strip() or None
+    return clean_vehicle(str(text or ""))
 
 
 def question_text(first_name: str | None, vehicle: str | None) -> dict[str, str]:
