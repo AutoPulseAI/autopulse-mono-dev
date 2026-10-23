@@ -1106,7 +1106,12 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     urgent = urgency_mode == "escalate"
     urgent_confidence = float(extraction.get("urgent_confidence") or 0.0) if urgent else 0.0
 
-    wants_human = bool(extraction.get("wants_human")) and not (dated and dated["call_requested"])
+    # Live, 23 Oct 2026 (Steve's "Manual or Auto" - about the gearbox - got "a call or a text from our sales manager?"):
+    # a request for a person names one ("a person", "someone", "a manager", "call me"...) - the model's flag alone
+    # isn't enough.
+    wants_human = (bool(extraction.get("wants_human")) and not (dated and dated["call_requested"])
+                   and (human_contact.asks_for_person(text) or human_contact.said_method(text, answering=False)
+                        is not None))
     said_upset = upset_words(text)
     upset_confidence = float(extraction.get("upset_confidence") or 0.0)
     escalate = ((bool(extraction.get("upset")) and (upset_confidence >= UPSET_ALONE_CONFIDENCE or (
