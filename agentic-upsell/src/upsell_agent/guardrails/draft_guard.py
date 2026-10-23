@@ -92,6 +92,25 @@ _TRIM_WORD = re.compile("|".join(rf"\b{re.escape(w)}\b" for w in sorted(TRIM_WOR
                         re.IGNORECASE)
 
 
+# Trim words that are everyday English too (live, 23 Oct 2026: "in your $400-500 range" and "M Sport" rejected good
+# replies): they count as a trim only right after a vehicle's name ("RAV4 Limited", "XLE Premium").
+_EVERYDAY_TRIMS = frozenset({"range", "standard", "limited", "premium", "sport", "touring", "adventure", "hybrid",
+                             "platinum"})
+
+
+def _used_as_trim(match: "re.Match[str]", text: str, mentioned: list[dict[str, Any]]) -> bool:
+    word = match.group(0).lower()
+    if word not in _EVERYDAY_TRIMS:
+        return True
+    after = re.findall(r"[\w-]+", text[match.end():match.end() + 20].lower())[:1]
+    if after and after[0] in ("trim", "trims", "package", "pkg", "edition", "model", "version", "grade"):
+        return True  # "It comes in the Limited trim"
+    before = re.findall(r"[\w-]+", text[max(0, match.start() - 40):match.start()].lower())[-2:]
+    names = {w for r in mentioned for k in ("make", "model", "trim") for w in str(r.get(k) or "").lower().split()}
+    names |= {t for t in TRIM_WORDS if t not in _EVERYDAY_TRIMS}
+    return any(w in names for w in before)
+
+
 def _numbers(texts: Iterable[Any]) -> set[str]:
     found: set[str] = set()
     for text in texts:
@@ -173,7 +192,7 @@ def _grounding(text: str, draft: dict[str, Any], inventory: list[dict[str, Any]]
     # back in plain words) - protected separately by the availability check
     # below, which still catches a model dodging vins while claiming stock.
     if sms_vins or email_vins:
-        trim_words = {w.group(0).lower() for w in _TRIM_WORD.finditer(text)}
+        trim_words = {w.group(0).lower() for w in _TRIM_WORD.finditer(text) if _used_as_trim(w, text, mentioned)}
         have_trims = {t for r in mentioned if (t := (r.get("trim") or "").lower())}
         # The vehicle the customer asked for, named back to them ("I'll make sure the Honda CR-V is available ... in
         # the meantime we have a Toyota RAV4" - client, 12 Oct 2026) is theirs, not a claim about our stock.
