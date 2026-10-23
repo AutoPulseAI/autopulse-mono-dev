@@ -187,7 +187,11 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     missing = [r for r in profile.missing() if not (confirmed_once and set(_unfilled(profile, r)) <= confirmed_once)]
     filled, total = profile.progress()
     clarify_questions = [q for q in flags.questions if q.get("label") == "clarify"]
-    other_questions = [q for q in flags.questions if q.get("label") != "clarify"]
+    # Live, 23 Oct 2026 (Nanc: every touch rejected for not answering "View Shopper Signals: https://cargur.us/..."):
+    # a portal's own lines saved as a question before they were filtered out are no question to answer.
+    from upsell_agent.agent.portal_text import clean_comments
+    other_questions = [q for q in flags.questions if q.get("label") != "clarify"
+                       and clean_comments(str(q.get("text") or "")).strip()]
 
     blocked = {r.id: ask_block(profile, r, flags) for r in missing}
     # "Asked out": every missing detail has had its two asks. Checked without the
