@@ -70,7 +70,7 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.agent import appointment, cadence, call_tasks, lifecycle
+from upsell_agent.agent import appointment, cadence, call_tasks, lifecycle, provider_health
 from upsell_agent.agent.templates import (
     SOLD_VEHICLE_FALLBACK_SUBJECT,
     SOLD_VEHICLE_FALLBACK_TEXT,
@@ -867,6 +867,10 @@ async def replan_workflow(db: DealerScopedDatabase, lead_id: str, *, reason: str
 
 # --- Fire ---------------------------------------------------------------------
 
+# While the AI is off (its model provider isn't answering), a due AI follow-up tries again this much later.
+PROVIDER_DOWN_RETRY = timedelta(minutes=10)
+
+
 async def reset_stuck_claims() -> int:
     """Claims a dead worker left behind go back to pending (cross-dealer by
     design, architecture §10)."""
@@ -912,6 +916,13 @@ async def fire_due(deps: Any, *, lock: LeadLock = _no_lock, claimed_by: str | No
     async def fire(doc: dict) -> None:
         try:
             status = await fire_one(doc, deps, lock=lock)
+        except provider_health.ProviderDown:
+            # Betsy, 23 Oct 2026: the AI is off - nothing is sent; this follow-up waits and tries again.
+            await get_db()[SCHEDULED_FOLLOWUPS_COLLECTION].update_one(
+                {"_id": doc["_id"], "status": "claimed"},
+                {"$set": {"status": "pending", "due_at": clock.now() + PROVIDER_DOWN_RETRY,
+                          "reason": "held: the AI is off (its model provider isn't answering)"}})
+            status = "held_ai_off"
         except Exception:
             # Leave it claimed: the stuck-claim reset retries it in 5 minutes,
             # and the sender's idempotency key stops a double send.

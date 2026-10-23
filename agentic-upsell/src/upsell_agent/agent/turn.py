@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
+from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, provider_health, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -169,6 +169,9 @@ async def run_turn(
     `batch`: the stored customer messages this turn answers ({id, channel,
     text, at}), listed in the trace and in the context pack one by one."""
     await ai_studio.refresh()  # the settings published in AI Studio (upsell_agent/ai_studio.py)
+    if not shadow and await provider_health.is_down():
+        # Betsy, 23 Oct 2026: "AI off if no credits" - nothing starts, the worker holds this event.
+        raise provider_health.ProviderDown("the AI is off: its model provider isn't answering")
     settings = deps.config
     purpose = purpose or ("reply" if is_reply else "marketing")
     if purpose != "reply":
@@ -232,6 +235,16 @@ async def run_turn(
             await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
             raise
 
+        failure = " ".join(str(x) for x in [result.get("fallback_reason"),
+                                             *((result.get("guard_result") or {}).get("violations") or [])] if x)
+        if not shadow and provider_health.is_provider_failure(failure):
+            # Betsy, 23 Oct 2026: "No message is better than a garbage message" - the provider can't serve the AI
+            # (no credit, a bad key): nothing is sent, not even the safe template; the AI switches off and AutoPulse
+            # is emailed; the worker holds this event and replays it when the provider answers again.
+            await provider_health.mark_down(failure, platform=deps.platform)
+            log = await tracer.finish("held_ai_off", {"reason": failure[:500]})
+            await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
+            raise provider_health.ProviderDown(failure[:300])
         draft = result.get("draft") or {}
         decision = result.get("decision") or {}
         action = decision.get("action")
