@@ -116,3 +116,11 @@ async def test_the_dealerships_name_is_never_the_customers(mongo, live_dealer):
     assert await turn_module._customer_name(db, None, None, {"name": "Central"}, {"name": "Steve Rogers"}) \
         == "Steve Rogers"
     dp._cache.clear()
+
+
+def test_cargurus_and_cars_com_labels_are_not_the_customers_words():
+    from upsell_agent.agent.portal_text import clean_comments
+    assert clean_comments("(New inquiry submitted on a lead form) View Shopper Signals: https://cargur.us/1Ct7vq "
+                          "(no login required) | I'm interested in the 2021 Audi A4. Is it still available? | "
+                          "Placed deposit: No | Phone Lead from CarGurus") == \
+        "I'm interested in the 2021 Audi A4. Is it still available?"
