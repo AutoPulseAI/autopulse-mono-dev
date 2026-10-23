@@ -412,6 +412,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     # Live, 23 Oct 2026 (7 of 14 fallbacks): "C 300", "Altima 2.5 SR" are the car's own model / trim names, not numbers
     # the AI made up.
     known += [r.get(k) for r in inventory for k in ("make", "model", "trim") if r.get(k)]
+    # Live, 23 Oct 2026 (a follow-up's "2024 Audi A3 40 Premium" rejected for "40"): any text on a loaded vehicle's
+    # record - its title or series - is the record's own, not a number the AI made up.
+    known += [v for r in inventory for v in r.values() if isinstance(v, str)]
     known += [m.get("text") for m in pack.get("working_memory") or [] if m.get("text")]
     touch1 = (state.decision or {}).get("touch1") or {}
     known += [touch1.get(k) for k in ("price_line", "lead_answers", "intro") if touch1.get(k)]
@@ -436,8 +439,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     result = check_draft(checked, customer_texts=customer_texts, known_values=known, inventory=inventory,
                          # Three segments for Touch 1, and for a reply in Spanish (stream Q: the same message runs
                          # about a fifth longer, and two over-length drafts handed a Spanish lead to staff).
+                         # Live, 23 Oct 2026: a follow-up offering two similar cars ran 355-369 twice -> safe template.
                          sms_max=draft_guard.TOUCH1_SMS_MAX if (state.decision or {}).get("touch1") or (
-                             state.decision or {}).get("reply_language") else draft_guard.SMS_MAX,
+                             state.decision or {}).get("reply_language") or (state.decision or {}).get("touch")
+                         else draft_guard.SMS_MAX,
                          # MASTER_PLAN_4 D5/D6 (stream A4): a service outreach turn puts its event's facts here.
                          service_facts=(state.decision or {}).get("service_facts"))
     # The client's own wording placed by code: a script, or a touch written as fixed text in AI Studio.
