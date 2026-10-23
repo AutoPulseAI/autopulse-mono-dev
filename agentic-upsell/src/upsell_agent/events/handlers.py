@@ -178,6 +178,12 @@ async def _opt_back_in_from_lead(db: DealerScopedDatabase, event: LeadCreatedEve
     still applies to the new lead (a form that says no to texts, texting hours, DND)."""
     if not event.customer_id:
         return
+    # Live, 23 Oct 2026: a portal's "this person is still active" alert (Cars.com Shopper Alert) is not the customer
+    # submitting anything - only a lead they sent opts them back in.
+    said = " ".join(str(x or "") for x in ((lead or {}).get("source"), (lead or {}).get("lead_source"),
+                                            (lead or {}).get("comments"), ((lead or {}).get("data") or {}).get("comments")))
+    if re.search(r"shopper\s*alert|still\s*active|price\s*drop\s*alert|saved\s*search", said, re.IGNORECASE):
+        return
     for channel in ("sms", "email"):
         address = (lead or {}).get("phone" if channel == "sms" else "email")
         last = await consent.latest_opt_out(db, event.customer_id, channel, address)

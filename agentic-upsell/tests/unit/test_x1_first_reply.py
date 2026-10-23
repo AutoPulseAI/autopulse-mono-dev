@@ -190,3 +190,15 @@ async def test_a_customer_who_texts_us_at_3_am_is_answered_at_once_with_the_afte
     assert "open" in sent["text"].lower()  # the "now, or when we open?" choice
     logged = await mongo[AI_COMPLIANCE_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "decision": "ALLOW"})
     assert logged["purpose"] == "lead_response" and logged["rule"] == "reply"  # allowed as a reply, any hour
+
+
+async def test_p1_a_portal_alert_is_not_the_customer_opting_back_in(mongo, dealers):
+    """Live, 23 Oct 2026: a Cars.com Shopper Alert ("this person is still active") is no lead the customer sent."""
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="Cars.com Shopper Alert")
+    await _no_email(mongo, created)
+    db = dealer_scoped_db(DEALER)
+    phone = await _phone(mongo, created)
+    await consent.set_channel_consent(db, created["customer_id"], "sms", False, "customer_stop", address=phone)
+    await handlers.handle_lead_created(_created(created), _deps())
+    assert await consent.is_opted_out(db, created["customer_id"], "sms")
