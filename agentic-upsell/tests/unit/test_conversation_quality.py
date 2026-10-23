@@ -184,6 +184,14 @@ def test_no_invented_staff_names():
     assert not invented_names(plain, allowed=["Sunrise Motors", "Tyler Brooks"], customer_texts=[])
 
 
+def test_a_stock_colour_is_not_a_made_up_name():
+    # Replay of live messages, 24 Oct 2026: "It's Dark Graphite with 96,066 miles" was read as a person's name.
+    draft = {"sms_text": "The 2019 BMW 540i xDrive is here. It's Dark Graphite with 96,066 miles.", "email_body": ""}
+    car = {"make": "BMW", "model": "5 Series", "trim": "540i xDrive", "color": "Dark Graphite"}
+    assert invented_names(draft, allowed=["Victory Cars Central"], customer_texts=[])
+    record = " ".join(v for v in car.values() if isinstance(v, str))
+    assert not invented_names(draft, allowed=["Victory Cars Central", record], customer_texts=[])
+
 def test_a_named_vehicles_own_year_and_the_customers_time_are_allowed_numbers():
     draft = {"sms_text": "That 2022 Toyota RAV4 XLE has 31,200 miles. I can hold 3:00 PM for you.",
              "email_subject": "s", "email_body": "b"}
