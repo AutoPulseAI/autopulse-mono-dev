@@ -617,7 +617,7 @@ async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, dep
     # the next replies went out in English): the language is recorded from every message, held or answered.
     from upsell_agent.agent.reply_language import detect, in_customer_language
     spoken = await detect("\n".join(r["text"] for r in rows), get_settings().model_extract)
-    if spoken:
+    if spoken and spoken.strip().lower() not in ("unknown", "undetermined", "none", "n/a"):
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
             "customer_language": spoken, "reply_language": None if spoken == "English" else spoken}})
     async with tracer.node("hold", {"action": action, "messages": len(rows)}) as span:

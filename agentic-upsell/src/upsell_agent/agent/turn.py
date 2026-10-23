@@ -25,6 +25,8 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import httpx
+
 from upsell_agent import ai_studio, clock
 from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
@@ -218,6 +220,13 @@ async def run_turn(
                 result = await _graph().ainvoke(state, config={"configurable": {"ctx": ctx}})
         except TimeoutError:
             result = await _deadline_fallback(tracer, state, deadline)
+        except httpx.HTTPError as exc:
+            # Live, 23 Oct 2026: a customer picking "11am" got nothing - booking it, the CRM didn't answer in time
+            # (ReadTimeout) and the turn failed three times. A slow or unreachable CRM is never silence: the safe
+            # reply goes out (the booking, if the CRM made it, is picked up by the next turn).
+            logger.warning("turn %s: CRM call failed (%r) - safe reply instead", tracer.turn_id, exc)
+            result = await _deadline_fallback(tracer, state, deadline,
+                                              reason=f"a call to the CRM failed ({type(exc).__name__})")
         except Exception as exc:
             log = await tracer.finish("error", {"error": repr(exc)})
             await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)
@@ -1013,10 +1022,11 @@ async def _queue_summary(deps: TurnDeps, result: dict[str, Any], dealer_id: str,
     return True
 
 
-async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: float) -> dict[str, Any]:
-    """The turn ran out of time mid-graph: build the template reply here and
+async def _deadline_fallback(tracer: TurnTracer, state: AgentState, deadline: float,
+                             reason: str | None = None) -> dict[str, Any]:
+    """The turn ran out of time mid-graph (or a CRM call failed): build the template reply here and
     trace it as the fallback step, so the customer still gets an answer."""
-    reason = f"the turn ran past its {deadline:g}s limit"
+    reason = reason or f"the turn ran past its {deadline:g}s limit"
     async with tracer.node("fallback", {"reason": reason, "lead_type": state.lead_type}) as span:
         lead_type = lead_type_for(await find_lead(dealer_scoped_db(state.dealer_id), state.lead_id))
         draft = template_draft(lead_type, state.customer_name, f"Template used because {reason}.",

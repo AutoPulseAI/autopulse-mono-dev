@@ -394,6 +394,9 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     known += [v for v in dealer_info.values() if isinstance(v, (str, int, float)) and not isinstance(v, bool)]
     known.append((state.decision or {}).get("dealer_address"))
     known += [r.get(k) for r in inventory for k in ("year", "miles", "price", "msrp") if r.get(k) is not None]
+    # Live, 23 Oct 2026 (7 of 14 fallbacks): "C 300", "Altima 2.5 SR" are the car's own model / trim names, not numbers
+    # the AI made up.
+    known += [r.get(k) for r in inventory for k in ("make", "model", "trim") if r.get(k)]
     known += [m.get("text") for m in pack.get("working_memory") or [] if m.get("text")]
     touch1 = (state.decision or {}).get("touch1") or {}
     known += [touch1.get(k) for k in ("price_line", "lead_answers", "intro") if touch1.get(k)]
