@@ -192,3 +192,23 @@ def test_everyday_words_are_not_trims():
     v = draft_guard.check_draft(bad, customer_texts=["400-500"], known_values=["Friday at 1:00 PM", 2022, 20000, 25000],
                                 inventory=[rav4])["violations"]
     assert any("trim not on the named vehicle(s): limited" in x for x in v)
+
+
+def test_a_follow_up_offering_two_similar_cars_is_not_rejected():
+    # Live, 23 Oct 2026 19:00 / 19:06: the "40" of "Audi A3 40 Premium" (on the car's record) and a 369-character
+    # follow-up offering two cars both ended on the safe template.
+    a3 = {"year": 2024, "make": "Audi", "model": "A3", "trim": "Premium", "title": "2024 Audi A3 40 Premium",
+          "miles": 46225, "price": 18949}
+    sms = ("The 2024 Audi A3 40 Premium is here in black with 46,225 miles, listed at $18,949 (not including tax, "
+           "documentation and DMV fees). What day works for you to come see it?")
+    known = ["Friday at 1:00 PM", 2024, 46225, 18949, "Audi", "A3", "Premium",
+             *[v for v in a3.values() if isinstance(v, str)]]
+    checked = draft_guard.check_draft({"sms_text": sms, "email_subject": "s", "email_body": "b"}, customer_texts=[],
+                                      known_values=known, inventory=[a3])
+    assert checked["checks"]["no_invented_numbers"], checked["violations"]
+    long_sms = "x " * 180 + "What day works?"
+    short = draft_guard.check_draft({"sms_text": long_sms, "email_subject": "s", "email_body": "b"}, customer_texts=[],
+                                    known_values=[], inventory=[])
+    longer = draft_guard.check_draft({"sms_text": long_sms, "email_subject": "s", "email_body": "b"}, customer_texts=[],
+                                     known_values=[], inventory=[], sms_max=draft_guard.TOUCH1_SMS_MAX)
+    assert not short["checks"]["sms_length_ok"] and longer["checks"]["sms_length_ok"]
