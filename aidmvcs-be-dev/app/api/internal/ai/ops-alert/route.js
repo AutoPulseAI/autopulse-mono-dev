@@ -16,8 +16,13 @@ export async function POST(req) {
   const subject = String(body?.subject || '').trim().slice(0, 200);
   const text = String(body?.text || '').trim().slice(0, 5000);
   if (!subject || !text) return NextResponse.json({ error: 'subject and text are required' }, { status: 422 });
-  const to = String(process.env.AI_OPS_ALERT_EMAILS || DEFAULT_TO).split(',').map((s) => s.trim()).filter(Boolean);
-  const html = `<p>${escape(text).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`
+  // "monitor": the developers' 15-minute report (AI_MONITOR_EMAILS) - nobody when it isn't set, never Betsy by default.
+  const monitor = body?.audience === 'monitor';
+  const list = monitor ? (process.env.AI_MONITOR_EMAILS || '') : (process.env.AI_OPS_ALERT_EMAILS || DEFAULT_TO);
+  const to = String(list).split(',').map((s) => s.trim()).filter(Boolean);
+  if (!to.length) return NextResponse.json({ sent: false, reason: 'no address set (AI_MONITOR_EMAILS)' });
+  const html = monitor ? `<pre style="font-family:monospace;font-size:12px;white-space:pre-wrap">${escape(text)}</pre>`
+    : `<p>${escape(text).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`
     + `<p style="color:#888">Sent ${new Date().toISOString()} by the AutoPulse AI service.</p>`;
   const sent = [];
   for (const address of to) {

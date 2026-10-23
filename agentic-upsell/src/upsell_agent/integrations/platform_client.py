@@ -117,7 +117,7 @@ class PlatformClient(Protocol):
     async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,
                                phone: str | None = None, said: str | None = None) -> bool: ...
 
-    async def send_ops_alert(self, subject: str, text: str) -> bool: ...
+    async def send_ops_alert(self, subject: str, text: str, audience: str = "ops") -> bool: ...
 
 
 def _dealer_local_midnight_utc(booking_date: str, dealer_timezone: str) -> datetime:
@@ -247,10 +247,11 @@ class StubPlatformClient:
         return True
 
 
-    async def send_ops_alert(self, subject: str, text: str) -> bool:
+    async def send_ops_alert(self, subject: str, text: str, audience: str = "ops") -> bool:
         """What `POST /api/internal/ai/ops-alert` does: email AutoPulse (never the dealer). Kept here for tests."""
         from upsell_agent.integrations.mongodb import get_db
-        await get_db()["dev_ops_alerts"].insert_one({"subject": subject, "text": text, "at": clock.now()})
+        await get_db()["dev_ops_alerts"].insert_one({"subject": subject, "text": text, "audience": audience,
+                                                     "at": clock.now()})
         return True
 
     async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,
@@ -383,10 +384,11 @@ class LivePlatformClient:
                                                                   "name": name, **({"said": said} if said else {})})
         return bool(body.get("updated"))
 
-    async def send_ops_alert(self, subject: str, text: str) -> bool:
+    async def send_ops_alert(self, subject: str, text: str, audience: str = "ops") -> bool:
         """`POST /api/internal/ai/ops-alert` (Betsy, 23 Oct 2026): AutoPulse is emailed when the AI switches itself off
-        or back on - Betsy and Bibi only, never the dealer."""
-        body = await self._post("/api/internal/ai/ops-alert", {"subject": subject, "text": text})
+        or back on - Betsy and Bibi only, never the dealer. `audience="monitor"`: the developers' monitor report
+        (AI_MONITOR_EMAILS)."""
+        body = await self._post("/api/internal/ai/ops-alert", {"subject": subject, "text": text, "audience": audience})
         return bool(body.get("sent"))
 
     async def set_lead_contact(self, dealer_id: str, lead_id: str, *, email: str | None = None,

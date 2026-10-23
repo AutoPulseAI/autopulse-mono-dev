@@ -608,8 +608,11 @@ async def plan_cadence_touch(
     await daily_call_tasks.plan(db, lead_id=lead_id, customer_id=customer_id, lead_state=state)
     # Client, 20 Oct 2026 (Betsy approved; Nadina Singh replied "No trade in", then staff set a status and her next touch
     # was the "Nadina?" nudge): a customer who has written to us never gets the name nudge.
-    replied = cadence_state.touch_number < 3 and bool(await db.collection(AI_MESSAGES_COLLECTION).find_one(
-        {"lead_id": lead_id, "direction": "inbound"}, projection={"_id": 1}))
+    # Live, 23 Oct 2026 (Ryanne's form asked about availability, the Carfax damage and a video; her first reply was the
+    # safe template and her next touch was "Ryanne?"): open questions are answered by a real touch, never a nudge.
+    open_questions = bool(((state.get("conversation") or {}).get("open_questions") or []))
+    replied = cadence_state.touch_number < 3 and (open_questions or bool(await db.collection(
+        AI_MESSAGES_COLLECTION).find_one({"lead_id": lead_id, "direction": "inbound"}, projection={"_id": 1})))
     planned = cadence.plan_touch(
         cadence_state, now=now, tz=profile.tz, customer_replied=replied,
         # The caller knows whether the message it just sent went out; the lead's own record is only

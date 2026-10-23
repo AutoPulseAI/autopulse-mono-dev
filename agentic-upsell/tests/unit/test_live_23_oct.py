@@ -124,3 +124,56 @@ def test_cargurus_and_cars_com_labels_are_not_the_customers_words():
                           "(no login required) | I'm interested in the 2021 Audi A4. Is it still available? | "
                           "Placed deposit: No | Phone Lead from CarGurus") == \
         "I'm interested in the 2021 Audi A4. Is it still available?"
+
+
+def test_the_first_messages_price_is_said_once():
+    """Live, 23 Oct 2026 (Ryanne): the model wrote the price line too; the placed line said it again (586 chars)."""
+    from upsell_agent.agent.nodes.compose import place_touch1_extras
+    intro = "Hi Ryanne, this is Nicole, Victory Cars Central's AI Sales Manager, following up on your interest in the 2023 Mercedes-Benz C-Class."
+    price = "It's listed at $26,149, not including tax, documentation and DMV fees."
+    answers = "Here's the vehicle's page with all the details, including its history report where available: [VEHICLE_LINK]"
+    draft = {"sms_text": f"{intro} {price} Tell me, what are you driving now?", "email_body": f"{intro} {price} Thanks."}
+    place_touch1_extras(draft, {"intro": intro, "price_line": price, "lead_answers": answers, "vin": "W1K"})
+    assert draft["sms_text"].count("$26,149") == 1 and draft["sms_text"].count("history report") == 1
+    assert draft["sms_text"].startswith(intro) and draft["sms_text"].endswith("Tell me, what are you driving now?")
+
+
+async def test_a_form_asking_for_a_video_reaches_dealer_action_required(mongo, live_dealer):
+    """Live, 23 Oct 2026 (Ryanne): "Is there any way I could get a video of the car?" on the lead form."""
+    from tests.unit.test_human_contact import DEALER, _deps
+    from upsell_agent.devtools import simulate
+    from upsell_agent.events import handlers
+    from upsell_agent.events.models import LeadCreatedEvent
+    set_clock(TUESDAY_NOON)
+    created = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Ryanne Darwich",
+                                         comments="Is it still available? Is there any way I could get a video of "
+                                                  "the car?")
+    await handlers.handle_lead_created(LeadCreatedEvent(event_id=created["lead_id"], dealer_id=DEALER,
+                                                        lead_id=created["lead_id"], customer_id=created["customer_id"],
+                                                        channel="sms"), _deps())
+    state = await mongo["ai_lead_state"].find_one({"lead_id": created["lead_id"]})
+    assert state["crm_status_sync"]["crm_status"] == "Managerial Review"
+
+
+async def test_open_questions_get_a_real_touch_not_the_name_nudge(mongo, live_dealer):
+    """Live, 23 Oct 2026 (Ryanne): her form's questions were never answered; the next touch was "Ryanne?"."""
+    from tests.unit.test_human_contact import DEALER, _deps
+    from upsell_agent.devtools import simulate
+    from upsell_agent.events import handlers
+    from upsell_agent.events.models import LeadCreatedEvent
+    set_clock(TUESDAY_NOON)
+    created = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Ryanne Darwich",
+                                         comments="Hi")
+    await handlers.handle_lead_created(LeadCreatedEvent(event_id=created["lead_id"], dealer_id=DEALER,
+                                                        lead_id=created["lead_id"], customer_id=created["customer_id"],
+                                                        channel="sms"), _deps())
+    await mongo["ai_lead_state"].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "conversation.open_questions": [{"text": "Is there any way I could get a video of the car?", "turn": 0}]}})
+    from upsell_agent.scheduler import followups
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    await followups.plan_cadence_touch(dealer_scoped_db(DEALER), lead_id=created["lead_id"],
+                                       customer_id=created["customer_id"], channel="sms", turn_id="t-check",
+                                       first_contact_done=True)
+    touch = await mongo["scheduled_followups"].find_one({"lead_id": created["lead_id"], "kind": "cadence_touch",
+                                                         "status": "pending"}, sort=[("_id", -1)])
+    assert touch and (touch.get("touch") or {}).get("touch_number") != 2  # never the "Ryanne?" name nudge
