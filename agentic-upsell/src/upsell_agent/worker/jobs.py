@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from upsell_agent.agent import lifecycle, maintenance, recalls, summary
+from upsell_agent.agent import provider_health
 from upsell_agent.config import get_settings
 from upsell_agent.events import handlers
 from upsell_agent.events.models import (
@@ -63,6 +64,11 @@ async def _guarded(
         async with lead_lock(redis, dealer_id, lock_id, settings.lead_lock_ttl_s), \
                 dealer_slot(redis, dealer_id, settings.dealer_max_inflight, settings.lead_lock_ttl_s * 2):
             return await run()
+    except provider_health.ProviderDown as down:
+        # Betsy, 23 Oct 2026: the AI is off (its model provider isn't answering): nothing is sent; the event is kept
+        # and replayed in order once the provider answers again (check_ai_provider below).
+        await provider_health.hold_event(function, event, received_at)
+        return {"status": "held_ai_off", "reason": str(down)}
     except Busy as busy:
         if busy_attempt >= settings.busy_retry_max:
             logger.error("%s for %s gave up after %s busy retries: %s", function, lock_id, busy_attempt, busy)
@@ -244,6 +250,26 @@ async def reconcile_events(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
 
     enqueue = make_enqueue(ctx["worker"].queue)
     return await reconcile(submit=lambda event_type, event: accept_event(event_type, event, enqueue))
+
+
+async def check_ai_provider(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """Every couple of minutes, only while the AI is off: one tiny model call. When the provider answers, the AI is
+    back on, AutoPulse is emailed, and every held event is replayed in the order it arrived."""
+    if not await provider_health.is_down():
+        return {"status": "up"}
+    ok, why = await provider_health.probe(get_settings())
+    if not ok:
+        return {"status": "still_down", "reason": why}
+    held = await provider_health.held_events()
+    await provider_health.mark_up(platform=ctx["deps"].platform, held=len(held))
+    replayed = 0
+    for row in held:
+        await ctx["worker"].queue.enqueue(
+            row["function"], key=f"{row['function']}:replay:{row['_id']}", timeout=JOB_TIMEOUT_S,
+            event=row["event"], received_at=row.get("received_at"))
+        await provider_health.release(row["_id"])
+        replayed += 1
+    return {"status": "back_on", "replayed": replayed}
 
 
 FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,

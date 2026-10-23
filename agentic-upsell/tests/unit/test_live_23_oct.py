@@ -37,7 +37,7 @@ def test_unknown_is_no_reply_language():
 
 
 async def test_a_crm_timeout_mid_turn_still_answers_the_customer(mongo, live_dealer, monkeypatch):
-    from upsell_agent.agent.nodes import decide
+    from upsell_agent.agent import graph
     set_clock(TUESDAY_NOON)
     created = await _lead("Tim Timeout")
     before = await _last_sms(mongo, created)
@@ -45,7 +45,7 @@ async def test_a_crm_timeout_mid_turn_still_answers_the_customer(mongo, live_dea
     async def slow(*args, **kwargs):
         raise httpx.ReadTimeout("")
 
-    monkeypatch.setattr(decide, "decide", slow)
+    monkeypatch.setattr(graph, "decide", slow)
     from upsell_agent.agent import turn
     turn._graph.cache_clear()
     try:
@@ -55,4 +55,4 @@ async def test_a_crm_timeout_mid_turn_still_answers_the_customer(mongo, live_dea
     after = await _last_sms(mongo, created)
     assert after and after != before
     log = await mongo["ai_turn_log"].find({"lead_id": created["lead_id"]}).sort("_id", -1).to_list(1)
-    assert log[0]["outcome"] != "error"
+    assert log[0]["outcome"] == "fallback"  # the safe reply, not a failed turn
