@@ -212,3 +212,17 @@ def test_a_follow_up_offering_two_similar_cars_is_not_rejected():
     longer = draft_guard.check_draft({"sms_text": long_sms, "email_subject": "s", "email_body": "b"}, customer_texts=[],
                                      known_values=[], inventory=[], sms_max=draft_guard.TOUCH1_SMS_MAX)
     assert not short["checks"]["sms_length_ok"] and longer["checks"]["sms_length_ok"]
+
+
+def test_a_confirmation_names_the_day_actually_booked():
+    # Live, 23 Oct 2026 (Joshuah): "You're all set for Sunday, October 25 at 11:00 AM" while the booking was Saturday.
+    visit = {"status": "pending", "display": None, "booked_day": "Saturday, October 24"}
+    wrong = {"sms_text": "Perfect. You're all set for Sunday, October 25 at 11:00 AM. If anything changes, text me."}
+    right = {"sms_text": "Perfect. You're all set for Saturday, October 24 at 10:00 AM."}
+    offer = {"sms_text": "Saturday is fully booked - would Sunday at 11:00 AM work?"}
+    assert guard.invalid_booking_wording({"visit": visit}, wrong)
+    assert not guard.invalid_booking_wording({"visit": visit}, right)
+    assert not guard.invalid_booking_wording({"visit": visit}, offer)
+    moved = {"status": "pending", "display": "Sunday at 11:00 AM", "just_booked": True}
+    assert not guard.invalid_booking_wording({"visit": moved}, wrong)
+    assert guard.invalid_booking_wording({"visit": {"status": None}}, wrong)

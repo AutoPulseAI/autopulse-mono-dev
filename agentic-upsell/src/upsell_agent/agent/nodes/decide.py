@@ -21,7 +21,7 @@ after-hours morning message and the dated visit_followup)."""
 
 import dataclasses
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -150,6 +150,10 @@ _NOT_READY = re.compile(
     r"before (i|we) (come|book|schedule|commit)|no rush|maybe later)\b", re.IGNORECASE)
 _BOOKS_FROM_OWN_REPLY = ("inbound_message", "resume_at_opening")
 
+# A day named outright - a bare time ("I'll be there at 10:30") never moves a booking to another day.
+_NAMES_A_DAY = re.compile(r"\b(mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?\b|\btomorrow\b|"
+                          r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2}/\d{1,2}\b",
+                          re.IGNORECASE)
 _RESCHEDULE_HINT = re.compile(
     r"\b(instead|reschedule|move (?:it|my appointment)|change (?:it|the time)|"
     r"can we make it|different time|push it)\b", re.IGNORECASE)
@@ -232,6 +236,16 @@ def _same_time_as(text: str, booking: dict[str, Any] | None) -> str:
         return text
     hour, minute = (int(x) for x in at.split(":"))
     return f"{(hour - 1) % 12 + 1}:{minute:02d} {'pm' if hour >= 12 else 'am'}"
+
+
+def _booking_day(booking: dict[str, Any], dealer: DealerProfile) -> date | None:
+    """The day of an existing booking, at the dealership (the CRM stores the local midnight in UTC)."""
+    when = booking.get("bookingDate")
+    if not isinstance(when, datetime):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(dealer.tz).date()
 
 
 def _day_words(day: date) -> str:
@@ -343,7 +357,14 @@ async def _visit_and_booking(
     if active_booking:
         booking_id = str(active_booking["_id"])
         status = active_booking.get("booking_status", "pending")
-        visit_ctx.update(status=status, display=None)
+        booked_day = _booking_day(active_booking, dealer)
+        visit_ctx.update(status=status, display=None,
+                         booked_day=_day_words(booked_day) if booked_day else None)
+        # Live, 23 Oct 2026 (Joshuah, booked by staff for Saturday 10:00): "can i meet u up on Sunday" ... "11 works"
+        # moved nothing - only "reschedule" / "instead" did - and the reply said "You're all set for Sunday at 11".
+        # Asking to come in on another day is a move.
+        other_day = bool(visit_wants_visit(extraction) and booked_day and (
+            asked := booking_tool.preferred_day(text, dealer, now)) and asked.day != booked_day)
         if _CANCEL_BOOKING.search(text):
             result = await booking_tool.cancel_booking(platform=ctx.platform, dealer_id=state.dealer_id,
                                                         dealer=dealer, booking_id=booking_id)
@@ -369,7 +390,7 @@ async def _visit_and_booking(
                 visit_ctx = {"status": result["booking_status"], "display": picked["display"], "just_booked": True,
                              "stopped": False, "ask_contact": None, "moved_this_turn": True,
                              "booking_id": result["booking_id"]}
-        elif ((conversation.awaiting_visit_pick and conversation.visit) or _RESCHEDULE_HINT.search(text)) and (
+        elif ((conversation.awaiting_visit_pick and conversation.visit) or _RESCHEDULE_HINT.search(text) or other_day) and (
                 not visit_declines(extraction)) and (request := booking_tool.preferred_day(text, dealer, now)):
             # A day but no time ("what about Monday?", "can we move it to Monday?"): that day's open times.
             built, info = await _times_for_day(ctx, state, dealer, now, request)
@@ -377,14 +398,18 @@ async def _visit_and_booking(
                 visit_ctx["day_request"] = info
                 return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
                                                  why=_day_offer_why(info), asked_day=request.day.isoformat())
-        elif _RESCHEDULE_HINT.search(text):
+        elif _RESCHEDULE_HINT.search(text) or (visit_wants_visit(extraction) and not visit_declines(extraction)
+                                               and _NAMES_A_DAY.search(text)):
+            # "Can I come Sunday at 11 instead?" - and, with no "instead", a new day and time asked for outright.
             from upsell_agent.slots.dates import resolve as resolve_date
             resolved = resolve_date(text, now.astimezone(dealer.tz))
             if resolved and isinstance(resolved.value, datetime):
                 existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
                 available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
                 candidate = datetime.combine(resolved.day, resolved.value.time(), tzinfo=dealer.tz)
-                if candidate in available:
+                same = (resolved.day == booked_day
+                        and f"{candidate:%H:%M}" == str(active_booking.get("bookingTime") or ""))
+                if candidate in available and not same:
                     result = await booking_tool.move_booking(platform=ctx.platform, dealer_id=state.dealer_id,
                                                               dealer=dealer, booking_id=booking_id,
                                                               current_status=status, when=candidate)
