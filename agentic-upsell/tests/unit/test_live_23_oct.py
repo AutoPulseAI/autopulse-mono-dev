@@ -246,3 +246,12 @@ def test_two_prices_get_one_fee_note_and_a_long_first_message_keeps_one_option()
     single = {"sms_text": "It's listed at $29,399, not including tax, documentation and DMV fees."}
     one_fee_note(single)
     assert single["sms_text"] == "It's listed at $29,399, not including tax, documentation and DMV fees."
+
+
+def test_a_customer_who_already_bought_is_not_pushed_to_book_a_visit():
+    # Live, 24 Oct 2026 (Sold Pending: "Wait ima get back to you" -> "when you're ready" was rejected -> safe template).
+    draft = {"sms_text": "No problem at all - text me when you're ready.", "email_body": ""}
+    assert guard.dead_end_wording({}, draft)
+    assert guard.dead_end_wording({}, draft, stage="contact_made_no_next_action")
+    assert not guard.dead_end_wording({}, draft, stage="sold_pending")
+    assert not guard.dead_end_wording({}, draft, stage="sold_delivered")
