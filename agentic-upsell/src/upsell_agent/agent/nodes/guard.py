@@ -201,9 +201,11 @@ _DEAD_END = re.compile(r"\b(?:when(?:ever)?\s+you(?:'|\u2019)?re\s+ready|let\s+(
                        re.IGNORECASE)
 
 
-def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any], *, stage: str | None = None) -> list[str]:
     if (decision.get("cannot_supply") or {}).get("text"):
         return []  # the client's own script, placed by code
+    if stage in ("sold_pending", "sold_delivered", "sales_visit"):
+        return []  # they've already bought or come in: no push to book a visit
     return [f"the {name} leaves the next step to the customer ({m.group(0)!r}) - ask for the visit with specific "
             "times instead" for name, key in (("SMS", "sms_text"), ("email", "email_body"))
             if (m := _DEAD_END.search(str(draft.get(key) or "")))]
@@ -500,7 +502,10 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if no_alternatives:
         result["passed"] = False
         result["violations"] += no_alternatives
-    dead_end = dead_end_wording(state.decision or {}, state.draft or {})
+    # Live, 24 Oct 2026 (a Sold Pending customer: "Wait ima get back to you"): a customer who has already bought isn't
+    # pushed to book a visit - "when you're ready" is the right answer there.
+    dead_end = dead_end_wording(state.decision or {}, state.draft or {},
+                                stage=(getattr(ctx, "lead_state", None) or {}).get("stage"))
     result["checks"]["no_dead_end_wording"] = not dead_end
     if dead_end:
         result["passed"] = False
