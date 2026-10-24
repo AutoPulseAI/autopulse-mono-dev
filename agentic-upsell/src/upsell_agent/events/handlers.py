@@ -1229,9 +1229,17 @@ async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | No
             {"lead_id": event.lead_id, "status": "pending", "kind": "appointment_confirm"},
             {"$set": {"status": "cancelled", "reason": "staff confirmed the appointment", "closed_at": now}})
         return {"status": "appointment_confirmed", "confirmation_cancelled": dropped.modified_count}
+    moved = None
+    if event.change == "moved" and stage == lifecycle.Stage.NO_SHOW:
+        # Live, 24 Oct 2026 (Joshuah): his booking was moved to Sunday after the no-show check had fired for the old
+        # Saturday time - a moved appointment is rescheduled, not a no-show: back to Appointment Set.
+        moved = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
+            "appointment_set", reason="Appointment rescheduled", detail={"rescheduled": True})], lead=lead,
+            customer_id=customer_id)
     planned = await plan_appointment_timers(db, lead_id=event.lead_id, customer_id=customer_id, lead=lead,
                                             channel=channel, turn_id=f"booking-changed-{event.event_id}")
-    return {"status": "appointment_replanned", "appointment_timers": planned}
+    return {"status": "appointment_replanned", "appointment_timers": planned,
+            **({"stage_change": moved} if moved else {})}
 
 
 def _address(lead: dict | None, customer: dict | None, channel: str) -> str | None:
