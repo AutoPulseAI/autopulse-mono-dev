@@ -351,6 +351,41 @@ def _apply_dev_hint(draft: dict[str, Any], payload: dict[str, Any], *, retry: bo
     return None
 
 
+_FEE_NOTE = re.compile(r",?\s*\(?(?:not including|plus|excluding) tax, documentation and DMV fees\)?", re.IGNORECASE)
+
+
+def one_fee_note(draft: dict[str, Any]) -> None:
+    """Live, 24 Oct 2026 (Robin's first message, 566 characters -> the safe template): two cars, each with "not including
+    tax, documentation and DMV fees". With more than one price, the note is said once, after the last price."""
+    for key in ("sms_text", "email_body"):
+        text = str(draft.get(key) or "")
+        notes = list(_FEE_NOTE.finditer(text))
+        if len(notes) < 2:
+            continue
+        last = notes[-1]
+        text = _FEE_NOTE.sub("", text[:last.start()]) + text[last.start():]
+        draft[key] = re.sub(r"(not including|plus|excluding) tax, documentation and DMV fees", "prices not including "
+                            "tax, documentation and DMV fees", text, count=1, flags=re.IGNORECASE).replace(
+                                ", prices not including", ". Prices don't include").replace(
+                                "Prices don't include tax, documentation and DMV fees.", "Prices don't include tax, "
+                                "documentation and DMV fees.")
+
+
+_EXTRA_OPTION = re.compile(r"(?<=[.!?])\s+(?:We also have|We've also got|There's also|Also,? (?:we have|there's)|Another "
+                           r"(?:option|choice) is)\b[^.!?]*[.!?]", re.IGNORECASE)
+
+
+def one_option_when_long(draft: dict[str, Any], limit: int) -> None:
+    """Live, 24 Oct 2026 (Robin): a first message offering two other cars ran past the limit and the customer got the
+    safe template instead. Over the limit, the second car offered is left out - one good option beats no message."""
+    text = str(draft.get("sms_text") or "")
+    if len(text) <= limit:
+        return
+    shorter = _EXTRA_OPTION.sub("", text, count=1)
+    if shorter != text:
+        draft["sms_text"] = shorter
+
+
 async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     model = ctx.settings.model_compose
     link_plan = plan_links(state, ctx)
@@ -376,6 +411,10 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     place_after_hours_wording(draft, state.decision or {})
+    one_fee_note(draft)
+    one_option_when_long(draft, draft_guard.TOUCH1_SMS_MAX if (state.decision or {}).get("touch1")
+                         or (state.decision or {}).get("touch") or (state.decision or {}).get("reply_language")
+                         else draft_guard.SMS_MAX)
     touch_ = (state.decision or {}).get("touch") or {}
     nudged = place_fixed_text(draft, touch_.get("fixed_text"), state.customer_name,
                               vehicle=vehicle_label(ctx.lead) if ctx else None, nudge=touch_.get("theme") == "name_nudge")

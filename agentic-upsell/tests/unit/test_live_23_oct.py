@@ -226,3 +226,23 @@ def test_a_confirmation_names_the_day_actually_booked():
     moved = {"status": "pending", "display": "Sunday at 11:00 AM", "just_booked": True}
     assert not guard.invalid_booking_wording({"visit": moved}, wrong)
     assert guard.invalid_booking_wording({"visit": {"status": None}}, wrong)
+
+
+def test_two_prices_get_one_fee_note_and_a_long_first_message_keeps_one_option():
+    # Live, 24 Oct 2026 (Robin's first message, 566 characters -> the safe template).
+    from upsell_agent.agent.nodes.compose import one_fee_note, one_option_when_long
+    text = ("Hi Robin, this is Nicole, Victory Cars Central's AI Sales Manager, following up on your interest in the "
+            "2022 BMW 8 Series. I want to make absolutely sure that exact 2022 8 Series is available - I'll check with a "
+            "manager before we set a time. Meanwhile, we do have a 2023 BMW 4 Series 430i Gran Coupe in Alpine White "
+            "with 40,281 miles, listed at $29,399, not including tax, documentation and DMV fees. We also have a 2021 "
+            "BMW X7 M50i in Alpine White with 99,956 miles, listed at $28,849, not including tax, documentation and DMV "
+            "fees. Tell me, what are you driving now?")
+    draft = {"sms_text": text}
+    one_fee_note(draft)
+    assert draft["sms_text"].lower().count("dmv fees") == 1 and "$28,849" in draft["sms_text"]
+    one_option_when_long(draft, draft_guard.TOUCH1_SMS_MAX)
+    assert len(draft["sms_text"]) <= draft_guard.TOUCH1_SMS_MAX and "4 Series" in draft["sms_text"]
+    assert draft["sms_text"].endswith("what are you driving now?")
+    single = {"sms_text": "It's listed at $29,399, not including tax, documentation and DMV fees."}
+    one_fee_note(single)
+    assert single["sms_text"] == "It's listed at $29,399, not including tax, documentation and DMV fees."
