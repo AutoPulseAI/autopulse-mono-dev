@@ -441,7 +441,10 @@ async def _visit_and_booking(
     asks_for_a_time = visit_wants_visit(extraction)
     # PLAN_4 stream X3 item 3: a bare time or a part of the day after they asked for a day is about that day.
     about_asked_day = bool(asked_day and (booking_tool.bare_time(text) or booking_tool.part_of_day(text)[0]))
-    customer_picks = state.trigger in _BOOKS_FROM_OWN_REPLY and not _NOT_READY.search(text)
+    # Live, 24 Oct 2026 (Christian: "Over the phone ? At I would say 4-6 pm" was booked as a Saturday 6 PM visit): a
+    # message asking for a call is never a pick of a visit time.
+    customer_picks = (state.trigger in _BOOKS_FROM_OWN_REPLY and not _NOT_READY.search(text)
+                      and human_contact.said_method(text) != human_contact.CALL)
     if (pending or asks_for_a_time or about_asked_day or (conversation.awaiting_visit_pick and conversation.visit)) \
             and customer_picks and not hold and not after_hours_blocking:
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)

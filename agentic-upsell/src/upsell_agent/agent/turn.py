@@ -646,6 +646,16 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
             detail={"appointment": {"display": visit.get("display"), "booking_id": visit.get("booking_id"),
                                     "status": visit.get("status"), "by": "ai"},
                     "rescheduled": bool(visit.get("moved_this_turn"))}))
+    elif visit.get("status") in ("pending", "confirmed") and trigger == "inbound_message":
+        # Live, 23-24 Oct 2026 (Manuel, Christian): a booking the turn didn't make itself (one created by a request
+        # that timed out, or made while the stage couldn't move) left the lead outside Appointment Set with no
+        # reminders. A standing booking is an appointment: the stage and its reminders catch up.
+        state_now = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
+        if lifecycle.stage_of(state_now.get("stage")) not in (
+                lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW, lifecycle.Stage.SALES_VISIT,
+                lifecycle.Stage.SOLD_PENDING, lifecycle.Stage.SOLD_DELIVERED, lifecycle.Stage.OPTED_OUT):
+            events.append(lifecycle.Event("appointment_set", reason="An existing booking was found for this lead",
+                                          detail={"appointment": {"status": visit.get("status"), "by": "ai"}}))
     elif visit.get("cancelled_this_turn"):
         events.append(lifecycle.Event("appointment_cancelled", reason="The customer cancelled their appointment",
                                       detail={"next_action": dated}))
