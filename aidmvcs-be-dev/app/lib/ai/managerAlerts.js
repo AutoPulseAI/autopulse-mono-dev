@@ -46,7 +46,8 @@ export function alertText({ title, lead, detail, link }) {
 }
 
 export async function notifyManagers({ dealerId, leadId, title, detail = '' }, {
-  findDealer = (id) => User.findById(id).select('name dealer_account_information').lean(),
+  // Live, 24 Oct 2026: without branding_information the branded email crashed - 51 manager alert emails never went out.
+  findDealer = (id) => User.findById(id).select('name dealer_account_information branding_information').lean(),
   findLead = (id) => Lead.findById(id).select('first_name last_name name phone email').lean(),
   findSender = (id) => EmailAccount.findOne({ dealer_id: String(id) }).select('email_address').lean(),
   email = sendEmail, sms = sendSMS, logger = console, baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '',
