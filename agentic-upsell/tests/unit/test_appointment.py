@@ -666,3 +666,15 @@ async def test_the_profile_shows_the_appointment(mongo):
 class _NoEnqueue:
     async def __call__(self, *args, **kwargs):
         return None
+
+
+@pytestmark_flow
+async def test_asking_for_another_day_moves_the_booking_without_saying_reschedule(mongo):
+    # Live, 23 Oct 2026 (Joshuah, booked for Saturday 10:00): "can i meet u up on Sunday" ... "11 works" moved
+    # nothing, and the reply said "You're all set for Sunday at 11:00 AM" - the calendar kept Saturday.
+    created, booking = await _booked_friday(mongo)
+    await _say(created, "Can I come in on Saturday?")  # the real model reads "can i meet u up on Sunday" the same
+    await _say(created, "11 works")
+    moved = await _booking(mongo, created)
+    assert str(moved["_id"]) == str(booking["_id"])
+    assert moved["bookingTime"] == "11:00" and moved["bookingDate"] != booking["bookingDate"]

@@ -335,7 +335,25 @@ def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> 
         if not active:
             violations.append(f"the {name} claims a booking, but there's no active booking on this lead")
         # Client, 12 Oct 2026 (Betsy): a pending booking IS scheduled - "You're all set for ..." is right for both.
+    # Live, 23 Oct 2026 (Joshuah): "You're all set for Sunday, October 25 at 11:00 AM" while his booking stayed on
+    # Saturday - a confirmation names the day actually booked.
+    booked = str(visit.get("display") or visit.get("booked_day") or "")
+    booked_weekday = next((d for d in _WEEKDAYS if d in booked.lower()), None)
+    for name, key in (("SMS", "sms_text"), ("email", "email_body")):
+        for sentence in re.split(r"(?<=[.!?])\s+", str(draft.get(key) or "")):
+            if not (_ALL_SET.search(sentence) or _CONFIRMED_WORDING.search(sentence)) or re.search(
+                    r"\b(?:fully|already) booked|booked up\b", sentence, re.IGNORECASE):
+                continue
+            named = {d for d in _WEEKDAYS if re.search(rf"\b{d}\b", sentence, re.IGNORECASE)}
+            if named and (not active or booked_weekday not in named):
+                violations.append(f"the {name} confirms a visit on {', '.join(sorted(named))}, but the booking is "
+                                  f"{booked or 'not made'}: never confirm a day or time that isn't booked")
+                break
     return violations
+
+
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_ALL_SET = re.compile(r"\b(?:you'?re|you are|we'?re|we are) (?:all )?set\b|\ball set\b", re.IGNORECASE)
 
 
 async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
