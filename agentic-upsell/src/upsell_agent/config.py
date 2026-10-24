@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     compose_timeout_s: float = Field(default=60.0, alias="COMPOSE_TIMEOUT_S")
     first_reply_deadline_s: float = Field(default=60.0, alias="FIRST_REPLY_DEADLINE_S")
     reply_deadline_s: float = Field(default=60.0, alias="REPLY_DEADLINE_S")
+    # Live, 24 Oct 2026 19:01 UTC: a slow model answer ran a scheduled follow-up past 60 s and the safe template went
+    # out. Nobody is waiting on a follow-up, so it gets longer to finish.
+    scheduled_deadline_s: float = Field(default=180.0, alias="SCHEDULED_DEADLINE_S")
     max_ai_calls_per_turn: int = Field(default=4, alias="MAX_AI_CALLS_PER_TURN")
     # Working memory in the context pack (MASTER_PLAN_2 Phase 1): the recent
     # conversation, word for word, up to about this many tokens. The last 6
