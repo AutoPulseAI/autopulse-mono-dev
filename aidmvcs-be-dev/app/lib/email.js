@@ -15,7 +15,8 @@ const transporter = nodemailer.createTransport({
 });
 
 export const createBrandedEmailTemplate = (content, dealer) => {
-  const brandingInfo = dealer.branding_information;
+  // Live, 24 Oct 2026: a dealer with no branding set crashed the email ("reading 'bannerImage'") - it never went out.
+  const brandingInfo = dealer?.branding_information || {};
 
   return `
     <!DOCTYPE html>
@@ -263,7 +264,7 @@ export const createBrandedEmailTemplate = (content, dealer) => {
                                     <td class="padding-8px-75px-8px-75px" style="font-size:0px;padding:8px 15px 8px 15px;word-break:break-word;text-align:left">
                                       <div style="font-family:'Google Sans Text',Arial,sans-serif;font-size:15px;letter-spacing:none;line-height:1.50;text-align:left;color:${brandingInfo.titleColor || '#262A2A'};">
                                           <p style="margin:0 0">Best regards,</p>
-                                          <p style="margin:0 0"><b>${dealer.dealer_account_information.ai_bot_name || ''}</b></p>
+                                          <p style="margin:0 0"><b>${dealer?.dealer_account_information?.ai_bot_name || ''}</b></p>
                                         </div>
                                     </td>
                                   </tr>
@@ -314,7 +315,7 @@ export const createBrandedEmailTemplate = (content, dealer) => {
                                       <div style="font-family:'Google Sans Text',Arial,sans-serif;font-size:12px;letter-spacing:0px;line-height:1.4;text-align:center;color:#5f6368">
                                         <p style="margin:0 0">For any questions, please contact <a href="mailto:${brandingInfo.ccEmail || ''}" target="_blank" style="text-decoration:none;color:${brandingInfo?.primaryColor || '#0272b4'};">${brandingInfo.ccEmail || ''}</a> or call <a href="tel:${brandingInfo.ccNumber || ''}" target="_blank" style="text-decoration:none;color:${brandingInfo?.primaryColor || '#0272b4'}">${brandingInfo.ccNumber || ''}</a>.</p>
                                         <p style="margin:0 0">&nbsp;</p>
-                                        <p style="margin:0 0">© ${new Date().getFullYear()} ${dealer.dealer_account_information.ai_bot_name || ''}.</p>
+                                        <p style="margin:0 0">© ${new Date().getFullYear()} ${dealer?.dealer_account_information?.ai_bot_name || ''}.</p>
                                       </div>
                                     </td>
                                   </tr>
