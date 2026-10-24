@@ -255,3 +255,12 @@ def test_a_customer_who_already_bought_is_not_pushed_to_book_a_visit():
     assert guard.dead_end_wording({}, draft, stage="contact_made_no_next_action")
     assert not guard.dead_end_wording({}, draft, stage="sold_pending")
     assert not guard.dead_end_wording({}, draft, stage="sold_delivered")
+
+
+def test_a_word_typed_twice_is_fixed_not_rejected():
+    # Live, 24 Oct 2026 19:00 UTC: "this this" sent the safe template.
+    from upsell_agent.agent.nodes.compose import no_doubled_words
+    draft = {"sms_text": "Is this this weekend good? The the RAV4 is here.", "email_body": "We had had a call. Yes."}
+    no_doubled_words(draft)
+    assert draft["sms_text"] == "Is this weekend good? The RAV4 is here."
+    assert draft["email_body"] == "We had had a call. Yes."
