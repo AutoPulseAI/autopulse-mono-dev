@@ -678,3 +678,22 @@ async def test_asking_for_another_day_moves_the_booking_without_saying_reschedul
     moved = await _booking(mongo, created)
     assert str(moved["_id"]) == str(booking["_id"])
     assert moved["bookingTime"] == "11:00" and moved["bookingDate"] != booking["bookingDate"]
+
+
+@pytestmark_flow
+async def test_a_no_show_whose_booking_staff_move_is_rescheduled_not_a_no_show(mongo):
+    # Live, 24 Oct 2026 (Joshuah): the no-show check fired for the old time, then the booking was moved to Sunday -
+    # he's rescheduled (Appointment Set), not a no-show, and the new time's steps are planned.
+    created, booking = await _booked_friday(mongo)
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
+                                                      {"$set": {"stage": "appointment_no_show"}})
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {
+        "bookingDate": booking["bookingDate"] + timedelta(days=1), "bookingTime": "11:00"}})
+    result = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="bm-ns", dealer_id=DEALER, lead_id=created["lead_id"], booking_id=str(booking["_id"]),
+        change="moved"), _deps())
+    assert result["status"] == "appointment_replanned"
+    state = await _state(mongo, created)
+    assert state["stage"] == "appointment_set"
+    assert any(h.get("rule") == "rescheduled" for h in state.get("stage_history") or state.get("history") or [])
+    assert [s for s in await _steps(mongo, created) if s["step"] == "no_show_check"]

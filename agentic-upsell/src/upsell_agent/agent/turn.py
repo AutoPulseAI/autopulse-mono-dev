@@ -644,7 +644,8 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
         events.append(lifecycle.Event("appointment_set", reason=(
             f"Appointment {'moved to' if visit.get('moved_this_turn') else 'booked for'} {visit.get('display')}"),
             detail={"appointment": {"display": visit.get("display"), "booking_id": visit.get("booking_id"),
-                                    "status": visit.get("status"), "by": "ai"}}))
+                                    "status": visit.get("status"), "by": "ai"},
+                    "rescheduled": bool(visit.get("moved_this_turn"))}))
     elif visit.get("cancelled_this_turn"):
         events.append(lifecycle.Event("appointment_cancelled", reason="The customer cancelled their appointment",
                                       detail={"next_action": dated}))

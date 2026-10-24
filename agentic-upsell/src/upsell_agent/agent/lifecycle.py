@@ -407,7 +407,8 @@ def transition(current: Stage | None, event: Event) -> Transition:
         return _stay("sales_visit", "Sales Visit stops the lead workflows until a manager outcome.", event)
 
     if kind == "appointment_set":
-        rule = "appointment_updated" if current == Stage.APPOINTMENT_SET else "appointment_wins"
+        rule = ("appointment_updated" if current == Stage.APPOINTMENT_SET
+                else "rescheduled" if event.detail.get("rescheduled") else "appointment_wins")
         return Transition(Stage.APPOINTMENT_SET, rule, why or "Appointment booked", event)
     if kind == "appointment_cancelled":
         if current not in (Stage.APPOINTMENT_SET, Stage.NO_SHOW):
