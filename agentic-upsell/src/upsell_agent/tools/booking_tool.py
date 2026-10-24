@@ -449,6 +449,14 @@ async def ensure_booking(platform: PlatformClient, *, dealer_id: str, dealer: De
         if existing_local.date() == local.date() and existing.get("bookingTime") == local.strftime("%H:%M"):
             return {"booking_id": str(existing["_id"]), "booking_status": existing.get("booking_status", "pending"),
                     "already_existed": True}
+    # Live, 23 Oct 2026 (Manuel: three CRM timeouts, three identical bookings): a request that timed out may still
+    # have created the booking before the lead was linked to it - look for this lead's booking at this time directly.
+    same = await get_db()[PLATFORM_BOOKINGS_COLLECTION].find_one({
+        "dealer_id": dealer_id, "lead_id": str(lead_id), "bookingTime": local.strftime("%H:%M"),
+        "booking_status": {"$ne": "cancelled"}}, sort=[("_id", -1)])
+    if same and _aware(same["bookingDate"]).astimezone(dealer.tz).date() == local.date():
+        return {"booking_id": str(same["_id"]), "booking_status": same.get("booking_status", "pending"),
+                "already_existed": True}
     result = await platform.create_booking(dealer_id, {
         "lead_id": lead_id, "customerName": customer_name, "email": email, "phone": phone,
         "bookingDate": local.strftime("%Y-%m-%d"), "bookingTime": local.strftime("%H:%M"),

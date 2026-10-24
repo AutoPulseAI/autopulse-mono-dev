@@ -586,8 +586,10 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
     if current == Stage.CLOSED_LOST and state.get("closed_reason") == "one_vehicle":
         # The customer's shopping moved to their newer lead (agent/multi_vehicle.py): their messages belong there, so
         # only staff reopen this one.
-        events = [e if e.kind.startswith("staff_") else dataclasses.replace(e, detail={**e.detail, "no_reopen": True})
-                  for e in events]
+        # Live, 24 Oct 2026 (Christian): the conversation went on here and he booked a visit - a booking or a visit is
+        # a fact about this lead and still reopens it.
+        events = [e if e.kind.startswith("staff_") or e.kind in ("appointment_set", "sales_visit")
+                  else dataclasses.replace(e, detail={**e.detail, "no_reopen": True}) for e in events]
     result = resolve(current, events)
     out: dict[str, Any] = {"from": current.value if current else None, "rule": result.rule,
                            "reason": result.reason, "changed": result.changes}

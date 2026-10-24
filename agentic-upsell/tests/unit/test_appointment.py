@@ -697,3 +697,67 @@ async def test_a_no_show_whose_booking_staff_move_is_rescheduled_not_a_no_show(m
     assert state["stage"] == "appointment_set"
     assert any(h.get("rule") == "rescheduled" for h in state.get("stage_history") or state.get("history") or [])
     assert [s for s in await _steps(mongo, created) if s["step"] == "no_show_check"]
+
+
+@pytestmark_flow
+async def test_a_booking_created_by_a_timed_out_request_is_reused_not_doubled(mongo):
+    # Live, 23 Oct 2026 (Manuel): three CRM timeouts made three identical bookings - the lead was never linked to them.
+    from upsell_agent.tools import booking_tool
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    friday = datetime(2026, 10, 9, 10, 0, tzinfo=NY)
+    first = await StubPlatformClient().create_booking(DEALER, {
+        "lead_id": created["lead_id"], "customerName": "Maria Test", "email": "m@example.com", "phone": "+15550001111",
+        "bookingDate": "2026-10-09", "bookingTime": "10:00", "notes": None, "dealer_timezone": "America/New_York",
+        "appointment_type": "sales"})
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                      {"$unset": {"data.bookingId": ""}})
+    lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    again = await booking_tool.ensure_booking(
+        StubPlatformClient(), dealer_id=DEALER, dealer=await dealer_profile(DEALER), lead=lead,
+        lead_id=created["lead_id"], customer_name="Maria Test", email="m@example.com", phone="+15550001111",
+        when=friday, notes=None)
+    assert again["already_existed"] and again["booking_id"] == str(first["booking_id"])
+    assert await mongo[PLATFORM_BOOKINGS_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == 1
+
+
+@pytestmark_flow
+async def test_a_standing_booking_puts_the_lead_at_appointment_set_with_its_reminders(mongo):
+    # Live, 23-24 Oct 2026 (Manuel, Christian): a booking the turn didn't make left the lead at Contact Made, no reminders.
+    created, booking = await _booked_friday(mongo)
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
+                                                      {"$set": {"stage": "contact_made_no_next_action"}})
+    await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].delete_many({"lead_id": created["lead_id"]})
+    await _say(created, "Thanks, what color is it?")
+    assert (await _state(mongo, created))["stage"] == "appointment_set"
+    assert [s for s in await _steps(mongo, created) if s["step"] == "no_show_check"]
+
+
+@pytestmark_flow
+async def test_a_booking_reopens_a_lead_closed_as_comparing_models(mongo):
+    # Live, 24 Oct 2026 (Christian): "just comparing" closed this lead, the chat went on here and he booked - no stage.
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "stage": "closed_lost", "closed_reason": "one_vehicle"}})
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    change = await lifecycle.apply(dealer_scoped_db(DEALER), created["lead_id"], [
+        lifecycle.Event("customer_replied", reason="r"), lifecycle.Event("appointment_set", reason="booked")])
+    assert change["stage"] == "appointment_set"
+    kept = await lifecycle.apply(dealer_scoped_db(DEALER), created["lead_id"], [
+        lifecycle.Event("customer_replied", reason="r")])
+    assert kept["stage"] == "appointment_set"
+
+
+@pytestmark_flow
+async def test_asking_for_a_call_with_a_time_never_books_a_visit(mongo):
+    # Live, 24 Oct 2026 (Christian): "Over the phone ? At I would say 4-6 pm" was booked as a Saturday 6 PM visit.
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    await _say(created, "My budget is $35,000 and I'd like to buy this month")
+    await _say(created, "Can I come Friday?")
+    await _say(created, "Over the phone ? At I would say 4-6 pm")
+    lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
+    assert not (lead.get("data") or {}).get("bookingId")
+    assert not await mongo[PLATFORM_BOOKINGS_COLLECTION].count_documents({"lead_id": created["lead_id"]})
