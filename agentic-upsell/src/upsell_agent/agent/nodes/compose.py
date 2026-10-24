@@ -354,6 +354,18 @@ def _apply_dev_hint(draft: dict[str, Any], payload: dict[str, Any], *, retry: bo
 _FEE_NOTE = re.compile(r",?\s*\(?(?:not including|plus|excluding) tax, documentation and DMV fees\)?", re.IGNORECASE)
 
 
+# "had had" and "that that" can be right; every other word said twice in a row is a slip.
+_DOUBLED = re.compile(r"\b(?!(?:had|that)\b)([A-Za-z']+)(\s+)\1\b", re.IGNORECASE)
+
+
+def no_doubled_words(draft: dict[str, Any]) -> None:
+    """Live, 24 Oct 2026 19:00 UTC: a follow-up with "this this" was rejected by the grammar check and the customer got
+    the safe template. A word typed twice is fixed here, not sent back."""
+    for key in ("sms_text", "email_subject", "email_body"):
+        if draft.get(key):
+            draft[key] = _DOUBLED.sub(r"\1", str(draft[key]))
+
+
 def one_fee_note(draft: dict[str, Any]) -> None:
     """Live, 24 Oct 2026 (Robin's first message, 566 characters -> the safe template): two cars, each with "not including
     tax, documentation and DMV fees". With more than one price, the note is said once, after the last price."""
@@ -412,6 +424,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
     place_after_hours_wording(draft, state.decision or {})
     one_fee_note(draft)
+    no_doubled_words(draft)
     one_option_when_long(draft, draft_guard.TOUCH1_SMS_MAX if (state.decision or {}).get("touch1")
                          or (state.decision or {}).get("touch") or (state.decision or {}).get("reply_language")
                          else draft_guard.SMS_MAX)

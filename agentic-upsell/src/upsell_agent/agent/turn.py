@@ -214,7 +214,8 @@ async def run_turn(
         first_reply_via_template=(trigger == "lead_created" and settings.first_reply_mode == "template"),
         customer_name=await _customer_name(db, customer_id, lead_id, customer, lead),
     )
-    deadline = settings.first_reply_deadline_s if trigger == "lead_created" else settings.reply_deadline_s
+    deadline = (settings.first_reply_deadline_s if trigger == "lead_created"
+                else settings.reply_deadline_s if trigger == "inbound_message" else settings.scheduled_deadline_s)
 
     async with turn_trace(tracer.turn_id, dealer_id=dealer_id, lead_id=lead_id, trigger=trigger) as trace_id:
         tracer.log["langfuse_trace_id"] = trace_id
