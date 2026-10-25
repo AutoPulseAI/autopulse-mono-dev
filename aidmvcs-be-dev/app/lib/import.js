@@ -11,6 +11,27 @@ async function ensureDb() {
 }
 
 export class VehicleImportService {
+  // Rows per dealer in this run's feeds (markGone uses it).
+  seen = new Map();
+
+  // 25 Oct 2026 (Betsy: a vehicle link opened search results - the car was sold, 740 sold cars still listed): a car
+  // missing from its dealer's feed in this run is gone - marked, never deleted, so its links and history stay. A
+  // dealer whose feed came in much smaller than its stock (a partial or broken file) is left alone.
+  async markGone(runStart) {
+    const out = {};
+    for (const [dealerId, rows] of this.seen) {
+      // Its feeds over the last week (this run included): a file far smaller than that is partial - nothing is marked.
+      const recent = await Vehicle.countDocuments({
+        dealerId, removedAt: null, updatedAt: { $gte: new Date(runStart.getTime() - 7 * 24 * 3600 * 1000) } });
+      if (rows < Math.max(5, recent * 0.2)) { out[dealerId] = `skipped: ${rows} rows vs ${recent} recent`; continue; }
+      const res = await Vehicle.updateMany(
+        { dealerId, removedAt: null, updatedAt: { $lt: runStart } },
+        { $set: { removedAt: new Date() } });
+      out[dealerId] = res.modifiedCount;
+    }
+    return out;
+  }
+
   // Helper function to clean website URL
   cleanWebsiteUrl(url) {
     if (!url) return '';
@@ -73,6 +94,8 @@ export class VehicleImportService {
         record.shortUrl = existingRecord.shortUrl;
       }
       
+      // In this feed: in stock (a car the last feed missed and this one has is back - removedAt cleared).
+      record.removedAt = null;
       return {
         updateOne: {
           filter: { vin: record.vin, dealerId: record.dealerId },
@@ -82,6 +105,10 @@ export class VehicleImportService {
       };
     });
 
+    for (const op of bulkOps) {
+      const id = String(op.updateOne.filter.dealerId);
+      this.seen.set(id, (this.seen.get(id) || 0) + 1);
+    }
     if (bulkOps.length) {
       const result = await Vehicle.bulkWrite(bulkOps);
       //console.log(`Imported ${result.upsertedCount + result.modifiedCount} rows from ${path.basename(filePath)}`);
@@ -481,6 +508,7 @@ export const processDealerCSVFiles = async () => {
   const svc = new VehicleImportService();
 
   let total = 0;
+  const runStart = new Date();
   for (const file of files) {
     try {
       total += await svc.importFromCSV(path.join(uploadDir, file));
@@ -498,5 +526,6 @@ export const processDealerCSVFiles = async () => {
       );
     }
   }
-  return { filesProcessed: files.length, rowsImported: total };
+  const gone = files.length ? await svc.markGone(runStart) : {};
+  return { filesProcessed: files.length, rowsImported: total, markedGone: gone };
 };

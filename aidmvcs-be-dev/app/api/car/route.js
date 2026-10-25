@@ -70,7 +70,7 @@ export async function GET(request) {
     const facetFields = facets ? facets.split(',') : [];
 
     // Build the filter object
-    const filter = {};
+    const filter = { removedAt: null }; // a car its dealer's latest feed no longer has is gone (lib/import.js markGone)
     
     // Basic filters
     if (dealerId) filter.dealerId = dealerId;
