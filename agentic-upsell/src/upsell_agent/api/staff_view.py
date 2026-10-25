@@ -179,6 +179,7 @@ ALERT_KINDS: dict[str, str] = {
     "do_not_call": "The customer asked not to be called",
     "text_consent_missing": "No text consent",
     "sold_pending_info": "Sold Pending information",
+    "presend_stopped": "A message was stopped before sending (it contradicted the calendar)",
 }
 # Which kinds count (set in AI Studio: Rules & Prompts -> "Dealership Action Required: what counts").
 ACTION_KINDS = frozenset({

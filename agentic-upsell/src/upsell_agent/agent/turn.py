@@ -276,6 +276,8 @@ async def run_turn(
                 media_urls=photo.urls,
                 # PLAN_4 stream X1 item 8: which template, for the audit row (None: the AI wrote it).
                 template_id=f"template:{trigger}" if result.get("used_template") else None,
+                # The customer messages this reply answers (the last check before sending, channels/presend.py).
+                answers_message_ids=list(state.new_message_ids),
             )
             async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
                                             "text": request.text, "subject": request.subject,

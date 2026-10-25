@@ -6,6 +6,8 @@ The order matters:
    idempotency key (`<turn>:<channel>`) BEFORE talking to any provider. A
    retried job finds the row and does not send again.
 2. **Find the recipient** from the lead, then the customer's primary contact.
+2b. **The last look** (channels/presend.py): still right for this customer now? A reply the customer has
+   written past, a sales message to someone with an appointment, a confirmation the calendar contradicts.
 3. **The send check** (compliance/engine.py `can_contact`, MASTER_PLAN_3
    C1): ALLOW sends; HOLD leaves the row `held` (resumable) with the time it
    may go; REVIEW and BLOCK suppress it with the reason. Every decision is
@@ -78,6 +80,8 @@ class SendRequest:
     media_urls: list[str] = field(default_factory=list)
     # PLAN_4 stream X1 item 8: the template the text came from, for the audit row (None: the AI wrote it).
     template_id: str | None = None
+    # The customer messages this reply answers: a message newer than all of them makes it stale (channels/presend.py).
+    answers_message_ids: list[str] = field(default_factory=list)
 
     @property
     def idempotency_key(self) -> str:
@@ -168,6 +172,21 @@ class Sender:
             why.append(f"No {req.channel} contact on the lead or customer record.")
             return await finish("suppressed", reason=f"no {req.channel} contact on file")
         why.append(f"Recipient {to}")
+
+        # 2b. The last look (channels/presend.py): is this message still right for this customer now?
+        if not req.shadow:
+            from upsell_agent.channels import presend
+            verdict = await presend.check(db, lead_id=req.lead_id, customer_id=req.customer_id, turn_id=req.turn_id,
+                                          text=req.text, is_reply=req.is_reply,
+                                          answers=req.answers_message_ids, lead=lead)
+            why.append(f"Last check before sending: {verdict.check} - {verdict.reason}")
+            if not verdict.ok:
+                if verdict.staff_notice:
+                    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+                    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": req.lead_id}, {"$set": {
+                        "staff_notice": {"at": clock.now(), "kind": "presend_stopped", "text": verdict.staff_notice}}})
+                return await finish("suppressed", to=to, reason=f"last check ({verdict.check}): {verdict.reason}",
+                                    presend=verdict.check)
 
         # 3. The send check.
         check = await can_contact(

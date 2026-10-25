@@ -426,6 +426,13 @@ def compliance() -> list[dict[str, Any]]:
             "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60),
             # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
             "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
+        # The user / Betsy, 25 Oct 2026: "check things at every message" - the last look before any message leaves.
+        {"key": "presend_check", "name": "Last check before sending", "content": {
+            "what_it_does": "Right before ANY message goes out (a reply, a follow-up, a reminder), the AI re-reads the "
+                            "customer's situation fresh and stops a message that is no longer right. Nothing is "
+                            "dropped: a stopped message is replaced, re-planned, or passed to staff.",
+            **_presend().CHECKS,
+            **{f"{k}_explained": v for k, v in _presend().EXPLAINED.items()}}},
         {"key": "writing", "name": "Message limits & banned phrases", "content": {
             "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
             "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
@@ -433,6 +440,11 @@ def compliance() -> list[dict[str, Any]]:
                                "team member", "someone from", "someone at", "someone on"],
             "banned_pattern": guard._TEAM.pattern}},
     ]
+
+
+def _presend():
+    from upsell_agent.channels import presend
+    return presend
 
 
 def _media():
@@ -460,7 +472,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 16
+DEFAULTS_REVISION = 17
 
 
 def export() -> dict[str, Any]:

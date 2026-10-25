@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-23T19:23:59.172310+00:00",
- "revision": 16,
+ "exported_at": "2026-10-25T19:39:45.741205+00:00",
+ "revision": 17,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3775,6 +3775,23 @@
      "hit you up later",
      "not a good time"
     ]
+   },
+   "locked": false
+  },
+  {
+   "type": "compliance",
+   "key": "presend_check",
+   "name": "Last check before sending",
+   "content": {
+    "what_it_does": "Right before ANY message goes out (a reply, a follow-up, a reminder), the AI re-reads the customer's situation fresh and stops a message that is no longer right. Nothing is dropped: a stopped message is replaced, re-planned, or passed to staff.",
+    "superseded": true,
+    "appointment": true,
+    "calendar": true,
+    "burst": true,
+    "superseded_explained": "A reply isn't sent when the customer has written again since it was written - the reply to their newest message answers everything at once.",
+    "appointment_explained": "No sales follow-up goes to a customer who has an upcoming appointment on any of their leads - the appointment's own messages run instead.",
+    "calendar_explained": "A message that confirms a visit on a day that isn't the booked day is stopped, and staff are told to check the appointment with the customer.",
+    "burst_explained": "A scheduled message waits 15 minutes when the customer already got 3 messages in the last 10 minutes."
    },
    "locked": false
   },

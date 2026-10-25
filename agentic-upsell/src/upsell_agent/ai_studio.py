@@ -315,6 +315,7 @@ _ATTRS = {
                 "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES", "INQUIRY_ONLY", "STOP_EVERYTHING_PHRASES"),
     "vehicle_media": ("PHOTO_ON_FIRST_MESSAGE", "PHOTOS_ON_REQUEST"),
     "short_links": ("ENABLED",),
+    "presend": ("CHECKS",),
     "link_resolver": ("SHAREABLE",),
     "decide": ("BUSY_RULE", "BUSY_PHRASES"),
     "text_consent": ("INVITE", "CONFIRMATION"),
@@ -346,8 +347,9 @@ def _by_name() -> dict[str, Any]:
 def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import link_resolver, short_links, vehicle_media
     from upsell_agent.agent.nodes import decide
+    from upsell_agent.channels import presend
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
-            "decide": decide}
+            "decide": decide, "presend": presend}
 
 
 def _policy_module():
@@ -890,6 +892,9 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             sl.ENABLED = c["short_links"]
         lr.SHAREABLE = {**lr.SHAREABLE, **{k.removeprefix("share_"): v for k, v in c.items()
                                             if k.startswith("share_") and isinstance(v, bool)}}
+    elif key == "presend_check":
+        ps = mods["presend"]
+        ps.CHECKS = {**ps.CHECKS, **{k: v for k, v in c.items() if k in ps.CHECKS and isinstance(v, bool)}}
     elif key == "writing":
         dg, gd = mods["draft_guard"], mods["guard"]
         for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),
