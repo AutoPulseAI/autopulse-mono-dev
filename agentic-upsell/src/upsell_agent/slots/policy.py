@@ -178,6 +178,11 @@ def _ask_item(profile: Profile, requirement: Requirement) -> dict[str, Any]:
             "explanation": requirement.explanation}
 
 
+# Live, 25 Oct 2026 (a follow-up rejected for not answering "Purchase Timeframe: unsure"): a lead form's field - a
+# label, a colon and a value, no question mark - is no question to answer.
+_FORM_FIELD = re.compile(r"^\s*[A-Za-z][A-Za-z /&#()-]{1,40}:\s*[^?]*$")
+
+
 def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     # A value already asked to be confirmed isn't confirmed again, and its detail isn't asked for again either.
     confirmed_once = {s.path for s in profile.pending() if flags.confirms.get(s.fact_id, 0) >= MAX_CONFIRMS_PER_VALUE}
@@ -191,7 +196,8 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     # a portal's own lines saved as a question before they were filtered out are no question to answer.
     from upsell_agent.agent.portal_text import clean_comments
     other_questions = [q for q in flags.questions if q.get("label") != "clarify"
-                       and clean_comments(str(q.get("text") or "")).strip()]
+                       and clean_comments(str(q.get("text") or "")).strip()
+                       and not _FORM_FIELD.match(str(q.get("text") or ""))]
 
     blocked = {r.id: ask_block(profile, r, flags) for r in missing}
     # "Asked out": every missing detail has had its two asks. Checked without the

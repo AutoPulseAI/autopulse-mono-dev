@@ -221,7 +221,7 @@ def unbacked_watch_promise(decision: dict[str, Any], draft: dict[str, Any]) -> l
 # Betsy, 26 Oct 2026 (Motie: a follow-up a day after his last message opened "Thanks, Motie - I've got you down for
 # ..."): a message the customer didn't just prompt never thanks them or answers them as if they had.
 _REPLYING_OPENER = re.compile(r"^\s*(?:(?:hi|hello|hey)\s+[^,.!\n]{0,30}[,.!]\s*)?(?:thanks|thank\s+you|got\s+it|perfect|"
-                              r"great|noted|sounds\s+good|appreciate|understood|awesome)\b", re.IGNORECASE)
+                              r"great(?!\s+news)|noted|sounds\s+good|appreciate|understood|awesome)\b", re.IGNORECASE)
 CUSTOMER_TRIGGERS = ("inbound_message", "lead_created", "resume_at_opening")
 
 

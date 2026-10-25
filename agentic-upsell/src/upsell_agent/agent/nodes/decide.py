@@ -175,9 +175,13 @@ def vehicle_check_for(stock: dict[str, Any], extraction: dict[str, Any] | None, 
     S65" got "I'll check with a manager" and nobody was told): a vehicle the customer names counts, not only "is it
     available?"."""
     named = bool((extraction or {}).get("asked_vehicle"))
-    if ((stock or {}).get("asked") or named) and stock and not stock.get("exact") \
+    # Activity log, 25 Oct 2026 (first messages said "I'll check with a manager" about a car not in stock and nobody
+    # was told): the first message to a new lead about its own vehicle counts too.
+    first = trigger == "lead_created"
+    if ((stock or {}).get("asked") or named or first) and stock and not stock.get("exact") \
             and stock.get("searched_for") not in (None, "", "any vehicle") \
-            and trigger in ("inbound_message", "resume_at_opening") and action not in ("stop", "handoff", "offer_human"):
+            and trigger in ("inbound_message", "resume_at_opening", "lead_created") \
+            and action not in ("stop", "handoff", "offer_human"):
         return {"vehicle": stock.get("searched_for")}
     return None
 
