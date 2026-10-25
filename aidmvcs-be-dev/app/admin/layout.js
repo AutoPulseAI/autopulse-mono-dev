@@ -2,6 +2,7 @@
 import { UserProvider } from "./context/UserContext";
 import { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
+import AiPausedBanner from "../components/AiPausedBanner";
 import Topbar from "./components/Topbar";
 import { AdminPermissionsProvider } from '../hooks/AdminPermissionsContext';
 import "../styles.css"; // Dashboard styles
@@ -32,6 +33,7 @@ export default function AdminLayout({ children }) {
                 <Topbar toggleSidebar={toggleSidebar} />
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(false)} />
                 <div className={`content_main ${isOpen ? "shifted" : ""}`}>
+                  <AiPausedBanner />
                   {children}
                 </div>
             </AdminPermissionsProvider>
