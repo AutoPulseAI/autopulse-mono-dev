@@ -26,6 +26,7 @@ from upsell_agent.scheduler.followups import worker_id
 from upsell_agent.worker.jobs import (
     FUNCTIONS,
     check_ai_provider,
+    check_inventory,
     monitor_conversations,
     close_expired_leads,
     fire_due_followups,
@@ -119,6 +120,8 @@ def settings() -> dict[str, Any]:
                       CronJob(reconcile_events, cron="*/5 * * * *", timeout=600),
                       # Betsy, 23 Oct 2026: while the AI is off (no credit), check every 2 minutes; back on by itself.
                       CronJob(check_ai_provider, cron="*/2 * * * *", timeout=600),
+                      # Betsy, 26 Oct 2026: an alert when a dealer's inventory stops updating.
+                      CronJob(check_inventory, cron="13 * * * *", timeout=600),
                       # 23 Oct 2026: the developers are emailed what needs a look, every 15 minutes.
                       CronJob(monitor_conversations, cron="*/15 * * * *", timeout=600)],
         # SAQ's sweep re-delivers a job it moved to "active" but never started

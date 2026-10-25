@@ -218,6 +218,22 @@ def unbacked_watch_promise(decision: dict[str, Any], draft: dict[str, Any]) -> l
             if (m := _WATCH_PROMISE.search(str(draft.get(key) or "")))]
 
 
+# Betsy, 26 Oct 2026 (Motie: a follow-up a day after his last message opened "Thanks, Motie - I've got you down for
+# ..."): a message the customer didn't just prompt never thanks them or answers them as if they had.
+_REPLYING_OPENER = re.compile(r"^\s*(?:(?:hi|hello|hey)\s+[^,.!\n]{0,30}[,.!]\s*)?(?:thanks|thank\s+you|got\s+it|perfect|"
+                              r"great|noted|sounds\s+good|appreciate|understood|awesome)\b", re.IGNORECASE)
+CUSTOMER_TRIGGERS = ("inbound_message", "lead_created", "resume_at_opening")
+
+
+def follow_up_acts_like_a_reply(trigger: str | None, draft: dict[str, Any]) -> list[str]:
+    if not trigger or trigger in CUSTOMER_TRIGGERS:
+        return []
+    return [f"the {name} is a follow-up the customer didn't prompt, but opens as if answering them ({m.group(0).strip()!r})"
+            " - open with the reason for writing instead"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _REPLYING_OPENER.search(str(draft.get(key) or "")))]
+
+
 def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any], *, stage: str | None = None) -> list[str]:
     if (decision.get("cannot_supply") or {}).get("text"):
         return []  # the client's own script, placed by code
@@ -521,6 +537,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         result["violations"] += no_alternatives
     # Live, 24 Oct 2026 (a Sold Pending customer: "Wait ima get back to you"): a customer who has already bought isn't
     # pushed to book a visit - "when you're ready" is the right answer there.
+    replying = follow_up_acts_like_a_reply(state.trigger, state.draft or {})
+    result["checks"]["follow_up_not_a_reply"] = not replying
+    if replying:
+        result["passed"] = False
+        result["violations"] += replying
     watch = unbacked_watch_promise(state.decision or {}, state.draft or {})
     result["checks"]["no_unbacked_watch_promise"] = not watch
     if watch:
