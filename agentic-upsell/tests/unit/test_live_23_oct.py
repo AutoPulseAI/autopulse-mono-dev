@@ -314,3 +314,11 @@ def test_great_news_about_the_car_is_not_acting_like_a_reply():
     # Activity log, 25 Oct 2026: "Hi Henry, Great news - the 2023 BMW 540i xDrive you asked about is here" is fine.
     assert not guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Hi Henry, Great news - the 540i is here."})
     assert guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Great, I've noted that."})
+
+
+def test_a_reply_not_yet_in_the_customers_language_is_translated_not_thrown_away():
+    # Live, 25 Oct 2026 (Carlos, Spanish lead form: AI Studio's fixed English first email failed the language check
+    # twice -> the safe template). The check notes it; the last step before sending translates it.
+    assert guard.not_in_reply_language({"reply_language": "Spanish"}, {"sms_text": "Hello, it is here.", "email_body": ""})
+    import inspect
+    assert 'result["checks"]["reply_language"] = True' in inspect.getsource(guard.guard)
