@@ -201,6 +201,23 @@ _DEAD_END = re.compile(r"\b(?:when(?:ever)?\s+you(?:'|\u2019)?re\s+ready|let\s+(
                        re.IGNORECASE)
 
 
+# Betsy, 25 Oct 2026 (Motie: "I'll let you know as soon as we have an S65", "I'll keep an eye out and ping you first" -
+# nobody watches for it): a promise to tell the customer when a vehicle arrives is made only when staff were told
+# (the vehicle check that puts the lead in Dealership Action Required).
+_WATCH_PROMISE = re.compile(r"\b(?:(?:let|tell|text|notify|ping|alert)\s+you\s+(?:know\s+)?(?:first\s+)?(?:as\s+soon\s+as|"
+                            r"when(?:ever)?|once|if)\s+(?:we|one|it|a|an|something|the)|keep\s+an\s+eye\s+out|"
+                            r"(?:i'?ll|we'?ll|i\s+will)\s+(?:watch|look)\s+(?:for|out)|ping\s+you\s+first)", re.IGNORECASE)
+
+
+def unbacked_watch_promise(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if decision.get("vehicle_check"):
+        return []
+    return [f"the {name} promises to tell the customer when a vehicle comes in ({m.group(0)!r}), but nobody at the "
+            "dealership was asked to - offer what's in stock and the visit instead"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _WATCH_PROMISE.search(str(draft.get(key) or "")))]
+
+
 def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any], *, stage: str | None = None) -> list[str]:
     if (decision.get("cannot_supply") or {}).get("text"):
         return []  # the client's own script, placed by code
@@ -504,6 +521,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         result["violations"] += no_alternatives
     # Live, 24 Oct 2026 (a Sold Pending customer: "Wait ima get back to you"): a customer who has already bought isn't
     # pushed to book a visit - "when you're ready" is the right answer there.
+    watch = unbacked_watch_promise(state.decision or {}, state.draft or {})
+    result["checks"]["no_unbacked_watch_promise"] = not watch
+    if watch:
+        result["passed"] = False
+        result["violations"] += watch
     dead_end = dead_end_wording(state.decision or {}, state.draft or {},
                                 stage=(getattr(ctx, "lead_state", None) or {}).get("stage"))
     result["checks"]["no_dead_end_wording"] = not dead_end

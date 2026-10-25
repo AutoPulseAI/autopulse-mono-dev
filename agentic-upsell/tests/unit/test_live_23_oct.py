@@ -273,3 +273,12 @@ def test_scheduled_follow_ups_get_longer_than_replies_to_finish():
     settings = make_settings("DEV")
     assert settings.scheduled_deadline_s > settings.reply_deadline_s
     assert settings.scheduled_deadline_s < STUCK_CLAIM_AFTER.total_seconds()
+
+
+def test_a_promise_to_say_when_a_car_comes_in_needs_staff_told():
+    # Betsy, 25 Oct 2026 (Motie): "I'll let you know as soon as we have an S65" with nobody asked to watch for one.
+    for text in ("Got it. I'll let you know as soon as we have an S65.", "I'll keep an eye out and ping you first.",
+                 "I'll text you when one comes in."):
+        assert guard.unbacked_watch_promise({}, {"sms_text": text}), text
+        assert not guard.unbacked_watch_promise({"vehicle_check": {"vehicle": "Mercedes-Benz S65"}}, {"sms_text": text})
+    assert not guard.unbacked_watch_promise({}, {"sms_text": "Let me know when you're free to stop by - Saturday at 11?"})
