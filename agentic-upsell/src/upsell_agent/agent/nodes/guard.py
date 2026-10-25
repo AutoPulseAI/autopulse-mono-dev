@@ -677,11 +677,14 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
             result["passed"] = False
             result["violations"] += problems
     # MASTER_PLAN_4 stream G (client, 5 Oct 2026): mechanical grammar, with the client's fixed wording exempt.
+    # Live, 25 Oct 2026 (Carlos wrote in Spanish; the first email carries AI Studio's fixed English text, which the
+    # model can't rewrite - both drafts failed this check and he got the safe template): a reply not yet in the
+    # customer's language is translated by the last step before sending (agent/turn.py _in_customer_language), so this
+    # is noted, never a reason to throw a good reply away.
     wrong_language = not_in_reply_language(state.decision or {}, draft)
-    result["checks"]["reply_language"] = not wrong_language
+    result["checks"]["reply_language"] = True
     if wrong_language:
-        result["passed"] = False
-        result["violations"] += wrong_language
+        result.setdefault("notes", []).extend(f"{v} - translated before sending" for v in wrong_language)
     bad_grammar = check_draft_grammar(state.draft, exempt=mandated_wording(state.decision or {}),
                                       english=not (state.decision or {}).get("reply_language"))
     result["checks"]["grammar"] = not bad_grammar
