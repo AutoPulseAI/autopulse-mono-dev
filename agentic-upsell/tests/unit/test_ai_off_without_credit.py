@@ -128,9 +128,7 @@ async def test_a_routine_check_switches_the_ai_off_and_emails_before_any_custome
 
     monkeypatch.setattr(provider_health, "probe", no_credit)
     provider_health._forget()
-    set_clock(datetime(2026, 10, 26, 3, 3, tzinfo=UTC))  # not a check minute
-    assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "up"
-    set_clock(datetime(2026, 10, 26, 3, 10, tzinfo=UTC))
+    set_clock(datetime(2026, 10, 26, 3, 3, 27, tzinfo=UTC))  # any time: the first routine check runs
     assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "down"
     provider_health._forget()
     assert await provider_health.is_down()
@@ -142,5 +140,7 @@ async def test_a_routine_check_switches_the_ai_off_and_emails_before_any_custome
 
     await provider_health.mark_up()
     monkeypatch.setattr(provider_health, "probe", answers)
-    set_clock(datetime(2026, 10, 26, 3, 20, tzinfo=UTC))
+    set_clock(datetime(2026, 10, 26, 3, 7, tzinfo=UTC))  # 4 minutes later: not due yet - no call
+    assert (await jobs.check_ai_provider({"deps": D()})) == {"status": "up"}
+    set_clock(datetime(2026, 10, 26, 3, 14, tzinfo=UTC))  # 11 minutes after the last: checked, and it answers
     assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "up"

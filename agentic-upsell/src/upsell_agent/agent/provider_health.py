@@ -48,6 +48,25 @@ class ProviderDown(Exception):
 _cache: dict[str, Any] = {"at": None, "down": False}
 
 
+ROUTINE_CHECK_EVERY = timedelta(minutes=10)
+
+
+async def routine_check_due() -> bool:
+    """True (and the check time recorded) when the last routine provider check is ROUTINE_CHECK_EVERY old - claimed
+    atomically, so two workers never both check."""
+    now = clock.now()
+    claimed = await get_db()[STATUS_COLLECTION].find_one_and_update(
+        {"_id": "llm_routine_check", "$or": [{"at": {"$lte": now - ROUTINE_CHECK_EVERY}}, {"at": {"$exists": False}}]},
+        {"$set": {"at": now}})
+    if claimed:
+        return True
+    try:
+        await get_db()[STATUS_COLLECTION].insert_one({"_id": "llm_routine_check", "at": now})
+        return True
+    except Exception:  # noqa: BLE001 - it exists and isn't due yet
+        return False
+
+
 def is_provider_failure(text: Any) -> bool:
     return bool(text) and bool(PROVIDER_ACCOUNT_ERROR.search(str(text)))
 
