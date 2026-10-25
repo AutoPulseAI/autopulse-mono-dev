@@ -272,13 +272,19 @@ async def check_ai_provider(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return {"status": "back_on", "replayed": replayed}
 
 
+async def check_inventory(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """Every hour: AutoPulse is emailed when a dealer's inventory stops updating (scheduler/inventory_watch.py)."""
+    from upsell_agent.scheduler import inventory_watch
+    return await inventory_watch.run(platform=ctx["deps"].platform)
+
+
 async def monitor_conversations(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """Every 15 minutes: the developers are emailed what needs a look (scheduler/monitor.py)."""
     from upsell_agent.scheduler import monitor
     return await monitor.run(platform=ctx["deps"].platform)
 
 
-FUNCTIONS = [ping, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
+FUNCTIONS = [ping, check_inventory, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)

@@ -282,3 +282,12 @@ def test_a_promise_to_say_when_a_car_comes_in_needs_staff_told():
         assert guard.unbacked_watch_promise({}, {"sms_text": text}), text
         assert not guard.unbacked_watch_promise({"vehicle_check": {"vehicle": "Mercedes-Benz S65"}}, {"sms_text": text})
     assert not guard.unbacked_watch_promise({}, {"sms_text": "Let me know when you're free to stop by - Saturday at 11?"})
+
+
+def test_a_follow_up_never_thanks_the_customer_as_if_they_had_just_written():
+    # Betsy, 26 Oct 2026 (Motie): "Thanks, Motie - I've got you down for an S63 or S65 sedan" a day after his last text.
+    for text in ("Thanks, Motie - I've got you down for an S63 or S65 sedan.", "Hi Motie, thanks for your patience.",
+                 "Got it - still looking?", "Perfect, I have a couple of options."):
+        assert guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": text}), text
+        assert not guard.follow_up_acts_like_a_reply("inbound_message", {"sms_text": text})
+    assert not guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Hi Motie, a 2021 S63 just came in."})
