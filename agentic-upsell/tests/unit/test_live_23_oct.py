@@ -299,3 +299,18 @@ def test_the_ai_never_promises_to_text_a_number_that_isnt_on_the_lead():
     assert guard.promises_another_number("+19145551234", draft)
     assert not guard.promises_another_number("+18456458068", draft)
     assert not guard.promises_another_number("+19145551234", {"sms_text": "I've passed your new number to the team."})
+
+
+def test_a_lead_form_field_is_not_a_question_to_answer():
+    # Live, 25 Oct 2026: a follow-up was rejected for not answering "Purchase Timeframe: unsure".
+    from upsell_agent.slots.policy import _FORM_FIELD
+    for field in ("Purchase Timeframe: unsure", "Preferred Contact: Text", "Trade-In: No"):
+        assert _FORM_FIELD.match(field), field
+    for question in ("Is it still available?", "Price: what's the best you can do?", "Do you deliver"):
+        assert not _FORM_FIELD.match(question), question
+
+
+def test_great_news_about_the_car_is_not_acting_like_a_reply():
+    # Activity log, 25 Oct 2026: "Hi Henry, Great news - the 2023 BMW 540i xDrive you asked about is here" is fine.
+    assert not guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Hi Henry, Great news - the 540i is here."})
+    assert guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Great, I've noted that."})
