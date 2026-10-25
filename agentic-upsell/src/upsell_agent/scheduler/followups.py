@@ -1850,6 +1850,16 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         check = None
         replan = any(c[0] == "no_reply_since" for c in failed) and len(failed) == 1
         if not failed:
+            # The last look (channels/presend.py): several messages in the last minutes - this touch waits.
+            from upsell_agent.channels import presend
+            burst = await presend.burst_wait(db, lead_id=doc["lead_id"], customer_id=doc["customer_id"])
+            if not burst.ok:
+                await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
+                    {"_id": doc["_id"], "status": "claimed", "claimed_by": doc["claimed_by"]},
+                    {"$set": {"status": "pending", "due_at": burst.hold_until, "reason": f"last check: {burst.reason}"}})
+                await _log(db, tracer, "cadence_touch_deferred", {"followup_id": touch_id, "reason": burst.reason,
+                                                                  "due_at": burst.hold_until.isoformat()})
+                return "deferred"
             # The preferred channel, or the other when only that one is allowed (decision 155).
             channel_now, check = await _permitted_channel(
                 dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
