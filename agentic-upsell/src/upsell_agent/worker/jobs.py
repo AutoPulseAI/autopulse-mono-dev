@@ -17,6 +17,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from upsell_agent import clock
 from upsell_agent.agent import lifecycle, maintenance, recalls, summary
 from upsell_agent.agent import provider_health
 from upsell_agent.config import get_settings
@@ -256,7 +257,16 @@ async def check_ai_provider(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """Every couple of minutes, only while the AI is off: one tiny model call. When the provider answers, the AI is
     back on, AutoPulse is emailed, and every held event is replayed in the order it arrived."""
     if not await provider_health.is_down():
-        return {"status": "up"}
+        # Live, 25-26 Oct 2026: the credit ran out on a quiet night and nobody knew until a customer wrote - every 10
+        # minutes a tiny call checks the provider anyway, so an account problem switches the AI off and emails
+        # AutoPulse at once (a fraction of a cent per check).
+        if clock.now().minute % 10 >= 2:
+            return {"status": "up"}
+        ok, why = await provider_health.probe(get_settings())
+        if ok or not provider_health.is_provider_failure(why):
+            return {"status": "up", "probe": "ok" if ok else why[:120]}
+        await provider_health.mark_down(f"routine check: {why}", platform=ctx["deps"].platform)
+        return {"status": "down", "reason": why[:200]}
     ok, why = await provider_health.probe(get_settings())
     if not ok:
         return {"status": "still_down", "reason": why}
