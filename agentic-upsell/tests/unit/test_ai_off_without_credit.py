@@ -111,3 +111,36 @@ async def test_a_slow_or_one_off_failure_is_not_an_outage():
     assert not provider_health.is_provider_failure("guard rejected the draft twice")
     assert provider_health.is_provider_failure(NO_CREDIT)
     assert provider_health.is_provider_failure("extract failed: AuthenticationError: Incorrect API key provided")
+
+
+async def test_a_routine_check_switches_the_ai_off_and_emails_before_any_customer_writes(mongo, monkeypatch):
+    # Live, 25-26 Oct 2026: the credit ran out on a quiet night; nobody knew until a customer wrote.
+    from datetime import UTC, datetime
+
+    from upsell_agent.integrations.platform_client import StubPlatformClient
+    from upsell_agent.worker import jobs
+
+    class D:
+        platform = StubPlatformClient()
+
+    async def no_credit(settings):
+        return False, NO_CREDIT
+
+    monkeypatch.setattr(provider_health, "probe", no_credit)
+    provider_health._forget()
+    set_clock(datetime(2026, 10, 26, 3, 3, tzinfo=UTC))  # not a check minute
+    assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "up"
+    set_clock(datetime(2026, 10, 26, 3, 10, tzinfo=UTC))
+    assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "down"
+    provider_health._forget()
+    assert await provider_health.is_down()
+    subjects = [a["subject"] for a in await mongo["dev_ops_alerts"].find({}).to_list(None)]
+    assert any("OFF" in s for s in subjects)
+
+    async def answers(settings):
+        return True, "the model answered"
+
+    await provider_health.mark_up()
+    monkeypatch.setattr(provider_health, "probe", answers)
+    set_clock(datetime(2026, 10, 26, 3, 20, tzinfo=UTC))
+    assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "up"
