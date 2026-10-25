@@ -260,7 +260,9 @@ async def check_ai_provider(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
         # Live, 25-26 Oct 2026: the credit ran out on a quiet night and nobody knew until a customer wrote - every 10
         # minutes a tiny call checks the provider anyway, so an account problem switches the AI off and emails
         # AutoPulse at once (a fraction of a cent per check).
-        if clock.now().minute % 10 >= 2:
+        # Live, 25 Oct 2026: a check tied to exact clock minutes (":00, :10 ...") never ran - the queue doesn't fire on
+        # the minute. The last check's time is kept instead, and a new one runs once ROUTINE_CHECK_EVERY has passed.
+        if not await provider_health.routine_check_due():
             return {"status": "up"}
         ok, why = await provider_health.probe(get_settings())
         if ok or not provider_health.is_provider_failure(why):
