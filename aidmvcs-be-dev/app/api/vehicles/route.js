@@ -17,7 +17,7 @@ export async function GET(request) {
   const stock = searchParams.get('stock') || '';
   const search = searchParams.get('search') || ''; // Generic search parameter
 
-  const filter = {};
+  const filter = { removedAt: null }; // a car its dealer's latest feed no longer has is gone (lib/import.js markGone)
   if (dealerId) filter.dealerId = dealerId;
   
   // If generic search is provided, search across multiple fields
