@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processDealerCSVFiles } from '@lib/import';
+import { processDealerCSVFiles, vehicleUploadDir } from '@lib/import';
 import fs from 'fs';
 import path from 'path';
 
@@ -7,7 +7,7 @@ import path from 'path';
 
 export async function GET() {
   try {
-    const uploadDir = path.join(process.cwd(), 'public', 'csv', 'upload');
+    const uploadDir = vehicleUploadDir();
     
     // Check if directory exists
     if (!fs.existsSync(uploadDir)) {

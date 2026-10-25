@@ -466,11 +466,15 @@ export class VehicleImportService {
   }
 }
 
+export const vehicleUploadDir = () => process.env.VEHICLE_UPLOAD_DIR || path.join(process.cwd(), 'public/csv/upload');
+
 // File-walker for CSV import
 export const processDealerCSVFiles = async () => {
   await ensureDb();
-  const uploadDir = path.join(process.cwd(), 'public/csv/upload');
-  const processedDir = path.join(process.cwd(), 'public/csv/processed');
+  // The inventory feeds are uploaded by FTP to a fixed folder (VEHICLE_UPLOAD_DIR); 25 Oct 2026: they kept arriving in
+  // the old app folder while this one read its own, which deploys deleted - no import since 12 Sep.
+  const uploadDir = vehicleUploadDir();
+  const processedDir = path.join(path.dirname(uploadDir), 'processed');
 
   await fs.promises.mkdir(processedDir, { recursive: true });
   const files = await processCSVFiles(uploadDir);

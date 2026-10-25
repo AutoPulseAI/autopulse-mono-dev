@@ -72,7 +72,9 @@ jobs:
           rsync -a --ignore-existing "$APP/.next/static/" "$BUILD/.next/static/"
 
           # 3. Swap in: code and packages, then the build (one rename), then restart.
-          rsync -a --delete --exclude='.env*' --exclude='node_modules' --exclude='.next' --exclude='logs' "$BUILD/" "$APP/"
+          # public/csv holds files uploaded to the server (inventory feeds, DealerSocket): never deleted by a deploy (25 Oct
+          # 2026: every deploy removed public/csv/upload and the inventory stopped updating on 12 Sep).
+          rsync -a --delete --exclude='.env*' --exclude='node_modules' --exclude='.next' --exclude='logs' --exclude='public/csv' "$BUILD/" "$APP/"
           rsync -a --delete "$BUILD/node_modules/" "$APP/node_modules/"
           rm -rf "$APP/.next.new" "$APP/.next.prev"
           cp -a "$BUILD/.next" "$APP/.next.new"
