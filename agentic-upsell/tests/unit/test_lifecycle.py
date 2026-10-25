@@ -445,7 +445,8 @@ async def test_a_staff_closing_is_not_sent_back_to_the_crm(mongo, monkeypatch):
     created = await _new_lead()
     await handlers.handle_lead_paused(LeadPausedEvent(event_id="s1", dealer_id=DEALER, lead_id=created["lead_id"],
                                                       reason='Staff moved the lead to "Closed - Lost"'), _deps())
-    assert (await _state(mongo, created))["stage"] == "closed_lost" and calls == []
+    # (The first message may escalate a vehicle not in stock to Managerial Review; the staff closing is never echoed.)
+    assert (await _state(mongo, created))["stage"] == "closed_lost" and not [c for c in calls if "Closed - Lost" in c]
 
 
 @pytestmark_flow

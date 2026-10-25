@@ -478,3 +478,5 @@ def test_a_vehicle_the_customer_names_that_isnt_in_stock_goes_to_dealership_acti
     assert vehicle_check_for(stock, {}, "inbound_message", "offer_visit") is None  # an ordinary question
     assert vehicle_check_for({**stock, "exact": True}, {"asked_vehicle": "S65"}, "inbound_message", "answer") is None
     assert vehicle_check_for(stock, {"asked_vehicle": "S65"}, "cadence_touch", "offer_visit") is None
+    # Activity log, 25 Oct 2026: the first message about the lead's own vehicle, not in stock, escalates too.
+    assert vehicle_check_for(stock, {}, "lead_created", "offer_visit") == {"vehicle": "Mercedes-Benz S65"}
