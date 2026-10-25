@@ -91,6 +91,7 @@ from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     AI_TURN_LOG_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_BOOKINGS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
@@ -1564,9 +1565,13 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
                 "appointment_missed", source="appointment_timer",
                 reason="Appointment time + 1 hour with no Sales Visit")], lead=lead, customer_id=doc["customer_id"])
             state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
+        # Live, 24 Oct 2026 (Nelson, Thomas: staff booked on a duplicate lead the AI had paused - every reminder was
+        # cancelled; Betsy: "Appt cadence not working"): a lead paused only because it's a duplicate still gets its
+        # own appointment's reminders. Staff holding the lead (a handoff, a staff reply) still means silence.
+        only_duplicate = status == "paused" and str(state.get("status_reason") or "").startswith("Duplicate of lead")
         checks = [
-            ("lead_active", status not in SILENT_STATUSES,
-             f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
+            ("lead_active", status not in SILENT_STATUSES or only_duplicate, f"lead is {status}" + (
+                f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, doc["kind"]),
             ("same_appointment", same or not needs_booking_check,
              "the appointment is still at the time this step was planned for" if same or not needs_booking_check
@@ -1762,6 +1767,18 @@ async def _plan_no_show_step(db: DealerScopedDatabase, doc: dict, step: str, aft
         "booking_id": doc.get("booking_id"), "reason": None})
 
 
+async def _booking_on_customers_other_leads(db: DealerScopedDatabase, doc: dict) -> dict | None:
+    """The newest active booking on another lead of the same customer (the CRM's bookings keep the lead they were
+    made on), or None."""
+    others = await db.collection(PLATFORM_LEADS_COLLECTION).find(
+        {"customer_id": {"$in": [doc["customer_id"], as_object_id(doc["customer_id"])]}}).to_list(None)
+    ids = [str(o["_id"]) for o in others if str(o["_id"]) != str(doc["lead_id"])]
+    if not ids:
+        return None
+    return await db.collection(PLATFORM_BOOKINGS_COLLECTION).find_one(
+        {"lead_id": {"$in": ids}, "booking_status": {"$ne": "cancelled"}}, sort=[("bookingDate", -1)])
+
+
 async def _cadence_touch_rechecks(db: DealerScopedDatabase, doc: dict) -> list[tuple[str, bool, str]]:
     """Stream X2 (Omnichannel PDF §2, §11 "query current state before any queued action"): beyond the stage, a
     cadence touch re-reads the customer's latest message, the platform booking and the contact points themselves,
@@ -1779,6 +1796,10 @@ async def _cadence_touch_rechecks(db: DealerScopedDatabase, doc: dict) -> list[t
     replied = [m for m in inbound if not m.get("answered_turn_id") and lifecycle.is_meaningful_reply(m.get("text"))[0]]
     lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(doc["lead_id"])})
     booking = await find_active_booking(db.dealer_id, lead)
+    if booking is None:
+        # Live, 24 Oct 2026 (Nadina, Nelson, Thomas): staff booked the visit on the customer's other (duplicate) lead;
+        # this lead kept prospecting. An upcoming booking on any of the customer's leads stops the sales touches.
+        booking = await _booking_on_customers_other_leads(db, doc)
     upcoming = False
     if booking is not None:
         at = appointment.appointment_at(tz=(await dealer_profile(db.dealer_id)).tz, booking=booking)

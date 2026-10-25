@@ -761,3 +761,37 @@ async def test_asking_for_a_call_with_a_time_never_books_a_visit(mongo):
     lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
     assert not (lead.get("data") or {}).get("bookingId")
     assert not await mongo[PLATFORM_BOOKINGS_COLLECTION].count_documents({"lead_id": created["lead_id"]})
+
+
+@pytestmark_flow
+async def test_a_lead_paused_as_a_duplicate_still_gets_its_appointment_reminders(mongo):
+    # Live, 24 Oct 2026 (Nelson, Thomas): staff booked on the duplicate lead the AI had paused - every reminder cancelled.
+    created, _ = await _booked_friday(mongo)
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "status": "paused", "status_reason": "Duplicate of lead 6ac41c5d46db1a6d0f2be4d2: the AI works that lead"}})
+    before = len(await _outbox(mongo, created))
+    fired = await _fire(mongo, created, "confirm")
+    assert (await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": fired["doc"]["_id"]}))["status"] == "sent"
+    assert len(await _outbox(mongo, created)) > before
+
+
+@pytestmark_flow
+async def test_a_booking_on_the_customers_other_lead_stops_the_sales_touches(mongo):
+    # Live, 24 Oct 2026 (Nadina: Mercy booked Saturday on her other lead; this one kept prospecting).
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    other = ObjectId()
+    await mongo[PLATFORM_LEADS_COLLECTION].insert_one({"_id": other, "dealer_id": DEALER,
+                                                       "customer_id": created["customer_id"], "data": {}})
+    await StubPlatformClient().create_booking(DEALER, {
+        "lead_id": str(other), "customer_name": "Maria Test", "customerName": "Maria Test", "email": "m@example.com",
+        "phone": "+15550001111", "bookingDate": "2026-10-09", "bookingTime": "10:00", "notes": None,
+        "dealer_timezone": "America/New_York", "appointment_type": "sales"})
+    touches = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
+        {"lead_id": created["lead_id"], "kind": "cadence_touch", "status": "pending"}).to_list(None)
+    assert touches
+    before = len(await _outbox(mongo, created))
+    set_clock(touches[0]["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
+    await followups.fire_due(_deps())
+    done = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": touches[0]["_id"]})
+    assert done["status"] == "cancelled" and len(await _outbox(mongo, created)) == before
