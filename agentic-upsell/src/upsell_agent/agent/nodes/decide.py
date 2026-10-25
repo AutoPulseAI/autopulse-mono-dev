@@ -168,6 +168,20 @@ def _found(pattern: re.Pattern, text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def vehicle_check_for(stock: dict[str, Any], extraction: dict[str, Any] | None, trigger: str,
+                      action: str) -> dict[str, Any] | None:
+    """Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
+    before scheduling the appointment and move to Manager Review status". Betsy, 25 Oct 2026 (Motie: "Looking for an
+    S65" got "I'll check with a manager" and nobody was told): a vehicle the customer names counts, not only "is it
+    available?"."""
+    named = bool((extraction or {}).get("asked_vehicle"))
+    if ((stock or {}).get("asked") or named) and stock and not stock.get("exact") \
+            and stock.get("searched_for") not in (None, "", "any vehicle") \
+            and trigger in ("inbound_message", "resume_at_opening") and action not in ("stop", "handoff", "offer_human"):
+        return {"vehicle": stock.get("searched_for")}
+    return None
+
+
 def possible_opt_out(extraction: dict[str, Any]) -> bool:
     """Extract thinks the message may be an opt-out, sure enough for REVIEW (C1 item 3)."""
     return bool(extraction.get("possible_opt_out")) and float(
@@ -1276,10 +1290,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     stock = (state.context_pack or {}).get("stock_search") or {}
     # Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
     # before scheduling the appointment and move to Manager Review status".
-    decision["vehicle_check"] = ({"vehicle": stock.get("searched_for")} if stock.get("asked") and not stock.get("exact")
-                                 and stock.get("searched_for") not in (None, "", "any vehicle")
-                                 and state.trigger in ("inbound_message", "resume_at_opening")
-                                 and decision["action"] not in ("stop", "handoff", "offer_human") else None)
+    decision["vehicle_check"] = vehicle_check_for(stock, extraction, state.trigger, decision["action"])
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):

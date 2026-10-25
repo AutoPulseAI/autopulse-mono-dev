@@ -466,3 +466,15 @@ async def test_first_text_photo_falls_back_to_the_lead_vehicle():
 
     from upsell_agent.agent.vehicle_media import photo_for_draft
     assert "first_reply" in inspect.signature(photo_for_draft).parameters
+
+
+
+def test_a_vehicle_the_customer_names_that_isnt_in_stock_goes_to_dealership_action_required():
+    # Betsy, 25 Oct 2026 (Motie: "Looking for an S65" -> "I'll check with a manager", and nobody was told).
+    from upsell_agent.agent.nodes.decide import vehicle_check_for
+    stock = {"searched_for": "Mercedes-Benz S65", "exact": False, "asked": False}
+    assert vehicle_check_for(stock, {"asked_vehicle": "S65"}, "inbound_message", "offer_visit") == {
+        "vehicle": "Mercedes-Benz S65"}
+    assert vehicle_check_for(stock, {}, "inbound_message", "offer_visit") is None  # an ordinary question
+    assert vehicle_check_for({**stock, "exact": True}, {"asked_vehicle": "S65"}, "inbound_message", "answer") is None
+    assert vehicle_check_for(stock, {"asked_vehicle": "S65"}, "cadence_touch", "offer_visit") is None
