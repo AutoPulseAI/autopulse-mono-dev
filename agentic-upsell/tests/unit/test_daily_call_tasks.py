@@ -354,3 +354,13 @@ async def test_upcoming_lists_the_next_daily_task(mongo, dealer):
     await _plan(created)
     [row] = await list_call_tasks(DEALER, "upcoming")
     assert row["source"] == "daily" and row["slot"] == "morning" and row["lead_id"] == created["lead_id"]
+
+
+async def test_no_call_task_is_planned_for_a_lead_with_no_phone(mongo, dealer):
+    # Live, 25 Oct 2026 (activity log): 70 call tasks in 20 hours for leads with no phone, each then blocked.
+    set_clock(START)
+    created = await _lead(mongo)
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": ObjectId(created["lead_id"])}, {"$unset": {"phone": ""}})
+    await mongo["customers"].update_one({"_id": ObjectId(created["customer_id"])}, {"$set": {"phones": []}})
+    result = await _plan(created)
+    assert result == {"created": False, "reason": "no valid phone to call"}

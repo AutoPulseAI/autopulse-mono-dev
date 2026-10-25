@@ -870,6 +870,22 @@ async def _save_contact(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict
     text = inbound_text or ""
     email = None if (lead or {}).get("email") else (m.group(0) if (m := _EMAIL.search(text)) else None)
     phone = None if (lead or {}).get("phone") else (m.group(0) if (m := _PHONE.search(text)) else None)
+    given = _PHONE.search(text)
+    on_file = re.sub(r"\D", "", str((lead or {}).get("phone") or ""))[-10:]
+    if given and on_file and re.sub(r"\D", "", given.group(0))[-10:] != on_file:
+        # Live, 25 Oct 2026 (Kevin: "you can text me on 845-645-8068" - the AI said it would; the number on the lead
+        # was never changed): a different number is never switched by the AI (consent, and whose number it is) - staff
+        # are told and decide; the reply says it was passed on (agent/llm.py).
+        notice = (f"The customer asked to be contacted on a different number: {given.group(0)} (the lead has "
+                  f"{(lead or {}).get('phone')}). Please check it and update the lead if right. They said: "
+                  f"{text.strip()[:200]!r}")
+        try:
+            await dealer_scoped_db(dealer_id).collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"staff_notice": {"at": clock.now(), "kind": "new_number", "text": notice}}})
+            await deps.platform.add_lead_note(dealer_id, lead_id, notice, kind="new_number",
+                                              idempotency_key=f"new_number:{lead_id}:{on_file}:{given.group(0)}")
+        except Exception:
+            logger.exception("could not tell staff about the new number on lead %s", lead_id)
     if not email and not phone:
         return
     try:

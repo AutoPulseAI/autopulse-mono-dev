@@ -234,6 +234,23 @@ def follow_up_acts_like_a_reply(trigger: str | None, draft: dict[str, Any]) -> l
             if (m := _REPLYING_OPENER.search(str(draft.get(key) or "")))]
 
 
+# Live, 25 Oct 2026 (Kevin: "I'll text you at 845-645-8068 going forward" - the lead's number never changed): a promise
+# to use a number that isn't the one on the lead.
+_NUMBER_PROMISE = re.compile(r"\b(?:text|call|reach|message|contact)(?:ing)?\s+you\s+(?:at|on)\s+(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})",
+                             re.IGNORECASE)
+
+
+def promises_another_number(lead_phone: str | None, draft: dict[str, Any]) -> list[str]:
+    on_file = re.sub(r"\D", "", str(lead_phone or ""))[-10:]
+    out = []
+    for name, key in (("SMS", "sms_text"), ("email", "email_body")):
+        m = _NUMBER_PROMISE.search(str(draft.get(key) or ""))
+        if m and re.sub(r"\D", "", m.group(1))[-10:] != on_file:
+            out.append(f"the {name} promises to contact the customer on {m.group(1)}, which isn't the number on the "
+                       "lead - say the new number was passed to the team instead")
+    return out
+
+
 def dead_end_wording(decision: dict[str, Any], draft: dict[str, Any], *, stage: str | None = None) -> list[str]:
     if (decision.get("cannot_supply") or {}).get("text"):
         return []  # the client's own script, placed by code
@@ -537,6 +554,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
         result["violations"] += no_alternatives
     # Live, 24 Oct 2026 (a Sold Pending customer: "Wait ima get back to you"): a customer who has already bought isn't
     # pushed to book a visit - "when you're ready" is the right answer there.
+    other_number = promises_another_number((getattr(ctx, "lead", None) or {}).get("phone"), state.draft or {})
+    result["checks"]["no_promise_on_another_number"] = not other_number
+    if other_number:
+        result["passed"] = False
+        result["violations"] += other_number
     replying = follow_up_acts_like_a_reply(state.trigger, state.draft or {})
     result["checks"]["follow_up_not_a_reply"] = not replying
     if replying:

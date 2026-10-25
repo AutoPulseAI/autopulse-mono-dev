@@ -121,6 +121,14 @@ async def plan(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     if await followups.find_one({"lead_id": lead_id, "kind": KIND, "status": {"$in": ["pending", "claimed"]}}):
         return {"created": False, "reason": "the next Days 1-7 call task is already planned"}
+    # Live, 25 Oct 2026 (activity log: 70 call tasks in 20 hours planned for leads with no phone, each then blocked as
+    # "no valid phone to call"): nothing to call - none is planned.
+    from upsell_agent.channels.consent import usable_recipient
+    from upsell_agent.integrations.mongodb import PLATFORM_CUSTOMERS_COLLECTION, PLATFORM_LEADS_COLLECTION, as_object_id
+    lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(customer_id)})
+    if not await usable_recipient(db, lead, customer, "sms"):
+        return {"created": False, "reason": "no valid phone to call"}
     used = {d.get("slot_key") for d in await followups.find(
         {"lead_id": lead_id, "kind": KIND}, projection={"slot_key": 1}).to_list(None)}
     now = clock.now()

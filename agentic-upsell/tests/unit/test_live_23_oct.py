@@ -291,3 +291,11 @@ def test_a_follow_up_never_thanks_the_customer_as_if_they_had_just_written():
         assert guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": text}), text
         assert not guard.follow_up_acts_like_a_reply("inbound_message", {"sms_text": text})
     assert not guard.follow_up_acts_like_a_reply("cadence_touch", {"sms_text": "Hi Motie, a 2021 S63 just came in."})
+
+
+def test_the_ai_never_promises_to_text_a_number_that_isnt_on_the_lead():
+    # Live, 25 Oct 2026 (Kevin): "I'll text you at 845-645-8068 going forward" - the lead's number never changed.
+    draft = {"sms_text": "Got it - I'll text you at 845-645-8068 going forward."}
+    assert guard.promises_another_number("+19145551234", draft)
+    assert not guard.promises_another_number("+18456458068", draft)
+    assert not guard.promises_another_number("+19145551234", {"sms_text": "I've passed your new number to the team."})

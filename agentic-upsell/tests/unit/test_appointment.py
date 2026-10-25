@@ -795,3 +795,16 @@ async def test_a_booking_on_the_customers_other_lead_stops_the_sales_touches(mon
     await followups.fire_due(_deps())
     done = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": touches[0]["_id"]})
     assert done["status"] == "cancelled" and len(await _outbox(mongo, created)) == before
+
+
+@pytestmark_flow
+async def test_a_different_number_from_the_customer_alerts_staff_and_is_not_switched(mongo):
+    # Live, 25 Oct 2026 (Kevin: "you can text me on 845-645-8068").
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    lead = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
+    await _say(created, "My signal on this number isn't good, you can text me on 845-645-8068")
+    after = await mongo[PLATFORM_LEADS_COLLECTION].find_one({"_id": as_object_id(created["lead_id"])})
+    assert after.get("phone") == lead.get("phone")
+    notice = (await _state(mongo, created)).get("staff_notice") or {}
+    assert notice.get("kind") == "new_number" and "845-645-8068" in notice["text"]
