@@ -191,12 +191,23 @@ async def find_stock(dealer_id: str, criteria: InventoryCriteria, source: Invent
     return search
 
 
+async def _model_in_stock(dealer_id: str, c: InventoryCriteria, source: InventorySource) -> bool:
+    """The model, as named, is in this dealer's stock in any colour, trim, year or price."""
+    bare = c.model_copy(update={"exterior_color": None, "trim": None, "year_min": None, "year_max": None,
+                                "price_max": None})
+    found = await _try(dealer_id, bare, source)
+    return bool(found.records or found.matched)
+
+
 async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
                   loosened: list[dict[str, str]]) -> tuple[str | None, InventoryCriteria]:
     """The next loosening step that applies, recorded; (None, c) when none is left."""
-    if c.model and len(c.model.split()) > 1 and not any(s["step"] == "model_name" for s in loosened):
+    if (c.model and len(c.model.split()) > 1 and not any(s["step"] == "model_name" for s in loosened)
+            and not await _model_in_stock(dealer_id, c, source)):
         # Client, 12 Oct 2026 (Bibi, a Mustang Mach-E lead): the feed lists it as model "Mustang", trim "Mach-E".
         # Not a loosening - the same vehicle, named the way the feed names it - so the match stays exact.
+        # Bibi, 26 Oct 2026 (Alexis, a blue 2022 BMW 3 Series): only when the full name isn't a model in this stock -
+        # "3 Series" was split into model "3", which matched nothing, and the search widened to an X3.
         first, rest = c.model.split(None, 1)
         loosened.append({"step": "model_name", "detail": f"no model {c.model!r}; model {first!r} with {rest!r}"})
         return "model_name", c.model_copy(update={"model": first, "trim": " ".join(filter(None, [rest, c.trim]))})
