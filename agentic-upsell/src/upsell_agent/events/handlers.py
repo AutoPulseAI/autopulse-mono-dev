@@ -241,6 +241,17 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
                               received_at=_parse_received_at(received_at), turn_id=turn_id)
 
 
+def _lead_car(lead: dict | None) -> tuple[str, str] | None:
+    """(VIN, "year make model") of the car a lead is about, or None when it names none."""
+    lead = lead or {}
+    data = lead.get("data") or {}
+    vehicle = lead.get("vehicle") or data.get("vehicle") or {}
+    vehicle = vehicle if isinstance(vehicle, dict) else {}
+    vin = str(lead.get("vin") or data.get("vin") or vehicle.get("vin") or "").strip().upper()
+    named = " ".join(str(vehicle.get(k) or lead.get(k) or "").strip() for k in ("year", "make", "model")).strip().lower()
+    return (vin, named) if vin or named else None
+
+
 async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent, lead: dict | None,
                              primary_id: str) -> dict[str, Any]:
     """agent/multi_vehicle.py: the "Hello again" question on the customer's conversation, when their open lead is
@@ -257,6 +268,12 @@ async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: Le
     started = lifecycle._aware(primary_state.get("opportunity_created_at"))
     if not multi_vehicle.within_window(started, clock.now()):
         return {"status": "skipped", "reason": "the open lead is older than 30 days"}
+    # Christine Pache, 26 Oct 2026: a CarGurus phone-call lead with no car on it got "thank you for inquiring about
+    # another vehicle". Only a different car is another vehicle; no car, or the same car, carries on as it is.
+    new_car, open_car = _lead_car(lead), _lead_car(await find_lead(db, primary_id))
+    same_vin = bool(new_car and open_car and new_car[0] and new_car[0] == open_car[0])
+    if not new_car or same_vin or (new_car == open_car and not new_car[0]):
+        return {"status": "done", "reason": "no other vehicle named: the same inquiry, nothing to ask"}
     turn_id = f"multi-vehicle-{event.lead_id}"
     if await _already_sent(db, turn_id):
         return {"status": "already_answered", "turn_id": turn_id}
