@@ -194,7 +194,7 @@ async def find_stock(dealer_id: str, criteria: InventoryCriteria, source: Invent
 async def _model_in_stock(dealer_id: str, c: InventoryCriteria, source: InventorySource) -> bool:
     """The model, as named, is in this dealer's stock in any colour, trim, year or price."""
     bare = c.model_copy(update={"exterior_color": None, "trim": None, "year_min": None, "year_max": None,
-                                "price_max": None})
+                                "price_max": None, "body_type": None})
     found = await _try(dealer_id, bare, source)
     return bool(found.records or found.matched)
 
@@ -222,6 +222,18 @@ async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
         loosened.append({"step": "year", "detail": f"no {low}" + (f"-{high}" if high != low else "")
                                                    + f"; {low - 1}-{high + 1}"})
         return "year", c.model_copy(update={"year_min": low - 1, "year_max": high + 1})
+    if c.model and c.body_type and not any(s["step"] == "body" for s in loosened) \
+            and await _model_in_stock(dealer_id, c, source):
+        # Eric Miller, 26 Oct 2026: "5 Series" with body "Sedan" - the feed says "4D Sedan", so the body filter hid
+        # all four 5 Series. A named model already says the body.
+        loosened.append({"step": "body", "detail": f"no {c.model} as {c.body_type!r}; the model in any body"})
+        return "body", c.model_copy(update={"body_type": None})
+    if c.model and (c.year_min or c.year_max) and not any(s["step"] == "any_year" for s in loosened) \
+            and await _model_in_stock(dealer_id, c, source):
+        # 26 Oct 2026: a 2021 5 Series, none 2020-2022, but 2019 and 2023 ones in stock - the search went to any sedan.
+        # The same model in another year is closer than another model.
+        loosened.append({"step": "any_year", "detail": f"no {c.model} near the year asked; any year"})
+        return "any_year", c.model_copy(update={"year_min": None, "year_max": None})
     if c.body_types:
         tier = tier_of(c.body_types[0])
         if tier is not None and tier + 1 < len(SIZE_TIERS):
