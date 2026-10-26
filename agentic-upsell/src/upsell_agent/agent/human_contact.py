@@ -50,6 +50,8 @@ _TEXT = re.compile(
 _EITHER = re.compile(r"\b(?:either|whichever|any(?:thing)?\s+(?:is|works)|doesn'?t\s+matter|whatever|both)\b",
                      re.IGNORECASE)
 # Answering "a call at the number ending in 1234, or a text?" with "yes, that number" / "the 1234 one".
+_PLAIN_YES = re.compile(r"^\s*(?:yes+|yeah|yep|yup|ya|sure|ok(?:ay)?|k|please|yes,?\s+please|that\s+works|sounds\s+good)"
+                        r"\s*[.!]*\s*$", re.IGNORECASE)
 _THAT_NUMBER = re.compile(r"\b(?:that|this|same|the)\s+(?:number|one|cell|phone)\b|\b\d{4}\b", re.IGNORECASE)
 _NEVER_MIND = re.compile(r"\b(?:never\s*mind|nvm|no\s+need|you\s+can\s+help|forget\s+it|all\s+good\s+now|"
                          r"i'?ll\s+stick\s+with\s+you|you'?re\s+fine)\b", re.IGNORECASE)
@@ -83,7 +85,9 @@ def said_method(text: str, *, answering: bool = False) -> str | None:
     if call and sms:
         # "Call or text, either is fine" / "call me or text me": a person reaches out faster by phone.
         return CALL
-    if answering and (_EITHER.search(text) or _THAT_NUMBER.search(text)):
+    if answering and (_EITHER.search(text) or _THAT_NUMBER.search(text) or _PLAIN_YES.match(text)):
+        # Ishmael Ballah, 26 Oct 2026: "Would you like a call at the number ending in 5681, or a text?" - "Yes"
+        # was taken as a text; a plain yes accepts the call we offered first, at the number we named.
         return CALL
     return None
 

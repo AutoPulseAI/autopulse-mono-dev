@@ -602,6 +602,26 @@ async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *,
                           customer_id=customer_id)
 
 
+async def _call_after_text_request(db: DealerScopedDatabase, deps: TurnDeps, *, lead_id: str, customer_id: str,
+                                   state: dict, rows: list[dict]) -> None:
+    """Ishmael Ballah, 26 Oct 2026: handed to staff as "wants a text, not a call", then wrote "Call is fine" - the
+    message was only saved and the alert kept saying the opposite. The same alert is corrected (one handover per
+    lead: no second alert) and a note says what they wrote."""
+    from upsell_agent.agent import crm_notes
+
+    notice = state.get("staff_notice") or {}
+    said = " / ".join(str(r.get("text") or "") for r in rows)[:300]
+    if notice.get("kind") != human_contact.NOTICE_TEXT_KIND or human_contact.said_method(said) != human_contact.CALL:
+        return
+    text = (f"The customer now says a call is fine - please call them (they first asked for a text). "
+            f"They wrote: \"{said}\"")
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+        "staff_notice": {**notice, "at": clock.now(), "kind": human_contact.NOTICE_CALL_WAITING_KIND, "text": text,
+                         "reason": human_contact.REASON_CALL}}})
+    await crm_notes.write(db, lead_id=lead_id, kind="contact_change", text=text,
+                          key=f"call-after-text-{rows[-1]['_id']}", platform=getattr(deps, "platform", None), customer_id=customer_id)
+
+
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
                        rows: list[dict], action: str, reason: str, received_at: datetime | None,
                        confirmation: str | None = None, reply: dict[str, Any] | None = None,
@@ -923,6 +943,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             await lifecycle.apply(db, lead_id, [lifecycle.Event("customer_replied", source="customer_reply",
                                                                 reason=f"The customer replied: {why}")],
                                   lead=lead, customer_id=event.customer_id)
+        if state["status"] == "handoff" and not event.shadow:
+            await _call_after_text_request(db, deps, lead_id=lead_id, customer_id=event.customer_id,
+                                           state=state, rows=unanswered)
         request = after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) \
             if state["status"] == "handoff" else None
         if request and not event.shadow:
