@@ -261,6 +261,16 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
         span.edge_label = "search failed"
         return {"context_pack": _patch(pack, [], None, None)}
 
+    widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
+    own = await _lead_own_vehicle(state, ctx, criteria, source) if widened and not bigger else None
+    if own is not None:
+        # Joe Dalton, 26 Oct 2026: Cars.com named the car "540 xDrive", the feed lists it as "5 Series" trim
+        # "540i xDrive" - the search widened to any BMW and the lead went to Managerial Review "to confirm it's
+        # available" while it was in stock. The lead's own VIN is the same car, so the match is exact.
+        result.records = [own, *(r for r in result.records if r.vin != own.vin)]
+        result.loosened, widened = [], []
+        reasoning.append(f"The lead's own vehicle ({own.vin}) is in stock under the feed's name "
+                         f"{' '.join(p for p in (own.make, own.model, own.trim) if p)!r}: shown as the exact match.")
     shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
     loaded = [{**r.model_dump(), "already_shown": r.vin in shown} for r in result.loaded(MAX_LOADED)]
     if result.colour:
@@ -284,13 +294,33 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
     patched = _patch(pack, loaded, result.final_query, result.checked_at)
     # conversation_7: what was searched, and whether the vehicles loaded are that or the nearest we have - so the
     # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
-    widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
     patched["stock_search"] = {"searched_for": describe_criteria(criteria), "found": len(loaded),
                                "asked": stock_question,
                                "exact": bool(loaded) and not widened,
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
                                if widened and loaded else None}
     return {"context_pack": patched}
+
+
+async def _lead_own_vehicle(state: AgentState, ctx: TurnContext, criteria: InventoryCriteria,
+                            source: Any) -> Any:
+    """The vehicle the lead itself is about (its VIN), when it is in stock and is what this search named: the same
+    make, and the model's first word in the feed's model or trim ("540" in "5 Series 540i xDrive")."""
+    vin = lead_vehicle_vin(ctx.lead, None)
+    if not vin or not (criteria.make or criteria.model):
+        return None
+    try:
+        record = await get_vehicle(state.dealer_id, vin, source)
+    except Exception:  # noqa: BLE001 - the search result stands
+        return None
+    if record is None:
+        return None
+    if criteria.make and (record.make or "").lower() != criteria.make.lower():
+        return None
+    first = (criteria.model or "").split()[0].lower() if criteria.model else ""
+    if first and first not in f"{record.model or ''} {record.trim or ''}".lower():
+        return None
+    return record
 
 
 def describe_criteria(c: InventoryCriteria) -> str:
