@@ -467,3 +467,11 @@ async def test_a_two_word_model_in_stock_is_not_split(mongo):
                                                        price_max=22000), STUB)
     assert [r.model for r in found.records] == ["3 Series"]
     assert not any(s["step"] == "model_name" for s in found.loosened)
+
+
+@pytest.mark.parametrize(("budget", "price_max"), [(4000, None), (850, None), (2000, None), (22000, 22000)])
+def test_a_down_payment_or_monthly_never_caps_the_price(budget, price_max):
+    # Activity log, 26 Oct 2026: "4k-5k down at like 850 monthly" searched for cars under $4,000.
+    profile = {"slots": [{"path": "interest.model", "state": "filled", "value": "BMW M340i"},
+                         {"path": "interest.budget", "state": "filled", "value": budget}]}
+    assert criteria_from_profile(profile).price_max == price_max

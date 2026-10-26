@@ -145,6 +145,9 @@ def split_trim(model: str) -> tuple[str, str | None]:
     return " ".join(words[:cut]), (" ".join(words[cut:]) or None)
 
 
+MIN_CAR_PRICE = 5000
+
+
 def criteria_from_profile(profile: dict[str, Any]) -> InventoryCriteria:
     """What this turn's (validated) profile says they want (MASTER_PLAN_3
     Phase 2 item 2): the vehicle ("2021 Toyota RAV4 XLE"), new or used, body
@@ -174,7 +177,10 @@ def criteria_from_profile(profile: dict[str, Any]) -> InventoryCriteria:
     if isinstance(colour, str) and colour.strip():
         criteria.exterior_color = colour.strip()
     budget = (slots.get("interest.budget") or {}).get("value")
-    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0:
+    # Activity log, 26 Oct 2026 ("4k-5k down at like 850 monthly" searched cars under $4,000; "2000 deposit" a QX60
+    # under $2,000): the budget slot also holds a monthly payment or a down payment, and no car costs that little -
+    # an amount under MIN_CAR_PRICE never caps the price.
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget >= MIN_CAR_PRICE:
         criteria.price_max = int(budget)
     return criteria
 
