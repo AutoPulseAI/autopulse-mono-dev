@@ -501,3 +501,18 @@ async def test_a_vehicle_gone_from_stock_means_no_photo_never_a_stand_in(mongo):
     await _fire(mongo, created, "countdown")
     assert all(m["media_urls"] == [] for m in (await _outbox(mongo, created))[before:])
 
+
+
+async def test_a_link_to_another_model_never_sends_the_lead_vehicles_page(mongo):
+    # Krishna, 26 Oct 2026: a lead about a RAV4 ... "Can you send me the link to the CR-V?" got the RAV4's page.
+    other = "VIN00000000000902"
+    await _stock(mongo, _rav4(), _vehicle(other, make="Honda", model="CR-V", trim="EX",
+                                          imagesSecure=[f"https://img.example/{other}.jpg"]))
+    deps = _deps()
+    created = await _lead(deps)
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                     {"$set": {"data.vin": VIN}})
+    await _say(created, "Can you send me the link to the Honda CR-V?", deps)
+    sms = await _last_sms(mongo, created)
+    sms["text"] = await expand_short_links(mongo, sms["text"])
+    assert PAGE not in sms["text"]

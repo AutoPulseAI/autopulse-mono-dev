@@ -487,3 +487,12 @@ async def test_the_same_model_in_another_year_or_body_name_comes_before_other_mo
         found = await find_stock(DEALER, asked, STUB)
         assert [r.model for r in found.records] == ["5 Series"], asked
         assert not any(s["step"] in ("model_name", "make", "model") for s in found.loosened)
+
+
+async def test_a_bare_3_is_the_bmw_3_series(mongo):
+    # Krishna, 26 Oct 2026: "Not the two the 3" searched model "3" and went to any car.
+    await _stock(mongo, _vehicle("VIN00000000003S77", year=2022, make="BMW", model="3 Series", trim="330i"),
+                 _vehicle("VIN00000000002S77", year=2025, make="BMW", model="2 Series", trim="228 xDrive"))
+    for asked in (InventoryCriteria(model="3"), InventoryCriteria(make="BMW", model="3")):
+        found = await find_stock(DEALER, asked, STUB)
+        assert [r.model for r in found.records] == ["3 Series"]
