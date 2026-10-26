@@ -642,7 +642,11 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
     visit = decision.get("visit") or {}
     dated = decision.get("next_action")
     events: list[lifecycle.Event] = []
-    if trigger == "inbound_message":
+    # Christian Balado, 20 Oct 2026: a second lead form, answered as a turn on the open lead ("(New inquiry submitted on
+    # a lead form) ..."), was counted as the customer replying and set him Contacted. Betsy, 12 Oct 2026: "THE
+    # INCOMING LEAD EMAIL IS NOT A CONTACT MADE" - only the customer's own message is contact.
+    form = str(inbound_text or "").startswith(NEW_INQUIRY_PREFIX)
+    if trigger == "inbound_message" and not form:
         meaningful, why = lifecycle.is_meaningful_reply(inbound_text)
         if meaningful:
             events.append(lifecycle.Event("customer_replied", reason=f"The customer replied: {why}",
@@ -810,6 +814,7 @@ async def _show_booking(db: DealerScopedDatabase, lead_id: str, decision: dict[s
 
 
 # "My name is Sal", "this is Sal Romano", "call me Sal", "it's Sal" - the customer saying who they are.
+NEW_INQUIRY_PREFIX = "(New inquiry submitted on a lead form)"
 _NAME_STATED = re.compile(r"\b(?:my\s+name\s+is|my\s+name'?s|name\s+is|this\s+is|it'?s|call\s+me|i\s+go\s+by|i'?m|i\s+am)"
                           r"\s+([A-Za-z][A-Za-z'.-]+(?:\s+[A-Za-z][A-Za-z'.-]+)?)", re.IGNORECASE)
 
