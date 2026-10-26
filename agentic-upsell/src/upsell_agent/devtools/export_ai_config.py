@@ -433,6 +433,8 @@ def compliance() -> list[dict[str, Any]]:
                             "dropped: a stopped message is replaced, re-planned, or passed to staff.",
             **_presend().CHECKS,
             **{f"{k}_explained": v for k, v in _presend().EXPLAINED.items()}}},
+        # The user, 26 Oct 2026: every rule set in code is shown and editable in AI Studio; the published value wins.
+        {"key": "safeguards", "name": "Safeguards", "content": _safeguards()},
         {"key": "writing", "name": "Message limits & banned phrases", "content": {
             "sms_max_characters": draft_guard.SMS_MAX, "first_text_max_characters": draft_guard.TOUCH1_SMS_MAX,
             "cars_per_text": draft_guard.SMS_MAX_VEHICLES, "cars_per_email": draft_guard.EMAIL_MAX_VEHICLES,
@@ -440,6 +442,36 @@ def compliance() -> list[dict[str, Any]]:
                                "team member", "someone from", "someone at", "someone on"],
             "banned_pattern": guard._TEAM.pattern}},
     ]
+
+
+def _safeguards() -> dict[str, Any]:
+    from upsell_agent import ai_studio
+    mods = ai_studio._by_name()
+    values = {f: getattr(mods[m], a) for f, (m, a) in ai_studio.SAFEGUARD_SWITCHES.items()}
+    values.update({f: getattr(mods[m], a) for f, (m, a, _, _) in ai_studio.SAFEGUARD_NUMBERS.items()})
+    explained = {
+        "stop_ends_all_followups": "When a customer says stop (by text or email), the AI sends no more follow-ups on "
+                                   "that inquiry on any channel - unless they keep one (\"don't email me, text is "
+                                   "fine\"). Their own messages are still answered. Off: only the channel they stopped.",
+        "stop_sentence_in_a_longer_message": "\"Please stop. I'll reach out when I'm coming\" counts as a stop, even "
+                                             "inside a longer message.",
+        "second_lead_form_counts_as_contacted": "Off (recommended): a second lead form from the same customer is a new "
+                                                "inquiry, not contact - only a message from the customer makes them "
+                                                "Contacted.",
+        "one_conversation_per_customer": "When staff set the status of a linked duplicate lead, the status is kept, "
+                                         "and the AI keeps talking to the customer on their open lead only - never "
+                                         "from two leads at once.",
+        "safety_net_every_lead_has_a_next_step": "Every hour, an active lead with nothing planned gets its next normal "
+                                                 "follow-up (through all the usual checks). Leads with an appointment "
+                                                 "or no-show on another lead are left to that workflow.",
+        "no_still_with_me_after_ill_reach_out": "\"Still with me?\" isn't sent after the customer said they'll call, "
+                                                "reach out or let us know.",
+        "followups_sent_at_once": "How many scheduled follow-ups go out at the same time (1-10). Lower protects the CRM "
+                                  "at busy times; 4 since 26 Oct.",
+        "followups_per_minute": "How many scheduled follow-ups each minute's run takes (10-200); the rest go the next "
+                                "minute. 40 since 26 Oct.",
+    }
+    return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
 
 def _presend():
@@ -472,7 +504,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 17
+DEFAULTS_REVISION = 18
 
 
 def export() -> dict[str, Any]:

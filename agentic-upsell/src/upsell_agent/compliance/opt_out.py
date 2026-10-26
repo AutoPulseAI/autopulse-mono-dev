@@ -60,6 +60,8 @@ STOP_EVERYTHING_PHRASES = [
     "permanently", "forever", "remove me from", "take me off", "unsubscribe", "lose my number", "leave me alone",
     "no mas",
 ]
+# AI Studio > Compliance > Safeguards (26 Oct 2026): "Please stop." inside a longer message is a stop.
+STOP_SENTENCE_IN_MESSAGE = True
 # On: "don't text me" stops this inquiry only (Betsy, 22 Oct 2026). Off: it stops the customer, as before.
 INQUIRY_ONLY = True
 
@@ -305,7 +307,7 @@ def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
         # PLAN_4 stream X1 item 2: "please stop", "STOP ALL", "unsubscribe please": every channel, as the
         # customer didn't limit it, with our one confirmation (the carrier's keyword match needs the bare word).
         return OptOut("phrase", ALL_CHANNELS, matched, short=True)
-    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text or ""):
+    for sentence in (re.split(r"(?<=[.!?])\s+|\n+", text or "") if STOP_SENTENCE_IN_MESSAGE else ()):
         # Ebony Mingo, 26 Oct 2026: "Please stop. I will reach out when I will come. Today I will not be coming" -
         # too long to be a short stop, so the AI kept offering times. A stop sentence in a longer message stops this
         # inquiry (not short: not "everything"), the way "don't text me" does.
