@@ -54,6 +54,8 @@ def _words(text: Any) -> set[str]:
     parts = _norm(text).split()
     out = set(parts) | {a + b for a, b in zip(parts, parts[1:], strict=False)}
     out |= {m.group(1) for p in parts if (m := re.fullmatch(r"m?(\d{2,3})[a-z]{0,2}", p))}
+    # "2ss" / "1lt": the letters on their own ("2SS" asked, the feed says "SS").
+    out |= {m.group(1) for p in parts if (m := re.fullmatch(r"\d([a-z]{2,3})", p))}
     return {w for w in out if w}
 
 
@@ -108,16 +110,21 @@ async def dealer_index(dealer_id: str) -> Index:
     return index
 
 
-def score(entry: Entry, c: InventoryCriteria, said: set[str]) -> float:
+_NOT_TRIM = {"sedan", "coupe", "suv", "hatchback", "wagon", "convertible", "truck", "van", "pickup", "crew", "cab",
+             "awd", "fwd", "rwd", "4wd", "2wd", "4x4", "4matic", "quattro", "4dr", "2dr", "auto", "automatic", "door"}
+
+
+def score(entry: Entry, c: InventoryCriteria, said: set[str]) -> tuple[float, bool]:
     """How close this car is to what was asked: STRONG and up is the car they named; NEAR and up a near match."""
     if c.make and entry.make and _norm(c.make) != entry.make:
-        return 0.0
+        return 0.0, False
     points = 0.0
     model = _norm(c.model)
     model_words = _words(c.model)
+    joined = (_norm(c.make) + model).replace(" ", "") if c.make else ""
     if model:
-        if model == entry.model:
-            points += 4.0
+        if model == entry.model or (joined and joined == entry.model.replace(" ", "")):
+            points += 4.0  # "mazda 3" = "mazda3" too
         elif entry.model.startswith(model + " ") or model.startswith(entry.model + " "):
             points += 3.5  # the same family: "sonata" / "sonata hybrid", "mustang mach e" / "mustang"
         elif model_words & entry.words:
@@ -127,24 +134,30 @@ def score(entry: Entry, c: InventoryCriteria, said: set[str]) -> float:
                  ) >= SPELLING_CUTOFF:
             points += 3.0  # a close spelling of the model
         else:
-            return 0.0  # another model: never their car, never a near match
+            return 0.0, False  # another model: never their car, never a near match
         number = next((w for w in model_words if w.isdigit() and len(w) >= 3), None)
         if number:
             # A BMW's (or Mercedes') number is the car: 540 is not 530 (Muhamad Nasir, 26 Oct 2026: M240 isn't 228).
             points += 1.5 if number in entry.words else -2.5
+    exact_ok = True  # the real-lead check, 27 Oct 2026: 57 gone cars had another year or trim called "theirs"
     if c.trim:
         wanted = _words(c.trim)
-        points += 1.5 * len(wanted & entry.words) / max(1, len(wanted))
+        # Body, drivetrain and engine words in a lead's trim ("Sedan", "4dr", "AWD", "2.5L 4cyl 6A") aren't the trim.
+        named = {w for w in wanted if w not in _NOT_TRIM and not re.fullmatch(r"\d+(?:\.\d+)?l|\d+cyl|\d+a|\d+dr", w)}
+        share = len(named & entry.words) / max(1, len(named)) if named else 1.0
+        points += 1.5 * share + (0.5 if _norm(c.trim) == entry.trim else 0.0)  # the exact trim wins a tie
+        exact_ok = share == 1.0
     year = entry.record.year
     if year and (c.year_min or c.year_max):
         low, high = c.year_min or c.year_max, c.year_max or c.year_min
         points += 1.0 if low <= year <= high else 0.4 if low - 1 <= year <= high + 1 else 0.0
+        exact_ok = exact_ok and low <= year <= high
     if c.exterior_color and _norm(c.exterior_color) in _norm(entry.record.exterior_color):
         points += 0.5
     if c.price_max and entry.record.price:
         points += 0.5 if entry.record.price <= c.price_max else -1.0
     points += 0.2 * len(said & entry.words)  # the customer's own words, beyond the parsed request
-    return points
+    return points, exact_ok
 
 
 def best(index: Index, c: InventoryCriteria, text: str | None, *, k: int,
@@ -160,11 +173,13 @@ def best(index: Index, c: InventoryCriteria, text: str | None, *, k: int,
     if c.model and not candidates:
         candidates = set(range(len(index.entries)))  # a misspelling shares no word: score them all (still fast)
     exclude = exclude or set()
-    scored = [(score(index.entries[i], c, said), index.entries[i].record) for i in candidates
+    scored = [(*score(index.entries[i], c, said), index.entries[i].record) for i in candidates
               if index.entries[i].record.vin not in exclude]
-    scored = [(s, r) for s, r in scored if s >= NEAR]
-    scored.sort(key=lambda sr: -sr[0])
-    return scored[:k]
+    scored = [(p, ok, r) for p, ok, r in scored if p >= NEAR]
+    scored.sort(key=lambda x: -x[0])  # ranked by the real score
+    # Another year or trim than they named can be offered, never called their car (real-lead check, 27 Oct 2026):
+    # its label stays below STRONG, its rank doesn't change.
+    return [(p if ok else min(p, STRONG - 0.1), r) for p, ok, r in scored[:k]]
 
 
 async def candidates(dealer_id: str, c: InventoryCriteria, text: str | None, *, k: int,

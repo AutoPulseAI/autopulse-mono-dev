@@ -61,3 +61,22 @@ async def test_the_hybrid_adds_the_car_named_differently_when_on(mongo, monkeypa
     search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
     by_vin = {r["vin"]: r for r in search["records"]}
     assert by_vin["VIN0000000005S540"].get("match") == "exact" or by_vin["VIN0000000005S540"].get("found_by") == "search"
+
+
+def test_another_year_or_trim_is_never_called_their_car():
+    # Real-lead check, 27 Oct 2026: a gone 2020 540i was called "theirs" for the 2023 540i (57 such cases).
+    top = stock_match.best(STOCK, InventoryCriteria(make="BMW", model="5 Series", trim="540i xDrive",
+                                                    year_min=2020, year_max=2020), None, k=1)
+    assert top[0][1].vin == "V540" and stock_match.label(top[0][0]) == "close"
+    exact = stock_match.best(STOCK, InventoryCriteria(make="BMW", model="5 Series", trim="540i xDrive",
+                                                      year_min=2023, year_max=2023), None, k=1)
+    assert stock_match.label(exact[0][0]) == "exact"
+
+
+def test_joined_names_and_trim_letters():
+    idx = stock_match.Index.from_records([_car("VM3", 2024, "Mazda", "Mazda3", "2.5 S Select Sport"),
+                                          _car("VCX", 2024, "Mazda", "CX-90", "3.3 Turbo"),
+                                          _car("VSS", 2023, "Chevrolet", "Camaro", "SS"),
+                                          _car("VLT", 2023, "Chevrolet", "Camaro", "1LT")])
+    assert stock_match.best(idx, InventoryCriteria(make="Mazda", model="3"), None, k=1)[0][1].vin == "VM3"
+    assert stock_match.best(idx, InventoryCriteria(make="Chevrolet", model="Camaro", trim="2SS"), None, k=1)[0][1].vin == "VSS"
