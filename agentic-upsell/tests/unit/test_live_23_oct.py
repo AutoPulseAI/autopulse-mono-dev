@@ -420,3 +420,32 @@ def test_26_oct_afternoon_fixes():
     # Michael Gaston-Simpson: no "Hi Michael," on top of "Hello, Michael".
     from upsell_agent.agent.appointment import _GREETS
     assert _GREETS.match("Hello, Michael, this is Nicole at Victory Cars Central")
+
+
+def test_26_oct_afternoon_fixes():
+    # Dave Schwartz: a listing price is not his budget; "Purchase Timeframe: unsure" is a form field, not a question.
+    from upsell_agent.agent.nodes.extract import drop_listing_price_as_budget
+    from upsell_agent.slots.policy import _FORM_FIELD
+    ex = {"values": [{"path": "interest.budget", "value": 25174}, {"path": "interest.timeline", "value": "unsure"}]}
+    drop_listing_price_as_budget(ex, "I'd like to know if the Used 2020 Ford F-150 XLT you have listed on Cars.com for "
+                                     "$25,174 is still available.")
+    assert [v["path"] for v in ex["values"]] == ["interest.timeline"]
+    assert _FORM_FIELD.match("Purchase Timeframe: unsure")
+    # Kevin Ceaser: "can't make it today" is not today.
+    from upsell_agent.agent.nodes.decide import _NOT_TODAY
+    assert _NOT_TODAY.search("I would like to come today, I can't make it today I get out off work at 11pm")
+    assert not _NOT_TODAY.search("I can come today at 5")
+    # Michael Gaston-Simpson: no "Hi Michael," on top of "Hello, Michael".
+    from upsell_agent.agent.appointment import _GREETS
+    assert _GREETS.match("Hello, Michael, this is Nicole at Victory Cars Central")
+
+
+def test_larry_harris_reschedule():
+    # Larry Harris, 26 Oct 2026: "2p" wasn't a time, his visit never moved, and the AI kept saying it would update it.
+    from upsell_agent.agent.nodes.guard import invalid_booking_wording
+    from upsell_agent.tools.booking_tool import bare_time
+    assert bare_time("2p").hour == 14 and bare_time("10a").hour == 10 and bare_time("2pm").hour == 14
+    promise = {"sms_text": "Perfect—Thursday at 2:00 PM works. I'll update your appointment and send the new confirmation."}
+    assert invalid_booking_wording({"visit": {"status": "confirmed"}}, promise)
+    assert not invalid_booking_wording({"visit": {"status": "confirmed", "moved_this_turn": True,
+                                                  "display": "Thursday, October 29 at 2:00 PM"}}, promise)

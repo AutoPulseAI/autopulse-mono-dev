@@ -389,6 +389,11 @@ _CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then)|nos
 _REQUESTED_WORDING = re.compile(r"\b(requested|solicitad[oa]s?)\b", re.IGNORECASE)
 
 
+_MOVE_PROMISE = re.compile(r"\b(?:i'?ll|i\s+will|i'?m|i\s+am|we'?ll|we\s+will|we'?re)\s+(?:go(?:ing)?\s+to\s+)?"
+                           r"(?:updat(?:e|ing)|mov(?:e|ing)|chang(?:e|ing)|reschedul(?:e|ing))\s+(?:your|the)\s+"
+                           r"(?:appointment|visit|booking|time)", re.IGNORECASE)
+
+
 def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     """MASTER_PLAN_3 B5 item 7, architecture §15 decision 60: booking words
     are allowed only when the lead has a real, active booking (read fresh
@@ -408,6 +413,12 @@ def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> 
             continue
         if not active:
             violations.append(f"the {name} claims a booking, but there's no active booking on this lead")
+    for name, key in (("SMS", "sms_text"), ("email", "email_body")):
+        # Larry Harris, 26 Oct 2026: "I'll update your appointment and send the new confirmation shortly" three times -
+        # it was never moved, and the no-show check went out for the old time. Only a move made this turn says so.
+        if not visit.get("moved_this_turn") and (m := _MOVE_PROMISE.search(str(draft.get(key) or ""))):
+            violations.append(f"the {name} says the appointment is being changed ({m.group(0)!r}), but it wasn't moved "
+                              "- offer the open times for the day they want instead")
         # Client, 12 Oct 2026 (Betsy): a pending booking IS scheduled - "You're all set for ..." is right for both.
     # Live, 23 Oct 2026 (Joshuah): "You're all set for Sunday, October 25 at 11:00 AM" while his booking stayed on
     # Saturday - a confirmation names the day actually booked.

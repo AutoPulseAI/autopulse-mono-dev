@@ -163,7 +163,7 @@ class DayRequest:
 
 def _clock(hour: str, minute: str | None, meridiem: str | None) -> time:
     h = int(hour) % 12 if meridiem else int(hour)
-    if meridiem and meridiem.lower() == "pm":
+    if meridiem and meridiem.lower() in ("pm", "p"):
         h += 12
     elif not meridiem and 1 <= h <= 7:
         h += 12  # "after 5" at a dealership means the evening
@@ -269,7 +269,8 @@ class PickResult:
 
 # A time with no day ("3pm", "10 works", "at 4:30"), answering times we offered (stream Q: seen with gpt-5-mini,
 # "3pm" after "Thursday at 12:00 PM, 2:00 PM or 4:00 PM" matched nothing and the booking was dropped).
-_BARE_TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])"
+# Larry Harris, 26 Oct 2026: "2p" (picking Thursday 2:00 PM to move his visit) wasn't read as a time - "2p" / "10a" are.
+_BARE_TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|a|p)(?![a-z])"
                         r"|\b(\d{1,2}):(\d{2})\b"
                         r"|^\s*(?:at\s+|around\s+|maybe\s+|how about\s+)?(\d{1,2})"
                         r"(?:\s+(?:works|is good|is fine|would work|please|o'?clock|then))?\s*[.!?]?\s*$", re.IGNORECASE)
