@@ -333,6 +333,7 @@ _ATTRS = {
     "safety_net": ("ENABLED",),
     "studio_cadences": ("WAIT_WHEN_THEY_WILL_REACH_OUT",),
     "followups": ("FIRE_CONCURRENCY", "FIRE_BATCH_LIMIT"),
+    "stock_match": ("ENABLED", "FROM_SEARCH", "FROM_MATCH"),
 }
 
 
@@ -344,10 +345,13 @@ SAFEGUARD_SWITCHES = {
     "one_conversation_per_customer": ("handlers", "DUPLICATE_STAYS_QUIET"),
     "safety_net_every_lead_has_a_next_step": ("safety_net", "ENABLED"),
     "no_still_with_me_after_ill_reach_out": ("studio_cadences", "WAIT_WHEN_THEY_WILL_REACH_OUT"),
+    "hybrid_stock_search": ("stock_match", "ENABLED"),
 }
 SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
     "followups_sent_at_once": ("followups", "FIRE_CONCURRENCY", 1, 10),
     "followups_per_minute": ("followups", "FIRE_BATCH_LIMIT", 10, 200),
+    "cars_from_current_search": ("stock_match", "FROM_SEARCH", 1, 5),
+    "cars_from_new_search": ("stock_match", "FROM_MATCH", 0, 5),
 }
 
 
@@ -373,9 +377,10 @@ def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import turn
     from upsell_agent.events import handlers
     from upsell_agent.scheduler import followups, safety_net, studio_cadences
+    from upsell_agent.tools import stock_match
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
             "decide": decide, "presend": presend, "turn": turn, "handlers": handlers, "safety_net": safety_net,
-            "studio_cadences": studio_cadences, "followups": followups}
+            "studio_cadences": studio_cadences, "followups": followups, "stock_match": stock_match}
 
 
 def _policy_module():

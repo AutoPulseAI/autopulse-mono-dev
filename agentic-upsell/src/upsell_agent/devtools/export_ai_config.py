@@ -470,6 +470,12 @@ def _safeguards() -> dict[str, Any]:
                                   "at busy times; 4 since 26 Oct.",
         "followups_per_minute": "How many scheduled follow-ups each minute's run takes (10-200); the rest go the next "
                                 "minute. 40 since 26 Oct.",
+        "hybrid_stock_search": "Off until checked on real leads. On: besides the usual search, the whole stock is "
+                               "scored against what the customer asked for, so a car named differently from the feed "
+                               "is still found (\"540\" = 5 Series 540i, \"Sonata\" = Sonata Hybrid). The AI picks "
+                               "from both lists, and asks which car they mean when a few could fit.",
+        "cars_from_current_search": "With the hybrid search on: how many cars come from the usual search (1-5).",
+        "cars_from_new_search": "With the hybrid search on: how many more cars the new search adds (0-5).",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -504,7 +510,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 18
+DEFAULTS_REVISION = 19
 
 
 def export() -> dict[str, Any]:
