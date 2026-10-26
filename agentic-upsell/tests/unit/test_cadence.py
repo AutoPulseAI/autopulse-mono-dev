@@ -307,15 +307,14 @@ async def test_a_reply_skips_the_nudge_and_the_next_touch_is_days_away(mongo):
 
 
 @pytestmark_flow
-async def test_one_channel_opted_out_never_stops_the_other(mongo):
+async def test_a_stop_by_text_means_no_follow_up_by_email_either(mongo):
+    # The user, 26 Oct 2026 (Michael Tartaglia texted "Stop" and got an AI follow-up email the next day): replaces
+    # "continue every remaining permitted channel" - a customer who said stop gets no follow-ups on this inquiry.
     created = await _new_lead()
-    await _say(created, "STOP")  # SMS only
-    assert (await _state(mongo, created))["stage"] != "opted_out"
+    await _say(created, "STOP")
     before = len(await _outbox(mongo, created))
-    fired = await _fire_next_touch(mongo, created)
-    assert fired["results"].get("sent") == 1, fired  # (C2: the 60-minute call timer may fire too)
-    new = (await _outbox(mongo, created))[before:]
-    assert [m["channel"] for m in new] == ["email"]  # "continue every remaining permitted channel"
+    await _fire_next_touch(mongo, created)
+    assert (await _outbox(mongo, created))[before:] == []
 
 
 @pytestmark_flow
