@@ -336,3 +336,12 @@ def test_a_hand_over_is_promised_only_when_this_turn_hands_over(decision, flagge
                          "available, so I'm passing it to our sales manager who can help and will get back to you."}
     assert bool(unbacked_handover_promise(decision, draft)) is flagged
     assert not unbacked_handover_promise({"action": "offer_visit"}, {"sms_text": "The A3 is here. Monday at 1?"})
+
+
+def test_a_question_with_no_text_never_blocks_a_reply():
+    # Joyce Capuano, 26 Oct 2026: "didn't answer: None" twice -> the safe template -> "take me off your text list".
+    from upsell_agent.agent.nodes.guard import unanswered_questions
+    decision = {"action": "answer", "answer_questions": [{"text": None, "label": "clarify"},
+                                                         {"text": "Do you have other bmw x3's?"}]}
+    draft = {"sms_text": "We have a 2022 BMW X3 sDrive30i.", "answered_questions": ["Do you have other bmw x3's?"]}
+    assert unanswered_questions(decision, draft) == []

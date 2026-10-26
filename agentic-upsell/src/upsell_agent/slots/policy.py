@@ -191,7 +191,7 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     pending = [s for s in profile.pending() if s.path not in confirmed_once and not s.path.startswith("contact.")]
     missing = [r for r in profile.missing() if not (confirmed_once and set(_unfilled(profile, r)) <= confirmed_once)]
     filled, total = profile.progress()
-    clarify_questions = [q for q in flags.questions if q.get("label") == "clarify"]
+    clarify_questions = [q for q in flags.questions if q.get("label") == "clarify" and str(q.get("text") or "").strip()]
     # Live, 23 Oct 2026 (Nanc: every touch rejected for not answering "View Shopper Signals: https://cargur.us/..."):
     # a portal's own lines saved as a question before they were filtered out are no question to answer.
     from upsell_agent.agent.portal_text import clean_comments

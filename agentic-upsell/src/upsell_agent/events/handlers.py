@@ -537,6 +537,11 @@ async def fire_held_first_reply(db: DealerScopedDatabase, doc: dict, deps: TurnD
     return {"held": "deferred", "not_sent": "suppressed"}.get(result["status"], result.get("send_status") or "sent")
 
 
+# An iPhone tapback relayed as SMS: 'Laughed at “...”', 'Liked "..."', 'Loved an image'.
+_REACTION = re.compile(r"^\s*(?:Liked|Loved|Laughed at|Emphasized|Disliked|Questioned|Reacted\s+\S+\s+to)\s+"
+                       r"(?:[“\"'].*[”\"']|an?\s+(?:image|attachment|message|link|video))\s*$", re.DOTALL)
+
+
 async def record_inbound(event: InboundMessageEvent) -> str | None:
     """Saves the customer's message (idempotent on the platform message id)
     and returns its lead id. Called BEFORE the lead lock is taken
@@ -750,6 +755,14 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                          "no reply, not counted as contact.",
                                   received_at=_parse_received_at(received_at))
         return {**held, "status": "auto_reply"}
+
+    if all(_REACTION.match(str(m.get("text") or "")) for m in unanswered):
+        # Joyce Capuano, 26 Oct 2026: "Laughed at “Thanks, Joyce. ...”" (an iPhone reaction sent as a text) got a full
+        # reply, then her next message got another - two answers 25 s apart. A reaction is saved for staff, no reply.
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="saved_only",
+                                  reason="An iPhone reaction to our message (Liked / Loved / Laughed at ...): saved, "
+                                         "no reply.", received_at=_parse_received_at(received_at))
+        return {**held, "status": "reaction"}
 
     # Step 1, before anything can fail: the customer replied, so no channel switch.
     cancelled = await _cancel_pending_followups(db, lead_id, channel_switches_only=True)

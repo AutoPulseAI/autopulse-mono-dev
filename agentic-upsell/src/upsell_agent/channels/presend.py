@@ -134,8 +134,11 @@ async def _check(db: Any, *, lead_id: str, customer_id: str, turn_id: str, text:
         ids = [as_object_id(a) if ObjectId.is_valid(str(a)) else a for a in answers]
         covered = await messages.find({"_id": {"$in": ids}}).to_list(50)
         latest = max((_aware(m["created_at"]) for m in covered if m.get("created_at")), default=None)
+        # Joyce Capuano, 26 Oct 2026: her newer message was already claimed by its own turn (answered_turn_id set),
+        # so this reply went too and she got two answers 25 s apart. Any newer message another turn answers counts.
         newer = await messages.find_one({"lead_id": {"$in": leads}, "direction": "inbound", "_id": {"$nin": ids},
-                                         "answered_turn_id": None, "created_at": {"$gt": latest}}) if latest else None
+                                         "answered_turn_id": {"$nin": [turn_id]},
+                                         "created_at": {"$gt": latest}}) if latest else None
         if newer:
             state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": str(newer["lead_id"])}) or {}
             if state.get("status", "active") == "active":

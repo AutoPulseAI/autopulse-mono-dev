@@ -99,7 +99,10 @@ def unanswered_questions(decision: dict[str, Any], draft: dict[str, Any]) -> lis
     # availability question is answered when the reply says it plainly.
     availability_said = bool(re.search(r"\b(?:available|still here|is here|it'?s here|in stock|on (?:our|the) lot|"
                                        r"we have it|we still have|has sold|was sold|no longer available)\b", said))
-    return [q["text"] for q in decision.get("answer_questions") or [] if _key(q["text"]) not in answered
+    # Joyce Capuano, 26 Oct 2026: a question with no text ("didn't answer: None") failed every draft twice, the
+    # customer got "anything else before your visit?" and asked to be taken off the list. No text: nothing to answer.
+    return [q["text"] for q in decision.get("answer_questions") or [] if str(q.get("text") or "").strip()
+            and _key(q["text"]) not in answered
             and not (availability_said and re.search(r"\bavailab|\bstill (?:there|have|for sale)|\bin stock\b",
                                                       str(q.get("text") or ""), re.IGNORECASE))]
 

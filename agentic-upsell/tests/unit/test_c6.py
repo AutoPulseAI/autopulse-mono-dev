@@ -441,3 +441,12 @@ def test_asking_for_email_stops_texts(text):
 def test_mentioning_email_is_not_a_preference(text):
     from upsell_agent.compliance.opt_out import detect_opt_out
     assert detect_opt_out(text, "sms") is None
+
+
+async def test_an_iphone_reaction_is_saved_and_gets_no_reply(mongo, live_dealer):
+    # Joyce Capuano, 26 Oct 2026: 'Laughed at “Thanks, Joyce. ...”' got a full reply of its own.
+    first = await _lead()
+    await _created(first)
+    before = await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]})
+    await _say(first, 'Laughed at “Thanks, Joyce. Is there anything else I can help you with before your visit?”')
+    assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]}) == before
