@@ -493,3 +493,16 @@ async def test_the_leads_own_vin_is_the_exact_match_under_another_model_name(mon
     search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
     assert search["records"][0]["vin"] == vin and not search["loosened"]
     assert (await _state(mongo, created)).get("mode") != "handoff"
+
+
+async def test_the_leads_own_car_is_loaded_first_among_many_of_the_same_model(mongo):
+    # Zain Faisal, 25 Oct 2026: three newer C 300s were loaded, not his, and a silver one was "the one you asked about".
+    vin = "55SWF8EB9KU303122"
+    await _stock(mongo, _vehicle(vin, year=2019, make="Mercedes-Benz", model="C-Class", trim="C 300",
+                                 color="Selenite Gray Metallic", added_minutes_ago=600),
+                 *(_vehicle(f"VIN000000000C30{i}", year=2019, make="Mercedes-Benz", model="C-Class", trim="C 300",
+                            color="Silver", added_minutes_ago=i) for i in range(1, 6)))
+    created = await _new_lead(mongo, vehicle={"year": 2019, "make": "Mercedes-Benz", "model": "C-Class", "vin": vin})
+    turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
+    search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
+    assert search["records"][0]["vin"] == vin
