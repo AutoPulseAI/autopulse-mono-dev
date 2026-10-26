@@ -84,6 +84,9 @@ class Step:
         return {"step": self.step, "due_at": self.due_at.isoformat(), "why": self.why}
 
 
+_GREETS = re.compile(r"^\s*(?:hi|hello|hey|good\s+(?:morning|afternoon|evening)|dear)\b", re.IGNORECASE)
+
+
 def aware(value: Any, tz) -> datetime | None:
     if not isinstance(value, datetime):
         return None
@@ -262,7 +265,10 @@ def _render_built_in(step: str, *, customer_name: str | None, dealership: str | 
         subject = "How did everything go?"
     else:
         raise ValueError(f"no message for step {step!r}")
-    return {"sms_text": text, "email_subject": subject, "email_body": f"Hi {first},\n\n{text}\n\nThanks,\n{place}"}
+    # Michael Gaston-Simpson, 26 Oct 2026: "Hi Michael, Hello, Michael, this is Nicole ..." - AI Studio's text greets him
+    # already; the email adds its "Hi" only when it doesn't.
+    opening = "" if _GREETS.match(text) else f"Hi {first},\n\n"
+    return {"sms_text": text, "email_subject": subject, "email_body": f"{opening}{text}\n\nThanks,\n{place}"}
 
 
 def reply_text(kind: str, *, customer_name: str | None, appt: datetime | None,
