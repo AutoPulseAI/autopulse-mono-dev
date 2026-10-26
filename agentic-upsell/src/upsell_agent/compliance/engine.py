@@ -418,8 +418,14 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
     if lead_id and not is_reply:
         from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
         row = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
-                                                                     projection={"inquiry_opt_out": 1})
-        stops = ((row or {}).get("inquiry_opt_out") or {})
+                                                                     projection={"inquiry_opt_out": 1, "duplicate_of": 1})
+        stops = dict((row or {}).get("inquiry_opt_out") or {})
+        if (row or {}).get("duplicate_of"):
+            # Joyce Capuano, 26 Oct 2026: a follow-up went from her linked duplicate lead after she asked to stop. A
+            # duplicate is the same inquiry: the stop on the lead it's linked to covers it.
+            primary = await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+                {"lead_id": row["duplicate_of"]}, projection={"inquiry_opt_out": 1})
+            stops = {**((primary or {}).get("inquiry_opt_out") or {}), **stops}
         # The user, 26 Oct 2026 (Michael Tartaglia texted "Stop" on 25 Oct and got an AI follow-up email the next
         # day): a customer who said stop gets no follow-up on any channel for this inquiry. Their own messages are
         # still answered, the confirmation wording is unchanged, and their other leads are their own.
