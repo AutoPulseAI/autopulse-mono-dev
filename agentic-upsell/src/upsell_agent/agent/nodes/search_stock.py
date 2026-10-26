@@ -130,6 +130,7 @@ async def _link_vehicle(state: AgentState, span: NodeSpan, ctx: TurnContext, pac
     vin = next((v for v in (named, lead_vehicle_vin(ctx.lead, ctx.lead_state)) if v), None)
     if not vin or vin in loaded:
         return pack
+    searched = str((pack.get("stock_search") or {}).get("searched_for") or "")
     try:
         record = await get_vehicle(state.dealer_id, vin, ctx.inventory or get_inventory_source(ctx.settings))
     except Exception as exc:  # noqa: BLE001 - a link is never worth a failed turn
@@ -137,6 +138,12 @@ async def _link_vehicle(state: AgentState, span: NodeSpan, ctx: TurnContext, pac
         return pack
     if not record:
         span.reasoning = [*(span.reasoning or []), f"Link vehicle {vin} is no longer in stock."]
+        return pack
+    if not named and record.model and searched not in ("", "any vehicle") \
+            and record.model.lower() not in searched.lower():
+        # Krishna, 26 Oct 2026 ("Can you send me the link to the 3?" got the 2 Series' link): the lead's own car is
+        # the link only when it's what this turn looked for.
+        span.reasoning = [*(span.reasoning or []), f"Link: the lead's {record.model} isn't the {searched} asked for."]
         return pack
     shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
     span.reasoning = [*(span.reasoning or []), f"They asked for a link: {vin} added to this turn's stock."]

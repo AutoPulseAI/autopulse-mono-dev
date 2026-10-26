@@ -25,6 +25,7 @@ keeps its dealer scoping, `year_range`, escaping and 60 s cache):
 """
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -202,6 +203,13 @@ async def _model_in_stock(dealer_id: str, c: InventoryCriteria, source: Inventor
 async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
                   loosened: list[dict[str, str]]) -> tuple[str | None, InventoryCriteria]:
     """The next loosening step that applies, recorded; (None, c) when none is left."""
+    if c.model and re.fullmatch(r"[1-8]", c.model.strip()) and (c.make or "BMW").upper() == "BMW" \
+            and not any(s["step"] == "model_name" for s in loosened):
+        # Krishna, 26 Oct 2026 ("Not the two the 3" about a BMW 3 Series): a bare "3" is the feed's "3 Series" - the
+        # same vehicle, so the match stays exact.
+        named = f"{c.model.strip()} Series"
+        loosened.append({"step": "model_name", "detail": f"model {c.model!r} is BMW's {named!r}"})
+        return "model_name", c.model_copy(update={"make": "BMW", "model": named})
     if (c.model and len(c.model.split()) > 1 and not any(s["step"] == "model_name" for s in loosened)
             and not await _model_in_stock(dealer_id, c, source)):
         # Client, 12 Oct 2026 (Bibi, a Mustang Mach-E lead): the feed lists it as model "Mustang", trim "Mach-E".
