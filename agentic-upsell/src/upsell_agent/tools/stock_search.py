@@ -76,7 +76,11 @@ def trim_matches(wanted: str, trim: str | None) -> bool:
     have = (trim or "").lower().replace("-", " ").split()
     words = wanted.lower().replace("-", " ").split()
     tokens = {*have, *(a + b for a, b in itertools.pairwise(have))}
-    return bool(have) and (all(word in tokens for word in words) or "".join(words) in tokens)
+    # "540" is "540i", "330" is "330e": a number said without its letter.
+    def found(word: str) -> bool:
+        return word in tokens or (word[:1].isdigit() and any(t.startswith(word) and t[len(word):].isalpha()
+                                                              for t in tokens))
+    return bool(have) and (all(found(word) for word in words) or "".join(words) in tokens)
 
 
 @dataclass
@@ -200,16 +204,22 @@ async def _model_in_stock(dealer_id: str, c: InventoryCriteria, source: Inventor
     return bool(found.records or found.matched)
 
 
+# BMW's numbered models: "3", "540", "330i", "M340i", "228 xDrive" -> the feed's "N Series".
+_BMW_NUMBER = re.compile(r"M?(?P<series>[1-8])(?P<rest>\d{2}[a-z]{0,2}(?:\s+(?:x|s)Drive)?)?", re.IGNORECASE)
+
+
 async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
                   loosened: list[dict[str, str]]) -> tuple[str | None, InventoryCriteria]:
     """The next loosening step that applies, recorded; (None, c) when none is left."""
-    if c.model and re.fullmatch(r"[1-8]", c.model.strip()) and (c.make or "BMW").upper() == "BMW" \
-            and not any(s["step"] == "model_name" for s in loosened):
-        # Krishna, 26 Oct 2026 ("Not the two the 3" about a BMW 3 Series): a bare "3" is the feed's "3 Series" - the
-        # same vehicle, so the match stays exact.
-        named = f"{c.model.strip()} Series"
+    bmw = _BMW_NUMBER.fullmatch((c.model or "").strip()) if (c.make or "BMW").upper() == "BMW" else None
+    if bmw and not any(s["step"] == "model_name" for s in loosened):
+        # Krishna, 26 Oct 2026 ("Not the two the 3" about a BMW 3 Series): a bare "3" is the feed's "3 Series".
+        # Ehsanul, 26 Oct 2026: "540" is the feed's "5 Series" trim "540i xDrive". The same vehicle, so the match
+        # stays exact; the number becomes the trim.
+        named = f"{bmw.group('series')} Series"
+        trim = " ".join(filter(None, [c.model.strip() if bmw.group("rest") else None, c.trim])) or None
         loosened.append({"step": "model_name", "detail": f"model {c.model!r} is BMW's {named!r}"})
-        return "model_name", c.model_copy(update={"make": "BMW", "model": named})
+        return "model_name", c.model_copy(update={"make": "BMW", "model": named, "trim": trim})
     if (c.model and len(c.model.split()) > 1 and not any(s["step"] == "model_name" for s in loosened)
             and not await _model_in_stock(dealer_id, c, source)):
         # Client, 12 Oct 2026 (Bibi, a Mustang Mach-E lead): the feed lists it as model "Mustang", trim "Mach-E".
