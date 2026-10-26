@@ -506,3 +506,12 @@ async def test_bmw_numbered_models_are_the_feeds_series_with_that_trim(mongo):
     found = await find_stock(DEALER, InventoryCriteria(make="BMW", model="540"), STUB)
     assert [r.vin for r in found.records] == ["VIN00000000005S40"]
     assert trim_matches("540", "540i xDrive") and not trim_matches("540", "5400 Special")
+
+
+async def test_a_model_name_finds_its_family_in_the_feed(mongo):
+    # 26 Oct 2026: "Hyundai Sonata" missed the feed's "Sonata Hybrid" and went to any Hyundai.
+    await _stock(mongo, _vehicle("VIN00000000SONH25", year=2025, make="Hyundai", model="Sonata Hybrid", trim="SEL"),
+                 _vehicle("VIN00000000TUCS24", year=2024, make="Hyundai", model="Tucson", trim="SEL"))
+    found = await find_stock(DEALER, InventoryCriteria(make="Hyundai", model="Sonata", year_min=2024, year_max=2024),
+                             STUB)
+    assert [r.model for r in found.records] == ["Sonata Hybrid"]
