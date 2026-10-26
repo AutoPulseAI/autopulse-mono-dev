@@ -480,3 +480,16 @@ def test_a_vehicle_the_customer_names_that_isnt_in_stock_goes_to_dealership_acti
     assert vehicle_check_for(stock, {"asked_vehicle": "S65"}, "cadence_touch", "offer_visit") is None
     # Activity log, 25 Oct 2026: the first message about the lead's own vehicle, not in stock, escalates too.
     assert vehicle_check_for(stock, {}, "lead_created", "offer_visit") == {"vehicle": "Mercedes-Benz S65"}
+
+
+async def test_the_leads_own_vin_is_the_exact_match_under_another_model_name(mongo):
+    # Joe Dalton, 26 Oct 2026: Cars.com said "540 xDrive", the feed says "5 Series" trim "540i xDrive"; he went to
+    # Managerial Review "to confirm it's available" while it was in stock.
+    vin = "WBAJS3C0XLWW66406"
+    await _stock(mongo, _vehicle(vin, year=2020, make="BMW", model="5 Series", trim="540i xDrive", body="4D Sedan"),
+                 _vehicle("VIN0000000000X301", year=2020, make="BMW", model="X3", trim="xDrive30i"))
+    created = await _new_lead(mongo, vehicle={"year": 2020, "make": "BMW", "model": "540 xDrive", "vin": vin})
+    turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
+    search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
+    assert search["records"][0]["vin"] == vin and not search["loosened"]
+    assert (await _state(mongo, created)).get("mode") != "handoff"
