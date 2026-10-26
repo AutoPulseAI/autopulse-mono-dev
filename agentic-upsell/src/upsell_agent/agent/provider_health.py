@@ -136,7 +136,12 @@ async def probe(settings: Any) -> tuple[bool, str]:
     """One tiny call to the extract model: does the provider answer?"""
     try:
         from pydantic_ai import Agent
-        agent = Agent(settings.model_extract, output_type=str,
+
+        from upsell_agent.agent.llm import _model
+        # Live, 26 Oct 2026: the check built its model from the bare name, so it read the API key from the process
+        # environment - which the worker doesn't have (the key is in its settings) - and failed every time: the AI
+        # never came back on after the credit was added. The same model setup as the AI's own calls, key included.
+        agent = Agent(_model(settings.model_extract), output_type=str,
                       instructions="Reply with the single word OK.")
         await agent.run("ping")
         return True, "the model answered"

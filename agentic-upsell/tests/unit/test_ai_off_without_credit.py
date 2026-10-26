@@ -144,3 +144,10 @@ async def test_a_routine_check_switches_the_ai_off_and_emails_before_any_custome
     assert (await jobs.check_ai_provider({"deps": D()})) == {"status": "up"}
     set_clock(datetime(2026, 10, 26, 3, 14, tzinfo=UTC))  # 11 minutes after the last: checked, and it answers
     assert (await jobs.check_ai_provider({"deps": D()}))["status"] == "up"
+
+
+def test_the_provider_check_uses_the_ai_s_own_model_setup_with_its_key():
+    # Live, 26 Oct 2026: the check read the API key from the environment the worker doesn't have; it failed forever
+    # and the AI never came back on after the credit was added.
+    import inspect
+    assert "_model(settings.model_extract)" in inspect.getsource(provider_health.probe)
