@@ -295,4 +295,10 @@ def detect_opt_out(text: str, channel: Channel) -> OptOut | None:
         # PLAN_4 stream X1 item 2: "please stop", "STOP ALL", "unsubscribe please": every channel, as the
         # customer didn't limit it, with our one confirmation (the carrier's keyword match needs the bare word).
         return OptOut("phrase", ALL_CHANNELS, matched, short=True)
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text or ""):
+        # Ebony Mingo, 26 Oct 2026: "Please stop. I will reach out when I will come. Today I will not be coming" -
+        # too long to be a short stop, so the AI kept offering times. A stop sentence in a longer message stops this
+        # inquiry (not short: not "everything"), the way "don't text me" does.
+        if (part := _normalize(sentence)) and part != lowered and (matched := _short_opt_out(part)):
+            return OptOut("phrase", ALL_CHANNELS, matched)
     return None

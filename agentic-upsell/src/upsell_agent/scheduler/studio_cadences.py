@@ -26,6 +26,7 @@ from upsell_agent import ai_studio, clock
 from upsell_agent.agent.timing import describe, due
 from upsell_agent.integrations.mongodb import (
     AI_LEAD_STATE_COLLECTION,
+    AI_MESSAGES_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
 )
@@ -132,6 +133,11 @@ async def plan_step(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
             "step": index, "timing": describe(wait)}
 
 
+_WILL_REACH_OUT = re.compile(r"\bI(?:'?ll|\s+will|\s+am\s+going\s+to|'?m\s+gonna)\s+(?:give\s+(?:you|y'?all)(?:\s+all)?\s+a\s+"
+                             r"call|call\s+(?:you|y'?all)|reach\s+out|let\s+you\s+know|get\s+back\s+to\s+you|"
+                             r"contact\s+you|text\s+you|be\s+in\s+touch)", re.IGNORECASE)
+
+
 async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """A touch of an added cadence is due: checked, sent through a whole AI turn on its channels, the next planned."""
     from upsell_agent.agent.turn import run_turn
@@ -163,6 +169,13 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
          and state["last_outbound_at"] > (doc["started_at"] + timedelta(minutes=1)).replace(
              tzinfo=state["last_outbound_at"].tzinfo), "another message went out after the AI's question"),
     ]
+    if key == "still_with_me" and not any(failed for failed, _ in reasons):
+        # Ebony Mingo, 26 Oct 2026 ("I will not be in today ... I will give you all a call" got "Still with me?" 16
+        # minutes later, then "Please stop"): a customer who said they'll reach out didn't go quiet.
+        last = await db.collection(AI_MESSAGES_COLLECTION).find(
+            {"lead_id": doc["lead_id"], "direction": "inbound"}).sort("created_at", -1).to_list(1)
+        if last and _WILL_REACH_OUT.search(str(last[0].get("text") or "")):
+            reasons.append((True, "the customer said they'll reach out themselves"))
     if why := next((w for failed, w in reasons if failed), None):
         await _close(db, doc, "cancelled", reason=why)
         return "cancelled"
