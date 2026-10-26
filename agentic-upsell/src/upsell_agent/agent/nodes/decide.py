@@ -1023,6 +1023,11 @@ async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profi
     inventory = (state.context_pack or {}).get("inventory")
     url = vehicle_page_url(ctx.lead, ctx.lead_state, inventory, text)
     car = vehicle_record(ctx.lead, ctx.lead_state, inventory, text)
+    if url is None and "{vehicle_link}" in cannot_supply._REPLIES.get(topic, ""):
+        # Ehsanul, 26 Oct 2026: asked for the Carfax of a car that had just sold; the script's link sentence went with
+        # no page to link, and only its closing line was sent ("If everything is to your liking, what day works...").
+        # A script that is a link, with no link to give: the AI answers instead, the script stays as written.
+        return None, None
     if visit_ctx.get("status") in ("pending", "confirmed"):
         return cannot_supply.reply(topic, booked=visit_ctx.get("display") or "your visit", vehicle_url=url,
                                    vehicle=car), None

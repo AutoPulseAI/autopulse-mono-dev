@@ -372,6 +372,12 @@ async def run_turn(
                                                    lead=lead, customer=customer, customer_id=customer_id,
                                                    channel=channel, turn_id=tracer.turn_id, shadow=shadow,
                                                    hold_cadence=_hold_cadence(decision))
+        if not shadow and trigger in ("inbound_message", "resume_at_opening", "lead_created"):
+            # Rocco, 26 Oct 2026: his name correction came in messages whose replies were (rightly) stopped as
+            # superseded, and the name was lost with them. What the customer tells us is saved whether or not this
+            # turn's reply went out.
+            await _save_name(deps, dealer_id, lead_id, lead, result, inbound_text=inbound_text)
+            await _save_contact(deps, dealer_id, lead_id, lead, inbound_text)
         if trigger == TRIGGER_RESUME and sent is not None and sent.status in ("sent", "duplicate") and not shadow:
             await _notify_team_at_opening(db, lead_id, result)
         if sent is not None and sent.status in ("sent", "duplicate") and not shadow:
@@ -388,8 +394,6 @@ async def run_turn(
                                            or (lead or {}).get("name"))
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
-            await _save_name(deps, dealer_id, lead_id, lead, result, inbound_text=inbound_text)
-            await _save_contact(deps, dealer_id, lead_id, lead, inbound_text)
             await _show_booking(db, lead_id, decision)
             asked = str(((result.get("draft") or {}).get("sms_text")) or "") + " " + str(
                 (result.get("draft") or {}).get("email_body") or "")
@@ -845,13 +849,16 @@ async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | 
     2026 (item 10, Sal): one they state themselves ("my name is Sal") replaces the stored name too - lead and customer
     profile, logged on the timeline as updated by the AI - and is used from then on. Never raises."""
     from upsell_agent.agent.templates import known_first_name
-    said = next((v.get("value") for v in (result.get("extraction") or {}).get("values") or []
-                 if v.get("path") == "contact.name" and v.get("value")), None)
+    value = next((v for v in (result.get("extraction") or {}).get("values") or []
+                  if v.get("path") == "contact.name" and v.get("value")), None)
+    said = value.get("value") if value else None
     if not said and (m := _NAME_SAID_PLAINLY.search(inbound_text or "")):
         said = m.group(1)  # "my name is Sal" needs no model to read it
     if not said or not known_first_name(str(said)) or not _name_word_ok(str(said)):
         return
-    stated = stated_name(inbound_text, str(said))
+    # Rocco, 26 Oct 2026: "my name isn't luis it's rocco" came in a burst; the turn that went out read only the last
+    # message (his email). The words Extract quoted for the name count too.
+    stated = stated_name(inbound_text, str(said)) or stated_name((value or {}).get("quote"), str(said))
     if known_first_name((lead or {}).get("name")) and not stated:
         return
     try:

@@ -356,3 +356,49 @@ def test_still_with_me_waits_when_the_customer_said_they_will_reach_out(text, sk
     # Ebony Mingo, 26 Oct 2026: "Still with me?" 16 minutes after "I will give you all a call".
     from upsell_agent.scheduler.studio_cadences import _WILL_REACH_OUT
     assert bool(_WILL_REACH_OUT.search(text)) is skips
+
+
+@pytest.mark.parametrize(("text", "hour"), [
+    ("i live about 2 hours away", None),  # Rocco, 26 Oct 2026: booked at 2:00 PM
+    ("about 30 minutes out", None),
+    ("I'm about 5 miles from you", None),
+    ("around 5 works", 17),
+    ("today around 5", 17),
+])
+def test_a_number_with_a_unit_is_never_a_time(text, hour):
+    from upsell_agent.tools.booking_tool import bare_time
+    found = bare_time(text)
+    assert (found.hour if found else None) == hour
+
+
+async def test_a_link_script_with_no_link_is_not_sent_as_a_fragment(monkeypatch):
+    # Ehsanul, 26 Oct 2026: "Can you send me the car fax?" got only "If everything is to your liking, what day works?"
+    from types import SimpleNamespace
+    from upsell_agent.agent import cannot_supply
+    from upsell_agent.agent.nodes import decide
+    monkeypatch.setitem(cannot_supply._REPLIES, "studio_vehicle_history_requested",
+                        "Here is the history report: {vehicle_link}. If everything is to your liking, what day works?")
+    monkeypatch.setattr(cannot_supply, "detect", lambda text: "studio_vehicle_history_requested")
+    monkeypatch.setattr("upsell_agent.agent.vehicle_media.vehicle_page_url", lambda *a, **k: None)
+    monkeypatch.setattr("upsell_agent.agent.vehicle_media.vehicle_record", lambda *a, **k: None)
+    state = SimpleNamespace(trigger="inbound_message", context_pack={}, dealer_id="d", lead_id="l")
+    ctx = SimpleNamespace(lead={}, lead_state={})
+    out = await decide.plan_cannot_supply(ctx, state, None, None, dealer=None, now=None,
+                                          text="Can you send me the car fax?", hold=None, visit_ctx={})
+    assert out == (None, None)
+
+
+async def test_a_name_correction_in_a_burst_is_saved_from_the_quoted_words():
+    # Rocco, 26 Oct 2026: "my name isn't luis it's rocco" arrived in a burst; the turn read only his email.
+    from types import SimpleNamespace
+    from upsell_agent.agent.turn import _save_name
+    calls = []
+
+    async def set_lead_name(dealer_id, lead_id, name, said=None):
+        calls.append((name, said))
+        return True
+    deps = SimpleNamespace(platform=SimpleNamespace(set_lead_name=set_lead_name))
+    result = {"extraction": {"values": [{"path": "contact.name", "value": "rocco",
+                                         "quote": "my name isn't luis it's rocco"}]}}
+    await _save_name(deps, "d", "l", {"name": "Luis Campos"}, result, inbound_text="roccoparada942@gmail.com")
+    assert calls and calls[0][0] == "Rocco"

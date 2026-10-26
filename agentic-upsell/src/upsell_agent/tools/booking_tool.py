@@ -281,7 +281,10 @@ _NO_COLON = re.compile(r"^\s*(?:at|around|about|maybe|by)?\s*(\d{1,2})[\s.]?(\d{
                        re.IGNORECASE)
 
 
-_AROUND = re.compile(r"\b(?:around|about|at|by|after|maybe)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?![\d:])",
+# Rocco, 26 Oct 2026: "i live about 2 hours away" booked him at 2:00 PM. A number with a unit is never a time.
+_AROUND = re.compile(r"\b(?:around|about|at|by|after|maybe)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?![\d:])"
+                     r"(?!\s*(?:hours?|hrs?|h\b|minutes?|mins?|miles?|mi\b|days?|weeks?|wks?|months?|years?|yrs?|people|"
+                     r"of\s+us|kids?|cars?|k\b|grand|dollars?|bucks|%|percent|times?\b|more|less|or\s+so\s+(?:hours?|miles?)))",
                      re.IGNORECASE)
 
 
