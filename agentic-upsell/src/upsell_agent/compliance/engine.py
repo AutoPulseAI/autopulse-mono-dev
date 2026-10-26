@@ -79,6 +79,10 @@ Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
 # on a new lead. Its own class: every suppression rule, the review, the customer's state window and the cap
 # apply, but a genuine consumer inquiry (inbound origin) needs no marketing consent. A lead that isn't the
 # consumer reaching out (a CSV / DMS import, DealerVault, a campaign, an unmapped source) is outbound marketing.
+# "text is fine" / "email me instead": the customer keeps another channel open.
+_KEEPS_OTHER_CHANNEL = re.compile(r"\b(?:text(?:ing)?|sms|email(?:ing)?|e-mail|call(?:ing)?|phone)\b[^.!?]{0,20}\b(?:is|are)\s+"
+                                  r"(?:fine|ok|okay|good|better)\b|\binstead\b|\b(?:text|email|call)\s+me\s+(?:only|instead)\b",
+                                  re.IGNORECASE)
 Purpose = Literal["marketing", "transactional", "opt_out_confirmation", "reply", "lead_response"]
 
 # Customer-local windows (start, end), end exclusive.
@@ -415,12 +419,29 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
         row = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id},
                                                                      projection={"inquiry_opt_out": 1})
-        stopped = ((row or {}).get("inquiry_opt_out") or {}).get("email" if channel == "email" else "sms")
+        stops = ((row or {}).get("inquiry_opt_out") or {})
+        # The user, 26 Oct 2026 (Michael Tartaglia texted "Stop" on 25 Oct and got an AI follow-up email the next
+        # day): a customer who said stop gets no follow-up on any channel for this inquiry. Their own messages are
+        # still answered, the confirmation wording is unchanged, and their other leads are their own.
+        stopped = "email" if channel == "email" and stops.get("email") else \
+            "sms" if channel != "email" and stops.get("sms") else None
+        # "Don't email me, text is fine": the channel they keep stays open (Betsy, 22 Oct 2026).
+        if not stopped:
+            stopped = next((c for c, row in stops.items() if c != channel and row
+                            and not _KEEPS_OTHER_CHANNEL.search(str((row or {}).get("said") or ""))), None)
+        if not stopped and customer_id:
+            sms = await consent.latest_opt_out(db, customer_id, "sms")
+            created_raw = (lead or {}).get("createdAt") or (lead or {}).get("created_at")
+            created = _aware(created_raw) if created_raw else None
+            said = _aware(sms["recorded_at"]) if sms and sms.get("recorded_at") else None
+            if sms and sms.get("consent_status") == "opted_out" and said and (created is None or said >= created):
+                stopped = "sms (STOP)"
         if stopped:
-            check("inquiry_opt_out", False, f"the customer asked us to stop {channel} about this inquiry")
-            return Decision("BLOCK", f"the customer asked us to stop {channel} about this inquiry",
+            check("inquiry_opt_out", False, f"the customer said stop ({stopped}) on this inquiry: no follow-ups "
+                                            "on any channel")
+            return Decision("BLOCK", f"the customer said stop ({stopped}) on this inquiry: no follow-ups",
                             "inquiry_opt_out")
-        check("inquiry_opt_out", True, f"this inquiry isn't stopped on {channel}")
+        check("inquiry_opt_out", True, "the customer hasn't said stop on this inquiry")
 
     marketing_sms = purpose == "marketing" and channel == "sms" and not is_reply
     lead_response_sms = purpose == "lead_response" and channel == "sms"
