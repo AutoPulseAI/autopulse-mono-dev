@@ -269,6 +269,11 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
         return {"context_pack": _patch(pack, [], None, None)}
 
     widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
+    if any(s["step"] == "model_name" and "is BMW's" in str(s.get("detail")) for s in result.loosened) and any(
+            s["step"] == "trim" for s in result.loosened):
+        # Muhamad Nasir, 26 Oct 2026: "M240" became "2 Series" trim M240; with no M240 the trim was dropped and the 228s
+        # were shown as the exact match (twice, after "No m240"). A BMW's number is the car: other numbers are other cars.
+        widened.append("trim")
     own = await _lead_own_vehicle(state, ctx, criteria, source) if not bigger else None
     if own is not None and (widened or own.vin not in {r.vin for r in result.loaded(MAX_LOADED)}):
         # Joe Dalton, 26 Oct 2026: Cars.com named the car "540 xDrive", the feed lists it as "5 Series" trim
