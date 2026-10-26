@@ -214,3 +214,29 @@ async def test_a_reply_still_goes_on_an_opted_out_channel(mongo):
     driver = FakeChannelDriver()
     outcome = await _sender(driver).send(_request(created, purpose="reply", is_reply=True))
     assert outcome.status == "sent" and driver.calls == 1
+
+
+class TimeoutDriver(FakeChannelDriver):
+    """The CRM sent the message but didn't answer in time (26 Oct 2026: 63 morning messages)."""
+
+    async def send(self, message):
+        from upsell_agent.channels.base import ChannelSendError
+        self.calls += 1
+        raise ChannelSendError("CRM unreachable: ReadTimeout('')", retryable=True)
+
+
+async def test_a_crm_timeout_whose_message_went_out_is_sent_not_failed_and_not_resent(mongo):
+    created = await _lead()
+    await mongo["emails"].insert_one({"ai_idempotency_key": "t1:sms", "status": "delivered", "message_id": "SM123"})
+    driver = TimeoutDriver()
+    outcome = await _sender(driver).send(_request(created))
+    assert outcome.status == "sent" and driver.calls == 1
+    row = await mongo[AI_MESSAGES_COLLECTION].find_one({"idempotency_key": "t1:sms"})
+    assert row["status"] == "sent" and row["provider_id"] == "SM123" and row["confirmed_after_timeout"] is True
+
+
+async def test_a_crm_timeout_with_no_record_is_a_failure_and_still_not_resent(mongo):
+    created = await _lead()
+    driver = TimeoutDriver()
+    outcome = await _sender(driver).send(_request(created))
+    assert outcome.status == "failed" and driver.calls == 1
