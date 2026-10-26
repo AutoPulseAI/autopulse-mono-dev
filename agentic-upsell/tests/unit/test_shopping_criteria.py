@@ -454,3 +454,16 @@ async def test_condition_is_the_very_last_step(mongo):
                                                        condition="used", exterior_color="white"), STUB)
     assert [s["step"] for s in found.loosened] == ["colour", "make", "condition"]
     assert {r.vin for r in found.records} == {"VIN00000000000811", "VIN00000000000812"}
+
+
+async def test_a_two_word_model_in_stock_is_not_split(mongo):
+    # Bibi, 26 Oct 2026 (Alexis): a blue 2022 3 Series 330i under $22k; "3 Series" became model "3" and he got an X3.
+    await _stock(mongo, _vehicle("VIN00000000003S01", year=2021, make="BMW", model="3 Series", trim="330i",
+                                 color="Black", internetreduced=19699, instoreprice=19699),
+                 _vehicle("VIN00000000003X01", year=2022, make="BMW", model="X3", trim="xDrive30i", color="Blue",
+                          internetreduced=21000, instoreprice=21000))
+    found = await find_stock(DEALER, InventoryCriteria(make="BMW", model="3 Series", trim="330i xDrive AWD",
+                                                       exterior_color="blue", year_min=2022, year_max=2022,
+                                                       price_max=22000), STUB)
+    assert [r.model for r in found.records] == ["3 Series"]
+    assert not any(s["step"] == "model_name" for s in found.loosened)
