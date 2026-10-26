@@ -56,6 +56,9 @@ TUESDAY_NIGHT = datetime(2026, 9, 23, 2, 0, tzinfo=UTC)  # 22:00 in New York: no
     ("either is fine", True, CALL),
     ("yes that number works", True, CALL),
     ("either is fine", False, None),
+    ("Yes", True, CALL),  # Ishmael Ballah, 26 Oct 2026: a plain yes accepts the call offered first
+    ("ok", True, CALL),
+    ("Yes", False, None),
 ])
 def test_how_they_want_to_hear_from_a_person(text, answering, want):
     assert said_method(text, answering=answering) == want
@@ -82,7 +85,9 @@ def test_asking_for_a_person_without_saying_how_offers_the_choice_once():
 def test_the_answer_hands_off_and_no_clear_answer_still_gets_a_person():
     assert _plan("a call please", wants_human=False, awaiting=True).mode == CALL
     assert _plan("text", wants_human=False, awaiting=True).mode == TEXT
-    unclear = _plan("ok", wants_human=False, awaiting=True)
+    # Ishmael Ballah, 26 Oct 2026: a plain "ok" / "yes" accepts the call offered first.
+    assert _plan("ok", wants_human=False, awaiting=True).mode == CALL
+    unclear = _plan("hmm not sure", wants_human=False, awaiting=True)
     assert unclear.mode == TEXT and unclear.chosen_by == "default"
     withdrawn = _plan("never mind, you can help", wants_human=False, awaiting=True)
     assert withdrawn.mode is None and withdrawn.record["choice"] == "withdrawn"
@@ -210,6 +215,10 @@ async def test_have_a_person_text_me_skips_the_question_and_tells_staff(mongo, l
     # The AI stops replying, as with any handoff.
     await _say(created, "ok")
     assert (await _last_turn(mongo, created))["trigger"] == "inbound_held"
+    # Ishmael Ballah, 26 Oct 2026: "Call is fine" afterwards corrects the same alert - no second one.
+    await _say(created, "Call is fine")
+    state = await _state(mongo, created)
+    assert state["staff_notice"]["kind"] == "call_requested" and "call is fine" in state["staff_notice"]["text"]
 
 
 async def test_outside_calling_hours_the_call_waits_and_the_reply_says_when(mongo, live_dealer):
