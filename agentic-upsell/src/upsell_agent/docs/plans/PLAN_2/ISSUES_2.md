@@ -2,7 +2,7 @@ Hi, I'm interested in a new Toyota RAV4
 
 EMAIL · lead comments
 
-Hi Ammer,
+Hi Abdul,
 
 Thanks! So we can help, could you tell me what service the vehicle needs, and the year, make and model of your vehicle?
 
@@ -21,14 +21,14 @@ client:Hi, I'm interested in a new Toyota RAV4 filtered as Service
 
 AI: 
 
-Hi Ammer,
+Hi Abdul,
 
 Thanks! So we can help, could you tell me what service the vehicle needs, and the year, make and model of your vehicle?
 
 Thanks,
 The Team
 
-EMAIL · sent in 195 ms to ammer@example.test
+EMAIL · sent in 195 ms to abdul@example.test
 
 ISSUE: I am not sure if its the debugger pipeline context issue or the AI simply ignoring the most recent message.
 

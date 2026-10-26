@@ -1,4 +1,4 @@
-# Ammer Master Plan 3: Inventory, contact rules and appointments (Local Conflicting Version)
+# Abdul Manan Shahid Master Plan 3: Inventory, contact rules and appointments (Local Conflicting Version)
 
 > **What this is:** three parts.
 >

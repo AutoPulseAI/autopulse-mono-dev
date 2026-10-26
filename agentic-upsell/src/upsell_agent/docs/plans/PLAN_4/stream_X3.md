@@ -6,7 +6,7 @@ regression test that fails on `integration` before the fix.
 ## SECURITY ISSUE FOR THE CLIENT (production code we did not change)
 
 Two routes in the client's own production CRM are open to anyone on the internet. They are identical in
-production (`/home/temp/Ammer/crm/aidmvcs-be`) and in our branch; we were told not to modify them.
+production (`the production CRM checkout`) and in our branch; we were told not to modify them.
 
 1. **`GET /api/conversations/lead` has no authentication**, and its `dealer_id` requirement is commented out.
    With a `dealer_id` it returns that dealer's conversation records (message text, recipient, notes); with a
@@ -37,7 +37,7 @@ scope them to the signed-in dealer) before, or together with, the AI going live.
 
 ## Fields our code reads that production never writes
 
-Compared `aidmvcs-be-dev/` with `/home/temp/Ammer/crm/aidmvcs-be` (0 references in production `app/` for each).
+Compared `aidmvcs-be-dev/` with `the production CRM checkout` (0 references in production `app/` for each).
 
 | Field | Read by | Handling |
 |---|---|---|
