@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 SAFETY_NET_FROM = datetime(2026, 10, 26, 4, 0, tzinfo=UTC)  # midnight New York, 26 Oct 2026
 WORKING_STAGES = ("new_lead", "no_contact_made", "contact_made_no_next_action")
 OPEN = ("pending", "standby", "claimed")
-SETTLE = timedelta(minutes=30)  # a first reply or a status change may still be planning its own step
+SETTLE = timedelta(minutes=30)
+# Another of the customer's leads already has a workflow talking to them.
+BUSY_STAGES = ("appointment_set", "appointment_no_show", "sales_visit", "sold_pending", "sold_delivered")  # a first reply or a status change may still be planning its own step
 
 
 def _aware(value: Any) -> datetime | None:
@@ -54,6 +56,12 @@ async def check_dealer(dealer_id: str) -> dict[str, Any]:
             continue
         if await workflow_lead_id(db, lead_id) != lead_id:
             continue  # a linked duplicate: the customer's open lead has the conversation
+        if st.get("customer_id") and await states.find_one(
+                {"customer_id": st["customer_id"], "lead_id": {"$ne": lead_id}, "stage": {"$in": list(BUSY_STAGES)}},
+                projection={"_id": 1}):
+            # Christine Pache, 26 Oct 2026: her appointment ran on her other lead (now in the no-show workflow); a sales
+            # touch on this one would go out alongside it. That workflow is her next step.
+            continue
         if await followups.find_one({"lead_id": lead_id, "status": {"$in": list(OPEN)},
                                      "kind": {"$ne": "daily_call_task"}}, projection={"_id": 1}):
             continue

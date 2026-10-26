@@ -52,3 +52,15 @@ async def test_leads_before_the_start_and_linked_duplicates_are_left_alone(mongo
         "status_at": clock.now() - timedelta(minutes=40)}})
     planned = (await safety_net.check_dealer(DEALER))["planned"]
     assert old["lead_id"] not in planned and dup["lead_id"] not in planned
+
+
+async def test_a_customer_with_an_appointment_on_another_lead_is_left_to_that_workflow(mongo, live_dealer, monkeypatch):
+    # Christine Pache, 26 Oct 2026: her no-show workflow ran on her other lead; the safety net planned a sales touch too.
+    monkeypatch.setattr(safety_net, "SAFETY_NET_FROM", clock.now() - timedelta(days=30))
+    created = await _lead()
+    await _created(created)
+    await _strand(mongo, created)
+    await mongo[AI_LEAD_STATE_COLLECTION].insert_one({"lead_id": "other-lead", "customer_id": created["customer_id"],
+                                                      "dealer_id": DEALER, "stage": "appointment_no_show",
+                                                      "status": "active"})
+    assert created["lead_id"] not in (await safety_net.check_dealer(DEALER))["planned"]
