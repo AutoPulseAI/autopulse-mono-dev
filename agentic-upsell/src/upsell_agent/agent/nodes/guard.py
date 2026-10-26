@@ -389,6 +389,8 @@ _CONFIRMED_WORDING = re.compile(r"\b(booked|confirmed|see you (?:on|at|then)|nos
 _REQUESTED_WORDING = re.compile(r"\b(requested|solicitad[oa]s?)\b", re.IGNORECASE)
 
 
+_BUDGET_CLAIM = re.compile(r"\b(?:the|your)\s+(?:budget|price\s+range|monthly\s+(?:target|budget))\s+(?:you|that\s+you)\s+"
+                           r"(?:shared|gave|mentioned|told\s+me|set|have\s+in\s+mind)", re.IGNORECASE)
 _MOVE_PROMISE = re.compile(r"\b(?:i'?ll|i\s+will|i'?m|i\s+am|we'?ll|we\s+will|we'?re)\s+(?:go(?:ing)?\s+to\s+)?"
                            r"(?:updat(?:e|ing)|mov(?:e|ing)|chang(?:e|ing)|reschedul(?:e|ing))\s+(?:your|the)\s+"
                            r"(?:appointment|visit|booking|time)", re.IGNORECASE)
@@ -659,6 +661,18 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if cant_send:
         result["passed"] = False
         result["violations"] += cant_send
+    # Tara VK, 26 Oct 2026: "how it fits the budget you shared" - she never gave one. A budget is claimed only when the
+    # profile holds one.
+    has_budget = any(sl.get("path") == "interest.budget" and sl.get("value") is not None
+                     for sl in (state.profile or {}).get("slots", []))
+    if not has_budget:
+        claimed = [f"the {n} says the customer gave a budget ({m.group(0)!r}), but they didn't"
+                   for n, k in (("SMS", "sms_text"), ("email", "email_body"))
+                   if (m := _BUDGET_CLAIM.search(str((state.draft or {}).get(k) or "")))]
+        result["checks"]["no_invented_budget"] = not claimed
+        if claimed:
+            result["passed"] = False
+            result["violations"] += claimed
     bad_booking_wording = invalid_booking_wording(state.decision or {}, state.draft or {})
     result["checks"]["booking_wording_matches_status"] = not bad_booking_wording
     if bad_booking_wording:

@@ -449,3 +449,14 @@ def test_larry_harris_reschedule():
     assert invalid_booking_wording({"visit": {"status": "confirmed"}}, promise)
     assert not invalid_booking_wording({"visit": {"status": "confirmed", "moved_this_turn": True,
                                                   "display": "Thursday, October 29 at 2:00 PM"}}, promise)
+
+
+def test_26_oct_evening_fixes():
+    # Joyce Capuano: "Please take me off your text list" wasn't an opt-out.
+    from upsell_agent.compliance.opt_out import detect_opt_out
+    found = detect_opt_out("Sorry not interested. Please take me off your text list.", "sms")
+    assert found and found.channels == ("sms",)
+    # Tara VK: "the budget you shared" with no budget on record.
+    from upsell_agent.agent.nodes.guard import _BUDGET_CLAIM
+    assert _BUDGET_CLAIM.search("I can show you how it fits the budget you shared")
+    assert not _BUDGET_CLAIM.search("We can work out a budget that fits you")

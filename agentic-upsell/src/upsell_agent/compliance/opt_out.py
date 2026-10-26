@@ -103,6 +103,16 @@ _PHRASES: list[tuple[re.Pattern[str], tuple[Channel, ...] | None]] = [
      None),
     (re.compile(r"\bleave\s+me\s+alone\b"), None),
     (re.compile(r"\btake\s+me\s+off\s+(?:your|the)\s+(?:list|lists|mailing\s+list)\b"), None),
+    # Joyce Capuano, 26 Oct 2026: "Please take me off your text list" wasn't an opt-out - the reply said "I'll stop
+    # texting you" and nothing stopped. A list named by channel stops that channel (and this inquiry's follow-ups).
+    (re.compile(r"\b(?:take|remove)\s+me\s+(?:off|from)\s+(?:of\s+)?(?:your|the|this)\s+(?:text(?:ing)?|sms|"
+                r"messag(?:e|ing))\s+lists?\b"), ("sms",)),
+    (re.compile(r"\b(?:take|remove)\s+me\s+(?:off|from)\s+(?:of\s+)?(?:your|the|this)\s+(?:e-?mail(?:ing)?)\s+lists?\b"),
+     ("email",)),
+    (re.compile(r"\b(?:take|remove)\s+me\s+(?:off|from)\s+(?:of\s+)?(?:your|the|this)\s+(?:call(?:ing)?|phone)\s+lists?\b"),
+     ("voice",)),
+    (re.compile(r"\b(?:take|remove)\s+me\s+(?:off|from)\s+(?:of\s+)?(?:your|the|this)\s+(?:contact|marketing|"
+                r"customer)\s+lists?\b"), None),
     (re.compile(r"\bremove\s+me\s+from\s+(?:your|the)\s+(?:list|lists|database)\b"), None),
     (re.compile(r"\bno\s+more\s+messages\b"), None),
     (re.compile(r"\bunsubscribe\s+me\b"), None),

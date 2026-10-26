@@ -766,7 +766,7 @@ async def _notify_team_of_booking(db: DealerScopedDatabase, lead_id: str, decisi
 
 async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead_id: str | None,
                          customer: dict | None, lead: dict | None) -> str | None:
-    """The name to greet the customer by: the CRM's, unless it isn't a real name ("null null", "Name" - client,
+    """The name to greet the customer by: the lead's, then the CRM customer's, unless it isn't a real name ("null null", "Name" - client,
     12 Oct 2026), then the one the customer gave us in the conversation (slot contact.name), else none."""
     from upsell_agent.agent.templates import known_first_name
     from upsell_agent.integrations.dealer_profile import dealer_profile
@@ -780,7 +780,9 @@ async def _customer_name(db: DealerScopedDatabase, customer_id: str | None, lead
         first = known_first_name(name)
         return bool(first) and first.lower() not in dealer_words
 
-    for name in ((customer or {}).get("name"), (lead or {}).get("name")):
+    # Wilmer Rocano, 26 Oct 2026: greeted "Hi Ana" - the CRM's customer record ("ROCANO,ANA") is shared with another
+    # person; the name on this inquiry's own lead comes first.
+    for name in ((lead or {}).get("name"), (customer or {}).get("name")):
         if real(name):
             return name
     if customer_id:
