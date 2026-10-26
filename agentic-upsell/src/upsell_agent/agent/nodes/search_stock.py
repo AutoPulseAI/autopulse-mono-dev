@@ -262,11 +262,13 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
         return {"context_pack": _patch(pack, [], None, None)}
 
     widened = [s["step"] for s in result.loosened if s["step"] in ("model", "make", "size")]
-    own = await _lead_own_vehicle(state, ctx, criteria, source) if widened and not bigger else None
-    if own is not None:
+    own = await _lead_own_vehicle(state, ctx, criteria, source) if not bigger else None
+    if own is not None and (widened or own.vin not in {r.vin for r in result.loaded(MAX_LOADED)}):
         # Joe Dalton, 26 Oct 2026: Cars.com named the car "540 xDrive", the feed lists it as "5 Series" trim
         # "540i xDrive" - the search widened to any BMW and the lead went to Managerial Review "to confirm it's
-        # available" while it was in stock. The lead's own VIN is the same car, so the match is exact.
+        # available" while it was in stock. Zain Faisal, 25 Oct 2026: his grey C 300 wasn't among the 3 newest
+        # C 300s loaded, and a silver one was described as "the one you asked about". The lead's own VIN is
+        # always the exact match, loaded first.
         result.records = [own, *(r for r in result.records if r.vin != own.vin)]
         result.loosened, widened = [], []
         reasoning.append(f"The lead's own vehicle ({own.vin}) is in stock under the feed's name "
