@@ -235,6 +235,16 @@ async def _loosen(dealer_id: str, c: InventoryCriteria, source: InventorySource,
     if c.trim:
         loosened.append({"step": "trim", "detail": f"no {c.trim}; any trim"})
         return "trim", c.model_copy(update={"trim": None})
+    if c.model and not any(s["step"] == "model_family" for s in loosened):
+        # 26 Oct 2026: "Hyundai Sonata" missed the feed's "Sonata Hybrid" and widened to any Hyundai. A stock model
+        # that starts with the name asked for is the same family.
+        wide = c.model_copy(update={"model": None, "trim": None, "exterior_color": None, "year_min": None,
+                                    "year_max": None, "price_max": None, "body_type": None})
+        family = next((r.model for r in (await _try(dealer_id, wide, source)).records
+                       if r.model and r.model.lower().startswith(c.model.lower() + " ")), None) if c.make else None
+        if family:
+            loosened.append({"step": "model_family", "detail": f"model {c.model!r} as the feed's {family!r}"})
+            return "model_family", c.model_copy(update={"model": family})
     if (c.year_min or c.year_max) and not any(s["step"] == "year" for s in loosened):
         low, high = (c.year_min or c.year_max), (c.year_max or c.year_min)
         loosened.append({"step": "year", "detail": f"no {low}" + (f"-{high}" if high != low else "")

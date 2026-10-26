@@ -114,8 +114,9 @@ STUCK_CLAIM_AFTER = timedelta(minutes=5)
 # A follow-up whose lead is busy (a turn is running) is retried this much later: the worker queues its own
 # fire_due_followups run for then (worker/jobs.py), so it never waits for the next minute's cron (stream S).
 BUSY_RETRY_AFTER = timedelta(seconds=5)
-# Per cron run; anything left waits for the next minute.
-FIRE_BATCH_LIMIT = 500
+# Per cron run; anything left waits for the next minute. Activity log, 26 Oct 2026: the 3 PM burst (~146 messages) at 4
+# at a time ran past the job's 5-minute limit and was cut off mid-run; 40 per run keeps every run well inside it.
+FIRE_BATCH_LIMIT = 40
 # Follow-ups fired at once by one worker. Activity log, 26 Oct 2026: at 10 the 10:00 AM burst overloaded the CRM
 # (MongoNetworkTimeoutError there, ReadTimeout here) and 20 of 63 messages never went out (~120 on 22-23 Oct).
 FIRE_CONCURRENCY = 4
