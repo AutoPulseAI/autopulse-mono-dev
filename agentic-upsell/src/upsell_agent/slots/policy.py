@@ -191,7 +191,10 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     pending = [s for s in profile.pending() if s.path not in confirmed_once and not s.path.startswith("contact.")]
     missing = [r for r in profile.missing() if not (confirmed_once and set(_unfilled(profile, r)) <= confirmed_once)]
     filled, total = profile.progress()
-    clarify_questions = [q for q in flags.questions if q.get("label") == "clarify" and str(q.get("text") or "").strip()]
+    # Dave Schwartz, 26 Oct 2026: the form's "Purchase Timeframe: unsure" was clarified as if he'd asked it (the AI
+    # explained what a trade-in is); a form field is no question, to clarify or to answer.
+    clarify_questions = [q for q in flags.questions if q.get("label") == "clarify" and str(q.get("text") or "").strip()
+                         and not _FORM_FIELD.match(str(q.get("text") or ""))]
     # Live, 23 Oct 2026 (Nanc: every touch rejected for not answering "View Shopper Signals: https://cargur.us/..."):
     # a portal's own lines saved as a question before they were filtered out are no question to answer.
     from upsell_agent.agent.portal_text import clean_comments

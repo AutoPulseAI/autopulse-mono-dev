@@ -168,6 +168,10 @@ def _found(pattern: re.Pattern, text: str) -> str | None:
     return match.group(0) if match else None
 
 
+_NOT_TODAY = re.compile(r"\b(?:can'?t|cannot|can\s+not|won'?t|not\s+able\s+to|unable\s+to)\s+(?:make\s+it|come(?:\s+in)?|be\s+there|"
+                        r"do\s+it|get\s+there)\s+today\b|\bnot\s+today\b|\btoday\s+(?:won'?t|doesn'?t)\s+work", re.IGNORECASE)
+
+
 def vehicle_check_for(stock: dict[str, Any], extraction: dict[str, Any] | None, trigger: str,
                       action: str) -> dict[str, Any] | None:
     """Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
@@ -473,6 +477,11 @@ async def _visit_and_booking(
         if offered or asks_for_a_time or asked_day:
             pick = booking_tool.match_pick(text, offered, dealer, now, available=available, prefer_day=asked_day)
             picked, wanted = pick.matched or pending, pick.wanted
+        if not picked and wanted and _NOT_TODAY.search(text or "") \
+                and wanted.astimezone(dealer.tz).date() == now.astimezone(dealer.tz).date():
+            # Kevin Ceaser, 26 Oct 2026: "I can't make it today I get out off work at 11pm" was read as today at 11 PM
+            # and offered today's times. The same time tomorrow, so the nearest open times start there.
+            wanted = wanted + timedelta(days=1)
         if not picked and wanted and not visit_declines(extraction):
             # Stream Q: they named a time that isn't open ("Wednesday after work, like 6pm?", "3pm"): the open
             # times nearest to it - never a dropped booking or a handoff.

@@ -402,3 +402,21 @@ async def test_a_name_correction_in_a_burst_is_saved_from_the_quoted_words():
                                          "quote": "my name isn't luis it's rocco"}]}}
     await _save_name(deps, "d", "l", {"name": "Luis Campos"}, result, inbound_text="roccoparada942@gmail.com")
     assert calls and calls[0][0] == "Rocco"
+
+
+def test_26_oct_afternoon_fixes():
+    # Dave Schwartz: a listing price is not his budget; "Purchase Timeframe: unsure" is a form field, not a question.
+    from upsell_agent.agent.nodes.extract import drop_listing_price_as_budget
+    from upsell_agent.slots.policy import _FORM_FIELD
+    ex = {"values": [{"path": "interest.budget", "value": 25174}, {"path": "interest.timeline", "value": "unsure"}]}
+    drop_listing_price_as_budget(ex, "I'd like to know if the Used 2020 Ford F-150 XLT you have listed on Cars.com for "
+                                     "$25,174 is still available.")
+    assert [v["path"] for v in ex["values"]] == ["interest.timeline"]
+    assert _FORM_FIELD.match("Purchase Timeframe: unsure")
+    # Kevin Ceaser: "can't make it today" is not today.
+    from upsell_agent.agent.nodes.decide import _NOT_TODAY
+    assert _NOT_TODAY.search("I would like to come today, I can't make it today I get out off work at 11pm")
+    assert not _NOT_TODAY.search("I can come today at 5")
+    # Michael Gaston-Simpson: no "Hi Michael," on top of "Hello, Michael".
+    from upsell_agent.agent.appointment import _GREETS
+    assert _GREETS.match("Hello, Michael, this is Nicole at Victory Cars Central")

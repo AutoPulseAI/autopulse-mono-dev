@@ -74,6 +74,7 @@ async def extract(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     lift_contact_preference(extraction, awaiting=payload["awaiting_contact_choice"])
     lift_wants_visit(extraction)
     drop_values_of_the_wrong_kind(extraction, payload["customer_text"] or "", payload.get("our_last_message"))
+    drop_listing_price_as_budget(extraction, payload["customer_text"] or "")
     ctx.model_calls.append({"step": "extract", **call.as_metrics()})
     from upsell_agent.agent.visit_offer import ANSWER_THEN_ASK
     if extraction.get("annoyed_at_bot") and str(extraction.get("visit_objection") or "") in ANSWER_THEN_ASK:
@@ -120,6 +121,19 @@ _SAID_KIND = [
     ("mileage", re.compile(r"\bmiles?\b|\bmi\b|\bmileage\b|\bodometer\b", re.IGNORECASE)),
     ("year", re.compile(r"\b(?:19[89]\d|20[0-3]\d)\b")),
 ]
+
+
+_LISTED_PRICE = re.compile(r"\b(?:listed|priced|advertised|asking|for\s+sale)\b[^$\n]{0,60}\$\s?([\d,]{4,})", re.IGNORECASE)
+
+
+def drop_listing_price_as_budget(extraction: dict[str, Any], text: str) -> None:
+    """Dave Schwartz, 26 Oct 2026: "the F-150 you have listed on Cars.com for $25,174" became his budget, and the AI said
+    "the budget you gave me". The car's own listed price isn't what the customer can spend."""
+    listed = {m.group(1).replace(",", "") for m in _LISTED_PRICE.finditer(text or "")}
+    if not listed:
+        return
+    extraction["values"] = [v for v in extraction.get("values", []) if not (
+        v.get("path") == "interest.budget" and str(v.get("value")).split(".")[0].replace(",", "") in listed)]
 
 
 def drop_values_of_the_wrong_kind(extraction: dict[str, Any], text: str, asked: str | None) -> None:
