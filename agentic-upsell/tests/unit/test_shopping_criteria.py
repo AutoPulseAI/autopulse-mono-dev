@@ -496,3 +496,13 @@ async def test_a_bare_3_is_the_bmw_3_series(mongo):
     for asked in (InventoryCriteria(model="3"), InventoryCriteria(make="BMW", model="3")):
         found = await find_stock(DEALER, asked, STUB)
         assert [r.model for r in found.records] == ["3 Series"]
+
+
+async def test_bmw_numbered_models_are_the_feeds_series_with_that_trim(mongo):
+    # Ehsanul, 26 Oct 2026: "BMW 540" went to any BMW; the feed has a "5 Series" trim "540i xDrive".
+    await _stock(mongo, _vehicle("VIN00000000005S40", year=2023, make="BMW", model="5 Series", trim="540i xDrive"),
+                 _vehicle("VIN00000000005S30", year=2019, make="BMW", model="5 Series", trim="530i"),
+                 _vehicle("VIN0000000000X340", year=2021, make="BMW", model="X3", trim="xDrive30i"))
+    found = await find_stock(DEALER, InventoryCriteria(make="BMW", model="540"), STUB)
+    assert [r.vin for r in found.records] == ["VIN00000000005S40"]
+    assert trim_matches("540", "540i xDrive") and not trim_matches("540", "5400 Special")
