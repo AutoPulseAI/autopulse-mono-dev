@@ -26,8 +26,10 @@ from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     DEV_OUTBOX_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_LEADS_COLLECTION,
     PLATFORM_USERS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
+    as_object_id,
     dealer_scoped_db,
 )
 from upsell_agent.integrations.platform_client import StubPlatformClient
@@ -218,10 +220,32 @@ async def test_a_number_the_carrier_cannot_reach_is_marked_and_email_takes_over(
 
 # --- Duplicate leads ----------------------------------------------------------------
 
+async def _car(mongo, created, make, model):
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                      {"$set": {"vehicle": {"make": make, "model": model}}})
+
+
+async def test_a_second_lead_with_no_car_or_the_same_car_asks_nothing(mongo, live_dealer):
+    # Christine Pache, 26 Oct 2026: a CarGurus phone-call lead with no car got "thank you for inquiring about
+    # another vehicle".
+    first = await _lead()
+    await _car(mongo, first, "BMW", "3 Series")
+    await _created(first)
+    for car in (None, ("BMW", "3 Series")):
+        again = await _lead(customer_id=first["customer_id"])
+        if car:
+            await _car(mongo, again, *car)
+        assert (await _created(again))["status"] == "duplicate"
+    replies = await mongo[DEV_OUTBOX_COLLECTION].find({"lead_id": first["lead_id"]}).to_list(None)
+    assert not any(r["text"].startswith("Hello again") for r in replies)
+
+
 async def test_a_second_lead_for_the_same_customer_is_linked_not_worked(mongo, live_dealer):
     first = await _lead()
+    await _car(mongo, first, "Toyota", "RAV4")
     assert (await _created(first))["status"] == "done"
     second = await _lead(customer_id=first["customer_id"])
+    await _car(mongo, second, "Honda", "CR-V")
     result = await _created(second)
     assert result["status"] == "duplicate" and result["duplicate_of"] == first["lead_id"]
 
@@ -381,8 +405,10 @@ def test_multi_vehicle_answers(text, answer):
 
 async def test_one_vehicle_closes_the_original_lead_and_the_new_one_takes_over(mongo, live_dealer):
     first = await _lead()
+    await _car(mongo, first, "Toyota", "RAV4")
     await _created(first)
     second = await _lead(customer_id=first["customer_id"])
+    await _car(mongo, second, "Honda", "CR-V")
     await _created(second)
     await _say(first, "Just one, I'm comparing them")
     assert (await _state(mongo, first["lead_id"]))["stage"] == "closed_lost"
@@ -392,8 +418,10 @@ async def test_one_vehicle_closes_the_original_lead_and_the_new_one_takes_over(m
 
 async def test_both_vehicles_keeps_both_leads_open(mongo, live_dealer):
     first = await _lead()
+    await _car(mongo, first, "Toyota", "RAV4")
     await _created(first)
     second = await _lead(customer_id=first["customer_id"])
+    await _car(mongo, second, "Honda", "CR-V")
     await _created(second)
     await _say(first, "Both - one is for my wife")
     assert (await _state(mongo, first["lead_id"]))["stage"] != "closed_lost"
