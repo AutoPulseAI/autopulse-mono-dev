@@ -218,6 +218,25 @@ def unbacked_watch_promise(decision: dict[str, Any], draft: dict[str, Any]) -> l
             if (m := _WATCH_PROMISE.search(str(draft.get(key) or "")))]
 
 
+# Erb, 26 Oct 2026 (a day-14 follow-up: "I'm passing it to our sales manager who can help and will get back to you" -
+# nobody was told; the vehicle check runs only on the customer's own message): a hand-over is promised only when this
+# turn hands over.
+_HANDOVER_PROMISE = re.compile(r"\b(?:pass(?:ing|ed)?|hand(?:ing|ed)?|send(?:ing)?|forward(?:ing|ed)?)\s+(?:it|this|that|"
+                               r"you|your\s+\w+)\s+(?:over\s+|along\s+|on\s+)?to\s+(?:a|our|the|my)\s+(?:sales\s+)?"
+                               r"(?:manager|team|specialist)|\b(?:a|our|the)\s+(?:sales\s+)?manager\s+(?:who\s+)?"
+                               r"(?:will|is\s+going\s+to)\s+(?:get\s+back|reach\s+out|follow\s+up|contact)", re.IGNORECASE)
+
+
+def unbacked_handover_promise(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if decision.get("vehicle_check") or decision.get("action") in ("handoff", "offer_human") \
+            or (decision.get("cannot_supply") or {}).get("escalates"):
+        return []
+    return [f"the {name} says a manager was asked to help ({m.group(0)!r}), but nobody was - offer what's in stock "
+            "and the visit instead"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _HANDOVER_PROMISE.search(str(draft.get(key) or "")))]
+
+
 # Betsy, 26 Oct 2026 (Motie: a follow-up a day after his last message opened "Thanks, Motie - I've got you down for
 # ..."): a message the customer didn't just prompt never thanks them or answers them as if they had.
 _REPLYING_OPENER = re.compile(r"^\s*(?:(?:hi|hello|hey)\s+[^,.!\n]{0,30}[,.!]\s*)?(?:thanks|thank\s+you|got\s+it|perfect|"
@@ -569,6 +588,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if watch:
         result["passed"] = False
         result["violations"] += watch
+    handover = unbacked_handover_promise(state.decision or {}, state.draft or {})
+    result["checks"]["no_unbacked_handover_promise"] = not handover
+    if handover:
+        result["passed"] = False
+        result["violations"] += handover
     dead_end = dead_end_wording(state.decision or {}, state.draft or {},
                                 stage=(getattr(ctx, "lead_state", None) or {}).get("stage"))
     result["checks"]["no_dead_end_wording"] = not dead_end
