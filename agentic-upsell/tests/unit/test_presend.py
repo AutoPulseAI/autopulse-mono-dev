@@ -106,3 +106,16 @@ async def test_the_sender_runs_the_last_check_on_every_message(mongo):
     assert outcome.status == "suppressed" and outcome.reason.startswith("last check (calendar)")
     row = await mongo[AI_MESSAGES_COLLECTION].find_one({"idempotency_key": "presend-calendar:sms"})
     assert row["status"] == "suppressed" and row["presend"] == "calendar"
+
+
+@flow
+async def test_a_newer_message_already_claimed_by_its_own_turn_still_stops_this_reply(mongo):
+    # Joyce Capuano, 26 Oct 2026: her next message was claimed by its own turn, so both replies went, 25 s apart.
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    now = datetime(2026, 10, 5, 12, 0, tzinfo=NY).astimezone(UTC)
+    first = await _inbound(mongo, created["lead_id"], created["customer_id"], "hmm", now, answered="t1")
+    await _inbound(mongo, created["lead_id"], created["customer_id"], "Please answer my question",
+                   now + timedelta(seconds=25), answered="t2")
+    verdict = await _look(created, turn_id="t1", answers=[first])
+    assert not verdict.ok and verdict.check == "superseded"
