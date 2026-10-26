@@ -31,6 +31,7 @@ from upsell_agent.agent.question_topics import is_stock_question
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.vehicle_media import lead_vehicle_vin, wants_link
 from upsell_agent.observability.trace import NodeSpan
+from upsell_agent.tools import stock_match
 from upsell_agent.tools.inventory_tool import (
     MAX_LOADED,
     InventoryCriteria,
@@ -287,6 +288,26 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
                          f"{' '.join(p for p in (own.make, own.model, own.trim) if p)!r}: shown as the exact match.")
     shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
     loaded = [{**r.model_dump(), "already_shown": r.vin in shown} for r in result.loaded(MAX_LOADED)]
+    matched_exact = False
+    if stock_match.ENABLED and not bigger:
+        # The user, 26 Oct 2026: the hybrid search - stock_match.FROM_SEARCH cars from this search, stock_match.
+        # FROM_MATCH more from the whole stock scored against the request; Compose picks from them.
+        kept = [{**v, "found_by": "search"} for v in loaded[:stock_match.FROM_SEARCH]]
+        try:
+            extra = await stock_match.candidates(state.dealer_id, criteria, text, k=stock_match.FROM_MATCH,
+                                                 exclude={v["vin"] for v in kept})
+        except Exception as exc:  # noqa: BLE001 - the step-by-step search's cars still go
+            extra = []
+            reasoning.append(f"Stock match failed ({exc!r}); the search's cars only.")
+        loaded = kept + [{**r.model_dump(), "already_shown": r.vin in shown, "found_by": "match",
+                          "match": stock_match.label(points)} for points, r in extra]
+        matched_exact = any(points >= stock_match.STRONG for points, _ in extra)
+        if extra:
+            reasoning.append("Stock match added: " + ", ".join(
+                f"{r.vin} ({stock_match.label(p)}, {p:.1f})" for p, r in extra) + ".")
+        if matched_exact and widened:
+            # The search widened, but the matcher found the car they named under another name: exact after all.
+            widened = []
     if result.colour:
         stored = result.colour["stored"]
         reasoning.append(f"Colour {result.colour['asked']!r} → sent as the dealer's own spelling {stored!r}."
