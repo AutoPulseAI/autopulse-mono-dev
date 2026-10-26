@@ -1,11 +1,11 @@
 Photo
 latest msgs
 ham na to plain kiaa tha Monday ko karain gay kam
-I have designed a plan and sabih is implementing it on weekend
+I have designed a plan and Abdul is implementing it on weekend
 But osma sirf improvements hai
 Not all this
 Ya sab kuch kal diekhe gae In Sha Allah
-I have designed a plan and sabih is implementing it on weekend
+I have designed a plan and Abdul is implementing it on weekend
 But osma sirf improvements hai
 Not all this
 Ya sab kuch kal diekhe gae In Sha Allah

@@ -405,7 +405,7 @@ Asked before building (answers in `docs/report/29-9-26/NOTES.md`): full C1 + B2 
 | `app/api/campaigns/[id]/report/route.js` | Prashanth | `stats.held`, `stats.blocked`; `processed` excludes held; each lead has `held_until`, `block_reason` |
 | `app/dealer/campaigns/[id]/report/page.js` | Prashanth | "Held until…" and "Blocked" count cards, badge colours, filter options, the time / reason on each lead, CSV columns |
 | `app/lib/ai/aiSendCheck.js` | new | The request / wait / answer helper for `ai_send_checks` |
-| `test-ai-send-check.js`, `Makefile` (`platform-test`) | new / OmgItsAmmer | Tests for the helper |
+| `test-ai-send-check.js`, `Makefile` (`platform-test`) | new / Abdul Manan Shahid | Tests for the helper |
 
 Not built: B3 item 7's optional campaign-form note ("12 leads can't be texted at this time").
 
