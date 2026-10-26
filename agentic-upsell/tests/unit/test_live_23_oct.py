@@ -322,3 +322,17 @@ def test_a_reply_not_yet_in_the_customers_language_is_translated_not_thrown_away
     assert guard.not_in_reply_language({"reply_language": "Spanish"}, {"sms_text": "Hello, it is here.", "email_body": ""})
     import inspect
     assert 'result["checks"]["reply_language"] = True' in inspect.getsource(guard.guard)
+
+
+@pytest.mark.parametrize(("decision", "flagged"), [
+    ({"action": "offer_visit"}, True),  # Erb, 26 Oct 2026: a day-14 follow-up, nobody told
+    ({"action": "offer_visit", "vehicle_check": {"vehicle": "2024 Audi A3"}}, False),
+    ({"action": "handoff"}, False),
+    ({"action": "answer", "cannot_supply": {"escalates": True}}, False),
+])
+def test_a_hand_over_is_promised_only_when_this_turn_hands_over(decision, flagged):
+    from upsell_agent.agent.nodes.guard import unbacked_handover_promise
+    draft = {"sms_text": "Erb, quick update: I want to make absolutely sure the 2024 Audi A3 you asked about is "
+                         "available, so I'm passing it to our sales manager who can help and will get back to you."}
+    assert bool(unbacked_handover_promise(decision, draft)) is flagged
+    assert not unbacked_handover_promise({"action": "offer_visit"}, {"sms_text": "The A3 is here. Monday at 1?"})
