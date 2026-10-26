@@ -116,8 +116,9 @@ STUCK_CLAIM_AFTER = timedelta(minutes=5)
 BUSY_RETRY_AFTER = timedelta(seconds=5)
 # Per cron run; anything left waits for the next minute.
 FIRE_BATCH_LIMIT = 500
-# Follow-ups fired at once by one worker (no AI call: a lookup and a send).
-FIRE_CONCURRENCY = 10
+# Follow-ups fired at once by one worker. Activity log, 26 Oct 2026: at 10 the 10:00 AM burst overloaded the CRM
+# (MongoNetworkTimeoutError there, ReadTimeout here) and 20 of 63 messages never went out (~120 on 22-23 Oct).
+FIRE_CONCURRENCY = 4
 
 # Lead statuses in which staff own the conversation (events/handlers.py).
 SILENT_STATUSES = {"handoff", "paused", "opted_out"}
