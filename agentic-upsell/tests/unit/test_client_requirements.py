@@ -506,3 +506,13 @@ async def test_the_leads_own_car_is_loaded_first_among_many_of_the_same_model(mo
     turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
     search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
     assert search["records"][0]["vin"] == vin
+
+
+async def test_another_bmw_number_is_not_the_car_they_asked_for(mongo):
+    # Muhamad Nasir, 26 Oct 2026: "M240" with only 228s in stock - the 228s were shown as the exact match.
+    await _stock(mongo, _vehicle("VIN00000000228I23", year=2023, make="BMW", model="2 Series", trim="228i"))
+    created = await _new_lead(mongo, vehicle={"year": 2023, "make": "BMW", "model": "M240"})
+    turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
+    decide = next(n["output"] for n in turn["nodes"] if n["node"] == "decide")
+    decision = decide.get("decision") or decide
+    assert decision.get("vehicle_check"), "a car we don't have goes to a manager to confirm (Betsy, 12 Oct)"
