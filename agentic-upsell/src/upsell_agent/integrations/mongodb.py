@@ -213,6 +213,7 @@ DEV_OUTBOX_COLLECTION = "dev_outbox"
 # The platform's own collections (aidmvcs-be-dev Mongoose models). This
 # service only ever reads them; the platform owns their shape.
 PLATFORM_LEADS_COLLECTION = "leads"
+PLATFORM_EMAILS_COLLECTION = "emails"  # the CRM conversation (SMS and email); AI sends carry ai_idempotency_key
 PLATFORM_CUSTOMERS_COLLECTION = "customers"
 PLATFORM_VEHICLES_COLLECTION = "vehicles"  # dealer key is `dealerId`, not `dealer_id`
 PLATFORM_DEALS_COLLECTION = "deals"

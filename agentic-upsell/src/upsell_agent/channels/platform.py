@@ -31,7 +31,7 @@ from upsell_agent.channels.base import ChannelSendError, OutboundMessage, SendRe
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_S = 15.0
+TIMEOUT_S = 30.0  # 26 Oct 2026: 15s timed out on sends the CRM completed a few seconds later
 SEND_PATH = "/api/internal/ai/messages/send"
 
 

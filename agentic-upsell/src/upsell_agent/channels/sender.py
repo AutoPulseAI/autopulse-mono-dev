@@ -40,13 +40,22 @@ from upsell_agent.compliance.engine import Purpose, can_contact
 from upsell_agent.integrations.mongodb import (
     AI_MESSAGES_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
+    PLATFORM_EMAILS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     as_object_id,
     dealer_scoped_db,
+    get_db,
 )
 from upsell_agent.integrations.platform_client import PlatformClient
 
 logger = logging.getLogger(__name__)
+
+CRM_RECORD_WAITS_S = (2.0, 5.0, 10.0)  # after a CRM timeout: when to look for its record of the send
+
+
+def _answer_late(exc: Exception) -> bool:
+    """The request reached the other side and only its answer was late: it may have gone out."""
+    return "ReadTimeout" in str(exc) or "WriteTimeout" in str(exc)
 
 Channel = Literal["sms", "email"]
 SendStatus = Literal["sent", "failed", "held", "suppressed", "shadow", "duplicate", "unknown"]
@@ -246,7 +255,9 @@ class Sender:
                 # Back to a resumable state before sleeping, so a crash during
                 # the wait is safe to resume.
                 await messages.update_one({"_id": row_id}, {"$set": {"status": "queued"}})
-                if not exc.retryable or attempts >= self._max_attempts:
+                # A read timeout may still be going out (the request arrived, the answer was late): never sent again,
+                # the CRM's record is read below instead. A connect timeout never arrived and is retried.
+                if not exc.retryable or attempts >= self._max_attempts or _answer_late(exc):
                     break
                 await self._sleep(self._retry_base_s * (2 ** (attempts - 1)))
                 continue
@@ -263,12 +274,42 @@ class Sender:
             outcome.reasoning = why
             return outcome
 
+        if last_error is not None and _answer_late(last_error):
+            # Activity log, 26 Oct 2026: 63 morning messages were recorded "failed" on a CRM ReadTimeout - every one
+            # had gone out (the CRM's own record said sent/delivered). A timeout isn't a failure until the CRM's
+            # record for this key says it never went.
+            went = await self._crm_record(key)
+            if went:
+                why.append(f"The CRM didn't answer in time, but its record shows the message went "
+                           f"({went.get('status')}): counted as sent, not resent.")
+                sent_at = clock.now()
+                outcome = await finish("sent", to=to, provider_id=str(went.get("message_id") or ""),
+                                       provider_status=str(went.get("status") or "sent"), sent_at=sent_at,
+                                       attempts=attempts, latency_ms=_ms_between(req.event_received_at, sent_at),
+                                       confirmed_after_timeout=True)
+                await record_delivery(db, check.log_id, "sent", provider_id=str(went.get("message_id") or ""))
+                outcome.reasoning = why
+                return outcome
         why.append(f"Gave up after {attempts} attempt(s).")
         outcome = await finish("failed", to=to, attempts=attempts, reason=str(last_error), failed_at=clock.now())
         await record_delivery(db, check.log_id, "failed", error=str(last_error))
         outcome.platform_record_id = await self._record(req, to, "failed", None, clock.now(), row_id, why)
         outcome.reasoning = why
         return outcome
+
+    async def _crm_record(self, key: str) -> dict | None:
+        """The CRM's conversation record for this send, if it went out (checked a few times: the CRM records it just
+        after the provider answers). Never raises."""
+        for wait in CRM_RECORD_WAITS_S:
+            await self._sleep(wait)
+            try:
+                row = await get_db()[PLATFORM_EMAILS_COLLECTION].find_one(
+                    {"ai_idempotency_key": key}, {"status": 1, "message_id": 1})
+            except Exception:  # noqa: BLE001 - no record read: the send stays failed
+                return None
+            if row and str(row.get("status") or "") not in ("failed", "undelivered"):
+                return row
+        return None
 
     async def _record(self, req: SendRequest, to: str, status: str, provider_id: str | None,
                       at: datetime, row_id: Any, why: list[str]) -> str | None:
