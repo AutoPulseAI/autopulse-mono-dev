@@ -309,10 +309,11 @@ _ATTRS = {
     "owner_touches": ("OWNER_TOUCH_DAYS",),
     "appointment": ("DETAILS_AFTER", "NO_SHOW_AFTER", "NO_SHOW_FOLLOWUP_AFTER"),
     "engine": ("REPLY_WINDOW", "TRANSACTIONAL_WINDOW", "MARKETING_WINDOW", "MARKETING_SMS_CAP", "CAP_PERIOD",
-               "DND_STATUSES"),
+               "DND_STATUSES", "STOP_ENDS_ALL_FOLLOWUPS"),
     "state_hours": ("STATE_RULES",),
     "opt_out": ("STOP_WORDS", "_STOP_TOKENS", "START_WORDS", "NL_CONFIRMATION", "_PHRASES", "INQUIRY_CONFIRMATION",
-                "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES", "INQUIRY_ONLY", "STOP_EVERYTHING_PHRASES"),
+                "VEHICLE_UPDATES_QUESTION", "VEHICLE_UPDATES_YES", "INQUIRY_ONLY", "STOP_EVERYTHING_PHRASES",
+                "STOP_SENTENCE_IN_MESSAGE"),
     "vehicle_media": ("PHOTO_ON_FIRST_MESSAGE", "PHOTOS_ON_REQUEST"),
     "short_links": ("ENABLED",),
     "presend": ("CHECKS",),
@@ -326,6 +327,27 @@ _ATTRS = {
     "templates": ("FIRST_REPLY", "HOLDING_REPLIES", "CONTINUE_NOTED", "CONTINUE_VARIANTS"),
     "crm_status": ("CRM_STATUS_FOR_STAGE", "CRM_STATUS_FOR_EVENT"),
     "staff_view": ("ACTION_KINDS",),
+    # AI Studio > Compliance > Safeguards (the user, 26 Oct 2026: every rule set in code is shown and editable here).
+    "turn": ("SECOND_FORM_IS_CONTACT",),
+    "handlers": ("DUPLICATE_STAYS_QUIET",),
+    "safety_net": ("ENABLED",),
+    "studio_cadences": ("WAIT_WHEN_THEY_WILL_REACH_OUT",),
+    "followups": ("FIRE_CONCURRENCY", "FIRE_BATCH_LIMIT"),
+}
+
+
+# AI Studio > Compliance > Safeguards: field -> (module, attribute). Betsy's published value always wins.
+SAFEGUARD_SWITCHES = {
+    "stop_ends_all_followups": ("engine", "STOP_ENDS_ALL_FOLLOWUPS"),
+    "stop_sentence_in_a_longer_message": ("opt_out", "STOP_SENTENCE_IN_MESSAGE"),
+    "second_lead_form_counts_as_contacted": ("turn", "SECOND_FORM_IS_CONTACT"),
+    "one_conversation_per_customer": ("handlers", "DUPLICATE_STAYS_QUIET"),
+    "safety_net_every_lead_has_a_next_step": ("safety_net", "ENABLED"),
+    "no_still_with_me_after_ill_reach_out": ("studio_cadences", "WAIT_WHEN_THEY_WILL_REACH_OUT"),
+}
+SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
+    "followups_sent_at_once": ("followups", "FIRE_CONCURRENCY", 1, 10),
+    "followups_per_minute": ("followups", "FIRE_BATCH_LIMIT", 10, 200),
 }
 
 
@@ -348,8 +370,12 @@ def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import link_resolver, short_links, vehicle_media
     from upsell_agent.agent.nodes import decide
     from upsell_agent.channels import presend
+    from upsell_agent.agent import turn
+    from upsell_agent.events import handlers
+    from upsell_agent.scheduler import followups, safety_net, studio_cadences
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
-            "decide": decide, "presend": presend}
+            "decide": decide, "presend": presend, "turn": turn, "handlers": handlers, "safety_net": safety_net,
+            "studio_cadences": studio_cadences, "followups": followups}
 
 
 def _policy_module():
@@ -895,6 +921,14 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
     elif key == "presend_check":
         ps = mods["presend"]
         ps.CHECKS = {**ps.CHECKS, **{k: v for k, v in c.items() if k in ps.CHECKS and isinstance(v, bool)}}
+    elif key == "safeguards":
+        for field, (mod, attr) in SAFEGUARD_SWITCHES.items():
+            if isinstance(c.get(field), bool):
+                setattr(mods[mod], attr, c[field])
+        for field, (mod, attr, low, high) in SAFEGUARD_NUMBERS.items():
+            value = c.get(field)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                setattr(mods[mod], attr, max(low, min(high, int(value))))
     elif key == "writing":
         dg, gd = mods["draft_guard"], mods["guard"]
         for field, attr in (("sms_max_characters", "SMS_MAX"), ("first_text_max_characters", "TOUCH1_SMS_MAX"),

@@ -133,6 +133,7 @@ async def plan_step(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
             "step": index, "timing": describe(wait)}
 
 
+WAIT_WHEN_THEY_WILL_REACH_OUT = True  # AI Studio > Compliance > Safeguards
 _WILL_REACH_OUT = re.compile(r"\bI(?:'?ll|\s+will|\s+am\s+going\s+to|'?m\s+gonna)\s+(?:give\s+(?:you|y'?all)(?:\s+all)?\s+a\s+"
                              r"call|call\s+(?:you|y'?all)|reach\s+out|let\s+you\s+know|get\s+back\s+to\s+you|"
                              r"contact\s+you|text\s+you|be\s+in\s+touch)", re.IGNORECASE)
@@ -169,7 +170,7 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
          and state["last_outbound_at"] > (doc["started_at"] + timedelta(minutes=1)).replace(
              tzinfo=state["last_outbound_at"].tzinfo), "another message went out after the AI's question"),
     ]
-    if key == "still_with_me" and not any(failed for failed, _ in reasons):
+    if key == "still_with_me" and WAIT_WHEN_THEY_WILL_REACH_OUT and not any(failed for failed, _ in reasons):
         # Ebony Mingo, 26 Oct 2026 ("I will not be in today ... I will give you all a call" got "Still with me?" 16
         # minutes later, then "Please stop"): a customer who said they'll reach out didn't go quiet.
         last = await db.collection(AI_MESSAGES_COLLECTION).find(

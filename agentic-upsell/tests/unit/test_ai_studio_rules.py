@@ -180,3 +180,25 @@ async def test_conversation_rules_are_editable(mongo):
     assert policy.MAX_ASKS_PER_MESSAGE == 2 and guard.HANDOFF_AFTER_FAILED_DRAFTS is True
     ai_studio.reset()
     assert policy.MAX_ASKS_PER_MESSAGE == 1 and guard.HANDOFF_AFTER_FAILED_DRAFTS is False
+
+
+async def test_the_safeguards_show_in_ai_studio_and_betsys_values_win(mongo):
+    # The user, 26 Oct 2026: every rule set in code is shown and editable in AI Studio; the published value wins.
+    from upsell_agent.agent import turn
+    from upsell_agent.events import handlers
+    from upsell_agent.scheduler import followups, safety_net, studio_cadences
+    c = _default("compliance", "safeguards")
+    assert c["stop_ends_all_followups"] is True and c["second_lead_form_counts_as_contacted"] is False
+    assert c["followups_sent_at_once"] == 4 and c["followups_per_minute"] == 40
+    assert all(f"{k}_explained" in c for k in ai_studio.SAFEGUARD_SWITCHES)
+    c.update(stop_ends_all_followups=False, stop_sentence_in_a_longer_message=False,
+             second_lead_form_counts_as_contacted=True, one_conversation_per_customer=False,
+             safety_net_every_lead_has_a_next_step=False, no_still_with_me_after_ill_reach_out=False,
+             followups_sent_at_once=99, followups_per_minute=5)
+    await _publish(mongo, "compliance", "safeguards", c)
+    assert engine.STOP_ENDS_ALL_FOLLOWUPS is False and opt_out.STOP_SENTENCE_IN_MESSAGE is False
+    assert turn.SECOND_FORM_IS_CONTACT is True and handlers.DUPLICATE_STAYS_QUIET is False
+    assert safety_net.ENABLED is False and studio_cadences.WAIT_WHEN_THEY_WILL_REACH_OUT is False
+    assert followups.FIRE_CONCURRENCY == 10 and followups.FIRE_BATCH_LIMIT == 10  # kept inside the safe range
+    ai_studio.reset()
+    assert engine.STOP_ENDS_ALL_FOLLOWUPS is True and followups.FIRE_CONCURRENCY == 4 and safety_net.ENABLED is True

@@ -79,6 +79,9 @@ Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
 # on a new lead. Its own class: every suppression rule, the review, the customer's state window and the cap
 # apply, but a genuine consumer inquiry (inbound origin) needs no marketing consent. A lead that isn't the
 # consumer reaching out (a CSV / DMS import, DealerVault, a campaign, an unmapped source) is outbound marketing.
+# The user, 26 Oct 2026 (AI Studio > Compliance > Safeguards): a stop on any channel ends this inquiry's follow-ups
+# everywhere, unless the customer keeps a channel ("text is fine"). Off: only the channel they stopped.
+STOP_ENDS_ALL_FOLLOWUPS = True
 # "text is fine" / "email me instead": the customer keeps another channel open.
 _KEEPS_OTHER_CHANNEL = re.compile(r"\b(?:text(?:ing)?|sms|email(?:ing)?|e-mail|call(?:ing)?|phone)\b[^.!?]{0,20}\b(?:is|are)\s+"
                                   r"(?:fine|ok|okay|good|better)\b|\binstead\b|\b(?:text|email|call)\s+me\s+(?:only|instead)\b",
@@ -432,10 +435,10 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
         stopped = "email" if channel == "email" and stops.get("email") else \
             "sms" if channel != "email" and stops.get("sms") else None
         # "Don't email me, text is fine": the channel they keep stays open (Betsy, 22 Oct 2026).
-        if not stopped:
+        if not stopped and STOP_ENDS_ALL_FOLLOWUPS:
             stopped = next((c for c, row in stops.items() if c != channel and row
                             and not _KEEPS_OTHER_CHANNEL.search(str((row or {}).get("said") or ""))), None)
-        if not stopped and customer_id:
+        if not stopped and customer_id and STOP_ENDS_ALL_FOLLOWUPS:
             sms = await consent.latest_opt_out(db, customer_id, "sms")
             created_raw = (lead or {}).get("createdAt") or (lead or {}).get("created_at")
             created = _aware(created_raw) if created_raw else None

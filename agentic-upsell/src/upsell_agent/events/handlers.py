@@ -539,6 +539,9 @@ async def fire_held_first_reply(db: DealerScopedDatabase, doc: dict, deps: TurnD
     return {"held": "deferred", "not_sent": "suppressed"}.get(result["status"], result.get("send_status") or "sent")
 
 
+# AI Studio > Compliance > Safeguards (26 Oct 2026): one customer, one conversation - a staff status on a linked duplicate
+# lead is its stage; the AI keeps talking on the customer's open lead.
+DUPLICATE_STAYS_QUIET = True
 # An iPhone tapback relayed as SMS: 'Laughed at “...”', 'Liked "..."', 'Loved an image'.
 _REACTION = re.compile(r"^\s*(?:Liked|Loved|Laughed at|Emphasized|Disliked|Questioned|Reacted\s+\S+\s+to)\s+"
                        r"(?:[“\"'].*[”\"']|an?\s+(?:image|attachment|message|link|video))\s*$", re.DOTALL)
@@ -1197,7 +1200,7 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # MASTER_PLAN_4 D1 (stream A3): the AI runs the SOLD PENDING workflow / the ownership lifecycle, so the lead
         # isn't paused; lifecycle.apply already started the one and stopped the others (scheduler/sold_lifecycles.py).
         return {"status": f"resumed_{final_event}", "stage_change": stage_change, **extra}
-    if final_event in ("unsold", "staff_no_next_action", "staff_not_contacted") and ((await db.collection(
+    if DUPLICATE_STAYS_QUIET and final_event in ("unsold", "staff_no_next_action", "staff_not_contacted") and ((await db.collection(
             AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}, projection={"duplicate_of": 1})) or {}).get(
             "duplicate_of") and (
             await duplicates.workflow_lead_id(db, event.lead_id)) != event.lead_id:

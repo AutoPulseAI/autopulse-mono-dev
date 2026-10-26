@@ -22,6 +22,7 @@ from upsell_agent.integrations.mongodb import (
 
 logger = logging.getLogger(__name__)
 
+ENABLED = True  # AI Studio > Compliance > Safeguards
 SAFETY_NET_FROM = datetime(2026, 10, 26, 4, 0, tzinfo=UTC)  # midnight New York, 26 Oct 2026
 WORKING_STAGES = ("new_lead", "no_contact_made", "contact_made_no_next_action")
 OPEN = ("pending", "standby", "claimed")
@@ -85,5 +86,7 @@ async def check_dealer(dealer_id: str) -> dict[str, Any]:
 async def run() -> dict[str, Any]:
     from upsell_agent.scheduler.reconcile import live_dealers
 
+    if not ENABLED:
+        return {"planned": 0, "reason": "AI Studio: the safety net is off"}
     out = [await check_dealer(d) for d in await live_dealers()]
     return {"planned": sum(len(r["planned"]) for r in out), "dealers": out}
