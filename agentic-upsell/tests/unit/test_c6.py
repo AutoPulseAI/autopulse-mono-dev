@@ -452,3 +452,22 @@ async def test_an_iphone_reaction_is_saved_and_gets_no_reply(mongo, live_dealer)
     before = await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]})
     await _say(first, 'Laughed at “Thanks, Joyce. Is there anything else I can help you with before your visit?”')
     assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": first["lead_id"]}) == before
+
+
+async def test_a_staff_status_on_a_linked_duplicate_does_not_start_a_second_conversation(mongo, live_dealer):
+    # Fayek Sif, 26 Oct 2026: staff set his duplicate lead "Lead Not Contacted"; the AI resumed it and he got follow-ups
+    # from both leads at the same minute.
+    from upsell_agent.events.models import LeadPausedEvent
+    first = await _lead()
+    await _car(mongo, first, "Acura", "MDX")
+    await _created(first)
+    second = await _lead(customer_id=first["customer_id"])
+    await _car(mongo, second, "Acura", "MDX")
+    await _created(second)
+    result = await handlers.handle_lead_paused(LeadPausedEvent(
+        event_id="p1", dealer_id=DEALER, lead_id=second["lead_id"], customer_id=second["customer_id"],
+        reason="Staff moved the lead to \"Lead Not Contacted\""), _deps())
+    dup = await _state(mongo, second["lead_id"])
+    assert result["status"] == "duplicate" and dup["status"] != "active"
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].count_documents(
+        {"lead_id": second["lead_id"], "kind": "cadence_touch", "status": "pending"})
