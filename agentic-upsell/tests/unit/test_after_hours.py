@@ -661,3 +661,19 @@ async def test_yes_on_the_delivered_vehicles_own_lead_keeps_its_updates_coming(m
     assert "vehicle(s) on file" in await _last_sms(mongo, created)
     await _say(created, "yes")
     assert not (await _state(mongo, created)).get("inquiry_opt_out")
+
+
+def test_the_morning_message_as_betsy_wrote_it_names_the_agent_and_the_dealership(monkeypatch):
+    # Mziuki, 26 Oct 2026: "This is {agent_name} with {dealership}." went out as "This is with."
+    from upsell_agent import ai_studio
+    from upsell_agent.agent.nodes import decide
+
+    betsy = {"mode": "fixed", "text": "Good morning, {first_name}. This is {agent_name} with {dealership}.  I will be "
+                                      "happy to help you pick up where we left off.  Tell me, what are you driving now?"}
+    monkeypatch.setattr(ai_studio, "message", lambda section, key: betsy if key == "after_hours_resume" else None)
+    decision = {"action": "answer", "after_hours": {"mode": "resume"}}
+    dealer = SimpleNamespace(name="Victory Cars Central", agent_name="Nicole", phone=None, address=None)
+    decide.studio_after_hours(decision, "Mziuki Mziuki", dealer)
+    assert decision["cannot_supply"]["text"] == ("Good morning, Mziuki. This is Nicole with Victory Cars Central. I will "
+                                                 "be happy to help you pick up where we left off. Tell me, what are you "
+                                                 "driving now?")

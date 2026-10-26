@@ -881,7 +881,8 @@ async def _assigned_name(ctx: TurnContext) -> str | None:
     return name.split()[0] if name else None
 
 
-def studio_after_hours(decision: dict[str, Any], customer_name: str | None) -> None:
+def studio_after_hours(decision: dict[str, Any], customer_name: str | None,
+                       dealer: DealerProfile | None = None) -> None:
     """AI Studio (client, 13 Oct 2026): an after-hours message edited there. "Customer chose business hours" and the
     morning message are sent word for word (placed by code, like her scripts); the offer's question is the one
     published; "closed but we can help now" follows the published instruction."""
@@ -893,8 +894,12 @@ def studio_after_hours(decision: dict[str, Any], customer_name: str | None) -> N
     edited = ai_studio.message("messages", f"after_hours_{mode}")
     if not edited:
         return
+    # Mziuki, 26 Oct 2026: Betsy's morning message "This is {agent_name} with {dealership}." went out as "This is
+    # with." - only the first name and the opening time were filled. Her wording is kept; every value is filled.
     values = {"first_name": first_name(customer_name) if known_first_name(customer_name) else None,
-              "opens_at": after.get("opens_at")}
+              "opens_at": after.get("opens_at"),
+              **({"agent_name": dealer.agent_name, "dealership": dealer.name, "dealer_phone": dealer.phone,
+                  "address": dealer.address} if dealer else {})}
     text = ai_studio.fixed_text(edited)
     if mode in ("later", "resume") and text and not decision.get("cannot_supply"):
         decision["cannot_supply"] = {"topic": f"after_hours_{mode}", "text": ai_studio.fill(text, values),
@@ -1306,7 +1311,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     elif (decision.get("cannot_supply") or {}).get("topic") == cannot_supply.BUYERS_ORDER:
         # The invitation went out: the next "send it anyway" starts her question sequence (agent/buyers_order.py).
         decision["buyers_order"] = {"step": buyers_order.INVITE_STEP, "at": now}
-    studio_after_hours(decision, state.customer_name)
+    studio_after_hours(decision, state.customer_name, dealer)
     # Client, 12 Oct 2026 (Betsy): "If the name is null please ask for the customer's name. We need to obtain data to
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.
     from upsell_agent.agent.templates import known_first_name
