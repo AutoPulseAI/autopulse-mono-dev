@@ -475,3 +475,15 @@ def test_a_down_payment_or_monthly_never_caps_the_price(budget, price_max):
     profile = {"slots": [{"path": "interest.model", "state": "filled", "value": "BMW M340i"},
                          {"path": "interest.budget", "state": "filled", "value": budget}]}
     assert criteria_from_profile(profile).price_max == price_max
+
+
+async def test_the_same_model_in_another_year_or_body_name_comes_before_other_models(mongo):
+    # 26 Oct 2026: a 2021 5 Series (none 2020-2022) and a "Sedan" 5 Series (feed: "4D Sedan") both went to any sedan.
+    await _stock(mongo, _vehicle("VIN000000005S2019", year=2019, make="BMW", model="5 Series", trim="530i",
+                                 body="4D Sedan"),
+                 _vehicle("VIN00000000ACC201", year=2021, make="Honda", model="Accord", trim="EX", body="4D Sedan"))
+    for asked in (InventoryCriteria(make="BMW", model="5 Series", year_min=2021, year_max=2021),
+                  InventoryCriteria(make="BMW", model="5 Series", body_type="Sedan", year_min=2020, year_max=2020)):
+        found = await find_stock(DEALER, asked, STUB)
+        assert [r.model for r in found.records] == ["5 Series"], asked
+        assert not any(s["step"] in ("model_name", "make", "model") for s in found.loosened)
