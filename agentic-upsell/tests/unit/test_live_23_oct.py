@@ -345,3 +345,14 @@ def test_a_question_with_no_text_never_blocks_a_reply():
                                                          {"text": "Do you have other bmw x3's?"}]}
     draft = {"sms_text": "We have a 2022 BMW X3 sDrive30i.", "answered_questions": ["Do you have other bmw x3's?"]}
     assert unanswered_questions(decision, draft) == []
+
+
+@pytest.mark.parametrize(("text", "skips"), [
+    ("Yes, I'm still interested but I will not be in today, if so it will be later & I will give you all a call", True),
+    ("I'll let you know tomorrow", True),
+    ("What color is it?", False),
+])
+def test_still_with_me_waits_when_the_customer_said_they_will_reach_out(text, skips):
+    # Ebony Mingo, 26 Oct 2026: "Still with me?" 16 minutes after "I will give you all a call".
+    from upsell_agent.scheduler.studio_cadences import _WILL_REACH_OUT
+    assert bool(_WILL_REACH_OUT.search(text)) is skips

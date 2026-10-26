@@ -634,3 +634,17 @@ async def test_stop_texting_me_stops_email_follow_ups_but_text_is_fine_keeps_tex
     other = await _lead(mongo, source="website")
     await handlers.handle_inbound_message(_inbound(other, "don't email me, text is fine", channel="sms"), _deps())
     assert (await _check(other)).rule != "inquiry_opt_out"
+
+
+@pytest.mark.parametrize(("text", "stops"), [
+    ("Please stop. I will reach out when I will come. Today I will not be coming", True),  # Ebony Mingo, 26 Oct
+    ("Stop. I'm not interested in this one", True),
+    ("I'll stop by tomorrow. Can you hold it?", False),
+    ("Please don't stop. Send me more options", False),
+])
+def test_a_stop_sentence_inside_a_longer_message(text, stops):
+    from upsell_agent.compliance.opt_out import detect_opt_out, stops_everything
+    found = detect_opt_out(text, "sms")
+    assert bool(found) is stops
+    if found:
+        assert not stops_everything(found, text)  # this inquiry, the condition stays
