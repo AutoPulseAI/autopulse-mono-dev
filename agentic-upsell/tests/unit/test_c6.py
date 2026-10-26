@@ -379,7 +379,9 @@ async def test_a_new_lead_from_the_same_customer_restarts_the_90_day_clock(mongo
     anchor = state["day91_anchor"]
     anchor = anchor if anchor.tzinfo else anchor.replace(tzinfo=clock.now().tzinfo)
     assert abs((anchor - clock.now()).total_seconds()) < 60
-    assert state["last_inquiry_at"] and state["stage"] == "contact_made_no_next_action"
+    # Betsy, 12 Oct 2026: "THE INCOMING LEAD EMAIL IS NOT A CONTACT MADE" - a customer who never wrote stays Lead Not
+    # Contacted after a second form (Christian Balado, 20 Oct 2026, was set Contacted by this).
+    assert state["last_inquiry_at"] and state["stage"] == "no_contact_made"
     # Day 100 of the first lead, Day 40 of the re-engagement: still open, not closed at Day 91.
     set_clock(clock.now() + timedelta(days=40))
     from upsell_agent.agent import lifecycle

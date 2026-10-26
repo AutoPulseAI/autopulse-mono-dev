@@ -66,6 +66,8 @@ from upsell_agent.scheduler.followups import (
     staff_no_show,
 )
 
+from upsell_agent.agent.turn import NEW_INQUIRY_PREFIX  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 # Statuses in which the AI doesn't write replies (architecture §5 step 3). An opt-out is no longer
@@ -372,7 +374,7 @@ async def _answer_new_inquiry_on_primary(db: DealerScopedDatabase, deps: TurnDep
     log = await run_turn(
         dealer_id=db.dealer_id, customer_id=primary_state.get("customer_id") or event.customer_id,
         lead_id=primary_id, trigger="inbound_message", channel=event.channel,
-        inbound_text=f"(New inquiry submitted on a lead form) {text}", shadow=False, deps=deps,
+        inbound_text=f"{NEW_INQUIRY_PREFIX} {text}", shadow=False, deps=deps,
         event_received_at=_parse_received_at(received_at), turn_id=turn_id, is_reply=False,
         purpose="lead_response")
     return {"status": "done", "turn_id": log["turn_id"], "send_status": log["summary"].get("send_status")}
