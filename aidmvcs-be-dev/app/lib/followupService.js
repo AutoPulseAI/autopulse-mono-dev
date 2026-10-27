@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 // services/followupService.js
 import dotenv from 'dotenv';
 import path from 'path';
@@ -151,4 +152,14 @@ export async function onFollowUpEvent(jobRecord) {
   console.log( jobRecord.scheduledAt.getTime());
   // 3) chain the very next follow-up, using this job’s scheduledAt as baseline
   await scheduleNext(lead, rule, runIndex, Date.now());
+}
+// One send per follow-up job (app/api/conversations/followup): true when this call took the job, false when it was
+// already sent / completed or another call is sending it right now.
+const CLAIM_STALE_MS = 10 * 60 * 1000;
+export async function claimFollowUpJob(FollowUpJobModel, jobId, now = new Date()) {
+  const claimed = await FollowUpJobModel.collection.findOneAndUpdate(
+    { _id: new mongoose.Types.ObjectId(String(jobId)), status: { $nin: ['sent', 'completed'] },
+      $or: [{ claimedAt: null }, { claimedAt: { $exists: false } }, { claimedAt: { $lt: new Date(now - CLAIM_STALE_MS) } }] },
+    { $set: { claimedAt: now } }, { returnDocument: 'after' });
+  return Boolean(claimed && (claimed.value !== undefined ? claimed.value : claimed));
 }

@@ -406,7 +406,9 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
         other = "email" if channel == "sms" else "sms"
         night = channel == "sms" and check.outcome == "HOLD" and check.until
         # AI Studio channel rule for a lead outside texting hours (consent.AT_NIGHT).
-        text_held = check if night and consent.AT_NIGHT == "email_now_text_when_open" else None
+        # The user, 28 Oct 2026: one message at night, asking "now or business hours?" - never the first message again
+        # by text in the morning (140 leads got both). The 13 Oct second copy is gone whatever AI Studio says.
+        text_held = None
         # Client, 12 Oct 2026: a lead that arrives at night is answered at once by EMAIL (no quiet hours for email), with
         # the after-hours choice; only the text waits for the customer's legal texting hours.
         if check.outcome in ("BLOCK", "REVIEW", "HOLD") and not (night and consent.AT_NIGHT == "wait_for_text") \
@@ -1004,6 +1006,14 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                          rows=unanswered, received_at=_parse_received_at(received_at))
     if answered:
         return {**answered, "followups_cancelled": cancelled}
+    from upsell_agent.agent import appointment as appointment_steps
+    if (state.get("stage") == lifecycle.Stage.APPOINTMENT_SET.value
+            and appointment_steps.is_closing_ack(" ".join(m["text"] for m in unanswered))):
+        # Betsy, 27 Oct 2026 meeting: once the appointment is set, "ok" / "thanks" / "copy that" gets no reply.
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="no_reply_needed",
+                                  reason="The appointment is set and the customer only acknowledged: nothing to "
+                                         "answer, no reply.", received_at=_parse_received_at(received_at))
+        return {**held, "followups_cancelled": cancelled}
     if state.get("stage") in (lifecycle.Stage.SOLD_PENDING.value, lifecycle.Stage.SOLD_DELIVERED.value,
                               lifecycle.Stage.CLOSED_NO_LONGER_OWNS.value) and not event.shadow:
         # MASTER_PLAN_4 D2/D4/D7 (stream A3): the SOLD PENDING response router (§9), the anniversary YES / NO and
@@ -1054,10 +1064,11 @@ async def _appointment_answer(db: DealerScopedDatabase, event: InboundMessageEve
 
     appt_state = state.get("appointment") or {}
     confirmation = appt_state.get("confirmation") or {}
-    if state.get("stage") != lifecycle.Stage.APPOINTMENT_SET.value or confirmation.get("status") != "asked":
-        return None
     text = " ".join(r["text"] for r in rows).strip()
-    answer = appointment.classify_answer(text)
+    if state.get("stage") != lifecycle.Stage.APPOINTMENT_SET.value or (
+            confirmation.get("status") != "asked" and not appointment.is_maybe(text)):
+        return None
+    answer = "maybe" if appointment.is_maybe(text) else appointment.classify_answer(text)
     if answer == "other" or (answer == "ambiguous" and confirmation.get("asked_again")):
         return None
     profile = await dealer_profile(event.dealer_id)
@@ -1085,6 +1096,16 @@ async def _appointment_answer(db: DealerScopedDatabase, event: InboundMessageEve
         new_state = {"appointment.confirmed": False,
                      "appointment.confirmation": {**confirmation, "status": "declined", "answered_at": now}}
         why = "The customer replied N: not confirmed, new times offered at once."
+    elif answer == "maybe":
+        kind, action = "tentative", "appointment_tentative"
+        new_state = {"appointment.confirmed": False, "appointment.tentative": True, "appointment.tentative_at": now,
+                     "appointment.confirmation": {**confirmation, "status": "tentative", "answered_at": now}}
+        why = "The customer isn't sure they can make it: the appointment stays, marked tentative (Betsy, 27 Oct 2026)."
+        from upsell_agent.agent import crm_notes
+        await crm_notes.write(db, lead_id=lead_id, kind="appointment_tentative", customer_id=event.customer_id,
+                              key=f"tentative:{lead_id}:{appt_state.get('at')}", platform=deps.platform,
+                              text=f"Appointment tentative - the customer wrote: \"{text[:300]}\". It stays on the "
+                                   "calendar; a call may help.")
     else:
         kind, action = "clarify", "appointment_clarify"
         new_state = {"appointment.confirmation": {**confirmation, "asked_again": True}}

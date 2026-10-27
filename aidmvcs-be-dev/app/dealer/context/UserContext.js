@@ -29,6 +29,8 @@ export const UserProvider = ({ children }) => {
         const data = await res.json();
 
         if (res.ok) {
+          // A sign-in in use is renewed (app/lib/session.js), so it never runs out mid-shift.
+          if (data.refreshed_token) localStorage.setItem("dealertoken", data.refreshed_token);
           setUser(data);
           // If user has parent_id, fetch parent details
           const parentId = data?.parent_id;

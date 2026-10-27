@@ -20,6 +20,7 @@ from upsell_agent.events import handlers
 from upsell_agent.events.models import LeadCreatedEvent
 from upsell_agent.integrations.mongodb import (
     DEV_OUTBOX_COLLECTION,
+    PLATFORM_BOOKINGS_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     as_object_id,
@@ -293,24 +294,21 @@ async def test_stop_opts_out_and_the_ai_starts_nothing_more(mongo):
 
 # --- 13 Oct 2026 (Bibi / Betsy, the overnight leads and Artem Petrov) ----------------------------------------------
 
-async def test_a_night_lead_gets_the_email_now_and_its_first_text_in_the_morning(mongo):
-    """Timi Gabice, 11:10 PM, a phone on the lead: only an email ever went out. Betsy: email at night, the text when
-    texting hours open - the full first text, not the "we're open" email on top of it."""
+async def test_a_night_lead_is_asked_now_or_business_hours_once_and_nothing_is_sent_twice(mongo):
+    """The user, 28 Oct 2026: a lead that writes in at night gets what anyone texting after hours gets - "should I
+    message you now, or during business hours?" - on the channel allowed at that hour, once. No answer: picked up when
+    the dealership opens. Not the email at night and then the same first message by text in the morning (140 leads)."""
     from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION
     set_clock(datetime(2026, 9, 23, 3, 10, tzinfo=UTC))  # 11:10 PM New York
     created = await _new_lead(mongo, vehicle=RAV4)
-    assert not await _sent(mongo, created) and (await _sent(mongo, created, "email"))
+    emails = await _sent(mongo, created, "email")
+    assert not await _sent(mongo, created) and len(emails) == 1
+    assert re.search(r"\bnow\b", emails[0], re.IGNORECASE) and re.search(r"open|business hours|morning", emails[0],
+                                                                         re.IGNORECASE), emails[0]
     pending = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
         {"lead_id": created["lead_id"], "status": "pending"}).to_list(None)
-    held = [p for p in pending if p["kind"] == "first_reply_held"]
-    assert len(held) == 1 and held[0]["to_channel"] == "sms"
-    assert not [p for p in pending if p["kind"] == "resume_at_opening"]
-    from tests.unit.test_booking_flow import _deps as deps
-    from upsell_agent.scheduler import followups
-    set_clock(held[0]["due_at"].replace(tzinfo=UTC) + timedelta(minutes=1))
-    await followups.fire_due(deps())
-    first_text = (await _sent(mongo, created))[0]
-    assert first_text.startswith("Hi Maria, this is ") and "AI Sales Manager" in first_text
+    assert not [p for p in pending if p["kind"] == "first_reply_held"]  # no second copy of the first message
+    assert [p for p in pending if p["kind"] == "resume_at_opening"]  # no answer: picked up at opening
 
 
 async def test_a_lead_portal_placeholder_email_is_never_used(mongo):
@@ -338,6 +336,30 @@ async def test_on_my_way_and_a_time_books_that_time_today(mongo):
     lead = await _lead_doc(mongo, created)
     assert lead["data"].get("bookingId"), lead.get("data")
     assert "5:20 PM" in await _last_sms(mongo, created)
+
+
+@pytest.mark.parametrize(("said", "hhmm"), [
+    ("Yeah I'm on my way, I will be there in 10 minutes", "14:10"),
+    ("on my way", "14:30"),
+    ("omw be there in half an hour", "14:30"),
+    ("leaving now, be there in like 22 min", "14:25"),
+])
+async def test_on_my_way_with_no_appointment_books_the_arrival(mongo, said, hhmm):
+    """Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "I'm on my way. I will be there in 10 minutes" - no
+    appointment was set, nobody at the store expected him): that's an appointment, now + the minutes they said."""
+    set_clock(datetime(2026, 9, 22, 18, 0, tzinfo=UTC))  # 2:00 PM New York, a Tuesday
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, said)
+    booking = await mongo[PLATFORM_BOOKINGS_COLLECTION].find_one({"lead_id": {"$in": [
+        created["lead_id"], as_object_id(created["lead_id"])]}})
+    assert booking and booking["bookingTime"] == hhmm, booking
+
+
+async def test_on_my_way_after_closing_books_nothing(mongo):
+    set_clock(datetime(2026, 9, 22, 22, 50, tzinfo=UTC))  # 6:50 PM New York; 7 PM close
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "on my way, be there in 40 minutes")
+    assert not (await _lead_doc(mongo, created))["data"].get("bookingId")
 
 
 def test_no_template_promises_the_team():
@@ -538,3 +560,15 @@ def test_still_wanting_the_original_car():
         assert _STILL_WANTS.match(yes), yes
     for no in ("No, I want the M240", "not really", "only the m240"):
         assert not _STILL_WANTS.match(no), no
+
+
+async def test_with_the_live_at_night_setting_a_night_lead_still_gets_one_message(mongo, monkeypatch):
+    # AI Studio on live publishes at_night = "email_now_text_when_open"; the user, 28 Oct 2026: one message, not two.
+    from upsell_agent.channels import consent
+    from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION
+    monkeypatch.setattr(consent, "AT_NIGHT", "email_now_text_when_open")
+    set_clock(datetime(2026, 9, 23, 3, 10, tzinfo=UTC))  # 11:10 PM New York
+    created = await _new_lead(mongo, vehicle=RAV4)
+    assert len(await _sent(mongo, created, "email")) == 1 and not await _sent(mongo, created)
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "first_reply_held", "status": "pending"})

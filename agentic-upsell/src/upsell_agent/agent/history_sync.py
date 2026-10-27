@@ -23,6 +23,7 @@ A returning customer's new lead gets a short summary of their previous lead's co
 (`previous_lead_summary`), shown with the rolling summary.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -44,6 +45,8 @@ CUSTOMER_IMPORT_MARGIN = timedelta(hours=1)
 PREVIOUS_LEAD_MESSAGES = 6
 PREVIOUS_SUMMARY_MAX = 600
 MAX_TEXT = 2000
+# The CRM's own status-change notes (app/lib/messageAuthor.js STATUS_NOTE): read by the AI even though internal.
+STATUS_NOTE = re.compile(r"^\s*(?:Status changed from|Set to .+ by |Appointment moved by )")
 
 
 def _aware(value: Any) -> datetime | None:
@@ -102,9 +105,11 @@ async def sync_lead_history(db: DealerScopedDatabase, *, lead_id: str, customer_
         text = _text(row)
         if not text:
             continue
-        if author == "staff_note" and row.get("internal_use") is True:
+        if author == "staff_note" and row.get("internal_use") is True and not STATUS_NOTE.match(text):
             # Client, 10 Oct 2026: a note marked internal is for the team only - the AI never reads it, so it can never
-            # shape a reply. Unmarked notes are read as before.
+            # shape a reply. Unmarked notes are read as before. The user, 28 Oct 2026: a status change ("Status changed
+            # from Lead to Appointment Booked by Mercy Carill", "Appointment moved by ...") is part of the conversation
+            # - the CRM stores it as an internal note, so the AI never knew staff had booked the customer.
             continue
         doc: dict[str, Any] = {"lead_id": lead_id, "customer_id": customer_id, "channel": _channel(row),
                                "text": text, "platform_message_id": str(row["_id"]), "created_at": at,

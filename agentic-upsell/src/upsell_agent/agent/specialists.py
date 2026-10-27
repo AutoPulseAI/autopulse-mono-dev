@@ -89,6 +89,67 @@ _PATTERNS = (
 )
 _COMPILED = tuple((sid, re.compile(p, re.IGNORECASE)) for sid, p in _PATTERNS)
 
+# The user, 28 Oct 2026: "there must be a lot, lot of words that can be a sales one, a trade-in, or other ... but it must
+# not break the system". AI Studio's own words (_PATTERNS, edited there by Betsy) are checked first and keep their
+# place; these built-in words are checked only when none of hers matched. Most specific first.
+_MORE_WORDS = (
+    (TRADE, r"\b(trad(e|ing) (it )?in|swap my|part[- ]?exchange|my (current|old|own) (car|truck|suv|van|vehicle|ride)|"
+            r"what (would|will|can|could) you (give|offer|pay)|how much (would|will|can|could) you (give|pay|offer)|"
+            r"(sell|selling) (my|our|the) (car|truck|suv|van|vehicle|\w+)|buy (my|our) (car|truck|vehicle)|"
+            r"(still )?owe (on|about|around)?|upside[- ]down|negative equity|lien|loan balance|pay ?off|appraisal|"
+            r"apprais\w*|blue book|edmunds value|carmax (offer|quote)|carvana (offer|quote)|instant offer)\b"),
+    (CREDIT, r"\b(my credit|credit (is|isn'?t|was|history|issues?|problems?|check|app(lication)?|union)|"
+             r"bad credit|poor credit|low credit|no credit|fair credit|rebuild\w* credit|(soft|hard) (pull|check)|"
+             r"pre-?qualif\w*|pre-?approv\w*|get approved|will i (get|be) approved|can i get financ\w*|"
+             r"first[- ]time (buyer|car)|cosign\w*|co-?sign\w*|repossess\w*|bankrupt\w*|chapter (7|13)|collections|"
+             r"itin|no ssn|no social|self[- ]employed|1099|proof of income|pay ?stubs?|buy here pay here|bhph)\b"),
+    (PRICE, r"\b(price|priced|pricing|cost|costs|how much|what('s| is) the (price|number|best)|budget|afford|"
+            r"monthly|a month|per month|/mo|payments?|apr|interest|rate|term|\d{2} months|out[- ]the[- ]door|otd|"
+            r"all[- ]in|taxes|fees|doc fee|dealer fees?|discount|deal|best (price|deal|offer)|negotiat\w*|"
+            r"lowest|cheaper|too (high|expensive)|lease|leasing|financ\w*|cash (price|deal|buyer)|down payment|"
+            r"money down|\$\s?\d|\d+k\b|msrp|incentives?|rebates?|specials?|promo\w*)\b"),
+    (SERVICE, r"\b(oil change|service (appointment|visit|department|center)|maintenance|recall|repair|check engine|"
+              r"warning light|inspection|warranty (work|claim|repair)|diagnos\w*|my car (is )?(making|shaking|leaking))\b"),
+    (SALES, r"\b(interested|interest(ed)? in|still available|available|in stock|is it (there|still)|"
+            r"want (to|it)|looking (for|at|to buy)|shopping|need a (car|truck|suv|van|vehicle)|"
+            r"test[- ]?drive|see (it|the car)|come (in|by|see)|visit|photos?|pictures?|pics|video|"
+            r"miles|mileage|color|colour|trim|features?|options|packages?|carfax|history|accident|condition|"
+            r"warranty|certified|cpo|new or used|awd|4x4|4wd|seats|third row|towing|mpg|hybrid|electric|ev)\b"),
+)
+_MORE_COMPILED = tuple((sid, re.compile(p, re.IGNORECASE)) for sid, p in _MORE_WORDS)
+
+# What every specialist does, whatever its playbook says (AI Studio's or the built-in) - from the conversations read
+# on 27-28 Oct 2026. Added to the playbook Compose gets; it never replaces Betsy's words.
+EVERY_SPECIALIST = (
+    "Always, whichever specialist you are:\n"
+    "- Answer what the customer actually asked first, in one or two plain sentences; then one question at most.\n"
+    "- \"I'm interested\" / \"yes\" / \"still available?\" is a buyer: confirm the car and ask the next qualifying "
+    "question - never \"we can go over that when you come in\".\n"
+    "- Never repeat what they already told you or what we already sent (the time, the address, the car).\n"
+    "- A visit is booked: answer only what they asked; no more questions about the car, budget or options.\n"
+    "- \"Maybe\" / \"might not make it\" / \"not sure\" is not a no: keep the appointment, say so kindly, ask nothing.\n"
+    "- \"No\" / \"not interested\" / \"I'll call you\": accept it, thank them, and stop - no times, no promises.\n"
+    "- Never promise what nobody will do (options later, a call, a price check, a manager getting back) unless "
+    "the decision says a person was asked to.\n"
+    "- Too far / out of state: say what we can do (the car's details, a call) without pushing visit times.\n"
+    "- A price offer (\"I can give 19k\"): never accept or refuse it; say a manager will look at it.\n"
+    "- They're on the way: confirm, give the address, nothing else.\n"
+    "- Short, warm, human; no lists, no jargon; in the customer's language."
+)
+
+_MORE_BY_SPECIALIST = {
+    SALES: "- Name the exact car (year, make, model) and whether it's here; if it isn't, the closest ones in stock.\n"
+           "- Qualify in this order, one at a time, skipping what you know: new or used, the car, timeline, budget, "
+           "trade.",
+    PRICE: "- They push for a number: the listed price is the only number; the rest is worked out in person in a "
+           "few minutes.\n- \"Too expensive\": ask what monthly payment or total works for them.",
+    CREDIT: "- Never make them feel judged; never say \"all types of credit\".\n- Ask about money down or a trade, "
+            "one at a time.",
+    TRADE: "- Collect year, make, model, miles, payoff - one at a time, only what's missing.\n- Never a value or a "
+           "range; the appraisal gives the number.",
+    SERVICE: "- Get the vehicle, mileage and the problem; the service department confirms the time.",
+}
+
 # The lead's bucket (agent/lead_bucket.py) when the message itself says nothing specific.
 _BUCKET_DEFAULT = {"credit": CREDIT, "trade_in": TRADE}
 
@@ -102,13 +163,25 @@ def route(text: str | None, *, lead_type: str | None = None, bucket: str | None 
             continue  # "tires" / "noise" on a sales lead is about the car they're buying
         if match := pattern.search(said):
             return SPECIALISTS[sid], f"the customer said {match.group(0)!r}"
+    for sid, pattern in _MORE_COMPILED:
+        if sid == SERVICE and lead_type != "service":
+            continue
+        if sid == SALES:
+            break  # sales is the default anyway; a service lead / the bucket decides below
+        if match := pattern.search(said):
+            return SPECIALISTS[sid], f"the customer said {match.group(0)!r}"
     if lead_type == "service":
         return SPECIALISTS[SERVICE], "a service lead"
+    if (match := dict(_MORE_COMPILED)[SALES].search(said)) and bucket in _BUCKET_DEFAULT:
+        # A credit or trade-in lead talking about the car itself ("is it still available?", "I'm interested").
+        return SPECIALISTS[SALES], f"the customer said {match.group(0)!r}"
     if bucket in _BUCKET_DEFAULT:
         return SPECIALISTS[_BUCKET_DEFAULT[bucket]], f"a {bucket} lead"
     return SPECIALISTS[SALES], "the default"
 
 
 def for_compose(specialist: Specialist, why: str) -> dict[str, str]:
-    return {"id": specialist.id, "name": specialist.name, "playbook": specialist.playbook,
+    extra = _MORE_BY_SPECIALIST.get(specialist.id, "")
+    playbook = f"{specialist.playbook}\n\n{EVERY_SPECIALIST}" + (f"\n{extra}" if extra else "")
+    return {"id": specialist.id, "name": specialist.name, "playbook": playbook,
             "never": specialist.never, "why": why}

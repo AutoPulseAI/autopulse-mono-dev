@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
@@ -91,6 +92,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       lead_source: params.get('lead_source') || '',
       source: params.get('source') || '',
       message_filter: params.get('message_filter') || '',
+      messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
         endDate: params.get('endDate') ? new Date(params.get('endDate')) : null
@@ -207,6 +209,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
+      if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
 
@@ -445,6 +448,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.email) url += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) url += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) url += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
+      if (filters.messages) url += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
@@ -764,6 +768,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
+      if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
       
@@ -1671,6 +1676,8 @@ useImperativeHandle(ref, () => ({
                           <div className="w_card_list_box_label">
                           <p className="label"><small>Source:</small></p>
                           <p>{lead.source || "N/A"}</p>
+                          <small className={`badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
+                            title="How the lead came in">{contactTypeLabel(lead)}</small>
                           </div>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
@@ -1713,6 +1720,12 @@ useImperativeHandle(ref, () => ({
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Created:</small></p>
                             <p className="text-truncate">{formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+                            {lead.last_reply_at && (
+                              <small className="text-success d-block text-truncate">Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
+                            )}
+                            {lead.last_sent_at && (
+                              <small className="text-primary d-block text-truncate">Messaged {formatTimestamp(lead.last_sent_at, dealerTimezone)}</small>
+                            )}
                           </div>
                         </Col>
                       </Row>
@@ -1733,6 +1746,16 @@ useImperativeHandle(ref, () => ({
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
                         <div className="small text-muted mt-1" title="AI stage (read only)">
                           <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
+                        </div>
+                      )}
+                      {lead.ai_admin && (
+                        // AutoPulse super admins only (the API leaves this out for anyone else): bucket and next AI message.
+                        <div className="small mt-1 text-info" title="AutoPulse admin view: the AI's bucket and its next scheduled message">
+                          <i className="fa-solid fa-user-shield"></i>{' '}
+                          {[lead.ai_admin.bucket && `Bucket: ${lead.ai_admin.bucket}`,
+                            lead.ai_admin.agent && `Agent: ${lead.ai_admin.agent}`,
+                            lead.ai_admin.next && `Next: ${String(lead.ai_admin.next.step || lead.ai_admin.next.kind).replace(/_/g, ' ')} ${formatTimestamp(lead.ai_admin.next.due_at, dealerTimezone)}`]
+                            .filter(Boolean).join(' · ') || 'No AI timer'}
                         </div>
                       )}
                     </Col>

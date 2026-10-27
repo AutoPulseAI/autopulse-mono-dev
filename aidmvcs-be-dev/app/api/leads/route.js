@@ -1,4 +1,5 @@
-import { contactedLeadIds } from '@lib/contactedLeads';
+import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
+import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
@@ -19,7 +20,8 @@ import Role from '@models/Role';
 import Permission from '@models/Permission';
 import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
-import { attachAiStages } from '@lib/ai/aiStage';
+import { attachAiStages, attachAiAdminLabels } from '@lib/ai/aiStage';
+import { loadSettingsEditor } from '@lib/apiAuth';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -444,7 +446,17 @@ export async function GET(req) {
       }
     }
 
-    if (status === 'Contacted') {
+    let repliedOrder = null;
+    const messagesSent = url.searchParams.get("messages") === "sent";
+    if ((status === 'Contacted' && query.createdAt) || messagesSent) {
+      // Customer Replied for a date range: who replied in it, whenever the lead came in, latest reply first. The
+      // Messages card's list (messages=sent): who we messaged in it, latest first (Betsy, 27 Oct 2026 meeting).
+      const { $gte: from, $lte: to } = query.createdAt || {};
+      delete query.createdAt;
+      const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
+      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received' });
+      query._id = { $in: repliedOrder.map((r) => r._id) };
+    } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
       const contacted = await contactedLeadIds(candidates);
       query._id = { $in: contacted };
@@ -522,14 +534,27 @@ export async function GET(req) {
       const limit = parseInt(url.searchParams.get("limit")) || 10;
       
       const totalLeads = await Lead.countDocuments(query);
-      const leads = await Lead.find(query)
-        .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean();
+      let leads;
+      if (repliedOrder) {
+        const lastReply = new Map(repliedOrder.map((r) => [String(r._id), r.last_reply_at]));
+        const pageIds = repliedOrder.slice((page - 1) * limit, page * limit).map((r) => r._id);
+        const rows = await Lead.find({ ...query, _id: { $in: pageIds } })
+          .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false }).lean();
+        const byId = new Map(rows.map((l) => [String(l._id), l]));
+        leads = pageIds.map((id) => byId.get(String(id))).filter(Boolean)
+          .map((l) => ({ ...l, [messagesSent ? 'last_sent_at' : 'last_reply_at']: lastReply.get(String(l._id)) || null }));
+      } else {
+        leads = await Lead.find(query)
+          .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean();
+      }
       // The AI's stage per lead, read only (app/lib/ai/aiStage.js).
       await attachAiStages(leads);
+      // AutoPulse super admins only: the AI's bucket, stage and next message - never sent to a dealer's users.
+      if ((await loadSettingsEditor(req)).superAdmin) await attachAiAdminLabels(leads);
       // Appointments list: "Made by AI" / "Made by Staff" on each one.
       if (bookingStatus) {
         const details = await bookingDetailsForLeads(leads.map((l) => l._id));
@@ -650,12 +675,13 @@ export async function POST(req) {
         comments: data.comments,
         dealer_id: data.dealer_id,
         source: data.source || data.followup_preference || 'email',
-       
+        contact_type: validContactType(data.contact_type),
       };
       
       const jobData = {
      
         currentSMS:{
+          contact_type: validContactType(data.contact_type),
           message_id: null,
           parent_conversation: null,
           sender,

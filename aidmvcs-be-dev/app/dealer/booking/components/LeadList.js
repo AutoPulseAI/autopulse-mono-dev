@@ -15,6 +15,9 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, compact = false, ...props }, ref) => {
   const [leads, setLeads] = useState([]);
+  // Betsy, 27 Oct 2026 meeting: label each appointment Confirmed / Tentative / Not confirmed, and filter by it.
+  const [confirmFilter, setConfirmFilter] = useState('');
+  const shownLeads = confirmFilter ? leads.filter((l) => (l.confirmation || 'not_confirmed') === confirmFilter) : leads;
   const [selectedLead, setSelectedLead] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -1124,8 +1127,22 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
             </ListGroup.Item>
             )}
 
-            {leads.length > 0 ? (
-              leads.map(lead => (
+            {leads.some((l) => l.confirmation) && (
+              <ListGroup.Item as="li" className="d-flex align-items-center gap-2">
+                <small className="text-muted">Show</small>
+                <select className="form-select form-select-sm w-auto" value={confirmFilter}
+                  onChange={(e) => setConfirmFilter(e.target.value)} aria-label="Filter appointments by confirmation">
+                  <option value="">All appointments</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="tentative">Tentative</option>
+                  <option value="not_confirmed">Not confirmed</option>
+                </select>
+                {confirmFilter && <small className="text-muted">{shownLeads.length} of {leads.length} on this page</small>}
+              </ListGroup.Item>
+            )}
+
+            {shownLeads.length > 0 ? (
+              shownLeads.map(lead => (
                 <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center`} onClick={(e) => {
                   // Don't trigger if clicking on buttons or interactive elements
                   if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
@@ -1218,9 +1235,16 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                                   : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
                               </span>
                             )}
-                            {lead.booked_by === 'staff' && lead.customer_agreed === false && (
-                              <span className="badge bg-danger ms-1" title="The customer hasn't replied (or asked to cancel) and no call is logged">
-                                Customer not confirmed
+                            {lead.confirmation && (
+                              <span className={`badge ms-1 ${lead.confirmation === 'confirmed' ? 'bg-success'
+                                : lead.confirmation === 'tentative' ? 'bg-warning text-dark' : 'bg-danger'}`}
+                                title={lead.confirmation === 'confirmed' ? 'The customer confirmed (C / Y), or staff confirmed the booking'
+                                  : lead.confirmation === 'tentative' ? "The customer isn't sure they can make it; the appointment stays"
+                                  : lead.booked_by === 'staff' && lead.customer_agreed === false
+                                    ? "Booked by staff; the customer hasn't replied (or asked to cancel) and no call is logged"
+                                    : "The customer hasn't confirmed yet"}>
+                                {lead.confirmation === 'confirmed' ? 'Appointment confirmed'
+                                  : lead.confirmation === 'tentative' ? 'Appointment tentative' : 'Appointment not confirmed'}
                               </span>
                             )}
                           </div>

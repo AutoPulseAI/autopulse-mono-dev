@@ -11,6 +11,7 @@ import { clearPendingJobs } from '@lib/followupService';
 import { cancelAllRemindersForLead, createManagerialReviewMessages } from '@lib/appointmentReminderService';
 import Email from '@models/Email';
 import Lead from '@models/Lead';
+import Booking from '@models/Booking';
 import { notifyManagers } from '@lib/ai/managerAlerts';
 
 export async function POST(req) {
@@ -25,7 +26,7 @@ export async function POST(req) {
   if (errors.length) return NextResponse.json({ error: 'Invalid request', details: errors }, { status: 422 });
   try {
     await dbConnect();
-    const result = await markLeadClosedFromAi(body, { Lead, Email, clearPendingJobs, cancelAllRemindersForLead,
+    const result = await markLeadClosedFromAi(body, { Lead, Email, Booking, clearPendingJobs, cancelAllRemindersForLead,
       createManagerialReviewMessages, notifyManagers });
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
     return NextResponse.json(result);

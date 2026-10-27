@@ -202,7 +202,7 @@ async def test_a_stage_that_no_longer_wants_a_call_cancels_it_before_it_opens(mo
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
                                                      {"$set": {"stage": "appointment_set"}})
     set_clock(START + timedelta(minutes=61))
-    assert (await _fire())["cancelled"] == 2  # + PLAN_4 stream T's Days 1-7 morning call task, same re-check
+    assert (await _fire())["cancelled"] == 1  # (the Days 1-7 call tasks are off by default since 28 Oct 2026)
     assert await _tasks(mongo, created) == []
     [timer] = await _timers(mongo, created)
     assert "appointment" in timer["reason"].lower()
@@ -326,7 +326,7 @@ async def test_the_specific_follow_up_goes_on_text_and_email_and_starts_the_call
     turn = f"next-action-{action['_id']}"
     sent = await mongo["ai_messages"].find({"lead_id": created["lead_id"], "turn_id": turn,
                                             "status": "sent"}).to_list(None)
-    assert sorted(m["channel"] for m in sent) == ["email", "sms"]
+    assert sorted(m["channel"] for m in sent) == ["sms"]  # one channel per message
     timers = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
         {"lead_id": created["lead_id"], "kind": "call_task", "source_turn_id": turn}).to_list(None)
     assert len(timers) == 1 and timers[0]["status"] == "pending"

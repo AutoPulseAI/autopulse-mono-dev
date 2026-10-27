@@ -6,6 +6,7 @@ import dbConnect from "@lib/mongodb";
 import { authOptions } from "@lib/auth";
 import User from "@models/User";
 import jwt from 'jsonwebtoken';
+import { validContactType } from '@lib/leadContactType';
 
 export async function GET(request, { params }) {
   try {
@@ -75,6 +76,7 @@ export async function PUT(request, { params }) {
     if (body.email !== undefined) updateData.email = body.email;
     if (body.phone !== undefined) updateData.phone = body.phone;
     if (body.vin !== undefined) updateData.vin = body.vin;
+    if (body.contact_type !== undefined) updateData.contact_type = validContactType(body.contact_type);
     if (body.vehicle_make !== undefined) updateData.vehicle_make = body.vehicle_make;
     if (body.vehicle_model !== undefined) updateData.vehicle_model = body.vehicle_model;
     if (body.vehicle_year !== undefined) updateData.vehicle_year = body.vehicle_year;

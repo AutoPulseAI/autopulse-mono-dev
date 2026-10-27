@@ -309,6 +309,27 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
         if matched_exact and widened:
             # The search widened, but the matcher found the car they named under another name: exact after all.
             widened = []
+    if not loaded and not result.matched and not result.excluded and (stock_question or asked_trigger) and not bigger:
+        # The user, 28 Oct 2026 ("similar car - why the fuck has it not been built"; Manny asked for a Porsche Macan,
+        # which this dealer doesn't carry, and got "I'm checking with a manager"): nothing matched, so the closest
+        # stock we do have - the same new/used, budget and body type when known - goes to the AI, which must offer it
+        # (guard: missing_alternatives).
+        closest = InventoryCriteria(condition=criteria.condition, price_max=criteria.price_max,
+                                    body_type=criteria.body_type)
+        for attempt in (closest, InventoryCriteria(condition=criteria.condition)):  # then without budget / body
+            try:
+                near = await find_stock(state.dealer_id, attempt, source)
+                loaded = [{**r.model_dump(), "already_shown": r.vin in shown, "found_by": "closest"}
+                          for r in near.loaded(MAX_LOADED)]
+            except Exception as exc:  # noqa: BLE001 - stock is optional for a reply
+                reasoning.append(f"The closest-stock search failed ({exc!r}).")
+            if loaded:
+                closest = attempt
+                break
+        if loaded:
+            widened = widened or ["closest"]
+            result.loosened = [*result.loosened, {"step": "closest", "detail": "nothing matched what they asked for: "
+                                                  f"the closest stock ({closest.model_dump(exclude_none=True) or 'any'})"}]
     if result.colour:
         stored = result.colour["stored"]
         reasoning.append(f"Colour {result.colour['asked']!r} → sent as the dealer's own spelling {stored!r}."
@@ -337,9 +358,13 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
     patched = _patch(pack, loaded, result.final_query, result.checked_at)
     # conversation_7: what was searched, and whether the vehicles loaded are that or the nearest we have - so the
     # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
+    # A car they named that this dealer doesn't carry (a Porsche Macan) was searched as "what do you have": what we
+    # show is the nearest we have, never the car they asked for - so the reply must offer it (guard).
+    named_unknown = bool((state.extraction or {}).get("asked_vehicle")) and asked_trigger == \
+        "the customer asked what we have" and not (state.extraction or {}).get("browse_stock")
     patched["stock_search"] = {"searched_for": describe_criteria(criteria), "found": len(loaded),
                                "asked": stock_question,
-                               "exact": bool(loaded) and not widened,
+                               "exact": bool(loaded) and not widened and not named_unknown,
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
                                if widened and loaded else None}
     return {"context_pack": patched}

@@ -137,3 +137,20 @@ async def test_a_newer_message_already_claimed_by_its_own_turn_still_stops_this_
                    now + timedelta(seconds=25), answered="t2")
     verdict = await _look(created, turn_id="t1", answers=[first])
     assert not verdict.ok and verdict.check == "superseded"
+
+
+@flow
+@pytest.mark.parametrize(("status", "stopped"), [("Appointment Booked", True), ("Visited", True), ("Sold", True),
+                                                 ("DND", True), ("Managerial Review", False),
+                                                 ("Contacted - No Next Action", False), ("No Show", False)])
+async def test_a_follow_up_reads_the_crm_status_fresh_before_it_goes(mongo, status, stopped):
+    # The user, 28 Oct 2026: "Still with me?" went out after staff set the lead to Appointment Booked.
+    from upsell_agent.integrations.mongodb import PLATFORM_LEADS_COLLECTION, as_object_id
+    created = await _new_lead()
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                      {"$set": {"fe_lead_status": status}})
+    for turn in ("studio-abc", "cadence-xyz"):
+        verdict = await _look(created, turn_id=turn, text="Still with me?", is_reply=False)
+        assert (not verdict.ok and verdict.check == "crm_status") is stopped, (turn, verdict)
+    reply = await _look(created, turn_id="reply-1", text="Sure, it's here.", is_reply=True)
+    assert reply.ok  # a reply to the customer is never stopped by this

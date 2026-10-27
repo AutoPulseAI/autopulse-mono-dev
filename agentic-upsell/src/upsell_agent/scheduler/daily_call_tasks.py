@@ -8,7 +8,7 @@ The client's rule: "Human agents receive two call tasks per scheduled workday fo
                 its window (agent/call_tasks.py mark_missed)
     Status changed first: the obsolete call task is cancelled (agent/lifecycle.py cancel_stale_work)
 
-**A per-dealer setting**, `dealer_account_information.ai_daily_call_tasks` ("off" | "on", unset = on), on the
+**A per-dealer setting**, `dealer_account_information.ai_daily_call_tasks` ("off" | "on", unset = off since 28 Oct 2026), on the
 CRM's AI Settings page: the client hasn't said whether these and the 60-minute task after each touch
 (agent/call_tasks.py) are the same thing (scope Q8), so a dealer can turn these off and keep only the 60-minute one.
 

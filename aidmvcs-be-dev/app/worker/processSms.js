@@ -324,6 +324,9 @@ export async function processSMS(job) {
         vin:vin||null,
         sourcemail:parent_id,
         followup_preference:response_mode ,
+        contact_type: currentSMS?.contact_type || null, // a manual lead: Internet / Phone-up / Walk-in, as staff chose
+        // An imported lead keeps its own date (app/api/leads/import): the AI's cadence counts its days from it.
+        ...(currentSMS?.original_created_at ? { createdAt: new Date(currentSMS.original_created_at) } : {}),
         vehicle_make: make,
         vehicle_model: model,
         vehicle_year: year,

@@ -184,7 +184,7 @@ async def test_the_real_flow_records_touches_and_credits_the_reply(mongo):
     assert first["kind"] == "first_reply" and first["bucket"] and first["theme_label"] == "Touch 1"
     await _fire_next_touch(mongo, created)  # the name nudge
     nudge = await mongo[AI_TOUCHES_COLLECTION].find_one({"lead_id": created["lead_id"], "theme": "name_nudge"})
-    assert nudge["kind"] == "cadence" and sorted(nudge["channels"]) == ["email", "sms"]
+    assert nudge["kind"] == "cadence" and sorted(nudge["channels"]) == ["sms"]
     assert nudge.get("variant") is None  # the client's exact "{FirstName}?" is never varied
     await _say(created, "Sorry, busy week - is it still available?")
     nudge = await mongo[AI_TOUCHES_COLLECTION].find_one({"_id": nudge["_id"]})

@@ -113,3 +113,29 @@ async def test_a_returning_customer_gets_the_previous_leads_summary(mongo):
     await sync_lead_history(db, lead_id=second["lead_id"], customer_id=first["customer_id"], lead_state={})
     state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": second["lead_id"]})
     assert "F-150 under $35k" in state["previous_lead_summary"]
+
+
+async def test_a_staff_status_change_is_part_of_the_conversation_the_ai_reads(mongo):
+    # The user, 28 Oct 2026: Mercy set Appointment Booked after a call; the CRM stores that as an internal note, so the
+    # AI never knew. A status change is read; any other internal note still isn't.
+    created = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Cy", comments="Tesla")
+    lead_id = created["lead_id"]
+    now = clock.now()
+    await mongo[AI_LEAD_STATE_COLLECTION].insert_one({"dealer_id": DEALER, "lead_id": lead_id, "created_at": now,
+                                                      "history_synced_at": now - timedelta(minutes=5),
+                                                      "history_synced_until": now - timedelta(minutes=5)})
+    await mongo["emails"].insert_many([
+        _email(lead_id, "Status changed from Lead to Appointment Booked by Mercy Carill", now, is_note=True,
+               communication_type="note", internal_use=True),
+        _email(lead_id, "Set to Appointment Booked by Mercy Carill: visit on 2026-10-27 at 17:30", now, is_note=True,
+               communication_type="note", internal_use=True),
+        _email(lead_id, "Customer has bad credit, don't mention financing.", now, is_note=True,
+               communication_type="note", internal_use=True),
+    ])
+    db = dealer_scoped_db(DEALER)
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": lead_id})
+    await sync_lead_history(db, lead_id=lead_id, customer_id=created["customer_id"], lead_state=state)
+    texts = [r["text"] for r in await mongo[AI_MESSAGES_COLLECTION].find({"lead_id": lead_id}).to_list(None)]
+    assert any(t.startswith("Status changed from Lead to Appointment Booked") for t in texts)
+    assert any("visit on 2026-10-27 at 17:30" in t for t in texts)
+    assert not any("bad credit" in t for t in texts)

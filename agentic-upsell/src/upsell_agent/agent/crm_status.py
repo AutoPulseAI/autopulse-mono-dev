@@ -13,8 +13,11 @@ reached never stops the close itself: the result is kept on the lead state (`crm
 retried by the next Day 91 sweep.
 """
 
+import asyncio
 import logging
 from typing import Any
+
+import httpx
 
 from upsell_agent import clock
 from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, DealerScopedDatabase, get_db
@@ -36,8 +39,12 @@ CRM_STATUS_FOR_STAGE = {
     # escalated" - the status stays; it is never Dealership Action Required (agent/escalation.py).
     "contact_made_no_next_action": "Contacted - No Next Action",
     "contact_made_specific_followup": "Contacted - Specific Follow-up",
+    # The user, 28 Oct 2026: after a booking the AI moves the CRM status on too - appointment + 1 hour with no visit
+    # marked shows No Show (the CRM applies it only over Appointment Booked; aidmvcs-be-dev aiDnd.js).
+    "appointment_no_show": "No Show",
 }
 RETRY_LIMIT = 200
+RETRY_AFTER_S = 3.0
 
 
 def _client(platform: Any | None) -> Any:
@@ -72,8 +79,15 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
         result: dict[str, Any] = {"status": "skipped", "reason": f"dealer AI mode is {mode}", "crm_status": status}
     else:
         try:
-            answer = await _client(platform).set_lead_status(db.dealer_id, lead_id, status, reason=reason,
-                                                             closed_at=closed_at)
+            try:
+                answer = await _client(platform).set_lead_status(db.dealer_id, lead_id, status, reason=reason,
+                                                                 closed_at=closed_at)
+            except httpx.TimeoutException:
+                # Betsy, 27 Oct 2026 meeting: the 10 AM burst - the CRM answers a moment later. Once more, then the
+                # hourly sweep (retry_failed).
+                await asyncio.sleep(RETRY_AFTER_S)
+                answer = await _client(platform).set_lead_status(db.dealer_id, lead_id, status, reason=reason,
+                                                                 closed_at=closed_at)
             result = {"status": "updated" if answer.get("updated") else "kept", "crm_status": status,
                       **({"reason": answer["reason"]} if answer.get("reason") else {})}
         except Exception as exc:
@@ -95,8 +109,13 @@ async def retry_failed(*, platform: Any | None = None, limit: int = RETRY_LIMIT)
         sync = row.get("crm_status_sync") or {}
         if not row.get("dealer_id") or not row.get("lead_id"):
             continue
-        result = await sync_closed(dealer_scoped_db(row["dealer_id"]), row["lead_id"], sync.get("event", ""),
-                                   reason=sync.get("reason_text") or "", closed_at=sync.get("closed_at"),
-                                   platform=platform)
+        # Live, 28 Oct 2026: 63 leads never showed Managerial Review in the CRM - the retry went through sync_closed,
+        # which knows only the closings, so a working status ("team_promise", "manager_escalation") came back "not
+        # needed" and stayed failed for good. The status that failed is the one tried again.
+        if not sync.get("crm_status"):
+            continue
+        result = await sync_status(dealer_scoped_db(row["dealer_id"]), row["lead_id"], sync["crm_status"],
+                                   reason=sync.get("reason_text") or "", event_kind=sync.get("event", ""),
+                                   closed_at=sync.get("closed_at"), platform=platform)
         done += result["status"] != "failed"
     return {"retried": len(rows), "synced": done}

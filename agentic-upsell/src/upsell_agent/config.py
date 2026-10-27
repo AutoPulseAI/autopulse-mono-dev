@@ -124,6 +124,9 @@ class Settings(BaseSettings):
     # Betsy, 22 Oct 2026: a link the AI sends goes out as <this>/l/<code> (agent/short_links.py; the CRM's app/l/[code]
     # redirects). Empty: links go out in full.
     short_link_base_url: str = Field(default="https://autopulse.ai", alias="SHORT_LINK_BASE_URL")
+    # The CRM's public address for a vehicle photo it serves itself (app/api/media/vehicle): a stock-photo host that
+    # doesn't state an image's type or size (BUILD-PLAN-27-OCT item 11). Empty: such a photo isn't sent.
+    media_base_url: str = Field(default="https://www.autopulse.ai", alias="MEDIA_BASE_URL")
 
     # --- MASTER_PLAN_4 D5/D6 (stream A4): service outreach from external data -------------------
     # NHTSA safety recalls (SOLD-DELIVERED PDF §6): the free public API, no key. The sweep re-checks each

@@ -348,13 +348,73 @@ _ASKED_ARRIVAL = re.compile(r"\bwhat time (?:will|would|do|can|are) you\b[^?]{0,
                             r"stop by|be in)\b|\bwhen (?:will|would) you (?:arrive|be here|get here)\b", re.IGNORECASE)
 
 
+_NO_QUESTION = frozenset({"none", "n a", "na", "null", "no", "nothing", "unknown", "nil"})
+_FORM_LINE = re.compile(r"^\s*[A-Z][\w /]{2,30}:\s*[^?]{0,40}$")
+
+
+# Betsy, 27 Oct 2026 meeting (an appointment with "Name unknown": the AI talked to the customer from a follow-up and
+# never asked): "that's a golden rule - fill in the blanks". A name still missing is asked again two days after the
+# first ask, at most twice, in her words ("how do I spell your first and last name?").
+NAME_ASK_AGAIN_AFTER = timedelta(days=2)
+MAX_NAME_ASKS = 2
+
+
+def _may_ask_name(lead_state: dict | None, now: datetime, field: str = "name") -> bool:
+    state = lead_state or {}
+    asked = state.get(f"{field}_asked")
+    if not asked:
+        return True
+    if int(state.get(f"{field}_asks") or 1) >= MAX_NAME_ASKS or not isinstance(asked, datetime):
+        return False
+    asked = asked if asked.tzinfo else asked.replace(tzinfo=timezone.utc)
+    return now - asked >= NAME_ASK_AGAIN_AFTER
+
+
+# Asked in the customer's own conversation's words, not one fixed line (the user, 28 Oct 2026: "a creative question").
+EMAIL_QUESTIONS = (
+    "And what's the best email to send you the details and photos?",
+    "Where should I email you the details - what's a good email for you?",
+    "If you'd like the full details in your inbox too, what email should I use?",
+    "What email can I send your info to, so you have everything in one place?",
+)
+
+
+def email_question(lead_id: str) -> str:
+    return EMAIL_QUESTIONS[sum(map(ord, str(lead_id))) % len(EMAIL_QUESTIONS)]
+
+
+def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
+    return _may_ask_name(lead_state, now, "email")
+
+
+def not_our_own_questions(questions: list[dict[str, str]], customer_text: str | None,
+                          our_texts: list[str]) -> list[dict[str, str]]:
+    """Richard, 27 Oct 2026 (BUILD-PLAN-27-OCT item 9: "Am interested" -> "That's something we can go over together
+    when you come in"): Extract listed our own "Tell me, what are you driving now?" as his question; the reply check
+    then turned down both drafts for not answering it, the safety net went out, and the question stayed open for his
+    follow-up too. A "customer question" that is one of our own recent questions, and isn't in what the customer
+    wrote, is dropped."""
+    from upsell_agent.agent.conversation import _key
+    said = _key(customer_text or "")
+    ours = [_key(t) for t in our_texts if t]
+    kept = []
+    for q in questions:
+        key = _key(q.get("text") or "")
+        if not key or key in _NO_QUESTION or _FORM_LINE.match(str(q.get("text") or "")):
+            continue  # live, 24-27 Oct 2026: "None", "Purchase Timeframe: unsure" (a lead form's line)
+        if key not in said and any(key in o for o in ours):
+            continue
+        kept.append(q)
+    return kept
+
+
 def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: datetime) -> dict[str, str] | None:
     """Client, 13 Oct 2026 (Artem Petrov: "We coming to look at it now" ... "520" - the AI "didn't acknowledge the time
     and didn't confirm an appt nor book it"): a customer on their way today who gives the time they'll arrive has that
     time booked, as a pick - when it is today, still ahead and inside opening hours. A visit, not a slot on the grid."""
     at = booking_tool.bare_time(text)
     if at is None:
-        return None
+        return _arrival_from_now(text, dealer, now)
     memory = (state.context_pack or {}).get("working_memory") or []
     said = [m.get("text") or "" for m in memory[-6:] if m.get("direction") == "inbound"] + [text]
     asked = [m.get("text") or "" for m in memory[-3:] if m.get("direction") == "outbound"]
@@ -364,6 +424,37 @@ def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: date
     when = datetime.combine(local.date(), at, tzinfo=dealer.tz)
     hours = dealer.hours.get(local.weekday())
     if when <= local or not hours or not (hours[0] <= at <= hours[1]):
+        return None
+    return {"iso": when.isoformat(), "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"),
+            "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
+
+
+# Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "Yeah I'm on my way, I will be there in 10 minutes" - no
+# appointment was set, so nobody at the store expected him): "if there is no appointment and the customer says I'm on
+# my way, that's an appointment - add 10 minutes to whatever time it is". Said in this message, with no booking.
+_ON_THE_WAY_NOW = re.compile(r"\bon (?:my|our) way\b|\bheading (?:over|in|there|your way)\b|\bomw\b|"
+                             r"\b(?:be|get|getting|arrive|arriving) there in\b|\bbe there (?:soon|shortly)\b|"
+                             r"\b(?:coming|leaving) (?:in )?now\b", re.IGNORECASE)
+_IN_MINUTES = re.compile(r"\bin (?:about |around |like )?(\d{1,3}|a few|few|half an?|an?) ?(min(?:ute)?s?|hours?|hrs?|hr)\b",
+                         re.IGNORECASE)
+ARRIVAL_IF_NO_TIME = timedelta(minutes=30)
+
+
+def _arrival_from_now(text: str, dealer: DealerProfile, now: datetime) -> dict[str, str] | None:
+    """"On my way, there in 10 minutes": now + 10 (rounded up to 5 minutes); "on my way" alone: now + 30."""
+    if not _ON_THE_WAY_NOW.search(text or ""):
+        return None
+    wait = ARRIVAL_IF_NO_TIME
+    if m := _IN_MINUTES.search(text):
+        n, unit = m.group(1).lower(), m.group(2).lower()
+        amount = {"a few": 5, "few": 5, "half a": 30, "half an": 30, "a": 1, "an": 1}.get(n) or int(n)
+        wait = timedelta(hours=amount) if unit.startswith("h") and n not in ("half a", "half an") \
+            else timedelta(minutes=amount)
+    local = now.astimezone(dealer.tz)
+    when = local + wait
+    when = when.replace(second=0, microsecond=0) + timedelta(minutes=-when.minute % 5)
+    hours = dealer.hours.get(local.weekday())
+    if not hours or when.date() != local.date() or not (hours[0] <= when.time() <= hours[1]):
         return None
     return {"iso": when.isoformat(), "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"),
             "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
@@ -1106,7 +1197,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     profile = await load_profile(ctx, state)
     conversation = ConversationState.model_validate((state.context_pack or {}).get("conversation") or {})
     # Questions an earlier reply left unanswered (a template went out) come first.
-    questions = questions_for_turn(conversation, list(extraction.get("questions") or []))
+    questions = not_our_own_questions(
+        questions_for_turn(conversation, list(extraction.get("questions") or [])), state.customer_text or state.inbound_text,
+        [m.get("text") or "" for m in (state.context_pack or {}).get("working_memory") or []
+         if m.get("direction") == "outbound"][-4:])
     status = (ctx.lead_state or {}).get("status")
     hold = hold_questions_reason(extraction, ctx.compliance)
     # MASTER_PLAN_4 D2/D4 (stream A3): a Sold Pending / Sold - Delivered customer gets answers only - no asks, no
@@ -1386,7 +1480,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.
     from upsell_agent.agent.templates import known_first_name
     decision["ask_name"] = bool(
-        not known_first_name(state.customer_name) and not (ctx.lead_state or {}).get("name_asked")
+        not known_first_name(state.customer_name) and _may_ask_name(ctx.lead_state, now)
         and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
         and decision["action"] not in ("stop", "handoff", "offer_human")
         # Live, 21 Oct 2026: the first text's one question is "Tell me, what are you driving now?" (one question per
@@ -1396,10 +1490,41 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # Betsy, 16 Oct 2026: "for n/a or null it needs to ask for the first and last name" - with one question per
         # message, the name is this message's question (the other detail waits for the next reply).
         decision["asks"] = [{"requirement": "customer_name", "label": "Name", "slots": [],
-                             "question": "May I have your first and last name?",
+                             "question": "Can you tell me how to spell your first and last name?",
                              "explanation": "so we know who to ask for and can get everything ready for you"}]
         decision["slots"] = []
         decision["action"] = "ask"
+    # Betsy, 27 Oct 2026 meeting: "the AI should have asked the customer's name and email address - fill in the
+    # blanks". With the name known and no usable email on file, the email is this reply's one question, when nothing
+    # else is being asked; asked at most twice, two days apart (like the name).
+    just_booked = bool(visit_ctx.get("just_booked"))
+    # The user, 28 Oct 2026: "after we have collected how you spell your first and last name, then we ask if the email
+    # is not available - a creative question". The reply right after they gave their name asks for the email.
+    from upsell_agent.agent.turn import _NAME_SAID_PLAINLY
+    gave_name = next((v.get("value") for v in extraction.get("values") or []
+                      if v.get("path") == "contact.name" and v.get("value")), None) or (
+        (m.group(1) if (m := _NAME_SAID_PLAINLY.search(str(text or ""))) else None))
+    just_named = bool(gave_name or (ctx.lead_state or {}).get("name_asked")) and not (
+        ctx.lead_state or {}).get("email_asked")
+    decision["ask_email"] = bool(
+        state.trigger == "inbound_message" and (known_first_name(state.customer_name) or known_first_name(gave_name))
+        and not resolve_recipient(ctx.lead, ctx.customer, "email") and not decision.get("ask_name")
+        and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
+        and (just_booked or just_named or (not decision.get("asks") and decision["action"] in (
+            "acknowledge", "qualified", "partly_qualified")))
+        and _may_ask_email(ctx.lead_state, now))
+    if decision["ask_email"]:
+        # One question per message: the email is this reply's question.
+        decision["asks"] = [{"requirement": "customer_email", "label": "Email", "slots": [],
+                             "question": email_question(state.lead_id or ""),
+                             "explanation": "so we can send the vehicle's details, photos and the appointment"}]
+        decision["slots"] = []
+        if gave_name and not just_booked:
+            # They just told us their name: the email is this reply's one question; the visit comes next reply.
+            decision["action"] = "ask"
+            decision.pop("visit_offer", None)
+        elif not just_booked and decision["action"] not in ("answer", "confirm", "offer_visit"):
+            decision["action"] = "ask"
     if state.trigger == "inbound_message" and decision["action"] in ("offer_visit", "ask") \
             and _THANKS_ONLY.match(str(text or "")) and await _follow_up_promised(state, now):
         # Ebony Mingo, 26 Oct 2026: "I'll check back with you tomorrow around 12:00 PM" - "No problem thanks" - and the
@@ -1407,6 +1532,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
         decision.pop("visit_offer", None)
         decision["why"] = "They thanked us for the follow-up we promised: a short acknowledgement, no offer or question."
+    if (state.trigger == "inbound_message" and visit_ctx.get("status") in ("pending", "confirmed")
+            and not visit_ctx.get("just_booked") and decision["action"] in ("ask", "offer_visit")
+            and not decision.get("ask_name")):
+        # Betsy, 27 Oct 2026 meeting (the QX50 lead and Michael: booked, then asked about all-wheel drive, budget, "anything
+        # else for your visit?"): "once it gets the appointment that's it". With a visit booked the reply answers what
+        # they said and asks nothing more about the car - except their name, still needed (item 10).
+        decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
+        decision.pop("visit_offer", None)
+        decision["why"] = "A visit is booked: answer what they said, ask nothing more."
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).

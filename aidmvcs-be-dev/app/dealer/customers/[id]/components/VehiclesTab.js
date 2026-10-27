@@ -2,17 +2,42 @@
 
 import { useRouter } from "next/navigation";
 import { Badge, Card, Col, Row, Button } from "react-bootstrap";
+import { interestedVehicles } from "../../../../lib/interestedVehicles";
 
 function vehicleTitle(vehicle) {
   const parts = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean);
   return parts.length ? parts.join(" ") : vehicle.vin;
 }
 
-export default function VehiclesTab({ vehicles }) {
+export default function VehiclesTab({ vehicles, leads = [] }) {
   const router = useRouter();
+  const interested = interestedVehicles(leads);
 
   return (
     <div className="w_card">
+      {interested.length > 0 && (
+        <>
+          <h3 className="w_card_title mb-3">Interested in</h3>
+          <Row className="gy-3 mb-4">
+            {interested.map((vehicle) => (
+              <Col md={6} lg={4} key={vehicle.vin || `${vehicle.lead_id}-${vehicleTitle(vehicle)}`}>
+                <Card className="h-100">
+                  <Card.Body>
+                    <div className="d-flex align-items-start justify-content-between mb-2">
+                      <Card.Title className="mb-0">{vehicleTitle(vehicle) || "Vehicle"}</Card.Title>
+                      <Badge bg="primary">Lead</Badge>
+                    </div>
+                    {vehicle.vin && <div className="text-muted small mb-1">VIN: {vehicle.vin}</div>}
+                    <div className="text-muted small">
+                      {vehicle.source || "Lead"}{vehicle.at ? ` · ${new Date(vehicle.at).toLocaleDateString()}` : ""}
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </>
+      )}
       <h3 className="w_card_title mb-3">Vehicles</h3>
       <p className="text-muted small">
         Vehicles referenced in this customer&apos;s sales and service records — not necessarily

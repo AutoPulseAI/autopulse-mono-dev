@@ -46,3 +46,62 @@ export async function contactedLeadIds(leadIds, { EmailModel = Email, rule = nul
   ]);
   return rows.map((r) => r._id);
 }
+
+// Betsy, 27 Oct 2026 meeting ("Customer Replied" listed leads created that day; "if a lead from two months ago replies
+// today it should be in this list - even if they put stop"): the leads among `leadIds` with a customer message in
+// [from, to], whenever the lead came in, latest reply first: [{ _id, last_reply_at }]. A lead's own arrival (the
+// portal's email / ADF) is not a reply.
+export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received' } = {}) {
+  if (!leadIds?.length) return [];
+  const at = {};
+  if (from) at.$gte = from;
+  if (to) at.$lte = to;
+  // Betsy, 27 Oct 2026 meeting: "how many went out today - who did they go out to": direction 'sent' is the same list
+  // for our messages to the customer (AI, staff or automatic; not notes).
+  const status = direction === 'sent' ? { $nin: [...INBOUND, 'note'] } : { $in: INBOUND };
+  const rows = await EmailModel.aggregate([
+    { $match: { lead_id: { $in: leadIds }, status, is_note: { $ne: true }, is_lead_email: { $ne: true },
+      ...(from || to ? { timestamp: at } : {}) } },
+    { $project: { lead_id: 1, timestamp: 1,
+      adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
+        regex: ADF.source, options: 'i' } },
+      lead_msg: { $regexMatch: { input: { $ifNull: ['$message_id', ''] }, regex: '^lead-' } } } },
+    { $match: { adf: false, lead_msg: false } },
+    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' } } },
+    { $sort: { last_reply_at: -1 } },
+  ]);
+  return rows;
+}
+
+const FAILED = ['failed', 'undelivered', 'bounced', 'error'];
+
+// The dashboard's Messages card (Betsy, 27 Oct 2026 meeting: "I want to know how many were sent today and how many were
+// received - I need to know if the cadences are firing"): our messages to these leads' customers in [from, to] by who
+// sent them, and the customers' messages back. Notes and the portal's lead email are not messages.
+export async function messageActivity(leadIds, from, to, { EmailModel = Email } = {}) {
+  const empty = { sent: { total: 0, ai: 0, staff: 0, automatic: 0, failed: 0, customers: 0 }, received: { total: 0, customers: 0 } };
+  if (!leadIds?.length) return empty;
+  const at = {};
+  if (from) at.$gte = from;
+  if (to) at.$lte = to;
+  const [row] = await EmailModel.aggregate([
+    { $match: { lead_id: { $in: leadIds }, is_note: { $ne: true }, status: { $ne: 'note' }, is_lead_email: { $ne: true },
+      ...(from || to ? { timestamp: at } : {}) } },
+    { $project: { lead_id: 1, inbound: { $in: ['$status', INBOUND] }, failed: { $in: ['$status', FAILED] },
+      ai: { $eq: ['$ai_generated', true] }, staff: { $gt: ['$message_by', null] },
+      adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
+        regex: ADF.source, options: 'i' } } } },
+    { $match: { adf: false } },
+    { $group: { _id: null,
+      sent: { $sum: { $cond: ['$inbound', 0, 1] } },
+      ai: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$ai'] }, 1, 0] } },
+      staff: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, { $not: ['$ai'] }, '$staff'] }, 1, 0] } },
+      failed: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$failed'] }, 1, 0] } },
+      received: { $sum: { $cond: ['$inbound', 1, 0] } },
+      sentTo: { $addToSet: { $cond: ['$inbound', '$$REMOVE', '$lead_id'] } },
+      from: { $addToSet: { $cond: ['$inbound', '$lead_id', '$$REMOVE'] } } } },
+  ]);
+  if (!row) return empty;
+  return { sent: { total: row.sent, ai: row.ai, staff: row.staff, automatic: row.sent - row.ai - row.staff,
+    failed: row.failed, customers: row.sentTo.length }, received: { total: row.received, customers: row.from.length } };
+}

@@ -44,7 +44,7 @@ from upsell_agent.agent.media import drop_photo_claims
 from upsell_agent.agent.vehicle_media import MediaPick, asks_for_photos, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
-from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
+from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest, needs_other_channel
 from upsell_agent.compliance.engine import Decision, Purpose, can_contact
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import (
@@ -270,6 +270,9 @@ async def run_turn(
                                  inventory=(result.get("context_pack") or {}).get("inventory"))
             reply = await _without_photo_claims(tracer, ctx, reply, photo, inbound_text, lead_id, customer_id)
             reply = without_ask_for_assistant(reply)
+            if decision.get("touch1") and not re.search(r"\bmiles\b", str((decision.get("touch1") or {}).get(
+                    "lead_answers") or "")):
+                reply = without_mileage(reply)
             reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
@@ -293,12 +296,11 @@ async def run_turn(
                                              "sold in the meantime, so the stock-free version was sent instead.")
                 span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
                 span.edge_label = sent.status
-            # MASTER_PLAN_3 C4 (Omnichannel PDF p.10): a cadence touch goes out on text AND email
-            # together, not one channel now and the other in 24 hours.
+            # One channel per message (channels/sender.py ONE_CHANNEL_ONLY): the other only when this one couldn't go.
             also_sent = await _send_other_channel(
                 tracer, deps, draft=draft, trigger=trigger, dealer_id=dealer_id, lead_id=lead_id,
                 customer_id=customer_id, channel=channel, shadow=shadow, event_received_at=event_received_at,
-                ctx=ctx, decision=decision)
+                ctx=ctx, decision=decision) if needs_other_channel(sent) else None
             async with tracer.node("schedule", {"sent_status": sent.status, "channel": channel}) as span:
                 planned = await _plan_next_contact(
                     db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,
@@ -401,6 +403,7 @@ async def run_turn(
             if trigger == "inbound_message":
                 await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
                 await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
+                await _alert_unsure(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id, result)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
@@ -408,12 +411,20 @@ async def run_turn(
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
             await _show_booking(db, lead_id, decision)
+            if (expert := decision.get("specialist") or {}).get("name"):
+                # The user, 28 Oct 2026: AutoPulse admins see which agent handled the lead (aidmvcs-be-dev aiStage.js).
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+                    "specialist": {"id": expert.get("id"), "name": expert["name"], "why": expert.get("why"),
+                                   "at": clock.now()}}})
             asked = str(((result.get("draft") or {}).get("sms_text")) or "") + " " + str(
                 (result.get("draft") or {}).get("email_body") or "")
             if decision.get("ask_name") and re.search(r"\bname\b", asked, re.IGNORECASE):
                 # Only once the message really asked for it.
-                await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
-                                                                         {"$set": {"name_asked": clock.now()}})
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"name_asked": clock.now()}, "$inc": {"name_asks": 1}})
+            if decision.get("ask_email") and re.search(r"\bemail\b", asked, re.IGNORECASE):
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"email_asked": clock.now()}, "$inc": {"email_asks": 1}})
             if "buyers_order" in decision:
                 # The buyer's order sequence's next step (agent/buyers_order.py), kept once the reply went out.
                 step = decision["buyers_order"]
@@ -545,6 +556,9 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
         return None
     subject = None if other == "sms" else draft.get("email_subject")
     text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
+    if (decision or {}).get("touch1") and not re.search(r"\bmiles\b", str(((decision or {}).get("touch1") or {}).get(
+            "lead_answers") or "")):
+        text = without_mileage(text)
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
     if photo is not None and not photo.urls:
         text, _ = drop_photo_claims(text, asked_for_photos=False)
@@ -1203,6 +1217,19 @@ _ASK_FOR_ON_ARRIVAL = re.compile(r"\b[Aa]sk for [A-Z][a-z]+\b")
 _ARRIVAL = re.compile(r"\b(?:arriv\w*|get here|come in|stop by|you'?re here|at the (?:front )?desk)\b", re.IGNORECASE)
 
 
+# Betsy, 27 Oct 2026 meeting (the Tesla lead's first text: "...the 2021 Model 3 Standard Range Plus in Red Multi-Coat is
+# here with 69,248 miles"): "I do want the year, make, model, price ... we don't need to give the miles - the customer
+# has no reason to ask anything". The first text leaves the mileage out unless the lead form asked for it.
+_MILEAGE = re.compile(r",?\s+(?:and\s+|with\s+(?:only\s+|just\s+)?)?(?:about\s+)?[\d,.]+\s?k?\s+miles(?:\s+on\s+it)?\b"
+                      r"|\s*It has (?:about |only |just )?[\d,.]+\s?k?\s+miles(?: on it)?\.", re.IGNORECASE)
+
+
+def without_mileage(text: str | None) -> str | None:
+    if not text:
+        return text
+    return re.sub(r"\s+([.,!?])", r"\1", _MILEAGE.sub("", text))
+
+
 def without_ask_for_assistant(text: str | None) -> str | None:
     """No "ask for Nicole when you arrive": the assistant isn't someone at the store."""
     if not text:
@@ -1248,6 +1275,26 @@ async def _alert_price_offer(db: DealerScopedDatabase, platform: Any, lead_id: s
                                                          "please answer them."))
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
         "at": clock.now(), "kind": "price_offer", "text": "The customer made a price offer: a manager please answer."}}})
+
+
+async def _alert_unsure(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                        text: str | None, turn_id: str, result: dict[str, Any]) -> None:
+    """Betsy, 27 Oct 2026 meeting: "if the AI doesn't know what to do it can't lie - escalation is better". When the
+    AI's own replies were both turned down (wrong, a promise nobody keeps, a question left unanswered) the safe reply
+    went out instead; a manager is told with the customer's words. The AI keeps the lead (the user's rule: it is
+    never handed off or switched off without their OK)."""
+    reason = str(result.get("fallback_reason") or "")
+    if not lead_id or not text or not result.get("used_fallback") or "guard rejected" not in reason:
+        return
+    from upsell_agent.agent import crm_notes
+    why = "; ".join(str(v) for v in ((result.get("guard_result") or {}).get("violations") or [])[:2])[:300]
+    await crm_notes.write(db, lead_id=lead_id, kind="ai_unsure", key=f"ai_unsure:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(
+                              f"The AI wasn't sure how to answer \"{text[:240]}\" and sent a safe reply instead"
+                              f"{f' ({why})' if why else ''}. A manager may want to answer this one; the AI keeps "
+                              "the lead."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "ai_unsure", "text": "The AI wasn't sure how to answer: a manager may want to."}}})
 
 
 async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,

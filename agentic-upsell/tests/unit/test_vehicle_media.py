@@ -467,7 +467,7 @@ async def test_each_countdown_day_shows_a_different_photo_of_the_vehicle(mongo):
     await _fire(mongo, created, "countdown")
     await _fire(mongo, created, "countdown")
     sms = [m for m in (await _outbox(mongo, created))[before:] if m["channel"] == "sms"]
-    assert [m["text"] for m in sms] == ["Counting down to our meeting at Sunrise Motors!"] * 2
+    assert len(sms) == 2 and sms[0]["text"] != sms[1]["text"]  # Betsy, 27 Oct 2026: something different each day
     photos = [m["media_urls"] for m in sms]
     assert all(len(p) == 1 and p[0] in PHOTOS for p in photos) and photos[0] != photos[1]
     email = [m for m in (await _outbox(mongo, created))[before:] if m["channel"] == "email"]

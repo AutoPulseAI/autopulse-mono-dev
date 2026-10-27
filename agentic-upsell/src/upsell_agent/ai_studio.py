@@ -891,7 +891,7 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
         cons = mods["consent"]
         if c.get("first_channel") in ("text", "email"):
             cons.FIRST_CHANNEL = c["first_channel"]
-        if c.get("at_night") in ("email_now_text_when_open", "wait_for_text", "email_only"):
+        if c.get("at_night") in ("ask_now_or_later", "email_now_text_when_open", "wait_for_text", "email_only"):
             cons.AT_NIGHT = c["at_night"]
         words = [re.escape(str(w).strip()).replace("\\-", "-?") for w in c.get("placeholder_emails") or []
                  if str(w).strip()]

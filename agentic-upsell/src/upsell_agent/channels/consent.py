@@ -338,10 +338,13 @@ _PLACEHOLDER_EMAIL = re.compile(r"^(no-?reply|do-?not-?reply|donotreply|noemail|
 
 
 # Channel rules, set in AI Studio (client, 13 Oct 2026): which channel a new lead hears from first ("text" / "email"),
-# and what a lead arriving outside texting hours gets: "email_now_text_when_open" (Betsy's rule), "wait_for_text"
+# and what a lead arriving outside texting hours gets: "ask_now_or_later" (the user, 28 Oct 2026: a lead that writes in
+# at night is asked the same as anyone texting after hours - "should I message you now, or during business hours?" -
+# by the channel allowed at that hour, and their answer leads; 140 night leads since 21 Oct got that email and then
+# the same first message again by text in the morning), "email_now_text_when_open" (the 13 Oct rule), "wait_for_text"
 # (nothing until texting hours open) or "email_only".
 FIRST_CHANNEL = "text"
-AT_NIGHT = "email_now_text_when_open"
+AT_NIGHT = "ask_now_or_later"
 
 
 def _plausible(value: str, channel: Channel) -> bool:

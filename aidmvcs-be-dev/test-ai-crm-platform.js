@@ -12,7 +12,7 @@ import mongoose from 'mongoose';
 
 import ActivityLog from './app/models/ActivityLog.js';
 import Booking from './app/models/Booking.js';
-import { bookingDetailsForLeads } from './app/lib/bookingCreator.js';
+import { bookingDetailsForLeads, confirmationForLeads } from './app/lib/bookingCreator.js';
 import Email from './app/models/Email.js';
 import EmailAccount from './app/models/EmailAccount.js';
 import Lead from './app/models/Lead.js';
@@ -516,8 +516,12 @@ test('the AI\'s working stages replace only another working status, never one st
   for (const current of [null, 'Lead', 'Contacted', 'Lead Not Contacted']) {
     assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), null, String(current));
   }
-  for (const current of ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Sold Pending', 'Unsold', 'No Show']) {
+  for (const current of ['Visited', 'Sold', 'DND', 'Sold Pending', 'Unsold']) {
     assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), 'staff_status_kept', current);
+  }
+  // 28 Oct 2026: Appointment Booked / No Show are kept while a booking is still ahead (see test-message-author.js).
+  for (const current of ['Appointment Booked', 'No Show']) {
+    assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), 'appointment_still_ahead', current);
   }
 });
 
@@ -723,11 +727,103 @@ test('the appointments list says who booked each one and whether the customer ag
     recipient: 'd', subject: 'Lead', message_id: 'm0', mail_content: '<?xml version="1.0"?><?adf version="1.0"?><adf><prospect/></adf>',
     status: 'received', communication_type: 'email', date: new Date(), timestamp: new Date() });
   const d = await bookingDetailsForLeads([ai, silent, replied]);
-  assert.deepEqual(d.get(String(ai)), { booked_by: 'ai', booked_by_name: null, customer_agreed: true });
-  assert.deepEqual(d.get(String(silent)), { booked_by: 'staff', booked_by_name: 'Mercy Carill', customer_agreed: false });
+  assert.deepEqual(d.get(String(ai)), { booked_by: 'ai', booked_by_name: null, customer_agreed: true,
+    confirmation: 'not_confirmed' });
+  assert.deepEqual(d.get(String(silent)), { booked_by: 'staff', booked_by_name: 'Mercy Carill', customer_agreed: false,
+    confirmation: 'not_confirmed' });
   assert.equal(d.get(String(replied)).customer_agreed, true);
   await Email.create({ dealer_id: new mongoose.Types.ObjectId(), lead_id: replied, sender: '+15550001', recipient: 'd', subject: 's', message_id: 'm2',
     mail_content: 'please cancel', status: 'received', communication_type: 'sms', date: new Date(Date.now() + 1000),
     timestamp: new Date() });
   assert.equal((await bookingDetailsForLeads([replied])).get(String(replied)).customer_agreed, false);
+});
+
+// Betsy, 27 Oct 2026 meeting: "two are not confirmed - so are the other two confirmed? Label them."
+test('each appointment says Confirmed, Tentative or Not confirmed', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const [byC, byStaff, maybe, none] = [1, 2, 3, 4].map(() => String(new mongoose.Types.ObjectId()));
+  const base = { dealer_id: 'd1', customerName: 'X', bookingDate: new Date(), bookingTime: '10:00 AM', created_by: 'ai' };
+  await Booking.create([{ ...base, lead_id: byC }, { ...base, lead_id: byStaff, booking_status: 'confirmed' },
+    { ...base, lead_id: maybe }, { ...base, lead_id: none }]);
+  const states = mongoose.connection.collection('ai_lead_state');
+  await states.insertMany([{ lead_id: byC, appointment: { confirmed: true } },
+    { lead_id: maybe, appointment: { confirmed: false, tentative: true } }]);
+  const c = await confirmationForLeads([byC, byStaff, maybe, none]);
+  assert.deepEqual([byC, byStaff, maybe, none].map((id) => c.get(id) || 'not_confirmed'),
+    ['confirmed', 'confirmed', 'tentative', 'not_confirmed']);
+  await states.deleteMany({ lead_id: { $in: [byC, maybe] } });
+});
+
+// Betsy, 27 Oct 2026 meeting: Customer Replied lists who replied in the range, whenever the lead came in.
+test('customer replied is by the reply date, latest first, the lead email not counted', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { repliedLeadIds } = await import('./app/lib/contactedLeads.js');
+  const [old, fresh, quiet] = [1, 2, 3].map(() => new mongoose.Types.ObjectId());
+  const day = new Date('2026-10-26T15:00:00Z');
+  const msg = (lead_id, ts, mail_content, extra = {}) => ({ dealer_id: new mongoose.Types.ObjectId(), lead_id, sender: '+1',
+    recipient: 'd', subject: 's', message_id: `m-${Math.random()}`, mail_content, status: 'received',
+    communication_type: 'sms', date: ts, timestamp: ts, ...extra });
+  await Email.create([msg(old, new Date('2026-10-26T18:00:00Z'), 'STOP'), msg(fresh, new Date('2026-10-26T16:00:00Z'), 'hi'),
+    msg(quiet, new Date('2026-10-26T14:00:00Z'), '<?adf version="1.0"?><adf/>', { communication_type: 'email' }),
+    msg(fresh, new Date('2026-10-20T16:00:00Z'), 'earlier')]);
+  const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
+  const rows = await repliedLeadIds([old, fresh, quiet], from, to);
+  assert.deepEqual(rows.map((r) => String(r._id)), [String(old), String(fresh)]);
+  assert.ok(day < rows[0].last_reply_at);
+});
+
+// Betsy, 27 Oct 2026 meeting: "how many went out today, who did they go out to, how many came back".
+test('messages sent and received are counted by who sent them, notes and the lead email left out', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { messageActivity, repliedLeadIds } = await import('./app/lib/contactedLeads.js');
+  const [a, b] = [1, 2].map(() => new mongoose.Types.ObjectId());
+  const ts = new Date('2026-10-26T15:00:00Z');
+  const m = (lead_id, status, extra = {}) => ({ dealer_id: new mongoose.Types.ObjectId(), lead_id, sender: 's', recipient: 'r',
+    subject: 's', message_id: `x-${Math.random()}`, mail_content: 'hi', status, communication_type: 'sms', date: ts,
+    timestamp: ts, ...extra });
+  // Raw rows, as live: the delivery callback writes 'delivered', which the model's enum doesn't list.
+  await Email.collection.insertMany([m(a, 'delivered', { ai_generated: true }), m(a, 'sent', { ai_generated: true, communication_type: 'email' }),
+    m(b, 'delivered', { message_by: new mongoose.Types.ObjectId() }), m(b, 'failed'), m(b, 'received'),
+    m(a, 'note', { is_note: true }), m(b, 'received', { mail_content: '<?adf version="1.0"?>' })]);
+  const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
+  const got = await messageActivity([a, b], from, to);
+  assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2 });
+  assert.deepEqual(got.received, { total: 1, customers: 1 });
+  assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
+});
+
+// Betsy and Bibi, 27 Oct 2026 meeting: our own trace labels (bucket, next AI message), for AutoPulse admins only.
+test('admin labels: the bucket and the next pending AI message', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { attachAiAdminLabels } = await import('./app/lib/ai/aiStage.js');
+  const id = String(new mongoose.Types.ObjectId());
+  const states = mongoose.connection.collection('ai_lead_state');
+  const followups = mongoose.connection.collection('scheduled_followups');
+  await states.insertOne({ lead_id: id, bucket: 'sales', stage_label: 'Appointment Set', specialist: { name: 'Trade-in specialist' } });
+  await followups.insertMany([
+    { lead_id: id, status: 'pending', kind: 'appointment_confirm', step: 'confirm', due_at: new Date('2026-10-29T14:00:00Z') },
+    { lead_id: id, status: 'pending', kind: 'appointment_countdown', step: 'countdown', due_at: new Date('2026-10-28T14:00:00Z') },
+    { lead_id: id, status: 'sent', kind: 'cadence_touch', due_at: new Date('2026-10-20T14:00:00Z') }]);
+  const [lead] = await attachAiAdminLabels([{ _id: id }]);
+  assert.equal(lead.ai_admin.bucket, 'sales');
+  assert.equal(lead.ai_admin.next.step, 'countdown');
+  assert.equal(lead.ai_admin.agent, 'Trade-in specialist');
+  await states.deleteMany({ lead_id: id });
+  await followups.deleteMany({ lead_id: id });
+});
+
+// The user, 28 Oct 2026: Victory Mitsubishi sent the same follow-up 4 times in a minute - one send per job.
+test('a follow-up job is claimed once: a second call for it sends nothing', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { claimFollowUpJob } = await import('./app/lib/followupService.js');
+  const jobs = mongoose.connection.collection('followupjobs_claim_test');
+  const Model = { collection: jobs };
+  const { insertedId } = await jobs.insertOne({ status: 'pending' });
+  const [a, b, c, d] = await Promise.all([1, 2, 3, 4].map(() => claimFollowUpJob(Model, insertedId)));
+  assert.equal([a, b, c, d].filter(Boolean).length, 1);
+  await jobs.updateOne({ _id: insertedId }, { $set: { claimedAt: new Date(Date.now() - 11 * 60 * 1000) } });
+  assert.equal(await claimFollowUpJob(Model, insertedId), true); // a stale claim (a crash) can be taken again
+  await jobs.updateOne({ _id: insertedId }, { $set: { status: 'completed', claimedAt: null } });
+  assert.equal(await claimFollowUpJob(Model, insertedId), false);
+  await jobs.drop();
 });

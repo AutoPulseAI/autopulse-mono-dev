@@ -1,4 +1,4 @@
-import { contactedLeadIds } from '@lib/contactedLeads';
+import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
 import Email from "@models/Email";
@@ -126,7 +126,12 @@ export async function GET(request) {
 
       // "Contacted" = the customer actually talked to us (app/lib/contactedLeads.js), not a status that was set.
       let status_count;
-      if (fe_lead_status === 'Contacted') {
+      if (fe_lead_status === 'Contacted' && statusQuery.createdAt) {
+        // Betsy, 27 Oct 2026 meeting: who replied in the range, whenever the lead came in (app/lib/contactedLeads.js).
+        const { fe_lead_status: _ignored, createdAt: range, ...dealerLeads } = statusQuery;
+        const ids = (await Lead.find(dealerLeads).select('_id').lean()).map((l) => l._id);
+        status_count = (await repliedLeadIds(ids, range.$gte, range.$lte)).length;
+      } else if (fe_lead_status === 'Contacted') {
         const { fe_lead_status: _ignored, ...inRange } = statusQuery;
         const ids = (await Lead.find(inRange).select('_id').lean()).map((l) => l._id);
         status_count = (await contactedLeadIds(ids)).length;

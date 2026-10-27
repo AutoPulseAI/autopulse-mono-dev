@@ -445,8 +445,21 @@ def after_reply(state: CadenceState) -> CadenceState:
                         reentered=state.reentered)
 
 
-def started(state: CadenceState, *, at: datetime, reentered: bool = False) -> CadenceState:
-    """A fresh Short-Term instance. Re-entry skips the introduction and the name nudge."""
+# Betsy, 27 Oct 2026 meeting: "if I start a new client and take all their leads from the last 90 days ... it needs to use
+# that lead date to put the customer in the right cadence". A first instance for a lead older than this counts its days
+# from the lead's own date: the steps already past are skipped (the next one is the next grid day, never a burst), and
+# so is the name nudge.
+BACKDATE_AFTER = timedelta(days=1)
+
+
+def started(state: CadenceState, *, at: datetime, reentered: bool = False,
+            lead_since: datetime | None = None) -> CadenceState:
+    """A fresh Short-Term instance. Re-entry skips the introduction and the name nudge. `lead_since`: when the lead
+    itself came in - a first instance for an older lead is placed on its own day of the cadence."""
+    if not reentered and lead_since is not None:
+        since = lead_since if lead_since.tzinfo else lead_since.replace(tzinfo=at.tzinfo)
+        if at - since > BACKDATE_AFTER and at - since <= timedelta(days=LAST_DAY):
+            return CadenceState(started_at=since, touch_number=3, themes_used=list(state.themes_used))
     return CadenceState(started_at=at, touch_number=3 if reentered else 2, themes_used=list(state.themes_used),
                         reentered=reentered)
 

@@ -61,11 +61,12 @@ import asyncio
 import contextlib
 import logging
 import os
+import hashlib
 import re
 import socket
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -80,7 +81,7 @@ from upsell_agent.agent.templates import (
 from upsell_agent.agent.vehicle_media import lead_vehicle_vin, pick_vehicle_photo
 from upsell_agent.channels import consent
 from upsell_agent.channels.consent import usable_recipient
-from upsell_agent.channels.sender import SendOutcome, SendRequest
+from upsell_agent.channels.sender import SendOutcome, SendRequest, needs_other_channel
 from upsell_agent.compliance.call_check import can_call
 from upsell_agent.compliance.engine import can_contact
 from upsell_agent.config import get_settings
@@ -641,7 +642,7 @@ async def plan_cadence_touch(
     if check.outcome in ("BLOCK", "REVIEW"):
         return {"created": False, "send_check": check.as_dict(), "plan": planned.as_dict(),
                 "reason": f"No cadence touch: neither channel is allowed ({check.outcome}: {check.reason})."}
-    due_at = check.until if check.outcome == "HOLD" and check.until else planned.due_at
+    due_at = spread_out(check.until if check.outcome == "HOLD" and check.until else planned.due_at, lead_id)
     doc = {
         "kind": KIND_CADENCE_TOUCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
@@ -655,19 +656,36 @@ async def plan_cadence_touch(
             "reason": f"{planned.why} Due {local}."}
 
 
+# Betsy, 27 Oct 2026 meeting ("when I was sending the follow-ups of 150 the database goes down, so some customers were
+# not getting things"): every cadence touch and appointment reminder was due at exactly 10:00 (or the minute the
+# dealership opened), so 150+ AI turns hit the CRM at once - 1,001 ReadTimeouts in the worker log, mostly the lead-status
+# update. A time on the hour is spread over the next SPREAD_MINUTES, each lead always at the same minute.
+SPREAD_MINUTES = 45
+NO_SHOW_QUIET_BEFORE = timedelta(minutes=30)
+
+
+def spread_out(due: datetime, lead_id: str) -> datetime:
+    if due.minute or due.second or due.microsecond:
+        return due  # a time someone picked (the customer's own, a reply's): left as it is
+    offset = int(hashlib.sha1(str(lead_id).encode()).hexdigest()[:8], 16) % SPREAD_MINUTES
+    return due + timedelta(minutes=offset)
+
+
 STAFF_BOOKING_NEEDS_AGREEMENT = True  # AI Studio > Compliance > Safeguards
 _CANCEL_ASK = re.compile(r"\bcancel\b|\bnot (?:coming|interested)\b|\bno longer\b", re.IGNORECASE)
 _CALL_LOGGED = re.compile(r"spoke (?:with|to) (?:the )?c(?:u|o)stomer|\bcalled\b|\bcall was made\b", re.IGNORECASE)
 
 
 async def _customer_agreed(db: DealerScopedDatabase, lead_id: str, booking: dict) -> bool:
-    """The AI booked it (the customer picked the time), or the customer has written to us and didn't last ask to
-    cancel, or staff logged a call."""
+    """The AI booked it (the customer picked the time), or the customer's last message didn't ask to cancel, or staff
+    logged a call. Betsy, 27 Oct 2026 meeting (the Tesla lead: Mercy set 5:30 PM and no text went out): "when she sets
+    the appointment, the AI is supposed to say you're all set ... here's our address" - a staff booking with no reply
+    from the customer (often a phone call) gets the usual texts; only one whose customer last asked to cancel doesn't."""
     if not STAFF_BOOKING_NEEDS_AGREEMENT or str(booking.get("created_by") or "").lower() != "staff":
         return True
     last = await db.collection(AI_MESSAGES_COLLECTION).find_one(
         {"lead_id": lead_id, "direction": "inbound"}, sort=[("created_at", -1)])
-    if last and not _CANCEL_ASK.search(str(last.get("text") or "")):
+    if not last or not _CANCEL_ASK.search(str(last.get("text") or "")):
         return True
     note = await db.collection(PLATFORM_EMAILS_COLLECTION).find_one(
         {"lead_id": as_object_id(lead_id), "is_note": True, "mail_content": {"$regex": _CALL_LOGGED.pattern,
@@ -718,8 +736,9 @@ async def plan_appointment_timers(
         await crm_notes.write(db, lead_id=lead_id, kind="staff_booking_unconfirmed", key=f"unconfirmed:{lead_id}:"
                               f"{appt_at.isoformat()}", customer_id=customer_id, text=(
                                   f"Appointment for {appt_at.astimezone(profile.tz):%A %B %-d at %-I:%M %p} was set by "
-                                  "staff, but the customer hasn't replied and no call is logged. The AI is not texting "
-                                  "a confirmation: please confirm it with the customer by phone and log the call."))
+                                  "staff, but the customer's last message asked to cancel and no call is logged. The AI "
+                                  "is not texting a confirmation: please confirm it with the customer by phone and log "
+                                  "the call."))
     # Stream X2: an appointment already confirmed (the customer's Y, or staff in the CRM) for this same time keeps
     # its confirmation and gets no day-before Y / N; a move to a new time asks again.
     recorded = state.get("appointment") or {}
@@ -729,7 +748,14 @@ async def plan_appointment_timers(
     # MASTER_PLAN_4 (stream R): the 15-minute details message, once per appointment time - a re-plan for the same
     # time (staff saving the status again) doesn't send it twice; a move sends it for the new time.
     details_sent_for = state.get("appointment_details_sent_for")  # outside `appointment`, which a new set replaces
-    details = appointment.details_step(appt_at, now=now) if details_sent_for != appt_at.isoformat() else None
+    # The user, 28 Oct 2026 ("what is a booking reply - why are we sending two messages?"; Michael: "Perfect - you're all
+    # set for Tuesday at 2:00 PM at 3914 Hempstead Tpke" and 15 minutes later "we are all set to meet on Tuesday ..."):
+    # the AI's own booking reply already gives the day, time and address. The details message is for a booking the
+    # customer didn't just make with the AI - staff set it or moved it (or the booking page).
+    ai_booked = str((booking or {}).get("created_by") or "").lower() == "ai" and (
+        recorded_at := (state.get("appointment") or {}).get("at")) in (None, appt_at.isoformat())
+    details = (appointment.details_step(appt_at, now=now)
+               if details_sent_for != appt_at.isoformat() and not ai_booked else None)
     if details:
         steps = sorted([details, *steps], key=lambda s: s.due_at)
     if not agreed:
@@ -747,6 +773,8 @@ async def plan_appointment_timers(
         # Stream X2: the +1h check moves the stage to No Show at +1h whatever the send check says; only its
         # message waits for (or skips) the send check, at fire time.
         due_at = check.until if check.outcome == "HOLD" and check.until and not no_show_check else step.due_at
+        if step.step in (appointment.STEP_COUNTDOWN, appointment.STEP_CONFIRM):
+            due_at = min(spread_out(due_at, lead_id), max(due_at, appt_at - appointment.MIN_CONFIRM_LEAD))
         doc = {
             "kind": step.kind, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
             "from_channel": ch, "to_channel": ch, "text": None, "subject": None, "status": "pending",
@@ -1537,6 +1565,8 @@ async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnT
     outcomes: list[SendOutcome] = []
     first = doc["to_channel"]
     for ch in (first, other_channel(first)):
+        if outcomes and not needs_other_channel(outcomes[0]):
+            break  # one channel per message (channels/sender.py ONE_CHANNEL_ONLY)
         body = text["sms_text"] if ch == "sms" else text["email_body"]
         photo = (await pick_vehicle_photo(db.dealer_id, photo_vin, channel=ch, settings=get_settings(),
                                           start=photo_start) if photo_vin else None)
@@ -1583,6 +1613,28 @@ async def appointment_cancelled_on_platform(db: DealerScopedDatabase, *, lead_id
             db, lead_id=lead_id, customer_id=customer_id, channel=channel or "sms", turn_id=turn_id,
             lead=lead, customer=customer, first_contact_done=True)
     return moved
+
+
+def time_patterns(at: datetime) -> re.Pattern:
+    """"2:00 PM", "2 pm", "2pm", "14:00" for a 2 PM appointment."""
+    hour12, minute = at.hour % 12 or 12, at.minute
+    ampm = "pm" if at.hour >= 12 else "am"
+    forms = [rf"\b{hour12}:{minute:02d}\s*(?:{ampm}|{ampm[0]}\.?m\.?)?\b", rf"\b{at.hour:02d}:{minute:02d}\b"]
+    if minute == 0:
+        forms.append(rf"\b{hour12}\s*(?:{ampm}|{ampm[0]}\.m\.)")
+    return re.compile("|".join(forms), re.IGNORECASE)
+
+
+async def _time_already_told(db: DealerScopedDatabase, lead_id: str, at: datetime, *, since: Any) -> str | None:
+    """A text or email to the customer since `since` that gives the appointment's time, or None."""
+    start = since if isinstance(since, datetime) else clock.now() - timedelta(hours=6)
+    start = (start - timedelta(hours=2)).replace(tzinfo=None) if start.tzinfo else start - timedelta(hours=2)
+    pattern = time_patterns(at)
+    rows = await db.collection(PLATFORM_EMAILS_COLLECTION).find(
+        {"lead_id": {"$in": [as_object_id(lead_id), lead_id]}, "is_note": {"$ne": True},
+         "status": {"$nin": ["received", "incoming", "note", "failed", "undelivered"]}, "timestamp": {"$gte": start}},
+        projection={"mail_content": 1}).sort("timestamp", -1).to_list(30)
+    return next((str(r.get("mail_content")) for r in rows if pattern.search(str(r.get("mail_content") or ""))), None)
 
 
 async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
@@ -1641,10 +1693,35 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             useful = appointment.details_still_useful(current, now=clock.now())
             checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
                            if useful else "too close to the appointment for the details message to help"))
+            if current is not None:
+                # The user, 28 Oct 2026 (Mercy books after a call): "if a text is already sent with the appointment
+                # confirmation, why do we need to do that again?" A text to the customer - the AI's, staff's, anyone's
+                # - since the booking that already gave its time means no details message.
+                told = await _time_already_told(db, doc["lead_id"], current, since=doc.get("created_at"))
+                checks.append(("not_told_yet", not told, "the customer hasn't been sent this time yet" if not told
+                               else f"already told: {told[:80]!r}"))
         if step == appointment.STEP_CONFIRM:
             # Stream X2: already confirmed (the customer's Y, or staff in the CRM): no Y / N.
             done = bool((state.get("appointment") or {}).get("confirmed"))
             checks.append(("not_confirmed_yet", not done, "already confirmed" if done else "not confirmed yet"))
+        if step == appointment.STEP_NO_SHOW_CHECK and doc.get("appointment_at"):
+            # BUILD-PLAN-27-OCT item 25 (Betsy, 27 Oct 2026 meeting): "I am looking for you in the showroom - are you
+            # here?" to a customer who has just written ("running late", "I'm here", "can we move it") reads as if
+            # nobody read them. A customer who wrote from 30 minutes before the appointment on gets no such message;
+            # staff are asked to check instead.
+            since = datetime.fromisoformat(doc["appointment_at"]).astimezone(UTC) - NO_SHOW_QUIET_BEFORE
+            wrote = await db.collection(AI_MESSAGES_COLLECTION).find_one(
+                {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gte": since.replace(tzinfo=None)}},
+                sort=[("created_at", -1)])
+            if wrote:
+                from upsell_agent.agent import crm_notes
+                await crm_notes.write(db, lead_id=doc["lead_id"], kind="no_show_customer_wrote", customer_id=doc[
+                    "customer_id"], key=f"no-show-wrote:{step_id}", platform=getattr(deps, "platform", None), text=(
+                    f"The appointment time passed with no visit marked, but the customer wrote around then: "
+                    f"\"{str(wrote.get('text') or '')[:200]}\". Please check whether they came in and update the status."))
+            checks.append(("customer_quiet", not wrote, "the customer hasn't written since shortly before the "
+                           "appointment" if not wrote else "the customer wrote around the appointment time: staff "
+                           "were asked to check instead of the AI asking where they are"))
         if step == appointment.STEP_NO_SHOW_CLOSE:
             # Stream X2: the close step sends nothing - it only moves an unanswered no-show back into follow-up, so
             # who holds the conversation doesn't stop it (else a paused lead sat at No Show for good).
@@ -1715,20 +1792,22 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
                 db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], channel=doc["to_channel"],
                 turn_id=f"appointment-{step}-{step_id}", lead=lead, customer=customer, first_contact_done=True)
     else:
-        text = appointment.render_message(
-            step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
-            agent_name=profile.agent_name, appt=appt_at,
-            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
-            address=profile.address, agent_phone=profile.agent_phone)
         # MASTER_PLAN_4 F3: the countdown and no-show step 1 show the vehicle this lead is about - its own
         # photo, a different one each countdown day where it has several (days left picks it). No vehicle on
-        # record, or no usable photo: the client's text-only fallback, as before (§15).
+        # record, or no usable photo: the client's text-only fallback, as before (§15). Days left also picks the
+        # countdown's text, so no two days in a row say the same thing (Betsy, 27 Oct 2026).
         photo_vin = photo_start = None
         if step in (appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK):
             photo_vin = lead_vehicle_vin(lead, state)
             due = appointment.aware(doc["due_at"], profile.tz) if isinstance(doc.get("due_at"), datetime) else None
             photo_start = (appt_at.date() - due.date()).days if (due and appt_at
                                                                  and step == appointment.STEP_COUNTDOWN) else 0
+        text = appointment.render_message(
+            step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
+            agent_name=profile.agent_name, appt=appt_at,
+            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
+            address=profile.address, agent_phone=profile.agent_phone,
+            variant=photo_start - 1 if step == appointment.STEP_COUNTDOWN and photo_start else 0)
         outcomes = await _send_step_messages(db, deps, tracer, doc, text, photo_vin=photo_vin,
                                              photo_start=photo_start or 0)
         if any(o.status == "held" for o in outcomes) and not any(o.status in ("sent", "duplicate") for o in outcomes):

@@ -63,7 +63,7 @@ export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() 
 
 export async function markLeadDndFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
-  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {}, Booking = null,
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id fe_lead_status').lean();
   if (!lead) return { found: false, updated: false };
@@ -113,6 +113,13 @@ const ESCALATION_FROM = Object.freeze([...WORKING_FROM, 'Unsold', 'No Show']);
 // No Show; never over Visited, Sold, DND or a closing.
 export const AI_BOOKING_STATUSES = Object.freeze(['Appointment Booked']);
 const BOOKING_FROM = Object.freeze([...ESCALATION_FROM, 'Managerial Review', 'Appointment Booked']);
+// The user, 28 Oct 2026 ("the AI must change the status to Appointment Booked ... or whatever the next status is along
+// the way"): after a booking the AI moves the lead on too. No Show at appointment + 1 hour with no visit marked (only
+// over Appointment Booked); and once no booking is left ahead (the customer cancelled with the AI, a no-show went
+// unanswered), a working status over Appointment Booked / No Show. Staff's later steps (Visited, Sold, ...) are kept.
+export const AI_NO_SHOW_STATUSES = Object.freeze(['No Show']);
+const NO_SHOW_FROM = Object.freeze(['Appointment Booked']);
+const AFTER_APPOINTMENT = Object.freeze(['Appointment Booked', 'No Show']);
 
 // PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2; SOLD PENDING PDF §2): "Closed - Lost" is for a transaction that won't
 // complete. A delivered car's opportunity stays active until the customer no longer owns it, and it leaves only as
@@ -135,16 +142,21 @@ const FROM_FOR_NO_LONGER_OWNS = Object.freeze(['Sold Delivered', 'Sold']);
 
 export function validateClosedStatusPayload(body) {
   const { errors } = validateDndPayload(body);
-  const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES, ...AI_BOOKING_STATUSES];
+  const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES, ...AI_BOOKING_STATUSES,
+    ...AI_NO_SHOW_STATUSES];
   if (!allowed.includes(body?.status)) errors.push(`status must be one of ${allowed.join(', ')}`);
   if (body?.closed_at != null && Number.isNaN(Date.parse(body.closed_at))) errors.push('closed_at must be a date');
   return { errors };
 }
 
 // Why the AI's closing is not applied to a lead now showing `current` (changed at `changedAt`), or null.
-export function closedStatusConflict({ status, current, changedAt, closedAt }) {
+export function closedStatusConflict({ status, current, changedAt, closedAt, bookingAhead = true }) {
   if (current === status) return 'already';
   if (changedAt && closedAt && new Date(changedAt) > new Date(closedAt)) return 'staff_changed_it_after';
+  if (AI_NO_SHOW_STATUSES.includes(status)) return NO_SHOW_FROM.includes(current ?? null) ? null : 'staff_status_kept';
+  if (AI_WORKING_STATUSES.includes(status) && AFTER_APPOINTMENT.includes(current ?? null)) {
+    return bookingAhead ? 'appointment_still_ahead' : null;
+  }
   if (status === 'Closed - Lost' && KEEP_FOR_CLOSED_LOST.includes(current)) return 'staff_status_kept';
   if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
   if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)) return 'staff_status_kept';
@@ -164,8 +176,10 @@ export async function markLeadClosedFromAi(body, {
     .select('_id fe_lead_status lead_status status statusChangedAt').lean();
   if (!lead) return { found: false, updated: false };
   const current = lead.fe_lead_status || lead.lead_status || lead.status || null;
+  const bookingAhead = AFTER_APPOINTMENT.includes(current) && AI_WORKING_STATUSES.includes(body.status)
+    ? await hasBookingAhead(String(lead._id), Booking, now()) : true;
   const conflict = closedStatusConflict({ status: body.status, current, changedAt: lead.statusChangedAt,
-    closedAt: body.closed_at });
+    closedAt: body.closed_at, bookingAhead });
   if (conflict) return { found: true, updated: false, reason: conflict, current };
   const at = now();
   // Only if nobody changed it in the meantime: a staff save between the read and this write wins.
@@ -193,4 +207,13 @@ export async function markLeadClosedFromAi(body, {
       title: 'Dealership action required', detail: body.reason || '' });
   }
   return { found: true, updated: true, previous: current };
+}
+
+// A booking for this lead that isn't cancelled and is today or later (the appointment hasn't happened yet). With no
+// Booking model passed, assumed yes - the lead keeps its appointment status.
+export async function hasBookingAhead(leadId, Booking, now = new Date()) {
+  if (!Booking) return true;
+  const today = new Date(now.getTime() - 36 * 3600e3); // bookingDate is the dealer-local day at midnight UTC
+  return Boolean(await Booking.exists({ lead_id: leadId, booking_status: { $nin: ['cancelled', 'completed'] },
+    bookingDate: { $gte: today } }));
 }

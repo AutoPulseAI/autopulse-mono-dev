@@ -8,7 +8,7 @@ import { sendEmail } from '@lib/email.js';
 import User from '@models/User.js';
 // you’ll need to provide this yourself:
 import { sendSMS } from '@lib/sms.js';
-import {  onFollowUpCompleted, aiOwnsFollowUps } from '@lib/followupService.js';
+import {  onFollowUpCompleted, aiOwnsFollowUps, claimFollowUpJob } from '@lib/followupService.js';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 
 export async function PUT(request) {
@@ -74,6 +74,14 @@ export async function PUT(request) {
     const job = await FollowUpJob.findById(followup_id);
     //console.log(job,followup_id);
     if (!job) return NextResponse.json({ error: 'FollowUp job not found' }, { status: 404 });
+    // The user, 28 Oct 2026 (Victory Mitsubishi: the same follow-up text 4 times in a minute to one customer - 194 sends
+    // of 54 texts in a week): this route sent again on every call for the same job. A job is claimed once, atomically;
+    // a job already sent or being sent is never sent again. A claim older than 10 minutes (a crash mid-send) can be
+    // taken again.
+    if (!(await claimFollowUpJob(FollowUpJob, followup_id))) {
+      return NextResponse.json({ message: 'This follow-up was already sent (or is being sent): not sent again.' },
+        { status: 200 });
+    }
 
     // 2) Load the lead
     

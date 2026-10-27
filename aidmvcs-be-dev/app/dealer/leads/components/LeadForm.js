@@ -12,6 +12,7 @@ export default function LeadForm({ setEditLead, editLead }) {
         email: "",
         phone: "",
         followup_preference: "email",
+        contact_type: "",
         vehicle_make: "",
         vehicle_model: "",
         vehicle_year: "",
@@ -93,7 +94,8 @@ export default function LeadForm({ setEditLead, editLead }) {
             email: validateField("email", formData.email),
             phone: validateField("phone", formData.phone),
             vehicle_year: validateField("vehicle_year", formData.vehicle_year),
-            vin: validateField("vin", formData.vin)
+            vin: validateField("vin", formData.vin),
+            contact_type: !isEditMode && !formData.contact_type ? "Choose how the lead came in" : ""
         };
 
         // Only validate format if phone has value
@@ -220,6 +222,23 @@ export default function LeadForm({ setEditLead, editLead }) {
                             <option value="email">Email</option>
                             <option value="sms">Sms</option>
                         </Form.Select>
+                    </Form.Group>
+
+                    <Form.Group as={Col} lg={4} md={6} className="mb-3">
+                        {/* Betsy, 27 Oct 2026 meeting: how the lead came in, so a manual lead is never mistaken for an internet one. */}
+                        <Form.Label>Lead Type</Form.Label>
+                        <Form.Select
+                            name="contact_type"
+                            value={formData.contact_type || ""}
+                            onChange={handleChange}
+                            isInvalid={!!errors.contact_type}
+                        >
+                            <option value="">Choose...</option>
+                            <option value="phone">Phone-up</option>
+                            <option value="walk_in">Walk-in</option>
+                            <option value="internet">Internet</option>
+                        </Form.Select>
+                        <Form.Control.Feedback type="invalid">{errors.contact_type}</Form.Control.Feedback>
                     </Form.Group>
 
                     {/* Vehicle Information */}

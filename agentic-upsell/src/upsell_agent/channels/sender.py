@@ -60,6 +60,16 @@ def _answer_late(exc: Exception) -> bool:
 Channel = Literal["sms", "email"]
 SendStatus = Literal["sent", "failed", "held", "suppressed", "shadow", "duplicate", "unknown"]
 
+# The user, 28 Oct 2026 (after the 27 Oct meeting - Betsy saw each appointment message twice, a text and its email copy):
+# "that is not what it means, to create duplicates of the same message". A message goes on one channel; the other
+# carries it only when the first couldn't (no number / address, opted out, the send failed). Not after "unknown" (a
+# timeout - it may have arrived) nor "held" (it goes later).
+ONE_CHANNEL_ONLY = True
+
+
+def needs_other_channel(first: "SendOutcome | None") -> bool:
+    return not ONE_CHANNEL_ONLY or first is None or first.status in ("failed", "suppressed")
+
 # A retry only resumes a row that never reached a provider.
 _RESUMABLE = {"queued", "held"}
 PLATFORM_RECORD_ATTEMPTS = 3

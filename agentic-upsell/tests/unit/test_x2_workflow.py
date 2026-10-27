@@ -164,7 +164,7 @@ async def test_the_visit_follow_up_goes_on_text_and_email_and_starts_the_call_ch
     before = len(await _outbox(mongo, created))
     set_clock(datetime.fromisoformat(tomorrow + "T10:05").replace(tzinfo=NY))
     await followups.fire_due(_deps())
-    assert {m["channel"] for m in (await _outbox(mongo, created))[before:]} == {"sms", "email"}
+    assert [m["channel"] for m in (await _outbox(mongo, created))[before:]] == ["sms"]
     assert len(await _pending(mongo, created, "call_task")) == 1
 
 
@@ -308,7 +308,7 @@ def test_touch_1_names_the_year_and_model_when_the_year_is_known():
 # --- Betsy, 27 Oct 2026: a staff booking with no agreement from the customer sends no "we are all set" ---------
 
 @flow
-async def test_a_staff_booking_the_customer_never_answered_gets_no_appointment_texts(mongo):
+async def test_a_staff_booking_gets_the_details_unless_the_customer_last_asked_to_cancel(mongo):
     from tests.unit.test_appointment import _booking, _scoped
     from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, PLATFORM_BOOKINGS_COLLECTION
     created, _ = await _booked_friday(mongo)
@@ -322,7 +322,7 @@ async def test_a_staff_booking_the_customer_never_answered_gets_no_appointment_t
                                                 customer_id=created["customer_id"], turn_id="staff")
         return {s["step"] for s in await _steps(mongo, created)}
 
-    assert await plan() == {"no_show_check"}  # never replied (Christine, T Genius)
+    assert "details" in await plan()  # never replied: Betsy, 27 Oct 2026 meeting - staff set it, send the details
     await mongo[AI_MESSAGES_COLLECTION].insert_one({**inbound, "dealer_id": DEALER, "text": "I'm sorry but can I cancel "
                                                     "the appointment", "created_at": clock.now()})
     assert await plan() == {"no_show_check"}  # last asked to cancel
