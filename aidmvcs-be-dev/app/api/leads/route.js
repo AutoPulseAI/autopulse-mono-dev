@@ -1,4 +1,4 @@
-import { contactedLeadIds } from '@lib/contactedLeads';
+import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
@@ -444,7 +444,15 @@ export async function GET(req) {
       }
     }
 
-    if (status === 'Contacted') {
+    let repliedOrder = null;
+    if (status === 'Contacted' && query.createdAt) {
+      // Customer Replied for a date range: who replied in it, whenever the lead came in, latest reply first.
+      const { $gte: from, $lte: to } = query.createdAt;
+      delete query.createdAt;
+      const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
+      repliedOrder = await repliedLeadIds(candidates, from, to);
+      query._id = { $in: repliedOrder.map((r) => r._id) };
+    } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
       const contacted = await contactedLeadIds(candidates);
       query._id = { $in: contacted };
@@ -522,12 +530,23 @@ export async function GET(req) {
       const limit = parseInt(url.searchParams.get("limit")) || 10;
       
       const totalLeads = await Lead.countDocuments(query);
-      const leads = await Lead.find(query)
-        .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean();
+      let leads;
+      if (repliedOrder) {
+        const lastReply = new Map(repliedOrder.map((r) => [String(r._id), r.last_reply_at]));
+        const pageIds = repliedOrder.slice((page - 1) * limit, page * limit).map((r) => r._id);
+        const rows = await Lead.find({ ...query, _id: { $in: pageIds } })
+          .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false }).lean();
+        const byId = new Map(rows.map((l) => [String(l._id), l]));
+        leads = pageIds.map((id) => byId.get(String(id))).filter(Boolean)
+          .map((l) => ({ ...l, last_reply_at: lastReply.get(String(l._id)) || null }));
+      } else {
+        leads = await Lead.find(query)
+          .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean();
+      }
       // The AI's stage per lead, read only (app/lib/ai/aiStage.js).
       await attachAiStages(leads);
       // Appointments list: "Made by AI" / "Made by Staff" on each one.

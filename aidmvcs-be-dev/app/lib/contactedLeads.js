@@ -46,3 +46,26 @@ export async function contactedLeadIds(leadIds, { EmailModel = Email, rule = nul
   ]);
   return rows.map((r) => r._id);
 }
+
+// Betsy, 27 Oct 2026 meeting ("Customer Replied" listed leads created that day; "if a lead from two months ago replies
+// today it should be in this list - even if they put stop"): the leads among `leadIds` with a customer message in
+// [from, to], whenever the lead came in, latest reply first: [{ _id, last_reply_at }]. A lead's own arrival (the
+// portal's email / ADF) is not a reply.
+export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email } = {}) {
+  if (!leadIds?.length) return [];
+  const at = {};
+  if (from) at.$gte = from;
+  if (to) at.$lte = to;
+  const rows = await EmailModel.aggregate([
+    { $match: { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true }, is_lead_email: { $ne: true },
+      ...(from || to ? { timestamp: at } : {}) } },
+    { $project: { lead_id: 1, timestamp: 1,
+      adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
+        regex: ADF.source, options: 'i' } },
+      lead_msg: { $regexMatch: { input: { $ifNull: ['$message_id', ''] }, regex: '^lead-' } } } },
+    { $match: { adf: false, lead_msg: false } },
+    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' } } },
+    { $sort: { last_reply_at: -1 } },
+  ]);
+  return rows;
+}

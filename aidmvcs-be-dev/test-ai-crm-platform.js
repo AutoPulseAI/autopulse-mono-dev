@@ -749,3 +749,21 @@ test('each appointment says Confirmed, Tentative or Not confirmed', async (t) =>
     ['confirmed', 'confirmed', 'tentative', 'not_confirmed']);
   await states.deleteMany({ lead_id: { $in: [byC, maybe] } });
 });
+
+// Betsy, 27 Oct 2026 meeting: Customer Replied lists who replied in the range, whenever the lead came in.
+test('customer replied is by the reply date, latest first, the lead email not counted', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { repliedLeadIds } = await import('./app/lib/contactedLeads.js');
+  const [old, fresh, quiet] = [1, 2, 3].map(() => new mongoose.Types.ObjectId());
+  const day = new Date('2026-10-26T15:00:00Z');
+  const msg = (lead_id, ts, mail_content, extra = {}) => ({ dealer_id: new mongoose.Types.ObjectId(), lead_id, sender: '+1',
+    recipient: 'd', subject: 's', message_id: `m-${Math.random()}`, mail_content, status: 'received',
+    communication_type: 'sms', date: ts, timestamp: ts, ...extra });
+  await Email.create([msg(old, new Date('2026-10-26T18:00:00Z'), 'STOP'), msg(fresh, new Date('2026-10-26T16:00:00Z'), 'hi'),
+    msg(quiet, new Date('2026-10-26T14:00:00Z'), '<?adf version="1.0"?><adf/>', { communication_type: 'email' }),
+    msg(fresh, new Date('2026-10-20T16:00:00Z'), 'earlier')]);
+  const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
+  const rows = await repliedLeadIds([old, fresh, quiet], from, to);
+  assert.deepEqual(rows.map((r) => String(r._id)), [String(old), String(fresh)]);
+  assert.ok(day < rows[0].last_reply_at);
+});

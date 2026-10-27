@@ -1713,6 +1713,9 @@ useImperativeHandle(ref, () => ({
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Created:</small></p>
                             <p className="text-truncate">{formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+                            {lead.last_reply_at && (
+                              <small className="text-success d-block text-truncate">Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
+                            )}
                           </div>
                         </Col>
                       </Row>
