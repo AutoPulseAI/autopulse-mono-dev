@@ -10,7 +10,9 @@ import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
 
+import ActivityLog from './app/models/ActivityLog.js';
 import Booking from './app/models/Booking.js';
+import { bookingDetailsForLeads } from './app/lib/bookingCreator.js';
 import Email from './app/models/Email.js';
 import EmailAccount from './app/models/EmailAccount.js';
 import Lead from './app/models/Lead.js';
@@ -690,4 +692,31 @@ maybe('the endpoint refuses a send with no decision, to a stranger, to a DND lea
   const sent = await sendAiMessage({ ...base, idempotency_key: 'k5', compliance_decision_id: DECISION },
     { ...deps, findComplianceDecision: async () => allow });
   assert.equal((await Email.findById(sent.id).lean()).ai_compliance_decision_id, DECISION);
+});
+
+// Betsy, 27 Oct 2026: each appointment in the list says who booked it (staff by name) and whether the customer agreed.
+test('the appointments list says who booked each one and whether the customer agreed', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const [ai, silent, replied] = [1, 2, 3].map(() => new mongoose.Types.ObjectId());
+  const base = { dealer_id: 'd1', customerName: 'X', bookingDate: new Date(), bookingTime: '10:00 AM' };
+  await Booking.create([{ ...base, lead_id: String(ai), created_by: 'ai' },
+    { ...base, lead_id: String(silent), created_by: 'staff' }, { ...base, lead_id: String(replied), created_by: 'staff' }]);
+  for (const id of [silent, replied]) {
+    await ActivityLog.create({ dealer_id: 'd1', lead_id: id, action: 'status_changed', to: 'Appointment Booked', actor_type: 'staff',
+      actor_name: 'Mercy Carill', at: new Date() });
+  }
+  await Email.create({ dealer_id: new mongoose.Types.ObjectId(), lead_id: replied, sender: '+15550001', recipient: 'd', subject: 's', message_id: 'm1',
+    mail_content: 'ok see you then', status: 'received', communication_type: 'sms', date: new Date(), timestamp: new Date() });
+  // The CarGurus lead email (ADF) is not a reply.
+  await Email.create({ dealer_id: new mongoose.Types.ObjectId(), lead_id: silent, sender: 'CarGurus <dealer-leads@messages.cargurus.com>',
+    recipient: 'd', subject: 'Lead', message_id: 'm0', mail_content: '<?xml version="1.0"?><?adf version="1.0"?><adf><prospect/></adf>',
+    status: 'received', communication_type: 'email', date: new Date(), timestamp: new Date() });
+  const d = await bookingDetailsForLeads([ai, silent, replied]);
+  assert.deepEqual(d.get(String(ai)), { booked_by: 'ai', booked_by_name: null, customer_agreed: true });
+  assert.deepEqual(d.get(String(silent)), { booked_by: 'staff', booked_by_name: 'Mercy Carill', customer_agreed: false });
+  assert.equal(d.get(String(replied)).customer_agreed, true);
+  await Email.create({ dealer_id: new mongoose.Types.ObjectId(), lead_id: replied, sender: '+15550001', recipient: 'd', subject: 's', message_id: 'm2',
+    mail_content: 'please cancel', status: 'received', communication_type: 'sms', date: new Date(Date.now() + 1000),
+    timestamp: new Date() });
+  assert.equal((await bookingDetailsForLeads([replied])).get(String(replied)).customer_agreed, false);
 });

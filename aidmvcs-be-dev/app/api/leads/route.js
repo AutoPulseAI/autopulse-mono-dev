@@ -1,5 +1,5 @@
 import { contactedLeadIds } from '@lib/contactedLeads';
-import { bookedByForLeads } from "@lib/bookingCreator";
+import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
@@ -532,8 +532,8 @@ export async function GET(req) {
       await attachAiStages(leads);
       // Appointments list: "Made by AI" / "Made by Staff" on each one.
       if (bookingStatus) {
-        const bookedBy = await bookedByForLeads(leads.map((l) => l._id));
-        for (const lead of leads) lead.booked_by = bookedBy.get(String(lead._id));
+        const details = await bookingDetailsForLeads(leads.map((l) => l._id));
+        for (const lead of leads) Object.assign(lead, details.get(String(lead._id)) || {});
       }
 
       return new Response(JSON.stringify({
