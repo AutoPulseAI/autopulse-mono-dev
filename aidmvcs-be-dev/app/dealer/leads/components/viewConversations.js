@@ -22,7 +22,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel } from "../../../lib/messageAuthor";
 import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
@@ -1195,7 +1195,7 @@ export default function ViewConversations({
                                   ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" :
                                   "bg-danger"
                                 }`}>
-                                  {isNote ? "Note" : email.status}
+                                  {isNote ? "Note" : messageStatusLabel(email)}
                                 </span>
                               </div>
                               <div className="d-lg-flex align-items-center gap-1 justify-content-end">

@@ -79,3 +79,14 @@ test('the AI moves a booked lead to No Show, and back to follow-up only once no 
     bookingAhead: false }), null);
   assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Sold' }), 'staff_status_kept');
 });
+
+// The user, 28 Oct 2026: one clean status per message - Delivered or Failed, never "sent" and "delivered".
+test('each message shows one status: Received, Delivered, Failed or Sending', async () => {
+  const { messageStatusLabel } = await import('./app/lib/messageAuthor.js');
+  assert.equal(messageStatusLabel({ status: 'sent' }), 'Delivered');
+  assert.equal(messageStatusLabel({ status: 'delivered' }), 'Delivered');
+  assert.equal(messageStatusLabel({ status: 'undelivered' }), 'Failed');
+  assert.equal(messageStatusLabel({ status: 'sent', ai_delivery_status: 'failed' }), 'Failed');
+  assert.equal(messageStatusLabel({ status: 'received' }), 'Received');
+  assert.equal(messageStatusLabel({ status: 'queued' }), 'Sending');
+});

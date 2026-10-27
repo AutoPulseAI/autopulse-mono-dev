@@ -57,3 +57,16 @@ export function staffBookedTexts(emails) {
   }
   return out;
 }
+
+// One status per message, in plain words (the user, 28 Oct 2026: "why are there sent and delivered? We only need
+// delivered; if it failed, show failed - duplicates create confusion"). "sent" (handed to Twilio / the email service)
+// reads Delivered; a failure reads Failed; still on its way reads Sending.
+const FAILED = new Set(["failed", "undelivered", "bounced", "error", "rejected"]);
+const SENDING = new Set(["queued", "pending", "accepted", "sending", "scheduled"]);
+export function messageStatusLabel(email) {
+  const status = String(email?.status || "").toLowerCase();
+  if (["received", "incoming"].includes(status)) return "Received";
+  if (FAILED.has(status) || FAILED.has(String(email?.ai_delivery_status || "").toLowerCase())) return "Failed";
+  if (SENDING.has(status)) return "Sending";
+  return "Delivered";
+}

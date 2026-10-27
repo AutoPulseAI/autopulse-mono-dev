@@ -20,7 +20,7 @@ import {
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel } from "../../../lib/messageAuthor";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -964,7 +964,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                               ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" :
                               "bg-danger"
                             }`}>
-                              {isNote ? "Note" : email.status}
+                              {isNote ? "Note" : messageStatusLabel(email)}
                             </span>
                           </div>
                           <div className="d-lg-flex align-items-center gap-1 justify-content-end">
