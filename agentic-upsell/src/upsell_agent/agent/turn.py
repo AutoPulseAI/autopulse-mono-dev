@@ -403,6 +403,7 @@ async def run_turn(
             if trigger == "inbound_message":
                 await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
                 await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
+                await _alert_unsure(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id, result)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
@@ -1269,6 +1270,26 @@ async def _alert_price_offer(db: DealerScopedDatabase, platform: Any, lead_id: s
                                                          "please answer them."))
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
         "at": clock.now(), "kind": "price_offer", "text": "The customer made a price offer: a manager please answer."}}})
+
+
+async def _alert_unsure(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                        text: str | None, turn_id: str, result: dict[str, Any]) -> None:
+    """Betsy, 27 Oct 2026 meeting: "if the AI doesn't know what to do it can't lie - escalation is better". When the
+    AI's own replies were both turned down (wrong, a promise nobody keeps, a question left unanswered) the safe reply
+    went out instead; a manager is told with the customer's words. The AI keeps the lead (the user's rule: it is
+    never handed off or switched off without their OK)."""
+    reason = str(result.get("fallback_reason") or "")
+    if not lead_id or not text or not result.get("used_fallback") or "guard rejected" not in reason:
+        return
+    from upsell_agent.agent import crm_notes
+    why = "; ".join(str(v) for v in ((result.get("guard_result") or {}).get("violations") or [])[:2])[:300]
+    await crm_notes.write(db, lead_id=lead_id, kind="ai_unsure", key=f"ai_unsure:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(
+                              f"The AI wasn't sure how to answer \"{text[:240]}\" and sent a safe reply instead"
+                              f"{f' ({why})' if why else ''}. A manager may want to answer this one; the AI keeps "
+                              "the lead."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "ai_unsure", "text": "The AI wasn't sure how to answer: a manager may want to."}}})
 
 
 async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,
