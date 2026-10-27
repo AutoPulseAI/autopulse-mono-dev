@@ -683,6 +683,13 @@ export default function Dashboard() {
     return range ? `${base}${base.includes('?') ? '&' : '?'}${range}` : base;
   };
 
+  // Betsy, 27 Oct 2026: the Appointments Made card opens exactly the bookings it counted (made in the range,
+  // whatever the lead's status is now), not leads that came in on these dates.
+  const getAppointmentsMadeLink = () => {
+    const range = getRangeParams() || getTodayDateParams();  // no range picked: the card shows today
+    return `/dealer/booking?${range.replace('startDate=', 'madeStartDate=').replace('endDate=', 'madeEndDate=')}`;
+  };
+
   // Only the appointments counted on the card: booked, with the appointment on these dates (Bibi/Betsy, 21 Oct 2026).
   const getAppointmentsForLink = () => {
     const base = `/dealer/booking?fe_lead_status=${encodeURIComponent('Appointment Booked')}`;
@@ -793,7 +800,7 @@ export default function Dashboard() {
               iconClass="fa-solid fa-calendar-days"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
-              link={withRange(`/dealer/leads?status=${encodeURIComponent('Appointment Booked')}`)}
+              link={getAppointmentsMadeLink()}
               description={[splitText(step('made')), `${cardRangeText()}${compareText('made')}`].filter(Boolean).join(" · ")}
             />
 

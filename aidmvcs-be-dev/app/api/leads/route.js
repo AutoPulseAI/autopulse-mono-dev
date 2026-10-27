@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
+import Booking from "@models/Booking";
 import Customer from "@models/Customer";
 import Email from "@models/Email";
 import Vehicle from "@models/Vehicle";
@@ -87,6 +88,10 @@ export async function GET(req) {
     const endDate = url.searchParams.get("endDate");
     const bookingStartDate = url.searchParams.get("bookingStartDate");
     const bookingEndDate = url.searchParams.get("bookingEndDate");
+    // Betsy, 27 Oct 2026 ("if the dashboard says 11, when I click it I should see 11"): the Appointments Made card
+    // counts bookings created in the range (app/lib/appointmentFunnel.js); these list exactly those leads.
+    const madeStartDate = url.searchParams.get("madeStartDate");
+    const madeEndDate = url.searchParams.get("madeEndDate");
     const messageFilter = url.searchParams.get("message_filter"); // 'unread', 'read', or empty
     const vehicleMakes = url.searchParams.getAll("make");
     const vehicleModels = url.searchParams.getAll("model").concat(url.searchParams.getAll("vehicle_model"));
@@ -343,7 +348,7 @@ export async function GET(req) {
     
     const bookingStatus = url.searchParams.get("booking_status");
     // Add booking status filter if provided
-    if (bookingStatus) {
+    if (bookingStatus && !(madeStartDate && madeEndDate)) {  // the card's count includes bookings since cancelled
         query.booking_status = bookingStatus === "1";
     }
     
@@ -367,6 +372,18 @@ export async function GET(req) {
         };
     }
     
+    if (madeStartDate && madeEndDate) {
+        // Whole dealer-local days, as the card counts them (app/api/leads/stats: start/end of each day).
+        const madeFrom = moment.tz(moment.utc(madeStartDate).tz(dealerTimezone).format('YYYY-MM-DD'), 'YYYY-MM-DD',
+          dealerTimezone).startOf('day').utc().toDate();
+        const madeTo = moment.tz(moment.utc(madeEndDate).tz(dealerTimezone).format('YYYY-MM-DD'), 'YYYY-MM-DD',
+          dealerTimezone).endOf('day').utc().toDate();
+        const made = await Booking.find({ dealer_id: String(dealerId),
+          createdAt: { $gte: madeFrom, $lte: madeTo } }).select('lead_id').lean();
+        const ids = [...new Set(made.map((b) => String(b.lead_id)))].filter((id) => mongoose.isValidObjectId(id));
+        query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+
     // Apply unassigned filter if needed
     if (unassignedFilter) {
       orConditions.push(unassignedFilter);
