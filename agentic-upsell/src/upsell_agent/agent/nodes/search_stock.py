@@ -288,6 +288,7 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
                          f"{' '.join(p for p in (own.make, own.model, own.trim) if p)!r}: shown as the exact match.")
     shown = {v["vin"] for v in ((pack.get("conversation") or {}).get("shown_vehicles") or [])}
     loaded = [{**r.model_dump(), "already_shown": r.vin in shown} for r in result.loaded(MAX_LOADED)]
+    original = await _original_inquiry(state, ctx, source, {v["vin"] for v in loaded}) if not bigger else None
     matched_exact = False
     if stock_match.ENABLED and not bigger:
         # The user, 26 Oct 2026: the hybrid search - stock_match.FROM_SEARCH cars from this search, stock_match.
@@ -326,6 +327,13 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
     span.reasoning = reasoning
     span.edge_label = (f"{len(loaded)} loaded" + (f" · loosened {', '.join(s['step'] for s in result.loosened)}"
                                                   if result.loosened else ""))
+    if original is not None and widened:  # only when the car they asked for isn't here (Krishna: never otherwise)
+        # Betsy, 27 Oct 2026 (Muhamad Nasir asked for an M240 we don't have): "remind the customer they inquired about
+        # our M340 and send a link or photos and ask if they still want this vehicle - if not, it needs to be
+        # escalated". The car they first asked about joins the list, marked as their original inquiry.
+        loaded.append({**original.model_dump(), "already_shown": original.vin in shown, "original_inquiry": True})
+        reasoning.append(f"Their original inquiry ({original.vin}, {original.model} {original.trim or ''}) is in "
+                         "stock: added to remind them of it.")
     patched = _patch(pack, loaded, result.final_query, result.checked_at)
     # conversation_7: what was searched, and whether the vehicles loaded are that or the nearest we have - so the
     # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
@@ -335,6 +343,17 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
                                if widened and loaded else None}
     return {"context_pack": patched}
+
+
+async def _original_inquiry(state: AgentState, ctx: TurnContext, source: Any, loaded: set[str]) -> Any:
+    """The car on the lead itself (its VIN), in stock and not already in this turn's list; else None."""
+    vin = lead_vehicle_vin(ctx.lead, None)
+    if not vin or vin in loaded:
+        return None
+    try:
+        return await get_vehicle(state.dealer_id, vin, source)
+    except Exception:  # noqa: BLE001 - a reminder is never worth a failed turn
+        return None
 
 
 async def _lead_own_vehicle(state: AgentState, ctx: TurnContext, criteria: InventoryCriteria,

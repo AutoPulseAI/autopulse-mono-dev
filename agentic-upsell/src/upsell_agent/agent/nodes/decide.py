@@ -172,6 +172,9 @@ _NOT_TODAY = re.compile(r"\b(?:can'?t|cannot|can\s+not|won'?t|not\s+able\s+to|un
                         r"do\s+it|get\s+there)\s+today\b|\bnot\s+today\b|\btoday\s+(?:won'?t|doesn'?t)\s+work", re.IGNORECASE)
 
 
+REMIND_ORIGINAL_FIRST = True  # Betsy, 27 Oct 2026
+_STILL_WANTS = re.compile(r"^\W*(?:y|yes|yeah|yep|yup|sure|ok(?:ay)?|that one|the (?:original|first) one|i do|still "
+                          r"interested|i'?ll take (?:it|that)|sounds good)\b", re.IGNORECASE)
 _THANKS_ONLY = re.compile(r"^\W*(?:(?:no\s+problem|no\s+worries|ok(?:ay)?|k|sure|sounds\s+good|great|perfect|cool|"
                           r"alright|all\s+right|thanks?|thank\s+you|ty|appreciate\s+it|will\s+do|got\s+it)[\s,.!]*){1,3}\W*$",
                           re.IGNORECASE)
@@ -1349,6 +1352,19 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
     # before scheduling the appointment and move to Manager Review status".
     decision["vehicle_check"] = vehicle_check_for(stock, extraction, state.trigger, decision["action"])
+    original = next((v for v in (state.context_pack or {}).get("inventory") or [] if v.get("original_inquiry")), None)
+    reminded = (ctx.lead_state or {}).get("original_reminded_for")
+    if decision["vehicle_check"] and original and REMIND_ORIGINAL_FIRST:
+        asked = decision["vehicle_check"].get("vehicle")
+        if reminded != asked:
+            # Betsy, 27 Oct 2026: first remind them of the car they inquired about and ask if they still want it.
+            decision["remind_original"] = {"vehicle": " ".join(str(original.get(k) or "") for k in (
+                "year", "make", "model", "trim")).strip(), "vin": original.get("vin"), "asked": asked}
+            decision["vehicle_check"] = None
+        elif _STILL_WANTS.match(str(text or "")):
+            # Yes, the original after all: no manager check, carry on with that car.
+            decision["original_chosen"] = {"vin": original.get("vin")}
+            decision["vehicle_check"] = None
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):

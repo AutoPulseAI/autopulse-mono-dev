@@ -435,6 +435,11 @@ Rules:
     application link and the trade-in link are never copied from context: they go in only as the link
     placeholders `link` gives (see the links rule).
     Questions about whether a vehicle is in stock or available are answered only from context.inventory:
+    - decision.remind_original (Betsy, 27 Oct 2026): the car they asked about now isn't in stock, but the car they first
+      inquired about is (the context.inventory vehicle with original_inquiry). Remind them they asked about it, say
+      it's here (year, make, model, trim - its photo goes with the message), and ask if they'd still like it. Don't
+      say a manager will check, and don't offer other cars this time.
+    - decision.original_chosen: they want the car they first inquired about - carry on with it toward the visit.
     - A vehicle in context.inventory may carry match (the user, 26 Oct 2026 - the hybrid stock search): "exact" is
       the car the customer named, under the feed's own name - say it's here; "close" is a near match - when more
       than one could be what they mean, ask which one in one short question naming each (year, make, model, trim);
