@@ -792,14 +792,25 @@ class ModelCall:
                 "cost_usd": self.cost_usd}
 
 
+RESPONSES_API_MODELS = ("gpt-6",)
+
+
 def _model(name: str):
     if name == OFFLINE:
         from upsell_agent.agent.offline_model import offline_model
         return offline_model()
     if name.startswith("openai:"):
-        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
         from pydantic_ai.providers.openai import OpenAIProvider
-        return OpenAIChatModel(name.split(":", 1)[1], provider=OpenAIProvider(api_key=get_settings().openai_api_key))
+        model_id = name.split(":", 1)[1]
+        provider = OpenAIProvider(api_key=get_settings().openai_api_key)
+        if model_id.startswith(RESPONSES_API_MODELS):
+            # The user, 28 Oct 2026: the AI moves to gpt-6.1-sol. Through Chat Completions it refuses the structured
+            # output every step needs ("Function tools with reasoning_effort are not supported for gpt-6.1-sol in
+            # /v1/chat/completions ... use /v1/responses") - every reply would have failed. The GPT-6 family goes
+            # through the Responses API; the GPT-5 models stay on Chat Completions as before.
+            return OpenAIResponsesModel(model_id, provider=provider)
+        return OpenAIChatModel(model_id, provider=provider)
     return name
 
 

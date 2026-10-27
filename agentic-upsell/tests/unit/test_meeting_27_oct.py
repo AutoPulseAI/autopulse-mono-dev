@@ -241,3 +241,10 @@ def test_every_specialist_gets_the_edge_case_rules_on_top_of_its_own_playbook():
     for sp in specialists.SPECIALISTS.values():
         out = specialists.for_compose(sp, "x")
         assert out["playbook"].startswith(sp.playbook) and "Maybe" in out["playbook"]
+
+
+def test_gpt_6_models_go_through_the_responses_api():
+    # The user, 28 Oct 2026: gpt-6.1-sol refuses structured output on /v1/chat/completions (checked with the real API).
+    from upsell_agent.agent.llm import _model
+    assert type(_model("openai:gpt-6.1-sol")).__name__ == "OpenAIResponsesModel"
+    assert type(_model("openai:gpt-5")).__name__ == "OpenAIChatModel"
