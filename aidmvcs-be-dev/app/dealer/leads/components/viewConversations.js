@@ -22,7 +22,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts } from "../../../lib/messageAuthor";
 import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
@@ -136,6 +136,7 @@ export default function ViewConversations({
     () => [...emails].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     [emails]
   );
+  const staffBooked = useMemo(() => staffBookedTexts(emails), [emails]);
   // A note belongs to the lead, not to a channel (client, 10 Oct 2026: notes didn't show): it was filed under the
   // channel of the latest message, so it only appeared in one tab - usually not the open one. Both tabs show it.
   const isNoteRecord = (e) => Boolean(e?.is_note || e?.status === "note");
@@ -1123,6 +1124,7 @@ export default function ViewConversations({
                       const translatedText = translationMap[translationKey] || translationCacheRef.current[translationKey] || "";
                       const msgUserLanguageLabel = messageUserLanguageDisplay(email, lead);
                       const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
+                  const bookedBy = staffBooked[String(email._id)];
                       const isNote = email.is_note || email.status === 'note';
                       
                       return (
@@ -1148,7 +1150,7 @@ export default function ViewConversations({
                                 {isNote ? (
                                   <>
                                     <i className={`fa-solid fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
-                                    {email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
+                                    {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
                                   </>
                                 ) : (
                                   email.subject || 'No Subject'
@@ -1204,6 +1206,7 @@ export default function ViewConversations({
                                 <div className="text-muted small mt-1">
                                   <i className="fa-light fa-user me-1"></i>
                                   <span className={`badge ${isNote ? (isAiNote(email) || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, isAiNote(email)) : author.label}</span>
+                                {bookedBy && <span className="badge bg-warning text-dark ms-1">Appointment set by staff: {bookedBy}</span>}
                                 </div>
                               </div>
                             </div>

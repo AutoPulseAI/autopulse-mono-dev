@@ -28,3 +28,32 @@ export function noteAuthor(email, isAi) {
 }
 
 export const AUTHOR_BADGE = { customer: "bg-success", ai: "bg-primary", staff: "bg-warning text-dark", system: "bg-secondary" };
+
+// Betsy, 27 Oct 2026: "a dealer can put in appt set and we send the confirmation, but it does not show that in the
+// conversation". The status change was a grey "Note for Internal Use Only" and the text it caused read "Sent by AI".
+// A status change / appointment move now has its own heading, and the AI's appointment texts that follow a staff
+// booking say who set it.
+const STATUS_NOTE = /^(?:Status changed from|Set to .+ by |Appointment moved by )/;
+const STAFF_BOOKED = /^Status changed from .+ to Appointment (?:Set|Booked) by (.+?)\s*$/;
+const APPOINTMENT_TEXT = /we are all set to meet|confirming our meeting|looking forward to meeting with you/i;
+const LINK_WINDOW_MS = 6 * 3600e3;
+
+export function isStatusNote(email) {
+  return Boolean((email?.is_note || email?.status === "note") && STATUS_NOTE.test(String(email?.mail_content || "").trim()));
+}
+
+// {message id: staff name} for each AI appointment text sent within 6 hours after staff set the appointment.
+export function staffBookedTexts(emails) {
+  const out = {};
+  let last = null;
+  const sorted = [...(emails || [])].sort((a, b) => new Date(a.timestamp || a.date) - new Date(b.timestamp || b.date));
+  for (const e of sorted) {
+    const at = new Date(e.timestamp || e.date).getTime();
+    const m = (e.is_note || e.status === "note") && String(e.mail_content || "").trim().match(STAFF_BOOKED);
+    if (m) { last = { name: m[1], at }; continue; }
+    if (last && e.ai_generated && !e.is_note && at - last.at <= LINK_WINDOW_MS && APPOINTMENT_TEXT.test(String(e.mail_content || ""))) {
+      out[String(e._id)] = last.name;
+    }
+  }
+  return out;
+}

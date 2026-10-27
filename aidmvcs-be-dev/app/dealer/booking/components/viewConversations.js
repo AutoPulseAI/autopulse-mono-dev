@@ -20,7 +20,7 @@ import {
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts } from "../../../lib/messageAuthor";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -83,6 +83,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
     () => [...emails].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     [emails]
   );
+  const staffBooked = useMemo(() => staffBookedTexts(emails), [emails]);
 
   // 🔹 hold a ref to the LeadList so we can trigger pagination from here
   const leadListRef = useRef(null);
@@ -891,6 +892,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                   const msgUserLanguageLabel = messageUserLanguageDisplay(email, lead);
                   const translatedText = translationMap[translationKey] || translationCacheRef.current[translationKey] || "";
                   const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
+                  const bookedBy = staffBooked[String(email._id)];
                  
                   const isNote = email.is_note || email.status === 'note';
                   
@@ -917,7 +919,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                             {isNote ? (
                               <>
                                 <i className={`fa-solid fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
-                                {email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
+                                {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
                               </>
                             ) : (
                               email.subject || 'No Subject'
@@ -973,6 +975,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                             <div className="text-muted small mt-1">
                               <i className="fa-light fa-user me-1"></i>
                               <span className={`badge ${isNote ? (false || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, false) : author.label}</span>
+                                {bookedBy && <span className="badge bg-warning text-dark ms-1">Appointment set by staff: {bookedBy}</span>}
                             </div>
                           </div>
                         </div>
