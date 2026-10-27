@@ -269,6 +269,7 @@ async def run_turn(
                                  customer_text=inbound_text,
                                  inventory=(result.get("context_pack") or {}).get("inventory"))
             reply = await _without_photo_claims(tracer, ctx, reply, photo, inbound_text, lead_id, customer_id)
+            reply = without_ask_for_assistant(reply)
             reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
@@ -397,6 +398,8 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            if trigger == "inbound_message":
+                await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
@@ -1187,6 +1190,40 @@ async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
         stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")),
         inventory=inventory)
+
+
+# 朱宇, 27 Oct 2026: "I'm on my way, I will be there in 10 minutes" -> "Ask for Nicole when you arrive" (Nicole is the AI;
+# no one at the store is Nicole) and no one at the store was told he was coming.
+_ON_THE_WAY = re.compile(r"\b(?:on my way|on the way|omw|heading (?:over|there|your way)|leaving now|"
+                         r"(?:be|get) there in \d+|(?:i'?m|i am) (?:here|outside|in the parking lot|at the (?:dealer|lot|store)))\b",
+                         re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.!?\n]*[.!?]?\s*")
+_ASK_FOR_ON_ARRIVAL = re.compile(r"\b[Aa]sk for [A-Z][a-z]+\b")
+_ARRIVAL = re.compile(r"\b(?:arriv\w*|get here|come in|stop by|you'?re here|at the (?:front )?desk)\b", re.IGNORECASE)
+
+
+def without_ask_for_assistant(text: str | None) -> str | None:
+    """No "ask for Nicole when you arrive": the assistant isn't someone at the store."""
+    if not text:
+        return text
+    parts = _SENTENCE.findall(text)
+    kept = [p for p in parts if not (_ASK_FOR_ON_ARRIVAL.search(p) and _ARRIVAL.search(p))]
+    if len(kept) == len(parts):
+        return text
+    return ("".join(kept).strip() + " Let the front desk know you're here for the vehicle.").strip()
+
+
+async def _alert_arriving(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                          text: str | None, turn_id: str) -> None:
+    """The customer says they're on their way or here: staff are told at once to greet them."""
+    if not lead_id or not text or not _ON_THE_WAY.search(text):
+        return
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="customer_arriving", key=f"arriving:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(f"The customer says they're on the way / here: \"{text[:200]}\". "
+                                                         "Please be ready to greet them."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "customer_arriving", "text": "The customer is on the way: please greet them."}}})
 
 
 async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,
