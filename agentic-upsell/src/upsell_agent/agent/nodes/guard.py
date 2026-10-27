@@ -338,6 +338,24 @@ def missing_alternatives(context_pack: dict[str, Any], draft: dict[str, Any]) ->
             (("SMS", "sms_vins"), ("email", "email_vins")) if not draft.get(key)]
 
 
+def unasked_alternatives(context_pack: dict[str, Any], decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    """Bibi, 27 Oct 2026 meeting: similar vehicles were offered in the first text (the FTC greeting) and after the
+    appointment was set. There, unless the customer asked about stock, the reply names only the car the lead is about."""
+    stock = (context_pack or {}).get("stock_search") or {}
+    visit = (decision.get("visit") or {})
+    booked = visit.get("status") in ("pending", "confirmed") and not visit.get("just_booked")
+    if stock.get("asked") or not (decision.get("touch1") or booked):
+        return []
+    own = {str(v.get("vin") or "").upper() for v in (context_pack or {}).get("inventory") or [] if v.get("original_inquiry")}
+    own |= {str((decision.get("touch1") or {}).get("vin") or "").upper()} - {""}
+    if not own:
+        return []
+    where = "first text" if decision.get("touch1") else "reply after the appointment was set"
+    return [f"the {name} {where} names other vehicles nobody asked about - only the {'/'.join(sorted(own))}"
+            for name, key in (("SMS", "sms_vins"), ("email", "email_vins"))
+            if {str(v).upper() for v in draft.get(key) or []} - own]
+
+
 def missing_resume_acknowledgment(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
     """A "resume" (MASTER_PLAN_3 B1) is the morning message after a customer chose to wait for the team; it
     must say so before doing anything else, not pick the conversation back up as if no time had passed."""
@@ -622,6 +640,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if watch:
         result["passed"] = False
         result["violations"] += watch
+    unasked = unasked_alternatives(state.context_pack or {}, state.decision or {}, state.draft or {})
+    result["checks"]["no_unasked_alternatives"] = not unasked
+    if unasked:
+        result["passed"] = False
+        result["violations"] += unasked
     options = unbacked_options_promise(state.decision or {}, state.draft or {})
     result["checks"]["no_unbacked_options_promise"] = not options
     if options:

@@ -109,3 +109,15 @@ def test_a_missing_name_is_asked_again_two_days_later_at_most_twice():
     assert _may_ask_name({"name_asked": now - timedelta(days=3), "name_asks": 1}, now)
     assert _may_ask_name({"name_asked": (now - timedelta(days=3)).replace(tzinfo=None)}, now)  # Mongo's naive UTC
     assert not _may_ask_name({"name_asked": now - timedelta(days=9), "name_asks": 2}, now)
+
+
+def test_no_other_cars_in_the_first_text_or_after_booking_unless_asked():
+    from upsell_agent.agent.nodes.guard import unasked_alternatives
+    pack = {"inventory": [{"vin": "OWN1", "original_inquiry": True}, {"vin": "OTHER2"}], "stock_search": {}}
+    two = {"sms_vins": ["OWN1", "OTHER2"], "email_vins": ["OWN1"]}
+    assert unasked_alternatives(pack, {"touch1": {"vin": "OWN1"}}, two)  # the greeting
+    assert unasked_alternatives(pack, {"visit": {"status": "pending"}}, two)  # booked
+    assert not unasked_alternatives(pack, {"visit": {"status": "pending", "just_booked": True}}, two)
+    assert not unasked_alternatives(pack, {"action": "answer"}, two)  # mid-conversation: allowed
+    assert not unasked_alternatives({**pack, "stock_search": {"asked": True}}, {"touch1": {}}, two)  # they asked
+    assert not unasked_alternatives(pack, {"touch1": {"vin": "OWN1"}}, {"sms_vins": ["OWN1"]})
