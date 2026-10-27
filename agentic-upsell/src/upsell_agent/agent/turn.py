@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, provider_health, service_request
+from upsell_agent.agent import cadence, customer_hold, human_contact, lead_bucket, lifecycle, provider_health, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -40,7 +40,8 @@ from upsell_agent.agent.reply_language import in_customer_language
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
 from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
-from upsell_agent.agent.vehicle_media import MediaPick, photo_for_draft
+from upsell_agent.agent.media import drop_photo_claims
+from upsell_agent.agent.vehicle_media import MediaPick, asks_for_photos, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
@@ -267,6 +268,8 @@ async def run_turn(
             photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]),
                                  customer_text=inbound_text,
                                  inventory=(result.get("context_pack") or {}).get("inventory"))
+            reply = await _without_photo_claims(tracer, ctx, reply, photo, inbound_text, lead_id, customer_id)
+            reply = without_ask_for_assistant(reply)
             reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
@@ -372,6 +375,13 @@ async def run_turn(
                                                    lead=lead, customer=customer, customer_id=customer_id,
                                                    channel=channel, turn_id=tracer.turn_id, shadow=shadow,
                                                    hold_cadence=_hold_cadence(decision))
+        if not shadow and trigger == "inbound_message" and lead_id:
+            # Salvatore Giangrande, 27 Oct 2026: "No longer interested", then an AI Studio touch 16 minutes later. What
+            # the customer just said holds the AI's own timed messages (agent/customer_hold.py); a new message from
+            # them replaces it.
+            hold = customer_hold.hold_for(result.get("extraction"), inbound_text)
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"customer_hold": hold}} if hold else {"$unset": {"customer_hold": ""}})
         if not shadow and trigger in ("inbound_message", "resume_at_opening", "lead_created"):
             # Rocco, 26 Oct 2026: his name correction came in messages whose replies were (rightly) stopped as
             # superseded, and the name was lost with them. What the customer tells us is saved whether or not this
@@ -388,6 +398,9 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            if trigger == "inbound_message":
+                await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
+                await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
@@ -533,6 +546,8 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     subject = None if other == "sms" else draft.get("email_subject")
     text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
+    if photo is not None and not photo.urls:
+        text, _ = drop_photo_claims(text, asked_for_photos=False)
     text = await _short_links(tracer, dealer_scoped_db(dealer_id), text, lead_id, get_settings())
     request = SendRequest(
         dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
@@ -1176,6 +1191,85 @@ async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
         stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")),
         inventory=inventory)
+
+
+# 朱宇, 27 Oct 2026: "I'm on my way, I will be there in 10 minutes" -> "Ask for Nicole when you arrive" (Nicole is the AI;
+# no one at the store is Nicole) and no one at the store was told he was coming.
+_ON_THE_WAY = re.compile(r"\b(?:on my way|on the way|omw|heading (?:over|there|your way)|leaving now|"
+                         r"(?:be|get) there in \d+|(?:i'?m|i am) (?:here|outside|in the parking lot|at the (?:dealer|lot|store)))\b",
+                         re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.!?\n]*[.!?]?\s*")
+_ASK_FOR_ON_ARRIVAL = re.compile(r"\b[Aa]sk for [A-Z][a-z]+\b")
+_ARRIVAL = re.compile(r"\b(?:arriv\w*|get here|come in|stop by|you'?re here|at the (?:front )?desk)\b", re.IGNORECASE)
+
+
+def without_ask_for_assistant(text: str | None) -> str | None:
+    """No "ask for Nicole when you arrive": the assistant isn't someone at the store."""
+    if not text:
+        return text
+    parts = _SENTENCE.findall(text)
+    kept = [p for p in parts if not (_ASK_FOR_ON_ARRIVAL.search(p) and _ARRIVAL.search(p))]
+    if len(kept) == len(parts):
+        return text
+    return ("".join(kept).strip() + " Let the front desk know you're here for the vehicle.").strip()
+
+
+async def _alert_arriving(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                          text: str | None, turn_id: str) -> None:
+    """The customer says they're on their way or here: staff are told at once to greet them."""
+    if not lead_id or not text or not _ON_THE_WAY.search(text):
+        return
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="customer_arriving", key=f"arriving:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(f"The customer says they're on the way / here: \"{text[:200]}\". "
+                                                         "Please be ready to greet them."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "customer_arriving", "text": "The customer is on the way: please greet them."}}})
+
+
+# Robby Torres, 27 Oct 2026: "I can give them 19k out the door ... you can confirm here if is ok then I can go there" -
+# the AI can't agree a price (client, 21 Oct 2026: a price question is answered by inviting them in), and no one at the
+# store saw the offer. A number they offer goes to staff at once; the reply is unchanged.
+_PRICE_OFFER = re.compile(
+    r"(?:\b(?:i can|i could|i'?ll|i will|i would|i'?d|we can|can you do|would you take|will you take|i can pay|offer)\b"
+    r"[^.?!\n]{0,30}?\$?\s?\d{1,3}(?:[,.]?\d{3}|(?:\.\d)?\s?k)\b)"
+    r"|(?:\$?\s?\d{1,3}(?:[,.]?\d{3}|(?:\.\d)?\s?k)\b[^.?!\n]{0,12}\b(?:out the door|otd|all in|cash)\b)", re.IGNORECASE)
+
+
+async def _alert_price_offer(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                             text: str | None, turn_id: str) -> None:
+    """The customer names a price they'd pay: staff are told at once, with their words."""
+    if not lead_id or not text or not (m := _PRICE_OFFER.search(text)):
+        return
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="price_offer", key=f"price_offer:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(f"The customer made a price offer ({m.group(0).strip()!r}): "
+                                                         f"\"{text[:240]}\". The AI can't agree a price - a manager "
+                                                         "please answer them."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "price_offer", "text": "The customer made a price offer: a manager please answer."}}})
+
+
+async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,
+                                inbound_text: str | None, lead_id: str | None, customer_id: str | None) -> str | None:
+    """Cathy Lanza, 27 Oct 2026: "Sure thing—here it is." went out with no photo (it failed the image check at send
+    time, after the reply was written). No photo going: the reply never says one is, and when they asked for photos
+    it says the team will send them and staff get a note to do it."""
+    if photo.urls or not reply:
+        return reply
+    asked = asks_for_photos(inbound_text)
+    fixed, dropped = drop_photo_claims(reply, asked_for_photos=asked)
+    if not dropped:
+        return reply
+    photo.reasons.append(f"No photo is going, so the words saying one is were taken out (was: {reply[:120]!r}).")
+    if asked and lead_id:
+        from upsell_agent.agent import crm_notes
+        await crm_notes.write(ctx.db, lead_id=lead_id, kind="photos_requested", key=f"photos:{tracer.turn_id}",
+                              customer_id=customer_id, text=(
+                                  "The customer asked for photos of the vehicle and the photo couldn't be sent "
+                                  f"automatically. They were told the team will text photos shortly: please send them. "
+                                  f"They wrote: \"{(inbound_text or '')[:200]}\""))
+    return fixed
 
 
 async def _short_links(tracer: TurnTracer, db: DealerScopedDatabase, text: str | None, lead_id: str | None,

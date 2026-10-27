@@ -227,6 +227,22 @@ async def test_staff_check_fires_once_with_a_holding_reply_and_an_alert(mongo, d
     assert len(await _outbox(mongo, created)) == before + 1  # once per handoff
 
 
+async def test_no_still_waiting_text_after_a_no_or_abuse(mongo, dealers):
+    # Jo Riedel / Erik Bleaman, 27 Oct 2026: "Sorry for the wait" went to a customer who had said no / swore at us.
+    created = await _handed_off(mongo)
+    await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].update_many(
+        {"lead_id": created["lead_id"], "kind": followups.KIND_HANDOFF_CHECK},
+        {"$set": {"handoff_reason": "Customer says they're not interested any more: 'We just found one'"}})
+    before = len(await _outbox(mongo, created))
+    _move(31)
+    await followups.fire_due(_deps())
+    [check] = await _scheduled(mongo, created, followups.KIND_HANDOFF_CHECK)
+    assert check["status"] == "cancelled"
+    assert len(await _outbox(mongo, created)) == before
+    state = await _state(mongo, created)
+    assert state["staff_alert"]["customer_notified"] is False
+
+
 async def test_staff_pausing_the_lead_cancels_the_check(mongo, dealers):
     created = await _handed_off(mongo)
     await handlers.handle_lead_paused(LeadPausedEvent(event_id="p", dealer_id=DEALER, lead_id=created["lead_id"],
