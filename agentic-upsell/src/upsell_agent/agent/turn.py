@@ -970,6 +970,10 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
     """Client, 12 Oct 2026 (Betsy): a customer asking for something the AI can't supply (custom photos, a video)
     puts the lead into Dealership Action Required - the AI still asks about the test drive, a person sends them."""
     decision = result.get("decision") or {}
+    if remind := decision.get("remind_original"):
+        # Betsy, 27 Oct 2026: reminded of their original car; their next "no" (or the other car again) escalates.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"original_reminded_for": remind.get("asked")}})
     cannot = decision.get("cannot_supply") or {}
     check = decision.get("vehicle_check") or {}
     if not cannot.get("escalates") and not check:

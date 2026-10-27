@@ -516,3 +516,25 @@ async def test_another_bmw_number_is_not_the_car_they_asked_for(mongo):
     decide = next(n["output"] for n in turn["nodes"] if n["node"] == "decide")
     decision = decide.get("decision") or decide
     assert decision.get("vehicle_check"), "a car we don't have goes to a manager to confirm (Betsy, 12 Oct)"
+
+
+async def test_a_car_we_dont_have_first_reminds_them_of_their_original_inquiry(mongo):
+    # Betsy, 27 Oct 2026 (Muhamad Nasir, M340i lead, asked for an M240): "remind the customer they inquired about our
+    # M340 and send a link or photos and ask if they still want this vehicle - if not, it needs to be escalated".
+    vin = "3MW5U7J06L8B44418"
+    await _stock(mongo, _vehicle(vin, year=2020, make="BMW", model="3 Series", trim="M340i", body="4D Sedan"),
+                 _vehicle("VIN00000000228I23", year=2023, make="BMW", model="2 Series", trim="228i"))
+    created = await _new_lead(mongo, vehicle={"year": 2023, "make": "BMW", "model": "M240", "vin": vin})
+    turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
+    decide = next(n["output"] for n in turn["nodes"] if n["node"] == "decide")
+    decision = decide.get("decision") or decide
+    assert decision.get("remind_original", {}).get("vin") == vin and not decision.get("vehicle_check")
+    assert (await _state(mongo, created)).get("original_reminded_for")
+
+
+def test_still_wanting_the_original_car():
+    from upsell_agent.agent.nodes.decide import _STILL_WANTS
+    for yes in ("Yes", "yeah that one", "sure", "I'll take it", "still interested"):
+        assert _STILL_WANTS.match(yes), yes
+    for no in ("No, I want the M240", "not really", "only the m240"):
+        assert not _STILL_WANTS.match(no), no
