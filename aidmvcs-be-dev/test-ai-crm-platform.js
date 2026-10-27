@@ -12,7 +12,7 @@ import mongoose from 'mongoose';
 
 import ActivityLog from './app/models/ActivityLog.js';
 import Booking from './app/models/Booking.js';
-import { bookingDetailsForLeads } from './app/lib/bookingCreator.js';
+import { bookingDetailsForLeads, confirmationForLeads } from './app/lib/bookingCreator.js';
 import Email from './app/models/Email.js';
 import EmailAccount from './app/models/EmailAccount.js';
 import Lead from './app/models/Lead.js';
@@ -723,11 +723,29 @@ test('the appointments list says who booked each one and whether the customer ag
     recipient: 'd', subject: 'Lead', message_id: 'm0', mail_content: '<?xml version="1.0"?><?adf version="1.0"?><adf><prospect/></adf>',
     status: 'received', communication_type: 'email', date: new Date(), timestamp: new Date() });
   const d = await bookingDetailsForLeads([ai, silent, replied]);
-  assert.deepEqual(d.get(String(ai)), { booked_by: 'ai', booked_by_name: null, customer_agreed: true });
-  assert.deepEqual(d.get(String(silent)), { booked_by: 'staff', booked_by_name: 'Mercy Carill', customer_agreed: false });
+  assert.deepEqual(d.get(String(ai)), { booked_by: 'ai', booked_by_name: null, customer_agreed: true,
+    confirmation: 'not_confirmed' });
+  assert.deepEqual(d.get(String(silent)), { booked_by: 'staff', booked_by_name: 'Mercy Carill', customer_agreed: false,
+    confirmation: 'not_confirmed' });
   assert.equal(d.get(String(replied)).customer_agreed, true);
   await Email.create({ dealer_id: new mongoose.Types.ObjectId(), lead_id: replied, sender: '+15550001', recipient: 'd', subject: 's', message_id: 'm2',
     mail_content: 'please cancel', status: 'received', communication_type: 'sms', date: new Date(Date.now() + 1000),
     timestamp: new Date() });
   assert.equal((await bookingDetailsForLeads([replied])).get(String(replied)).customer_agreed, false);
+});
+
+// Betsy, 27 Oct 2026 meeting: "two are not confirmed - so are the other two confirmed? Label them."
+test('each appointment says Confirmed, Tentative or Not confirmed', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const [byC, byStaff, maybe, none] = [1, 2, 3, 4].map(() => String(new mongoose.Types.ObjectId()));
+  const base = { dealer_id: 'd1', customerName: 'X', bookingDate: new Date(), bookingTime: '10:00 AM', created_by: 'ai' };
+  await Booking.create([{ ...base, lead_id: byC }, { ...base, lead_id: byStaff, booking_status: 'confirmed' },
+    { ...base, lead_id: maybe }, { ...base, lead_id: none }]);
+  const states = mongoose.connection.collection('ai_lead_state');
+  await states.insertMany([{ lead_id: byC, appointment: { confirmed: true } },
+    { lead_id: maybe, appointment: { confirmed: false, tentative: true } }]);
+  const c = await confirmationForLeads([byC, byStaff, maybe, none]);
+  assert.deepEqual([byC, byStaff, maybe, none].map((id) => c.get(id) || 'not_confirmed'),
+    ['confirmed', 'confirmed', 'tentative', 'not_confirmed']);
+  await states.deleteMany({ lead_id: { $in: [byC, maybe] } });
 });

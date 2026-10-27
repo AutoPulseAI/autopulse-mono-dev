@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import ActivityLog from "../models/ActivityLog.js";
 import Booking from "../models/Booking.js";
 import Email from "../models/Email.js";
+import { AI_LEAD_STATE_COLLECTION } from "./ai/aiStage.js";
 
 // Who made each lead's appointment (Betsy, 21 Oct 2026: every appointment tagged AI or staff): the latest booking's
 // created_by. 'customer' (the public booking page, reached from the AI's link) counts as AI - nobody on staff made
@@ -58,11 +59,39 @@ export async function bookingDetailsForLeads(leadIds) {
     if (m.is_note) { if (CALL_LOGGED.test(m.mail_content || '')) called.add(id); }
     else if (!lastIn.has(id) && !m.is_lead_email && !LEAD_EMAIL.test(m.mail_content || '')) lastIn.set(id, m.mail_content || '');
   }
+  const confirmation = await confirmationForLeads(ids);
   for (const id of ids) {
     const who = by.get(id);
     const agreed = who === 'ai' || called.has(id) || (lastIn.has(id) && !CANCEL_ASK.test(lastIn.get(id)));
     out.set(id, { booked_by: who, booked_by_name: who === 'staff' ? staffName.get(id) || null : null,
-      customer_agreed: agreed });
+      customer_agreed: agreed, confirmation: confirmation.get(id) || 'not_confirmed' });
+  }
+  return out;
+}
+
+// Betsy, 27 Oct 2026 meeting: "it says two are not confirmed - so are the other two confirmed? Label them". Each
+// appointment is Confirmed (the customer answered C / Y, or staff confirmed the booking), Tentative (the customer
+// isn't sure they can make it - the appointment stays) or Not confirmed.
+export async function confirmationForLeads(leadIds, { states = mongoose.connection.collection(AI_LEAD_STATE_COLLECTION) } = {}) {
+  const ids = leadIds.map(String);
+  const out = new Map();
+  if (!ids.length) return out;
+  const latest = await Booking.aggregate([
+    { $match: { lead_id: { $in: ids } } },
+    { $sort: { _id: -1 } },
+    { $group: { _id: '$lead_id', status: { $first: '$booking_status' } } },
+  ]);
+  for (const b of latest) if (b.status === 'confirmed') out.set(String(b._id), 'confirmed');
+  try {
+    const rows = await states.find({ lead_id: { $in: ids } })
+      .project({ lead_id: 1, 'appointment.confirmed': 1, 'appointment.tentative': 1 }).toArray();
+    for (const r of rows) {
+      const id = String(r.lead_id);
+      if (r.appointment?.confirmed) out.set(id, 'confirmed');
+      else if (r.appointment?.tentative && !out.has(id)) out.set(id, 'tentative');
+    }
+  } catch (error) {
+    console.warn('[appointments] could not read the AI appointment state', error?.message);
   }
   return out;
 }
