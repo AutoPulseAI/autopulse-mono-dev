@@ -141,3 +141,63 @@ def test_an_older_lead_is_placed_on_its_own_day_of_the_cadence():
     assert too_old.started_at == now  # past the 90 days: not backdated
     again = cadence.started(cadence.CadenceState(), at=now, reentered=True, lead_since=now - timedelta(days=40))
     assert again.started_at == now  # re-entry starts its own fresh schedule, as before
+
+
+def test_on_the_hour_sends_are_spread_and_each_lead_keeps_its_minute():
+    # Betsy, 27 Oct 2026 meeting: 150 follow-ups at 10:00 sharp and "the database goes down".
+    from datetime import UTC, datetime
+
+    from upsell_agent.scheduler.followups import SPREAD_MINUTES, spread_out
+    ten = datetime(2026, 10, 28, 14, 0, tzinfo=UTC)
+    minutes = {spread_out(ten, f"lead{n}").minute for n in range(200)}
+    assert len(minutes) > 30 and max(minutes) < SPREAD_MINUTES
+    assert spread_out(ten, "lead7") == spread_out(ten, "lead7")
+    picked = datetime(2026, 10, 28, 14, 10, tzinfo=UTC)
+    assert spread_out(picked, "lead7") == picked  # a time someone chose is kept
+
+
+async def test_a_working_status_the_crm_missed_is_retried(mongo, monkeypatch):
+    # Live, 28 Oct 2026: 63 leads never showed Managerial Review in the CRM - the hourly retry only knew closings.
+    from upsell_agent.agent import crm_status
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+    sent = []
+
+    class Crm:
+        async def set_lead_status(self, dealer_id, lead_id, status, *, reason, closed_at):
+            sent.append(status)
+            return {"updated": True}
+
+    monkeypatch.setattr(crm_status, "_client", lambda platform: Crm())
+
+    async def live(_dealer):
+        return "live"
+    monkeypatch.setattr("upsell_agent.integrations.dealer_mode.dealer_ai_mode", live)
+    await mongo[AI_LEAD_STATE_COLLECTION].insert_one({"lead_id": "L1", "dealer_id": "D1", "crm_status_sync": {
+        "status": "failed", "crm_status": "Managerial Review", "event": "team_promise", "reason_text": "x"}})
+    assert await crm_status.retry_failed() == {"retried": 1, "synced": 1}
+    assert sent == ["Managerial Review"]
+    assert (await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": "L1"}))["crm_status_sync"]["status"] == "updated"
+
+
+async def test_a_status_update_that_times_out_is_tried_once_more_at_once(mongo, monkeypatch):
+    import httpx
+
+    from upsell_agent.agent import crm_status
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    answers = [httpx.ReadTimeout("slow"), {"updated": True}]
+
+    class Slow:
+        async def set_lead_status(self, *a, **k):
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+    async def live(_dealer):
+        return "live"
+    monkeypatch.setattr(crm_status, "_client", lambda platform: Slow())
+    monkeypatch.setattr(crm_status, "RETRY_AFTER_S", 0)
+    monkeypatch.setattr("upsell_agent.integrations.dealer_mode.dealer_ai_mode", live)
+    result = await crm_status.sync_status(dealer_scoped_db("D1"), "L2", "Managerial Review", reason="x",
+                                          event_kind="team_promise")
+    assert result["status"] == "updated" and not answers

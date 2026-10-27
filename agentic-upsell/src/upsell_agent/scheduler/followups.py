@@ -61,6 +61,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import hashlib
 import re
 import socket
 from collections.abc import Callable
@@ -641,7 +642,7 @@ async def plan_cadence_touch(
     if check.outcome in ("BLOCK", "REVIEW"):
         return {"created": False, "send_check": check.as_dict(), "plan": planned.as_dict(),
                 "reason": f"No cadence touch: neither channel is allowed ({check.outcome}: {check.reason})."}
-    due_at = check.until if check.outcome == "HOLD" and check.until else planned.due_at
+    due_at = spread_out(check.until if check.outcome == "HOLD" and check.until else planned.due_at, lead_id)
     doc = {
         "kind": KIND_CADENCE_TOUCH, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
         "from_channel": channel, "to_channel": channel, "text": None, "subject": None, "status": "pending",
@@ -653,6 +654,20 @@ async def plan_cadence_touch(
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat(),
             "timezone": profile.timezone, "plan": touch,
             "reason": f"{planned.why} Due {local}."}
+
+
+# Betsy, 27 Oct 2026 meeting ("when I was sending the follow-ups of 150 the database goes down, so some customers were
+# not getting things"): every cadence touch and appointment reminder was due at exactly 10:00 (or the minute the
+# dealership opened), so 150+ AI turns hit the CRM at once - 1,001 ReadTimeouts in the worker log, mostly the lead-status
+# update. A time on the hour is spread over the next SPREAD_MINUTES, each lead always at the same minute.
+SPREAD_MINUTES = 45
+
+
+def spread_out(due: datetime, lead_id: str) -> datetime:
+    if due.minute or due.second or due.microsecond:
+        return due  # a time someone picked (the customer's own, a reply's): left as it is
+    offset = int(hashlib.sha1(str(lead_id).encode()).hexdigest()[:8], 16) % SPREAD_MINUTES
+    return due + timedelta(minutes=offset)
 
 
 STAFF_BOOKING_NEEDS_AGREEMENT = True  # AI Studio > Compliance > Safeguards
@@ -750,6 +765,8 @@ async def plan_appointment_timers(
         # Stream X2: the +1h check moves the stage to No Show at +1h whatever the send check says; only its
         # message waits for (or skips) the send check, at fire time.
         due_at = check.until if check.outcome == "HOLD" and check.until and not no_show_check else step.due_at
+        if step.step in (appointment.STEP_COUNTDOWN, appointment.STEP_CONFIRM):
+            due_at = min(spread_out(due_at, lead_id), max(due_at, appt_at - appointment.MIN_CONFIRM_LEAD))
         doc = {
             "kind": step.kind, "lead_id": lead_id, "customer_id": customer_id, "source_turn_id": turn_id,
             "from_channel": ch, "to_channel": ch, "text": None, "subject": None, "status": "pending",
