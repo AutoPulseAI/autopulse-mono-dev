@@ -810,3 +810,19 @@ test('admin labels: the bucket and the next pending AI message', async (t) => {
   await states.deleteMany({ lead_id: id });
   await followups.deleteMany({ lead_id: id });
 });
+
+// The user, 28 Oct 2026: Victory Mitsubishi sent the same follow-up 4 times in a minute - one send per job.
+test('a follow-up job is claimed once: a second call for it sends nothing', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { claimFollowUpJob } = await import('./app/lib/followupService.js');
+  const jobs = mongoose.connection.collection('followupjobs_claim_test');
+  const Model = { collection: jobs };
+  const { insertedId } = await jobs.insertOne({ status: 'pending' });
+  const [a, b, c, d] = await Promise.all([1, 2, 3, 4].map(() => claimFollowUpJob(Model, insertedId)));
+  assert.equal([a, b, c, d].filter(Boolean).length, 1);
+  await jobs.updateOne({ _id: insertedId }, { $set: { claimedAt: new Date(Date.now() - 11 * 60 * 1000) } });
+  assert.equal(await claimFollowUpJob(Model, insertedId), true); // a stale claim (a crash) can be taken again
+  await jobs.updateOne({ _id: insertedId }, { $set: { status: 'completed', claimedAt: null } });
+  assert.equal(await claimFollowUpJob(Model, insertedId), false);
+  await jobs.drop();
+});
