@@ -50,3 +50,18 @@ test('lead type: staff choice first, a portal lead is Internet, a manual lead no
   assert.equal(contactTypeLabel({ source: 'email' }), 'Not set');
   assert.equal(validContactType('fax'), null);
 });
+
+// Betsy, 27 Oct 2026 meeting: "I get kicked out all the time" - a sign-in in use is renewed, never one from Login as.
+test('a sign-in older than a day is renewed for seven days; login-as and remembered ones are not', async () => {
+  const jwt = (await import('jsonwebtoken')).default;
+  const { renewedToken, SESSION_DAYS } = await import('./app/lib/session.js');
+  const now = Math.floor(Date.now() / 1000);
+  const old = { userId: 'u1', type: 'dealer', iat: now - 2 * 86400, exp: now + 5 * 86400 };
+  const fresh = renewedToken(old, 's', now);
+  const claims = jwt.verify(fresh, 's');
+  assert.equal(claims.userId, 'u1');
+  assert.ok(claims.exp - now >= SESSION_DAYS * 86400 - 5);
+  assert.equal(renewedToken({ ...old, exp: now + 6.9 * 86400 }, 's', now), null); // signed in today
+  assert.equal(renewedToken({ ...old, impersonated_by: 'admin' }, 's', now), null);
+  assert.equal(renewedToken({ ...old, rememberDevice: true }, 's', now), null);
+});

@@ -3,6 +3,7 @@ import User from "@models/User";
 import Role from "@models/Role";
 import Permission from "@models/Permission";
 import jwt from "jsonwebtoken";
+import { renewedToken, SESSION_DAYS } from "@lib/session";
 import Subscription from "@models/Subscription";
 import Package from "@models/Package";
 
@@ -86,6 +87,9 @@ export async function GET(req) {
       };
     }
 
+    // A sign-in in use is renewed (app/lib/session.js): the page stores the new token, the cookie comes with it.
+    const renewed = renewedToken(decoded, process.env.JWT_SECRET);
+
     // Prepare parent data if exists
     
 
@@ -108,8 +112,10 @@ export async function GET(req) {
         package_dealers_allowed: user.package_dealers_allowed || 0,
         package_dealers_used: user.package_dealers_used || 0,
         branding_information: user.branding_information || null,
+        ...(renewed ? { refreshed_token: renewed } : {}),
       }),
-      { status: 200 }
+      { status: 200, headers: renewed ? { "Set-Cookie": `${user.type}token=${renewed}; Path=/; HttpOnly; Max-Age=${
+        SESSION_DAYS * 86400}; SameSite=Lax${process.env.NODE_ENV === "production" ? "; Secure" : ""}` } : {} }
     );
   } catch (error) {
     console.error("Error in /api/auth/me:", error);

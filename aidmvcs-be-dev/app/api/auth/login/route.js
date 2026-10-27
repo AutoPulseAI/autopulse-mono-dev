@@ -3,6 +3,7 @@ import User from "@models/User";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
+import { SESSION_DAYS } from "@lib/session";
 import { NextResponse } from "next/server";
 import { sendOtpEmail } from "@lib/emailservice";
 
@@ -44,7 +45,7 @@ export async function POST(req) {
             rememberDevice
           }, 
           process.env.JWT_SECRET, 
-          { expiresIn: rememberDevice ? "60d" : "1d" }
+          { expiresIn: rememberDevice ? "60d" : SESSION_DAYS + "d" }
         );
 
         const cookiename = `${user.type}token`;
@@ -54,7 +55,7 @@ export async function POST(req) {
           value: token,
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          maxAge: rememberDevice ? 60 * 24 * 60 * 60 : 86400,
+          maxAge: rememberDevice ? 60 * 24 * 60 * 60 : SESSION_DAYS * 86400,
           path: "/",
         });
 
@@ -88,7 +89,7 @@ export async function POST(req) {
           rememberDevice
         }, 
         process.env.JWT_SECRET, 
-        { expiresIn: rememberDevice ? "60d" : "1d" }
+        { expiresIn: rememberDevice ? "60d" : SESSION_DAYS + "d" }
       );
       const cookiename = `${user.type}token`;
       const cookieStore = await cookies();
@@ -99,7 +100,7 @@ export async function POST(req) {
         value: token,
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        maxAge: rememberDevice ? 60 * 24 * 60 * 60 : 86400,
+        maxAge: rememberDevice ? 60 * 24 * 60 * 60 : SESSION_DAYS * 86400,
         path: "/",
       });
 
@@ -132,7 +133,7 @@ export async function POST(req) {
             rememberDevice
           }, 
           process.env.JWT_SECRET, 
-          { expiresIn: rememberDevice ? "60d" : "1d" }
+          { expiresIn: rememberDevice ? "60d" : SESSION_DAYS + "d" }
         );
 
         const cookiename = `${user.type}token`;
@@ -142,7 +143,7 @@ export async function POST(req) {
             value: token,
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            maxAge: rememberDevice ? 60 * 24 * 60 * 60 : 86400,
+            maxAge: rememberDevice ? 60 * 24 * 60 * 60 : SESSION_DAYS * 86400,
             path: "/",
           });
 
