@@ -799,7 +799,7 @@ test('admin labels: the bucket and the next pending AI message', async (t) => {
   const id = String(new mongoose.Types.ObjectId());
   const states = mongoose.connection.collection('ai_lead_state');
   const followups = mongoose.connection.collection('scheduled_followups');
-  await states.insertOne({ lead_id: id, bucket: 'sales', stage_label: 'Appointment Set' });
+  await states.insertOne({ lead_id: id, bucket: 'sales', stage_label: 'Appointment Set', specialist: { name: 'Trade-in specialist' } });
   await followups.insertMany([
     { lead_id: id, status: 'pending', kind: 'appointment_confirm', step: 'confirm', due_at: new Date('2026-10-29T14:00:00Z') },
     { lead_id: id, status: 'pending', kind: 'appointment_countdown', step: 'countdown', due_at: new Date('2026-10-28T14:00:00Z') },
@@ -807,6 +807,7 @@ test('admin labels: the bucket and the next pending AI message', async (t) => {
   const [lead] = await attachAiAdminLabels([{ _id: id }]);
   assert.equal(lead.ai_admin.bucket, 'sales');
   assert.equal(lead.ai_admin.next.step, 'countdown');
+  assert.equal(lead.ai_admin.agent, 'Trade-in specialist');
   await states.deleteMany({ lead_id: id });
   await followups.deleteMany({ lead_id: id });
 });

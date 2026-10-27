@@ -47,7 +47,8 @@ export async function attachAiAdminLabels(leads, {
   try {
     const ids = leads.map((lead) => String(lead._id));
     const [rows, next] = await Promise.all([
-      states.find({ lead_id: { $in: ids } }).project({ lead_id: 1, bucket: 1, stage_label: 1, status: 1 }).toArray(),
+      states.find({ lead_id: { $in: ids } }).project({ lead_id: 1, bucket: 1, stage_label: 1, status: 1, specialist: 1 })
+        .toArray(),
       followups.aggregate([
         { $match: { lead_id: { $in: ids }, status: 'pending' } },
         { $sort: { due_at: 1 } },
@@ -60,7 +61,8 @@ export async function attachAiAdminLabels(leads, {
       const s = state.get(String(lead._id));
       const n = upcoming.get(String(lead._id));
       if (!s && !n) continue;
-      lead.ai_admin = { bucket: s?.bucket || null, stage: s?.stage_label || null, status: s?.status || null,
+      lead.ai_admin = { bucket: s?.bucket || null, agent: s?.specialist?.name || null, stage: s?.stage_label || null,
+        status: s?.status || null,
         next: n ? { kind: n.kind, step: n.step || null, due_at: n.due_at } : null };
     }
   } catch (error) {

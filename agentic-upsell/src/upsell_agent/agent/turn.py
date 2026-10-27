@@ -411,6 +411,11 @@ async def run_turn(
             await _workflow_actions(db, lead_id, customer_id, result, turn_id=tracer.turn_id, lead=lead,
                                     customer=customer)
             await _show_booking(db, lead_id, decision)
+            if (expert := decision.get("specialist") or {}).get("name"):
+                # The user, 28 Oct 2026: AutoPulse admins see which agent handled the lead (aidmvcs-be-dev aiStage.js).
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+                    "specialist": {"id": expert.get("id"), "name": expert["name"], "why": expert.get("why"),
+                                   "at": clock.now()}}})
             asked = str(((result.get("draft") or {}).get("sms_text")) or "") + " " + str(
                 (result.get("draft") or {}).get("email_body") or "")
             if decision.get("ask_name") and re.search(r"\bname\b", asked, re.IGNORECASE):
