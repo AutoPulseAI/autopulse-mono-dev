@@ -4,6 +4,9 @@ import path from 'path';
 import Vehicle from '@models/Vehicle';
 import User from '@models/User';
 import { nanoid } from 'nanoid';
+// 27 Oct 2026: the date parsing below used moment without importing it - dealerscloud.csv failed ("moment is not
+// defined") once imports ran again.
+import moment from 'moment';
 import { parseCSV, processCSVFiles, moveProcessedFile } from './csvParser.js';
 
 async function ensureDb() {
