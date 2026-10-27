@@ -364,7 +364,18 @@ maybe('the AI\'s opt-out sets the CRM lead to DND with a note, once', async () =
   assert.equal((await markLeadDndFromAi({ dealer_id: '66f0000000000000000000d9', lead_id: LEAD }, deps)).found, false);
 });
 
-maybe('photos go by text only for a dealer with ai_mms_enabled; the text still goes', async () => {
+maybe('photos go by text unless the dealer switched it off (unset = on, as the AI reads it)', async () => {
+  await seedDealerAndLead();
+  await User.collection.updateOne({}, { $unset: { ai_mms_enabled: '' } });
+  const p = providers();
+  await sendAiMessage({ dealer_id: DEALER, lead_id: LEAD, channel: 'sms', to: '+15557654321',
+    text: 'Here are the photos', idempotency_key: 'mms-unset', media_urls: ['https://cdn.test/a.jpg'],
+    compliance_decision_id: DECISION },
+  { Email, Lead, User, EmailAccount, ...p });
+  assert.deepEqual(p.calls[0].media, ['https://cdn.test/a.jpg']);
+});
+
+maybe('no photos by text for a dealer with ai_mms_enabled false; the text still goes', async () => {
   await seedDealerAndLead();
   await User.collection.updateOne({}, { $set: { ai_mms_enabled: false } });
   const p = providers();

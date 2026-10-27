@@ -45,6 +45,7 @@ async def test_the_reply_is_judged_and_saved(mongo, monkeypatch):
     assert out == {"status": "saved", "flagged": True}
     assert [m["from"] for m in seen["messages"]] == ["customer", "ai", "customer", "ai"]
     assert seen["last_reply"].startswith("I do have")
+    assert seen["last_reply_photos"] == 0
     doc = await mongo[AI_UNDERSTANDING_COLLECTION].find_one({"lead_id": "L1"})
     assert doc["flagged"] and doc["understanding"]["refused"] == ["BMW 228"]
 
