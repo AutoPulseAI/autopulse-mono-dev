@@ -59,7 +59,7 @@ def _record(setting: str | None = None) -> dict:
 
 @pytest.fixture
 async def dealer(mongo):
-    await mongo[PLATFORM_USERS_COLLECTION].insert_one(_record())
+    await mongo[PLATFORM_USERS_COLLECTION].insert_one(_record("on"))  # off unless a dealer turns them on (28 Oct 2026)
 
 
 def _deps():
@@ -118,8 +118,9 @@ def test_morning_is_opening_to_noon_and_afternoon_noon_to_closing_on_working_day
     assert slots[-1].start.date() == date(2026, 10, 1)
 
 
-def test_the_setting_defaults_to_on_and_reads_off():
-    assert profile_from_record(DEALER, _record()).daily_call_tasks is True
+def test_the_setting_defaults_to_off_and_reads_on():
+    # The user, 28 Oct 2026: no Days 1-7 call tasks unless a dealer turns them on.
+    assert profile_from_record(DEALER, _record()).daily_call_tasks is False
     assert profile_from_record(DEALER, _record("off")).daily_call_tasks is False
     assert profile_from_record(DEALER, _record("on")).daily_call_tasks is True
 

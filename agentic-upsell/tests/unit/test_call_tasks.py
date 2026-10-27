@@ -202,7 +202,7 @@ async def test_a_stage_that_no_longer_wants_a_call_cancels_it_before_it_opens(mo
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
                                                      {"$set": {"stage": "appointment_set"}})
     set_clock(START + timedelta(minutes=61))
-    assert (await _fire())["cancelled"] == 2  # + PLAN_4 stream T's Days 1-7 morning call task, same re-check
+    assert (await _fire())["cancelled"] == 1  # (the Days 1-7 call tasks are off by default since 28 Oct 2026)
     assert await _tasks(mongo, created) == []
     [timer] = await _timers(mongo, created)
     assert "appointment" in timer["reason"].lower()

@@ -100,7 +100,7 @@ class DealerProfile:
     sales_slot_minutes: int = 60
     sales_per_slot: int = 10
     # PLAN_4 stream T: the Days 1-7 morning + afternoon human call tasks (scheduler/daily_call_tasks.py), a per-dealer
-    # setting (`ai_daily_call_tasks`: "off" | "on"; unset = on, as the Omnichannel PDF §3 has them).
+    # setting (`ai_daily_call_tasks`: "off" | "on"; unset = off - the user, 28 Oct 2026).
     daily_call_tasks: bool = True
     # Client, 12 Oct 2026 (Betsy): what the dealership offers - New / Used / Service / Parts. Unset = all of them.
     departments: tuple[str, ...] = ("new", "used", "service", "parts")
@@ -260,7 +260,9 @@ def profile_from_record(dealer_id: str, record: dict | None) -> DealerProfile:
         agent_name=str(info.get("ai_bot_name") or info.get("ai_agent_name") or "").strip() or None,
         agent_phone=format_phone(info.get("sms_conversion_phone")),  # MASTER_PLAN_4 (stream R)
         **_sales_capacity(info),
-        daily_call_tasks=str(info.get("ai_daily_call_tasks") or "on").strip().lower() != "off",  # stream T
+        # The user, 28 Oct 2026: no Days 1-7 call tasks - staff get a lead only when the customer asks for a person or
+        # the AI can't answer. Off unless a dealer turns them on.
+        daily_call_tasks=str(info.get("ai_daily_call_tasks") or "off").strip().lower() == "on",  # stream T
         departments=_departments(info.get("departments")),
         followup_default_time=_hhmm(info.get("ai_followup_default_time")) or "10:00",  # stream X2
     )
