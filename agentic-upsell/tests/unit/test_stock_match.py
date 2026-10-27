@@ -55,7 +55,7 @@ async def test_the_hybrid_adds_the_car_named_differently_when_on(mongo, monkeypa
     await _stock(mongo, _vehicle("VIN0000000005S540", year=2023, make="BMW", model="5 Series", trim="540i xDrive"),
                  _vehicle("VIN0000000000X301", year=2020, make="BMW", model="X3", trim="xDrive30i"))
     stock_match.clear_cache()
-    monkeypatch.setattr(stock_match, "ENABLED", True)
+    monkeypatch.setattr(stock_match, "ENABLED", True)  # on by default since 27 Oct 2026
     created = await _new_lead(mongo, vehicle={"year": 2023, "make": "BMW", "model": "540"})
     turn = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"]})
     search = next(n["output"] for n in turn["nodes"] if n["node"] == "search_stock")
