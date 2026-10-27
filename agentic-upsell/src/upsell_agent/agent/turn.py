@@ -270,6 +270,9 @@ async def run_turn(
                                  inventory=(result.get("context_pack") or {}).get("inventory"))
             reply = await _without_photo_claims(tracer, ctx, reply, photo, inbound_text, lead_id, customer_id)
             reply = without_ask_for_assistant(reply)
+            if decision.get("touch1") and not re.search(r"\bmiles\b", str((decision.get("touch1") or {}).get(
+                    "lead_answers") or "")):
+                reply = without_mileage(reply)
             reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
@@ -545,6 +548,9 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
         return None
     subject = None if other == "sms" else draft.get("email_subject")
     text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
+    if (decision or {}).get("touch1") and not re.search(r"\bmiles\b", str(((decision or {}).get("touch1") or {}).get(
+            "lead_answers") or "")):
+        text = without_mileage(text)
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
     if photo is not None and not photo.urls:
         text, _ = drop_photo_claims(text, asked_for_photos=False)
@@ -1201,6 +1207,19 @@ _ON_THE_WAY = re.compile(r"\b(?:on my way|on the way|omw|heading (?:over|there|y
 _SENTENCE = re.compile(r"[^.!?\n]*[.!?]?\s*")
 _ASK_FOR_ON_ARRIVAL = re.compile(r"\b[Aa]sk for [A-Z][a-z]+\b")
 _ARRIVAL = re.compile(r"\b(?:arriv\w*|get here|come in|stop by|you'?re here|at the (?:front )?desk)\b", re.IGNORECASE)
+
+
+# Betsy, 27 Oct 2026 meeting (the Tesla lead's first text: "...the 2021 Model 3 Standard Range Plus in Red Multi-Coat is
+# here with 69,248 miles"): "I do want the year, make, model, price ... we don't need to give the miles - the customer
+# has no reason to ask anything". The first text leaves the mileage out unless the lead form asked for it.
+_MILEAGE = re.compile(r",?\s+(?:and\s+|with\s+(?:only\s+|just\s+)?)?(?:about\s+)?[\d,.]+\s?k?\s+miles(?:\s+on\s+it)?\b"
+                      r"|\s*It has (?:about |only |just )?[\d,.]+\s?k?\s+miles(?: on it)?\.", re.IGNORECASE)
+
+
+def without_mileage(text: str | None) -> str | None:
+    if not text:
+        return text
+    return re.sub(r"\s+([.,!?])", r"\1", _MILEAGE.sub("", text))
 
 
 def without_ask_for_assistant(text: str | None) -> str | None:

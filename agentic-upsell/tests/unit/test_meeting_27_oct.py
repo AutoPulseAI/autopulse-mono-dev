@@ -80,3 +80,20 @@ async def test_a_photo_that_is_really_broken_is_still_not_sent():
                                     records=[{"vin": "5YJ3E1EA0MF921244", "photo_urls": ["https://x.example/a.jpg"]}],
                                     checker=Broken())
     assert pick.urls == []
+
+
+@pytest.mark.parametrize(("text", "short"), [
+    ("Yes, the 2021 Model 3 Standard Range Plus in Red Multi-Coat is here with 69,248 miles. Tell me, what are you "
+     "driving now?",
+     "Yes, the 2021 Model 3 Standard Range Plus in Red Multi-Coat is here. Tell me, what are you driving now?"),
+    ("The 2019 BMW 5 Series 530i you asked about is here in Jet Black with 65,039 miles. It's listed at $15,609.",
+     "The 2019 BMW 5 Series 530i you asked about is here in Jet Black. It's listed at $15,609."),
+    ("It's here in Solar Silver, with 45,669 miles, and it's listed at $31,000.",
+     "It's here in Solar Silver, and it's listed at $31,000."),
+    ("The Odyssey is here. It has 45,669 miles. Tell me, what are you driving now?",
+     "The Odyssey is here. Tell me, what are you driving now?"),
+])
+def test_the_first_text_leaves_the_miles_out(text, short):
+    # Betsy, 27 Oct 2026 meeting: year, make, model and price, not the miles.
+    from upsell_agent.agent.turn import without_mileage
+    assert without_mileage(text) == short
