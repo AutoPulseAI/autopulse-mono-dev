@@ -370,6 +370,19 @@ def _may_ask_name(lead_state: dict | None, now: datetime, field: str = "name") -
     return now - asked >= NAME_ASK_AGAIN_AFTER
 
 
+# Asked in the customer's own conversation's words, not one fixed line (the user, 28 Oct 2026: "a creative question").
+EMAIL_QUESTIONS = (
+    "And what's the best email to send you the details and photos?",
+    "Where should I email you the details - what's a good email for you?",
+    "If you'd like the full details in your inbox too, what email should I use?",
+    "What email can I send your info to, so you have everything in one place?",
+)
+
+
+def email_question(lead_id: str) -> str:
+    return EMAIL_QUESTIONS[sum(map(ord, str(lead_id))) % len(EMAIL_QUESTIONS)]
+
+
 def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
     return _may_ask_name(lead_state, now, "email")
 
@@ -1485,19 +1498,32 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # blanks". With the name known and no usable email on file, the email is this reply's one question, when nothing
     # else is being asked; asked at most twice, two days apart (like the name).
     just_booked = bool(visit_ctx.get("just_booked"))
+    # The user, 28 Oct 2026: "after we have collected how you spell your first and last name, then we ask if the email
+    # is not available - a creative question". The reply right after they gave their name asks for the email.
+    from upsell_agent.agent.turn import _NAME_SAID_PLAINLY
+    gave_name = next((v.get("value") for v in extraction.get("values") or []
+                      if v.get("path") == "contact.name" and v.get("value")), None) or (
+        (m.group(1) if (m := _NAME_SAID_PLAINLY.search(str(text or ""))) else None))
+    just_named = bool(gave_name or (ctx.lead_state or {}).get("name_asked")) and not (
+        ctx.lead_state or {}).get("email_asked")
     decision["ask_email"] = bool(
-        state.trigger == "inbound_message" and known_first_name(state.customer_name)
+        state.trigger == "inbound_message" and (known_first_name(state.customer_name) or known_first_name(gave_name))
         and not resolve_recipient(ctx.lead, ctx.customer, "email") and not decision.get("ask_name")
         and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
-        and (just_booked or (not decision.get("asks") and decision["action"] in ("acknowledge", "qualified",
-                                                                                 "partly_qualified")))
+        and (just_booked or just_named or (not decision.get("asks") and decision["action"] in (
+            "acknowledge", "qualified", "partly_qualified")))
         and _may_ask_email(ctx.lead_state, now))
     if decision["ask_email"]:
-        # Right after booking is the natural moment: "you're all set ... what's the best email for the details?"
+        # One question per message: the email is this reply's question.
         decision["asks"] = [{"requirement": "customer_email", "label": "Email", "slots": [],
-                             "question": "What's the best email for you, so I can send you the details?",
-                             "explanation": "so we can send the vehicle's details and your appointment information"}]
-        if not just_booked:
+                             "question": email_question(state.lead_id or ""),
+                             "explanation": "so we can send the vehicle's details, photos and the appointment"}]
+        decision["slots"] = []
+        if gave_name and not just_booked:
+            # They just told us their name: the email is this reply's one question; the visit comes next reply.
+            decision["action"] = "ask"
+            decision.pop("visit_offer", None)
+        elif not just_booked and decision["action"] not in ("answer", "confirm", "offer_visit"):
             decision["action"] = "ask"
     if state.trigger == "inbound_message" and decision["action"] in ("offer_visit", "ask") \
             and _THANKS_ONLY.match(str(text or "")) and await _follow_up_promised(state, now):

@@ -990,3 +990,25 @@ async def test_a_missing_email_is_asked_and_then_the_visit_is_booked(mongo):
     assert "email" in last.lower(), last  # asked before booking
     await _say(created, "maria.test@example.com")
     assert (await _booking(mongo, created))["booking_status"] == "pending"
+
+
+@pytestmark_flow
+async def test_once_the_customer_gives_their_name_the_next_question_is_the_email(mongo):
+    # The user, 28 Oct 2026: after the name, the email - when it isn't on file.
+    from upsell_agent.integrations.mongodb import PLATFORM_CUSTOMERS_COLLECTION
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="x",
+                                         comments="Looking for a new Toyota RAV4")
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                      {"$set": {"email": None, "name": None}})
+    await mongo[PLATFORM_CUSTOMERS_COLLECTION].update_one({"_id": as_object_id(created["customer_id"])},
+                                                          {"$set": {"email": None, "emails": [], "name": None}})
+    await handlers.handle_lead_created(LeadCreatedEvent(
+        event_id=created["lead_id"], dealer_id=DEALER, lead_id=created["lead_id"],
+        customer_id=created["customer_id"], channel="sms"), _deps())
+    await _say(created, "a 2016 Civic")
+    asked_name = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
+    assert "name" in asked_name.lower(), asked_name
+    await _say(created, "my name is Dana Brooks")
+    after = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
+    assert "email" in after.lower(), after
