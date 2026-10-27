@@ -210,6 +210,28 @@ def classify_answer(text: str) -> Answer:
     return "other"
 
 
+# --- A closing "ok" once the appointment is set ----------------------------------------------------------------
+
+# Betsy, 27 Oct 2026 meeting: Michael ("Copy that thank you" -> "You're welcome! See you then. If anything changes...")
+# and the QX50 lead ("Okay" -> "Perfect, thanks, see you tomorrow"): "it won't shut up - there's no question there".
+# With the appointment set, a message that only acknowledges gets no reply. A question, a time, a number, a change of
+# plan or anything longer is answered as usual.
+_ACK_WORD = (r"ok(?:ay)?|k|kk|sure|great|perfect|cool|awesome|alright|all right|got it|gotcha|copy(?: that)?|"
+             r"noted|understood|thanks?|thank you(?: so much| very much)?|thx|ty|appreciate it|sounds good|"
+             r"sounds great|will do|yes|yep|yup|yeah|see you(?: then| there| tomorrow| soon)?|see ya|"
+             r"bye|have a good (?:one|day|night)|you too|no problem|np|good|nice|amazing|bet")
+_ACK_ONLY = re.compile(rf"^(?:(?:{_ACK_WORD})[\s.!,]*)+$", re.IGNORECASE)
+_EMOJI_ONLY = re.compile(r"^[\s\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F\u200d.!]+$")
+
+
+def is_closing_ack(text: str) -> bool:
+    """The whole message only acknowledges ("ok", "Copy that thank you", "Perfect, see you tomorrow!", "👍")."""
+    body = (text or "").strip()
+    if not body or "?" in body or any(ch.isdigit() for ch in body) or len(body) > 60:
+        return False
+    return bool(_ACK_ONLY.match(body) or _EMOJI_ONLY.match(body))
+
+
 # --- The client's own message texts -------------------------------------------------------------------------------
 
 def _first(name: str | None) -> str:

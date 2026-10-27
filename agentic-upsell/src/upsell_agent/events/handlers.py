@@ -1004,6 +1004,14 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                          rows=unanswered, received_at=_parse_received_at(received_at))
     if answered:
         return {**answered, "followups_cancelled": cancelled}
+    from upsell_agent.agent import appointment as appointment_steps
+    if (state.get("stage") == lifecycle.Stage.APPOINTMENT_SET.value
+            and appointment_steps.is_closing_ack(" ".join(m["text"] for m in unanswered))):
+        # Betsy, 27 Oct 2026 meeting: once the appointment is set, "ok" / "thanks" / "copy that" gets no reply.
+        held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action="no_reply_needed",
+                                  reason="The appointment is set and the customer only acknowledged: nothing to "
+                                         "answer, no reply.", received_at=_parse_received_at(received_at))
+        return {**held, "followups_cancelled": cancelled}
     if state.get("stage") in (lifecycle.Stage.SOLD_PENDING.value, lifecycle.Stage.SOLD_DELIVERED.value,
                               lifecycle.Stage.CLOSED_NO_LONGER_OWNS.value) and not event.shadow:
         # MASTER_PLAN_4 D2/D4/D7 (stream A3): the SOLD PENDING response router (§9), the anniversary YES / NO and

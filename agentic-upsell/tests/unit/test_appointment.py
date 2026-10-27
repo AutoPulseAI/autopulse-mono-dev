@@ -845,3 +845,39 @@ async def test_a_different_number_from_the_customer_alerts_staff_and_is_not_swit
     assert after.get("phone") == lead.get("phone")
     notice = (await _state(mongo, created)).get("staff_notice") or {}
     assert notice.get("kind") == "new_number" and "845-645-8068" in notice["text"]
+
+
+# --- Betsy, 27 Oct 2026 meeting: once the appointment is set, "ok" gets no reply ----------------------------------
+
+@pytest.mark.parametrize("text", ["ok", "Okay", "Copy that thank you", "Perfect, see you tomorrow!", "thanks!",
+                                  "👍", "Great thank you so much", "yes", "see you then", "Ok bye"])
+def test_a_closing_acknowledgement(text):
+    assert appointment.is_closing_ack(text)
+
+
+@pytest.mark.parametrize("text", ["ok what's the address?", "ok see you at 3", "Okay but I need to move it to Friday",
+                                  "thanks, can I bring my wife?", "Ok I might be late", "", "No",
+                                  "ok I also want to trade in my car"])
+def test_not_a_closing_acknowledgement(text):
+    assert not appointment.is_closing_ack(text)
+
+
+@pytestmark_flow
+async def test_once_the_appointment_is_set_an_ok_gets_no_reply(mongo):
+    # Michael Gaston-Simpson, 26 Oct 2026: "Copy that thank you" -> "You're welcome! See you then. If anything changes
+    # before your visit, just text me here."
+    created, _ = await _booked_friday(mongo)
+    before = len(await _outbox(mongo, created))
+    result = await _say(created, "Copy that thank you")
+    assert result["status"] != "done"  # held with a reason, not an AI turn
+    assert len(await _outbox(mongo, created)) == before
+    log = await mongo["ai_turn_log"].find_one({"turn_id": result["turn_id"]})
+    assert log and "only acknowledged" in str(log)
+
+
+@pytestmark_flow
+async def test_once_the_appointment_is_set_a_question_is_still_answered(mongo):
+    created, _ = await _booked_friday(mongo)
+    before = len(await _outbox(mongo, created))
+    await _say(created, "ok what's the address?")
+    assert len(await _outbox(mongo, created)) > before
