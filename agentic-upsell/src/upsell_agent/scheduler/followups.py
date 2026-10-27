@@ -81,7 +81,7 @@ from upsell_agent.agent.templates import (
 from upsell_agent.agent.vehicle_media import lead_vehicle_vin, pick_vehicle_photo
 from upsell_agent.channels import consent
 from upsell_agent.channels.consent import usable_recipient
-from upsell_agent.channels.sender import SendOutcome, SendRequest
+from upsell_agent.channels.sender import SendOutcome, SendRequest, needs_other_channel
 from upsell_agent.compliance.call_check import can_call
 from upsell_agent.compliance.engine import can_contact
 from upsell_agent.config import get_settings
@@ -1558,6 +1558,8 @@ async def _send_step_messages(db: DealerScopedDatabase, deps: Any, tracer: TurnT
     outcomes: list[SendOutcome] = []
     first = doc["to_channel"]
     for ch in (first, other_channel(first)):
+        if outcomes and not needs_other_channel(outcomes[0]):
+            break  # one channel per message (channels/sender.py ONE_CHANNEL_ONLY)
         body = text["sms_text"] if ch == "sms" else text["email_body"]
         photo = (await pick_vehicle_photo(db.dealer_id, photo_vin, channel=ch, settings=get_settings(),
                                           start=photo_start) if photo_vin else None)

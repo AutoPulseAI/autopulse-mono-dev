@@ -201,3 +201,11 @@ async def test_a_status_update_that_times_out_is_tried_once_more_at_once(mongo, 
     result = await crm_status.sync_status(dealer_scoped_db("D1"), "L2", "Managerial Review", reason="x",
                                           event_kind="team_promise")
     assert result["status"] == "updated" and not answers
+
+
+@pytest.mark.parametrize(("status", "email_too"), [("sent", False), ("duplicate", False), ("held", False),
+                                                   ("unknown", False), ("failed", True), ("suppressed", True)])
+def test_one_channel_per_message_the_email_only_when_the_text_cannot_go(status, email_too):
+    # The user, 28 Oct 2026: a text and its email copy is a duplicate of the same message.
+    from upsell_agent.channels.sender import SendOutcome, needs_other_channel
+    assert needs_other_channel(SendOutcome(status=status, idempotency_key="k", channel="sms")) is email_too

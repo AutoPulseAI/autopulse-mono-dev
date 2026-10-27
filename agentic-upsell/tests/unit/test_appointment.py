@@ -292,7 +292,7 @@ async def test_the_details_message_goes_out_15_minutes_after_booking_on_text_and
     fired = await _fire(mongo, created, "details")
     assert fired["results"] == {"sent": 1}
     new = (await _outbox(mongo, created))[before:]
-    assert {m["channel"] for m in new} == {"sms", "email"}
+    assert [m["channel"] for m in new] == ["sms"]  # one channel per message (the user, 28 Oct 2026)
     sms = next(m for m in new if m["channel"] == "sms")["text"]
     assert sms.startswith("Maria, we are all set to meet on Friday, October 9 at 10:00 AM at Sunrise Motors, "
                           "12 Main St, Springfield, NJ 07081.")
@@ -330,7 +330,7 @@ async def test_the_countdown_goes_out_on_text_and_email_in_the_clients_words(mon
     fired = await _fire(mongo, created, "countdown")
     assert fired["results"] == {"sent": 1}
     new = (await _outbox(mongo, created))[before:]
-    assert {m["channel"] for m in new} == {"sms", "email"}
+    assert [m["channel"] for m in new] == ["sms"]  # one channel per message (the user, 28 Oct 2026)
     assert next(m for m in new if m["channel"] == "sms")["text"] in {
         t.format(place="Sunrise Motors", day="Friday, October 9", at="10:00 AM", first="Maria")
         for t in appointment.COUNTDOWN_TEXTS}
@@ -420,8 +420,8 @@ async def test_no_show_one_hour_after_with_no_visit(mongo):
     await _fire(mongo, created, "no_show_check")
     state = await _state(mongo, created)
     assert state["stage"] == "appointment_no_show"
-    new = (await _outbox(mongo, created))[-2:]
-    assert {m["channel"] for m in new} == {"sms", "email"}
+    new = (await _outbox(mongo, created))[-1:]
+    assert [m["channel"] for m in new] == ["sms"]  # one channel per message (the user, 28 Oct 2026)
     assert next(m for m in new if m["channel"] == "sms")["text"].endswith(
         "I am looking for you in the showroom - are you here and working with someone?")
     [follow] = [s for s in await _steps(mongo, created) if s["step"] == "no_show_followup"]

@@ -253,13 +253,9 @@ async def test_touch_2_is_the_name_nudge_on_text_and_email_and_nothing_else(mong
     fired = await _fire_next_touch(mongo, created)
     assert fired["results"].get("sent") == 1  # (C2: the 60-minute call timer may fire too)
     sent = [m for m in await _outbox(mongo, created)][1:]
-    assert {m["channel"] for m in sent} == {"sms", "email"}
+    assert [m["channel"] for m in sent] == ["sms"]  # one channel per message (the user, 28 Oct 2026)
     sms = next(m for m in sent if m["channel"] == "sms")["text"]
-    email = next(m for m in sent if m["channel"] == "email")["text"]
     assert sms == "Maria?"  # the client calls it non-negotiable (Omnichannel PDF §3)
-    # The email says it in a sentence, not a bare "Maria?" (seen live 11 Oct 2026: "Hi Domenico, Domenico?").
-    assert email.startswith("Hi Maria,") and "Just checking that you saw my last message" in email
-    assert "Maria?" not in email
     state = await _state(mongo, created)
     assert state["stage"] == "no_contact_made"  # Touch 1 and the nudge both went unanswered
     assert state["cadence"]["touch_number"] == 3
@@ -277,7 +273,7 @@ async def test_the_whole_cadence_runs_on_both_channels_then_stops(mongo):
         fired = await _fire_next_touch(mongo, created)
         assert fired["results"].get("sent") == 1, fired  # (C2: the 60-minute call timer may fire too)
         new = (await _outbox(mongo, created))[before:]
-        assert {m["channel"] for m in new} == {"sms", "email"}, "every touch goes out on text and email together"
+        assert [m["channel"] for m in new] == ["sms"], "one channel per message (the user, 28 Oct 2026)"
         seen.append((fired["touch"]["touch"]["touch_number"], fired["touch"]["touch"]["day"],
                      fired["touch"]["touch"]["theme"]))
     assert [t[0] for t in seen] == list(range(2, 14))
@@ -455,8 +451,6 @@ async def test_follow_up_touches_end_with_the_visit_not_nothing(mongo):
         {"lead_id": created["lead_id"], "trigger": "cadence_touch"}).sort("_id", 1).to_list(None)
     actions = [next(((n.get("output") or {}).get("action") for n in t["nodes"] if n["node"] == "decide"), None)
                for t in turns]
-    subjects = [m.get("subject") for m in await _outbox(mongo, created) if m["channel"] == "email"]
-    assert any(str(sub or "").startswith(("A closer look at", "Making the numbers work")) for sub in subjects), subjects
     assert actions and not {"acknowledge", "qualified", "partly_qualified"} & set(actions[1:]), actions
 
 

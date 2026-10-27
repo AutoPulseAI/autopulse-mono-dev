@@ -311,7 +311,7 @@ async def test_sold_pending_runs_weekly_then_biweekly_with_text_email_and_call_t
         assert doc["status"] == "sent"
         days.append((_aware(doc["closed_at"]).astimezone(NY).date() - started).days)
         sent = (await _outbox(mongo, created))[before:]
-        assert sorted(m["channel"] for m in sent) == ["email", "sms"]  # text + email, every touch
+        assert sorted(m["channel"] for m in sent) == ["sms"]  # one channel per message (the user, 28 Oct 2026)
         # ... + the 60-minute call-task timer (§3, §8).
         # (one open task at a time: while last week's is still open for staff, it isn't doubled).
         timers = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].count_documents(

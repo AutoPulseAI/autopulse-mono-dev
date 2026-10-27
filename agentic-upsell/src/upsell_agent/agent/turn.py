@@ -44,7 +44,7 @@ from upsell_agent.agent.media import drop_photo_claims
 from upsell_agent.agent.vehicle_media import MediaPick, asks_for_photos, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
-from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
+from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest, needs_other_channel
 from upsell_agent.compliance.engine import Decision, Purpose, can_contact
 from upsell_agent.config import Settings, get_settings
 from upsell_agent.integrations.mongodb import (
@@ -296,12 +296,11 @@ async def run_turn(
                                              "sold in the meantime, so the stock-free version was sent instead.")
                 span.metrics = {"attempts": sent.attempts, "event_to_send_ms": sent.latency_ms}
                 span.edge_label = sent.status
-            # MASTER_PLAN_3 C4 (Omnichannel PDF p.10): a cadence touch goes out on text AND email
-            # together, not one channel now and the other in 24 hours.
+            # One channel per message (channels/sender.py ONE_CHANNEL_ONLY): the other only when this one couldn't go.
             also_sent = await _send_other_channel(
                 tracer, deps, draft=draft, trigger=trigger, dealer_id=dealer_id, lead_id=lead_id,
                 customer_id=customer_id, channel=channel, shadow=shadow, event_received_at=event_received_at,
-                ctx=ctx, decision=decision)
+                ctx=ctx, decision=decision) if needs_other_channel(sent) else None
             async with tracer.node("schedule", {"sent_status": sent.status, "channel": channel}) as span:
                 planned = await _plan_next_contact(
                     db, sent=sent, draft=draft, lead=lead, customer=customer, lead_id=lead_id,

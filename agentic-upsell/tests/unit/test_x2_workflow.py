@@ -164,7 +164,7 @@ async def test_the_visit_follow_up_goes_on_text_and_email_and_starts_the_call_ch
     before = len(await _outbox(mongo, created))
     set_clock(datetime.fromisoformat(tomorrow + "T10:05").replace(tzinfo=NY))
     await followups.fire_due(_deps())
-    assert {m["channel"] for m in (await _outbox(mongo, created))[before:]} == {"sms", "email"}
+    assert [m["channel"] for m in (await _outbox(mongo, created))[before:]] == ["sms"]
     assert len(await _pending(mongo, created, "call_task")) == 1
 
 

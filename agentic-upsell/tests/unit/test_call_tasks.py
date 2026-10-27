@@ -326,7 +326,7 @@ async def test_the_specific_follow_up_goes_on_text_and_email_and_starts_the_call
     turn = f"next-action-{action['_id']}"
     sent = await mongo["ai_messages"].find({"lead_id": created["lead_id"], "turn_id": turn,
                                             "status": "sent"}).to_list(None)
-    assert sorted(m["channel"] for m in sent) == ["email", "sms"]
+    assert sorted(m["channel"] for m in sent) == ["sms"]  # one channel per message
     timers = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find(
         {"lead_id": created["lead_id"], "kind": "call_task", "source_turn_id": turn}).to_list(None)
     assert len(timers) == 1 and timers[0]["status"] == "pending"

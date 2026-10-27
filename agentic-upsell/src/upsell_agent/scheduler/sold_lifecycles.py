@@ -421,8 +421,11 @@ async def _send_both(db: DealerScopedDatabase, deps: Any, tracer: TurnTracer, do
     from upsell_agent.scheduler.followups import other_channel
 
     outcomes: list[SendOutcome] = []
-    first = doc["to_channel"]
+    first = "sms"  # the text first; the email when it can't go (and staff are told when that's for consent)
+    from upsell_agent.channels.sender import needs_other_channel
     for ch in (first, other_channel(first)):
+        if outcomes and not needs_other_channel(outcomes[0]):
+            break  # one channel per message (channels/sender.py ONE_CHANNEL_ONLY)
         request = SendRequest(
             dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
             turn_id=f"{doc['kind']}-{doc['_id']}", channel=ch,
