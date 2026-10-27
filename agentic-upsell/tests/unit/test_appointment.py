@@ -909,3 +909,20 @@ async def test_a_booked_customer_who_isnt_sure_keeps_the_appointment_marked_tent
     state = await _state(mongo, created)
     assert state["stage"] == "appointment_set" and state["appointment"]["tentative"] is True
     assert await mongo["ai_crm_notes"].find_one({"lead_id": created["lead_id"], "kind": "appointment_tentative"})
+
+
+# Item 25 (BUILD-PLAN-27-OCT.md): no "where are you?" to a customer who has just written.
+@pytestmark_flow
+async def test_no_where_are_you_when_the_customer_wrote_around_the_appointment(mongo):
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION
+    created, _ = await _booked_friday(mongo)
+    step = next(s for s in await _steps(mongo, created) if s["step"] == "no_show_check")
+    appt = datetime.fromisoformat(step["appointment_at"]).astimezone(UTC)
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({
+        "lead_id": created["lead_id"], "dealer_id": DEALER, "direction": "inbound", "channel": "sms",
+        "text": "running 15 min late, sorry", "created_at": (appt - timedelta(minutes=10)).replace(tzinfo=None)})
+    before = len(await _outbox(mongo, created))
+    await _fire(mongo, created, "no_show_check")
+    assert not [m for m in (await _outbox(mongo, created))[before:] if "looking for you" in m["text"]]
+    note = await mongo["ai_crm_notes"].find_one({"lead_id": created["lead_id"], "kind": "no_show_customer_wrote"})
+    assert note and "running 15 min late" in note["text"]

@@ -66,7 +66,7 @@ import re
 import socket
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -661,6 +661,7 @@ async def plan_cadence_touch(
 # dealership opened), so 150+ AI turns hit the CRM at once - 1,001 ReadTimeouts in the worker log, mostly the lead-status
 # update. A time on the hour is spread over the next SPREAD_MINUTES, each lead always at the same minute.
 SPREAD_MINUTES = 45
+NO_SHOW_QUIET_BEFORE = timedelta(minutes=30)
 
 
 def spread_out(due: datetime, lead_id: str) -> datetime:
@@ -1665,6 +1666,24 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             # Stream X2: already confirmed (the customer's Y, or staff in the CRM): no Y / N.
             done = bool((state.get("appointment") or {}).get("confirmed"))
             checks.append(("not_confirmed_yet", not done, "already confirmed" if done else "not confirmed yet"))
+        if step == appointment.STEP_NO_SHOW_CHECK and doc.get("appointment_at"):
+            # BUILD-PLAN-27-OCT item 25 (Betsy, 27 Oct 2026 meeting): "I am looking for you in the showroom - are you
+            # here?" to a customer who has just written ("running late", "I'm here", "can we move it") reads as if
+            # nobody read them. A customer who wrote from 30 minutes before the appointment on gets no such message;
+            # staff are asked to check instead.
+            since = datetime.fromisoformat(doc["appointment_at"]).astimezone(UTC) - NO_SHOW_QUIET_BEFORE
+            wrote = await db.collection(AI_MESSAGES_COLLECTION).find_one(
+                {"lead_id": doc["lead_id"], "direction": "inbound", "created_at": {"$gte": since.replace(tzinfo=None)}},
+                sort=[("created_at", -1)])
+            if wrote:
+                from upsell_agent.agent import crm_notes
+                await crm_notes.write(db, lead_id=doc["lead_id"], kind="no_show_customer_wrote", customer_id=doc[
+                    "customer_id"], key=f"no-show-wrote:{step_id}", platform=getattr(deps, "platform", None), text=(
+                    f"The appointment time passed with no visit marked, but the customer wrote around then: "
+                    f"\"{str(wrote.get('text') or '')[:200]}\". Please check whether they came in and update the status."))
+            checks.append(("customer_quiet", not wrote, "the customer hasn't written since shortly before the "
+                           "appointment" if not wrote else "the customer wrote around the appointment time: staff "
+                           "were asked to check instead of the AI asking where they are"))
         if step == appointment.STEP_NO_SHOW_CLOSE:
             # Stream X2: the close step sends nothing - it only moves an unanswered no-show back into follow-up, so
             # who holds the conversation doesn't stop it (else a paused lead sat at No Show for good).
