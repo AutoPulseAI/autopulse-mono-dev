@@ -941,3 +941,27 @@ async def test_an_ai_booking_gets_no_second_details_message_but_a_staff_move_doe
     moved = await followups.plan_appointment_timers(
         await _scoped(), lead_id=created["lead_id"], customer_id=created["customer_id"], turn_id="moved")
     assert "details" in {s["step"] for s in moved["steps"]}  # a new time: the customer is told
+
+
+@pytestmark_flow
+async def test_no_details_message_when_the_customer_was_already_given_the_time(mongo):
+    # The user, 28 Oct 2026 (Mercy books after a call and texts the time herself): no second message with it.
+    from bson import ObjectId as Oid
+    created, _ = await _booked_friday(mongo)
+    await mongo["emails"].insert_one({"_id": Oid(), "dealer_id": DEALER, "lead_id": as_object_id(created["lead_id"]),
+                                      "mail_content": "Hi Maria, you're booked Friday at 10 am, see you then!",
+                                      "status": "delivered", "communication_type": "sms", "message_by": Oid(),
+                                      "timestamp": clock.now().replace(tzinfo=None), "date": clock.now()})
+    before = len(await _outbox(mongo, created))
+    fired = await _fire(mongo, created, "details")
+    assert fired["results"] == {"cancelled": 1}, fired
+    assert len(await _outbox(mongo, created)) == before
+
+
+def test_the_appointment_time_is_recognised_however_it_is_written():
+    from upsell_agent.scheduler.followups import time_patterns
+    two = time_patterns(datetime(2026, 10, 27, 14, 0, tzinfo=NY))
+    assert all(two.search(t) for t in ("at 2:00 PM", "2 pm", "2pm works", "14:00", "2 p.m."))
+    assert not two.search("12:00 PM") and not two.search("2:30 PM")
+    half = time_patterns(datetime(2026, 10, 27, 14, 31, tzinfo=NY))
+    assert half.search("2:31 PM") and not half.search("2 pm")

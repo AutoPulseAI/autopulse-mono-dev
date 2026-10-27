@@ -1615,6 +1615,28 @@ async def appointment_cancelled_on_platform(db: DealerScopedDatabase, *, lead_id
     return moved
 
 
+def time_patterns(at: datetime) -> re.Pattern:
+    """"2:00 PM", "2 pm", "2pm", "14:00" for a 2 PM appointment."""
+    hour12, minute = at.hour % 12 or 12, at.minute
+    ampm = "pm" if at.hour >= 12 else "am"
+    forms = [rf"\b{hour12}:{minute:02d}\s*(?:{ampm}|{ampm[0]}\.?m\.?)?\b", rf"\b{at.hour:02d}:{minute:02d}\b"]
+    if minute == 0:
+        forms.append(rf"\b{hour12}\s*(?:{ampm}|{ampm[0]}\.m\.)")
+    return re.compile("|".join(forms), re.IGNORECASE)
+
+
+async def _time_already_told(db: DealerScopedDatabase, lead_id: str, at: datetime, *, since: Any) -> str | None:
+    """A text or email to the customer since `since` that gives the appointment's time, or None."""
+    start = since if isinstance(since, datetime) else clock.now() - timedelta(hours=6)
+    start = (start - timedelta(hours=2)).replace(tzinfo=None) if start.tzinfo else start - timedelta(hours=2)
+    pattern = time_patterns(at)
+    rows = await db.collection(PLATFORM_EMAILS_COLLECTION).find(
+        {"lead_id": {"$in": [as_object_id(lead_id), lead_id]}, "is_note": {"$ne": True},
+         "status": {"$nin": ["received", "incoming", "note", "failed", "undelivered"]}, "timestamp": {"$gte": start}},
+        projection={"mail_content": 1}).sort("timestamp", -1).to_list(30)
+    return next((str(r.get("mail_content")) for r in rows if pattern.search(str(r.get("mail_content") or ""))), None)
+
+
 async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """One appointment step is due (MASTER_PLAN_3 C5; agent/appointment.py). Re-reads everything first (§2, §11:
     "never execute a task simply because it was previously placed in a queue"): the lead's stage, that the
@@ -1671,6 +1693,13 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             useful = appointment.details_still_useful(current, now=clock.now())
             checks.append(("details_useful", useful, "the appointment is still far enough away for its details"
                            if useful else "too close to the appointment for the details message to help"))
+            if current is not None:
+                # The user, 28 Oct 2026 (Mercy books after a call): "if a text is already sent with the appointment
+                # confirmation, why do we need to do that again?" A text to the customer - the AI's, staff's, anyone's
+                # - since the booking that already gave its time means no details message.
+                told = await _time_already_told(db, doc["lead_id"], current, since=doc.get("created_at"))
+                checks.append(("not_told_yet", not told, "the customer hasn't been sent this time yet" if not told
+                               else f"already told: {told[:80]!r}"))
         if step == appointment.STEP_CONFIRM:
             # Stream X2: already confirmed (the customer's Y, or staff in the CRM): no Y / N.
             done = bool((state.get("appointment") or {}).get("confirmed"))
