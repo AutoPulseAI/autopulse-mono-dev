@@ -881,3 +881,17 @@ async def test_once_the_appointment_is_set_a_question_is_still_answered(mongo):
     before = len(await _outbox(mongo, created))
     await _say(created, "ok what's the address?")
     assert len(await _outbox(mongo, created)) > before
+
+
+@pytestmark_flow
+async def test_once_the_appointment_is_set_the_reply_asks_nothing_more_about_the_car(mongo):
+    # The QX50 lead, 26 Oct 2026: booked, then "no that's all thanks" and "all-wheel drive or front?" kept coming.
+    created, _ = await _booked_friday(mongo)
+    before = len(await _outbox(mongo, created))
+    await _say(created, "I like the silver one, it should have leather seats")
+    new = [m for m in (await _outbox(mongo, created))[before:] if m["channel"] == "sms"]
+    assert new and "?" not in new[-1]["text"]
+    log = await mongo["ai_turn_log"].find_one({"lead_id": created["lead_id"], "trigger": "inbound_message"},
+                                              sort=[("_id", -1)])
+    decide = next(n for n in log["nodes"] if n.get("node") == "decide")
+    assert not (decide.get("output") or {}).get("asks")

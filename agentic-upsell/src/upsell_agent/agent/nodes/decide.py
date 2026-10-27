@@ -1407,6 +1407,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
         decision.pop("visit_offer", None)
         decision["why"] = "They thanked us for the follow-up we promised: a short acknowledgement, no offer or question."
+    if (state.trigger == "inbound_message" and visit_ctx.get("status") in ("pending", "confirmed")
+            and not visit_ctx.get("just_booked") and decision["action"] in ("ask", "offer_visit")
+            and not decision.get("ask_name")):
+        # Betsy, 27 Oct 2026 meeting (the QX50 lead and Michael: booked, then asked about all-wheel drive, budget, "anything
+        # else for your visit?"): "once it gets the appointment that's it". With a visit booked the reply answers what
+        # they said and asks nothing more about the car - except their name, still needed (item 10).
+        decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
+        decision.pop("visit_offer", None)
+        decision["why"] = "A visit is booked: answer what they said, ask nothing more."
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
