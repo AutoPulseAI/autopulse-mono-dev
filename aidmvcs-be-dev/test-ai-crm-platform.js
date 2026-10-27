@@ -767,3 +767,23 @@ test('customer replied is by the reply date, latest first, the lead email not co
   assert.deepEqual(rows.map((r) => String(r._id)), [String(old), String(fresh)]);
   assert.ok(day < rows[0].last_reply_at);
 });
+
+// Betsy, 27 Oct 2026 meeting: "how many went out today, who did they go out to, how many came back".
+test('messages sent and received are counted by who sent them, notes and the lead email left out', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { messageActivity, repliedLeadIds } = await import('./app/lib/contactedLeads.js');
+  const [a, b] = [1, 2].map(() => new mongoose.Types.ObjectId());
+  const ts = new Date('2026-10-26T15:00:00Z');
+  const m = (lead_id, status, extra = {}) => ({ dealer_id: new mongoose.Types.ObjectId(), lead_id, sender: 's', recipient: 'r',
+    subject: 's', message_id: `x-${Math.random()}`, mail_content: 'hi', status, communication_type: 'sms', date: ts,
+    timestamp: ts, ...extra });
+  // Raw rows, as live: the delivery callback writes 'delivered', which the model's enum doesn't list.
+  await Email.collection.insertMany([m(a, 'delivered', { ai_generated: true }), m(a, 'sent', { ai_generated: true, communication_type: 'email' }),
+    m(b, 'delivered', { message_by: new mongoose.Types.ObjectId() }), m(b, 'failed'), m(b, 'received'),
+    m(a, 'note', { is_note: true }), m(b, 'received', { mail_content: '<?adf version="1.0"?>' })]);
+  const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
+  const got = await messageActivity([a, b], from, to);
+  assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2 });
+  assert.deepEqual(got.received, { total: 1, customers: 1 });
+  assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
+});

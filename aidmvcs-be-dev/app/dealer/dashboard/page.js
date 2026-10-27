@@ -41,6 +41,7 @@ export default function Dashboard() {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [readMessageCount, setReadMessageCount] = useState(0);
   const [contactedCount, setContactedCount] = useState(0); // Customer Replied, in the picked range
+  const [activity, setActivity] = useState(null); // Messages sent / received, in the picked range (Betsy, 27 Oct 2026)
   // AI vs staff on the two appointment cards, and the Compare numbers (Betsy, 21 Oct 2026).
   // Betsy, 23 Oct 2026: {made, scheduled, showed, sold}, each {total, ai, staff} (app/lib/appointmentFunnel.js).
   const [funnel, setFunnel] = useState(null);
@@ -142,18 +143,21 @@ export default function Dashboard() {
     const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
     const range = startDate && endDate ? `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}` : '';
     const base = `/api/leads/stats?dealer_id=${dealerParent.id}`;
-    const [leadsRes, contactedRes, funnelRes] = await Promise.all([
+    const [leadsRes, contactedRes, funnelRes, activityRes] = await Promise.all([
       fetchData(`${base}${range}`, auth),
       fetchData(`${base}&fe_lead_status=Contacted${range}`, auth),
       // Betsy, 23 Oct 2026: appointments counted from the bookings themselves (made, set for these dates, showed,
       // sold), so one stays counted when its lead moves on to Visited or Sold.
       fetchData(`${base}&appointment_funnel=true${range}`, auth),
+      fetchData(`/api/leads/message-activity?dealer_id=${dealerParent.id}${range}`, auth),
     ]);
     for (const res of [leadsRes, contactedRes, funnelRes]) {
       if (!res.ok) throw new Error('Failed to fetch dashboard counts');
     }
     const [leads, contacted, funnel] = await Promise.all([leadsRes.json(), contactedRes.json(), funnelRes.json()]);
-    return { leads, contacted, funnel };
+    // A failed message count never blanks the dashboard: the card shows a dash.
+    const activity = activityRes.ok ? await activityRes.json().catch(() => null) : null;
+    return { leads, contacted, funnel, activity };
   }, [dealerParent?.id, fetchData]);
 
   const fetchDashboardData = useCallback(async (startDate, endDate, compare) => {
@@ -193,6 +197,7 @@ export default function Dashboard() {
       setManagerialReviewCount((await managerialReviewRes.json()).managerial_review || 0);
       setTodayLeadsCount((await todayLeadsRes.json()).total_leads || 0);
       setContactedCount(counts.contacted.total_leads || 0);
+      setActivity(counts.activity);
       setFunnel(counts.funnel);
       setCompareCounts(compared ? {
         leads: compared.leads.total_leads || 0,
@@ -776,6 +781,16 @@ export default function Dashboard() {
               label="Customer Replied"
               link={withRange('/dealer/leads?status=Contacted')}
               description={`${cardRangeText()}${compareText('contacted')}`}
+            />
+
+            <CountCard
+              iconClass="fa-light fa-paper-plane"
+              count={activity ? activity.sent.total : '–'}
+              label="Messages Sent"
+              link={withRange('/dealer/leads?messages=sent')}
+              description={activity
+                ? `${cardRangeText()} · to ${activity.sent.customers} customers · AI ${activity.sent.ai} · staff ${activity.sent.staff} · automatic ${activity.sent.automatic}${activity.sent.failed ? ` · ${activity.sent.failed} failed` : ''} · ${activity.received.total} received from ${activity.received.customers}`
+                : 'Could not count messages'}
             />
 
             <CountCard

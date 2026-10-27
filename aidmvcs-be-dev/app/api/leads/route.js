@@ -445,12 +445,14 @@ export async function GET(req) {
     }
 
     let repliedOrder = null;
-    if (status === 'Contacted' && query.createdAt) {
-      // Customer Replied for a date range: who replied in it, whenever the lead came in, latest reply first.
-      const { $gte: from, $lte: to } = query.createdAt;
+    const messagesSent = url.searchParams.get("messages") === "sent";
+    if ((status === 'Contacted' && query.createdAt) || messagesSent) {
+      // Customer Replied for a date range: who replied in it, whenever the lead came in, latest reply first. The
+      // Messages card's list (messages=sent): who we messaged in it, latest first (Betsy, 27 Oct 2026 meeting).
+      const { $gte: from, $lte: to } = query.createdAt || {};
       delete query.createdAt;
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
-      repliedOrder = await repliedLeadIds(candidates, from, to);
+      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received' });
       query._id = { $in: repliedOrder.map((r) => r._id) };
     } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
@@ -538,7 +540,7 @@ export async function GET(req) {
           .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false }).lean();
         const byId = new Map(rows.map((l) => [String(l._id), l]));
         leads = pageIds.map((id) => byId.get(String(id))).filter(Boolean)
-          .map((l) => ({ ...l, last_reply_at: lastReply.get(String(l._id)) || null }));
+          .map((l) => ({ ...l, [messagesSent ? 'last_sent_at' : 'last_reply_at']: lastReply.get(String(l._id)) || null }));
       } else {
         leads = await Lead.find(query)
           .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
