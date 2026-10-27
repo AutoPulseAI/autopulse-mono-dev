@@ -270,7 +270,7 @@ def _within_48h(needed_by: str, now: datetime, dealer_tz) -> bool:
 async def _dealer_local_display(when: datetime, dealer: DealerProfile) -> dict[str, str]:
     local = when.astimezone(dealer.tz)
     return {"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"), "time": local.strftime("%H:%M"),
-           "display": f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"}
+           "display": f"{booking_tool.day_word(local)} at {local.strftime('%I:%M %p').lstrip('0')}"}
 
 
 # The furthest ahead a day the customer names is looked up for open times.
@@ -1062,7 +1062,12 @@ async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profi
     inventory = (state.context_pack or {}).get("inventory")
     url = vehicle_page_url(ctx.lead, ctx.lead_state, inventory, text)
     car = vehicle_record(ctx.lead, ctx.lead_state, inventory, text)
-    if url is None and "{vehicle_link}" in cannot_supply._REPLIES.get(topic, ""):
+    script = cannot_supply._REPLIES.get(topic, "")
+    missing = set(cannot_supply._VEHICLE_FIELDS.findall(script)) - set(cannot_supply.vehicle_values(car))
+    if (url is None and "{vehicle_link}" in script) or missing:
+        # Eric Miller, 27 Oct 2026: his car had sold, so the out-the-door script lost its price sentence and only
+        # "In what state ...? financing?" went out - then "I can't give that by text" and "Stop". A script missing
+        # any of its car's values (price, link, colour ...) isn't sent as a fragment: the AI answers instead.
         # Ehsanul, 26 Oct 2026: asked for the Carfax of a car that had just sold; the script's link sentence went with
         # no page to link, and only its closing line was sent ("If everything is to your liking, what day works...").
         # A script that is a link, with no link to give: the AI answers instead, the script stays as written.

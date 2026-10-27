@@ -333,6 +333,11 @@ maybe('a staff booking becomes a Booking; Visited marks it showed and completed'
   assert.equal(created.created, true);
   const moved = await upsertLeadBooking(Booking, { lead, dealer, date: '2024-05-07', time: '15:00' });
   assert.equal(moved.created, false);
+  // Michael, 26 Oct 2026: a move is reported (the status route notes who moved it, from when to when).
+  assert.equal(moved.moved, true);
+  assert.equal(moved.previous.bookingTime, '14:00');
+  const again = await upsertLeadBooking(Booking, { lead, dealer, date: '2024-05-07', time: '3 PM' });
+  assert.equal(again.moved, false);
   assert.equal(await Booking.countDocuments({ lead_id: LEAD }), 1);
   const showed = await markLeadBookingShowed(Booking, { leadId: LEAD, dealer, showed: true });
   assert.equal(showed.showed, true);

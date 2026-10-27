@@ -130,8 +130,8 @@ def test_zone_name_added_only_when_the_customer_s_differs():
 def test_ordinal_words_match_the_offered_position():
     dealer = _dealer()
     offered = booking_tool.format_offer(booking_tool.candidate_slots(dealer, TUESDAY_NOON)[:3], dealer)
-    assert booking_tool.match_pick("the second one", offered, dealer, TUESDAY_NOON).matched == offered[1]
-    assert booking_tool.match_pick("option 3", offered, dealer, TUESDAY_NOON).matched == offered[2]
+    assert booking_tool.match_pick("the second one", offered, dealer, TUESDAY_NOON).matched["iso"] == offered[1]["iso"]
+    assert booking_tool.match_pick("option 3", offered, dealer, TUESDAY_NOON).matched["iso"] == offered[2]["iso"]
 
 
 def test_a_named_day_and_time_matches_the_offered_slot():

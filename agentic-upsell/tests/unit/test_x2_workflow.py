@@ -303,3 +303,29 @@ def test_touch_1_names_the_year_and_model_when_the_year_is_known():
     assert decide._vehicle_of_interest(_Profile({"interest.model": "RAV4", "interest.year": 2025})) == "2025 RAV4"
     assert decide._vehicle_of_interest(_Profile({"interest.model": "RAV4"})) == "RAV4"
     assert decide._vehicle_of_interest(_Profile({})) is None
+
+
+# --- Betsy, 27 Oct 2026: a staff booking with no agreement from the customer sends no "we are all set" ---------
+
+@flow
+async def test_a_staff_booking_the_customer_never_answered_gets_no_appointment_texts(mongo):
+    from tests.unit.test_appointment import _booking, _scoped
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, PLATFORM_BOOKINGS_COLLECTION
+    created, _ = await _booked_friday(mongo)
+    booking = await _booking(mongo, created)
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {"created_by": "staff"}})
+    inbound = {"lead_id": created["lead_id"], "direction": "inbound"}
+    await mongo[AI_MESSAGES_COLLECTION].delete_many(inbound)
+
+    async def plan():
+        await followups.plan_appointment_timers(await _scoped(), lead_id=created["lead_id"],
+                                                customer_id=created["customer_id"], turn_id="staff")
+        return {s["step"] for s in await _steps(mongo, created)}
+
+    assert await plan() == {"no_show_check"}  # never replied (Christine, T Genius)
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({**inbound, "dealer_id": DEALER, "text": "I'm sorry but can I cancel "
+                                                    "the appointment", "created_at": clock.now()})
+    assert await plan() == {"no_show_check"}  # last asked to cancel
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({**inbound, "dealer_id": DEALER, "text": "ok see you then",
+                                                    "created_at": clock.now() + timedelta(seconds=1)})
+    assert "confirm" in await plan() or "details" in await plan()  # they wrote back: the usual texts

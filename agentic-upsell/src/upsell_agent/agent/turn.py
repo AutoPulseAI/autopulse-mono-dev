@@ -422,6 +422,14 @@ async def run_turn(
         else:
             outcome = action or "unknown"
         summary_queued = await _queue_summary(deps, result, dealer_id, lead_id, tracer.turn_id)
+        if trigger == "inbound_message" and sent and sent.status == "sent" and lead_id and deps.enqueue:
+            # The understanding layer, in shadow (agent/understanding.py, 27 Oct 2026): records, changes nothing.
+            try:
+                from upsell_agent.agent.understanding import UNDERSTAND_JOB
+                await deps.enqueue(UNDERSTAND_JOB, key=f"{UNDERSTAND_JOB}:{lead_id}:{tracer.turn_id}",
+                                   dealer_id=dealer_id, lead_id=lead_id, turn_id=tracer.turn_id)
+            except Exception:
+                logger.exception("could not queue the understanding review for lead %s", lead_id)
         calls = ctx.model_calls
         log = await tracer.finish(outcome, {
             "action": action, "reply": reply, "used_fallback": result.get("used_fallback", False),

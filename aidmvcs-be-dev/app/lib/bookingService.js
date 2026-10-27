@@ -330,7 +330,11 @@ export async function upsertLeadBooking(Booking, { lead, dealer, date, time, cre
     .sort({ _id: -1 });
   if (existing) {
     await Booking.updateOne({ _id: existing._id }, { $set: { bookingDate: day, bookingTime, appointment_type: type } });
-    return { _id: existing._id, bookingDate: day, bookingTime, created: false };
+    // Michael Gaston-Simpson, 26 Oct 2026: his 2:00 PM became 2:31 PM with no record of who changed it.
+    const moved = String(existing.bookingTime) !== String(bookingTime)
+      || new Date(existing.bookingDate).getTime() !== day.getTime();
+    return { _id: existing._id, bookingDate: day, bookingTime, created: false, moved,
+      previous: { bookingDate: existing.bookingDate, bookingTime: existing.bookingTime } };
   }
   const created = await Booking.create({
     dealer_id: String(lead.dealer_id), lead_id: String(lead._id), customerName: lead.name || 'Customer',

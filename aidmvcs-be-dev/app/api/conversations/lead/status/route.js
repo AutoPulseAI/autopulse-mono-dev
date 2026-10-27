@@ -404,6 +404,18 @@ export async function PUT(request) {
         if (leadBooking?.created) {
           await Lead.updateOne({ _id: updated._id }, { $set: { 'data.bookingId': leadBooking._id } });
         }
+        if (leadBooking?.moved) {
+          const at = new Date();
+          const tz = slotDealer?.dealer_account_information?.time_zone || 'America/New_York';
+          const was = `${moment(leadBooking.previous.bookingDate).tz(tz).format('YYYY-MM-DD')} at ${leadBooking.previous.bookingTime}`;
+          await Email.create({
+            sender: actorName || 'Staff', recipient: 'staff', subject: 'Lead Note',
+            mail_content: `Appointment moved by ${actorName || 'staff'}: from ${was} to ${booking_date} at ${leadBooking.bookingTime}`,
+            dealer_id: String(updated.dealer_id), lead_id: updated._id, status: 'sent', communication_type: 'note',
+            is_note: true, internal_use: true, message_id: `note_booking_moved_${leadBooking._id}_${at.getTime()}`,
+            timestamp: at, date: at,
+          }).catch((error) => console.error('[status] could not add the booking-moved note', error?.message));
+        }
       } catch (bookingError) {
         console.error('Error saving the staff booking:', bookingError);
       }

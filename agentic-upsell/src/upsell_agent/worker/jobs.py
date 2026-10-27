@@ -163,6 +163,13 @@ async def update_summary(ctx: dict[str, Any], *, dealer_id: str, lead_id: str, *
         return {"status": "skipped", "reason": "a summary update for this lead is already running"}
 
 
+async def understand_turn(ctx: dict[str, Any], *, dealer_id: str, lead_id: str, turn_id: str,
+                          **_: Any) -> dict[str, Any]:
+    """The understanding layer, in shadow (agent/understanding.py): queued by a turn after its send; changes nothing."""
+    from upsell_agent.agent import understanding
+    return await understanding.understand_turn(dealer_id, lead_id, turn_id, ctx["deps"])
+
+
 async def fire_due_followups(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """The 24h channel switch (scheduler/followups.py). Runs every minute on
     every worker (worker/main.py cron) and on demand when a webhook reports a
@@ -304,7 +311,7 @@ async def monitor_conversations(ctx: dict[str, Any], **_: Any) -> dict[str, Any]
 
 FUNCTIONS = [ping, check_inventory, ensure_next_steps, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
-             fire_due_followups, update_summary, close_expired_leads, clear_inventory_cache,
+             fire_due_followups, update_summary, understand_turn, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
              plan_birthdays,  # MASTER_PLAN_4 D7 (stream A3)
              plan_owner_touches,  # client, 8 Oct 2026

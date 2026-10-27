@@ -61,6 +61,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import socket
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -92,6 +93,7 @@ from upsell_agent.integrations.mongodb import (
     AI_TURN_LOG_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_BOOKINGS_COLLECTION,
+    PLATFORM_EMAILS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     SCHEDULED_FOLLOWUPS_COLLECTION,
     DealerScopedDatabase,
@@ -653,6 +655,26 @@ async def plan_cadence_touch(
             "reason": f"{planned.why} Due {local}."}
 
 
+STAFF_BOOKING_NEEDS_AGREEMENT = True  # AI Studio > Compliance > Safeguards
+_CANCEL_ASK = re.compile(r"\bcancel\b|\bnot (?:coming|interested)\b|\bno longer\b", re.IGNORECASE)
+_CALL_LOGGED = re.compile(r"spoke (?:with|to) (?:the )?c(?:u|o)stomer|\bcalled\b|\bcall was made\b", re.IGNORECASE)
+
+
+async def _customer_agreed(db: DealerScopedDatabase, lead_id: str, booking: dict) -> bool:
+    """The AI booked it (the customer picked the time), or the customer has written to us and didn't last ask to
+    cancel, or staff logged a call."""
+    if not STAFF_BOOKING_NEEDS_AGREEMENT or str(booking.get("created_by") or "").lower() != "staff":
+        return True
+    last = await db.collection(AI_MESSAGES_COLLECTION).find_one(
+        {"lead_id": lead_id, "direction": "inbound"}, sort=[("created_at", -1)])
+    if last and not _CANCEL_ASK.search(str(last.get("text") or "")):
+        return True
+    note = await db.collection(PLATFORM_EMAILS_COLLECTION).find_one(
+        {"lead_id": as_object_id(lead_id), "is_note": True, "mail_content": {"$regex": _CALL_LOGGED.pattern,
+                                                                              "$options": "i"}})
+    return bool(note)
+
+
 async def plan_appointment_timers(
     db: DealerScopedDatabase,
     *,
@@ -686,6 +708,18 @@ async def plan_appointment_timers(
     if appt_at is None:
         return {"created": 0, "reason": "No appointment time on record: nothing to schedule."}
     steps = appointment.plan_steps(appt_at, now=now, tz=profile.tz)
+    agreed = not booking or await _customer_agreed(db, lead_id, booking)
+    if not agreed:
+        # Betsy, 27 Oct 2026: staff booked Christine and T Genius (never replied), Jacob (only asked the address) and a
+        # customer who had asked to cancel - each was texted "we are all set". A staff booking with no reply from the
+        # customer and no logged call gets no appointment texts; staff are asked to confirm it by phone. The no-show
+        # check still runs.
+        from upsell_agent.agent import crm_notes
+        await crm_notes.write(db, lead_id=lead_id, kind="staff_booking_unconfirmed", key=f"unconfirmed:{lead_id}:"
+                              f"{appt_at.isoformat()}", customer_id=customer_id, text=(
+                                  f"Appointment for {appt_at.astimezone(profile.tz):%A %B %-d at %-I:%M %p} was set by "
+                                  "staff, but the customer hasn't replied and no call is logged. The AI is not texting "
+                                  "a confirmation: please confirm it with the customer by phone and log the call."))
     # Stream X2: an appointment already confirmed (the customer's Y, or staff in the CRM) for this same time keeps
     # its confirmation and gets no day-before Y / N; a move to a new time asks again.
     recorded = state.get("appointment") or {}
@@ -698,6 +732,8 @@ async def plan_appointment_timers(
     details = appointment.details_step(appt_at, now=now) if details_sent_for != appt_at.isoformat() else None
     if details:
         steps = sorted([details, *steps], key=lambda s: s.due_at)
+    if not agreed:
+        steps = [s for s in steps if s.step == appointment.STEP_NO_SHOW_CHECK]
     booking_id = str(booking["_id"]) if booking else (state.get("appointment") or {}).get("booking_id")
     created, skipped = [], []
     for step in steps:
