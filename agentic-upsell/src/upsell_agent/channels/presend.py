@@ -141,7 +141,10 @@ async def _check(db: Any, *, lead_id: str, customer_id: str, turn_id: str, text:
                                          "created_at": {"$gt": latest}}) if latest else None
         if newer:
             state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": str(newer["lead_id"])}) or {}
-            if state.get("status", "active") == "active":
+            # Denise Little, 27 Oct 2026: "G'morning" and "What state are you in?" 9 s apart got two replies, the first
+            # ignoring her question - her lead was "partly_qualified", and only "active" counted. The newer message is
+            # answered in every status but these (events/handlers.py _hold_decision).
+            if state.get("status", "active") not in ("handoff", "paused", "opted_out"):
                 return Verdict(False, "superseded", "the customer wrote again since; the reply to that message "
                                                     "answers both")
 

@@ -44,6 +44,24 @@ async def test_a_reply_the_customer_has_written_past_is_not_sent(mongo):
 
 
 @flow
+@pytest.mark.parametrize("status, stopped", [("partly_qualified", True), ("qualified", True), ("paused", False),
+                                             ("handoff", False)])
+async def test_a_written_past_reply_is_stopped_in_every_status_the_ai_answers(mongo, status, stopped):
+    # Denise Little, 27 Oct 2026: "G'morning", then "What state are you in?" 9 s later - two replies, the first
+    # ignoring her question, because her lead was partly_qualified. A paused / handed-off lead's newer message
+    # isn't answered by the AI, so the reply already written still goes.
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {"status": status}})
+    now = datetime(2026, 10, 5, 12, 0, tzinfo=NY).astimezone(UTC)
+    first = await _inbound(mongo, created["lead_id"], created["customer_id"], "G'morning", now)
+    await _inbound(mongo, created["lead_id"], created["customer_id"], "What state are you in?", now + timedelta(seconds=9))
+    verdict = await _look(created, answers=[first])
+    assert (not verdict.ok and verdict.check == "superseded") if stopped else verdict.ok
+
+
+@flow
 async def test_a_reply_covering_several_quick_texts_is_sent(mongo):
     set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
     created = await _new_lead()
