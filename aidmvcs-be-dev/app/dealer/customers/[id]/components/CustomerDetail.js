@@ -175,7 +175,7 @@ export default function CustomerDetail({ customerId }) {
           <AppointmentsTab appointments={all_appointments} />
         </Tab>
         <Tab eventKey="vehicles" title="Vehicles">
-          <VehiclesTab vehicles={vehicles} />
+          <VehiclesTab vehicles={vehicles} leads={leads} />
         </Tab>
         <Tab eventKey="tradeins" title="Trade In">
           <TradeInTab customerId={customerId} />

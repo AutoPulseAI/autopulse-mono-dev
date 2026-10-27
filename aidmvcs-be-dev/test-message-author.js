@@ -90,3 +90,17 @@ test('each message shows one status: Received, Delivered, Failed or Sending', as
   assert.equal(messageStatusLabel({ status: 'received' }), 'Received');
   assert.equal(messageStatusLabel({ status: 'queued' }), 'Sending');
 });
+
+// Betsy, 27 Oct 2026 meeting: the vehicle the lead is about shows in the customer profile.
+test('the customer profile lists each car their leads are about, newest first, once', async () => {
+  const { interestedVehicles } = await import('./app/lib/interestedVehicles.js');
+  const got = interestedVehicles([
+    { _id: 'a', vin: '5YJ3E1EA0MF921244', vehicle_year: '2021', vehicle_make: 'Tesla', vehicle_model: 'Model 3',
+      lead_source: 'CarGurus', createdAt: '2026-10-27' },
+    { _id: 'b', vin: '5YJ3E1EA0MF921244', vehicle_make: 'Tesla', createdAt: '2026-10-20' },
+    { _id: 'c', vehicle_year: '2019', vehicle_make: 'BMW', vehicle_model: '530i', createdAt: '2026-10-25' },
+    { _id: 'd', createdAt: '2026-10-26' },
+  ]);
+  assert.deepEqual(got.map((v) => v.lead_id), ['a', 'c']);
+  assert.equal(got[0].source, 'CarGurus');
+});
