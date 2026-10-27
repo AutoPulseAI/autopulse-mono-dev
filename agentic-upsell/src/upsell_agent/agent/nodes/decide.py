@@ -352,6 +352,24 @@ _NO_QUESTION = frozenset({"none", "n a", "na", "null", "no", "nothing", "unknown
 _FORM_LINE = re.compile(r"^\s*[A-Z][\w /]{2,30}:\s*[^?]{0,40}$")
 
 
+# Betsy, 27 Oct 2026 meeting (an appointment with "Name unknown": the AI talked to the customer from a follow-up and
+# never asked): "that's a golden rule - fill in the blanks". A name still missing is asked again two days after the
+# first ask, at most twice, in her words ("how do I spell your first and last name?").
+NAME_ASK_AGAIN_AFTER = timedelta(days=2)
+MAX_NAME_ASKS = 2
+
+
+def _may_ask_name(lead_state: dict | None, now: datetime) -> bool:
+    state = lead_state or {}
+    asked = state.get("name_asked")
+    if not asked:
+        return True
+    if int(state.get("name_asks") or 1) >= MAX_NAME_ASKS or not isinstance(asked, datetime):
+        return False
+    asked = asked if asked.tzinfo else asked.replace(tzinfo=timezone.utc)
+    return now - asked >= NAME_ASK_AGAIN_AFTER
+
+
 def not_our_own_questions(questions: list[dict[str, str]], customer_text: str | None,
                           our_texts: list[str]) -> list[dict[str, str]]:
     """Richard, 27 Oct 2026 (BUILD-PLAN-27-OCT item 9: "Am interested" -> "That's something we can go over together
@@ -1445,7 +1463,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.
     from upsell_agent.agent.templates import known_first_name
     decision["ask_name"] = bool(
-        not known_first_name(state.customer_name) and not (ctx.lead_state or {}).get("name_asked")
+        not known_first_name(state.customer_name) and _may_ask_name(ctx.lead_state, now)
         and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
         and decision["action"] not in ("stop", "handoff", "offer_human")
         # Live, 21 Oct 2026: the first text's one question is "Tell me, what are you driving now?" (one question per
@@ -1455,7 +1473,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # Betsy, 16 Oct 2026: "for n/a or null it needs to ask for the first and last name" - with one question per
         # message, the name is this message's question (the other detail waits for the next reply).
         decision["asks"] = [{"requirement": "customer_name", "label": "Name", "slots": [],
-                             "question": "May I have your first and last name?",
+                             "question": "Can you tell me how to spell your first and last name?",
                              "explanation": "so we know who to ask for and can get everything ready for you"}]
         decision["slots"] = []
         decision["action"] = "ask"

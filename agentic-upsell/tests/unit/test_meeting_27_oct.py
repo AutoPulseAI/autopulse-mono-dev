@@ -97,3 +97,15 @@ def test_the_first_text_leaves_the_miles_out(text, short):
     # Betsy, 27 Oct 2026 meeting: year, make, model and price, not the miles.
     from upsell_agent.agent.turn import without_mileage
     assert without_mileage(text) == short
+
+
+def test_a_missing_name_is_asked_again_two_days_later_at_most_twice():
+    from datetime import UTC, datetime, timedelta
+
+    from upsell_agent.agent.nodes.decide import _may_ask_name
+    now = datetime(2026, 10, 28, 15, tzinfo=UTC)
+    assert _may_ask_name({}, now)
+    assert not _may_ask_name({"name_asked": now - timedelta(hours=5), "name_asks": 1}, now)
+    assert _may_ask_name({"name_asked": now - timedelta(days=3), "name_asks": 1}, now)
+    assert _may_ask_name({"name_asked": (now - timedelta(days=3)).replace(tzinfo=None)}, now)  # Mongo's naive UTC
+    assert not _may_ask_name({"name_asked": now - timedelta(days=9), "name_asks": 2}, now)

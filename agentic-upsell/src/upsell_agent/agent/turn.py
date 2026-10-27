@@ -415,8 +415,8 @@ async def run_turn(
                 (result.get("draft") or {}).get("email_body") or "")
             if decision.get("ask_name") and re.search(r"\bname\b", asked, re.IGNORECASE):
                 # Only once the message really asked for it.
-                await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id},
-                                                                         {"$set": {"name_asked": clock.now()}})
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"name_asked": clock.now()}, "$inc": {"name_asks": 1}})
             if "buyers_order" in decision:
                 # The buyer's order sequence's next step (agent/buyers_order.py), kept once the reply went out.
                 step = decision["buyers_order"]
