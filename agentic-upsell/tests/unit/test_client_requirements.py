@@ -20,6 +20,7 @@ from upsell_agent.events import handlers
 from upsell_agent.events.models import LeadCreatedEvent
 from upsell_agent.integrations.mongodb import (
     DEV_OUTBOX_COLLECTION,
+    PLATFORM_BOOKINGS_COLLECTION,
     PLATFORM_CUSTOMERS_COLLECTION,
     PLATFORM_LEADS_COLLECTION,
     as_object_id,
@@ -338,6 +339,30 @@ async def test_on_my_way_and_a_time_books_that_time_today(mongo):
     lead = await _lead_doc(mongo, created)
     assert lead["data"].get("bookingId"), lead.get("data")
     assert "5:20 PM" in await _last_sms(mongo, created)
+
+
+@pytest.mark.parametrize(("said", "hhmm"), [
+    ("Yeah I'm on my way, I will be there in 10 minutes", "14:10"),
+    ("on my way", "14:30"),
+    ("omw be there in half an hour", "14:30"),
+    ("leaving now, be there in like 22 min", "14:25"),
+])
+async def test_on_my_way_with_no_appointment_books_the_arrival(mongo, said, hhmm):
+    """Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "I'm on my way. I will be there in 10 minutes" - no
+    appointment was set, nobody at the store expected him): that's an appointment, now + the minutes they said."""
+    set_clock(datetime(2026, 9, 22, 18, 0, tzinfo=UTC))  # 2:00 PM New York, a Tuesday
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, said)
+    booking = await mongo[PLATFORM_BOOKINGS_COLLECTION].find_one({"lead_id": {"$in": [
+        created["lead_id"], as_object_id(created["lead_id"])]}})
+    assert booking and booking["bookingTime"] == hhmm, booking
+
+
+async def test_on_my_way_after_closing_books_nothing(mongo):
+    set_clock(datetime(2026, 9, 22, 22, 50, tzinfo=UTC))  # 6:50 PM New York; 7 PM close
+    created = await _new_lead(mongo, vehicle=RAV4)
+    await _say(created, "on my way, be there in 40 minutes")
+    assert not (await _lead_doc(mongo, created))["data"].get("bookingId")
 
 
 def test_no_template_promises_the_team():

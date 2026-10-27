@@ -354,7 +354,7 @@ def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: date
     time booked, as a pick - when it is today, still ahead and inside opening hours. A visit, not a slot on the grid."""
     at = booking_tool.bare_time(text)
     if at is None:
-        return None
+        return _arrival_from_now(text, dealer, now)
     memory = (state.context_pack or {}).get("working_memory") or []
     said = [m.get("text") or "" for m in memory[-6:] if m.get("direction") == "inbound"] + [text]
     asked = [m.get("text") or "" for m in memory[-3:] if m.get("direction") == "outbound"]
@@ -364,6 +364,37 @@ def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: date
     when = datetime.combine(local.date(), at, tzinfo=dealer.tz)
     hours = dealer.hours.get(local.weekday())
     if when <= local or not hours or not (hours[0] <= at <= hours[1]):
+        return None
+    return {"iso": when.isoformat(), "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"),
+            "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
+
+
+# Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "Yeah I'm on my way, I will be there in 10 minutes" - no
+# appointment was set, so nobody at the store expected him): "if there is no appointment and the customer says I'm on
+# my way, that's an appointment - add 10 minutes to whatever time it is". Said in this message, with no booking.
+_ON_THE_WAY_NOW = re.compile(r"\bon (?:my|our) way\b|\bheading (?:over|in|there|your way)\b|\bomw\b|"
+                             r"\b(?:be|get|getting|arrive|arriving) there in\b|\bbe there (?:soon|shortly)\b|"
+                             r"\b(?:coming|leaving) (?:in )?now\b", re.IGNORECASE)
+_IN_MINUTES = re.compile(r"\bin (?:about |around |like )?(\d{1,3}|a few|few|half an?|an?) ?(min(?:ute)?s?|hours?|hrs?|hr)\b",
+                         re.IGNORECASE)
+ARRIVAL_IF_NO_TIME = timedelta(minutes=30)
+
+
+def _arrival_from_now(text: str, dealer: DealerProfile, now: datetime) -> dict[str, str] | None:
+    """"On my way, there in 10 minutes": now + 10 (rounded up to 5 minutes); "on my way" alone: now + 30."""
+    if not _ON_THE_WAY_NOW.search(text or ""):
+        return None
+    wait = ARRIVAL_IF_NO_TIME
+    if m := _IN_MINUTES.search(text):
+        n, unit = m.group(1).lower(), m.group(2).lower()
+        amount = {"a few": 5, "few": 5, "half a": 30, "half an": 30, "a": 1, "an": 1}.get(n) or int(n)
+        wait = timedelta(hours=amount) if unit.startswith("h") and n not in ("half a", "half an") \
+            else timedelta(minutes=amount)
+    local = now.astimezone(dealer.tz)
+    when = local + wait
+    when = when.replace(second=0, microsecond=0) + timedelta(minutes=-when.minute % 5)
+    hours = dealer.hours.get(local.weekday())
+    if not hours or when.date() != local.date() or not (hours[0] <= when.time() <= hours[1]):
         return None
     return {"iso": when.isoformat(), "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"),
             "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
