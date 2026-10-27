@@ -661,13 +661,15 @@ _CALL_LOGGED = re.compile(r"spoke (?:with|to) (?:the )?c(?:u|o)stomer|\bcalled\b
 
 
 async def _customer_agreed(db: DealerScopedDatabase, lead_id: str, booking: dict) -> bool:
-    """The AI booked it (the customer picked the time), or the customer has written to us and didn't last ask to
-    cancel, or staff logged a call."""
+    """The AI booked it (the customer picked the time), or the customer's last message didn't ask to cancel, or staff
+    logged a call. Betsy, 27 Oct 2026 meeting (the Tesla lead: Mercy set 5:30 PM and no text went out): "when she sets
+    the appointment, the AI is supposed to say you're all set ... here's our address" - a staff booking with no reply
+    from the customer (often a phone call) gets the usual texts; only one whose customer last asked to cancel doesn't."""
     if not STAFF_BOOKING_NEEDS_AGREEMENT or str(booking.get("created_by") or "").lower() != "staff":
         return True
     last = await db.collection(AI_MESSAGES_COLLECTION).find_one(
         {"lead_id": lead_id, "direction": "inbound"}, sort=[("created_at", -1)])
-    if last and not _CANCEL_ASK.search(str(last.get("text") or "")):
+    if not last or not _CANCEL_ASK.search(str(last.get("text") or "")):
         return True
     note = await db.collection(PLATFORM_EMAILS_COLLECTION).find_one(
         {"lead_id": as_object_id(lead_id), "is_note": True, "mail_content": {"$regex": _CALL_LOGGED.pattern,
@@ -718,8 +720,9 @@ async def plan_appointment_timers(
         await crm_notes.write(db, lead_id=lead_id, kind="staff_booking_unconfirmed", key=f"unconfirmed:{lead_id}:"
                               f"{appt_at.isoformat()}", customer_id=customer_id, text=(
                                   f"Appointment for {appt_at.astimezone(profile.tz):%A %B %-d at %-I:%M %p} was set by "
-                                  "staff, but the customer hasn't replied and no call is logged. The AI is not texting "
-                                  "a confirmation: please confirm it with the customer by phone and log the call."))
+                                  "staff, but the customer's last message asked to cancel and no call is logged. The AI "
+                                  "is not texting a confirmation: please confirm it with the customer by phone and log "
+                                  "the call."))
     # Stream X2: an appointment already confirmed (the customer's Y, or staff in the CRM) for this same time keeps
     # its confirmation and gets no day-before Y / N; a move to a new time asks again.
     recorded = state.get("appointment") or {}
