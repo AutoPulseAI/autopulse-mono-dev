@@ -359,6 +359,25 @@ export async function POST(request) {
       }
     );
 
+    // Betsy, 27 Oct 2026: "the conversation doesn't show when the status was changed to Appointment Set and by
+    // whom" - a booking set the status silently. A note in the lead's conversation says when, by whom, and for when.
+    try {
+      const noteAt = new Date();
+      const who = caller.kind === 'ai' ? 'the AI'
+        : (caller.user?.name || [caller.user?.first_name, caller.user?.last_name].filter(Boolean).join(' ')
+          || (caller.kind === 'staff' ? 'staff' : 'the customer (booking page)'));
+      await Email.create({
+        sender: caller.kind === 'ai' ? 'AutoPulse AI' : (caller.user?.name || 'AutoPulse'), recipient: 'staff',
+        subject: 'Lead Note',
+        mail_content: `Set to Appointment Booked by ${who}: visit on ${bookingDate} at ${bookingTime}`,
+        dealer_id: String(dealer_id), lead_id: existingLead._id, status: 'sent', communication_type: 'note',
+        is_note: true, internal_use: true, message_id: `note_booking_${booking._id}_${noteAt.getTime()}`,
+        timestamp: noteAt, date: noteAt, ai_generated: caller.kind === 'ai',
+      });
+    } catch (noteError) {
+      console.error('Booking status note failed:', noteError?.message);
+    }
+
     // For a dealer whose AI is live the AI sends the confirmation and the
     // reminders itself (through /api/internal/ai/messages/send), so the
     // platform's own are skipped (no double messages, PLAN_4 stream C1).
