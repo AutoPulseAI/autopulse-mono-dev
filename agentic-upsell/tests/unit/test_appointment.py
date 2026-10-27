@@ -50,23 +50,57 @@ def test_a_same_day_appointment_gets_only_the_no_show_check():
     assert [s.step for s in steps] == ["no_show_check"] and steps[0].due_at == _tue(17)
 
 
-def test_tomorrows_appointment_gets_the_confirmation_and_no_countdown():
+def test_tomorrows_appointment_gets_the_confirmation_the_morning_of_and_nothing_else():
+    # Michael Gaston-Simpson, 26 Oct 2026: booked at 1:35 PM for 2 PM the next day, the confirmation came 30 minutes
+    # after the details text. Betsy, 27 Oct: "if the appointment is for tomorrow ... the confirmation the morning of".
     steps = appointment.plan_steps(datetime(2026, 10, 7, 14, tzinfo=NY), now=_tue(12), tz=NY)
     assert [s.step for s in steps] == ["confirm", "no_show_check"]
-    assert steps[0].due_at == _tue(12, 30)  # 10:00 had passed: soon, not skipped
+    assert steps[0].due_at == datetime(2026, 10, 7, 10, tzinfo=NY)
 
 
-def test_a_friday_appointment_gets_a_countdown_a_day_before_confirmation_and_the_no_show_check():
-    appt = datetime(2026, 10, 9, 10, tzinfo=NY)
+def test_a_morning_appointment_is_confirmed_two_hours_before_or_else_the_day_before():
+    at_1130 = appointment.plan_steps(datetime(2026, 10, 7, 11, 30, tzinfo=NY), now=_tue(12), tz=NY)
+    assert at_1130[0].step == "confirm" and at_1130[0].due_at == datetime(2026, 10, 7, 9, 30, tzinfo=NY)
+    at_1030 = appointment.plan_steps(datetime(2026, 10, 7, 10, 30, tzinfo=NY), now=_tue(12), tz=NY)
+    assert at_1030[0].step == "confirm" and at_1030[0].due_at == _tue(12, 30)  # 8:30 is too early: the day before
+
+
+@pytest.mark.parametrize(("days_out", "touches"), [(2, 1), (3, 1), (4, 3), (7, 6)])
+def test_touches_before_the_meeting_grow_with_how_far_out_it_is(days_out, touches):
+    appt = datetime(2026, 10, 6 + days_out, 14, tzinfo=NY)
     steps = appointment.plan_steps(appt, now=_tue(12), tz=NY)
-    assert [(s.step, s.due_at.day) for s in steps] == [("countdown", 7), ("confirm", 8), ("no_show_check", 9)]
-    assert steps[-1].due_at == appt + timedelta(hours=1)
+    countdown = [s for s in steps if s.step == "countdown"]
+    assert len(countdown) == touches
+    assert [s.step for s in steps if s.step != "countdown"] == ["confirm", "no_show_check"]
+    assert next(s for s in steps if s.step == "confirm").due_at.day == appt.day  # always the morning of
+    assert len({s.due_at.date() for s in countdown}) == touches  # one a day
 
 
-def test_the_countdown_runs_every_day_but_the_one_before():
-    appt = datetime(2026, 10, 12, 10, tzinfo=NY)  # the next Monday
-    days = [s.due_at.day for s in appointment.plan_steps(appt, now=_tue(12), tz=NY) if s.step == "countdown"]
-    assert days == [7, 8, 9, 10]  # Wed-Sat; Sunday is the day before: the confirmation
+def test_each_day_before_the_meeting_says_something_different():
+    set_clock(datetime(2026, 10, 6, 12, tzinfo=NY))
+    try:
+        appt = datetime(2026, 10, 12, 14, tzinfo=NY)
+        texts = [appointment.render_message("countdown", customer_name="Maria Lopez", dealership="Sunrise Motors",
+                                            agent_name="Nicole", appt=appt, variant=n)["sms_text"]
+                 for n in range(len(appointment.COUNTDOWN_TEXTS))]
+        assert len(set(texts)) == len(texts)
+    finally:
+        clock.set_offset(0)
+
+
+def test_today_and_tomorrow_are_said_as_words():
+    set_clock(datetime(2026, 10, 6, 12, tzinfo=NY))
+    try:
+        kw = dict(customer_name="Maria Lopez", dealership="Sunrise Motors", agent_name="Nicole")
+        tomorrow = appointment.render_message("details", appt=datetime(2026, 10, 7, 14, tzinfo=NY), **kw)["sms_text"]
+        assert tomorrow.startswith("Maria, we are all set to meet tomorrow at 2:00 PM")
+        today = appointment.render_message("confirm", appt=datetime(2026, 10, 6, 16, tzinfo=NY), **kw)["sms_text"]
+        assert "confirming our meeting for today at 4:00 PM" in today
+        assert today.endswith("Please reply C to confirm or R to reschedule.")
+        later = appointment.render_message("details", appt=datetime(2026, 10, 9, 10, tzinfo=NY), **kw)["sms_text"]
+        assert "meet on Friday, October 9 at 10:00 AM" in later
+    finally:
+        clock.set_offset(0)
 
 
 def test_a_confirmation_that_would_land_right_before_the_appointment_is_skipped():
@@ -96,7 +130,7 @@ def test_the_clients_messages_word_for_word():
     assert appointment.render_message("countdown", **kw)["sms_text"] == "Counting down to our meeting at ABC Toyota!"
     assert appointment.render_message("confirm", **kw)["sms_text"] == (
         "Hello, Maria, this is Ava at ABC Toyota confirming our meeting for Friday, October 9 at 10:30 AM. "
-        "Does this time still work? Please reply Y for Yes or N for No.")
+        "Does this time still work? Please reply C to confirm or R to reschedule.")
     assert appointment.render_message("no_show_check", **kw)["sms_text"] == (
         "Hello, this is Ava with ABC Toyota. I am looking for you in the showroom - are you here and working "
         "with someone?")
@@ -238,6 +272,7 @@ async def test_booking_a_visit_plans_the_countdown_the_confirmation_and_the_no_s
     created, booking = await _booked_friday(mongo)
     steps = await _steps(mongo, created)
     assert [s["step"] for s in steps] == ["details", "countdown", "countdown", "confirm", "no_show_check"]
+    # Mon noon -> Fri 10 AM: a touch Tue and Wed; Thu has the confirmation (8 AM Fri is too early) and nothing else
     state = await _state(mongo, created)
     assert state["stage"] == "appointment_set" and state["appointment"]["booking_id"] == str(booking["_id"])
     assert state["appointment"]["confirmed"] is False
@@ -296,17 +331,19 @@ async def test_the_countdown_goes_out_on_text_and_email_in_the_clients_words(mon
     assert fired["results"] == {"sent": 1}
     new = (await _outbox(mongo, created))[before:]
     assert {m["channel"] for m in new} == {"sms", "email"}
-    assert next(m for m in new if m["channel"] == "sms")["text"] == "Counting down to our meeting at Sunrise Motors!"
+    assert next(m for m in new if m["channel"] == "sms")["text"] in {
+        t.format(place="Sunrise Motors", day="Friday, October 9", at="10:00 AM", first="Maria")
+        for t in appointment.COUNTDOWN_TEXTS}
 
 
 @pytestmark_flow
-async def test_the_day_before_confirmation_asks_for_y_or_n(mongo):
+async def test_the_day_before_confirmation_asks_for_c_or_r(mongo):
     created, _ = await _booked_friday(mongo)
     fired = await _fire(mongo, created, "confirm")
     assert fired["results"].get("sent", 0) >= 1  # the earlier countdowns are due by then, too
     sms = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
-    assert "confirming our meeting for Friday" in sms and "at 10:00 AM" in sms
-    assert sms.endswith("Please reply Y for Yes or N for No.")
+    assert "confirming our meeting for tomorrow at 10:00 AM" in sms
+    assert sms.endswith("Please reply C to confirm or R to reschedule.")
     assert (await _state(mongo, created))["appointment"]["confirmation"]["status"] == "asked"
 
 
@@ -320,7 +357,7 @@ async def test_y_confirms_the_booking_and_the_appointment(mongo):
     state = await _state(mongo, created)
     assert state["appointment"]["confirmed"] is True and state["appointment"]["confirmation"]["status"] == "confirmed"
     assert state["stage"] == "appointment_set"
-    assert "See you Friday" in [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
+    assert "See you tomorrow" in [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
 
 
 @pytestmark_flow

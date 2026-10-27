@@ -1715,20 +1715,22 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
                 db, lead_id=doc["lead_id"], customer_id=doc["customer_id"], channel=doc["to_channel"],
                 turn_id=f"appointment-{step}-{step_id}", lead=lead, customer=customer, first_contact_done=True)
     else:
-        text = appointment.render_message(
-            step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
-            agent_name=profile.agent_name, appt=appt_at,
-            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
-            address=profile.address, agent_phone=profile.agent_phone)
         # MASTER_PLAN_4 F3: the countdown and no-show step 1 show the vehicle this lead is about - its own
         # photo, a different one each countdown day where it has several (days left picks it). No vehicle on
-        # record, or no usable photo: the client's text-only fallback, as before (§15).
+        # record, or no usable photo: the client's text-only fallback, as before (§15). Days left also picks the
+        # countdown's text, so no two days in a row say the same thing (Betsy, 27 Oct 2026).
         photo_vin = photo_start = None
         if step in (appointment.STEP_COUNTDOWN, appointment.STEP_NO_SHOW_CHECK):
             photo_vin = lead_vehicle_vin(lead, state)
             due = appointment.aware(doc["due_at"], profile.tz) if isinstance(doc.get("due_at"), datetime) else None
             photo_start = (appt_at.date() - due.date()).days if (due and appt_at
                                                                  and step == appointment.STEP_COUNTDOWN) else 0
+        text = appointment.render_message(
+            step, customer_name=(customer or {}).get("name") or (lead or {}).get("name"), dealership=profile.name,
+            agent_name=profile.agent_name, appt=appt_at,
+            model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
+            address=profile.address, agent_phone=profile.agent_phone,
+            variant=photo_start - 1 if step == appointment.STEP_COUNTDOWN and photo_start else 0)
         outcomes = await _send_step_messages(db, deps, tracer, doc, text, photo_vin=photo_vin,
                                              photo_start=photo_start or 0)
         if any(o.status == "held" for o in outcomes) and not any(o.status in ("sent", "duplicate") for o in outcomes):

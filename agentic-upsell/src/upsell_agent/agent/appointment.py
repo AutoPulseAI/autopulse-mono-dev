@@ -5,9 +5,9 @@ Once a lead is at Appointment Set (the AI booked it, the customer moved it, or
 staff booked it) these messages go out, all on text AND email together
 (Omnichannel PDF p.10) and all with the client's own wording:
 
-    each day before, not same-day     "Counting down to our meeting at {dealership}!"
-    the day before, not same-day      "...confirming our meeting for {date} at {time}. Does this time still work?
-                                       Please reply Y for Yes or N for No."
+    touches before, not next-day      2-3 days out: one; 4+: one a day, a different text each (COUNTDOWN_TEXTS)
+    the morning of, not same-day      "...confirming our meeting for today at {time}. Does this time still work?
+                                       Please reply C to confirm or R to reschedule." (the day before if too early)
     appointment + 1 hour, no visit    No Show: "I am looking for you in the showroom - are you here and working
                                        with someone?"
     +24 hours, no reply               "How did everything go when you came in? Did you get a chance to stop by?"
@@ -53,7 +53,13 @@ NO_SHOW_MESSAGE_LATEST = timedelta(hours=2)
 # A day-before confirmation that would land closer than this to the appointment is skipped ("any
 # nonsensical day-before confirmation", §7).
 MIN_CONFIRM_LEAD = timedelta(hours=2)
-MAX_COUNTDOWNS = 6
+MAX_COUNTDOWNS = 10
+# Betsy, 27 Oct 2026: "if the appointment is for tomorrow I don't need to send anything else - I send them the
+# confirmation the morning of"; two or three days out, one touch; four or more, "message them every single day
+# something different". The confirmation goes the morning of the appointment (no earlier than CONFIRM_EARLIEST); an
+# appointment too early in the day for that gets it the day before, as before.
+CONFIRM_EARLIEST = time(9)
+ONE_TOUCH_UP_TO_DAYS = 3
 # MASTER_PLAN_4 (stream R): the details message goes this long after the appointment is set or moved ("allowing
 # time for correction", §7), and only while the appointment is at least DETAILS_MIN_LEAD away.
 DETAILS_AFTER = timedelta(minutes=15)
@@ -139,20 +145,25 @@ def plan_steps(appt_at: datetime, *, now: datetime, tz) -> list[Step]:
         return steps  # long past: nothing to remind and nothing to chase
     appt_day, today = appt.date(), local_now.date()
     if appt_day > today:
-        before = appt_day - timedelta(days=1)
-        confirm_at = datetime.combine(before, STEP_HOUR, tzinfo=tz)
-        if confirm_at <= local_now:
-            confirm_at = local_now + timedelta(minutes=30)
-        if confirm_at <= appt - MIN_CONFIRM_LEAD:
-            steps.append(Step(STEP_CONFIRM, confirm_at, "the day-before confirmation, asking for Y or N"))
-        day: date = today + timedelta(days=1)
-        count = 0
-        while day <= appt_day - timedelta(days=2) and count < MAX_COUNTDOWNS:
+        confirm_at = min(datetime.combine(appt_day, STEP_HOUR, tzinfo=tz), appt - MIN_CONFIRM_LEAD)
+        why = "the morning-of confirmation, asking C to confirm or R to reschedule"
+        if confirm_at < datetime.combine(appt_day, CONFIRM_EARLIEST, tzinfo=tz):
+            confirm_at = datetime.combine(appt_day - timedelta(days=1), STEP_HOUR, tzinfo=tz)
+            if confirm_at <= local_now:
+                confirm_at = local_now + timedelta(minutes=30)
+            why = "the confirmation, the day before (the appointment is too early for a morning-of one)"
+        if local_now < confirm_at <= appt - MIN_CONFIRM_LEAD:
+            steps.append(Step(STEP_CONFIRM, confirm_at, why))
+        days_out = (appt_day - today).days
+        touch_days = [today + timedelta(days=n) for n in range(1, days_out)]
+        if days_out <= ONE_TOUCH_UP_TO_DAYS:
+            touch_days = touch_days[:1]
+        confirm_day = next((st.due_at.date() for st in steps if st.step == STEP_CONFIRM), None)
+        touch_days = [d for d in touch_days if d != confirm_day]  # one message that day, not two
+        for day in touch_days[:MAX_COUNTDOWNS]:
             at = datetime.combine(day, STEP_HOUR, tzinfo=tz)
             if at > local_now:
-                steps.append(Step(STEP_COUNTDOWN, at, "a daily countdown to the meeting"))
-                count += 1
-            day += timedelta(days=1)
+                steps.append(Step(STEP_COUNTDOWN, at, "a touch before the meeting (a different message each day)"))
     steps.append(Step(STEP_NO_SHOW_CHECK, appt + NO_SHOW_AFTER,
                       "appointment time + 1 hour: still no Sales Visit means No Show"))
     return sorted(steps, key=lambda s: s.due_at)
@@ -207,16 +218,46 @@ def _first(name: str | None) -> str:
 
 
 def _when(appt: datetime) -> tuple[str, str]:
-    return (f"{appt.strftime('%A')}, {appt.strftime('%B')} {appt.day}",
-            appt.strftime("%I:%M %p").lstrip("0"))
+    """("today" / "tomorrow" / "Friday, October 30", "2:31 PM") - Betsy, 27 Oct 2026: "instead of today and tomorrow
+    it says Tuesday October 27"."""
+    from upsell_agent import clock
+    today = clock.now().astimezone(appt.tzinfo).date() if appt.tzinfo else clock.now().date()
+    day = {0: "today", 1: "tomorrow"}.get((appt.date() - today).days,
+                                         f"{appt.strftime('%A')}, {appt.strftime('%B')} {appt.day}")
+    return day, appt.strftime("%I:%M %p").lstrip("0")
+
+
+_ON_RELATIVE = re.compile(r"\b(on|for) (today|tomorrow)\b", re.IGNORECASE)
+
+
+def _relative_words(text: str) -> str:
+    """"meet on today" -> "meet today", "our meeting for tomorrow" stays: only "on" goes (AI Studio's own text
+    says "on {date}")."""
+    return _ON_RELATIVE.sub(lambda m: m.group(2) if m.group(1).lower() == "on" else m.group(0), text)
+
+
+# Betsy, 27 Oct 2026: four or more days out, "every single day something different". The touch before the meeting
+# rotates through these; AI Studio's countdown text is the first. Nothing here offers what the AI can't deliver.
+COUNTDOWN_TEXTS = (
+    "Counting down to our meeting at {place}!",
+    "{first}, a quick tip for your visit {day}: bring your driver's license, and your registration if you're "
+    "trading in. It saves time.",
+    "Looking forward to seeing you {day} at {at} at {place}. Any questions before then? Just text me here.",
+    "If you're trading in a vehicle, text me its year, make, model and miles, and we'll have numbers ready when "
+    "you arrive.",
+    "Your visit {day} at {at} is on our calendar. If anything changes, reply R and I'll find you a new time.",
+)
 
 
 def render_message(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
                    appt: datetime | None, model: str | None = None, address: str | None = None,
-                   agent_phone: str | None = None) -> dict[str, str]:
-    """The step's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in."""
+                   agent_phone: str | None = None, variant: int = 0) -> dict[str, str]:
+    """The step's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in.
+    `variant` picks the countdown text (0 = AI Studio's / the first built-in)."""
     built = _render_built_in(step, customer_name=customer_name, dealership=dealership, agent_name=agent_name,
-                             appt=appt, model=model, address=address, agent_phone=agent_phone)
+                             appt=appt, model=model, address=address, agent_phone=agent_phone, variant=variant)
+    if step == STEP_COUNTDOWN and variant % len(COUNTDOWN_TEXTS):
+        return built
     from upsell_agent import ai_studio
     from upsell_agent.agent.templates import FALLBACK_NAME
     day, at = _when(appt) if appt else ("", "")
@@ -224,12 +265,13 @@ def render_message(step: str, *, customer_name: str | None, dealership: str | No
     values = {"first_name": first if first != FALLBACK_NAME else None, "dealership": dealership or "the dealership",
               "agent_name": agent_name, "model": model, "address": address, "dealer_phone": agent_phone,
               "date": day, "time": at}
-    return ai_studio.render(ai_studio.step_message("cadences", "appointment", step), values, built) or built
+    out = ai_studio.render(ai_studio.step_message("cadences", "appointment", step), values, built) or built
+    return {k: _relative_words(v) if isinstance(v, str) else v for k, v in out.items()}
 
 
 def _render_built_in(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
                      appt: datetime | None, model: str | None = None, address: str | None = None,
-                     agent_phone: str | None = None) -> dict[str, str]:
+                     agent_phone: str | None = None, variant: int = 0) -> dict[str, str]:
     """{sms_text, email_subject, email_body} for one appointment step, in the client's words (Omnichannel
     PDF §7, §9). A name the record doesn't have is left out rather than invented."""
     first = _first(customer_name)
@@ -247,12 +289,15 @@ def _render_built_in(step: str, *, customer_name: str | None, dealership: str | 
         subject = f"Your appointment at {place}"
         return {"sms_text": text, "email_subject": subject, "email_body": f"{text}\n\nThanks,\n{place}"}
     elif step == STEP_COUNTDOWN:
-        text = f"Counting down to our meeting at {place}!"
-        subject = "Counting down to our meeting"
+        from upsell_agent.agent.templates import FALLBACK_NAME
+        text = COUNTDOWN_TEXTS[variant % len(COUNTDOWN_TEXTS)].format(place=place, day=day, at=at, first=first)
+        if first == FALLBACK_NAME:
+            text = text.replace(f"{first}, a quick", "A quick")
+        subject = "Before your visit"
     elif step == STEP_CONFIRM:
         who = f"this is {agent_name} at {place}" if agent_name else f"it's {place}"
         text = (f"Hello, {first}, {who} confirming our meeting for {day} at {at}. "
-                "Does this time still work? Please reply Y for Yes or N for No.")
+                "Does this time still work? Please reply C to confirm or R to reschedule.")
         subject = "Does this time still work?"
     elif step == STEP_NO_SHOW_CHECK:
         who = f"this is {agent_name} with {place}" if agent_name else f"this is {place}"
