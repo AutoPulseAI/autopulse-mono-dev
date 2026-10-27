@@ -675,7 +675,9 @@ export default function Dashboard() {
     return ` · vs ${compareCounts[key]} (${when})`;
   };
 
-  const splitText = (split) => (split ? `AI ${split.ai} · Staff ${split.staff}` : '');
+  // Betsy, 27 Oct 2026 ("the AI ... even said 1 sold"): the split is who booked the appointment, never who sold; a
+  // lead is marked Sold only by staff, so the Sold card says so.
+  const splitText = (split) => (split ? `Booked by AI ${split.ai} · by staff ${split.staff}` : '');
   const step = (key) => funnel?.[key] || null;
 
   const withRange = (base) => {
@@ -825,7 +827,7 @@ export default function Dashboard() {
               count={step('sold')?.total || 0}
               label="Appointments Sold"
               link={withRange(`/dealer/leads?status=${encodeURIComponent('Sold Pending')}`)}
-              description={[splitText(step('sold')), `${cardRangeText()}${compareText('sold')}`].filter(Boolean).join(" · ")}
+              description={['Marked Sold by staff', splitText(step('sold')), `${cardRangeText()}${compareText('sold')}`].filter(Boolean).join(" · ")}
             />
           </div>
         </div>
