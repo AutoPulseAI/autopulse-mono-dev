@@ -209,3 +209,35 @@ def test_one_channel_per_message_the_email_only_when_the_text_cannot_go(status, 
     # The user, 28 Oct 2026: a text and its email copy is a duplicate of the same message.
     from upsell_agent.channels.sender import SendOutcome, needs_other_channel
     assert needs_other_channel(SendOutcome(status=status, idempotency_key="k", channel="sms")) is email_too
+
+
+@pytest.mark.parametrize(("said", "who"), [
+    ("What would you give me for my 2015 Camry?", "trade"),
+    ("I still owe about 9k on my Altima", "trade"),
+    ("can you buy my car", "trade"),
+    ("my credit isn't great, will I get approved?", "credit"),
+    ("I'm self employed, no pay stubs", "credit"),
+    ("is it a soft pull?", "credit"),
+    ("too expensive for me", "price_payment"),
+    ("what are the dealer fees", "price_payment"),
+    ("I can do $400 a month", "price_payment"),
+    ("Am interested", "sales"),
+    ("does it have a third row", "sales"),
+])
+def test_the_customer_reaches_the_right_specialist(said, who):
+    # The user, 28 Oct 2026: many more words, without breaking what AI Studio sets.
+    from upsell_agent.agent import specialists
+    assert specialists.route(said)[0].id == who
+
+
+def test_a_credit_lead_asking_about_the_car_gets_the_sales_specialist():
+    from upsell_agent.agent import specialists
+    assert specialists.route("is it still available?", bucket="credit")[0].id == "sales"
+    assert specialists.route("hello", bucket="credit")[0].id == "credit"  # nothing said: the bucket decides
+
+
+def test_every_specialist_gets_the_edge_case_rules_on_top_of_its_own_playbook():
+    from upsell_agent.agent import specialists
+    for sp in specialists.SPECIALISTS.values():
+        out = specialists.for_compose(sp, "x")
+        assert out["playbook"].startswith(sp.playbook) and "Maybe" in out["playbook"]
