@@ -69,7 +69,8 @@ class Understanding(BaseModel):
 INSTRUCTIONS = """You review a car dealership's text/email conversation with one customer, as an experienced
 sales manager would. Input is JSON: stage (the lead's stage), messages
 (oldest first; from is "customer", "ai" (our assistant) or "staff" (a person at the dealership)), last_reply (the
-assistant's message just sent, also the last "ai" message).
+assistant's message just sent, also the last "ai" message), last_reply_photos (how many vehicle photos were attached
+to last_reply - a request for photos is answered when this is above 0).
 Read the WHOLE conversation, not just the last message, and fill every field.
 - open_questions: questions the customer asked that no ai/staff message answered before last_reply.
 - refused: things the customer clearly declined. "No m240" means they want an M240 and the one we offered isn't it.
@@ -111,6 +112,8 @@ async def understand_turn(dealer_id: str, lead_id: str, turn_id: str, deps: Any)
         "stage": state.get("stage"),
         "messages": [{"from": _who(r), "channel": r.get("channel"), "text": message_text(r)[:1200]} for r in upto],
         "last_reply": message_text(reply),
+        # Robby Torres, 27 Oct 2026: he asked for photos, three went with the reply, and it was flagged for ignoring him.
+        "last_reply_photos": len(reply.get("media_urls") or []),
     }
     try:
         result, call = await run_agent(understand_agent(model), model, payload, timeout_s=TIMEOUT_S,

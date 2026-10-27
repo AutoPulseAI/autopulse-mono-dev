@@ -91,8 +91,11 @@ export function classifyProviderError(error) {
   return new AiSendError(error?.message || 'Provider failed', { httpStatus: 502, retryable: true });
 }
 
+// Unset = on, as the AI service (agent/vehicle_media.py) and AI Settings read it; only `false` turns it off.
+// Robby Torres, 27 Oct 2026: he asked for photos, the AI attached three, and this dropped them because Victory Cars
+// has no `ai_mms_enabled` set - 862 of 877 AI texts with photos in a week went out without them.
 export function dealerAllowsMms(dealer) {
-  return dealer?.ai_mms_enabled === true || dealer?.dealer_account_information?.ai_mms_enabled === true;
+  return dealer?.ai_mms_enabled !== false && dealer?.dealer_account_information?.ai_mms_enabled !== false;
 }
 
 export async function sendAiMessage(body, {
@@ -131,7 +134,7 @@ export async function sendAiMessage(body, {
     if (problem) throw refuse(`Compliance decision ${body.compliance_decision_id} doesn't allow this send: ${problem}`);
   }
 
-  // Photos by text (MMS) only for a dealer that switched it on: `ai_mms_enabled`,
+  // Photos by text (MMS) unless the dealer switched it off: `ai_mms_enabled: false`,
   // the same dealer field the AI service reads before attaching any. Email
   // photos are inline images and need no switch.
   const mediaUrls = body.channel === 'sms' && !dealerAllowsMms(dealer) ? [] : (body.media_urls || []);
