@@ -677,3 +677,19 @@ def test_the_morning_message_as_betsy_wrote_it_names_the_agent_and_the_dealershi
     assert decision["cannot_supply"]["text"] == ("Good morning, Mziuki. This is Nicole with Victory Cars Central. I will "
                                                  "be happy to help you pick up where we left off. Tell me, what are you "
                                                  "driving now?")
+
+
+async def test_no_after_hours_choice_in_a_conversation_already_going(mongo, monkeypatch):
+    # Robinsson Castro, 26 Oct 2026: booked at 8:00 PM, then "Good" got "chat now or during business hours?".
+    from types import SimpleNamespace
+    from upsell_agent.agent.nodes import decide
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION
+    now = clock.now()
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({"lead_id": "L1", "direction": "outbound", "status": "sent",
+                                                    "created_at": now - timedelta(minutes=2), "dealer_id": "D1"})
+    state = SimpleNamespace(dealer_id="D1", lead_id="L1")
+    assert await decide._conversation_ongoing(SimpleNamespace(lead_state={}), state, now)
+    assert not await decide._conversation_ongoing(SimpleNamespace(lead_state={}), SimpleNamespace(
+        dealer_id="D1", lead_id="L2"), now)
+    assert await decide._conversation_ongoing(SimpleNamespace(lead_state={"stage": "appointment_set"}), SimpleNamespace(
+        dealer_id="D1", lead_id="L2"), now)

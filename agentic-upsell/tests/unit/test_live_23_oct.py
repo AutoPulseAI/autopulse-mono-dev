@@ -460,3 +460,27 @@ def test_26_oct_evening_fixes():
     from upsell_agent.agent.nodes.guard import _BUDGET_CLAIM
     assert _BUDGET_CLAIM.search("I can show you how it fits the budget you shared")
     assert not _BUDGET_CLAIM.search("We can work out a budget that fits you")
+
+
+def test_c_and_r_answer_the_confirmation():
+    # Betsy, 27 Oct 2026: Michael Gaston-Simpson replied "C" (as AI Studio's message asks) and was asked again.
+    from upsell_agent.agent.appointment import classify_answer
+    assert classify_answer("C") == "yes" and classify_answer("c") == "yes" and classify_answer("Y") == "yes"
+    assert classify_answer("R") == "no" and classify_answer("reschedule") == "no"
+
+
+async def test_thanks_for_a_promised_follow_up_is_only_acknowledged(mongo):
+    # Ebony Mingo, 26 Oct 2026: "I'll check back with you tomorrow" - "No problem thanks" - then visit times at once.
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from upsell_agent import clock
+    from upsell_agent.agent.nodes import decide
+    from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION
+    assert decide._THANKS_ONLY.match("No problem thanks") and decide._THANKS_ONLY.match("ok thank you!")
+    assert not decide._THANKS_ONLY.match("Thanks, can I come Saturday?")
+    state = SimpleNamespace(dealer_id="D1", lead_id="L1")
+    assert not await decide._follow_up_promised(state, clock.now())
+    await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].insert_one({"lead_id": "L1", "dealer_id": "D1", "kind": "next_action",
+                                                           "status": "pending",
+                                                           "due_at": clock.now() + timedelta(hours=20)})
+    assert await decide._follow_up_promised(state, clock.now())
