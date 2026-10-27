@@ -63,7 +63,7 @@ def test_a_time_to_come_in_with_no_day_is_booked():
         "time_zone": "America/New_York", "weekly_availability": simulate.DEV_WEEKLY_AVAILABILITY}})
     now = datetime(2026, 10, 20, 11, 0, tzinfo=ZoneInfo("America/New_York"))
     open_ = bt.available_times(dealer, [], now)
-    assert bt.match_pick("I can come at 4", [], dealer, now, available=open_).matched["display"] == "Tuesday at 4:00 PM"
+    assert bt.match_pick("I can come at 4", [], dealer, now, available=open_).matched["display"] == "today at 4:00 PM"  # Betsy, 27 Oct 2026: today is "today"
     assert bt.match_pick("4 works", [], dealer, now, available=open_).matched
     late = bt.match_pick("I can come at 7", [], dealer, now, available=open_)
     assert late.ambiguous and late.wanted  # not open: the nearest open times are offered, never silence

@@ -270,7 +270,7 @@ def _within_48h(needed_by: str, now: datetime, dealer_tz) -> bool:
 async def _dealer_local_display(when: datetime, dealer: DealerProfile) -> dict[str, str]:
     local = when.astimezone(dealer.tz)
     return {"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"), "time": local.strftime("%H:%M"),
-           "display": f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"}
+           "display": f"{booking_tool.day_word(local)} at {local.strftime('%I:%M %p').lstrip('0')}"}
 
 
 # The furthest ahead a day the customer names is looked up for open times.

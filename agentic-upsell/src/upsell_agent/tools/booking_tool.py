@@ -233,6 +233,15 @@ def times_on_day(available: list[datetime], request: DayRequest, dealer: DealerP
     return [], None, False
 
 
+def day_word(local: datetime, now: datetime | None = None) -> str:
+    """"today" / "tomorrow" / the weekday, in the dealer's time (Betsy, 27 Oct 2026: on Monday the AI offered
+    "Monday at 4 PM" to someone asked about coming in today)."""
+    from upsell_agent import clock
+
+    days = (local.date() - (now or clock.now()).astimezone(local.tzinfo).date()).days
+    return "today" if days == 0 else "tomorrow" if days == 1 else local.strftime("%A")
+
+
 def format_offer(times: list[datetime], dealer: DealerProfile,
                  *, customer_zones: tuple[str, ...] = ()) -> list[dict[str, str]]:
     """Each offered time as {iso, date, time, display}. `display` is plain
@@ -244,7 +253,7 @@ def format_offer(times: list[datetime], dealer: DealerProfile,
     formatted = []
     for slot in times:
         local = slot.astimezone(dealer.tz)
-        display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}{label}"
+        display = f"{day_word(local)} at {local.strftime('%I:%M %p').lstrip('0')}{label}"
         formatted.append({"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"),
                           "time": local.strftime("%H:%M"), "display": display})
     return formatted
@@ -329,7 +338,7 @@ def _fresh_pick(candidate: datetime, dealer: DealerProfile, available: list[date
     if available is None or not any(a == candidate for a in available):
         return None
     local = candidate.astimezone(dealer.tz)
-    display = f"{local.strftime('%A')} at {local.strftime('%I:%M %p').lstrip('0')}"
+    display = f"{day_word(local)} at {local.strftime('%I:%M %p').lstrip('0')}"
     return {"iso": local.isoformat(), "date": local.strftime("%Y-%m-%d"), "time": local.strftime("%H:%M"),
             "display": display}
 
@@ -342,6 +351,19 @@ _COMING = re.compile(r"\b(?:come|coming|come by|stop by|stop in|swing by|be ther
 
 def match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
                *, available: list[datetime] | None = None, prefer_day: str | None = None) -> PickResult:
+    """The pick, its `display` said from `now`: "tomorrow at 10" offered on Monday and picked on Tuesday is
+    confirmed as "today at 10" (the stored offer's words were right only on the day they were sent)."""
+    result = _match_pick(text, offered, dealer, now, available=available, prefer_day=prefer_day)
+    if result.matched and result.matched.get("iso"):
+        local = datetime.fromisoformat(result.matched["iso"]).astimezone(dealer.tz)
+        rest = result.matched["display"].split(" at ", 1)[1] if " at " in result.matched["display"] else \
+            local.strftime("%I:%M %p").lstrip("0")
+        result.matched = {**result.matched, "display": f"{day_word(local, now)} at {rest}"}
+    return result
+
+
+def _match_pick(text: str, offered: list[dict[str, str]], dealer: DealerProfile, now: datetime,
+                *, available: list[datetime] | None = None, prefer_day: str | None = None) -> PickResult:
     """"the second one", "Saturday 10 works", "after 5 tomorrow" -> one of
     `offered`, or (when it names a real, free time that wasn't offered) a
     freshly built entry for it (B5 item 2). Uses Plan 2's date resolver
