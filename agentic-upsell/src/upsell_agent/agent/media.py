@@ -86,6 +86,31 @@ _CLAIM = re.compile(
     r"here(?:'s| is| are)\s+(?:a |the |some )?(?:photos?|pics?|pictures?|images?)|"
     r"(?:sending|sent)\s+(?:you\s+)?(?:a |the |some )?(?:photos?|pics?|pictures?|images?))\b", re.IGNORECASE)
 _IMAGE_LINK = re.compile(r"https?://\S+?\.(?:jpe?g|png|gif|webp)\b", re.IGNORECASE)
+# Cathy Lanza, 27 Oct 2026: asked "Can you send me a picture of the car", got "Sure thing—here it is." - the photo had
+# failed the image check at send time. Said right after a photo request, "here it is" claims a photo too.
+_HERE_IT_IS = re.compile(r"\b(?:here (?:it is|they are|you go|it'?s)|take a look below)\b", re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.!?\n]*[.!?]?\s*")
+NO_PHOTO_LINE = "I'll have the team text you photos of it shortly."
+
+
+def drop_photo_claims(text: str | None, *, asked_for_photos: bool) -> tuple[str | None, bool]:
+    """`text` without the sentences that say a photo is attached (none is), and whether any went. When some did and
+    the customer asked for photos, NO_PHOTO_LINE says what happens instead."""
+    if not text:
+        return text, False
+    kept, dropped = [], False
+    for part in _SENTENCE.findall(text):
+        claim = _CLAIM.search(part) or (asked_for_photos and _HERE_IT_IS.search(part))
+        if claim and part.strip():
+            dropped = True  # the whole sentence: what's left of it ("a photo of the car") still talks about it
+            continue
+        kept.append(part)
+    if not dropped:
+        return text, False
+    out = "".join(kept).strip()
+    if asked_for_photos:
+        out = f"{NO_PHOTO_LINE} {out}".strip()
+    return out, True
 
 
 def unattached_photo_claim(text: str, *, media_attached: bool = False) -> list[str]:

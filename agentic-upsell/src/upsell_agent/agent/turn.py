@@ -40,7 +40,8 @@ from upsell_agent.agent.reply_language import in_customer_language
 from upsell_agent.agent.state import AgentState
 from upsell_agent.agent.summary import UPDATE_SUMMARY_JOB
 from upsell_agent.agent.templates import SOLD_VEHICLE_FALLBACK_SUBJECT, SOLD_VEHICLE_FALLBACK_TEXT
-from upsell_agent.agent.vehicle_media import MediaPick, photo_for_draft
+from upsell_agent.agent.media import drop_photo_claims
+from upsell_agent.agent.vehicle_media import MediaPick, asks_for_photos, photo_for_draft
 from upsell_agent.channels import consent
 from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender, SendOutcome, SendRequest
@@ -267,6 +268,7 @@ async def run_turn(
             photo = await _photo(ctx, draft, channel, decision, stock_free=bool(freshness and freshness["sold"]),
                                  customer_text=inbound_text,
                                  inventory=(result.get("context_pack") or {}).get("inventory"))
+            reply = await _without_photo_claims(tracer, ctx, reply, photo, inbound_text, lead_id, customer_id)
             reply = await _short_links(tracer, db, reply, lead_id, settings)
             request = SendRequest(
                 dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id,
@@ -540,6 +542,8 @@ async def _send_other_channel(tracer: TurnTracer, deps: TurnDeps, *, draft: dict
     subject = None if other == "sms" else draft.get("email_subject")
     text, subject = await _in_customer_language(tracer, decision or {}, text, subject, get_settings())
     photo = await _photo(ctx, draft, other, decision or {}) if ctx is not None else None
+    if photo is not None and not photo.urls:
+        text, _ = drop_photo_claims(text, asked_for_photos=False)
     text = await _short_links(tracer, dealer_scoped_db(dealer_id), text, lead_id, get_settings())
     request = SendRequest(
         dealer_id=dealer_id, lead_id=lead_id, customer_id=customer_id, turn_id=tracer.turn_id, channel=other,
@@ -1183,6 +1187,28 @@ async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision
         theme=(decision.get("touch") or {}).get("theme"), lead=ctx.lead, lead_state=ctx.lead_state,
         stock_free=stock_free, customer_text=customer_text, db=ctx.db, first_reply=bool(decision.get("touch1")),
         inventory=inventory)
+
+
+async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,
+                                inbound_text: str | None, lead_id: str | None, customer_id: str | None) -> str | None:
+    """Cathy Lanza, 27 Oct 2026: "Sure thing—here it is." went out with no photo (it failed the image check at send
+    time, after the reply was written). No photo going: the reply never says one is, and when they asked for photos
+    it says the team will send them and staff get a note to do it."""
+    if photo.urls or not reply:
+        return reply
+    asked = asks_for_photos(inbound_text)
+    fixed, dropped = drop_photo_claims(reply, asked_for_photos=asked)
+    if not dropped:
+        return reply
+    photo.reasons.append(f"No photo is going, so the words saying one is were taken out (was: {reply[:120]!r}).")
+    if asked and lead_id:
+        from upsell_agent.agent import crm_notes
+        await crm_notes.write(ctx.db, lead_id=lead_id, kind="photos_requested", key=f"photos:{tracer.turn_id}",
+                              customer_id=customer_id, text=(
+                                  "The customer asked for photos of the vehicle and the photo couldn't be sent "
+                                  f"automatically. They were told the team will text photos shortly: please send them. "
+                                  f"They wrote: \"{(inbound_text or '')[:200]}\""))
+    return fixed
 
 
 async def _short_links(tracer: TurnTracer, db: DealerScopedDatabase, text: str | None, lead_id: str | None,
