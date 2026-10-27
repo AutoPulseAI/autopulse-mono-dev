@@ -22,6 +22,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE } from "../../../lib/messageAuthor";
 import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
@@ -1121,12 +1122,7 @@ export default function ViewConversations({
                       const translationKey = getTranslationKey(email, agentViewLanguage, originalText);
                       const translatedText = translationMap[translationKey] || translationCacheRef.current[translationKey] || "";
                       const msgUserLanguageLabel = messageUserLanguageDisplay(email, lead);
-                      let messageBy = '';
-                      if(email.status === 'incoming' || email.status === 'received'){
-                        messageBy = lead.name || lead.email || lead.phone || 'Unknown';
-                      }else{
-                         messageBy = email.message_by?.name || dealerParent?.dealer_account_information?.ai_bot_name || 'chatbot';
-                      }
+                      const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
                       const isNote = email.is_note || email.status === 'note';
                       
                       return (
@@ -1207,7 +1203,7 @@ export default function ViewConversations({
                                 </div>
                                 <div className="text-muted small mt-1">
                                   <i className="fa-light fa-user me-1"></i>
-                                  {messageBy}
+                                  <span className={`badge ${isNote ? (isAiNote(email) || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, isAiNote(email)) : author.label}</span>
                                 </div>
                               </div>
                             </div>

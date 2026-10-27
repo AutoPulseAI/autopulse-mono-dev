@@ -20,6 +20,7 @@ import {
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE } from "../../../lib/messageAuthor";
 
 // SMS is the default reply channel; email is only used when explicitly
 // preferred, and either option is only offered when the lead actually has
@@ -889,12 +890,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                   const translationKey = getTranslationKey(email, agentViewLanguage, originalText);
                   const msgUserLanguageLabel = messageUserLanguageDisplay(email, lead);
                   const translatedText = translationMap[translationKey] || translationCacheRef.current[translationKey] || "";
-                  let messageBy = '';
-                  if(email.status === 'incoming' || email.status === 'received'){
-                    messageBy = lead.name || lead.email || lead.phone || 'Unknown';
-                  }else{
-                     messageBy = email.message_by?.name || dealerParent?.dealer_account_information?.ai_bot_name || 'chatbot';
-                  }
+                  const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
                  
                   const isNote = email.is_note || email.status === 'note';
                   
@@ -976,7 +972,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                             </div>
                             <div className="text-muted small mt-1">
                               <i className="fa-light fa-user me-1"></i>
-                              {messageBy}
+                              <span className={`badge ${isNote ? (false || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, false) : author.label}</span>
                             </div>
                           </div>
                         </div>
