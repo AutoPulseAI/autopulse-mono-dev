@@ -5,7 +5,11 @@ import { useSearchParams, useRouter } from "next/navigation";
 import LeadList from "./components/LeadList";
 import LeadForm from "./components/LeadForm";
 import LeadCalendar from "./components/LeadCalendar";
-import ViewConversations from "./components/viewConversations";
+// Betsy, 27 Oct 2026: "from the appointment screen we are not seeing the SMS and email" - since the Appointments cards
+// open this page (05c5ebd), a conversation opened here used the booking page's own short view: one mixed list (an
+// SMS and its email copy read as a duplicate), no SMS / Email tabs, no lead buttons. It now opens the full lead
+// view, without its all-leads sidebar and Prev / Next (those walk the leads list, not these appointments).
+import ViewConversations from "../leads/components/viewConversations";
 import { Button, ButtonGroup } from "react-bootstrap";
 import "./components/LeadCalendar.css";
 
@@ -168,17 +172,23 @@ function LeadManagementContent() {
 
       <div className="page_body">
         {selectedLead ? (
-          <ViewConversations
-            lead={selectedLead}
-            onBack={handleBack}
-            isOpen={isOpen}
-            isMobile={isMobile}
-            toggleSidebar={toggleSidebar}
-            onLeadSelected={(lead) => {
-              setSelectedLead(lead);
-            }}
-            activeLeadId={selectedLead?._id}
-          />
+          <>
+            <Button variant="outline-secondary" className="mb-3" onClick={handleBack}>
+              <i className="fa-solid fa-arrow-left me-2"></i>Back to appointments
+            </Button>
+            <ViewConversations
+              lead={selectedLead}
+              onBack={handleBack}
+              isOpen={isOpen}
+              isMobile={isMobile}
+              toggleSidebar={toggleSidebar}
+              onLeadSelected={(lead) => {
+                setSelectedLead(lead);
+              }}
+              activeLeadId={selectedLead?._id}
+              embedded
+            />
+          </>
         ) : editLead ? (
           <LeadForm setEditLead={setEditLead} editLead={editLead} />
         ) : view === 'calendar' ? (
