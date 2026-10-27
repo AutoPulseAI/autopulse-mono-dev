@@ -359,15 +359,19 @@ NAME_ASK_AGAIN_AFTER = timedelta(days=2)
 MAX_NAME_ASKS = 2
 
 
-def _may_ask_name(lead_state: dict | None, now: datetime) -> bool:
+def _may_ask_name(lead_state: dict | None, now: datetime, field: str = "name") -> bool:
     state = lead_state or {}
-    asked = state.get("name_asked")
+    asked = state.get(f"{field}_asked")
     if not asked:
         return True
-    if int(state.get("name_asks") or 1) >= MAX_NAME_ASKS or not isinstance(asked, datetime):
+    if int(state.get(f"{field}_asks") or 1) >= MAX_NAME_ASKS or not isinstance(asked, datetime):
         return False
     asked = asked if asked.tzinfo else asked.replace(tzinfo=timezone.utc)
     return now - asked >= NAME_ASK_AGAIN_AFTER
+
+
+def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
+    return _may_ask_name(lead_state, now, "email")
 
 
 def not_our_own_questions(questions: list[dict[str, str]], customer_text: str | None,
@@ -1477,6 +1481,24 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                              "explanation": "so we know who to ask for and can get everything ready for you"}]
         decision["slots"] = []
         decision["action"] = "ask"
+    # Betsy, 27 Oct 2026 meeting: "the AI should have asked the customer's name and email address - fill in the
+    # blanks". With the name known and no usable email on file, the email is this reply's one question, when nothing
+    # else is being asked; asked at most twice, two days apart (like the name).
+    just_booked = bool(visit_ctx.get("just_booked"))
+    decision["ask_email"] = bool(
+        state.trigger == "inbound_message" and known_first_name(state.customer_name)
+        and not resolve_recipient(ctx.lead, ctx.customer, "email") and not decision.get("ask_name")
+        and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
+        and (just_booked or (not decision.get("asks") and decision["action"] in ("acknowledge", "qualified",
+                                                                                 "partly_qualified")))
+        and _may_ask_email(ctx.lead_state, now))
+    if decision["ask_email"]:
+        # Right after booking is the natural moment: "you're all set ... what's the best email for the details?"
+        decision["asks"] = [{"requirement": "customer_email", "label": "Email", "slots": [],
+                             "question": "What's the best email for you, so I can send you the details?",
+                             "explanation": "so we can send the vehicle's details and your appointment information"}]
+        if not just_booked:
+            decision["action"] = "ask"
     if state.trigger == "inbound_message" and decision["action"] in ("offer_visit", "ask") \
             and _THANKS_ONLY.match(str(text or "")) and await _follow_up_promised(state, now):
         # Ebony Mingo, 26 Oct 2026: "I'll check back with you tomorrow around 12:00 PM" - "No problem thanks" - and the

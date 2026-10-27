@@ -973,3 +973,20 @@ async def test_a_no_show_shows_as_no_show_in_the_crm(mongo):
     created, _ = await _booked_friday(mongo)
     await _fire(mongo, created, "no_show_check")
     assert (await _state(mongo, created))["crm_status_sync"]["crm_status"] == "No Show"
+
+
+@pytestmark_flow
+async def test_a_missing_email_is_asked_and_then_the_visit_is_booked(mongo):
+    # Betsy, 27 Oct 2026 meeting: "ask the customer's name and email address".
+    from upsell_agent.integrations.mongodb import PLATFORM_CUSTOMERS_COLLECTION
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])}, {"$set": {"email": None}})
+    await mongo[PLATFORM_CUSTOMERS_COLLECTION].update_one({"_id": as_object_id(created["customer_id"])},
+                                                          {"$set": {"email": None, "emails": []}})
+    await _say(created, "My budget is $35,000 and I'd like to buy this month")
+    await _say(created, _next_friday_10())
+    last = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
+    assert "email" in last.lower(), last  # asked before booking
+    await _say(created, "maria.test@example.com")
+    assert (await _booking(mongo, created))["booking_status"] == "pending"
