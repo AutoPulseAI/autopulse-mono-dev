@@ -174,10 +174,12 @@ def details_still_useful(appt_at: datetime | None, *, now: datetime) -> bool:
 
 # --- The customer's answer to the day-before message (§8) ---------------------------------------------------
 
-_YES = re.compile(r"^\s*(?:y|yes|yep|yeah|yup|yea|sure|ok|okay|k|confirmed?|that works|works for me|"
+# Betsy, 27 Oct 2026 (Michael Gaston-Simpson answered "C" and was asked again for Y or N): AI Studio's confirmation asks
+# for "C to confirm or R to reschedule" - C / R are answers too.
+_YES = re.compile(r"^\s*(?:y|c|yes|yep|yeah|yup|yea|sure|ok|okay|k|confirmed?|that works|works for me|"
                   r"works|sounds good|see you then|see you there|i'?ll be there|will do|absolutely|definitely)"
                   r"[\s.!,]*(?:thanks?|thank you)?[\s.!]*$", re.IGNORECASE)
-_NO = re.compile(r"^\s*(?:n|no|nope|nah|can'?t|cannot|can not|doesn'?t work|does not work|"
+_NO = re.compile(r"^\s*(?:n|r|no|nope|nah|reschedule|can'?t|cannot|can not|doesn'?t work|does not work|"
                  r"no,? (?:i )?can'?t|not (?:anymore|any more|really|going to work)|won'?t work)"
                  r"[\s.!,]*(?:sorry)?[\s.!]*$", re.IGNORECASE)
 
@@ -279,7 +281,7 @@ def reply_text(kind: str, *, customer_name: str | None, appt: datetime | None,
     if kind == "confirmed":
         return f"Perfect, thank you, {first}! See you {day} at {at}."
     if kind == "clarify":
-        return "Just to be sure, does that time still work? Please reply Y for Yes or N for No."
+        return "Just to be sure, does that time still work? Please reply C to confirm or R to reschedule."
     if kind == "reschedule":
         if offered:
             options = offered[0] if len(offered) == 1 else ", ".join(offered[:-1]) + f", or {offered[-1]}"

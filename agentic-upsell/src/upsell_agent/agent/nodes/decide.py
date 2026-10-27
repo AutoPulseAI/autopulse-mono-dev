@@ -172,6 +172,33 @@ _NOT_TODAY = re.compile(r"\b(?:can'?t|cannot|can\s+not|won'?t|not\s+able\s+to|un
                         r"do\s+it|get\s+there)\s+today\b|\bnot\s+today\b|\btoday\s+(?:won'?t|doesn'?t)\s+work", re.IGNORECASE)
 
 
+_THANKS_ONLY = re.compile(r"^\W*(?:(?:no\s+problem|no\s+worries|ok(?:ay)?|k|sure|sounds\s+good|great|perfect|cool|"
+                          r"alright|all\s+right|thanks?|thank\s+you|ty|appreciate\s+it|will\s+do|got\s+it)[\s,.!]*){1,3}\W*$",
+                          re.IGNORECASE)
+
+
+async def _follow_up_promised(state: AgentState, now: datetime) -> bool:
+    """A dated follow-up we promised is still ahead (scheduled next_action)."""
+    from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION, dealer_scoped_db
+    return bool(await dealer_scoped_db(state.dealer_id).collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+        {"lead_id": state.lead_id, "kind": "next_action", "status": "pending", "due_at": {"$gt": now}},
+        projection={"_id": 1}))
+
+
+async def _conversation_ongoing(ctx: TurnContext, state: AgentState, now: datetime) -> bool:
+    """The AI wrote to this customer in the last ONGOING minutes, or they have a visit booked."""
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, dealer_scoped_db
+    if (ctx.lead_state or {}).get("stage") in ("appointment_set", "appointment_no_show"):
+        return True
+    last = await dealer_scoped_db(state.dealer_id).collection(AI_MESSAGES_COLLECTION).find_one(
+        {"lead_id": state.lead_id, "direction": "outbound", "status": {"$in": ["sent", "delivered"]},
+         "created_at": {"$gte": now - ONGOING}}, projection={"_id": 1})
+    return last is not None
+
+
+ONGOING = timedelta(minutes=30)
+
+
 def vehicle_check_for(stock: dict[str, Any], extraction: dict[str, Any] | None, trigger: str,
                       action: str) -> dict[str, Any] | None:
     """Client, 12 Oct 2026 (Betsy): a vehicle the customer asks about that isn't in the feed - "check with a manager
@@ -1087,6 +1114,14 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         trigger=state.trigger, origin=((ctx.compliance or {}).get("origin") or {}).get("origin"),
         now=pack.get("now") or {}, conversation=conversation, extraction=extraction, at=now, text=text,
         texting_hours=customer_texting_hours((ctx.compliance or {}).get("zone"), now, dealer.tz))
+    chose = (conversation.after_hours.choice if conversation.after_hours else None)
+    if after_hours.mode == "offer" and state.trigger == "inbound_message" and chose not in ("later", "offered") \
+            and await _conversation_ongoing(ctx, state, now):
+        # Robinsson Castro, 26 Oct 2026: booked at 8:00 PM, then "Good" got "We're closed right now ... chat now or
+        # business hours?". The choice is for someone writing in after hours, never a conversation already going.
+        after_hours.mode, after_hours.record = None, None
+        after_hours.why = "A conversation already going (the AI wrote in the last 30 minutes, or a visit is booked): " \
+                          "no after-hours choice."
     if hold and after_hours.mode == "offer":
         # A possible opt-out or quiet hours: nothing is asked, not even the choice.
         after_hours.mode, after_hours.record = None, None
@@ -1344,6 +1379,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                              "explanation": "so we know who to ask for and can get everything ready for you"}]
         decision["slots"] = []
         decision["action"] = "ask"
+    if state.trigger == "inbound_message" and decision["action"] in ("offer_visit", "ask") \
+            and _THANKS_ONLY.match(str(text or "")) and await _follow_up_promised(state, now):
+        # Ebony Mingo, 26 Oct 2026: "I'll check back with you tomorrow around 12:00 PM" - "No problem thanks" - and the
+        # AI offered visit times straight away. Thanks for a promised follow-up is acknowledged, nothing more.
+        decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
+        decision.pop("visit_offer", None)
+        decision["why"] = "They thanked us for the follow-up we promised: a short acknowledgement, no offer or question."
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
