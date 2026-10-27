@@ -1159,6 +1159,10 @@ async def _defer(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer, sent: 
     return "deferred"
 
 
+# Handoffs whose customer gets no "still waiting" message (slots/policy.py reasons).
+_NO_HOLDING_TEXT = ("Customer says they're not interested", "Customer is clearly upset")
+
+
 async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """30 business minutes after a handoff: if staff still haven't taken the
     lead over, tell the customer once more that the team has their messages,
@@ -1199,6 +1203,23 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
         await _close(db, doc, "cancelled", reason=reason)
         await tracer.skipped("send", f"Handoff check cancelled: {reason}.")
         await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason})
+        return "cancelled"
+
+    if str(doc.get("handoff_reason") or "").startswith(_NO_HOLDING_TEXT):
+        # Jo Riedel / Erik Bleaman, 27 Oct 2026: "We just found one" and abuse were each answered 30 minutes later with
+        # "Sorry for the wait... we would love to schedule". A customer who said no, or is upset, gets no message;
+        # staff still get the alert.
+        now = clock.now()
+        alert = {"at": now, "reason": f"No staff response {HANDOFF_TIMEOUT_BUSINESS_MINUTES} business minutes after "
+                                      f"the handoff", "handoff_reason": doc.get("handoff_reason"),
+                 "customer_notified": False}
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]},
+                                                                 {"$set": {"staff_alert": alert}})
+        reason = "the customer said no or is upset: no message to them, staff alerted"
+        await _close(db, doc, "cancelled", reason=reason)
+        await tracer.skipped("send", f"Handoff check: {reason}.")
+        await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason,
+                                                           "staff_alert": alert["reason"]})
         return "cancelled"
 
     customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
