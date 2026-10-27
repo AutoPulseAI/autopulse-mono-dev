@@ -83,6 +83,8 @@ class RecordingEnqueue:
         self._mongo, self._lead_id = mongo, lead_id
 
     async def __call__(self, function, *, key, **kwargs):
+        if function != UPDATE_SUMMARY_JOB:
+            return key  # other after-send jobs (the understanding layer's shadow review) aren't this file's
         if self._mongo is not None:
             self.sent_before.append(await self._mongo[AI_MESSAGES_COLLECTION].count_documents(
                 {"lead_id": self._lead_id, "direction": "outbound", "status": "sent"}) > 0)

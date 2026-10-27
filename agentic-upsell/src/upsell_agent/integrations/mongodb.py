@@ -179,6 +179,7 @@ AI_MESSAGES_COLLECTION = "ai_messages"
 SCHEDULED_FOLLOWUPS_COLLECTION = "scheduled_followups"
 AI_EVENTS_COLLECTION = "ai_events"
 AI_TURN_LOG_COLLECTION = "ai_turn_log"
+AI_UNDERSTANDING_COLLECTION = "ai_understanding"  # agent/understanding.py (shadow, 27 Oct 2026)
 # Consent history, add-only (MASTER_PLAN_3 C1, decision 77): opt-outs and
 # opt-ins, marketing consent evidence, open reviews (channels/consent.py).
 AI_CONSENT_COLLECTION = "ai_consent"
