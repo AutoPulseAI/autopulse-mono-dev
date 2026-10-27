@@ -297,6 +297,12 @@ async def check_inventory(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     return await inventory_watch.run(platform=ctx["deps"].platform)
 
 
+async def check_cadences(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
+    """Every hour: AutoPulse is emailed when due follow-ups aren't going out (scheduler/cadence_watch.py)."""
+    from upsell_agent.scheduler import cadence_watch
+    return await cadence_watch.run(platform=ctx["deps"].platform)
+
+
 async def ensure_next_steps(ctx: dict[str, Any], **_: Any) -> dict[str, Any]:
     """Every hour: an active lead always has a next step planned (scheduler/safety_net.py)."""
     from upsell_agent.scheduler import safety_net
@@ -309,7 +315,7 @@ async def monitor_conversations(ctx: dict[str, Any], **_: Any) -> dict[str, Any]
     return await monitor.run(platform=ctx["deps"].platform)
 
 
-FUNCTIONS = [ping, check_inventory, ensure_next_steps, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
+FUNCTIONS = [ping, check_inventory, check_cadences, ensure_next_steps, handle_lead_created, handle_inbound_message, handle_lead_paused, handle_lead_resumed,
              handle_booking_changed,  # PLAN_4 stream S
              fire_due_followups, update_summary, understand_turn, close_expired_leads, clear_inventory_cache,
              sweep_recalls, sweep_maintenance,  # MASTER_PLAN_4 D5/D6 (stream A4)
