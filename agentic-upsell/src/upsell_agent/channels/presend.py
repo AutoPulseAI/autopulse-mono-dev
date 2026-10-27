@@ -57,7 +57,13 @@ class Verdict:
 
 
 # Which checks run (AI Studio -> Compliance -> "Last check before sending", ai_studio.py applies it).
-CHECKS = {"superseded": True, "appointment": True, "calendar": True, "burst": True}
+CHECKS = {"superseded": True, "appointment": True, "calendar": True, "burst": True, "crm_status": True}
+# The user, 28 Oct 2026: "Still with me?" and follow-ups went out after staff had set the lead to Appointment Booked -
+# the AI read only its own record. Every message the AI starts on its own reads the CRM lead fresh: one of these
+# statuses on any of the customer's leads stops it (staff own it now, or there is nothing left to sell).
+CRM_STOP_STATUSES = frozenset({"appointment booked", "appointment set", "visited", "sold", "sold pending",
+                               "sold delivered", "closed - lost", "dnd"})
+# Not Managerial Review: the AI sets it itself (a vehicle check, a manager's answer) and keeps the lead.
 
 # What each check does, in plain words (shown in AI Studio).
 EXPLAINED = {
@@ -65,6 +71,9 @@ EXPLAINED = {
                   "their newest message answers everything at once.",
     "appointment": "No sales follow-up goes to a customer who has an upcoming appointment on any of their leads - "
                    "the appointment's own messages run instead.",
+    "crm_status": "No follow-up the AI starts on its own (\"Still with me?\", a cadence touch, a check-back) goes "
+                  "to a customer whose lead staff have set to Appointment Booked, Visited, Sold, Closed - Lost or DND - "
+                  "read fresh from the CRM at the moment it would be sent.",
     "calendar": "A message that confirms a visit on a day that isn't the booked day is stopped, and staff are told "
                 "to check the appointment with the customer.",
     "burst": "A scheduled message waits 15 minutes when the customer already got 3 messages in the last 10 minutes.",
@@ -72,7 +81,7 @@ EXPLAINED = {
 
 
 def _settings() -> dict[str, bool]:
-    return {k: bool(CHECKS.get(k, True)) for k in ("superseded", "appointment", "calendar", "burst")}
+    return {k: bool(CHECKS.get(k, True)) for k in ("superseded", "appointment", "calendar", "burst", "crm_status")}
 
 
 def is_sales(turn_id: str, is_reply: bool) -> bool:
@@ -152,6 +161,16 @@ async def _check(db: Any, *, lead_id: str, customer_id: str, turn_id: str, text:
     if on["appointment"] and booking and is_sales(turn_id, is_reply):
         return Verdict(False, "appointment", f"the customer has an appointment on {booking['_at']:%A %B %-d at %-I:%M %p}"
                                              "; its own messages run instead of sales follow-ups")
+
+    if on["crm_status"] and is_sales(turn_id, is_reply):
+        rows = await db.collection(PLATFORM_LEADS_COLLECTION).find(
+            {"_id": {"$in": [as_object_id(i) for i in leads]}},
+            projection={"fe_lead_status": 1, "status": 1}).to_list(200)
+        for row in rows:
+            status = str(row.get("fe_lead_status") or row.get("status") or "").strip()
+            if status.lower() in CRM_STOP_STATUSES:
+                return Verdict(False, "crm_status", f"the CRM shows {status} on this customer's lead: no follow-up from "
+                                                    "the AI")
 
     if on["calendar"] and booking and _CONFIRMS.search(text or ""):
         named = {d for d in _WEEKDAYS if re.search(rf"\b{d}\b", text, re.IGNORECASE)}
