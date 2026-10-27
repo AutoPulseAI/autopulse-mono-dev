@@ -560,3 +560,15 @@ def test_still_wanting_the_original_car():
         assert _STILL_WANTS.match(yes), yes
     for no in ("No, I want the M240", "not really", "only the m240"):
         assert not _STILL_WANTS.match(no), no
+
+
+async def test_with_the_live_at_night_setting_a_night_lead_still_gets_one_message(mongo, monkeypatch):
+    # AI Studio on live publishes at_night = "email_now_text_when_open"; the user, 28 Oct 2026: one message, not two.
+    from upsell_agent.channels import consent
+    from upsell_agent.integrations.mongodb import SCHEDULED_FOLLOWUPS_COLLECTION
+    monkeypatch.setattr(consent, "AT_NIGHT", "email_now_text_when_open")
+    set_clock(datetime(2026, 9, 23, 3, 10, tzinfo=UTC))  # 11:10 PM New York
+    created = await _new_lead(mongo, vehicle=RAV4)
+    assert len(await _sent(mongo, created, "email")) == 1 and not await _sent(mongo, created)
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": "first_reply_held", "status": "pending"})

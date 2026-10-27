@@ -406,7 +406,9 @@ async def _first_reply(db: DealerScopedDatabase, deps: TurnDeps, *, customer_id:
         other = "email" if channel == "sms" else "sms"
         night = channel == "sms" and check.outcome == "HOLD" and check.until
         # AI Studio channel rule for a lead outside texting hours (consent.AT_NIGHT).
-        text_held = check if night and consent.AT_NIGHT == "email_now_text_when_open" else None
+        # The user, 28 Oct 2026: one message at night, asking "now or business hours?" - never the first message again
+        # by text in the morning (140 leads got both). The 13 Oct second copy is gone whatever AI Studio says.
+        text_held = None
         # Client, 12 Oct 2026: a lead that arrives at night is answered at once by EMAIL (no quiet hours for email), with
         # the after-hours choice; only the text waits for the customer's legal texting hours.
         if check.outcome in ("BLOCK", "REVIEW", "HOLD") and not (night and consent.AT_NIGHT == "wait_for_text") \

@@ -64,7 +64,9 @@ const LABELS = {
 const CHOICES = {
   first_channel: { text: "Text (when there's a phone number)", email: "Email (when there's an email)" },
   at_night: {
-    email_now_text_when_open: "Email right away, then the first text when texting hours open",
+    // The user, 28 Oct 2026: one message at night - the "now or during business hours?" question (agentic-upsell consent.py).
+    ask_now_or_later: "One message right away, asking: message you now, or during business hours?",
+    email_now_text_when_open: "One message right away, asking: message you now, or during business hours? (same as above)",
     wait_for_text: "Wait and send the first text when texting hours open",
     email_only: "Email right away only",
   },
