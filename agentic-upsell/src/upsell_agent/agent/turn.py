@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.agent import cadence, human_contact, lead_bucket, lifecycle, provider_health, service_request
+from upsell_agent.agent import cadence, customer_hold, human_contact, lead_bucket, lifecycle, provider_health, service_request
 from upsell_agent.agent.after_hours import TRIGGER_RESUME
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import after_turn, load_conversation
@@ -372,6 +372,13 @@ async def run_turn(
                                                    lead=lead, customer=customer, customer_id=customer_id,
                                                    channel=channel, turn_id=tracer.turn_id, shadow=shadow,
                                                    hold_cadence=_hold_cadence(decision))
+        if not shadow and trigger == "inbound_message" and lead_id:
+            # Salvatore Giangrande, 27 Oct 2026: "No longer interested", then an AI Studio touch 16 minutes later. What
+            # the customer just said holds the AI's own timed messages (agent/customer_hold.py); a new message from
+            # them replaces it.
+            hold = customer_hold.hold_for(result.get("extraction"), inbound_text)
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                {"lead_id": lead_id}, {"$set": {"customer_hold": hold}} if hold else {"$unset": {"customer_hold": ""}})
         if not shadow and trigger in ("inbound_message", "resume_at_opening", "lead_created"):
             # Rocco, 26 Oct 2026: his name correction came in messages whose replies were (rightly) stopped as
             # superseded, and the name was lost with them. What the customer tells us is saved whether or not this

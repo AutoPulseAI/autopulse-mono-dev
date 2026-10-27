@@ -496,7 +496,13 @@ def kind_allowed(kind: str | None, stage: Stage | str | None) -> bool:
 
 def stage_check(state: dict | None, kind: str | None, *, long_horizon: bool = False) -> tuple[str, bool, str]:
     """The pre-send re-check's stage line (scheduler/followups.py), as (check, passed, detail).
-    `long_horizon`: a next step kept past Day 91 (cancel_stale_work) may still run on the closed lead."""
+    `long_horizon`: a next step kept past Day 91 (cancel_stale_work) may still run on the closed lead.
+    A timed message the AI starts on its own also waits while the customer's last word holds it (agent/customer_hold.py:
+    they said no, later, or that they'll reach out)."""
+    from upsell_agent.agent import customer_hold
+
+    if not (held := customer_hold.check(state, kind))[1]:
+        return "stage", False, held[2]
     stage = stage_of((state or {}).get("stage"))
     ok = kind_allowed(kind, stage) or (long_horizon and kind == "next_action" and stage == Stage.CLOSED_LOST)
     if stage is None:
