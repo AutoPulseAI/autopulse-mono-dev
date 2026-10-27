@@ -748,7 +748,14 @@ async def plan_appointment_timers(
     # MASTER_PLAN_4 (stream R): the 15-minute details message, once per appointment time - a re-plan for the same
     # time (staff saving the status again) doesn't send it twice; a move sends it for the new time.
     details_sent_for = state.get("appointment_details_sent_for")  # outside `appointment`, which a new set replaces
-    details = appointment.details_step(appt_at, now=now) if details_sent_for != appt_at.isoformat() else None
+    # The user, 28 Oct 2026 ("what is a booking reply - why are we sending two messages?"; Michael: "Perfect - you're all
+    # set for Tuesday at 2:00 PM at 3914 Hempstead Tpke" and 15 minutes later "we are all set to meet on Tuesday ..."):
+    # the AI's own booking reply already gives the day, time and address. The details message is for a booking the
+    # customer didn't just make with the AI - staff set it or moved it (or the booking page).
+    ai_booked = str((booking or {}).get("created_by") or "").lower() == "ai" and (
+        recorded_at := (state.get("appointment") or {}).get("at")) in (None, appt_at.isoformat())
+    details = (appointment.details_step(appt_at, now=now)
+               if details_sent_for != appt_at.isoformat() and not ai_booked else None)
     if details:
         steps = sorted([details, *steps], key=lambda s: s.due_at)
     if not agreed:

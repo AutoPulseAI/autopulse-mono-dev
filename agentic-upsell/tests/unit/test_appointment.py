@@ -926,3 +926,18 @@ async def test_no_where_are_you_when_the_customer_wrote_around_the_appointment(m
     assert not [m for m in (await _outbox(mongo, created))[before:] if "looking for you" in m["text"]]
     note = await mongo["ai_crm_notes"].find_one({"lead_id": created["lead_id"], "kind": "no_show_customer_wrote"})
     assert note and "running 15 min late" in note["text"]
+
+
+@pytestmark_flow
+async def test_an_ai_booking_gets_no_second_details_message_but_a_staff_move_does(mongo):
+    # The user, 28 Oct 2026: the AI's booking reply already has the day, time and address - no second message.
+    created, _ = await _booked_friday(mongo)
+    booking = await _booking(mongo, created)
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {"created_by": "ai"}})
+    again = await followups.plan_appointment_timers(
+        await _scoped(), lead_id=created["lead_id"], customer_id=created["customer_id"], turn_id="ai")
+    assert "details" not in {s["step"] for s in again["steps"]}
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {"bookingTime": "15:00"}})
+    moved = await followups.plan_appointment_timers(
+        await _scoped(), lead_id=created["lead_id"], customer_id=created["customer_id"], turn_id="moved")
+    assert "details" in {s["step"] for s in moved["steps"]}  # a new time: the customer is told
