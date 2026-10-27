@@ -47,3 +47,36 @@ def test_a_form_line_or_none_is_no_question():
     from upsell_agent.agent.nodes.decide import not_our_own_questions
     asked = [{"text": "None"}, {"text": "Purchase Timeframe: unsure"}, {"text": "Do you have other bmw x3's?"}]
     assert not_our_own_questions(asked, "", []) == [asked[2]]
+
+
+async def test_a_photo_whose_host_says_nothing_goes_through_the_crm():
+    # The Tesla Model 3 lead, 27 Oct 2026: imageonthefly.autodatadirect.com answers HEAD with no type and no size.
+    from upsell_agent.agent.vehicle_media import ImageCheck, pick_vehicle_photo
+    from tests.unit.conftest import make_settings
+    photo = "https://imageonthefly.autodatadirect.com/images/?width=1200&height=900&IMG=USD10TSC032B01300.jpg"
+
+    class Hosts:
+        async def check(self, url):
+            if "autodatadirect" in url:
+                return ImageCheck(False, "not an image (no content type)")
+            return ImageCheck(True, "image/jpeg, 291 KB", 298109)
+
+    settings = make_settings("test")
+    records = [{"vin": "5YJ3E1EA0MF921244", "photo_urls": [photo]}]
+    pick = await pick_vehicle_photo("68e6f270ac63d8a8eba32096", "5YJ3E1EA0MF921244", channel="email",
+                                    settings=settings, records=records, checker=Hosts())
+    assert pick.urls == ["https://www.autopulse.ai/api/media/vehicle/68e6f270ac63d8a8eba32096/5YJ3E1EA0MF921244/0.jpg"]
+
+
+async def test_a_photo_that_is_really_broken_is_still_not_sent():
+    from upsell_agent.agent.vehicle_media import ImageCheck, pick_vehicle_photo
+    from tests.unit.conftest import make_settings
+
+    class Broken:
+        async def check(self, url):
+            return ImageCheck(False, "HEAD answered 404")
+
+    pick = await pick_vehicle_photo("d", "5YJ3E1EA0MF921244", channel="email", settings=make_settings("test"),
+                                    records=[{"vin": "5YJ3E1EA0MF921244", "photo_urls": ["https://x.example/a.jpg"]}],
+                                    checker=Broken())
+    assert pick.urls == []

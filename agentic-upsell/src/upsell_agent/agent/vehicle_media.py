@@ -148,6 +148,23 @@ class MediaPick:
         return asdict(self)
 
 
+# Betsy, 27 Oct 2026 meeting (the Tesla Model 3 lead's first text had no photo): imageonthefly.autodatadirect.com
+# answers HEAD with no content type and no size - 8 of the 9 first texts without a photo in three days. Twilio refuses
+# media with no content type, so the CRM serves that same photo with its real type (app/api/media/vehicle).
+_HOST_SAYS_NOTHING = re.compile(r"^(?:not an image \(no content type\)|size not stated)")
+
+
+def served_by_crm(dealer_id: str, vin: str, url: str, records: list[Any] | None, settings: Settings) -> str | None:
+    """The CRM's own URL for photo `url` of `vin` (its position in the vehicle's photo list), or None."""
+    base = str(getattr(settings, "media_base_url", "") or "").rstrip("/")
+    from upsell_agent.agent.media import _record_for
+    record = _record_for(vin, records) if records else None
+    photos = [str(u).strip() for u in (record or {}).get("photo_urls") or []]
+    if not base or url not in photos:
+        return None
+    return f"{base}/api/media/vehicle/{dealer_id}/{vin.upper()}/{photos.index(url)}.jpg"
+
+
 async def pick_vehicle_photo(dealer_id: str, vin: str | None, *, channel: str, settings: Settings,
                              source: InventorySource | None = None, records: list[Any] | None = None,
                              start: int = 0, checker: ImageChecker | None = None) -> MediaPick:
@@ -189,6 +206,13 @@ async def pick_vehicle_photo(dealer_id: str, vin: str | None, *, channel: str, s
             pick.urls = [choice.url]
             pick.reasons.append(f"{vin}'s own photo attached ({result.reason}).")
             return pick
+        served = served_by_crm(dealer_id, vin, choice.url, records, settings) if _HOST_SAYS_NOTHING.match(
+            result.reason) else None
+        if served and (again := await checker.check(served)).ok:
+            pick.urls = [served]
+            pick.reasons.append(f"{vin}'s own photo attached through the CRM ({choice.url}'s host didn't say its type "
+                                f"or size; {again.reason}).")
+            return pick
         pick.reasons.append(f"{vin}'s photo {choice.url} failed the image check: {result.reason}.")
     if tried:
         pick.reasons.append("No photo passed the image check: the message goes in words only, with no link.")
@@ -229,6 +253,9 @@ async def pick_vehicle_photos(dealer_id: str, vin: str, *, channel: str, setting
         if len(pick.urls) >= count:
             break
         result = await checker.check(url)
+        if not result.ok and _HOST_SAYS_NOTHING.match(result.reason) and (
+                served := served_by_crm(dealer_id, vin, url, [record] if record else [], settings)):
+            url, result = served, await checker.check(served)
         size = result.size
         if not result.ok or total + size > MAX_IMAGE_BYTES:
             continue
