@@ -20,7 +20,8 @@ import Role from '@models/Role';
 import Permission from '@models/Permission';
 import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
-import { attachAiStages } from '@lib/ai/aiStage';
+import { attachAiStages, attachAiAdminLabels } from '@lib/ai/aiStage';
+import { loadSettingsEditor } from '@lib/apiAuth';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -552,6 +553,8 @@ export async function GET(req) {
       }
       // The AI's stage per lead, read only (app/lib/ai/aiStage.js).
       await attachAiStages(leads);
+      // AutoPulse super admins only: the AI's bucket, stage and next message - never sent to a dealer's users.
+      if ((await loadSettingsEditor(req)).superAdmin) await attachAiAdminLabels(leads);
       // Appointments list: "Made by AI" / "Made by Staff" on each one.
       if (bookingStatus) {
         const details = await bookingDetailsForLeads(leads.map((l) => l._id));

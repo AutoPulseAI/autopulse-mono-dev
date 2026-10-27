@@ -35,3 +35,36 @@ export async function attachAiStages(leads, { collection = defaultCollection() }
   }
   return leads;
 }
+
+// Betsy and Bibi, 27 Oct 2026 meeting: "a status - it's under the sales agent, under this cadence - so we can trace it
+// back ... only our view, not the dealer's" (another company could see our secret sauce). For AutoPulse super admins
+// only (the caller checks): the AI's bucket and stage, and its next scheduled message (kind, step, when).
+export async function attachAiAdminLabels(leads, {
+  states = mongoose.connection.collection(AI_LEAD_STATE_COLLECTION),
+  followups = mongoose.connection.collection('scheduled_followups'),
+} = {}) {
+  if (!Array.isArray(leads) || !leads.length) return leads;
+  try {
+    const ids = leads.map((lead) => String(lead._id));
+    const [rows, next] = await Promise.all([
+      states.find({ lead_id: { $in: ids } }).project({ lead_id: 1, bucket: 1, stage_label: 1, status: 1 }).toArray(),
+      followups.aggregate([
+        { $match: { lead_id: { $in: ids }, status: 'pending' } },
+        { $sort: { due_at: 1 } },
+        { $group: { _id: '$lead_id', kind: { $first: '$kind' }, step: { $first: '$step' }, due_at: { $first: '$due_at' } } },
+      ]).toArray(),
+    ]);
+    const state = new Map(rows.map((r) => [String(r.lead_id), r]));
+    const upcoming = new Map(next.map((n) => [String(n._id), n]));
+    for (const lead of leads) {
+      const s = state.get(String(lead._id));
+      const n = upcoming.get(String(lead._id));
+      if (!s && !n) continue;
+      lead.ai_admin = { bucket: s?.bucket || null, stage: s?.stage_label || null, status: s?.status || null,
+        next: n ? { kind: n.kind, step: n.step || null, due_at: n.due_at } : null };
+    }
+  } catch (error) {
+    console.warn('[ai] could not read the AI admin labels', error?.message);
+  }
+  return leads;
+}

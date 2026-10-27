@@ -1748,6 +1748,15 @@ useImperativeHandle(ref, () => ({
                           <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
                         </div>
                       )}
+                      {lead.ai_admin && (
+                        // AutoPulse super admins only (the API leaves this out for anyone else): bucket and next AI message.
+                        <div className="small mt-1 text-info" title="AutoPulse admin view: the AI's bucket and its next scheduled message">
+                          <i className="fa-solid fa-user-shield"></i>{' '}
+                          {[lead.ai_admin.bucket && `Bucket: ${lead.ai_admin.bucket}`,
+                            lead.ai_admin.next && `Next: ${String(lead.ai_admin.next.step || lead.ai_admin.next.kind).replace(/_/g, ' ')} ${formatTimestamp(lead.ai_admin.next.due_at, dealerTimezone)}`]
+                            .filter(Boolean).join(' · ') || 'No AI timer'}
+                        </div>
+                      )}
                     </Col>
 
                     <Col xl={1} lg={2} sm={2} xs={5}>

@@ -787,3 +787,22 @@ test('messages sent and received are counted by who sent them, notes and the lea
   assert.deepEqual(got.received, { total: 1, customers: 1 });
   assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
 });
+
+// Betsy and Bibi, 27 Oct 2026 meeting: our own trace labels (bucket, next AI message), for AutoPulse admins only.
+test('admin labels: the bucket and the next pending AI message', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { attachAiAdminLabels } = await import('./app/lib/ai/aiStage.js');
+  const id = String(new mongoose.Types.ObjectId());
+  const states = mongoose.connection.collection('ai_lead_state');
+  const followups = mongoose.connection.collection('scheduled_followups');
+  await states.insertOne({ lead_id: id, bucket: 'sales', stage_label: 'Appointment Set' });
+  await followups.insertMany([
+    { lead_id: id, status: 'pending', kind: 'appointment_confirm', step: 'confirm', due_at: new Date('2026-10-29T14:00:00Z') },
+    { lead_id: id, status: 'pending', kind: 'appointment_countdown', step: 'countdown', due_at: new Date('2026-10-28T14:00:00Z') },
+    { lead_id: id, status: 'sent', kind: 'cadence_touch', due_at: new Date('2026-10-20T14:00:00Z') }]);
+  const [lead] = await attachAiAdminLabels([{ _id: id }]);
+  assert.equal(lead.ai_admin.bucket, 'sales');
+  assert.equal(lead.ai_admin.next.step, 'countdown');
+  await states.deleteMany({ lead_id: id });
+  await followups.deleteMany({ lead_id: id });
+});
