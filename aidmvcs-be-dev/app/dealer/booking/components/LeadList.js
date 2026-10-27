@@ -1214,7 +1214,13 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                             </p>
                             {lead.booked_by && (
                               <span className={`badge ${lead.booked_by === 'ai' ? 'bg-primary' : 'bg-secondary'}`}>
-                                {lead.booked_by === 'ai' ? 'Made by AI' : 'Made by Staff'}
+                                {lead.booked_by === 'ai' ? 'Booked by AI'
+                                  : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
+                              </span>
+                            )}
+                            {lead.booked_by === 'staff' && lead.customer_agreed === false && (
+                              <span className="badge bg-danger ms-1" title="The customer hasn't replied (or asked to cancel) and no call is logged">
+                                Customer not confirmed
                               </span>
                             )}
                           </div>
