@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
@@ -1675,6 +1676,8 @@ useImperativeHandle(ref, () => ({
                           <div className="w_card_list_box_label">
                           <p className="label"><small>Source:</small></p>
                           <p>{lead.source || "N/A"}</p>
+                          <small className={`badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
+                            title="How the lead came in">{contactTypeLabel(lead)}</small>
                           </div>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">

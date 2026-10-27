@@ -40,3 +40,13 @@ test('a staff booking shows as a status change and labels the AI text it caused'
   // The AI's own booking ("Set to Appointment Booked by the AI") is not a staff booking.
   assert.deepEqual(staffBookedTexts([{ ...note, mail_content: 'Set to Appointment Booked by the AI: visit on Monday' }, text]), {});
 });
+
+// Betsy, 27 Oct 2026 meeting: each lead says how it came in - Internet, Phone-up or Walk-in.
+test('lead type: staff choice first, a portal lead is Internet, a manual lead nobody typed is Not set', async () => {
+  const { contactTypeLabel, validContactType } = await import('./app/lib/leadContactType.js');
+  assert.equal(contactTypeLabel({ source: 'CarGurus' }), 'Internet');
+  assert.equal(contactTypeLabel({ source: 'email', contact_type: 'walk_in' }), 'Walk-in');
+  assert.equal(contactTypeLabel({ source: 'sms', contact_type: 'phone' }), 'Phone-up');
+  assert.equal(contactTypeLabel({ source: 'email' }), 'Not set');
+  assert.equal(validContactType('fax'), null);
+});

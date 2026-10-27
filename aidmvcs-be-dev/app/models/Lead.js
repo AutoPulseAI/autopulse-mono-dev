@@ -7,6 +7,8 @@
       email: { type: String }, // Optional: You can make this required if needed
       phone: { type: String }, // Optional: You can make this required if needed
       source: { type: String, default: 'email' }, // Default value for source
+      // Betsy, 27 Oct 2026 meeting: how the lead came in - internet, phone-up or walk-in (app/lib/leadContactType.js).
+      contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
 
       dealer_id:{ type: String },
       customer_id: {

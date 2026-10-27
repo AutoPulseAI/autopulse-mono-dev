@@ -1,4 +1,5 @@
 import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
+import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
@@ -671,12 +672,13 @@ export async function POST(req) {
         comments: data.comments,
         dealer_id: data.dealer_id,
         source: data.source || data.followup_preference || 'email',
-       
+        contact_type: validContactType(data.contact_type),
       };
       
       const jobData = {
      
         currentSMS:{
+          contact_type: validContactType(data.contact_type),
           message_id: null,
           parent_conversation: null,
           sender,
