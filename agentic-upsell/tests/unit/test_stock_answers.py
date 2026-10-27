@@ -286,3 +286,19 @@ async def test_a_vehicle_we_dont_have_gets_similar_ones_from_stock(mongo):
     assert "RAV4" in sms and "don't have" not in sms.lower()
     guard = next(n for n in turn["nodes"] if n["node"] == "guard" and n.get("status") == "done")
     assert guard["output"]["checks"].get("offers_similar_vehicles", True)
+
+
+async def test_a_make_the_dealer_doesnt_carry_still_gets_the_closest_stock(mongo):
+    # Manny, 26 Oct 2026: a Porsche Macan (not a make this dealer carries) got "I'm checking with a manager" and nothing
+    # from stock. The user, 28 Oct 2026: similar cars, always - the reply check now requires them.
+    await _stock(mongo, _rav4("VIN00000000000792", color="Blue", trim="XLE"))
+    created = await _lead()
+    await _say(created, "Do you have a Porsche Macan?")
+    turn, _ = await _last(mongo, created)
+    search = next(n for n in turn["nodes"] if n["node"] == "search_stock")
+    assert [r["vin"] for r in search["output"]["records"]] == ["VIN00000000000792"]
+    from upsell_agent.agent.nodes.guard import missing_alternatives
+    pack = {"inventory": search["output"]["records"], "stock_search": {"asked": True, "exact": False}}
+    assert missing_alternatives(pack, {"sms_vins": [], "email_vins": []})  # a reply naming none is sent back
+    guard = next(n for n in turn["nodes"] if n["node"] == "guard")
+    assert "offers_similar_vehicles" in guard["output"]["checks"]
