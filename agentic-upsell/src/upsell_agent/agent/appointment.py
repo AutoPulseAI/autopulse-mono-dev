@@ -195,6 +195,22 @@ _NO = re.compile(r"^\s*(?:n|r|no|nope|nah|reschedule|can'?t|cannot|can not|doesn
                  r"[\s.!,]*(?:sorry)?[\s.!]*$", re.IGNORECASE)
 
 
+# Betsy, 27 Oct 2026 meeting (Gabriel: "I can't confirm because I might not make it due to the distance and health
+# conditions, but I would like to keep tomorrow in mind"): "maybe and no are two different things - maybe is still a
+# possibility ... we can do things tentatively". A booked customer who isn't sure keeps the appointment, marked
+# tentative; no questions, no options.
+_MAYBE = re.compile(r"\b(?:might|may)\s+not\s+(?:be\s+able\s+to\s+)?(?:make\s+it|come|be\s+able)|\bcan'?t\s+confirm\b|"
+                    r"\bcannot\s+confirm\b|\bnot\s+(?:100%\s+)?sure\s+(?:if|i\s+can|i'?ll|about)\b|\bmaybe\b|"
+                    r"\bpossibly\b|\bit\s+depends\b|\bwe'?ll\s+see\b|\b(?:i'?ll|will)\s+try\s+(?:to|my\s+best)\b|"
+                    r"\btentative(?:ly)?\b|\bkeep\s+(?:it|tomorrow|the\s+\w+)\s+in\s+mind\b|\bif\s+i\s+can\b", re.IGNORECASE)
+_CANCEL = re.compile(r"\bcancel|\bnot\s+(?:coming|interested)\b|\bwon'?t\s+(?:be\s+)?(?:coming|make\s+it)\b", re.IGNORECASE)
+
+
+def is_maybe(text: str) -> bool:
+    body = text or ""
+    return bool(_MAYBE.search(body)) and not _CANCEL.search(body) and "?" not in body
+
+
 def classify_answer(text: str) -> Answer:
     """Y / clear yes, N / clear no, ambiguous (a short reply that is neither), or other (anything longer or
     a question: that is a conversation, answered normally, not a confirmation, §8)."""
@@ -347,6 +363,10 @@ def reply_text(kind: str, *, customer_name: str | None, appt: datetime | None,
     day, at = _when(appt) if appt else ("", "")
     if kind == "confirmed":
         return f"Perfect, thank you, {first}! See you {day} at {at}."
+    if kind == "tentative":
+        when = f"{day} at {at}" if appt else "your visit"
+        return (f"No problem, {first}, I'll keep you down tentatively for {when}. If it doesn't work out, just text me "
+                "here and we'll find another time.")
     if kind == "clarify":
         return "Just to be sure, does that time still work? Please reply C to confirm or R to reschedule."
     if kind == "reschedule":

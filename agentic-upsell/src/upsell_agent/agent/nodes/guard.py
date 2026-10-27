@@ -221,6 +221,24 @@ def unbacked_watch_promise(decision: dict[str, Any], draft: dict[str, Any]) -> l
             if (m := _WATCH_PROMISE.search(str(draft.get(key) or "")))]
 
 
+# Betsy, 27 Oct 2026 meeting (Gabriel, booked: "No pressure - if tomorrow ends up tough, I can line up options that
+# fit"): "none of our rules says we're going to provide that customer options ... it can't lie - escalation is better".
+# Nothing sends options later, so the reply never promises to; vehicles in stock are named in the reply itself.
+_OPTIONS_PROMISE = re.compile(r"\b(?:i'?ll|i\s+will|i\s+can|we\s+can|we'?ll|let\s+me|happy\s+to)\s+(?:also\s+)?"
+                              r"(?:line\s+up|put\s+together|pull\s+(?:up|together)|round\s+up|gather|send(?:\s+you)?|"
+                              r"find(?:\s+you)?|look\s+for|work\s+up|have)\s+(?:some\s+|a\s+few\s+|other\s+|more\s+|"
+                              r"a\s+couple\s+(?:of\s+)?)?(?:other\s+)?(?:options|choices|alternatives)\b", re.IGNORECASE)
+
+
+def unbacked_options_promise(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:
+    if decision.get("vehicle_check") or decision.get("action") in ("handoff", "offer_human"):
+        return []
+    return [f"the {name} promises to send options later ({m.group(0)!r}), but nothing will - name what's in stock "
+            "now, or keep the visit"
+            for name, key in (("SMS", "sms_text"), ("email", "email_body"))
+            if (m := _OPTIONS_PROMISE.search(str(draft.get(key) or "")))]
+
+
 # Erb, 26 Oct 2026 (a day-14 follow-up: "I'm passing it to our sales manager who can help and will get back to you" -
 # nobody was told; the vehicle check runs only on the customer's own message): a hand-over is promised only when this
 # turn hands over.
@@ -604,6 +622,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if watch:
         result["passed"] = False
         result["violations"] += watch
+    options = unbacked_options_promise(state.decision or {}, state.draft or {})
+    result["checks"]["no_unbacked_options_promise"] = not options
+    if options:
+        result["passed"] = False
+        result["violations"] += options
     handover = unbacked_handover_promise(state.decision or {}, state.draft or {})
     result["checks"]["no_unbacked_handover_promise"] = not handover
     if handover:

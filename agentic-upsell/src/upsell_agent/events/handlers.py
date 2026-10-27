@@ -1062,10 +1062,11 @@ async def _appointment_answer(db: DealerScopedDatabase, event: InboundMessageEve
 
     appt_state = state.get("appointment") or {}
     confirmation = appt_state.get("confirmation") or {}
-    if state.get("stage") != lifecycle.Stage.APPOINTMENT_SET.value or confirmation.get("status") != "asked":
-        return None
     text = " ".join(r["text"] for r in rows).strip()
-    answer = appointment.classify_answer(text)
+    if state.get("stage") != lifecycle.Stage.APPOINTMENT_SET.value or (
+            confirmation.get("status") != "asked" and not appointment.is_maybe(text)):
+        return None
+    answer = "maybe" if appointment.is_maybe(text) else appointment.classify_answer(text)
     if answer == "other" or (answer == "ambiguous" and confirmation.get("asked_again")):
         return None
     profile = await dealer_profile(event.dealer_id)
@@ -1093,6 +1094,16 @@ async def _appointment_answer(db: DealerScopedDatabase, event: InboundMessageEve
         new_state = {"appointment.confirmed": False,
                      "appointment.confirmation": {**confirmation, "status": "declined", "answered_at": now}}
         why = "The customer replied N: not confirmed, new times offered at once."
+    elif answer == "maybe":
+        kind, action = "tentative", "appointment_tentative"
+        new_state = {"appointment.confirmed": False, "appointment.tentative": True, "appointment.tentative_at": now,
+                     "appointment.confirmation": {**confirmation, "status": "tentative", "answered_at": now}}
+        why = "The customer isn't sure they can make it: the appointment stays, marked tentative (Betsy, 27 Oct 2026)."
+        from upsell_agent.agent import crm_notes
+        await crm_notes.write(db, lead_id=lead_id, kind="appointment_tentative", customer_id=event.customer_id,
+                              key=f"tentative:{lead_id}:{appt_state.get('at')}", platform=deps.platform,
+                              text=f"Appointment tentative - the customer wrote: \"{text[:300]}\". It stays on the "
+                                   "calendar; a call may help.")
     else:
         kind, action = "clarify", "appointment_clarify"
         new_state = {"appointment.confirmation": {**confirmation, "asked_again": True}}

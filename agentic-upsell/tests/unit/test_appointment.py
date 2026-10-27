@@ -388,12 +388,12 @@ async def test_n_offers_new_times_at_once_and_the_pick_moves_the_booking_and_its
 async def test_a_reply_that_is_neither_y_nor_n_is_asked_once_more_and_then_left_alone(mongo):
     created, _ = await _booked_friday(mongo)
     await _fire(mongo, created, "confirm")
-    first = await _say(created, "maybe")
+    first = await _say(created, "hmm")
     assert first["appointment_answer"] == "ambiguous" and first["status"] == "appointment_clarify"
     assert [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"].startswith(
         "Just to be sure, does that time still work?")
     assert (await _booking(mongo, created))["booking_status"] == "pending"  # not confirmed until clear
-    second = await _say(created, "hmm")
+    second = await _say(created, "eh")
     assert "appointment_answer" not in second  # not asked a third time: an ordinary turn answers it
 
 
@@ -895,3 +895,17 @@ async def test_once_the_appointment_is_set_the_reply_asks_nothing_more_about_the
                                               sort=[("_id", -1)])
     decide = next(n for n in log["nodes"] if n.get("node") == "decide")
     assert not (decide.get("output") or {}).get("asks")
+
+
+# Item 6 (BUILD-PLAN-27-OCT.md): maybe is not no.
+@pytestmark_flow
+async def test_a_booked_customer_who_isnt_sure_keeps_the_appointment_marked_tentative(mongo):
+    created, _ = await _booked_friday(mongo)
+    before = len(await _outbox(mongo, created))
+    await _say(created, "I can't confirm because I might not make it due to the distance, but keep Friday in mind")
+    new = [m for m in (await _outbox(mongo, created))[before:] if m["channel"] == "sms"]
+    assert len(new) == 1 and "tentatively" in new[0]["text"] and "?" not in new[0]["text"]
+    assert "option" not in new[0]["text"].lower()
+    state = await _state(mongo, created)
+    assert state["stage"] == "appointment_set" and state["appointment"]["tentative"] is True
+    assert await mongo["ai_crm_notes"].find_one({"lead_id": created["lead_id"], "kind": "appointment_tentative"})
