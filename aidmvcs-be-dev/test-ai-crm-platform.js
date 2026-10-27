@@ -516,8 +516,12 @@ test('the AI\'s working stages replace only another working status, never one st
   for (const current of [null, 'Lead', 'Contacted', 'Lead Not Contacted']) {
     assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), null, String(current));
   }
-  for (const current of ['Appointment Booked', 'Visited', 'Sold', 'DND', 'Sold Pending', 'Unsold', 'No Show']) {
+  for (const current of ['Visited', 'Sold', 'DND', 'Sold Pending', 'Unsold']) {
     assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), 'staff_status_kept', current);
+  }
+  // 28 Oct 2026: Appointment Booked / No Show are kept while a booking is still ahead (see test-message-author.js).
+  for (const current of ['Appointment Booked', 'No Show']) {
+    assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current }), 'appointment_still_ahead', current);
   }
 });
 

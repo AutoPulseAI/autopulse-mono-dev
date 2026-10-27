@@ -965,3 +965,11 @@ def test_the_appointment_time_is_recognised_however_it_is_written():
     assert not two.search("12:00 PM") and not two.search("2:30 PM")
     half = time_patterns(datetime(2026, 10, 27, 14, 31, tzinfo=NY))
     assert half.search("2:31 PM") and not half.search("2 pm")
+
+
+@pytestmark_flow
+async def test_a_no_show_shows_as_no_show_in_the_crm(mongo):
+    # The user, 28 Oct 2026: after a booking the AI moves the CRM status on too.
+    created, _ = await _booked_friday(mongo)
+    await _fire(mongo, created, "no_show_check")
+    assert (await _state(mongo, created))["crm_status_sync"]["crm_status"] == "No Show"

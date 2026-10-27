@@ -39,6 +39,9 @@ CRM_STATUS_FOR_STAGE = {
     # escalated" - the status stays; it is never Dealership Action Required (agent/escalation.py).
     "contact_made_no_next_action": "Contacted - No Next Action",
     "contact_made_specific_followup": "Contacted - Specific Follow-up",
+    # The user, 28 Oct 2026: after a booking the AI moves the CRM status on too - appointment + 1 hour with no visit
+    # marked shows No Show (the CRM applies it only over Appointment Booked; aidmvcs-be-dev aiDnd.js).
+    "appointment_no_show": "No Show",
 }
 RETRY_LIMIT = 200
 RETRY_AFTER_S = 3.0

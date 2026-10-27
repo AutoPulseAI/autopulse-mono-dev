@@ -65,3 +65,17 @@ test('a sign-in older than a day is renewed for seven days; login-as and remembe
   assert.equal(renewedToken({ ...old, impersonated_by: 'admin' }, 's', now), null);
   assert.equal(renewedToken({ ...old, rememberDevice: true }, 's', now), null);
 });
+
+// The user, 28 Oct 2026: after a booking the AI moves the status on - No Show, then back into follow-up - but never
+// over a status staff chose for a later step, and never while the appointment is still ahead.
+test('the AI moves a booked lead to No Show, and back to follow-up only once no booking is ahead', async () => {
+  const { closedStatusConflict } = await import('./app/lib/ai/aiDnd.js');
+  assert.equal(closedStatusConflict({ status: 'No Show', current: 'Appointment Booked' }), null);
+  assert.equal(closedStatusConflict({ status: 'No Show', current: 'Visited' }), 'staff_status_kept');
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'No Show', bookingAhead: false }), null);
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Appointment Booked',
+    bookingAhead: true }), 'appointment_still_ahead');
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Appointment Booked',
+    bookingAhead: false }), null);
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Sold' }), 'staff_status_kept');
+});
