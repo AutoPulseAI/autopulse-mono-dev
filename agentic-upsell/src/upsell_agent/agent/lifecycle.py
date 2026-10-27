@@ -624,8 +624,9 @@ async def apply(db: DealerScopedDatabase, lead_id: str | None, events: list[Even
     # the Day 91 opportunity clock (§12, decision 149).
     if new in SHORT_TERM and (current is None or current not in SHORT_TERM) and cadence_enabled():
         reentered = current is not None
-        fields["cadence"] = cadence.started(cadence.CadenceState.load(state), at=now,
-                                            reentered=reentered).as_dict()
+        since = setup.get("opportunity_created_at") or state.get("opportunity_created_at")
+        fields["cadence"] = cadence.started(cadence.CadenceState.load(state), at=now, reentered=reentered,
+                                            lead_since=since if isinstance(since, datetime) else None).as_dict()
         out["cadence_started"] = {"reentered": reentered}
     next_action = event.detail.get("next_action")
     if new == Stage.SPECIFIC_FOLLOWUP and next_action:

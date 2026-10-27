@@ -121,3 +121,23 @@ def test_no_other_cars_in_the_first_text_or_after_booking_unless_asked():
     assert not unasked_alternatives(pack, {"action": "answer"}, two)  # mid-conversation: allowed
     assert not unasked_alternatives({**pack, "stock_search": {"asked": True}}, {"touch1": {}}, two)  # they asked
     assert not unasked_alternatives(pack, {"touch1": {"vin": "OWN1"}}, {"sms_vins": ["OWN1"]})
+
+
+def test_an_older_lead_is_placed_on_its_own_day_of_the_cadence():
+    # Betsy, 27 Oct 2026 meeting: a new client's last 90 days of leads go in at their own lead dates.
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from upsell_agent.agent import cadence
+    ny = ZoneInfo("America/New_York")
+    now = datetime(2026, 10, 28, 15, tzinfo=UTC)
+    fresh = cadence.started(cadence.CadenceState(), at=now, lead_since=now - timedelta(hours=2))
+    assert fresh.started_at == now and fresh.touch_number == 2  # a new lead: Day 1, the name nudge next
+    old = cadence.started(cadence.CadenceState(), at=now, lead_since=now - timedelta(days=40))
+    assert old.started_at == now - timedelta(days=40) and old.touch_number == 3
+    planned = cadence.plan_touch(old, now=now, tz=ny, first_contact_done=True)
+    assert planned.day == 58 and planned.due_at > now  # the next grid day after day 41: one touch, no burst
+    too_old = cadence.started(cadence.CadenceState(), at=now, lead_since=now - timedelta(days=120))
+    assert too_old.started_at == now  # past the 90 days: not backdated
+    again = cadence.started(cadence.CadenceState(), at=now, reentered=True, lead_since=now - timedelta(days=40))
+    assert again.started_at == now  # re-entry starts its own fresh schedule, as before

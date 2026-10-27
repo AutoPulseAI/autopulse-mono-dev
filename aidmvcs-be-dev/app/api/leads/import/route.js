@@ -111,6 +111,13 @@ export async function POST(request) {
 
                         const recipient = followupPref === 'sms' ? formatPhoneForTwilio(row.phone) : row.email;
 
+                        // Betsy, 27 Oct 2026 meeting: a new client's last 90 days of leads keep their own dates, so the AI places
+                        // each one on the right day of its cadence. A date in the past year only; anything else is "now".
+                        const given = row.lead_date || row.created_at || row.createdAt || row.date;
+                        const original = given ? new Date(given) : null;
+                        const originalCreatedAt = original && !Number.isNaN(original.getTime()) && original < new Date()
+                            && Date.now() - original.getTime() < 365 * 86400e3 ? original : null;
+
                         const leadData = {
                             name: row.name,
                             email: row.email,
@@ -123,7 +130,8 @@ export async function POST(request) {
                             comments: row.comments || row.comment,
                             dealer_id: dealerId,
                             source: row.source || 'csv_import',
-                            status: 'New'
+                            status: 'New',
+                            ...(originalCreatedAt ? { createdAt: originalCreatedAt } : {}),
                         };
 
                         const jobData = {
@@ -145,6 +153,7 @@ export async function POST(request) {
                                 followup_preference: followupPref,
                                 dealer_id: dealerId,
                                 communication_type: followupPref,
+                                original_created_at: originalCreatedAt ? originalCreatedAt.toISOString() : null,
                             }
                         };
 
