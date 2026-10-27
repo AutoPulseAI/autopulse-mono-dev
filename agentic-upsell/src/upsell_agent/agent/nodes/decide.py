@@ -348,6 +348,31 @@ _ASKED_ARRIVAL = re.compile(r"\bwhat time (?:will|would|do|can|are) you\b[^?]{0,
                             r"stop by|be in)\b|\bwhen (?:will|would) you (?:arrive|be here|get here)\b", re.IGNORECASE)
 
 
+_NO_QUESTION = frozenset({"none", "n a", "na", "null", "no", "nothing", "unknown", "nil"})
+_FORM_LINE = re.compile(r"^\s*[A-Z][\w /]{2,30}:\s*[^?]{0,40}$")
+
+
+def not_our_own_questions(questions: list[dict[str, str]], customer_text: str | None,
+                          our_texts: list[str]) -> list[dict[str, str]]:
+    """Richard, 27 Oct 2026 (BUILD-PLAN-27-OCT item 9: "Am interested" -> "That's something we can go over together
+    when you come in"): Extract listed our own "Tell me, what are you driving now?" as his question; the reply check
+    then turned down both drafts for not answering it, the safety net went out, and the question stayed open for his
+    follow-up too. A "customer question" that is one of our own recent questions, and isn't in what the customer
+    wrote, is dropped."""
+    from upsell_agent.agent.conversation import _key
+    said = _key(customer_text or "")
+    ours = [_key(t) for t in our_texts if t]
+    kept = []
+    for q in questions:
+        key = _key(q.get("text") or "")
+        if not key or key in _NO_QUESTION or _FORM_LINE.match(str(q.get("text") or "")):
+            continue  # live, 24-27 Oct 2026: "None", "Purchase Timeframe: unsure" (a lead form's line)
+        if key not in said and any(key in o for o in ours):
+            continue
+        kept.append(q)
+    return kept
+
+
 def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: datetime) -> dict[str, str] | None:
     """Client, 13 Oct 2026 (Artem Petrov: "We coming to look at it now" ... "520" - the AI "didn't acknowledge the time
     and didn't confirm an appt nor book it"): a customer on their way today who gives the time they'll arrive has that
@@ -1137,7 +1162,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     profile = await load_profile(ctx, state)
     conversation = ConversationState.model_validate((state.context_pack or {}).get("conversation") or {})
     # Questions an earlier reply left unanswered (a template went out) come first.
-    questions = questions_for_turn(conversation, list(extraction.get("questions") or []))
+    questions = not_our_own_questions(
+        questions_for_turn(conversation, list(extraction.get("questions") or [])), state.customer_text or state.inbound_text,
+        [m.get("text") or "" for m in (state.context_pack or {}).get("working_memory") or []
+         if m.get("direction") == "outbound"][-4:])
     status = (ctx.lead_state or {}).get("status")
     hold = hold_questions_reason(extraction, ctx.compliance)
     # MASTER_PLAN_4 D2/D4 (stream A3): a Sold Pending / Sold - Delivered customer gets answers only - no asks, no
