@@ -400,6 +400,7 @@ async def run_turn(
             await _escalate_cannot_supply(db, lead_id, result)
             if trigger == "inbound_message":
                 await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
+                await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
             await _escalate_person_request(db, lead_id, result, customer_name=(customer or {}).get("name")
@@ -1224,6 +1225,29 @@ async def _alert_arriving(db: DealerScopedDatabase, platform: Any, lead_id: str 
                                                          "Please be ready to greet them."))
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
         "at": clock.now(), "kind": "customer_arriving", "text": "The customer is on the way: please greet them."}}})
+
+
+# Robby Torres, 27 Oct 2026: "I can give them 19k out the door ... you can confirm here if is ok then I can go there" -
+# the AI can't agree a price (client, 21 Oct 2026: a price question is answered by inviting them in), and no one at the
+# store saw the offer. A number they offer goes to staff at once; the reply is unchanged.
+_PRICE_OFFER = re.compile(
+    r"(?:\b(?:i can|i could|i'?ll|i will|i would|i'?d|we can|can you do|would you take|will you take|i can pay|offer)\b"
+    r"[^.?!\n]{0,30}?\$?\s?\d{1,3}(?:[,.]?\d{3}|(?:\.\d)?\s?k)\b)"
+    r"|(?:\$?\s?\d{1,3}(?:[,.]?\d{3}|(?:\.\d)?\s?k)\b[^.?!\n]{0,12}\b(?:out the door|otd|all in|cash)\b)", re.IGNORECASE)
+
+
+async def _alert_price_offer(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                             text: str | None, turn_id: str) -> None:
+    """The customer names a price they'd pay: staff are told at once, with their words."""
+    if not lead_id or not text or not (m := _PRICE_OFFER.search(text)):
+        return
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="price_offer", key=f"price_offer:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(f"The customer made a price offer ({m.group(0).strip()!r}): "
+                                                         f"\"{text[:240]}\". The AI can't agree a price - a manager "
+                                                         "please answer them."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "price_offer", "text": "The customer made a price offer: a manager please answer."}}})
 
 
 async def _without_photo_claims(tracer: TurnTracer, ctx: TurnContext, reply: str | None, photo: MediaPick,
