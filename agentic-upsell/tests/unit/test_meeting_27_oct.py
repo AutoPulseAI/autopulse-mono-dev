@@ -278,3 +278,26 @@ def test_a_polite_no_holds_the_ai_but_a_question_after_it_does_not():
     from upsell_agent.agent.customer_hold import hold_for
     assert hold_for({}, "I'm all set, thank you for asking")["until"] is None
     assert hold_for({}, "I'm good, what time do you close?") is None
+
+
+async def test_gpt_6_replies_get_the_same_token_room_as_gpt_5(monkeypatch):
+    # Yefri Montoya, 28 Oct 2026: gpt-6.1-sol's reply (761 tokens) went over the 600 cap; the safe template went out.
+    from upsell_agent.agent import llm
+    seen = {}
+
+    class Agent:
+        name = "compose"
+
+        async def run(self, payload, *, usage_limits, model_settings):
+            seen["limit"] = usage_limits.output_tokens_limit
+
+            class R:
+                output = "ok"
+
+                class usage:
+                    input_tokens = output_tokens = cache_read_tokens = 0
+            return R()
+
+    monkeypatch.setattr(llm, "model_settings", lambda *a: {})
+    await llm.run_agent(Agent(), "openai:gpt-6.1-sol", {}, timeout_s=5, output_tokens_limit=600)
+    assert seen["limit"] == 600 + llm.REASONING_HEADROOM_TOKENS

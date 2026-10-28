@@ -892,8 +892,10 @@ async def run_agent(agent: Agent, model_name: str, payload: dict[str, Any], *, t
                     output_tokens_limit: int) -> tuple[Any, ModelCall]:
     """One AI call with a hard timeout and a one-request budget. Raises
     TimeoutError / pydantic_ai errors; callers turn those into the template."""
-    if reasons(model_name):
-        # Reasoning tokens count as output: the step's own budget is for the answer (stream G).
+    if reasons(model_name) or model_name.split(":", 1)[-1].startswith(RESPONSES_API_MODELS):
+        # Reasoning tokens count as output: the step's own budget is for the answer (stream G). Yefri Montoya, 28 Oct
+        # 2026: on gpt-6.1-sol every reply that day failed "Exceeded the output_tokens_limit of 600 (output_tokens=761)"
+        # and the safe template went out instead - the GPT-6 models get the same headroom.
         output_tokens_limit += REASONING_HEADROOM_TOKENS
     started = time.perf_counter()
     async with asyncio.timeout(timeout_s):
