@@ -785,17 +785,12 @@ export default function Dashboard() {
 
             <CountCard
               iconClass="fa-light fa-paper-plane"
-              // The user, 28 Oct 2026: one card, SMS and email each with its own number - "messages" alone was unclear.
-              count={activity ? (
-                <span className="d-flex gap-3 flex-wrap">
-                  <span>SMS: {activity.delivered.texts}</span>
-                  <span>Email: {activity.delivered.emails}</span>
-                </span>
-              ) : '–'}
+              // The user, 28 Oct 2026: SMS and email each with its own number, small, like the other cards' lines.
+              count={activity ? activity.delivered.total : '–'}
               label="Messages Delivered"
               link={withRange('/dealer/leads?messages=sent')}
               description={activity
-                ? `${cardRangeText()} · to ${activity.delivered.customers} customers${activity.sent.failed ? ` · ${activity.sent.failed} failed` : ''} · ${activity.received.total} replies from ${activity.received.customers}`
+                ? `SMS: ${activity.delivered.texts} · Email: ${activity.delivered.emails} · ${cardRangeText()}`
                 : 'Could not count messages'}
             />
 
