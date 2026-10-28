@@ -36,6 +36,13 @@ _THEY_WILL_REACH_OUT = re.compile(
 ALL_SET = re.compile(r"^\W*(?:no,?\s*)?(?:i'?m|i am|we'?re|we are)\s+(?:all\s+set|good|ok(?:ay)?|fine|all\s+good)\b(?!\s+(?:with|for)\s+"
                      r"(?:tomorrow|today|\d|the\s+appointment|monday|tuesday|wednesday|thursday|friday|saturday|sunday))"
                      r"|^\W*(?:all\s+good|no\s+thanks?|no\s+thank\s+you|not\s+anymore|i'?ll\s+pass)\b", re.IGNORECASE)
+# Mujahid Khan, 28 Oct 2026 (selling his G-Class for cash): "How much u gonna pay?" - the AI can't know; a manager is
+# asked (agent/nodes/decide.py), and the AI's timed messages wait for that answer.
+WANTS_TRADE_NUMBER = re.compile(
+    r"\bhow much (?:(?:u|you|would you|will you|can you|are you|r u)\s+)?(?:gonna |going to )?(?:pay|give|offer)\b"
+    r"|\bwhat(?:'s| is| would| will)? (?:my car|it|my \w+) (?:be )?worth\b|\bwhat (?:can|would|will) you (?:give|offer|pay)\b"
+    r"|\b(?:give|send) me (?:a|an|the) (?:number|offer|quote|price) (?:for|on) (?:my|it)\b", re.IGNORECASE)
+TRADE_NUMBER_WAIT = timedelta(days=2)
 _TOO_FAR = re.compile(r"\btoo far\b|\bfar away\b|\bout of state\b|\bnot (?:located|local) (?:in|near)\b"
                       r"|\bwill not be able to come\b|\bcan'?t (?:come|make it) (?:in|there)\b", re.IGNORECASE)
 
@@ -51,6 +58,8 @@ def hold_for(extraction: dict[str, Any] | None, text: str | None, now: datetime 
     ex, said, now = extraction or {}, str(text or ""), now or clock.now()
     if _sure(ex, "not_interested") or (ALL_SET.search(said) and "?" not in said):
         return {"at": now, "until": None, "reason": "the customer said they're not interested"}
+    if WANTS_TRADE_NUMBER.search(said):
+        return {"at": now, "until": now + TRADE_NUMBER_WAIT, "reason": "waiting for a manager's number for their car"}
     if _sure(ex, "declines_visit") or _TOO_FAR.search(said):
         why = "the customer can't or won't come in"
     elif ex.get("next_contact_when") or ex.get("visit_later_when") or _THEY_WILL_REACH_OUT.search(said):

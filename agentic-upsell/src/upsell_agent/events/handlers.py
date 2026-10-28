@@ -253,7 +253,13 @@ def _lead_car(lead: dict | None) -> tuple[str, str] | None:
     vehicle = lead.get("vehicle") or data.get("vehicle") or {}
     vehicle = vehicle if isinstance(vehicle, dict) else {}
     vin = str(lead.get("vin") or data.get("vin") or vehicle.get("vin") or "").strip().upper()
-    named = " ".join(str(vehicle.get(k) or lead.get(k) or "").strip() for k in ("year", "make", "model")).strip().lower()
+    if vin in ("N/A", "NA", "NONE", "NULL", "0"):
+        vin = ""
+    from upsell_agent.agent.cadence import clean_vehicle
+    # Quincy Mack / Mujahid Khan, 15 Oct 2026: an Edmunds Trade In form with no car came as "1900 None None" and got
+    # "Hello again ... about our 1900 None None". Placeholder words and impossible years are no car.
+    named = (clean_vehicle(" ".join(str(vehicle.get(k) or lead.get(k) or "").strip()
+                                    for k in ("year", "make", "model"))) or "").lower()
     return (vin, named) if vin or named else None
 
 

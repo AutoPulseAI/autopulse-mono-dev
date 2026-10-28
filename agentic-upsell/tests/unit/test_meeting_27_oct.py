@@ -326,3 +326,14 @@ async def test_email_is_the_last_option(monkeypatch):
     ch, _ = await followups._permitted_channel(dealer_id="d", customer_id="c", lead_id="l", channel="email", at=None,
                                                channels=("email",))
     assert ch == "email"  # an AI Studio step set to email only stays email
+
+
+def test_frustration_escalates_at_once_and_confusion_the_second_time():
+    # The user, 28 Oct 2026: escalate instead of irritating them (Mujahid Khan, Quincy Mack).
+    from upsell_agent.agent.nodes.decide import _confused_or_frustrated
+    assert _confused_or_frustrated("I dont wanna wastee my timeee", [])
+    assert _confused_or_frustrated("I already told you that", [])
+    assert not _confused_or_frustrated("For what ?", [])  # first time: explained again
+    assert _confused_or_frustrated("What are we talking about", ["For what ?"])  # second time: a manager
+    assert not _confused_or_frustrated("For what color options do you have?", [])
+    assert not _confused_or_frustrated("I want to come Friday", ["what do you mean"])

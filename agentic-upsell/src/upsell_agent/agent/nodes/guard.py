@@ -307,7 +307,12 @@ _CLAIMS_HUMAN = re.compile(
     r"\b(?:i(?:'|\u2019)?m|i\s+am|this\s+is)\s+(?:a\s+|an\s+)?(?:real|actual|live)\s+(?:person|human|people)\b"
     r"|\byes,?\s*(?:—|-|,)?\s*(?:i(?:'|\u2019)?m|i\s+am)\s+(?:a\s+)?(?:real|human|person)\b"
     r"|\b(?:i(?:'|\u2019)?m|i\s+am)\s+(?:not\s+(?:a\s+)?(?:bot|robot|ai|computer|machine|program)|human)\b"
-    r"|\bi\s+typed\b", re.IGNORECASE)
+    r"|\bi\s+typed\b"
+    # Mujahid Khan, 21 Oct 2026, at the store: "I'm heading over now", "I'm walking to the entrance now", "where are you
+    # parked so I can meet you?" - the assistant can't walk anywhere; staff must be told instead.
+    r"|\b(?:i(?:'|\u2019)?m|i\s+am|i(?:'|\u2019)?ll\s+be)\s+(?:heading|walking|coming|on\s+my\s+way)\s+(?:over|out|down|to)\b"
+    r"|\bso\s+i\s+can\s+(?:meet|find|see)\s+you\b|\bi(?:'|\u2019)?ll\s+(?:come\s+out|meet\s+you\s+(?:at|outside|in))\b",
+    re.IGNORECASE)
 
 
 def claims_to_be_human(decision: dict[str, Any], draft: dict[str, Any]) -> list[str]:

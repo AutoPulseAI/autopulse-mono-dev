@@ -397,6 +397,24 @@ def _wrote_in_english(pack: dict[str, Any], text: str | None) -> bool:
     return english * 2 >= len(said)
 
 
+FRUSTRATED = re.compile(
+    r"\bdon'?t (?:wanna|want to) wast\w* (?:my |our )?tim\w*|\bwast(?:e|ing) (?:my|our) tim\w*"
+    r"|\byou(?:'re| are)? not (?:listening|understanding|reading)\b|\bi (?:already|just) (?:told|said|answered)\b"
+    r"|\bi told you\b|\bthis is (?:annoying|frustrating|confusing)\b|\bmakes no sense\b|\bstop (?:asking|repeating)\b"
+    r"|\bsame (?:question|thing) again\b|\bare you (?:a )?(?:bot|robot|real person)\b", re.IGNORECASE)
+CONFUSED = re.compile(
+    r"\bwhat (?:are|r) (?:we|you) talking about\b|^\W*for what\s*\?|\bwhat do you mean\b|\bi don'?t understand\b"
+    r"|^\W*(?:huh|what)\W*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _confused_or_frustrated(text: str | None, earlier: list[str]) -> bool:
+    """Frustrated: at once. Confused: the second time (the first gets a clear re-explanation - clarify)."""
+    said = str(text or "")
+    if FRUSTRATED.search(said):
+        return True
+    return bool(CONFUSED.search(said)) and any(CONFUSED.search(t) or FRUSTRATED.search(t) for t in earlier)
+
+
 def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
     return _may_ask_name(lead_state, now, "email")
 
@@ -1555,7 +1573,33 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
         decision.pop("visit_offer", None)
         decision["why"] = "A visit is booked: answer what they said, ask nothing more."
-    from upsell_agent.agent.customer_hold import ALL_SET
+    from upsell_agent.agent.customer_hold import ALL_SET, WANTS_TRADE_NUMBER
+    earlier_said = [str(m.get("text") or "") for m in (state.context_pack or {}).get("working_memory") or []
+                    if m.get("direction") == "inbound"][:-1]
+    if state.trigger == "inbound_message" and _confused_or_frustrated(text, earlier_said) \
+            and decision["action"] not in ("stop",):
+        # The user, 28 Oct 2026: "the AI is confusing them rather than handling the case - do not irritate a user; if a
+        # case isn't getting handled properly, escalate it" (Mujahid Khan: "First check / And then let me know / I dont
+        # wanna wastee my timeee" got one more invitation; Quincy Mack: "For what?", "What are we talking about"). One
+        # short reply that a manager will reach out, the lead goes to staff, and nothing more is sent by the AI.
+        decision["action"], decision["asks"], decision["slots"] = "handoff", [], []
+        decision.pop("visit_offer", None)
+        decision["cannot_supply"] = None
+        decision["rules"] = [{"id": "handoff", "result": "fired",
+                              "why": f"The customer is confused or frustrated: \"{str(text)[:120]}\" - a manager takes over"},
+                             *[r for r in decision.get("rules", []) if r.get("id") != "handoff"]]
+        decision["why"] = "Confused or frustrated: hand to a manager, stop messaging."
+    if state.trigger == "inbound_message" and WANTS_TRADE_NUMBER.search(str(text or "")) \
+            and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # The user, 28 Oct 2026: "if the AI doesn't know, escalate to the manager - don't guess" (Mujahid Khan: "How
+        # much u gonna pay?" got "I can't quote an offer ... would Wednesday at 5 work?", then "I'm checking back"). A
+        # number for their own car is a manager's: one reply saying so, the lead to Managerial Review, no times.
+        decision["cannot_supply"] = {"topic": "trade_value", "offers_times": False, "actions": [], "escalates": True,
+                                     "text": "Good question. I'll have our manager look at your car and get back to "
+                                             "you with a number shortly."}
+        decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
+        decision.pop("visit_offer", None)
+        decision["why"] = "They want a number for their car: a manager answers that, not the AI."
     if (state.trigger == "inbound_message" and ALL_SET.search(str(text or "")) and "?" not in str(text or "")
             and visit_ctx.get("status") not in ("pending", "confirmed") and not visit_ctx.get("just_booked")):
         # Lily Dochev, 27 Oct 2026: "I'm all set, thank you for asking" -> "Want to stop by?". A polite no: thank them

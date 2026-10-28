@@ -57,9 +57,18 @@ def within_window(primary_started: datetime | None, now: datetime) -> bool:
     return primary_started is not None and now - primary_started <= WINDOW
 
 
+# Quincy Mack, 20 Oct 2026: "I've got an offer for 14,300 / Just wanna compare and what works best for me" (an offer
+# for his Sentra elsewhere) was read as "one vehicle" and the lead was closed as Closed - Lost. A message about an
+# offer, a payoff or their own car isn't an answer to "comparing models?".
+_ABOUT_THEIR_CAR = re.compile(r"\b(offer|offered|payoff|pay off|owe|trade|my car|my truck|appraisal|kbb|carmax|"
+                              r"carvana|\$?\d{1,3}(?:,\d{3})+|\d+k)\b", re.IGNORECASE)
+
+
 def classify(text: str | None) -> str | None:
     """'both', 'one', or None when the message doesn't answer the question."""
     said = text or ""
+    if _ABOUT_THEIR_CAR.search(said):
+        return None
     if re.search(r"\b(not both|just one|only one|only (want|need) one)\b", said, re.IGNORECASE):
         return "one"
     if _BOTH.search(said):
