@@ -301,3 +301,28 @@ async def test_gpt_6_replies_get_the_same_token_room_as_gpt_5(monkeypatch):
     monkeypatch.setattr(llm, "model_settings", lambda *a: {})
     await llm.run_agent(Agent(), "openai:gpt-6.1-sol", {}, timeout_s=5, output_tokens_limit=600)
     assert seen["limit"] == 600 + llm.REASONING_HEADROOM_TOKENS
+
+
+async def test_email_is_the_last_option(monkeypatch):
+    # The user, 28 Oct 2026: "email is our last option, not first, in any case".
+    from upsell_agent.scheduler import followups
+
+    class Check:
+        def __init__(self, outcome):
+            self.outcome, self.until, self.reason = outcome, None, outcome
+
+    async def can_contact(*, channel, **_):
+        return Check("ALLOW")
+    monkeypatch.setattr(followups, "can_contact", can_contact)
+    ch, _ = await followups._permitted_channel(dealer_id="d", customer_id="c", lead_id="l", channel="email", at=None)
+    assert ch == "sms"  # planned on email, a text is allowed: text
+
+    async def no_phone(*, channel, **_):
+        return Check("BLOCK" if channel == "sms" else "ALLOW")
+    monkeypatch.setattr(followups, "can_contact", no_phone)
+    ch, _ = await followups._permitted_channel(dealer_id="d", customer_id="c", lead_id="l", channel="sms", at=None)
+    assert ch == "email"  # no text possible: email
+    monkeypatch.setattr(followups, "can_contact", can_contact)
+    ch, _ = await followups._permitted_channel(dealer_id="d", customer_id="c", lead_id="l", channel="email", at=None,
+                                               channels=("email",))
+    assert ch == "email"  # an AI Studio step set to email only stays email
