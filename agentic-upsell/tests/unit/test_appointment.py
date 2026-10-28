@@ -1026,3 +1026,25 @@ async def test_a_message_the_ai_starts_goes_by_text_when_there_is_a_phone(mongo)
                    turn_id="check-back-1", is_reply=False)
     new = (await _outbox(mongo, created))[before:]
     assert new and new[0]["channel"] == "sms", [m["channel"] for m in new]
+
+
+@pytestmark_flow
+async def test_mujahids_day_a_manager_gets_the_trade_question_and_the_frustration(mongo):
+    # Mujahid Khan, 28 Oct 2026: "How much u gonna pay?" got visit times, "I'm checking back" 16 minutes later, and
+    # "I dont wanna wastee my timeee" one more invitation. The user: escalate, don't guess, don't irritate.
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead("I want to sell my car")
+    before = len(await _outbox(mongo, created))
+    await _say(created, "How much u gonna pay?")
+    reply = [m for m in (await _outbox(mongo, created))[before:] if m["channel"] == "sms"][-1]["text"]
+    assert "manager" in reply.lower() and "PM" not in reply
+    state = await _state(mongo, created)
+    assert (state.get("customer_hold") or {}).get("until")  # the AI's own follow-ups wait for the manager
+    await _say(created, "I dont wanna wastee my timeee")
+    assert (await _state(mongo, created))["status"] == "handoff"
+
+
+def test_a_lead_with_no_car_is_not_another_car():
+    # Quincy Mack / Mujahid Khan: "Hello again ... about our 1900 None None".
+    from upsell_agent.events.handlers import _lead_car
+    assert _lead_car({"vehicle_year": "1900", "year": "1900", "make": "None", "model": "None", "vin": "N/A"}) is None

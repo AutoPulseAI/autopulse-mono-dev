@@ -413,6 +413,7 @@ async def run_turn(
             if trigger == "inbound_message":
                 await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
                 await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
+                await _alert_trade_value(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
                 await _alert_unsure(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id, result)
             if trigger == "lead_created":
                 await _escalate_form_request(db, lead_id, inbound_text)
@@ -1036,6 +1037,7 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
                                                         if topic.startswith("workflow:") else None)
     what = (f"the {custom!r} workflow (AI Studio)" if custom else
             "an out-of-state customer (pick-up or shipping)" if topic == "out_of_state"
+            else "a number for the customer's own car" if topic == "trade_value"
             else "custom photos or a video") if cannot.get("escalates") else (
         f"confirm {check.get('vehicle')} is available before scheduling")
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
@@ -1220,7 +1222,8 @@ async def _photo(ctx: TurnContext, draft: dict[str, Any], channel: str, decision
 # 朱宇, 27 Oct 2026: "I'm on my way, I will be there in 10 minutes" -> "Ask for Nicole when you arrive" (Nicole is the AI;
 # no one at the store is Nicole) and no one at the store was told he was coming.
 _ON_THE_WAY = re.compile(r"\b(?:on my way|on the way|omw|heading (?:over|there|your way)|leaving now|"
-                         r"(?:be|get) there in \d+|(?:i'?m|i am) (?:here|outside|in the parking lot|at the (?:dealer|lot|store)))\b",
+                         r"(?:be|get) there in \d+|(?:i'?m|i am) (?:here+|outside|inside|in the parking lot|at (?:the )?entrance+|"
+                         r"in (?:the|your) (?:office|showroom)|already (?:here|in)|at the (?:dealer|lot|store)))\b",
                          re.IGNORECASE)
 _SENTENCE = re.compile(r"[^.!?\n]*[.!?]?\s*")
 _ASK_FOR_ON_ARRIVAL = re.compile(r"\b[Aa]sk for [A-Z][a-z]+\b")
@@ -1285,6 +1288,25 @@ async def _alert_price_offer(db: DealerScopedDatabase, platform: Any, lead_id: s
                                                          "please answer them."))
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
         "at": clock.now(), "kind": "price_offer", "text": "The customer made a price offer: a manager please answer."}}})
+
+
+# Mujahid Khan, 28 Oct 2026 (selling his G-Class for cash, came in once already): "How much u gonna pay?", "first check
+# and then let me know - I don't wanna waste my time". The AI can't give a number for their car; a manager can.
+from upsell_agent.agent.customer_hold import WANTS_TRADE_NUMBER as _WANTS_TRADE_NUMBER  # noqa: E402
+
+
+async def _alert_trade_value(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                             text: str | None, turn_id: str) -> None:
+    """The customer wants a number for their own car: a manager is told at once, with their words."""
+    if not lead_id or not text or not _WANTS_TRADE_NUMBER.search(text):
+        return
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(db, lead_id=lead_id, kind="trade_value_asked", key=f"trade_value:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(f"The customer wants a number for their car: \"{text[:240]}\". "
+                                                         "The AI can't give one - a manager please call or text them."))
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "trade_value_asked", "text": "The customer wants a number for their car: a manager "
+        "please answer."}}})
 
 
 async def _alert_unsure(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
