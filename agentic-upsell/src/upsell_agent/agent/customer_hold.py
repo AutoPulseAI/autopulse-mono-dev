@@ -31,6 +31,11 @@ _THEY_WILL_REACH_OUT = re.compile(
     r"\b(?:i'?ll|i will|will)\s+(?:call|text|reach out|contact|get back|let you know)\b"
     r"|\b(?:call|text|reach out to|get back to) you (?:when|once|later|after|tomorrow|next)\b"
     r"|\bwhen i(?:'m| am) (?:able|ready|free|better)\b", re.IGNORECASE)
+# Lily Dochev, 27 Oct 2026: "I'm all set, thank you for asking" got "Want to stop by?" and 16 minutes later "Still with
+# me?". A polite no - the AI thanks them and stops (agent/nodes/decide.py), and no timed message follows.
+ALL_SET = re.compile(r"^\W*(?:no,?\s*)?(?:i'?m|i am|we'?re|we are)\s+(?:all\s+set|good|ok(?:ay)?|fine|all\s+good)\b(?!\s+(?:with|for)\s+"
+                     r"(?:tomorrow|today|\d|the\s+appointment|monday|tuesday|wednesday|thursday|friday|saturday|sunday))"
+                     r"|^\W*(?:all\s+good|no\s+thanks?|no\s+thank\s+you|not\s+anymore|i'?ll\s+pass)\b", re.IGNORECASE)
 _TOO_FAR = re.compile(r"\btoo far\b|\bfar away\b|\bout of state\b|\bnot (?:located|local) (?:in|near)\b"
                       r"|\bwill not be able to come\b|\bcan'?t (?:come|make it) (?:in|there)\b", re.IGNORECASE)
 
@@ -44,7 +49,7 @@ def hold_for(extraction: dict[str, Any] | None, text: str | None, now: datetime 
     if not ENABLED:
         return None
     ex, said, now = extraction or {}, str(text or ""), now or clock.now()
-    if _sure(ex, "not_interested"):
+    if _sure(ex, "not_interested") or (ALL_SET.search(said) and "?" not in said):
         return {"at": now, "until": None, "reason": "the customer said they're not interested"}
     if _sure(ex, "declines_visit") or _TOO_FAR.search(said):
         why = "the customer can't or won't come in"
