@@ -363,3 +363,30 @@ def test_a_decline_naming_a_later_day_gives_that_day():
     assert _later_day(said, dealer, wednesday).day.isoformat() == "2026-10-30"
     assert _later_day({**said, "visit_later_when": "in a month"}, dealer, wednesday) is None
     assert _later_day({"declines_visit": True}, dealer, wednesday) is None
+
+
+async def test_not_until_a_date_then_a_time_and_yes_books_it(mongo):
+    """Revetion Jones, 28 Oct 2026 (a Wednesday): "I would not be able to see the vehicle until the 31st" -> "Early
+    morning, most likely around 10:30" -> "Yes" got "I've noted Saturday, October 31 at 10:30 AM as your preferred
+    visit time" and no booking. Saturday's times are offered, and her time on that day books."""
+    set_clock(_dt(2026, 10, 28, 15, 0, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "I would not be able to see the vehicle until the 31st.")
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-10-31"}, visit.get("why")
+    await _say(created, "Early morning, most likely around 10:30.")
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == "10:30", await _last_sms(mongo, created)
+
+
+def test_noted_as_your_visit_time_without_a_booking_is_blocked():
+    """Revetion Jones, 28 Oct 2026: "I've noted Saturday, October 31 at 10:30 AM as your preferred visit time" went out
+    with no booking. Saying a day is noted is a confirmation: only for a real booking on that day."""
+    from upsell_agent.agent.nodes.guard import invalid_booking_wording
+    draft = {"sms_text": "Thanks! I've noted Saturday, October 31 at 10:30 AM as your preferred visit time. We're at 3914 "
+                         "Hempstead Tpke."}
+    assert invalid_booking_wording({"visit": {}}, draft)
+    booked = {"visit": {"status": "confirmed", "display": "Saturday, October 31 at 10:30 AM"}}
+    assert not invalid_booking_wording(booked, draft)
+    assert not invalid_booking_wording({"visit": {}}, {"sms_text": "Noted! Would Saturday at 10 or 11 work?"})

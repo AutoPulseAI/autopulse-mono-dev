@@ -469,7 +469,8 @@ def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> 
     booked_weekday = next((d for d in _WEEKDAYS if d in booked.lower()), None)
     for name, key in (("SMS", "sms_text"), ("email", "email_body")):
         for sentence in re.split(r"(?<=[.!?])\s+", str(draft.get(key) or "")):
-            if not (_ALL_SET.search(sentence) or _CONFIRMED_WORDING.search(sentence)) or re.search(
+            if not (_ALL_SET.search(sentence) or _CONFIRMED_WORDING.search(sentence) or _NOTED_VISIT.search(sentence)) \
+                    or re.search(
                     r"\b(?:fully|already) booked|booked up\b", sentence, re.IGNORECASE):
                 continue
             named = {d for d in _WEEKDAYS if re.search(rf"\b{d}\b", sentence, re.IGNORECASE)}
@@ -482,6 +483,11 @@ def invalid_booking_wording(decision: dict[str, Any], draft: dict[str, Any]) -> 
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 _ALL_SET = re.compile(r"\b(?:you'?re|you are|we'?re|we are) (?:all )?set\b|\ball set\b", re.IGNORECASE)
+# Revetion Jones, 28 Oct 2026: "I've noted Saturday, October 31 at 10:30 AM as your preferred visit time" - nothing was
+# booked, and she believed she had an appointment.
+_NOTED_VISIT = re.compile(r"\b(?:i'?ve|i have|we'?ve|we have|i'?ll|i will)\s+(?:noted|written down|put you down|got you "
+                          r"down|penciled you in|pencilled you in|locked (?:in|you in)|saved|reserved|marked)\b"
+                          r"|\bnoted\b.*\b(?:visit|appointment)\b", re.IGNORECASE)
 
 
 async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
