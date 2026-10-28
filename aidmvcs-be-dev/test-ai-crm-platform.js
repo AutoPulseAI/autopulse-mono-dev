@@ -789,6 +789,8 @@ test('messages sent and received are counted by who sent them, notes and the lea
   const got = await messageActivity([a, b], from, to);
   assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2 });
   assert.deepEqual(got.received, { total: 1, customers: 1 });
+  // Delivered: the texts with a "delivered" report and the emails the mail service took - not the failed text.
+  assert.deepEqual(got.delivered, { total: 3, texts: 2, emails: 1, customers: 2 });
   assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
 });
 

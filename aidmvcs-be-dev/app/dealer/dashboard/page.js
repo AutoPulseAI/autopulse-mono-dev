@@ -785,11 +785,11 @@ export default function Dashboard() {
 
             <CountCard
               iconClass="fa-light fa-paper-plane"
-              count={activity ? activity.sent.total : '–'}
-              label="Messages Sent"
+              count={activity ? activity.delivered.total : '–'}
+              label="Messages Delivered"
               link={withRange('/dealer/leads?messages=sent')}
               description={activity
-                ? `${cardRangeText()} · to ${activity.sent.customers} customers · AI ${activity.sent.ai} · staff ${activity.sent.staff} · automatic ${activity.sent.automatic}${activity.sent.failed ? ` · ${activity.sent.failed} failed` : ''} · ${activity.received.total} received from ${activity.received.customers}`
+                ? `${cardRangeText()} · to ${activity.delivered.customers} customers · ${activity.delivered.texts} texts, ${activity.delivered.emails} emails${activity.sent.failed ? ` · ${activity.sent.failed} failed` : ''} · ${activity.received.total} replies from ${activity.received.customers}`
                 : 'Could not count messages'}
             />
 
