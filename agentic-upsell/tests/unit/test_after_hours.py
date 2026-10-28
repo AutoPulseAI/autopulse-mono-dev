@@ -640,6 +640,7 @@ async def test_a_stopped_inquiry_gets_a_staff_note_and_a_new_inquiry_runs_with_a
     notes = await mongo["ai_crm_notes"].find({"lead_id": created["lead_id"]}).to_list(None)
     assert [n["kind"] for n in notes] == ["inquiry_stopped"] and notes[0]["status"] == "written"
     assert "Please stop texting I'm no longer interested" in notes[0]["text"]
+    assert (await _state(mongo, created))["crm_status_sync"]["crm_status"] == "Closed - Lost"
     assert await note_stopped_inquiries() == 0  # already written: the start-up backfill adds nothing
 
     again = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Maria Test",
