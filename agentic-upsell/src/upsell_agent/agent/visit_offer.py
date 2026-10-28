@@ -262,7 +262,10 @@ def plan_visit(
         stopped = record.attempts >= MAX_ATTEMPTS
         # Client, 12 Oct 2026 (Betsy): Dealership Action Required when "the AI has qualified the customer and tried
         # to set an appointment more than once unsuccessfully".
-        handoff = record.attempts >= ESCALATE_AFTER_DECLINES
+        # Melissa Ross, 28 Oct 2026: five unanswered cadence invitations counted as attempts, so her first "not today,
+        # maybe the end of the week" went to a manager. Only the customer's own declines count.
+        declines = record.declines + 1
+        handoff = declines >= ESCALATE_AFTER_DECLINES
         followup_due = None
         if stopped:
             followup_due = _followup_date(extraction.get("visit_later_when"), now)
@@ -281,11 +284,13 @@ def plan_visit(
             why = f"Objection ({objection}) answered, offered again (attempt {attempt} of {MAX_ATTEMPTS}, angle {angle})."
             new_record = VisitState(attempts=attempt, angles_used=[*record.angles_used, angle],
                                     offered_times=built_times, offered_turn=conversation.turn + 1, declined=False,
-                                    stopped=False, objections=objections, followup_due=None, why=why)
+                                    declines=declines, stopped=False, objections=objections, followup_due=None,
+                                    why=why)
             return VisitOfferPlan(fire=True, attempt=attempt, angle=angle, value_proposition=value_prop,
                                   times=built_times, record=new_record.model_dump(), why=why)
         new_record = VisitState(attempts=record.attempts, angles_used=record.angles_used, offered_times=[],
-                                offered_turn=record.offered_turn, declined=True, declined_turn=conversation.turn + 1,
+                                offered_turn=record.offered_turn, declined=True, declines=declines,
+                                declined_turn=conversation.turn + 1,
                                 stopped=stopped, objections=objections, followup_due=followup_due, why=why)
         return VisitOfferPlan(record=new_record.model_dump(), schedule_followup=stopped,
                               followup_due=followup_due, handoff=handoff, why=why)
@@ -325,8 +330,8 @@ def plan_visit(
                "and time suit them - no times, no booking (MASTER_PLAN_4 F2).")
     new_record = VisitState(attempts=attempt, angles_used=[*record.angles_used, angle],
                             offered_times=[] if service else built_times, offered_turn=conversation.turn + 1,
-                            declined=False, stopped=False, objections=record.objections, followup_due=None,
-                            service_ask=service, why=why)
+                            declined=False, declines=record.declines, stopped=False, objections=record.objections,
+                            followup_due=None, service_ask=service, why=why)
     return VisitOfferPlan(fire=True, attempt=attempt, angle=angle, value_proposition=value_prop,
                           times=[] if service else built_times, record=new_record.model_dump(),
                           service_request=service, why=why)

@@ -322,6 +322,21 @@ async def _times_for_day(ctx: TurnContext, state: AgentState, dealer: DealerProf
     return built, info
 
 
+# A later day named while declining is offered at once when it is this close; further out it is a dated follow-up.
+LATER_DAY_MAX_DAYS = 7
+
+
+def _later_day(extraction: dict[str, Any], dealer: DealerProfile, now: datetime) -> booking_tool.DayRequest | None:
+    """The day a customer turning down the times names for coming in instead ("end of the week", "Friday"), when it is
+    after today and within LATER_DAY_MAX_DAYS."""
+    words = str(extraction.get("visit_later_when") or "")
+    request = booking_tool.preferred_day(words, dealer, now) if words else None
+    today = now.astimezone(dealer.tz).date()
+    if request is None or not 0 < (request.day - today).days <= LATER_DAY_MAX_DAYS:
+        return None
+    return request
+
+
 # How many replies after the customer asked for a day their bare times still mean that day.
 ASKED_DAY_REPLIES = 2
 
@@ -652,6 +667,15 @@ async def _visit_and_booking(
                 return visit_ctx, plan_day_offer(
                     profile=profile, conversation=conversation, built_times=built, asked_day=wanted_day.isoformat(),
                     why=f"The customer asked for {shown['display']}, which isn't open: offering the nearest open times.")
+        if not picked and not pending and visit_declines(extraction) and (later := _later_day(extraction, dealer, now)):
+            # Melissa Ross, 28 Oct 2026: "I cannot today. I might be able to at the end of the week" was handed to a
+            # manager. Not today but a later day they name: that day's open times, offered at once.
+            built, info = await _times_for_day(ctx, state, dealer, now, later)
+            if built:
+                visit_ctx["day_request"] = info
+                return visit_ctx, plan_day_offer(
+                    profile=profile, conversation=conversation, built_times=built, asked_day=later.day.isoformat(),
+                    why=f"Not now, but {extraction.get('visit_later_when')!r}: offering that day's open times.")
         if not picked and not pending and not visit_declines(extraction) and (
                 request := booking_tool.preferred_day(text, dealer, now) or _part_on_known_day(
                     text, asked_day, offered, dealer, now)):

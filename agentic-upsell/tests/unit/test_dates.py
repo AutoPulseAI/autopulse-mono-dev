@@ -265,3 +265,15 @@ def test_offline_model_finds_the_customers_date_words(text, words):
     found = [v["value"] for v in extract({"customer_text": text, "lead_type": "sales", "allowed_slots": _allowed_slots(),
                                           "recently_asked": []})["values"] if v["path"] == "interest.needed_by"]
     assert found == ([words] if words else [])
+
+
+def test_end_of_the_week():
+    """Melissa Ross, 28 Oct 2026 (a Wednesday): "I might be able to at the end of the week" is Friday."""
+    from datetime import date, datetime
+    from upsell_agent.slots.dates import resolve
+    wednesday = datetime(2026, 10, 28, 15, 0)
+    said = resolve("I cannot today. I might be able to at the end of the week", wednesday)
+    assert said.day == date(2026, 10, 30) and said.approximate
+    assert resolve("later this week", wednesday).day == date(2026, 10, 30)
+    assert resolve("end of the week", datetime(2026, 10, 30, 15, 0)).day == date(2026, 10, 31)  # said on Friday
+    assert resolve("end of the week", datetime(2026, 11, 1, 15, 0)).day == date(2026, 11, 6)  # said on Sunday

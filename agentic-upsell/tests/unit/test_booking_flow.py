@@ -337,3 +337,29 @@ async def test_a_bare_time_is_read_on_the_asked_day_even_if_that_offer_never_wen
     booking = await _booking(mongo, created)
     assert booking and booking["bookingTime"] == "10:00"
     assert str(booking["bookingDate"])[:10] in ("2026-10-10", "2026-10-09")
+
+
+async def test_not_today_but_the_end_of_the_week_gets_that_days_times_not_a_manager(mongo):
+    """Melissa Ross, 28 Oct 2026 (a Wednesday): "I cannot today. I might be able to at the end of the week" went to a
+    manager ("Our sales manager will reach out shortly"). Friday's open times are offered at once instead."""
+    set_clock(_dt(2026, 10, 28, 15, 0, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "I cannot today. I might be able to at the end of the week")
+    state = await _state(mongo, created)
+    assert state["status"] != "handoff"
+    assert _days(state["conversation"]["visit"]["offered_times"]) == {"2026-10-30"}
+    assert "manager" not in (await _last_sms(mongo, created)).lower()
+
+
+def test_a_decline_naming_a_later_day_gives_that_day():
+    """The live model marks Melissa's message a decline with visit_later_when "at the end of the week" (agent/nodes/
+    decide.py _later_day): Friday is offered; a day further out than a week is left to the dated follow-up."""
+    from upsell_agent.agent.nodes.decide import _later_day
+    from upsell_agent.integrations.dealer_profile import profile_from_record
+    dealer = profile_from_record("d1", {"timezone": "America/New_York"})
+    wednesday = _dt(2026, 10, 28, 15, 0, tzinfo=ZoneInfo("America/New_York"))
+    said = {"declines_visit": True, "visit_later_when": "at the end of the week"}
+    assert _later_day(said, dealer, wednesday).day.isoformat() == "2026-10-30"
+    assert _later_day({**said, "visit_later_when": "in a month"}, dealer, wednesday) is None
+    assert _later_day({"declines_visit": True}, dealer, wednesday) is None
