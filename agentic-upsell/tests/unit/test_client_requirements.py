@@ -227,6 +227,20 @@ async def test_three_inquiries_in_a_row_get_the_hello_again_question_once(mongo)
     assert note and "Rogue" in note["text"] and third["lead_id"] in note["text"]
 
 
+async def test_a_question_held_for_the_night_does_not_block_the_morning_one(mongo):
+    """Deyvi Lopez, 28 Oct 2026: the 10:50 PM "comparing models?" text was held for the night (never sent) but
+    recorded as asked, so his 9:11 AM inquiry got nothing. Only a question that went counts."""
+    set_clock(datetime(2026, 9, 23, 2, 40, tzinfo=UTC))  # 10:40 PM New York
+    first = await _new_lead(mongo, vehicle=RAV4)
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(first["lead_id"])}, {"$set": {"email": None}})
+    await _new_lead(mongo, vehicle={"year": 2017, "make": "Acura", "model": "MDX"}, customer_id=first["customer_id"])
+    state = await mongo["ai_lead_state"].find_one({"lead_id": first["lead_id"]})
+    assert not (state or {}).get("multi_vehicle_question")  # held, not sent: not recorded as asked
+    set_clock(datetime(2026, 9, 23, 13, 11, tzinfo=UTC))  # 9:11 AM
+    await _new_lead(mongo, vehicle={"year": 2020, "make": "Acura", "model": "MDX"}, customer_id=first["customer_id"])
+    assert any(t.startswith("Hello again") for t in await _sent(mongo, first))
+
+
 # --- Trade, email preference, departments (reviews 12 Oct) ----------------------------------------------------------
 
 async def test_value_of_my_car_is_a_trade(mongo):
