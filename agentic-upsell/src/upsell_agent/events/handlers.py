@@ -308,8 +308,11 @@ async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: Le
            "to_channel": "sms" if event.channel == "sms" else "email"}
     outcomes = await _send_both(db, deps, tracer, doc, text, "lead_response")
     sent = any(o.status in ("sent", "duplicate") for o in outcomes)
-    await states.update_one({"lead_id": primary_id}, {"$set": {"multi_vehicle_question": {
-        "new_lead_id": event.lead_id, "asked_at": clock.now(), "answered": None}}})
+    if sent:
+        # Deyvi Lopez, 28 Oct 2026: the question was held for the night and never sent, yet recorded as asked - his
+        # next inquiry in the morning was then held back "waiting for his answer". Only a question that went counts.
+        await states.update_one({"lead_id": primary_id}, {"$set": {"multi_vehicle_question": {
+            "new_lead_id": event.lead_id, "asked_at": clock.now(), "answered": None}}})
     log = await tracer.finish("multi_vehicle_question" if sent else "multi_vehicle_question_not_sent",
                               {"sent": [{"channel": o.channel, "status": o.status} for o in outcomes]})
     await db.collection(AI_TURN_LOG_COLLECTION).insert_one(log)

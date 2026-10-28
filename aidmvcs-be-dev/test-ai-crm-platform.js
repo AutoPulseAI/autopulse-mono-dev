@@ -829,3 +829,20 @@ test('a follow-up job is claimed once: a second call for it sends nothing', asyn
   assert.equal(await claimFollowUpJob(Model, insertedId), false);
   await jobs.drop();
 });
+
+// 28 Oct 2026: every AI status over Appointment Booked failed live with "Booking is not defined" - the real function
+// is called here, with and without a booking ahead.
+maybe('after an appointment the AI moves the lead on only once no booking is left ahead', async () => {
+  await seedDealerAndLead();
+  await Lead.updateOne({ _id: LEAD }, { $set: { fe_lead_status: 'Appointment Booked', lead_status: 'Appointment Booked',
+    statusChangedAt: new Date('2026-07-01T00:00:00Z') } });
+  const body = { dealer_id: DEALER, lead_id: LEAD, status: 'Contacted - No Next Action', reason: 'no-show unanswered',
+    closed_at: new Date().toISOString() };
+  const ahead = { exists: async () => ({ _id: 'b1' }) };
+  const none = { exists: async () => null };
+  const kept = await markLeadClosedFromAi(body, { Lead, Email, Booking: ahead });
+  assert.deepEqual([kept.updated, kept.reason], [false, 'appointment_still_ahead']);
+  const moved = await markLeadClosedFromAi(body, { Lead, Email, Booking: none });
+  assert.equal(moved.updated, true);
+  assert.equal((await Lead.findById(LEAD).lean()).fe_lead_status, 'Contacted - No Next Action');
+});

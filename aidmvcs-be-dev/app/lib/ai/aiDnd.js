@@ -63,7 +63,7 @@ export async function addAiLeadNote(body, { Lead, Email, now = () => new Date() 
 
 export async function markLeadDndFromAi(body, {
   Lead, Email, clearPendingJobs = async () => {}, cancelAllRemindersForLead = async () => {}, now = () => new Date(),
-  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {}, Booking = null,
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id }).select('_id fe_lead_status').lean();
   if (!lead) return { found: false, updated: false };
@@ -170,7 +170,7 @@ export async function markLeadClosedFromAi(body, {
   // Live, 20-21 Oct 2026: these were used below but never taken here, so every "Managerial Review" the AI set failed
   // with "createManagerialReviewMessages is not defined" - no status on the lead and no manager alert (Betsy: "said it
   // would escalate but didn't actually escalate").
-  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {},
+  createManagerialReviewMessages = async () => {}, notifyManagers = async () => {}, Booking = null,
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id })
     .select('_id fe_lead_status lead_status status statusChangedAt').lean();
