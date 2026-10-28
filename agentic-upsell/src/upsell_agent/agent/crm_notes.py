@@ -37,6 +37,8 @@ LABELS = {
     "text_consent_missing": "Email only - no text consent",
     "call_escalation": "Requested call not made in 5 minutes",  # PLAN_4 stream X2
     "after_handoff": "Customer wrote after the handoff",
+    "inquiry_stopped": "Customer asked to stop",
+    "earlier_inquiry_stopped": "Customer stopped an earlier inquiry",
 }
 MAX_TEXT = 1500
 

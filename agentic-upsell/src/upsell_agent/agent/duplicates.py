@@ -72,7 +72,10 @@ async def find_primary(db: DealerScopedDatabase, lead: dict | None) -> dict | No
         return None
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": [str(c["_id"]) for c in candidates]}}).to_list(None)
-    open_states = [s for s in states if not s.get("duplicate_of") and s.get("stage") not in _FINISHED]
+    # The user, 28 Oct 2026: a lead the customer asked us to stop about is not being worked - a new inquiry from them
+    # is not its duplicate (it would be paused and blocked by the old stop) but runs on its own.
+    open_states = [s for s in states if not s.get("duplicate_of") and s.get("stage") not in _FINISHED
+                   and not s.get("inquiry_opt_out")]
     if not open_states:
         return None
     return min(open_states, key=lambda s: as_object_id(s["lead_id"]))
