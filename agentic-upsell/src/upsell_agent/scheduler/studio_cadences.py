@@ -187,7 +187,9 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         await _close(db, doc, "sent", reason="call task created", fired_at=clock.now())
         return await _next(db, doc, "sent")
     channel_now, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=doc["customer_id"],
-                                                  lead_id=doc["lead_id"], channel=doc["to_channel"], at=None)
+                                                  lead_id=doc["lead_id"], channel=doc["to_channel"], at=None,
+                                                  channels=tuple(c for c in channels if c in ("sms", "email"))
+                                                  or ("sms", "email"))
     if check.outcome == "HOLD" and key == "still_with_me":
         # A "still with me?" only makes sense in the moment: held to the next texting window (night), it's dropped -
         # the regular follow-up picks the conversation up (review 23 Oct 2026).

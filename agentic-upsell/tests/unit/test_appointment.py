@@ -1012,3 +1012,17 @@ async def test_once_the_customer_gives_their_name_the_next_question_is_the_email
     await _say(created, "my name is Dana Brooks")
     after = [m for m in await _outbox(mongo, created) if m["channel"] == "sms"][-1]["text"]
     assert "email" in after.lower(), after
+
+
+@pytestmark_flow
+async def test_a_message_the_ai_starts_goes_by_text_when_there_is_a_phone(mongo):
+    # The user, 28 Oct 2026: "when we have a phone number we prioritise SMS, always".
+    from upsell_agent.agent.turn import run_turn
+    set_clock(datetime(2026, 10, 5, 12, 0, tzinfo=NY))
+    created = await _new_lead()
+    before = len(await _outbox(mongo, created))
+    await run_turn(dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
+                   trigger="next_action", channel="email", inbound_text="", shadow=False, deps=_deps(),
+                   turn_id="check-back-1", is_reply=False)
+    new = (await _outbox(mongo, created))[before:]
+    assert new and new[0]["channel"] == "sms", [m["channel"] for m in new]

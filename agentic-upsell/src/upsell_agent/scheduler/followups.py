@@ -555,7 +555,8 @@ async def plan_human_followup_check(db: DealerScopedDatabase, *, lead_id: str, c
 
 
 async def _permitted_channel(*, dealer_id: str, customer_id: str, lead_id: str, channel: str, at: datetime | None,
-                             lead: dict | None = None, customer: dict | None = None, purpose: str = "marketing"):
+                             lead: dict | None = None, customer: dict | None = None, purpose: str = "marketing",
+                             channels: tuple[str, ...] = ("sms", "email")):
     """The send check for a cadence touch, which goes out on text AND email together (MASTER_PLAN_3 C4,
     Omnichannel PDF p.10). Returns (the channel to lead with, the check that decides when).
 
@@ -566,9 +567,11 @@ async def _permitted_channel(*, dealer_id: str, customer_id: str, lead_id: str, 
       of the email alone now and the text lost.
     - With both blocked, the preferred channel's BLOCK / REVIEW comes back and nothing is sent.
     Each channel is checked again when it is actually sent."""
-    other = other_channel(channel)
+    # The user, 28 Oct 2026: "email is our last option, not first, in any case" - text first, whatever channel the
+    # message was planned on; email only when a text can't go (no phone, opted out, no consent).
+    # An AI Studio step ticked for one channel only (Betsy's choice) stays on it.
     checks: list[tuple[str, Any]] = []
-    for ch in (channel, other):
+    for ch in [c for c in ("sms", "email") if c in channels] or [channel]:
         check = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel=ch,
                                   purpose=purpose, is_reply=False, at=at, lead=lead, customer=customer,
                                   record=False)
@@ -638,7 +641,8 @@ async def plan_cadence_touch(
     if ticked and channel not in ticked:
         channel = ticked[0]  # AI Studio: the touch leads with a channel ticked for it
     channel, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=customer_id, lead_id=lead_id,
-                                              channel=channel, at=planned.due_at, lead=lead, customer=customer)
+                                              channel=channel, at=planned.due_at, lead=lead, customer=customer,
+                                              channels=tuple(ticked) or ("sms", "email"))
     if check.outcome in ("BLOCK", "REVIEW"):
         return {"created": False, "send_check": check.as_dict(), "plan": planned.as_dict(),
                 "reason": f"No cadence touch: neither channel is allowed ({check.outcome}: {check.reason})."}
@@ -1321,9 +1325,13 @@ async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) ->
         failed = [c for c in checks if not c[1]]
         check = None
         if not failed:
-            check = await can_contact(dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
-                                      channel=doc["to_channel"], purpose="marketing", is_reply=False, record=False)
-            checks.append(("send_check", check.outcome == "ALLOW", check.summary()))
+            # Deyvi Lopez, 28 Oct 2026 (the user: "we have his phone number, why email?"): the night message had to be
+            # an email (no texting at night), and the morning pick-up went the same way. By opening time a text is
+            # allowed: it goes by text whenever the customer has a usable phone, else by email.
+            ch, check = await _permitted_channel(dealer_id=db.dealer_id, customer_id=doc["customer_id"],
+                                                 lead_id=doc["lead_id"], channel="sms", at=None)
+            doc = {**doc, "to_channel": ch}
+            checks.append(("send_check", check.outcome == "ALLOW", f"{ch}: {check.summary()}"))
         span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
                        "send_check": check.as_dict() if check else None,
                        "decision": "cancel" if failed else "run the turn" if check.outcome == "ALLOW"
@@ -1999,9 +2007,10 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
                                                                   "due_at": burst.hold_until.isoformat()})
                 return "deferred"
             # The preferred channel, or the other when only that one is allowed (decision 155).
+            ticked = tuple(c for c in ((doc.get("touch") or {}).get("channels") or []) if c in ("sms", "email"))
             channel_now, check = await _permitted_channel(
                 dealer_id=db.dealer_id, customer_id=doc["customer_id"], lead_id=doc["lead_id"],
-                channel=doc["to_channel"], at=None)
+                channel=doc["to_channel"], at=None, channels=ticked or ("sms", "email"))
             doc = {**doc, "to_channel": channel_now}
             checks.append(("send_check", check.outcome == "ALLOW", f"{channel_now}: {check.summary()}"))
         span.output = {"checks": [{"check": c, "passed": ok, "detail": d} for c, ok, d in checks],
