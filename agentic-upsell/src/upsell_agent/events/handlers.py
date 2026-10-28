@@ -209,6 +209,7 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
     if not event.shadow:
         await _opt_back_in_from_lead(db, event, lead)
     state = await _ensure_lead_state(db, event.lead_id, event.customer_id, lead)
+    await _note_earlier_stop(db, deps, event, lead)
     if not state.get("duplicate_of") and (primary := await duplicates.find_primary(db, lead)):
         # MASTER_PLAN_3 C6: the same customer already has an open lead the AI is working. This one is
         # linked to it; no first reply, no cadence, no second workflow.
@@ -1416,6 +1417,10 @@ async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEven
         if "voice" in opt_out.channels:
             await cancel_call_task(db, lead_id, reason="the customer asked us to stop contacting them about this "
                                                        "inquiry", include_open=True, keep_requested=False)
+        # The user, 28 Oct 2026 (Brian Rosenberg: "Please stop texting I'm no longer interested" - the status stayed
+        # open with no note, so staff saw nothing): staff get a note in the conversation.
+        await note_inquiry_stopped(db, lead_id, message["text"], customer_id=event.customer_id,
+                                   platform=deps.platform, close=True)
     confirm = opt_out_rules.INQUIRY_CONFIRMATION.format(verb=opt_out_rules.inquiry_verb(channels))
     own = await states.find_one({"lead_id": lead_id}, projection={"stage": 1, "sold_delivered_at": 1}) or {}
     owner = not event.shadow and (own.get("stage") == lifecycle.Stage.SOLD_DELIVERED.value
@@ -1432,6 +1437,49 @@ async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEven
                        received_at=_parse_received_at(received_at), confirmation=confirm)
     return {"status": "opted_out", "scope": "inquiry", "channel": message["channel"], "channels": list(channels),
             "kind": opt_out.kind, "followups_cancelled": cancelled, "asked_vehicle_updates": owner}
+
+
+def _stop_words(said: str) -> str:
+    return " ".join(str(said or "").split())[:300]
+
+
+async def note_inquiry_stopped(db: DealerScopedDatabase, lead_id: str, said: str, *, customer_id: str | None = None,
+                               platform: Any | None = None, close: bool = False) -> dict[str, Any]:
+    """The staff note for a lead the customer asked us to stop about (agent/crm_notes.py), once per lead; with
+    `close`, the CRM status goes to Closed - Lost too (the CRM never overwrites a status staff chose)."""
+    from upsell_agent.agent import crm_notes, crm_status
+    if close:
+        await crm_status.sync_closed(db, lead_id, "inquiry_stopped", platform=platform,
+                                     reason=f"The customer asked us to stop about this inquiry: \"{_stop_words(said)}\"")
+    return await crm_notes.write(
+        db, lead_id=lead_id, kind="inquiry_stopped", customer_id=customer_id, platform=platform,
+        key=f"inquiry_stopped:{lead_id}",
+        text=(f"The customer asked us to stop about this inquiry: \"{_stop_words(said)}\". The lead is closed (Closed - "
+              "Lost) and the AI sends nothing more on it (no texts, emails or follow-ups); please don't contact them about it. Their consent stays: "
+              "a new inquiry from them is handled as usual, and a message from them is answered."))
+
+
+async def _note_earlier_stop(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent,
+                             lead: dict | None) -> None:
+    """The user, 28 Oct 2026: a customer who stopped an earlier inquiry and sends a new one - staff see it on the new
+    lead. The new lead is worked as usual (Betsy, 22 Oct 2026: the stop is about that inquiry only)."""
+    if event.shadow:
+        return
+    # The customer's other leads, found as the duplicate check finds them (an AI state may carry no customer id).
+    others = [str(c["_id"]) for c in await duplicates._same_customer_leads(db, lead)] if lead else []
+    same = [{"lead_id": {"$in": others}}] + ([{"customer_id": event.customer_id}] if event.customer_id else [])
+    earlier = await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+        {"$or": same, "lead_id": {"$ne": event.lead_id}, "inquiry_opt_out": {"$exists": True}},
+        projection={"lead_id": 1, "inquiry_opt_out": 1}, sort=[("_id", -1)])
+    if not earlier:
+        return
+    stop = next((v for v in (earlier.get("inquiry_opt_out") or {}).values() if isinstance(v, dict)), {})
+    from upsell_agent.agent import crm_notes
+    await crm_notes.write(
+        db, lead_id=event.lead_id, kind="earlier_inquiry_stopped", customer_id=event.customer_id,
+        platform=deps.platform, key=f"earlier_inquiry_stopped:{event.lead_id}",
+        text=(f"This customer asked us to stop about an earlier inquiry (lead {earlier['lead_id']}): "
+              f"\"{_stop_words(stop.get('said'))}\". This is a new inquiry they sent, so the AI is handling it as usual."))
 
 
 async def _mark_lead_dnd(deps: TurnDeps | None, dealer_id: str, lead_id: str, reason: str) -> None:

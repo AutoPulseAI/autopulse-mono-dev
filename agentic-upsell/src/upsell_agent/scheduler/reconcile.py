@@ -125,6 +125,28 @@ async def repair_old_crm_stops() -> int:
     return fixed
 
 
+async def note_stopped_inquiries() -> int:
+    """The user, 28 Oct 2026: leads the customer asked us to stop about before the staff note existed get it now,
+    and are closed (Closed - Lost). Safe to run on every start: a lead already noted is skipped."""
+    from upsell_agent.events.handlers import note_inquiry_stopped
+    written = 0
+    rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(
+        {"inquiry_opt_out": {"$exists": True}, "dealer_id": {"$exists": True}},
+        projection={"lead_id": 1, "dealer_id": 1, "customer_id": 1, "inquiry_opt_out": 1}).to_list(None)
+    for row in rows:
+        stop = next((v for v in (row.get("inquiry_opt_out") or {}).values() if isinstance(v, dict)), None)
+        if not stop or not row.get("dealer_id") or not row.get("lead_id"):
+            continue
+        db = dealer_scoped_db(row["dealer_id"])
+        if await db.collection("ai_crm_notes").find_one({"key": f"inquiry_stopped:{row['lead_id']}",
+                                                         "status": "written"}, projection={"_id": 1}):
+            continue
+        result = await note_inquiry_stopped(db, row["lead_id"], stop.get("said") or "",
+                                            customer_id=row.get("customer_id"), close=True)
+        written += result.get("status") == "written"
+    return written
+
+
 async def adopt_lead(db: DealerScopedDatabase, lead: dict, *, reason: str) -> dict[str, Any] | None:
     """Takes over an open lead without a first reply (see the module docstring). None when another worker already
     has it, or the lead has no way to identify / reach the customer."""

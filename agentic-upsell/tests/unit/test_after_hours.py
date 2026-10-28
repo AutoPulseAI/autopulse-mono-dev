@@ -628,6 +628,42 @@ async def test_no_vehicle_with_us_gets_only_the_inquiry_confirmation(mongo, deal
     assert await _last_sms(mongo, created) == "Ok, we will not text you again regarding this inquiry."
 
 
+async def test_a_stopped_inquiry_gets_a_staff_note_and_a_new_inquiry_runs_with_a_note(mongo, dealer_with_hours):
+    """The user, 28 Oct 2026 (Brian Rosenberg: "Please stop texting I'm no longer interested" - the lead stayed open with
+    no note): staff get a note; a new inquiry from him isn't swallowed by the stopped lead and carries a note too."""
+    from upsell_agent.events.handlers import handle_lead_created
+    from upsell_agent.events.models import LeadCreatedEvent
+    from upsell_agent.scheduler.reconcile import note_stopped_inquiries
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await _say(created, "Please stop texting I'm no longer interested")
+    notes = await mongo["ai_crm_notes"].find({"lead_id": created["lead_id"]}).to_list(None)
+    assert [n["kind"] for n in notes] == ["inquiry_stopped"] and notes[0]["status"] == "written"
+    assert "Please stop texting I'm no longer interested" in notes[0]["text"]
+    assert (await _state(mongo, created))["crm_status_sync"]["crm_status"] == "Closed - Lost"
+    assert await note_stopped_inquiries() == 0  # already written: the start-up backfill adds nothing
+
+    again = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Maria Test",
+                                       comments="Is the Camry still there?", customer_id=created["customer_id"])
+    result = await handle_lead_created(LeadCreatedEvent(event_id=again["lead_id"], dealer_id=DEALER,
+                                                        lead_id=again["lead_id"], customer_id=again["customer_id"],
+                                                        channel="sms"), _deps())
+    assert result.get("status") != "duplicate"
+    assert "duplicate_of" not in (await _state(mongo, again))
+    note = await mongo["ai_crm_notes"].find_one({"lead_id": again["lead_id"], "kind": "earlier_inquiry_stopped"})
+    assert note and created["lead_id"] in note["text"] and "no longer interested" in note["text"]
+
+
+async def test_the_backfill_notes_a_lead_stopped_before_the_note_existed(mongo, dealer_with_hours):
+    from upsell_agent.scheduler.reconcile import note_stopped_inquiries
+    set_clock(TUESDAY_NOON)
+    created = await _lead()
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "dealer_id": DEALER, "inquiry_opt_out.sms": {"at": clock.now(), "said": "stop texting me"}}})
+    assert await note_stopped_inquiries() == 1
+    assert await note_stopped_inquiries() == 0
+
+
 async def test_i_can_come_at_a_time_books_it(mongo, dealer_with_hours):
     """Client, 20 Oct 2026 (Betsy: "the customer says I can come at 7 and ai abandons")."""
     set_clock(TUESDAY_NOON)

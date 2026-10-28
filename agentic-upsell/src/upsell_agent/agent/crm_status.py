@@ -29,6 +29,8 @@ CRM_STATUS_FOR_EVENT = {
     "day_91": "Closed - Lost",
     "one_vehicle": "Closed - Lost",  # agent/multi_vehicle.py
     "no_longer_owns": "Closed - No Longer Owns",
+    # The user, 28 Oct 2026 (Brian Rosenberg): a lead the customer asked us to stop about is closed, with a note.
+    "inquiry_stopped": "Closed - Lost",
 }
 # Client, 8 Oct 2026: the SOW's working stages shown as CRM statuses, set by the AI as the lead moves. The CRM
 # applies one only over another working status (aidmvcs-be-dev app/lib/ai/aiDnd.js WORKING_STATUSES), never over a
