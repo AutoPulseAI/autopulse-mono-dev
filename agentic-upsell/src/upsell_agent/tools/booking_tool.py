@@ -333,9 +333,16 @@ def nearest_times(available: list[datetime], wanted: datetime, dealer: DealerPro
     return sorted(sorted(pool, key=lambda a: abs((a - wanted).total_seconds()))[:count])
 
 
+def is_open(candidate: datetime, dealer: DealerProfile, available: list[datetime]) -> bool:
+    """`candidate` starts an open slot, or falls inside one (Revetion Jones, 28 Oct 2026: "around 10:30" on Victory's
+    one-hour slots wasn't bookable, so nothing was booked; staff book :30 times themselves)."""
+    length = timedelta(minutes=getattr(dealer, "sales_slot_minutes", None) or SLOT_MINUTES)
+    return any(a <= candidate < a + length for a in available)
+
+
 def _fresh_pick(candidate: datetime, dealer: DealerProfile, available: list[datetime] | None) -> dict[str, str] | None:
     """A real, free time that wasn't offered (B5 item 2), as a `format_offer` dict; None when it isn't open."""
-    if available is None or not any(a == candidate for a in available):
+    if available is None or not is_open(candidate, dealer, available):
         return None
     local = candidate.astimezone(dealer.tz)
     display = f"{day_word(local)} at {local.strftime('%I:%M %p').lstrip('0')}"

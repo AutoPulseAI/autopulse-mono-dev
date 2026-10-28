@@ -687,7 +687,8 @@ async def _visit_and_booking(
                 visit_ctx["day_request"] = info
                 return visit_ctx, plan_day_offer(profile=profile, conversation=conversation, built_times=built,
                                                  why=_day_offer_why(info), asked_day=request.day.isoformat())
-        if picked and not picked.get("arrival") and datetime.fromisoformat(picked["iso"]) not in available:
+        if picked and not picked.get("arrival") and not booking_tool.is_open(datetime.fromisoformat(picked["iso"]),
+                                                                              dealer, available):
             # B5 item 3: taken since we offered it - fresh times instead, not a booking.
             slot_taken = True
             visit_ctx["slot_taken"] = picked["display"]
