@@ -1192,7 +1192,6 @@ async def _defer(db: DealerScopedDatabase, doc: dict, tracer: TurnTracer, sent: 
 
 
 # Handoffs whose customer gets no "still waiting" message (slots/policy.py reasons).
-_NO_HOLDING_TEXT = ("Customer says they're not interested", "Customer is clearly upset")
 
 
 async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
@@ -1237,58 +1236,20 @@ async def _fire_handoff_check_locked(db: DealerScopedDatabase, doc: dict, deps: 
         await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason})
         return "cancelled"
 
-    if str(doc.get("handoff_reason") or "").startswith(_NO_HOLDING_TEXT):
-        # Jo Riedel / Erik Bleaman, 27 Oct 2026: "We just found one" and abuse were each answered 30 minutes later with
-        # "Sorry for the wait... we would love to schedule". A customer who said no, or is upset, gets no message;
-        # staff still get the alert.
-        now = clock.now()
-        alert = {"at": now, "reason": f"No staff response {HANDOFF_TIMEOUT_BUSINESS_MINUTES} business minutes after "
-                                      f"the handoff", "handoff_reason": doc.get("handoff_reason"),
-                 "customer_notified": False}
-        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]},
-                                                                 {"$set": {"staff_alert": alert}})
-        reason = "the customer said no or is upset: no message to them, staff alerted"
-        await _close(db, doc, "cancelled", reason=reason)
-        await tracer.skipped("send", f"Handoff check: {reason}.")
-        await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason,
-                                                           "staff_alert": alert["reason"]})
-        return "cancelled"
-
-    customer = await db.collection(PLATFORM_CUSTOMERS_COLLECTION).find_one({"_id": as_object_id(doc["customer_id"])})
-    draft = render_holding_reply("still_waiting", (customer or {}).get("name"))
-    channel = doc["to_channel"]
-    request = SendRequest(
-        dealer_id=db.dealer_id, lead_id=doc["lead_id"], customer_id=doc["customer_id"],
-        turn_id=f"handoff-check-{check_id}", channel=channel,
-        text=draft["sms_text"] if channel == "sms" else draft["email_body"],
-        subject=None if channel == "sms" else draft["email_subject"], purpose="transactional", is_reply=False,
-    )
-    async with tracer.node("send", {"channel": channel, "idempotency_key": request.idempotency_key,
-                                    "text": request.text, "subject": request.subject}) as span:
-        sent = await deps.sender.send(request)
-        span.output = sent.as_dict()
-        span.reasoning = sent.reasoning
-        span.metrics = {"attempts": sent.attempts}
-        span.edge_label = sent.status
-    if sent.status == "held":
-        return await _defer(db, doc, tracer, sent)
-    await tracer.skipped("schedule", "A handoff check happens once per handoff.")
-
+    # The user, 28 Oct 2026 (Melissa Ross was due "Sorry for the wait" 30 minutes after "Our sales manager will reach out
+    # shortly"): the customer already has the handoff reply - a second one only confuses them. Only staff are alerted.
+    # (Before: everyone but a customer who said no or was upset got it - Jo Riedel / Erik Bleaman, 27 Oct 2026.)
     now = clock.now()
-    delivered = sent.status in ("sent", "duplicate")
     alert = {"at": now, "reason": f"No staff response {HANDOFF_TIMEOUT_BUSINESS_MINUTES} business minutes after "
-                                  f"the handoff", "handoff_reason": doc.get("handoff_reason"),
-             "customer_notified": delivered}
-    fields: dict[str, Any] = {"staff_alert": alert, "last_send_status": sent.status}
-    if delivered:
-        fields.update(last_handoff_notice_at=now, last_outbound_at=now)
-    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]}, {"$set": fields})
-    status = "sent" if delivered else sent.status
-    await _close(db, doc, status, reason=sent.reason, sent_message_id=sent.message_id, fired_at=now)
-    await _log(db, tracer, f"handoff_check_{status}",
-               {"followup_id": check_id, "send_status": sent.status, "reply": request.text, "channel": channel,
-                "staff_alert": alert["reason"]})
-    return status
+                                  f"the handoff", "handoff_reason": doc.get("handoff_reason"), "customer_notified": False}
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": doc["lead_id"]},
+                                                             {"$set": {"staff_alert": alert}})
+    reason = "no message to the customer (they have the handoff reply); staff alerted"
+    await _close(db, doc, "cancelled", reason=reason)
+    await tracer.skipped("send", f"Handoff check: {reason}.")
+    await _log(db, tracer, "handoff_check_cancelled", {"followup_id": check_id, "reason": reason,
+                                                       "staff_alert": alert["reason"]})
+    return "cancelled"
 
 
 async def _fire_resume_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:

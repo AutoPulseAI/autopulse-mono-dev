@@ -201,21 +201,22 @@ async def test_customer_message_does_not_cancel_the_staff_check(mongo, dealers):
     assert check["status"] == "pending"
 
 
-async def test_staff_check_fires_once_with_a_holding_reply_and_an_alert(mongo, dealers):
+async def test_staff_check_alerts_staff_and_sends_the_customer_nothing(mongo, dealers):
+    """The user, 28 Oct 2026: no "Sorry for the wait" 30 minutes after the handoff reply - it only confuses the
+    customer. Staff are alerted; the customer gets nothing more."""
     created = await _handed_off(mongo)
     before = len(await _outbox(mongo, created))
     _move(31)
     await followups.fire_due(_deps())
 
     [check] = await _scheduled(mongo, created, followups.KIND_HANDOFF_CHECK)
-    assert check["status"] == "sent"
-    sent = await _outbox(mongo, created)
-    assert len(sent) == before + 1 and sent[-1]["text"] == HOLDING_REPLIES["still_waiting"].sms.format(name="Hana")
+    assert check["status"] == "cancelled"
+    assert len(await _outbox(mongo, created)) == before
     state = await _state(mongo, created)
     assert state["status"] == "handoff"  # stays with staff
-    assert state["staff_alert"]["customer_notified"] and "30 business minutes" in state["staff_alert"]["reason"]
+    assert not state["staff_alert"]["customer_notified"] and "30 business minutes" in state["staff_alert"]["reason"]
     turn = await mongo[AI_TURN_LOG_COLLECTION].find_one({"lead_id": created["lead_id"], "trigger": "handoff_check"})
-    assert turn["outcome"] == "handoff_check_sent"
+    assert turn["outcome"] == "handoff_check_cancelled"
 
     profile = await lead_profile(DEALER, created["lead_id"])
     assert profile["staff_alert"]["reason"] and profile["pending_staff_check"] is None
@@ -224,7 +225,7 @@ async def test_staff_check_fires_once_with_a_holding_reply_and_an_alert(mongo, d
 
     _move(120)
     await followups.fire_due(_deps())
-    assert len(await _outbox(mongo, created)) == before + 1  # once per handoff
+    assert len(await _outbox(mongo, created)) == before
 
 
 async def test_no_still_waiting_text_after_a_no_or_abuse(mongo, dealers):
@@ -346,17 +347,6 @@ async def test_failed_email_switches_to_sms_only_inside_the_window(mongo, dealer
                    trigger="lead_created", channel="email", inbound_text="hi", shadow=False, deps=deps)
     [switch] = await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)
     assert abs((switch["due_at"].replace(tzinfo=UTC) - ny(23, 9)).total_seconds()) < 5
-
-
-async def test_debug_conversation_shows_each_sent_message_once(mongo, dealers):
-    from upsell_agent.api.dev import conversation
-
-    created = await _handed_off(mongo)
-    _move(31)
-    await followups.fire_due(_deps())
-    items = await conversation(created["lead_id"], DEALER)
-    waiting = [i for i in items if "Sorry for the wait" in (i.get("text") or "")]
-    assert [(i["kind"], i["status"]) for i in waiting] == [("message", "sent")]
 
 
 async def test_fired_channel_switch_is_not_shown_twice(mongo, dealers):
