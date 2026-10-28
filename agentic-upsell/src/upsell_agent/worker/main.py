@@ -28,6 +28,7 @@ from upsell_agent.worker.jobs import (
     check_ai_provider,
     check_inventory,
     check_cadences,
+    rerecord_messages,
     ensure_next_steps,
     monitor_conversations,
     close_expired_leads,
@@ -126,6 +127,8 @@ def settings() -> dict[str, Any]:
                       CronJob(check_inventory, cron="13 * * * *", timeout=600),
                       # The user, 28 Oct 2026: an alert when due follow-ups aren't going out.
                       CronJob(check_cadences, cron="47 * * * *", timeout=600),
+                      # The user, 28 Oct 2026: sent messages the CRM didn't record are tried again.
+                      CronJob(rerecord_messages, cron="2-59/5 * * * *", timeout=300),
                       # The user, 26 Oct 2026: every active lead has a next step (scheduler/safety_net.py).
                       CronJob(ensure_next_steps, cron="37 * * * *", timeout=900),
                       # 23 Oct 2026: the developers are emailed what needs a look, every 15 minutes.
