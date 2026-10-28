@@ -198,6 +198,16 @@ async def run_turn(
         db=db, platform=deps.platform, settings=settings, tracer=tracer, lead=lead, customer=customer,
         lead_state=lead_state, source_message_id=source_message_id or f"lead:{lead_id}",
     )
+    if lead_id and not is_reply and channel == "email" and trigger not in ("lead_created", TRIGGER_CADENCE_TOUCH):
+        # The user, 28 Oct 2026: "when we have a customer's phone number we prioritise SMS, always - email is the last
+        # option". A message the AI starts itself (a check-back, a visit follow-up, picking the lead back up) planned
+        # on email goes by text when the customer has a phone and a text is allowed now. (Cadence and AI Studio
+        # touches pick their channel before this, honouring a step set to email only.)
+        sms_check = await can_contact(dealer_id=dealer_id, customer_id=customer_id, lead_id=lead_id, channel="sms",
+                                      purpose=purpose, is_reply=False, lead=lead, customer=customer, record=False)
+        if sms_check.outcome == "ALLOW":
+            channel = "sms"
+            tracer.log["channel_switched_to_sms"] = "a phone number and a text allowed now: text before email"
     if lead_id:
         # The reply's send check before drafting (not logged: the Sender logs
         # the real one), so a night-time reply in an outbound conversation is
