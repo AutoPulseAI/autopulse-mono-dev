@@ -243,6 +243,9 @@ async def handle_lead_created(event: LeadCreatedEvent, deps: TurnDeps,
                               received_at=_parse_received_at(received_at), turn_id=turn_id)
 
 
+MULTI_VEHICLE_WAIT = timedelta(hours=24)
+
+
 def _lead_car(lead: dict | None) -> tuple[str, str] | None:
     """(VIN, "year make model") of the car a lead is about, or None when it names none."""
     lead = lead or {}
@@ -279,6 +282,22 @@ async def _ask_multi_vehicle(db: DealerScopedDatabase, deps: TurnDeps, event: Le
     turn_id = f"multi-vehicle-{event.lead_id}"
     if await _already_sent(db, turn_id):
         return {"status": "already_answered", "turn_id": turn_id}
+    # Yefri Montoya, 28 Oct 2026: three CarGurus inquiries in 10 minutes (Venue, Equinox, Rogue) got three emails in 10
+    # minutes, the "are you comparing models?" question twice. One question at a time: while one is unanswered (24 h),
+    # a further inquiry sends nothing - staff get a note with the car, and the AI's next message has it.
+    now = clock.now()
+    asked = primary_state.get("multi_vehicle_question") or {}
+    asked_at, last_in = lifecycle._aware(asked.get("asked_at")), lifecycle._aware(primary_state.get("last_inbound_at"))
+    unanswered = bool(asked_at and not asked.get("answered") and now - asked_at < MULTI_VEHICLE_WAIT
+                      and not (last_in and last_in > asked_at))
+    if unanswered:
+        from upsell_agent.agent import crm_notes
+        car = multi_vehicle.vehicle_label(lead) or "another vehicle"
+        await crm_notes.write(db, lead_id=primary_id, kind="another_inquiry", customer_id=event.customer_id,
+                              key=f"another_inquiry:{event.lead_id}", platform=deps.platform,
+                              text=f"The customer also inquired about the {car} (lead {event.lead_id}). No new message was "
+                                   "sent: they haven't answered our question about the other car yet.")
+        return {"status": "done", "reason": "a question is already waiting for their reply: noted, nothing sent"}
     text = multi_vehicle.question_text(known_first_name((lead or {}).get("name")),
                                        multi_vehicle.vehicle_label(lead))
     tracer = TurnTracer(sink=deps.sink, dealer_id=db.dealer_id, lead_id=primary_id, customer_id=event.customer_id,

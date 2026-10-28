@@ -212,6 +212,21 @@ async def test_a_repeat_lead_asks_hello_again_and_is_not_contact(mongo):
     assert state["stage"] != "contact_made_no_next_action"
 
 
+async def test_three_inquiries_in_a_row_get_the_hello_again_question_once(mongo):
+    """Yefri Montoya, 28 Oct 2026: a Venue, an Equinox and a Rogue on CarGurus in 10 minutes got three emails in 10
+    minutes - "are you comparing models?" twice. Asked once; the third inquiry is a staff note."""
+    first = await _new_lead(mongo, vehicle=RAV4)
+    await _new_lead(mongo, vehicle={"year": 2018, "make": "Chevrolet", "model": "Equinox"},
+                    customer_id=first["customer_id"])
+    third = await _new_lead(mongo, vehicle={"year": 2024, "make": "Nissan", "model": "Rogue"},
+                            customer_id=first["customer_id"])
+    texts = await _sent(mongo, first)
+    assert len([t for t in texts if t.startswith("Hello again")]) == 1, texts
+    from upsell_agent.agent.crm_notes import AI_CRM_NOTES_COLLECTION
+    note = await mongo[AI_CRM_NOTES_COLLECTION].find_one({"kind": "another_inquiry"})
+    assert note and "Rogue" in note["text"] and third["lead_id"] in note["text"]
+
+
 # --- Trade, email preference, departments (reviews 12 Oct) ----------------------------------------------------------
 
 async def test_value_of_my_car_is_a_trade(mongo):
