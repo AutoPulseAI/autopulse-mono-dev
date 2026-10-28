@@ -247,6 +247,9 @@ async function slotRejection(check, { dealer, date, time = null, excludeBookingI
   return json({ ...body, alternatives, next_available }, slotErrorStatus(check));
 }
 
+// A booking never moves a lead off these (aidmvcs-be-dev app/lib/ai/aiDnd.js keeps the same ones).
+const KEEPS_STATUS_ON_BOOKING = /^(?:DND|Sold\b)/i;
+
 export async function POST(request) {
   await dbConnect();
 
@@ -354,6 +357,11 @@ export async function POST(request) {
           'data.bookingId': booking._id,
           'data.booking': updates.booking,
           status: 'Appointment Booked',
+          // Revetion Jones, 28 Oct 2026: a booking left lead_status (the status the leads list, the lead view and the
+          // dashboard show) at "Contacted - No Next Action" - 25 booked Victory leads looked unbooked, and the AI's
+          // No Show / Visited updates, which apply only over Appointment Booked, never showed. DND and Sold stay.
+          ...(KEEPS_STATUS_ON_BOOKING.test(String(existingLead.lead_status || ''))
+            ? {} : { lead_status: 'Appointment Booked', fe_lead_status: 'Appointment Booked' }),
           statusChangedAt: new Date()
         }
       }
