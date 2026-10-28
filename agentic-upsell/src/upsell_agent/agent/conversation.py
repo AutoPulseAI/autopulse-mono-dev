@@ -86,6 +86,8 @@ class VisitState(BaseModel):
     # The reply (ConversationState.turn) that last made an offer.
     offered_turn: int = 0
     declined: bool = False
+    # How many times the customer themselves turned the visit down (an invitation they never answered isn't one).
+    declines: int = 0
     # The reply (ConversationState.turn) that recorded the last decline, so a declined offer is
     # parked for a few replies before being offered again (B4 item 4, like Plan 2's parked asks).
     declined_turn: int = 0

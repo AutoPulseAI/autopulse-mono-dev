@@ -39,9 +39,14 @@ _MONTH_ONLY = r"(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 _TIME = re.compile(r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?!\w)|\bat\s+(\d{1,2})(?::(\d{2}))?\b|\b(noon)\b",
                    re.IGNORECASE)
 
+# Melissa Ross, 28 Oct 2026: "I cannot today. I might be able to at the end of the week" - not a date before, so the AI
+# offered no times for it.
+_END_OF_WEEK = r"\b(?:(?:at|by|towards?|near)\s+)?(?:the\s+)?end\s+of\s+(?:the|this)\s+week\b|\blater\s+(?:this|in\s+the)\s+week\b"
+
 # Words that name a date, for finding one in a message (agent/offline_model.py).
 DATE_PHRASE = re.compile(
     rf"\b(?:the\s+)?day after tomorrow\b|\btomorrow\b|\btmrw\b|\btoday\b|\btonight\b|\byesterday\b"
+    rf"|{_END_OF_WEEK}"
     rf"|\b(?:this|next)\s+weekend\b|\bnext\s+week\b|\blast\s+week\b|\bend of (?:the|this) month\b"
     rf"|\bnext\s+(?:month|year)\b"
     rf"|\b(?:next|this|last|on|coming)\s+{_DAY}\b|\b{_DAY}\b"
@@ -112,6 +117,11 @@ def _time_of(text: str) -> time | None:
 def _day_of(text: str, today: date, now: datetime) -> DateResolution | None:
     """The day a phrase names, most specific phrases first."""
     t = text.lower()
+    if re.search(_END_OF_WEEK, t):
+        # Friday of this week; said on Friday or Saturday, the next day; on Sunday, the coming Friday. A closed day
+        # moves to the next open one where times are offered (tools/booking_tool.times_on_day).
+        ahead = 4 - today.weekday() if today.weekday() < 4 else 1 if today.weekday() < 6 else 5
+        return DateResolution(today + timedelta(days=ahead), approximate=True, note="end of the week")
     if re.search(r"\bday after tomorrow\b", t):
         return DateResolution(today + timedelta(days=2), note="day after tomorrow")
     if re.search(r"\b(tomorrow|tmrw)\b", t):

@@ -96,8 +96,8 @@ def test_already_booked_makes_no_more_offers():
 
 # --- The 3-attempt decline sequence (B4 item 4) -------------------------------------
 
-def _offered(attempt, angles, turn=1):
-    return VisitState(attempts=attempt, angles_used=angles, offered_times=TIMES, offered_turn=turn)
+def _offered(attempt, angles, turn=1, declines=0):
+    return VisitState(attempts=attempt, angles_used=angles, offered_times=TIMES, offered_turn=turn, declines=declines)
 
 
 def test_a_decline_parks_the_offer_without_stopping():
@@ -136,7 +136,7 @@ def test_attempt_three_uses_a_third_distinct_angle():
 
 def test_third_decline_stops_offering_and_schedules_the_dated_followup():
     conversation = _conversation(turn=3, visit=_offered(MAX_ATTEMPTS, ["primary_interest", "objection",
-                                                                       "value_proposition"], turn=3))
+                                                                       "value_proposition"], turn=3, declines=2))
     plan = plan_visit(profile=_profile(), extraction={"declines_visit": True, "declines_visit_confidence": 0.9},
                       conversation=conversation, active_booking=None, built_times=[], booked_this_turn=False, now=NOW)
     assert plan.record["stopped"] is True and plan.schedule_followup is True
@@ -155,7 +155,8 @@ def test_third_decline_with_a_customer_named_date_uses_it():
 
 def test_third_decline_with_a_staff_only_question_open_hands_off():
     conversation = ConversationState(
-        turn=3, visit=_offered(MAX_ATTEMPTS, ["primary_interest", "objection", "value_proposition"], turn=3),
+        turn=3, visit=_offered(MAX_ATTEMPTS, ["primary_interest", "objection", "value_proposition"], turn=3,
+                               declines=2),
         open_questions=[OpenQuestion(text="How much can you offer for financing?", label="restricted")])
     plan = plan_visit(profile=_profile(), extraction={"declines_visit": True, "declines_visit_confidence": 0.9},
                       conversation=conversation, active_booking=None, built_times=[], booked_this_turn=False, now=NOW)
@@ -170,6 +171,23 @@ def test_stopped_offer_is_never_repeated():
     plan = plan_visit(profile=profile, extraction={}, conversation=conversation, active_booking=None,
                       built_times=TIMES, booked_this_turn=False, now=NOW)
     assert plan.fire is False
+
+
+def test_unanswered_invitations_are_not_declines():
+    """Melissa Ross, 28 Oct 2026: five cadence invitations she never answered, then her first "not today" - handed to a
+    manager as "declined more than once". Only the customer's own declines count."""
+    conversation = _conversation(turn=1, visit=_offered(MAX_ATTEMPTS, ["primary_interest", "objection",
+                                                                       "value_proposition"]))
+    plan = plan_visit(profile=_profile(), extraction={"declines_visit": True, "declines_visit_confidence": 0.9},
+                      conversation=conversation, active_booking=None, built_times=[], booked_this_turn=False, now=NOW)
+    assert plan.handoff is False and plan.record["declines"] == 1
+
+
+def test_a_second_decline_by_the_customer_escalates():
+    conversation = _conversation(turn=3, visit=_offered(2, ["primary_interest", "objection"], turn=3, declines=1))
+    plan = plan_visit(profile=_profile(), extraction={"declines_visit": True, "declines_visit_confidence": 0.9},
+                      conversation=conversation, active_booking=None, built_times=[], booked_this_turn=False, now=NOW)
+    assert plan.handoff is True and plan.record["declines"] == 2
 
 
 def test_a_declined_offer_is_parked_for_three_replies():
