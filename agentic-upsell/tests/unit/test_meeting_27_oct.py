@@ -248,3 +248,33 @@ def test_gpt_6_models_go_through_the_responses_api():
     from upsell_agent.agent.llm import _model
     assert type(_model("openai:gpt-6.1-sol")).__name__ == "OpenAIResponsesModel"
     assert type(_model("openai:gpt-5")).__name__ == "OpenAIChatModel"
+
+
+@pytest.mark.parametrize(("text", "polite_no"), [
+    ("I'm all set,thank you for asking", True), ("I'm good, thanks", True), ("all good thanks", True),
+    ("no thank you", True), ("I'm all set for tomorrow at 10", False), ("I'm good with Friday", False),
+    ("Im good, what time do you close?", True),
+])
+def test_im_all_set_is_a_polite_no(text, polite_no):
+    # Lily Dochev, 27 Oct 2026.
+    from upsell_agent.agent.customer_hold import ALL_SET
+    assert bool(ALL_SET.search(text)) is polite_no
+
+
+def test_the_customers_own_words_decide_the_language_not_the_leads_setting():
+    # Lily Dochev: one pasted Bulgarian line, the rest English - follow-ups went out in Bulgarian.
+    from upsell_agent.agent.nodes.decide import _wrote_in_english
+    pack = {"working_memory": [
+        {"direction": "inbound", "text": "Може да ѝ отговориш така: Hi Nicole, thank you for reaching out. I'm very "
+                                         "interested in the 2023 Volvo XC40"},
+        {"direction": "inbound", "text": "I'm all set,thank you for asking"}]}
+    assert _wrote_in_english(pack, None)
+    spanish = {"working_memory": [{"direction": "inbound", "text": "Hola, ¿todavía tienen el carro disponible?"}]}
+    assert not _wrote_in_english(spanish, None)
+    assert not _wrote_in_english({"working_memory": []}, None)  # never wrote: the lead's setting may decide
+
+
+def test_a_polite_no_holds_the_ai_but_a_question_after_it_does_not():
+    from upsell_agent.agent.customer_hold import hold_for
+    assert hold_for({}, "I'm all set, thank you for asking")["until"] is None
+    assert hold_for({}, "I'm good, what time do you close?") is None

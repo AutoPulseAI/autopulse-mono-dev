@@ -383,6 +383,20 @@ def email_question(lead_id: str) -> str:
     return EMAIL_QUESTIONS[sum(map(ord, str(lead_id))) % len(EMAIL_QUESTIONS)]
 
 
+def _wrote_in_english(pack: dict[str, Any], text: str | None) -> bool:
+    """The customer's own messages are mostly English (Lily Dochev, 27 Oct 2026: one pasted line in Bulgarian on 3 Oct
+    made the old CRM set her lead's language to Bulgarian; she writes English, and the AI's follow-ups went out in
+    Bulgarian). Their own words decide; the lead's language setting only when they never wrote."""
+    from upsell_agent.agent.language import message_language
+    said = [str(m.get("text") or "") for m in pack.get("working_memory", []) if m.get("direction") == "inbound"]
+    said += [str(text)] if text else []
+    said = [t for t in said if len(t.split()) >= 3 and not t.lstrip().startswith("<")]
+    if not said:
+        return False
+    english = sum(1 for t in said if (message_language(t) or "English") == "English")
+    return english * 2 >= len(said)
+
+
 def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
     return _may_ask_name(lead_state, now, "email")
 
@@ -1276,7 +1290,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         reply_language = said
     elif said == "English":
         reply_language = None
-    elif not reply_language:
+    elif not reply_language and not _wrote_in_english(pack, text):
         # Client, 20 Oct 2026 (Bibi): also the language recorded from a message the AI held while paused.
         previous = str((ctx.lead_state or {}).get("reply_language") or "").strip() or str(
             (ctx.lead_state or {}).get("customer_language") or "").strip().replace("English", "")
@@ -1541,6 +1555,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
         decision.pop("visit_offer", None)
         decision["why"] = "A visit is booked: answer what they said, ask nothing more."
+    from upsell_agent.agent.customer_hold import ALL_SET
+    if (state.trigger == "inbound_message" and ALL_SET.search(str(text or "")) and "?" not in str(text or "")
+            and visit_ctx.get("status") not in ("pending", "confirmed") and not visit_ctx.get("just_booked")):
+        # Lily Dochev, 27 Oct 2026: "I'm all set, thank you for asking" -> "Want to stop by?". A polite no: thank them
+        # and stop - no visit, no question (the hold keeps the timed messages away too).
+        decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
+        decision.pop("visit_offer", None)
+        decision["ask_email"] = False
+        decision["why"] = "A polite no (\"I'm all set\"): thank them, ask and offer nothing."
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()
     # MASTER_PLAN_4 A1: the lead bucket's word-track emphasis for Compose (blueprint §2: language only).
