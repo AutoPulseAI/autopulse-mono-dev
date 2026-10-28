@@ -128,9 +128,28 @@ async def test_a_customer_who_said_stop_in_the_old_crm_is_never_followed_up(mong
                                       "timestamp": clock.now() - timedelta(days=15), "sender": "c"})
     _calls, _queued, submit = _collect()
     await reconcile(submit=submit)
-    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": lead["lead_id"]})
-    assert state["status"] == "opted_out"
+    from upsell_agent.channels.consent import is_opted_out
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    db = dealer_scoped_db(DEALER)
+    # A real opt-out on the consent record, which no start-up step resets (a lead status alone was reset, 28 Oct).
+    assert await is_opted_out(db, lead["customer_id"], "sms") and await is_opted_out(db, lead["customer_id"], "email")
     assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"lead_id": lead["lead_id"], "status": "pending"})
+
+
+async def test_last_nights_stop_leads_reset_to_active_get_a_real_opt_out(mongo, live):
+    from upsell_agent.channels.consent import is_opted_out
+    from upsell_agent.integrations.mongodb import dealer_scoped_db
+    from upsell_agent.scheduler.reconcile import repair_old_crm_stops
+    lead = await _lead(mongo, age=timedelta(days=20))
+    await mongo["emails"].insert_one({"dealer_id": DEALER, "lead_id": lead["oid"], "status": "received",
+                                      "communication_type": "sms", "mail_content": "Stop",
+                                      "timestamp": clock.now() - timedelta(days=15), "sender": "c"})
+    await mongo[AI_LEAD_STATE_COLLECTION].insert_one({
+        "dealer_id": DEALER, "lead_id": lead["lead_id"], "customer_id": lead["customer_id"], "status": "active",
+        "adopted_at": clock.now(), "status_reason": "Opt-out no longer silences replies (decision 137)"})
+    assert await repair_old_crm_stops() == 1
+    assert await is_opted_out(dealer_scoped_db(DEALER), lead["customer_id"], "sms")
+    assert await repair_old_crm_stops() == 0  # safe to run again
 
 
 async def test_staff_texted_recently_so_the_ai_waits_seven_days(mongo, live):

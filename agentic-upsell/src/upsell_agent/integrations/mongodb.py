@@ -353,6 +353,8 @@ async def ensure_indexes() -> None:
 
     await migrate_legacy_consent()
     await migrate_silenced_opt_outs()
+    from upsell_agent.scheduler.reconcile import repair_old_crm_stops
+    await repair_old_crm_stops()  # 28 Oct 2026: STOPs sent to the old CRM become real opt-outs
     db = get_db()
     for collection_name, specs in INDEX_SPECS.items():
         for keys, options in specs:
