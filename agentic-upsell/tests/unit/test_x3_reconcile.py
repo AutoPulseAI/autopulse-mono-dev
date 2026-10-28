@@ -1,7 +1,7 @@
 """PLAN_4 stream X3 item 6 (and 5): the reconciliation sweep finds CRM leads and customer messages the AI never
 heard about - idempotent, never a double send, never a first-touch greeting to a lead already in conversation."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from bson import ObjectId
@@ -100,3 +100,22 @@ async def test_a_lost_customer_message_is_submitted_unless_staff_answered(mongo,
     await reconcile(submit=submit)
     inbound = [e for t, e in calls if t == "inbound-message"]
     assert [e.message_id for e in inbound] == [str(lost["_id"])]
+
+
+async def test_older_leads_behind_many_known_ones_are_still_adopted_on_their_own_day(mongo, live, monkeypatch):
+    # The user, 28 Oct 2026: 4,053 leads in 90 days; the sweep read only the newest 1,000 (all known), so 2,100 leads
+    # 30-90 days old never got a follow-up. Here BATCH is 2: the newest 10 are known, the 45-day-old one must still
+    # be adopted, placed on its own day of the cadence.
+    from upsell_agent.scheduler import reconcile as rec
+    monkeypatch.setattr(rec, "BATCH", 2)
+    for n in range(10):
+        newer = await _lead(mongo, age=timedelta(days=1, minutes=n))
+        await mongo[AI_LEAD_STATE_COLLECTION].insert_one({"dealer_id": DEALER, "lead_id": newer["lead_id"]})
+    old = await _lead(mongo, age=timedelta(days=45))
+    _calls, _queued, submit = _collect()
+    await reconcile(submit=submit)
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": old["lead_id"]})
+    assert state and state["adopted_at"]
+    started = state["cadence"]["started_at"]
+    started = datetime.fromisoformat(started) if isinstance(started, str) else started
+    assert abs((clock.now() - started.replace(tzinfo=UTC)).days - 45) <= 1  # counted from the lead's own date

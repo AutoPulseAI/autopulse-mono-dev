@@ -121,10 +121,15 @@ async def reconcile_dealer(dealer_id: str, *, submit: Submit) -> dict[str, int]:
     # 1 + 2: leads with no AI state.
     oldest = ObjectId.from_datetime(now - ADOPT_MAX_AGE)
     newest = ObjectId.from_datetime(now - GRACE)
+    # The user, 28 Oct 2026 ("leads 60, 20, 10 days old must be in the cadences too"): this read the newest
+    # BATCH * 5 leads and then skipped the ones the AI already knew - with 4,053 leads in 90 days, the newest 1,000
+    # were all known, so no lead older than about 30 days was ever adopted (2,100 open leads with no follow-up). Only
+    # leads the AI doesn't know yet are read now, so every run moves through the whole 90 days.
+    known_ids = [ObjectId(s["lead_id"]) for s in await states.find(
+        {"lead_id": {"$exists": True}}, projection={"lead_id": 1}).to_list(None) if ObjectId.is_valid(s["lead_id"])]
     leads = await db.collection(PLATFORM_LEADS_COLLECTION).find(
-        {"_id": {"$gte": oldest, "$lte": newest}}).sort("_id", -1).to_list(BATCH * 5)
-    known = {s["lead_id"] for s in await states.find(
-        {"lead_id": {"$in": [str(lead["_id"]) for lead in leads]}}, projection={"lead_id": 1}).to_list(None)}
+        {"_id": {"$gte": oldest, "$lte": newest, "$nin": known_ids}}).sort("_id", -1).to_list(BATCH * 5)
+    known: set[str] = set()
     for lead in leads:
         if str(lead["_id"]) in known or counts["lead_created"] + counts["adopted"] >= BATCH:
             continue
