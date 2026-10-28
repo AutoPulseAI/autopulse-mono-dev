@@ -144,6 +144,8 @@ export default function ViewConversations({
   // are blue, notes and status changes by a person are yellow.
   const isAiNote = (e) => /by the AI\b|^AutoPulse AI\b|^\s*AI[: ]/.test(String(e?.mail_content || ""))
     || /^(nicole|ai|autopulse)/i.test(String(e?.sender_name || e?.from_name || ""));
+  // The user, 28 Oct 2026: the tab counts are messages only - notes and status changes show in both tabs but are not
+  // texts or emails (Deyvi Lopez showed "SMS 2" with no text sent: both were notes).
   const smsConversations = useMemo(
     () => sortedEmails.filter((e) => e.communication_type === "sms" || isNoteRecord(e)),
     [sortedEmails]
@@ -1028,7 +1030,7 @@ export default function ViewConversations({
                     <Nav.Link eventKey="sms">
                       <i className="fa-regular fa-comment-sms me-2"></i>SMS Conversation
                       {smsConversations.length > 0 && (
-                        <Badge bg="secondary" className="ms-2">{smsConversations.length}</Badge>
+                        <Badge bg="secondary" className="ms-2">{smsConversations.filter((e) => !isNoteRecord(e)).length}</Badge>
                       )}
                     </Nav.Link>
                   </Nav.Item>
@@ -1036,7 +1038,7 @@ export default function ViewConversations({
                     <Nav.Link eventKey="email">
                       <i className="fa-regular fa-envelope me-2"></i>Email Conversation
                       {emailConversations.length > 0 && (
-                        <Badge bg="secondary" className="ms-2">{emailConversations.length}</Badge>
+                        <Badge bg="secondary" className="ms-2">{emailConversations.filter((e) => !isNoteRecord(e)).length}</Badge>
                       )}
                     </Nav.Link>
                   </Nav.Item>
