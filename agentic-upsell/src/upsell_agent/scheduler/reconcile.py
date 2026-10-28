@@ -47,6 +47,8 @@ RECENT_WINDOW = timedelta(hours=48)
 GRACE = timedelta(minutes=5)
 # Open leads older than this are not adopted (their 90-day follow-up period is over).
 ADOPT_MAX_AGE = timedelta(days=90)
+# No AI follow-up within this long of a staff message to the customer (the user, 28 Oct 2026).
+STAFF_QUIET = timedelta(days=7)
 BATCH = 200
 _CLOSED_CRM = {"closed - lost", "closed lost", "sold", "dnd", "closed - no longer owns", "dead", "lost"}
 
@@ -106,6 +108,26 @@ async def adopt_lead(db: DealerScopedDatabase, lead: dict, *, reason: str) -> di
                                   lead=lead, customer_id=customer_id)
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id})
     history = await sync_lead_history(db, lead_id=lead_id, customer_id=customer_id, lead_state=state)
+    rows = await db.collection(PLATFORM_EMAILS_COLLECTION).find(
+        {"lead_id": {"$in": [lead["_id"], lead_id]}, "is_note": {"$ne": True}, "communication_type": {"$ne": "note"}},
+        projection={"status": 1, "mail_content": 1, "timestamp": 1, "ai_generated": 1}).to_list(500)
+    from upsell_agent.compliance.opt_out import classify_keyword, sounds_like_stop
+    said_stop = next((r for r in rows if str(r.get("status")) in ("received", "incoming") and (
+        classify_keyword(str(r.get("mail_content") or "")) == "stop" or sounds_like_stop(str(r.get("mail_content") or "")))),
+        None)
+    if said_stop:
+        # The user, 28 Oct 2026: a customer who told the old CRM to stop is never followed up by the AI.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+            "status": "opted_out", "status_reason": "the customer asked to stop before the AI took the lead",
+            "status_at": now}})
+        return {"lead_id": lead_id, "stage": (stage or {}).get("stage"), "history": history, "opted_out": True}
+    staff_at = max((_aware(r.get("timestamp")) for r in rows if not r.get("ai_generated") and str(r.get("status"))
+                    not in ("received", "incoming", "note") and _aware(r.get("timestamp"))), default=None)
+    if staff_at and now - staff_at < STAFF_QUIET:
+        # The user, 28 Oct 2026: no AI follow-up within 7 days of a staff message to the customer (the hold, which
+        # only stops the AI's own timed messages - a customer's reply is still answered).
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {"customer_hold": {
+            "at": now, "until": staff_at + STAFF_QUIET, "reason": "staff messaged the customer within the last 7 days"}}})
     from upsell_agent.scheduler.followups import plan_cadence_touch
     touch = await plan_cadence_touch(db, lead_id=lead_id, customer_id=customer_id, channel=channel,
                                      turn_id=f"adopted-{lead_id}", lead=lead, first_contact_done=True)

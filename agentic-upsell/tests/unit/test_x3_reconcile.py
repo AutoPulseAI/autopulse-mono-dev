@@ -119,3 +119,28 @@ async def test_older_leads_behind_many_known_ones_are_still_adopted_on_their_own
     started = state["cadence"]["started_at"]
     started = datetime.fromisoformat(started) if isinstance(started, str) else started
     assert abs((clock.now() - started.replace(tzinfo=UTC)).days - 45) <= 1  # counted from the lead's own date
+
+
+async def test_a_customer_who_said_stop_in_the_old_crm_is_never_followed_up(mongo, live):
+    lead = await _lead(mongo, age=timedelta(days=20))
+    await mongo["emails"].insert_one({"dealer_id": DEALER, "lead_id": lead["oid"], "status": "received",
+                                      "communication_type": "sms", "mail_content": "STOP",
+                                      "timestamp": clock.now() - timedelta(days=15), "sender": "c"})
+    _calls, _queued, submit = _collect()
+    await reconcile(submit=submit)
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": lead["lead_id"]})
+    assert state["status"] == "opted_out"
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"lead_id": lead["lead_id"], "status": "pending"})
+
+
+async def test_staff_texted_recently_so_the_ai_waits_seven_days(mongo, live):
+    lead = await _lead(mongo, age=timedelta(days=20))
+    texted = clock.now() - timedelta(days=2)
+    await mongo["emails"].insert_one({"dealer_id": DEALER, "lead_id": lead["oid"], "status": "delivered",
+                                      "communication_type": "sms", "mail_content": "Hi, this is Mercy",
+                                      "timestamp": texted, "sender": "d", "message_by": ObjectId()})
+    _calls, _queued, submit = _collect()
+    await reconcile(submit=submit)
+    hold = (await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": lead["lead_id"]}))["customer_hold"]
+    until = hold["until"].replace(tzinfo=UTC) if hold["until"].tzinfo is None else hold["until"]
+    assert abs((until - (texted.replace(tzinfo=UTC) if texted.tzinfo is None else texted)).days - 7) <= 1
