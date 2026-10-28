@@ -86,6 +86,45 @@ async def _anyone_wrote(db: DealerScopedDatabase, lead_id: Any) -> bool:
          "is_note": {"$ne": True}, "communication_type": {"$ne": "note"}}, projection={"_id": 1}))
 
 
+OLD_CRM_STOP = "old_crm_stop"
+
+
+async def opt_out_from_old_crm(db: DealerScopedDatabase, customer_id: str, lead_id: str, said: str) -> None:
+    from upsell_agent.channels.consent import set_channel_consent
+    for channel in ("sms", "email"):
+        await set_channel_consent(db, customer_id, channel, False, OLD_CRM_STOP, lead_id=lead_id,
+                                  evidence={"said": said, "where": "a message to the CRM before the AI took the lead"})
+
+
+async def repair_old_crm_stops() -> int:
+    """28 Oct 2026: 23 leads picked up overnight whose customer had said STOP to the old CRM were marked opted out by
+    status only, which the start-up step reset to active. They are found by that reset and given a real opt-out.
+    Safe to run on every start: a customer already opted out this way is skipped."""
+    from upsell_agent.channels.consent import AI_CONSENT_COLLECTION
+    from upsell_agent.compliance.opt_out import classify_keyword, sounds_like_stop
+    db_all = get_db()
+    rows = await db_all[AI_LEAD_STATE_COLLECTION].find(
+        {"adopted_at": {"$exists": True}, "status_reason": {"$regex": "decision 137"}},
+        projection={"lead_id": 1, "dealer_id": 1, "customer_id": 1}).to_list(None)
+    fixed = 0
+    for row in rows:
+        if not row.get("dealer_id") or not row.get("customer_id") or not ObjectId.is_valid(str(row.get("lead_id"))):
+            continue
+        db = dealer_scoped_db(row["dealer_id"])
+        if await db.collection(AI_CONSENT_COLLECTION).find_one(
+                {"customer_id": row["customer_id"], "consent_source": OLD_CRM_STOP}, projection={"_id": 1}):
+            continue
+        said = next((m for m in await db.collection(PLATFORM_EMAILS_COLLECTION).find(
+            {"lead_id": ObjectId(row["lead_id"]), "status": {"$in": ["received", "incoming"]}},
+            projection={"mail_content": 1}).to_list(200)
+            if classify_keyword(str(m.get("mail_content") or "")) == "stop"
+            or sounds_like_stop(str(m.get("mail_content") or ""))), None)
+        if said:
+            await opt_out_from_old_crm(db, row["customer_id"], row["lead_id"], str(said.get("mail_content") or "")[:200])
+            fixed += 1
+    return fixed
+
+
 async def adopt_lead(db: DealerScopedDatabase, lead: dict, *, reason: str) -> dict[str, Any] | None:
     """Takes over an open lead without a first reply (see the module docstring). None when another worker already
     has it, or the lead has no way to identify / reach the customer."""
@@ -116,10 +155,10 @@ async def adopt_lead(db: DealerScopedDatabase, lead: dict, *, reason: str) -> di
         classify_keyword(str(r.get("mail_content") or "")) == "stop" or sounds_like_stop(str(r.get("mail_content") or "")))),
         None)
     if said_stop:
-        # The user, 28 Oct 2026: a customer who told the old CRM to stop is never followed up by the AI.
-        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
-            "status": "opted_out", "status_reason": "the customer asked to stop before the AI took the lead",
-            "status_at": now}})
+        # The user, 28 Oct 2026: a customer who told the old CRM to stop is never followed up by the AI. The opt-out
+        # goes on the consent record, which stops everything the system starts on both channels (a lead status alone
+        # was reset at the next start - consent.migrate_silenced_opt_outs, decision 137).
+        await opt_out_from_old_crm(db, customer_id, lead_id, str(said_stop.get("mail_content") or "")[:200])
         return {"lead_id": lead_id, "stage": (stage or {}).get("stage"), "history": history, "opted_out": True}
     staff_at = max((_aware(r.get("timestamp")) for r in rows if not r.get("ai_generated") and str(r.get("status"))
                     not in ("received", "incoming", "note") and _aware(r.get("timestamp"))), default=None)
