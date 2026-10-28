@@ -79,7 +79,8 @@ const FAILED = ['failed', 'undelivered', 'bounced', 'error'];
 // received - I need to know if the cadences are firing"): our messages to these leads' customers in [from, to] by who
 // sent them, and the customers' messages back. Notes and the portal's lead email are not messages.
 export async function messageActivity(leadIds, from, to, { EmailModel = Email } = {}) {
-  const empty = { sent: { total: 0, ai: 0, staff: 0, automatic: 0, failed: 0, customers: 0 }, received: { total: 0, customers: 0 } };
+  const empty = { sent: { total: 0, ai: 0, staff: 0, automatic: 0, failed: 0, customers: 0 },
+    delivered: { total: 0, texts: 0, emails: 0, customers: 0 }, received: { total: 0, customers: 0 } };
   if (!leadIds?.length) return empty;
   const at = {};
   if (from) at.$gte = from;
@@ -88,6 +89,11 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
     { $match: { lead_id: { $in: leadIds }, is_note: { $ne: true }, status: { $ne: 'note' }, is_lead_email: { $ne: true },
       ...(from || to ? { timestamp: at } : {}) } },
     { $project: { lead_id: 1, inbound: { $in: ['$status', INBOUND] }, failed: { $in: ['$status', FAILED] },
+      // The user, 28 Oct 2026: "a message goes out means delivered to the customer". A text counts once its delivery
+      // report says delivered; an email once the mail service took it (email has no delivery report).
+      delivered: { $or: [{ $and: [{ $eq: ['$communication_type', 'sms'] }, { $eq: ['$status', 'delivered'] }] },
+        { $and: [{ $ne: ['$communication_type', 'sms'] }, { $in: ['$status', ['sent', 'delivered']] }] }] },
+      sms: { $eq: ['$communication_type', 'sms'] },
       ai: { $eq: ['$ai_generated', true] }, staff: { $gt: ['$message_by', null] },
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } } } },
@@ -98,10 +104,16 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
       staff: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, { $not: ['$ai'] }, '$staff'] }, 1, 0] } },
       failed: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$failed'] }, 1, 0] } },
       received: { $sum: { $cond: ['$inbound', 1, 0] } },
+      delivered: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered'] }, 1, 0] } },
+      texts: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered', '$sms'] }, 1, 0] } },
+      deliveredTo: { $addToSet: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered'] }, '$lead_id', '$$REMOVE'] } },
       sentTo: { $addToSet: { $cond: ['$inbound', '$$REMOVE', '$lead_id'] } },
       from: { $addToSet: { $cond: ['$inbound', '$lead_id', '$$REMOVE'] } } } },
   ]);
   if (!row) return empty;
   return { sent: { total: row.sent, ai: row.ai, staff: row.staff, automatic: row.sent - row.ai - row.staff,
-    failed: row.failed, customers: row.sentTo.length }, received: { total: row.received, customers: row.from.length } };
+    failed: row.failed, customers: row.sentTo.length },
+    delivered: { total: row.delivered, texts: row.texts, emails: row.delivered - row.texts,
+      customers: row.deliveredTo.length },
+    received: { total: row.received, customers: row.from.length } };
 }
