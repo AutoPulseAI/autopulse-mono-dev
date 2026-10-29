@@ -24,7 +24,7 @@ import {
 import { aiEmailHtml, buildAiEmailDocument, mediaAttachments, validateAiSendPayload } from './app/lib/ai/aiMessageRecord.js';
 import {
   DELIVERED_CLOSE_ERROR, READ_ONLY_STATUSES, addAiLeadNote, closedStatusConflict, markLeadClosedFromAi,
-  markLeadDndFromAi, statusChangeError,
+  markLeadDndFromAi, statusChangeError, hasBookingAhead,
   validateClosedStatusPayload, validateDndPayload, validateNotePayload,
 } from './app/lib/ai/aiDnd.js';
 import { leadVins, recallRequest } from './app/lib/ai/aiRecalls.js';
@@ -839,11 +839,28 @@ maybe('after an appointment the AI moves the lead on only once no booking is lef
     statusChangedAt: new Date('2026-07-01T00:00:00Z') } });
   const body = { dealer_id: DEALER, lead_id: LEAD, status: 'Contacted - No Next Action', reason: 'no-show unanswered',
     closed_at: new Date().toISOString() };
-  const ahead = { exists: async () => ({ _id: 'b1' }) };
-  const none = { exists: async () => null };
+  // A booking tomorrow (its day and time are compared, 29 Oct 2026), and none.
+  const rows = (list) => ({ find: () => ({ select: () => ({ lean: async () => list }) }) });
+  const tomorrow = new Date(Date.now() + 86400e3);
+  const ahead = rows([{ bookingDate: new Date(`${tomorrow.toISOString().slice(0, 10)}T00:00:00Z`), bookingTime: '12:00',
+    dealer_id: DEALER }]);
+  const none = rows([]);
   const kept = await markLeadClosedFromAi(body, { Lead, Email, Booking: ahead });
   assert.deepEqual([kept.updated, kept.reason], [false, 'appointment_still_ahead']);
   const moved = await markLeadClosedFromAi(body, { Lead, Email, Booking: none });
   assert.equal(moved.updated, true);
   assert.equal((await Lead.findById(LEAD).lean()).fe_lead_status, 'Contacted - No Next Action');
+});
+
+
+maybe('a booking earlier today is not ahead: only its day and time later than now are (Larry Harris, 29 Oct 2026)', async () => {
+  // His 2 PM booking counted as "ahead" at 5:50 PM - the AI's status after his no-show was refused.
+  const lead = String(new mongoose.Types.ObjectId());
+  await Booking.collection.insertOne({ dealer_id: DEALER, lead_id: lead, bookingDate: new Date('2026-10-29T00:00:00Z'),
+    bookingTime: '14:00', booking_status: 'confirmed' });
+  const at550pm = new Date('2026-10-29T21:50:00Z');  // 5:50 PM New York
+  assert.equal(await hasBookingAhead(lead, Booking, at550pm, 'America/New_York'), false);
+  await Booking.collection.insertOne({ dealer_id: DEALER, lead_id: lead, bookingDate: new Date('2026-10-29T00:00:00Z'),
+    bookingTime: '20:00', booking_status: 'pending' });
+  assert.equal(await hasBookingAhead(lead, Booking, at550pm, 'America/New_York'), true);  // 8 PM tonight is ahead
 });

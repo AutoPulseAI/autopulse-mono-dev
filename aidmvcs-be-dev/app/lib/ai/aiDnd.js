@@ -14,6 +14,7 @@
 // Dependencies injected so it is tested against MongoDB directly.
 
 import mongoose from 'mongoose';
+import moment from 'moment-timezone';
 
 const isObjectId = (value) => typeof value === 'string' && /^[a-f\d]{24}$/i.test(value);
 
@@ -211,9 +212,26 @@ export async function markLeadClosedFromAi(body, {
 
 // A booking for this lead that isn't cancelled and is today or later (the appointment hasn't happened yet). With no
 // Booking model passed, assumed yes - the lead keeps its appointment status.
-export async function hasBookingAhead(leadId, Booking, now = new Date()) {
+// Larry Harris, 29 Oct 2026: his 2 PM booking still counted as "ahead" at 5:50 PM - only the day was compared - so the
+// AI's Contacted - No Next Action after his no-show was refused (appointment_still_ahead). The booking's own day AND
+// time, in the dealer's time zone, must be later than now.
+export async function hasBookingAhead(leadId, Booking, now = new Date(), timeZone = null) {
   if (!Booking) return true;
-  const today = new Date(now.getTime() - 36 * 3600e3); // bookingDate is the dealer-local day at midnight UTC
-  return Boolean(await Booking.exists({ lead_id: leadId, booking_status: { $nin: ['cancelled', 'completed'] },
-    bookingDate: { $gte: today } }));
+  const since = new Date(now.getTime() - 36 * 3600e3); // bookingDate is the dealer-local day at midnight UTC
+  const rows = await Booking.find({ lead_id: leadId, booking_status: { $nin: ['cancelled', 'completed'] },
+    bookingDate: { $gte: since } }).select('bookingDate bookingTime dealer_id').lean();
+  if (!rows.length) return false;
+  let tz = timeZone;
+  if (!tz) {
+    const dealerId = rows[0].dealer_id;
+    const dealer = dealerId && mongoose.isValidObjectId(String(dealerId))
+      ? await mongoose.connection.collection('users').findOne({ _id: new mongoose.Types.ObjectId(String(dealerId)) },
+        { projection: { 'dealer_account_information.time_zone': 1 } }) : null;
+    tz = dealer?.dealer_account_information?.time_zone || 'America/New_York';
+  }
+  return rows.some((b) => {
+    const day = new Date(b.bookingDate).toISOString().slice(0, 10);
+    const at = moment.tz(`${day} ${b.bookingTime || '23:59'}`, 'YYYY-MM-DD HH:mm', tz);
+    return !at.isValid() || at.toDate() > now;  // an unreadable time is treated as still ahead, as before
+  });
 }
