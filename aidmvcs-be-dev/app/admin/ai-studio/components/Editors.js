@@ -6,6 +6,15 @@ import { Badge, Button, Card, Col, Form, Row, Table } from "react-bootstrap";
 import { HowTo, MessageBlock, STATUS_OPTIONS, WordChips, patternToWords, summary } from "./shared";
 
 const CHANNELS = { sms: "Text", email: "Email", call_task: "Call task" };
+// How a touch really goes out (the user, 27-28 Oct 2026): one message - a text, or an email only when a text can't go
+// (no phone, opted out of texts, or the text failed). Never both.
+const channelBadges = (channels = []) => {
+  const both = channels.includes("sms") && channels.includes("email");
+  return [
+    ...(both ? ["Text (email if a text can't go)"] : channels.filter((c) => c === "sms" || c === "email").map((c) => CHANNELS[c])),
+    ...channels.filter((c) => c !== "sms" && c !== "email").map((c) => CHANNELS[c] || c),
+  ];
+};
 const UNITS = ["minutes", "hours", "days", "weeks", "months", "years"];
 
 // "3 hours after the previous touch", "Day 2 at 10:00" - the timing in words, for the chip on each touch.
@@ -142,7 +151,7 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly, bui
                 <div>
                   <div className="fw-semibold">{s.label || s.id}</div>
                   <div className="d-flex gap-1 my-1">
-                    {(s.channels || []).map((c) => <Badge key={c} bg="light" text="dark">{CHANNELS[c] || c}</Badge>)}
+                    {channelBadges(s.channels).map((l) => <Badge key={l} bg="light" text="dark">{l}</Badge>)}
                   </div>
                   {open !== i && <div className="small text-muted">{summary(s.message)}</div>}
                 </div>
@@ -168,6 +177,7 @@ export function CadenceTimeline({ content, onChange, placeholders, readOnly, bui
                       ))}
                     </Col>
                   </Row>
+                  <div className="small text-muted mb-2">One message per touch: by text, or by email only when a text can't go.</div>
                   {(s.wait || !content.repeat) && (
                     <div className="mb-2"><WaitEditor wait={s.wait} readOnly={readOnly}
                       onChange={(wait) => setStep(i, { wait })} /></div>

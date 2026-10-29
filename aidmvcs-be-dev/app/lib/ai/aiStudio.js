@@ -90,7 +90,52 @@ export async function seedDefaults({ by = 'AutoPulse default' } = {}) {
       published_by_name: by });
     added += 1;
   }
+  await alignEditedItems({ by });
   return added;
+}
+
+// The user, 29 Oct 2026: "if a rule is on it shows on, if a rule is deleted it is not there" - AI Studio shows what the
+// AI does. An item someone edited keeps their edit, except where the AI's rule itself changed since: once per change,
+// a new published version makes the item say what the AI does (the edit stays in the history and can be reverted).
+const ALIGNMENTS = [
+  { id: 'night_one_message_28oct', type: 'compliance', key: 'channels',
+    note: 'Updated by AutoPulse to match the AI: a lead at night gets one message asking "now, or during business '
+      + 'hours?" (28 Oct 2026)',
+    change: (c) => (c.at_night === 'ask_now_or_later' ? null : { ...c, at_night: 'ask_now_or_later' }) },
+  { id: 'opt_out_per_channel_28oct', type: 'compliance', key: 'safeguards',
+    note: 'Updated by AutoPulse to match the AI: an opt-out stops only its channel (Betsy, 28 Oct 2026 meeting)',
+    change: (c) => (c.stop_ends_all_followups === false ? null : { ...c, stop_ends_all_followups: false }) },
+  { id: 'no_call_tasks_28oct', type: 'cadences',
+    note: 'Updated by AutoPulse to match the AI: one message per touch, no call tasks (27-28 Oct 2026)',
+    change: (c) => {
+      const steps = (c.steps || []).map((st) => (st?.channels?.includes('call_task')
+        ? { ...st, channels: st.channels.filter((x) => x !== 'call_task') } : st));
+      return steps.some((st, i) => st !== (c.steps || [])[i]) ? { ...c, steps } : null;
+    } },
+  { id: 'still_waiting_removed_28oct', type: 'messages', key: 'holding_still_waiting', retire: true,
+    note: 'Removed by AutoPulse: the 30-minute "Sorry for the wait" message is no longer sent (28 Oct 2026)' },
+];
+
+async function alignEditedItems({ by }) {
+  for (const rule of ALIGNMENTS) {
+    const items = await AiConfigItem.find({ dealer_id: null, deleted: { $ne: true }, type: rule.type,
+      ...(rule.key ? { key: rule.key } : {}), aligned: { $ne: rule.id } }).lean();
+    for (const item of items) {
+      if (rule.retire) {
+        await AiConfigItem.collection.updateOne({ _id: item._id }, { $set: { deleted: true, deleted_at: new Date(),
+          deleted_note: rule.note, key: `${item.key}__deleted_${Date.now()}` }, $addToSet: { aligned: rule.id } });
+        continue;
+      }
+      const live = await AiConfigVersion.findOne({ item_id: item._id, version: item.published_version }).lean();
+      const content = live && rule.change(live.content || {});
+      if (content) {
+        await newVersion(item, content, { status: 'published', note: rule.note, by: { name: by } });
+        // A draft someone is working on stays theirs.
+        if (item.draft_version) await AiConfigItem.updateOne({ _id: item._id }, { $set: { draft_version: item.draft_version } });
+      }
+      await AiConfigItem.collection.updateOne({ _id: item._id }, { $addToSet: { aligned: rule.id } });
+    }
+  }
 }
 
 export function defaultContent(type, key) {
