@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T02:26:49.578881+00:00",
- "revision": 26,
+ "exported_at": "2026-10-29T17:10:58.958474+00:00",
+ "revision": 27,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -2126,6 +2126,28 @@
      "Closed Lost": "staff_closed_lost",
      "Closed - Lost": "staff_closed_lost"
     }
+   },
+   "locked": false
+  },
+  {
+   "type": "status_rules",
+   "key": "contact_questions",
+   "name": "Contact details the AI asks for",
+   "content": {
+    "name_question": "Can you tell me how to spell your first and last name?",
+    "email_questions": [
+     "And what's the best email to send you the details and photos?",
+     "Where should I email you the details - what's a good email for you?",
+     "If you'd like the full details in your inbox too, what email should I use?",
+     "What email can I send your info to, so you have everything in one place?"
+    ],
+    "phone_questions": [
+     "If it's easier, you can share a mobile number and I can text you updates - email works great too.",
+     "Would you like quick text updates as well? If so, what's the best mobile number for you?",
+     "If you'd rather get a text when something changes, what number should I use?"
+    ],
+    "ask_for_a_phone_when_missing": true,
+    "what_it_does": "A missing name is asked first, then a missing email, then a missing mobile number - one per message, each at most twice, two days apart. The mobile number is offered, never pushed, and never asked of a customer who said they prefer email."
    },
    "locked": false
   },
