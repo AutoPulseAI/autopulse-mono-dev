@@ -218,8 +218,8 @@ def cadences() -> list[dict[str, Any]]:
                             "MODEL": "{model}", "ADDRESS": "{address}", "PHONE": "{dealer_phone}",
                             "Friday, October 16": "{date}", "2:00 PM": "{time}"})}
                       for s, w in ((appointment.STEP_DETAILS, "15 minutes after booking"),
-                                   (appointment.STEP_COUNTDOWN, "Each day before"),
-                                   (appointment.STEP_CONFIRM, "The day before"),
+                                   (appointment.STEP_COUNTDOWN, COUNTDOWN_WHEN),
+                                   (appointment.STEP_CONFIRM, CONFIRM_WHEN),
                                    (appointment.STEP_NO_SHOW_CHECK, "1 hour after, no visit"),
                                    (appointment.STEP_NO_SHOW_FOLLOWUP, "24 hours later, no reply"))]}},
     ]
@@ -492,6 +492,11 @@ def _presend():
     return presend
 
 
+# What the appointment steps really do (agent/appointment.py plan_steps), as AI Studio says it (the user, 29 Oct 2026).
+COUNTDOWN_WHEN = "Each day before, only when the appointment is 4+ days away (within 72 hours: the confirmation only)"
+CONFIRM_WHEN = "The morning of the appointment (the day before for an appointment before 11 AM)"
+
+
 def _media():
     from upsell_agent.agent import vehicle_media
     return vehicle_media
@@ -522,7 +527,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 24
+DEFAULTS_REVISION = 25
 
 
 def export() -> dict[str, Any]:

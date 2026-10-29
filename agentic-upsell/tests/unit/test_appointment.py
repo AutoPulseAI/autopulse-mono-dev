@@ -65,7 +65,8 @@ def test_a_morning_appointment_is_confirmed_two_hours_before_or_else_the_day_bef
     assert at_1030[0].step == "confirm" and at_1030[0].due_at == _tue(12, 30)  # 8:30 is too early: the day before
 
 
-@pytest.mark.parametrize(("days_out", "touches"), [(2, 1), (3, 1), (4, 3), (7, 6)])
+# The user, 29 Oct 2026: within 72 hours one reminder only (the confirmation); 4+ days, one touch a day.
+@pytest.mark.parametrize(("days_out", "touches"), [(2, 0), (3, 0), (4, 3), (7, 6)])
 def test_touches_before_the_meeting_grow_with_how_far_out_it_is(days_out, touches):
     appt = datetime(2026, 10, 6 + days_out, 14, tzinfo=NY)
     steps = appointment.plan_steps(appt, now=_tue(12), tz=NY)

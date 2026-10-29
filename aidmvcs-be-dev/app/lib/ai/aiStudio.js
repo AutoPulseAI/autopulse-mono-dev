@@ -112,6 +112,15 @@ const ALIGNMENTS = [
         ? { ...st, channels: st.channels.filter((x) => x !== 'call_task') } : st));
       return steps.some((st, i) => st !== (c.steps || [])[i]) ? { ...c, steps } : null;
     } },
+  { id: 'appointment_when_29oct', type: 'cadences', key: 'appointment',
+    note: 'Updated by AutoPulse to match the AI: within 72 hours one reminder (the confirmation, the morning of the '
+      + 'appointment); daily touches only 4+ days away (29 Oct 2026)',
+    change: (c) => {
+      const when = { countdown: 'Each day before, only when the appointment is 4+ days away (within 72 hours: the '
+        + 'confirmation only)', confirm: 'The morning of the appointment (the day before for an appointment before 11 AM)' };
+      const steps = (c.steps || []).map((st) => (when[st?.id] && st.when !== when[st.id] ? { ...st, when: when[st.id] } : st));
+      return steps.some((st, i) => st !== (c.steps || [])[i]) ? { ...c, steps } : null;
+    } },
   { id: 'still_waiting_removed_28oct', type: 'messages', key: 'holding_still_waiting', retire: true,
     note: 'Removed by AutoPulse: the 30-minute "Sorry for the wait" message is no longer sent (28 Oct 2026)' },
 ];
