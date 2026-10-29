@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T02:03:21.930601+00:00",
- "revision": 24,
+ "exported_at": "2026-10-29T02:13:31.762537+00:00",
+ "revision": 25,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1094,7 +1094,7 @@
      },
      {
       "id": "countdown",
-      "when": "Each day before",
+      "when": "Each day before, only when the appointment is 4+ days away (within 72 hours: the confirmation only)",
       "label": "Countdown",
       "channels": [
        "sms",
@@ -1111,7 +1111,7 @@
      },
      {
       "id": "confirm",
-      "when": "The day before",
+      "when": "The morning of the appointment (the day before for an appointment before 11 AM)",
       "label": "Confirm",
       "channels": [
        "sms",
