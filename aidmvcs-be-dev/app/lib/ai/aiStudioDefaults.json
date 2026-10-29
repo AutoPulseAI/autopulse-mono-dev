@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T01:31:54.735987+00:00",
- "revision": 22,
+ "exported_at": "2026-10-29T01:53:42.165703+00:00",
+ "revision": 23,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -2139,6 +2139,7 @@
      "call_escalation",
      "call_requested",
      "handoff",
+     "manager_escalation",
      "no_staff_response",
      "person_requested",
      "possible_opt_out",
@@ -2150,6 +2151,7 @@
     "kinds": {
      "handoff": "The AI handed the lead to a person (upset, asked for a person, declined appointments, can't supply)",
      "no_staff_response": "Nobody answered a handoff",
+     "manager_escalation": "The AI set the lead to Managerial Review",
      "person_requested": "The customer asked to talk to a person (call or text not chosen yet)",
      "call_requested": "The customer asked for a call",
      "text_requested": "The customer asked for a text from a person",
