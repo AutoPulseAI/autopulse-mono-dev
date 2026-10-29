@@ -331,7 +331,7 @@ _ATTRS = {
     # AI Studio > Compliance > Safeguards (the user, 26 Oct 2026: every rule set in code is shown and editable here).
     "turn": ("SECOND_FORM_IS_CONTACT",),
     "handlers": ("DUPLICATE_STAYS_QUIET",),
-    "safety_net": ("ENABLED",),
+    "safety_net": ("ENABLED", "MAX_PER_RUN"),
     "studio_cadences": ("WAIT_WHEN_THEY_WILL_REACH_OUT",),
     "followups": ("FIRE_CONCURRENCY", "FIRE_BATCH_LIMIT"),
     "stock_match": ("ENABLED", "FROM_SEARCH", "FROM_MATCH"),
@@ -359,6 +359,7 @@ SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
     "cars_from_new_search": ("stock_match", "FROM_MATCH", 0, 5),
     "all_wheel_drive_budget_stretch_percent": ("search_stock", "AWD_STRETCH_PERCENT", 0, 100),
     "all_wheel_drive_cars_added": ("search_stock", "AWD_SHOWN", 0, 5),
+    "safety_net_leads_per_hour": ("safety_net", "MAX_PER_RUN", 1, 200),
 }
 
 

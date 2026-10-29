@@ -469,9 +469,12 @@ def _safeguards() -> dict[str, Any]:
         "one_conversation_per_customer": "When staff set the status of a linked duplicate lead, the status is kept, "
                                          "and the AI keeps talking to the customer on their open lead only - never "
                                          "from two leads at once.",
-        "safety_net_every_lead_has_a_next_step": "Every hour, an active lead with nothing planned gets its next normal "
-                                                 "follow-up (through all the usual checks). Leads with an appointment "
-                                                 "or no-show on another lead are left to that workflow.",
+        "safety_net_every_lead_has_a_next_step": "Every hour, an open lead from the last 90 days with nothing planned "
+                                                 "(also one passed to the team as partly qualified or qualified) gets "
+                                                 "its next normal follow-up, through all the usual checks. Leads with "
+                                                 "an appointment or no-show on another lead are left to that workflow.",
+        "safety_net_leads_per_hour": "How many leads the safety net picks up each hour (1-200), so a backlog is spread "
+                                     "out; 40 since 29 Oct 2026.",
         "no_still_with_me_after_ill_reach_out": "\"Still with me?\" isn't sent after the customer said they'll call, "
                                                 "reach out or let us know.",
         "followups_sent_at_once": "How many scheduled follow-ups go out at the same time (1-10). Lower protects the CRM "
@@ -551,7 +554,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 28
+DEFAULTS_REVISION = 29
 
 
 def export() -> dict[str, Any]:

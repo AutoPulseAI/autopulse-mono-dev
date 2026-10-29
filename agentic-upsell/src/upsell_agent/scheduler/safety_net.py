@@ -6,7 +6,10 @@ moved. Nothing showed it: a message that never goes raises nothing. Betsy's 20 O
 with a touch planned) is applied everywhere: a lead with nothing pending gets its next cadence touch, planned through the
 same path and send check as every other message the system starts.
 
-From SAFETY_NET_FROM only (the user: "start things from today"); older leads are reviewed by hand.
+The user, 29 Oct 2026: every open lead from the last 90 days (OPPORTUNITY_DAYS), whatever day it came in - 552 leads
+from 20 Sept to mid-October had had nothing since 7-8 Oct (the 26 Oct start date left them out) - and leads the AI
+passed to the team with what it has (partly qualified / qualified) too: their cadence goes on. At most MAX_PER_RUN leads
+an hour, so a backlog is spread out instead of sent at once.
 """
 
 import logging
@@ -23,7 +26,9 @@ from upsell_agent.integrations.mongodb import (
 logger = logging.getLogger(__name__)
 
 ENABLED = True  # AI Studio > Compliance > Safeguards
-SAFETY_NET_FROM = datetime(2026, 10, 26, 4, 0, tzinfo=UTC)  # midnight New York, 26 Oct 2026
+OPPORTUNITY_DAYS = 90
+MAX_PER_RUN = 40  # AI Studio > Compliance > Safeguards
+FOLLOWED_UP_STATUSES = ("active", "partly_qualified", "qualified")
 WORKING_STAGES = ("new_lead", "no_contact_made", "contact_made_no_next_action")
 OPEN = ("pending", "standby", "claimed")
 SETTLE = timedelta(minutes=30)
@@ -47,11 +52,14 @@ async def check_dealer(dealer_id: str) -> dict[str, Any]:
     states, followups = db.collection(AI_LEAD_STATE_COLLECTION), db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
     now = clock.now()
     planned: list[str] = []
-    rows = await states.find({"status": "active", "stage": {"$in": list(WORKING_STAGES)}}).to_list(None)
+    rows = await states.find({"status": {"$in": list(FOLLOWED_UP_STATUSES)},
+                              "stage": {"$in": list(WORKING_STAGES)}}).to_list(None)
     for st in rows:
+        if len(planned) >= MAX_PER_RUN:
+            break  # the rest next hour
         lead_id = st["lead_id"]
         created = _aware(st.get("opportunity_created_at")) or _aware(st["_id"].generation_time)
-        if not created or created < SAFETY_NET_FROM or now - created < SETTLE:
+        if not created or now - created > timedelta(days=OPPORTUNITY_DAYS) or now - created < SETTLE:
             continue
         if (changed := _aware(st.get("status_at"))) and now - changed < SETTLE:
             continue
