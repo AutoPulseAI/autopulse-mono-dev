@@ -54,6 +54,7 @@ from upsell_agent.learning import touches
 from upsell_agent.observability.trace import TurnTracer
 from upsell_agent.scheduler import studio_cadences
 from upsell_agent.scheduler.followups import (
+    APPOINTMENT_KINDS,
     CHANNEL_SWITCHES,
     SOLD_LIFECYCLE_KINDS,
     STAFF_REPLY_REASON,
@@ -91,7 +92,10 @@ async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, c
         # half-day's one and the stage decides the rest.
         # A cadence added in AI Studio checks the lead's status itself when it fires (it may be the status change
         # that started it).
-        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, "daily_call_task", "studio_touch"]}
+        # The user, 29 Oct 2026 (Eliza Swiderski: booked for 6 PM, Mercy replied by hand, and her "are you here?"
+        # check was cancelled; Nicole Oquendo had every reminder cancelled the same way; Betsy, 28 Oct meeting:
+        # "confirmation messages and post-appointment follow-ups must still be sent"): nor the appointment's messages.
+        flt["kind"] = {"$nin": [*SOLD_LIFECYCLE_KINDS, *APPOINTMENT_KINDS, "daily_call_task", "studio_touch"]}
     result = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
         flt, {"$set": {"status": "cancelled", "cancelled_at": clock.now()}})
     return result.modified_count
@@ -1311,8 +1315,30 @@ async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | No
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": event.lead_id}) or {}
     stage = lifecycle.stage_of(state.get("stage"))
     if stage not in (lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW):
-        return {"status": "not_needed", "reason": f"the lead is at {lifecycle.label(stage) or 'no stage'}, "
-                                                  "not waiting on an appointment"}
+        # Larry Harris, 29 Oct 2026: after his 26 Oct no-show he went back to Contacted - No Next Action; the booking
+        # was then moved to 29 Oct 2 PM and the AI ignored it - no reminders, no "are you here?". A booking moved to
+        # a time still ahead is an appointment again, whatever the stage was.
+        lead = await find_lead(db, event.lead_id)
+        from upsell_agent.tools import booking_tool as _bt
+        active = await _bt.find_active_booking(event.dealer_id, lead) if event.change != "cancelled" else None
+        customer_id = (str((lead or {}).get("customer_id") or "") or state.get("customer_id")
+                       or lead_customer_id(lead, db.dealer_id))
+        from upsell_agent.agent import appointment as _appt
+        from upsell_agent.integrations.dealer_profile import dealer_profile as _profile
+        at = _appt.appointment_at(tz=(await _profile(event.dealer_id)).tz, booking=active) if active else None
+        if not (active and customer_id and at and at > clock.now()) or stage in (
+                lifecycle.Stage.SALES_VISIT, lifecycle.Stage.SOLD_PENDING, lifecycle.Stage.SOLD_DELIVERED,
+                lifecycle.Stage.OPTED_OUT):
+            return {"status": "not_needed", "reason": f"the lead is at {lifecycle.label(stage) or 'no stage'}, "
+                                                      "not waiting on an appointment"}
+        moved = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
+            "appointment_set", reason="Appointment rescheduled", source="crm_booking",
+            detail={"appointment": {"at": at.isoformat(), "status": active.get("booking_status"), "by": "staff"},
+                    "rescheduled": True})], lead=lead, customer_id=customer_id)
+        planned = await plan_appointment_timers(db, lead_id=event.lead_id, customer_id=customer_id, lead=lead,
+                                                channel=((lead or {}).get("data") or {}).get("channel") or "sms",
+                                                turn_id=f"booking-changed-{event.event_id}")
+        return {"status": "appointment_replanned", "appointment_timers": planned, "stage_change": moved}
     lead = await find_lead(db, event.lead_id)
     customer_id = (str((lead or {}).get("customer_id") or "") or state.get("customer_id")
                    or lead_customer_id(lead, db.dealer_id))
