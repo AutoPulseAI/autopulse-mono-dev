@@ -68,5 +68,7 @@ export function messageStatusLabel(email) {
   if (["received", "incoming"].includes(status)) return "Received";
   if (FAILED.has(status) || FAILED.has(String(email?.ai_delivery_status || "").toLowerCase())) return "Failed";
   if (SENDING.has(status)) return "Sending";
+  // 28 Oct 2026 meeting: "if it's opened it should show opened" (app/api/email/open).
+  if (email?.opened_at) return "Opened";
   return "Delivered";
 }
