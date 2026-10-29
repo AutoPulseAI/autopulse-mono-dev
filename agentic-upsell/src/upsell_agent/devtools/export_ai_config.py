@@ -492,6 +492,11 @@ def _safeguards() -> dict[str, Any]:
                                                   "their budget and the car's price, plus this much. 25 means \"14-15K\" "
                                                   "on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
         "all_wheel_drive_cars_added": "How many all-wheel-drive cars that search adds (0-5).",
+        "condition_questions_to_a_manager": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the "
+                                            "car's condition (mechanical, cosmetic, known issues, accidents, service "
+                                            "history), the AI answers with what it knows (mileage, the history report) "
+                                            "and the lead goes to Managerial Review with an alert, so a manager "
+                                            "confirms the rest. The AI keeps the conversation going.",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -546,7 +551,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 27
+DEFAULTS_REVISION = 28
 
 
 def export() -> dict[str, Any]:

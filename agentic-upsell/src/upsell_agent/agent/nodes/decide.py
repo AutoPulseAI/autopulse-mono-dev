@@ -1219,7 +1219,39 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
                               channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
 
 
+# 28 Oct 2026 meeting, decision D1: a question about the car's condition the AI can't answer goes to a manager.
+CONDITION_TO_MANAGER = True  # AI Studio > Compliance > Safeguards
+CONDITION_QUESTION = re.compile(
+    r"\b(?:mechanical|cosmetic|overall)\s+condition\b|\bcondition of (?:the|this|that) (?:car|vehicle|truck|suv)\b"
+    r"|\b(?:known|any)\s+(?:issues|problems|defects)\b|\bbeen in (?:an|any) accidents?\b|\baccident history\b"
+    r"|\b(?:timing (?:belt|chain)|transmission)\b.{0,30}\b(?:replaced|done|changed|issues?)\b"
+    r"|\blast (?:service|serviced|oil change)\b|\bservice records?\b|\bany (?:dents|scratches|rust)\b",
+    re.IGNORECASE)
+
+
+def _already_sent(text: str | None, pack: dict[str, Any] | None, last: int = 6) -> bool:
+    """Latina Neal, 29 Oct 2026: the same fixed reply ("Here is a link to the vehicle where you can locate the vehicle
+    history report...") went out twice in 5 minutes - the second time she asked about mileage and condition. A fixed
+    reply already among our last messages isn't placed again: the reply answers what they asked."""
+    key = re.sub(r"\W+", " ", str(text or "")).strip().lower()[:80]
+    if len(key) < 20:
+        return False
+    ours = [m for m in (pack or {}).get("working_memory") or [] if m.get("direction") == "outbound"][-last:]
+    return any(key in re.sub(r"\W+", " ", str(m.get("text") or "")).lower() for m in ours)
+
+
 async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
+                             *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
+                             visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
+                                                                 VisitOfferPlan | None]:
+    cannot, plan = await _plan_cannot_supply(ctx, state, profile, conversation, dealer=dealer, now=now, text=text,
+                                             hold=hold, visit_ctx=visit_ctx)
+    if cannot is not None and _already_sent(getattr(cannot, "text", None), state.context_pack):
+        return None, None
+    return cannot, plan
+
+
+async def _plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
                              *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
                              visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
                                                                  VisitOfferPlan | None]:
@@ -1548,6 +1580,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["vehicle_check"] = None
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
+    if order is not None and _already_sent(order.text, state.context_pack):
+        order = None  # the same fixed text already went out (Latina Neal, 29 Oct 2026)
+    if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and CONDITION_QUESTION.search(str(text or "")) \
+            and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # D1 (28 Oct 2026 meeting): the reply gives what we know (mileage, the history report); a manager confirms the
+        # rest - the lead goes to Managerial Review with an alert, and the AI keeps the conversation.
+        decision["manager_check"] = {"why": f"The customer asked about the vehicle's condition: {str(text)[:200]!r}"}
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
         decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",

@@ -318,7 +318,8 @@ _ATTRS = {
     "short_links": ("ENABLED",),
     "presend": ("CHECKS",),
     "link_resolver": ("SHAREABLE",),
-    "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE"),
+    "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
+               "CONDITION_TO_MANAGER"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -349,6 +350,7 @@ SAFEGUARD_SWITCHES = {
     "no_still_with_me_after_ill_reach_out": ("studio_cadences", "WAIT_WHEN_THEY_WILL_REACH_OUT"),
     "hybrid_stock_search": ("stock_match", "ENABLED"),
     "all_wheel_drive_search": ("search_stock", "AWD_ENABLED"),
+    "condition_questions_to_a_manager": ("decide", "CONDITION_TO_MANAGER"),
 }
 SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
     "followups_sent_at_once": ("followups", "FIRE_CONCURRENCY", 1, 10),
