@@ -664,6 +664,19 @@ async def _plan_next_contact(db: DealerScopedDatabase, *, sent: SendOutcome, dra
     return {"cadence": True, "fallback": fallback, "call_task": call_task, **planned}
 
 
+async def _booking_already_past(db: DealerScopedDatabase, lead_id: str) -> bool:
+    """The lead's booking (data.bookingId) is over: its time + the no-show hour has passed."""
+    from upsell_agent.agent.appointment import NO_SHOW_AFTER, appointment_at
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    from upsell_agent.tools.booking_tool import find_active_booking
+    try:
+        booking = await find_active_booking(db.dealer_id, await find_lead(db, lead_id))
+        at = appointment_at(tz=(await dealer_profile(db.dealer_id)).tz, booking=booking) if booking else None
+    except Exception:  # noqa: BLE001 - unknown means "not past": the old behaviour
+        return False
+    return bool(at) and at + NO_SHOW_AFTER <= clock.now()
+
+
 async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, trigger: str,
                                 sent: SendOutcome | None, result: dict[str, Any], *, inbound_text: str,
                                 lead: dict | None, customer: dict | None, customer_id: str, channel: str,
@@ -710,7 +723,12 @@ async def _lifecycle_after_turn(db: DealerScopedDatabase, lead_id: str | None, t
         # that timed out, or made while the stage couldn't move) left the lead outside Appointment Set with no
         # reminders. A standing booking is an appointment: the stage and its reminders catch up.
         state_now = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": lead_id}) or {}
-        if lifecycle.stage_of(state_now.get("stage")) not in (
+        if await _booking_already_past(db, lead_id):
+            # Towana Dockery, 28 Oct 2026: after her no-show she wrote back and went to Contacted - No Next Action, then
+            # her missed 3 PM booking (still "pending" on the platform) put her back to Appointment Set. A booking whose
+            # time has passed is not an appointment to catch up to.
+            pass
+        elif lifecycle.stage_of(state_now.get("stage")) not in (
                 lifecycle.Stage.APPOINTMENT_SET, lifecycle.Stage.NO_SHOW, lifecycle.Stage.SALES_VISIT,
                 lifecycle.Stage.SOLD_PENDING, lifecycle.Stage.SOLD_DELIVERED, lifecycle.Stage.OPTED_OUT):
             events.append(lifecycle.Event("appointment_set", reason="An existing booking was found for this lead",
