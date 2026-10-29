@@ -436,6 +436,9 @@ async def run_turn(
             if decision.get("ask_email") and re.search(r"\bemail\b", asked, re.IGNORECASE):
                 await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                     {"lead_id": lead_id}, {"$set": {"email_asked": clock.now()}, "$inc": {"email_asks": 1}})
+            if decision.get("ask_phone") and re.search(r"\b(?:number|mobile|phone|text)\b", asked, re.IGNORECASE):
+                await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+                    {"lead_id": lead_id}, {"$set": {"phone_asked": clock.now()}, "$inc": {"phone_asks": 1}})
             if "buyers_order" in decision:
                 # The buyer's order sequence's next step (agent/buyers_order.py), kept once the reply went out.
                 step = decision["buyers_order"]

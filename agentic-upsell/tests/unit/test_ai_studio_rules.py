@@ -214,3 +214,15 @@ async def test_email_subject_lines_by_intent_are_edited_in_ai_studio(mongo):
     assert lead_brief.SUBJECT_IDEAS["credit"] == ["Pre-approved in minutes, {first_name}"]
     ai_studio.reset()
     assert lead_brief.SUBJECT_IDEAS["credit"] != ["Pre-approved in minutes, {first_name}"]  # the built-in list is back
+
+
+async def test_the_contact_questions_are_edited_in_ai_studio(mongo):
+    """The user, 29 Oct 2026: the name, email and mobile-number questions, and the phone ask itself, are in AI Studio."""
+    from upsell_agent.agent.nodes import decide
+    c = _default("status_rules", "contact_questions")
+    assert c["ask_for_a_phone_when_missing"] is True and c["phone_questions"]
+    c.update(ask_for_a_phone_when_missing=False, phone_questions=["Got a mobile number for quick texts?"])
+    await _publish(mongo, "status_rules", "contact_questions", c)
+    assert decide.ASK_PHONE is False and decide.PHONE_QUESTIONS == ("Got a mobile number for quick texts?",)
+    ai_studio.reset()
+    assert decide.ASK_PHONE is True and len(decide.PHONE_QUESTIONS) == 3

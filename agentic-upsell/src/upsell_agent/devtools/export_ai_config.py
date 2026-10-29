@@ -342,6 +342,13 @@ def status_rules() -> list[dict[str, Any]]:
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "contact_questions", "name": "Contact details the AI asks for", "content": {
+                "name_question": _decide().NAME_QUESTION, "email_questions": list(_decide().EMAIL_QUESTIONS),
+                "phone_questions": list(_decide().PHONE_QUESTIONS),
+                "ask_for_a_phone_when_missing": _decide().ASK_PHONE,
+                "what_it_does": "A missing name is asked first, then a missing email, then a missing mobile number - one "
+                                "per message, each at most twice, two days apart. The mobile number is offered, never "
+                                "pushed, and never asked of a customer who said they prefer email."}},
             {"key": "email_subjects", "name": "Email subject lines by intent", "content": {
                 "by_intent": _lead_brief().SUBJECT_IDEAS, "rule": _lead_brief().SUBJECT_RULE}},
             {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
@@ -504,6 +511,11 @@ def _media():
     return vehicle_media
 
 
+def _decide():
+    from upsell_agent.agent.nodes import decide
+    return decide
+
+
 def _lead_brief():
     from upsell_agent.agent import lead_brief
     return lead_brief
@@ -534,7 +546,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 26
+DEFAULTS_REVISION = 27
 
 
 def export() -> dict[str, Any]:

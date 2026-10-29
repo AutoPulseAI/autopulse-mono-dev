@@ -731,3 +731,43 @@ async def test_no_after_hours_choice_in_a_conversation_already_going(mongo, monk
         dealer_id="D1", lead_id="L2"), now)
     assert await decide._conversation_ongoing(SimpleNamespace(lead_state={"stage": "appointment_set"}), SimpleNamespace(
         dealer_id="D1", lead_id="L2"), now)
+
+
+async def _email_only_lead(mongo):
+    from upsell_agent.integrations.mongodb import PLATFORM_LEADS_COLLECTION, PLATFORM_CUSTOMERS_COLLECTION, as_object_id
+    created = await simulate.create_lead(DEALER, lead_type="sales", channel="email", name="Latina Neal",
+                                         comments="Interested in the 2023 Chevrolet Camaro")
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])}, {"$set": {"phone": "N/A"}})
+    await mongo[PLATFORM_CUSTOMERS_COLLECTION].update_one({"_id": as_object_id(created["customer_id"])},
+                                                          {"$set": {"phones": []}})
+    return created
+
+
+async def _email_reply(created, text):
+    event = InboundMessageEvent(event_id=f"m-{ObjectId()}", dealer_id=DEALER, customer_id=created["customer_id"],
+                                lead_id=created["lead_id"], message_id=f"m-{ObjectId()}", channel="email",
+                                text=text, received_at=clock.now())
+    return await handle_inbound_message(event, _deps())
+
+
+async def _last_decision(mongo, created):
+    turn = (await mongo["ai_turn_log"].find({"lead_id": created["lead_id"], "trigger": "inbound_message"})
+            .sort("_id", -1).to_list(1))[0]
+    return next(n for n in turn["nodes"] if n["node"] == "decide")["output"]
+
+
+async def test_no_phone_on_the_lead_the_mobile_number_is_offered(mongo, dealer_with_hours):
+    """The user, 29 Oct 2026 (Latina Neal and others: no phone, and the AI never asked): asked like the email."""
+    set_clock(TUESDAY_NOON)
+    created = await _email_only_lead(mongo)
+    await _email_reply(created, "Thanks Nicole, the details look good.")
+    decision = await _last_decision(mongo, created)
+    assert decision.get("ask_phone") is True
+    assert decision["asks"][0]["requirement"] == "customer_phone"
+
+
+async def test_a_customer_who_prefers_email_is_never_asked_for_a_phone(mongo, dealer_with_hours):
+    set_clock(TUESDAY_NOON)
+    created = await _email_only_lead(mongo)
+    await _email_reply(created, "Email is my preferred method of communication. Thanks for the details.")
+    assert not (await _last_decision(mongo, created)).get("ask_phone")
