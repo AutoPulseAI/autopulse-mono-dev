@@ -864,3 +864,26 @@ maybe('a booking earlier today is not ahead: only its day and time later than no
     bookingTime: '20:00', booking_status: 'pending' });
   assert.equal(await hasBookingAhead(lead, Booking, at550pm, 'America/New_York'), true);  // 8 PM tonight is ahead
 });
+
+
+maybe('an SES bounce and a spam complaint stop emails to that address, with a note (30 Oct 2026)', async () => {
+  const { applySesEvent } = await import('./app/lib/ai/sesEvents.js');
+  await seedDealerAndLead();
+  const sent = await Email.create({ sender: 'a@d.com', recipient: 'x@example.com', subject: 's', mail_content: 'hi',
+    status: 'sent', communication_type: 'email', dealer_id: DEALER, lead_id: LEAD, timestamp: new Date(),
+    date: new Date(), message_id: '<010001abc@email.amazonses.com>' });
+  const db = mongoose.connection;
+  const opened = await applySesEvent({ eventType: 'Open', mail: { messageId: '010001abc' }, open: {} }, { Email, Lead, db });
+  assert.equal(opened.applied, true);
+  await applySesEvent({ eventType: 'Bounce', mail: { messageId: '010001abc' }, bounce: { bounceType: 'Permanent' } },
+    { Email, Lead, db });
+  const again = await applySesEvent({ eventType: 'Bounce', mail: { messageId: '010001abc' },
+    bounce: { bounceType: 'Permanent' } }, { Email, Lead, db });  // SNS retries: one opt-out, one note
+  assert.equal(again.applied, true);
+  const row = await Email.findById(sent._id).lean();
+  assert.equal(row.status, 'bounced');
+  assert.equal(row.open_count, 1);
+  assert.equal(await db.collection('ai_consent').countDocuments({ consent_source: 'ses_bounce', channel: 'email' }), 1);
+  assert.equal(await Email.countDocuments({ lead_id: LEAD, is_note: true, mail_content: /bounced/ }), 1);
+  assert.equal((await applySesEvent({ eventType: 'Open', mail: { messageId: 'unknown' } }, { Email, Lead, db })).applied, false);
+});

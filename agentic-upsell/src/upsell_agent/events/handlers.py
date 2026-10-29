@@ -195,7 +195,8 @@ async def _opt_back_in_from_lead(db: DealerScopedDatabase, event: LeadCreatedEve
         last = await consent.latest_opt_out(db, event.customer_id, channel, address)
         if not last or last.get("consent_status") != "opted_out":
             continue
-        if channel == "email" and str(last.get("consent_source") or "").startswith("sendgrid_"):
+        # An address the email provider itself refuses (SendGrid; SES bounces and spam complaints, 30 Oct 2026) stays.
+        if channel == "email" and str(last.get("consent_source") or "").startswith(("sendgrid_", "ses_")):
             continue
         await consent.record_consent(db, customer_id=event.customer_id, channel=channel, consent_type="opt_out",
                                      status="opted_in", source="customer_new_lead", lead_id=event.lead_id,

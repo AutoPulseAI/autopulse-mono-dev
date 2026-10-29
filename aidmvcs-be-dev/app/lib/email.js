@@ -416,7 +416,7 @@ function buildRawHtmlEmail({ from, to, subject, html, threadingRef }) {
   return raw;
 }
 
-async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, dealer, attachments) {
+async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, dealer, attachments, options = {}) {
   if (attachments && attachments.length > 0) {
     throw new Error(
       'SES raw send does not support attachments in this build; use SMTP or extend MIME builder.',
@@ -424,7 +424,8 @@ async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, deal
   }
 
   const emailSubject = subject.startsWith('Re: ') ? subject.slice(4) : subject;
-  const emailContent = dealer ? createBrandedEmailTemplate(text, dealer) : text;
+  // 30 Oct 2026: live sends here (USE_SES_SEND_RAW) - the unsubscribe link and open pixel must be in this path too.
+  const emailContent = dealer ? createBrandedEmailTemplate(text, dealer, options) : text;
 
   const raw = buildRawHtmlEmail({
     from,
@@ -435,6 +436,9 @@ async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, deal
   });
 
   const command = new SendRawEmailCommand({
+    // The SES configuration set that publishes this email's delivery, bounce, complaint, open and click events to
+    // /api/webhooks/ses (30 Oct 2026: the AI's and staff's emails had no status beyond "sent").
+    ...(process.env.SES_CONFIGURATION_SET ? { ConfigurationSetName: process.env.SES_CONFIGURATION_SET } : {}),
     RawMessage: { Data: Buffer.from(raw, 'utf8') },
     Source: from.includes('<') ? from.match(/<([^>]+)>/)?.[1]?.trim() || from : from,
     Destinations: [to.includes('<') ? to.match(/<([^>]+)>/)?.[1]?.trim() || to : to],
@@ -505,6 +509,10 @@ export const sendEmail = async (to, subject, text, from, parentMessageId = null,
       References: ref,
     };
   }
+  if (process.env.SES_CONFIGURATION_SET) {
+    // The same configuration set when the mail goes through SES's SMTP interface.
+    mailOptions.headers = { ...(mailOptions.headers || {}), 'X-SES-CONFIGURATION-SET': process.env.SES_CONFIGURATION_SET };
+  }
 
   // Local/dev runs never reach SMTP / SES (app/lib/providerStub.js).
   if (isProviderSendStubbed()) {
@@ -528,6 +536,7 @@ export const sendEmail = async (to, subject, text, from, parentMessageId = null,
         parentMessageId,
         dealer,
         attachments,
+        options,
       );
     }
 
