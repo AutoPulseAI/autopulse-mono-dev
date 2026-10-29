@@ -103,6 +103,8 @@ class InventoryCriteria(BaseModel):
     exterior_color: str | None = None  # sent as the dealer's own stored spelling
     price_max: int | None = None
     trim: str | None = None  # client-side only
+    # "AWD": all-wheel or four-wheel drive, checked on our side against each record's drivetrain (28 Oct 2026 meeting).
+    drive: str | None = None
 
     def is_empty(self) -> bool:
         return not (self.make or self.model or self.body_type or self.body_types)
@@ -196,6 +198,8 @@ class InventoryRecord(BaseModel):
     model: str | None = None
     trim: str | None = None
     body_type: str | None = None
+    # "AWD" / "4WD" / "FWD" / "RWD" (tools/stock_search.drive_class: the feed's 4MATIC, quattro, xDrive... are AWD).
+    drivetrain: str | None = None
     condition: str | None = None
     exterior_color: str | None = None
     miles: int | None = None
@@ -283,7 +287,8 @@ def to_listing(doc: dict[str, Any]) -> dict[str, Any]:
         "media": {"photo_links": photos},
         "dealer": {"id": str(doc["dealerId"]) if doc.get("dealerId") else None},
         "build": {"year": int(doc.get("year") or 0), "make": doc.get("make") or "", "model": doc.get("model") or "",
-                  "trim": doc.get("trim") or "", "body_type": doc.get("body") or ""},
+                  "trim": doc.get("trim") or "", "body_type": doc.get("body") or "",
+                  "drivetrain": doc.get("drivetrain") or ""},
     }
 
 
@@ -326,6 +331,11 @@ def price_range(price: int | None) -> str | None:
     return f"${low:,}-${high:,}"
 
 
+def _drive_class(*words: Any) -> str | None:
+    from upsell_agent.tools.stock_search import drive_class
+    return drive_class(*words)
+
+
 def to_record(listing: dict[str, Any]) -> InventoryRecord:
     build = listing.get("build") or {}
     price = int(float(listing.get("price") or 0)) or None
@@ -333,6 +343,7 @@ def to_record(listing: dict[str, Any]) -> InventoryRecord:
         source_id=listing["vin"], vin=listing["vin"],
         year=build.get("year") or None, make=build.get("make") or None, model=build.get("model") or None,
         trim=build.get("trim") or None, body_type=build.get("body_type") or None,
+        drivetrain=_drive_class(build.get("drivetrain"), build.get("trim"), build.get("model")),
         condition=(listing.get("inventory_type") or "").lower() or None,
         exterior_color=listing.get("exterior_color") or None,
         miles=listing.get("miles") or None,

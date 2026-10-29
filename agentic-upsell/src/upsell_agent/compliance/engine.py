@@ -80,8 +80,9 @@ Outcome = Literal["ALLOW", "HOLD", "REVIEW", "BLOCK"]
 # apply, but a genuine consumer inquiry (inbound origin) needs no marketing consent. A lead that isn't the
 # consumer reaching out (a CSV / DMS import, DealerVault, a campaign, an unmapped source) is outbound marketing.
 # The user, 26 Oct 2026 (AI Studio > Compliance > Safeguards): a stop on any channel ends this inquiry's follow-ups
-# everywhere, unless the customer keeps a channel ("text is fine"). Off: only the channel they stopped.
-STOP_ENDS_ALL_FOLLOWUPS = True
+# everywhere, unless the customer keeps a channel ("text is fine"). Off: only the channel they stopped - Betsy, 28 Oct
+# 2026 meeting: "an SMS opt-out stops texts only; emails continue" (the published AI Studio value still decides).
+STOP_ENDS_ALL_FOLLOWUPS = False
 # "text is fine" / "email me instead": the customer keeps another channel open.
 _KEEPS_OTHER_CHANNEL = re.compile(r"\b(?:text(?:ing)?|sms|email(?:ing)?|e-mail|call(?:ing)?|phone)\b[^.!?]{0,20}\b(?:is|are)\s+"
                                   r"(?:fine|ok|okay|good|better)\b|\binstead\b|\b(?:text|email|call)\s+me\s+(?:only|instead)\b",

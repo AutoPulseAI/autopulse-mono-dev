@@ -1,6 +1,7 @@
 import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
 import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
+import { funnelLeadIds } from "@lib/appointmentFunnel";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
@@ -94,6 +95,11 @@ export async function GET(req) {
     // counts bookings created in the range (app/lib/appointmentFunnel.js); these list exactly those leads.
     const madeStartDate = url.searchParams.get("madeStartDate");
     const madeEndDate = url.searchParams.get("madeEndDate");
+    // Betsy, 28 Oct 2026 meeting ("Appointments Showed says 1, click it and there's nothing - Deyvi Lopez should be
+    // there"): the Showed and Sold cards' own leads (app/lib/appointmentFunnel.js funnelLeadIds).
+    const funnelStep = ['showed', 'sold'].includes(url.searchParams.get("funnel")) ? url.searchParams.get("funnel") : null;
+    const funnelStartDate = url.searchParams.get("funnelStartDate");
+    const funnelEndDate = url.searchParams.get("funnelEndDate");
     const messageFilter = url.searchParams.get("message_filter"); // 'unread', 'read', or empty
     const vehicleMakes = url.searchParams.getAll("make");
     const vehicleModels = url.searchParams.getAll("model").concat(url.searchParams.getAll("vehicle_model"));
@@ -350,7 +356,7 @@ export async function GET(req) {
     
     const bookingStatus = url.searchParams.get("booking_status");
     // Add booking status filter if provided
-    if (bookingStatus && !(madeStartDate && madeEndDate)) {  // the card's count includes bookings since cancelled
+    if (bookingStatus && !(madeStartDate && madeEndDate) && !funnelStep) {  // the cards count bookings whatever happened since
         query.booking_status = bookingStatus === "1";
     }
     
@@ -383,6 +389,15 @@ export async function GET(req) {
         const made = await Booking.find({ dealer_id: String(dealerId),
           createdAt: { $gte: madeFrom, $lte: madeTo } }).select('lead_id').lean();
         const ids = [...new Set(made.map((b) => String(b.lead_id)))].filter((id) => mongoose.isValidObjectId(id));
+        query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+
+    if (funnelStep) {
+        // Whole dealer-local days, as the card counts them.
+        const day = (v, edge) => v ? moment.tz(moment.utc(v).tz(dealerTimezone).format('YYYY-MM-DD'), 'YYYY-MM-DD',
+          dealerTimezone)[edge]('day').utc().toDate() : null;
+        const ids = (await funnelLeadIds({ dealerId, step: funnelStep, start: day(funnelStartDate, 'startOf'),
+          end: day(funnelEndDate, 'endOf') })).filter((id) => mongoose.isValidObjectId(id));
         query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
     }
 
@@ -454,7 +469,8 @@ export async function GET(req) {
       const { $gte: from, $lte: to } = query.createdAt || {};
       delete query.createdAt;
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
-      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received' });
+      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received',
+        channel: messagesSent ? url.searchParams.get("channel") : null });
       query._id = { $in: repliedOrder.map((r) => r._id) };
     } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);

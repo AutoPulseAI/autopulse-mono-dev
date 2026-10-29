@@ -69,7 +69,8 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   };
 
   // From the dashboard card: only the appointments it counted (booking date + status)
-  const cardFilter = ['bookingStartDate', 'bookingEndDate', 'madeStartDate', 'madeEndDate', 'fe_lead_status']
+  const cardFilter = ['bookingStartDate', 'bookingEndDate', 'madeStartDate', 'madeEndDate', 'fe_lead_status', 'funnel',
+    'funnelStartDate', 'funnelEndDate']
     .filter((k) => urlSearchParams.get(k))
     .map((k) => `&${k}=${encodeURIComponent(urlSearchParams.get(k))}`).join('');
 

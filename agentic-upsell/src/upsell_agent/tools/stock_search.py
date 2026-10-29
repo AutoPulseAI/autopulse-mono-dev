@@ -70,6 +70,31 @@ def match_colour(wanted: str, stored: list[str | None]) -> str | None:
     return next((s for s in stored if s and _colour_key(s) == key), None)
 
 
+# 28 Oct 2026 meeting (Betsy: "every OEM has its own all-wheel drive name"): the feed says 4MATIC®, quattro, AWD, 4WD,
+# FrontTrak...; a BMW's trim says xDrive. All of these are read as one class.
+_AWD = re.compile(r"4\s*matic|quattro|x\s*drive|4\s*motion|sh-?awd|all4|\bq4\b|symmetrical|\bawd\b|all[- ]?wheel"
+                  r"|\b\d{3}xi\b", re.IGNORECASE)
+_4WD = re.compile(r"\b4wd\b|4x4|four[- ]?wheel", re.IGNORECASE)
+_FWD = re.compile(r"\bfwd\b|front[- ]?wheel|fronttrak", re.IGNORECASE)
+_RWD = re.compile(r"\brwd\b|rear[- ]?wheel|\bsdrive\b", re.IGNORECASE)
+
+
+def drive_class(*words: Any) -> str | None:
+    """"AWD" / "4WD" / "FWD" / "RWD" from the feed's drivetrain (first) and the trim / model (a BMW "xDrive" trim)."""
+    for text in (str(w or "") for w in words):
+        if not text.strip():
+            continue
+        if _4WD.search(text):
+            return "4WD"
+        if _AWD.search(text):
+            return "AWD"
+        if _FWD.search(text):
+            return "FWD"
+        if _RWD.search(text):
+            return "RWD"
+    return None
+
+
 def trim_matches(wanted: str, trim: str | None) -> bool:
     """Every word of the trim they said is in the record's trim ("XLE" matches "XLE Hybrid")."""
     # "Mach-E", "Mach E" and "MachE" are the same trim.
@@ -116,7 +141,7 @@ async def _try(dealer_id: str, c: InventoryCriteria, source: InventorySource) ->
     """One step's search: the platform filters what it can; colour casing
     and trim are handled here."""
     wide = c.model_copy(update={"exterior_color": None, "trim": None})
-    limit = WIDE_LIMIT if (c.exterior_color or c.trim) else FETCH_LIMIT
+    limit = WIDE_LIMIT if (c.exterior_color or c.trim or c.drive) else FETCH_LIMIT
     base = await search_inventory(dealer_id, wide, source, limit)
     result = base
     stored = None
@@ -129,6 +154,8 @@ async def _try(dealer_id: str, c: InventoryCriteria, source: InventorySource) ->
     records, matched = result.records, result.matched
     if c.trim:
         records = [r for r in records if trim_matches(c.trim, r.trim)]
+    if c.drive == "AWD":
+        records = [r for r in records if r.drivetrain in ("AWD", "4WD")]
         matched = len(records)
     return _Try(records, matched, result.params, result.excluded, base.cached and result.cached, stored)
 

@@ -377,7 +377,9 @@ export async function POST(request) {
       await Email.create({
         sender: caller.kind === 'ai' ? 'AutoPulse AI' : (caller.user?.name || 'AutoPulse'), recipient: 'staff',
         subject: 'Lead Note',
-        mail_content: `Set to Appointment Booked by ${who}: visit on ${bookingDate} at ${bookingTime}`,
+        // Betsy, 28 Oct 2026 meeting: "let's not use military time" - "Saturday, October 31 at 10:30 AM", not "15:00".
+        mail_content: `Set to Appointment Booked by ${who}: visit on ${moment.tz(`${bookingDate} ${bookingTime}`,
+          'YYYY-MM-DD HH:mm', dealerTimezone).format('dddd, MMMM D [at] h:mm A')}`,
         dealer_id: String(dealer_id), lead_id: existingLead._id, status: 'sent', communication_type: 'note',
         is_note: true, internal_use: true, message_id: `note_booking_${booking._id}_${noteAt.getTime()}`,
         timestamp: noteAt, date: noteAt, ai_generated: caller.kind === 'ai',

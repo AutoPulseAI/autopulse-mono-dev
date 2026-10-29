@@ -30,6 +30,7 @@
 // "failed"), once it has given up retrying.
 
 import { aiEmailHtml, buildAiEmailDocument, validateAiSendPayload } from './aiMessageRecord.js';
+import { emailLinks } from './emailTracking.js';
 
 export class AiSendError extends Error {
   constructor(message, { httpStatus = 502, retryable = true, optedOut = false, compliance = false } = {}) {
@@ -164,7 +165,9 @@ export async function sendAiMessage(body, {
         aiEmailHtml(body.text, mediaUrls), emailAccount.email_address, latest?.message_id || null,
         // The branded template reads these two objects without checking them.
         { ...dealer, branding_information: dealer.branding_information || {},
-          dealer_account_information: dealer.dealer_account_information || {} });
+          dealer_account_information: dealer.dealer_account_information || {} },
+        // 28 Oct 2026 meeting: an unsubscribe link and open tracking on every AI email (app/lib/ai/emailTracking.js).
+        [], emailLinks(body.idempotency_key));
     } catch (error) {
       throw classifyProviderError(error);
     }

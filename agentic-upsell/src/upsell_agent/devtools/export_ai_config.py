@@ -100,7 +100,7 @@ def _wait(amount: float, unit: str, after: str = "previous", at: str | None = No
 
 def _theme_step(day: int | str, theme: cadence.Theme, when: str, wait: dict[str, Any] | None = None
                 ) -> dict[str, Any]:
-    return {"id": theme.id, "day": day, "when": when, "label": theme.label, "channels": ["sms", "email", "call_task"],
+    return {"id": theme.id, "day": day, "when": when, "label": theme.label, "channels": ["sms", "email"],
             "message": {**ai(theme.instruction), "email_subject": (cadence.SUBJECTS.get(theme.id) or (None,))[0]},
             **({"wait": wait} if wait else {})}
 
@@ -140,7 +140,7 @@ def cadences() -> list[dict[str, Any]]:
             "steps": [{"id": f"week_{n}", "when": f"Touch {n} (day {sold_pending.touch_due_day(n)})",
                        "wait": _wait(sold_pending.touch_due_day(n), "days", "start"),
                        "label": sold_pending.theme_for(n).label if hasattr(sold_pending.theme_for(n), "label") else
-                       f"Touch {n}", "channels": ["sms", "email", "call_task"],
+                       f"Touch {n}", "channels": ["sms", "email"],
                        "message": _placeholdered(sold_pending.render_touch(
                            n, first_name="Qzfirst", dealership="DEALERSHIP", vehicle="VEHICLE", documents=n == 1),
                            {"Qzfirst": "{first_name}", "DEALERSHIP": "{dealership}", "VEHICLE": "{vehicle}"})}
@@ -181,7 +181,7 @@ def cadences() -> list[dict[str, Any]]:
         {"key": "specific_followup", "name": "Contact Made - Specific Follow-Up (the customer gave a date)",
          "content": {"steps": [
              {"id": "check_back", "when": "On the date the customer asked for (their time, or this time of day)",
-              "label": "Check back as they asked", "channels": ["sms", "email", "call_task"],
+              "label": "Check back as they asked", "channels": ["sms", "email"],
               "wait": {"amount": 0, "unit": "days", "after": "start", "at": decide.NEXT_ACTION_DEFAULT_TIME},
               "message": ai("Say you're checking back as they asked, pick up from what they told us, and ask for the "
                             "appointment with a specific day.")},
@@ -202,7 +202,7 @@ def cadences() -> list[dict[str, Any]]:
         {"key": "unsold", "name": "Unsold (visited, didn't buy)", "content": {
             "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold - then the Short-Term "
                                                     "follow-up runs again (Days 1-7, weekly, monthly)",
-                       "label": "First message after the visit", "channels": ["sms", "email", "call_task"],
+                       "label": "First message after the visit", "channels": ["sms", "email"],
                        "message": ai(decide.UNSOLD_INSTRUCTION)}]}},
         {"key": "appointment", "name": "Appointment: details, confirmation, no-show", "content": {
             "steps": [{"id": s, "when": w, "label": s.replace("_", " ").title(), "channels": ["sms", "email"],
@@ -218,8 +218,8 @@ def cadences() -> list[dict[str, Any]]:
                             "MODEL": "{model}", "ADDRESS": "{address}", "PHONE": "{dealer_phone}",
                             "Friday, October 16": "{date}", "2:00 PM": "{time}"})}
                       for s, w in ((appointment.STEP_DETAILS, "15 minutes after booking"),
-                                   (appointment.STEP_COUNTDOWN, "Each day before"),
-                                   (appointment.STEP_CONFIRM, "The day before"),
+                                   (appointment.STEP_COUNTDOWN, COUNTDOWN_WHEN),
+                                   (appointment.STEP_CONFIRM, CONFIRM_WHEN),
                                    (appointment.STEP_NO_SHOW_CHECK, "1 hour after, no visit"),
                                    (appointment.STEP_NO_SHOW_FOLLOWUP, "24 hours later, no reply"))]}},
     ]
@@ -268,7 +268,6 @@ def _template_messages() -> list[dict[str, Any]]:
     for kind, t in templates.HOLDING_REPLIES.items():
         rows.append({"key": f"holding_{kind}", "name": {"holding": "While a person has the lead",
                                                         "holding_booking": "While a person has it: asked to come in",
-                                                        "still_waiting": "While a person has it: still waiting"
                                                         }.get(kind, kind.replace("_", " ")),
                      "content": {"message": fixed(_named(t.sms), email=_named(t.email_body),
                                                   subject=_named(t.email_subject))}})
@@ -343,6 +342,8 @@ def status_rules() -> list[dict[str, Any]]:
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "email_subjects", "name": "Email subject lines by intent", "content": {
+                "by_intent": _lead_brief().SUBJECT_IDEAS, "rule": _lead_brief().SUBJECT_RULE}},
             {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
                 "counts": sorted(_staff_view().ACTION_KINDS), "kinds": _staff_view().ALERT_KINDS}},
             {"key": "ai_statuses", "name": "Statuses the AI sets", "content": {
@@ -414,7 +415,7 @@ def compliance() -> list[dict[str, Any]]:
         {"key": "text_invite", "name": "Text invite (email customers)", "content": {
             "invite": text_consent.INVITE, "confirmation": text_consent.CONFIRMATION}},
         {"key": "channels", "name": "Channels: text or email first, nights", "content": {
-            "first_channel": "text", "at_night": "email_now_text_when_open",
+            "first_channel": _consent().FIRST_CHANNEL, "at_night": _consent().AT_NIGHT,
             "placeholder_emails": ["no-reply", "noreply", "do-not-reply", "donotreply", "noemail", "no-email", "none",
                                    "test"]}},
         {"key": "contacted", "name": "What counts as Contacted", "content": {
@@ -476,6 +477,14 @@ def _safeguards() -> dict[str, Any]:
                                "from both lists, and asks which car they mean when a few could fit.",
         "cars_from_current_search": "With the hybrid search on: how many cars come from the usual search (1-5).",
         "cars_from_new_search": "With the hybrid search on: how many more cars the new search adds (0-5).",
+        "all_wheel_drive_search": "On since 29 Oct 2026 (28 Oct meeting). When the customer asks about all-wheel drive "
+                                  "(xDrive, quattro, 4MATIC, AWD, 4x4...), the AI says plainly whether their car has it, "
+                                  "and offers all-wheel-drive cars from stock in their budget; its next question stays "
+                                  "about all-wheel drive.",
+        "all_wheel_drive_budget_stretch_percent": "How loosely the budget is read for that search (0-100%): the higher of "
+                                                  "their budget and the car's price, plus this much. 25 means \"14-15K\" "
+                                                  "on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
+        "all_wheel_drive_cars_added": "How many all-wheel-drive cars that search adds (0-5).",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -485,9 +494,24 @@ def _presend():
     return presend
 
 
+# What the appointment steps really do (agent/appointment.py plan_steps), as AI Studio says it (the user, 29 Oct 2026).
+COUNTDOWN_WHEN = "Each day before, only when the appointment is 4+ days away (within 72 hours: the confirmation only)"
+CONFIRM_WHEN = "The morning of the appointment (the day before for an appointment before 11 AM)"
+
+
 def _media():
     from upsell_agent.agent import vehicle_media
     return vehicle_media
+
+
+def _lead_brief():
+    from upsell_agent.agent import lead_brief
+    return lead_brief
+
+
+def _consent():
+    from upsell_agent.channels import consent
+    return consent
 
 
 def _short_links():
@@ -510,7 +534,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 20
+DEFAULTS_REVISION = 26
 
 
 def export() -> dict[str, Any]:

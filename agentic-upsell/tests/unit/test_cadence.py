@@ -303,14 +303,15 @@ async def test_a_reply_skips_the_nudge_and_the_next_touch_is_days_away(mongo):
 
 
 @pytestmark_flow
-async def test_a_stop_by_text_means_no_follow_up_by_email_either(mongo):
-    # The user, 26 Oct 2026 (Michael Tartaglia texted "Stop" and got an AI follow-up email the next day): replaces
-    # "continue every remaining permitted channel" - a customer who said stop gets no follow-ups on this inquiry.
+async def test_a_stop_by_text_stops_texts_only(mongo):
+    # Betsy, 28 Oct 2026 meeting (replaces the 26 Oct "no follow-up by email either"): STOP by text stops texts; the
+    # follow-ups continue by email.
     created = await _new_lead()
     await _say(created, "STOP")
     before = len(await _outbox(mongo, created))
     await _fire_next_touch(mongo, created)
-    assert (await _outbox(mongo, created))[before:] == []
+    sent = (await _outbox(mongo, created))[before:]
+    assert sent and all(m["channel"] == "email" for m in sent)
 
 
 @pytestmark_flow

@@ -329,3 +329,19 @@ async def test_a_staff_booking_gets_the_details_unless_the_customer_last_asked_t
     await mongo[AI_MESSAGES_COLLECTION].insert_one({**inbound, "dealer_id": DEALER, "text": "ok see you then",
                                                     "created_at": clock.now() + timedelta(seconds=1)})
     assert "confirm" in await plan() or "details" in await plan()  # they wrote back: the usual texts
+
+
+@flow
+async def test_a_reply_after_a_no_show_never_puts_the_lead_back_to_appointment_set(mongo):
+    """Towana Dockery, 28 Oct 2026: after her no-show she wrote back ("just researching and comparing my options") and
+    went to Contacted - No Next Action, then her missed booking - still "pending" on the platform - set her back to
+    Appointment Set, so the screen showed Appointment Set beside the CRM's No Show."""
+    created, _ = await _booked_friday(mongo)
+    await _fire(mongo, created, "no_show_check")
+    assert (await _state(mongo, created))["stage"] == "appointment_no_show"
+    set_clock(clock.now() + timedelta(minutes=30))
+    await _say(created, "No, just researching and comparing my options")
+    assert (await _state(mongo, created))["stage"] == "contact_made_no_next_action"
+    set_clock(clock.now() + timedelta(minutes=2))
+    await _say(created, "Not rushing me, just don't want to get stuck with an SUV that has major issues")
+    assert (await _state(mongo, created))["stage"] != "appointment_set"

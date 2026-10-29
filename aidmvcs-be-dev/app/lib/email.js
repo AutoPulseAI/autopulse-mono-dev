@@ -14,9 +14,29 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export const createBrandedEmailTemplate = (content, dealer) => {
+// The dealership's own lines for a signature and footer (Betsy, 28 Oct 2026 meeting: "an email should have a subject, a
+// greeting, a body with a question, a signature and a couple of links to the website"; CAN-SPAM: the sender's address).
+const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export function dealerContact(dealer) {
+  const info = dealer?.dealer_account_information || {};
+  const name = info.store_name || dealer?.name || '';
+  const street = String(info.store_address || info.address || '').trim();
+  const cityLine = [info.store_city, [info.store_state, info.store_zip || info.zip_code].filter(Boolean).join(' ')]
+    .filter(Boolean).join(', ');
+  const address = [street, cityLine].filter(Boolean).join(', ');
+  const phone = info.dealer_phone || info.store_phone || info.sms_conversion_phone || '';
+  let website = info.website || info.store_website || info.dealer_website || '';
+  if (website && !/^https?:\/\//i.test(website)) website = `https://${website}`;
+  const links = [[website, 'Visit our website'], [info.trade_in_appraisal_url, 'Value your trade'],
+    [info.credit_finance_application_url, 'Apply for financing']].filter(([url]) => /^https?:\/\//i.test(String(url || '')));
+  return { name, address, phone, website, links, agent: info.ai_bot_name || '' };
+}
+
+export const createBrandedEmailTemplate = (content, dealer, options = {}) => {
   // Live, 24 Oct 2026: a dealer with no branding set crashed the email ("reading 'bannerImage'") - it never went out.
   const brandingInfo = dealer?.branding_information || {};
+  const contact = dealerContact(dealer);
+  const link = brandingInfo?.primaryColor || '#0272b4';
 
   return `
     <!DOCTYPE html>
@@ -264,7 +284,11 @@ export const createBrandedEmailTemplate = (content, dealer) => {
                                     <td class="padding-8px-75px-8px-75px" style="font-size:0px;padding:8px 15px 8px 15px;word-break:break-word;text-align:left">
                                       <div style="font-family:'Google Sans Text',Arial,sans-serif;font-size:15px;letter-spacing:none;line-height:1.50;text-align:left;color:${brandingInfo.titleColor || '#262A2A'};">
                                           <p style="margin:0 0">Best regards,</p>
-                                          <p style="margin:0 0"><b>${dealer?.dealer_account_information?.ai_bot_name || ''}</b></p>
+                                          <p style="margin:0 0"><b>${esc(contact.agent)}</b></p>
+                                          ${contact.name ? `<p style="margin:0 0">${esc(contact.name)}</p>` : ''}
+                                          ${contact.address ? `<p style="margin:0 0">${esc(contact.address)}</p>` : ''}
+                                          ${contact.phone ? `<p style="margin:0 0"><a href="tel:${esc(contact.phone)}" style="color:${link};text-decoration:none">${esc(contact.phone)}</a></p>` : ''}
+                                          ${contact.links.length ? `<p style="margin:8px 0 0 0">${contact.links.map(([url, label]) => `<a href="${esc(url)}" style="color:${link}">${label}</a>`).join(' · ')}</p>` : ''}
                                         </div>
                                     </td>
                                   </tr>
@@ -315,7 +339,9 @@ export const createBrandedEmailTemplate = (content, dealer) => {
                                       <div style="font-family:'Google Sans Text',Arial,sans-serif;font-size:12px;letter-spacing:0px;line-height:1.4;text-align:center;color:#5f6368">
                                         <p style="margin:0 0">For any questions, please contact <a href="mailto:${brandingInfo.ccEmail || ''}" target="_blank" style="text-decoration:none;color:${brandingInfo?.primaryColor || '#0272b4'};">${brandingInfo.ccEmail || ''}</a> or call <a href="tel:${brandingInfo.ccNumber || ''}" target="_blank" style="text-decoration:none;color:${brandingInfo?.primaryColor || '#0272b4'}">${brandingInfo.ccNumber || ''}</a>.</p>
                                         <p style="margin:0 0">&nbsp;</p>
-                                        <p style="margin:0 0">© ${new Date().getFullYear()} ${dealer?.dealer_account_information?.ai_bot_name || ''}.</p>
+                                        <p style="margin:0 0">© ${new Date().getFullYear()} ${esc(contact.name || dealer?.dealer_account_information?.ai_bot_name || '')}${contact.address ? ` · ${esc(contact.address)}` : ''}</p>
+                                        ${options.unsubscribeUrl ? `<p style="margin:8px 0 0 0">Don't want these emails? <a href="${esc(options.unsubscribeUrl)}" style="color:#5f6368;text-decoration:underline">Unsubscribe</a></p>` : ''}
+                                        ${options.openPixelUrl ? `<img src="${esc(options.openPixelUrl)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0"/>` : ''}
                                       </div>
                                     </td>
                                   </tr>
@@ -426,12 +452,13 @@ async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, deal
   return deliveredMessageId || response.MessageId;
 }
 
-export const sendEmail = async (to, subject, text, from, parentMessageId = null, dealer = null, attachments = []) => {
+export const sendEmail = async (to, subject, text, from, parentMessageId = null, dealer = null, attachments = [],
+  options = {}) => {
   console.log(to, subject, from, parentMessageId);
   const emailSubject = subject.startsWith('Re: ') ? subject.slice(4) : subject;
   console.log('Subject before sending:', emailSubject);
 
-  const emailContent = dealer ? createBrandedEmailTemplate(text, dealer) : text;
+  const emailContent = dealer ? createBrandedEmailTemplate(text, dealer, options) : text;
   const mailOptions = {
     from: from, // Sender address
     to: to, // Recipient address

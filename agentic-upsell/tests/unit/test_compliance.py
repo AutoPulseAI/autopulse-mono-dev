@@ -246,9 +246,8 @@ async def test_opt_out_blocks_what_we_start_but_not_replies(mongo, dealers):
     assert (await _check(created, purpose="transactional")).rule == "opted_out"
     assert (await _check(created, purpose="reply", is_reply=True)).outcome == "ALLOW"
     assert (await _check(created, purpose="opt_out_confirmation", is_reply=True)).outcome == "ALLOW"
-    # The user, 26 Oct 2026: a STOP means no follow-ups on this inquiry, email too (it replaces "continue every
-    # remaining permitted channel"); a reply to the customer's own email still goes.
-    assert (await _check(created, channel="email")).rule == "inquiry_opt_out"
+    # Betsy, 28 Oct 2026 meeting: an SMS opt-out stops texts only - email follow-ups continue.
+    assert (await _check(created, channel="email")).rule != "inquiry_opt_out"
     assert (await _check(created, channel="email", purpose="reply", is_reply=True)).outcome == "ALLOW"
 
 
@@ -624,13 +623,14 @@ async def test_stop_contacting_me_stops_this_leads_calls_until_they_write_again(
     assert decision.rule != "inquiry_opt_out"
 
 
-async def test_stop_texting_me_stops_email_follow_ups_but_text_is_fine_keeps_texts(mongo, dealers):
-    # The user, 26 Oct 2026: "Please stop texting me" (Alexis) means no follow-ups at all; "don't email me, text is
-    # fine" keeps texts - the condition the customer sets stays.
+async def test_stop_texting_me_stops_texts_and_email_follow_ups_continue(mongo, dealers):
+    # Betsy, 28 Oct 2026 meeting (replaces the 26 Oct "no follow-ups at all"): "Please stop texting me" stops texts on
+    # this inquiry; emails continue. "don't email me, text is fine" keeps texts.
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="website")
     await handlers.handle_inbound_message(_inbound(created, "Please stop texting me, thank you."), _deps())
-    assert (await _check(created, channel="email")).rule == "inquiry_opt_out"
+    assert (await _check(created)).rule == "inquiry_opt_out"
+    assert (await _check(created, channel="email")).rule != "inquiry_opt_out"
     other = await _lead(mongo, source="website")
     await handlers.handle_inbound_message(_inbound(other, "don't email me, text is fine", channel="sms"), _deps())
     assert (await _check(other)).rule != "inquiry_opt_out"

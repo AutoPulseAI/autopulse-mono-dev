@@ -157,7 +157,9 @@ def plan_steps(appt_at: datetime, *, now: datetime, tz) -> list[Step]:
         days_out = (appt_day - today).days
         touch_days = [today + timedelta(days=n) for n in range(1, days_out)]
         if days_out <= ONE_TOUCH_UP_TO_DAYS:
-            touch_days = touch_days[:1]
+            # The user, 29 Oct 2026: within 72 hours, one reminder only - the confirmation. A countdown touch only when
+            # there is no confirmation to send.
+            touch_days = [] if any(st.step == STEP_CONFIRM for st in steps) else touch_days[:1]
         confirm_day = next((st.due_at.date() for st in steps if st.step == STEP_CONFIRM), None)
         touch_days = [d for d in touch_days if d != confirm_day]  # one message that day, not two
         for day in touch_days[:MAX_COUNTDOWNS]:

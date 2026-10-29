@@ -29,8 +29,6 @@ CRM_STATUS_FOR_EVENT = {
     "day_91": "Closed - Lost",
     "one_vehicle": "Closed - Lost",  # agent/multi_vehicle.py
     "no_longer_owns": "Closed - No Longer Owns",
-    # The user, 28 Oct 2026 (Brian Rosenberg): a lead the customer asked us to stop about is closed, with a note.
-    "inquiry_stopped": "Closed - Lost",
 }
 # Client, 8 Oct 2026: the SOW's working stages shown as CRM statuses, set by the AI as the lead moves. The CRM
 # applies one only over another working status (aidmvcs-be-dev app/lib/ai/aiDnd.js WORKING_STATUSES), never over a
@@ -98,7 +96,27 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
                       "reason_text": reason}
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": lead_id}, {"$set": {"crm_status_sync": {**result, "at": clock.now(), "closed_at": closed_at}}})
+    if status == "Managerial Review" and result["status"] == "updated":
+        await note_escalation(db, lead_id, reason)
     return result
+
+
+async def note_escalation(db: DealerScopedDatabase, lead_id: str, reason: str) -> None:
+    """Robby Torres, 28 Oct 2026 meeting: a lead the AI sets to Managerial Review is on Dealer Action Required (the
+    `staff_notice`, kind manager_escalation), and stays in its handled list once staff mark it. A notice staff haven't
+    handled yet already lists the lead, so it isn't replaced."""
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    state = await states.find_one({"lead_id": lead_id}, projection={"staff_notice": 1, "handled_notices": 1}) or {}
+    current = state.get("staff_notice") or {}
+    handled_at = ((state.get("handled_notices") or {}).get("notice") or {}).get("notice_at")
+    if current.get("at") and not (handled_at and str(handled_at)[:19] == _iso19(current["at"])):
+        return
+    await states.update_one({"lead_id": lead_id}, {"$set": {"staff_notice": {
+        "at": clock.now(), "kind": "manager_escalation", "text": f"Set to Managerial Review by the AI: {reason}"}}})
+
+
+def _iso19(value: Any) -> str:
+    return value.isoformat()[:19] if hasattr(value, "isoformat") else str(value)[:19]
 
 
 async def retry_failed(*, platform: Any | None = None, limit: int = RETRY_LIMIT) -> dict[str, Any]:

@@ -254,8 +254,7 @@ def render_continue_reply(full_name: str | None, decision: dict[str, Any] | None
 
 
 # While a person owns the lead (architecture §15, decision 12). "holding": the
-# customer wrote while the lead is handed off. "still_waiting": the handoff
-# timeout fired and staff haven't taken the lead over yet.
+# customer wrote while the lead is handed off. (The 30-minute "still_waiting" message is gone - the user, 28 Oct 2026.)
 HOLDING_REPLIES: dict[str, Template] = {
     "holding": Template(
         sms="Thanks, {name}! I've passed this to our sales manager, who will reach out to you shortly.",
@@ -273,15 +272,6 @@ HOLDING_REPLIES: dict[str, Template] = {
         email_body=(
             "Hi {name},\n\nThanks for your message. I've passed your request to come in to our sales manager, who "
             "will confirm the time with you shortly." + _SIGN_OFF.format(team="Customer Care")
-        ),
-    ),
-    "still_waiting": Template(
-        sms="Sorry for the wait, {name}. Our sales manager has your messages and will get back to you as soon as "
-            "possible.",
-        email_subject="Still on it",
-        email_body=(
-            "Hi {name},\n\nSorry for the wait. Our sales manager has your messages and will get back to you as "
-            "soon as possible." + _SIGN_OFF.format(team="Customer Care")
         ),
     ),
 }

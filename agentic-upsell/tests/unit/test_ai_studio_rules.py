@@ -103,11 +103,11 @@ async def test_message_limits_and_banned_phrases(mongo):
 
 
 async def test_fixed_texts_are_editable(mongo):
-    c = _default("messages", "holding_still_waiting")
-    c["message"]["text"] = "Sorry for the wait, {first_name}! Our manager will text you within the hour."
-    await _publish(mongo, "messages", "holding_still_waiting", c)
-    assert templates.render_holding_reply("still_waiting", "Jean Castro")["sms_text"] == (
-        "Sorry for the wait, Jean! Our manager will text you within the hour.")
+    c = _default("messages", "holding_holding")
+    c["message"]["text"] = "Thanks, {first_name}! Our manager will text you within the hour."
+    await _publish(mongo, "messages", "holding_holding", c)
+    assert templates.render_holding_reply("holding", "Jean Castro")["sms_text"] == (
+        "Thanks, Jean! Our manager will text you within the hour.")
     v = _default("messages", "continue_variant_2")
     v["message"]["text"] = "Thank you, {first_name}. When is a good time to stop by this week?"
     await _publish(mongo, "messages", "continue_variant_2", v)
@@ -188,17 +188,29 @@ async def test_the_safeguards_show_in_ai_studio_and_betsys_values_win(mongo):
     from upsell_agent.events import handlers
     from upsell_agent.scheduler import followups, safety_net, studio_cadences
     c = _default("compliance", "safeguards")
-    assert c["stop_ends_all_followups"] is True and c["second_lead_form_counts_as_contacted"] is False
+    assert c["stop_ends_all_followups"] is False and c["second_lead_form_counts_as_contacted"] is False
     assert c["followups_sent_at_once"] == 4 and c["followups_per_minute"] == 40
     assert all(f"{k}_explained" in c for k in ai_studio.SAFEGUARD_SWITCHES)
-    c.update(stop_ends_all_followups=False, stop_sentence_in_a_longer_message=False,
+    c.update(stop_ends_all_followups=True, stop_sentence_in_a_longer_message=False,
              second_lead_form_counts_as_contacted=True, one_conversation_per_customer=False,
              safety_net_every_lead_has_a_next_step=False, no_still_with_me_after_ill_reach_out=False,
              followups_sent_at_once=99, followups_per_minute=5)
     await _publish(mongo, "compliance", "safeguards", c)
-    assert engine.STOP_ENDS_ALL_FOLLOWUPS is False and opt_out.STOP_SENTENCE_IN_MESSAGE is False
+    assert engine.STOP_ENDS_ALL_FOLLOWUPS is True and opt_out.STOP_SENTENCE_IN_MESSAGE is False
     assert turn.SECOND_FORM_IS_CONTACT is True and handlers.DUPLICATE_STAYS_QUIET is False
     assert safety_net.ENABLED is False and studio_cadences.WAIT_WHEN_THEY_WILL_REACH_OUT is False
     assert followups.FIRE_CONCURRENCY == 10 and followups.FIRE_BATCH_LIMIT == 10  # kept inside the safe range
     ai_studio.reset()
-    assert engine.STOP_ENDS_ALL_FOLLOWUPS is True and followups.FIRE_CONCURRENCY == 4 and safety_net.ENABLED is True
+    assert engine.STOP_ENDS_ALL_FOLLOWUPS is False and followups.FIRE_CONCURRENCY == 4 and safety_net.ENABLED is True
+
+
+async def test_email_subject_lines_by_intent_are_edited_in_ai_studio(mongo):
+    """Betsy, 28 Oct 2026 meeting: subject lines that get opened, by intent - her list replaces the examples."""
+    from upsell_agent.agent import lead_brief
+    c = _default("status_rules", "email_subjects")
+    assert set(c["by_intent"]) >= {"sales", "trade", "credit", "price_payment", "service", "general"}
+    c["by_intent"]["credit"] = ["Pre-approved in minutes, {first_name}"]
+    await _publish(mongo, "status_rules", "email_subjects", c)
+    assert lead_brief.SUBJECT_IDEAS["credit"] == ["Pre-approved in minutes, {first_name}"]
+    ai_studio.reset()
+    assert lead_brief.SUBJECT_IDEAS["credit"] != ["Pre-approved in minutes, {first_name}"]  # the built-in list is back

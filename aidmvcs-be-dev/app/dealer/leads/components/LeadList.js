@@ -93,6 +93,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       source: params.get('source') || '',
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
+      messagesChannel: params.get('channel') || '', // ...by text, picture text or email (28 Oct 2026 meeting)
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
         endDate: params.get('endDate') ? new Date(params.get('endDate')) : null
@@ -210,6 +211,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
+      if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
 
@@ -449,6 +451,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.phone) url += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) url += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.messages) url += `&messages=${encodeURIComponent(filters.messages)}`;
+      if (filters.messages && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
@@ -769,6 +772,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
+      if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
       
@@ -1172,6 +1176,19 @@ useImperativeHandle(ref, () => ({
       )}
 
       <div className="w_card">
+        {filters.messages === 'sent' && (
+          // The Messages card's list by channel (28 Oct 2026 meeting: "how can I see which ones were emails?").
+          <div className="d-flex gap-2 mb-3 align-items-center">
+            <span className="small text-muted">Messages sent by:</span>
+            {[['', 'All'], ['sms', 'SMS'], ['mms', 'MMS'], ['email', 'Email']].map(([value, label]) => (
+              <Button key={label} size="sm" className="text-nowrap"
+                variant={(filters.messagesChannel || '') === value ? 'custom' : 'outline-custom'}
+                onClick={() => setFilters((prev) => ({ ...prev, messagesChannel: value, page: 1 }))}>
+                {label}
+              </Button>
+            ))}
+          </div>
+        )}
         {/* Assignment Filter Tabs */}
         <div className="d-flex gap-2 mb-3 lead_fltr">
         {canManageLeads && (
