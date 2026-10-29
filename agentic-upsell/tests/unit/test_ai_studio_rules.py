@@ -202,3 +202,15 @@ async def test_the_safeguards_show_in_ai_studio_and_betsys_values_win(mongo):
     assert followups.FIRE_CONCURRENCY == 10 and followups.FIRE_BATCH_LIMIT == 10  # kept inside the safe range
     ai_studio.reset()
     assert engine.STOP_ENDS_ALL_FOLLOWUPS is False and followups.FIRE_CONCURRENCY == 4 and safety_net.ENABLED is True
+
+
+async def test_email_subject_lines_by_intent_are_edited_in_ai_studio(mongo):
+    """Betsy, 28 Oct 2026 meeting: subject lines that get opened, by intent - her list replaces the examples."""
+    from upsell_agent.agent import lead_brief
+    c = _default("status_rules", "email_subjects")
+    assert set(c["by_intent"]) >= {"sales", "trade", "credit", "price_payment", "service", "general"}
+    c["by_intent"]["credit"] = ["Pre-approved in minutes, {first_name}"]
+    await _publish(mongo, "status_rules", "email_subjects", c)
+    assert lead_brief.SUBJECT_IDEAS["credit"] == ["Pre-approved in minutes, {first_name}"]
+    ai_studio.reset()
+    assert lead_brief.SUBJECT_IDEAS["credit"] != ["Pre-approved in minutes, {first_name}"]  # the built-in list is back

@@ -34,6 +34,24 @@ _GOALS = {
 }
 
 
+
+# AI Studio > Status rules > Email subject lines (Betsy, 28 Oct 2026 meeting: "I can give you some subject lines that are
+# really strong for getting opens"; the user: "a categorization of subject lines - if this customer has this intent, use
+# this sort of subject line, but be creative"). Betsy's list replaces these in AI Studio.
+SUBJECT_IDEAS: dict[str, list[str]] = {
+    "sales": ["{first_name}, the {vehicle} you asked about", "Still thinking about the {vehicle}?",
+              "A quick question about the {vehicle}"],
+    "trade": ["What your {trade} could be worth", "A number for your trade-in", "Trading in your {trade}?"],
+    "credit": ["Your financing options for the {vehicle}", "Getting you approved, step by step",
+               "Payments that work for you"],
+    "price_payment": ["Making the {vehicle} fit your budget", "Your payment options on the {vehicle}",
+                      "The numbers on the {vehicle}"],
+    "service": ["Your {vehicle}'s service", "Time for a service visit?", "Booking your service"],
+    "general": ["Following up on your inquiry", "A quick question for you", "{first_name}, we're here to help"],
+}
+SUBJECT_RULE = ("Write a short, specific subject (under 50 characters) in this style, with this customer's car or "
+                "name - never copy an example word for word, never all caps or clickbait.")
+
 def _clean(text) -> str:
     from upsell_agent.agent.portal_text import clean_comments
     return clean_comments(text)
@@ -80,7 +98,12 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
         ("a phone number", str(lead.get("phone") or "").strip() not in ("", "N/A", "n/a")),
         ("an email address", "@" in str(lead.get("email") or "") and not str(lead.get("email")).lower().startswith(
             ("no-reply", "noreply", "do-not-reply", "donotreply")))) if not have]
+    specialist = (decision.get("specialist") or {}).get("id")
     return {
+        # Betsy, 28 Oct 2026 meeting: email subject lines that get opened, by what the customer is after. Examples of the
+        # style only - each subject is written fresh for this customer and car (AI Studio: Email subject lines).
+        "email_subject": {"style_examples": SUBJECT_IDEAS.get(specialist) or SUBJECT_IDEAS.get("general") or [],
+                          "rule": SUBJECT_RULE},
         "customer": {
             "came_from": lead.get("source") or lead.get("lead_source"),
             "bucket": bucket.get("bucket") or bucket.get("name"),

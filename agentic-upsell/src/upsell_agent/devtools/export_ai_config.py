@@ -342,6 +342,8 @@ def status_rules() -> list[dict[str, Any]]:
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "email_subjects", "name": "Email subject lines by intent", "content": {
+                "by_intent": _lead_brief().SUBJECT_IDEAS, "rule": _lead_brief().SUBJECT_RULE}},
             {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
                 "counts": sorted(_staff_view().ACTION_KINDS), "kinds": _staff_view().ALERT_KINDS}},
             {"key": "ai_statuses", "name": "Statuses the AI sets", "content": {
@@ -502,6 +504,11 @@ def _media():
     return vehicle_media
 
 
+def _lead_brief():
+    from upsell_agent.agent import lead_brief
+    return lead_brief
+
+
 def _consent():
     from upsell_agent.channels import consent
     return consent
@@ -527,7 +534,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 25
+DEFAULTS_REVISION = 26
 
 
 def export() -> dict[str, Any]:
