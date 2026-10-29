@@ -29,6 +29,27 @@ function latestPerLead(bookings) {
   return [...out.values()];
 }
 
+// The leads behind the "showed" and "sold" steps, for the cards' lists (Betsy, 28 Oct 2026 meeting: a card's number
+// and the list it opens must be the same appointments - "they shouldn't just disappear").
+export async function funnelLeadIds({ dealerId, start, end, step }) {
+  const dealer_id = String(dealerId);
+  const range = start && end ? { $gte: start, $lte: end } : null;
+  if (step === 'sold') {
+    const logs = await ActivityLog.find({ dealer_id, action: 'status_changed', to: { $in: SOLD },
+      ...(range ? { at: range } : {}) }).select('lead_id').lean();
+    const ids = [...new Set(logs.map((r) => String(r.lead_id)))];
+    const booked = ids.length ? await Booking.distinct('lead_id', { dealer_id, lead_id: { $in: ids } }) : [];
+    return booked.map(String);
+  }
+  const scheduled = await Booking.find({ dealer_id, booking_status: { $ne: 'cancelled' },
+    ...(range ? { bookingDate: range } : {}) }).select('lead_id showed booking_status').lean();
+  const leadIds = [...new Set(scheduled.map((b) => b.lead_id))];
+  const leads = leadIds.length ? await Lead.find({ _id: { $in: leadIds } }).select('fe_lead_status').lean() : [];
+  const status = new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
+  return [...new Set(scheduled.filter((b) => b.showed === true || b.booking_status === 'completed'
+    || CAME.includes(status.get(b.lead_id))).map((b) => String(b.lead_id)))];
+}
+
 export async function appointmentFunnel({ dealerId, start, end }) {
   const dealer_id = String(dealerId);
   const range = start && end ? { $gte: start, $lte: end } : null;

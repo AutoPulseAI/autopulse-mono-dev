@@ -697,11 +697,17 @@ export default function Dashboard() {
     return `/dealer/booking?${range.replace('startDate=', 'madeStartDate=').replace('endDate=', 'madeEndDate=')}`;
   };
 
-  // Only the appointments counted on the card: booked, with the appointment on these dates (Bibi/Betsy, 21 Oct 2026).
+  // Every appointment counted on the card: on these dates, whatever its status became since (Betsy, 28 Oct 2026 meeting:
+  // the card said 5 and the list showed 2 - the no-shows and the unsold had dropped out; "it shouldn't go away").
   const getAppointmentsForLink = () => {
-    const base = `/dealer/booking?fe_lead_status=${encodeURIComponent('Appointment Booked')}`;
-    const range = getRangeParams();
-    return range ? `${base}&${range.replace('startDate=', 'bookingStartDate=').replace('endDate=', 'bookingEndDate=')}` : base;
+    const range = getRangeParams() || getTodayDateParams();
+    return `/dealer/booking?${range.replace('startDate=', 'bookingStartDate=').replace('endDate=', 'bookingEndDate=')}`;
+  };
+
+  // The Showed / Sold cards' own leads (app/lib/appointmentFunnel.js funnelLeadIds).
+  const getFunnelLink = (step) => {
+    const range = getRangeParams() || getTodayDateParams();
+    return `/dealer/booking?funnel=${step}&${range.replace('startDate=', 'funnelStartDate=').replace('endDate=', 'funnelEndDate=')}`;
   };
 
   return (
@@ -834,7 +840,7 @@ export default function Dashboard() {
               iconClass="fa-solid fa-person-walking"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
-              link={withRange('/dealer/leads?status=Visited')}
+              link={getFunnelLink('showed')}
               description={[splitText(step('showed')), `${cardRangeText()}${compareText('showed')}`].filter(Boolean).join(" · ")}
             />
 
@@ -842,7 +848,7 @@ export default function Dashboard() {
               iconClass="fa-solid fa-handshake"
               count={step('sold')?.total || 0}
               label="Appointments Sold"
-              link={withRange(`/dealer/leads?status=${encodeURIComponent('Sold Pending')}`)}
+              link={getFunnelLink('sold')}
               description={['Marked Sold by staff', splitText(step('sold')), `${cardRangeText()}${compareText('sold')}`].filter(Boolean).join(" · ")}
             />
           </div>
