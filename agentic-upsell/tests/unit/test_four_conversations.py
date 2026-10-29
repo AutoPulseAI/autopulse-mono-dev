@@ -163,8 +163,8 @@ def test_a_placeholder_name_is_never_used():
     # Client, 20 Oct 2026 (Betsy): a comma means "Last, First".
     assert known_first_name("FERRIOLO,ANTONI") == "Antoni"
     assert known_first_name("Zendejas, Andrew") == "Andrew"
-    held = render_holding_reply("still_waiting", "Name")["sms_text"]
-    assert held.startswith("Sorry for the wait.") and "Name" not in held
+    held = render_holding_reply("holding", "Name")["sms_text"]
+    assert held.startswith("Thanks!") and "Name" not in held
 
 
 def test_the_repeat_lead_question_names_the_vehicle_not_its_record():

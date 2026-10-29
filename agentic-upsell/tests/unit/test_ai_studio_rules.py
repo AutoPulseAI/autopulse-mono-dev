@@ -103,11 +103,11 @@ async def test_message_limits_and_banned_phrases(mongo):
 
 
 async def test_fixed_texts_are_editable(mongo):
-    c = _default("messages", "holding_still_waiting")
-    c["message"]["text"] = "Sorry for the wait, {first_name}! Our manager will text you within the hour."
-    await _publish(mongo, "messages", "holding_still_waiting", c)
-    assert templates.render_holding_reply("still_waiting", "Jean Castro")["sms_text"] == (
-        "Sorry for the wait, Jean! Our manager will text you within the hour.")
+    c = _default("messages", "holding_holding")
+    c["message"]["text"] = "Thanks, {first_name}! Our manager will text you within the hour."
+    await _publish(mongo, "messages", "holding_holding", c)
+    assert templates.render_holding_reply("holding", "Jean Castro")["sms_text"] == (
+        "Thanks, Jean! Our manager will text you within the hour.")
     v = _default("messages", "continue_variant_2")
     v["message"]["text"] = "Thank you, {first_name}. When is a good time to stop by this week?"
     await _publish(mongo, "messages", "continue_variant_2", v)
