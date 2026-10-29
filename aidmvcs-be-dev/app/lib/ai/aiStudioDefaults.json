@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T17:10:58.958474+00:00",
- "revision": 27,
+ "exported_at": "2026-10-29T17:15:12.128739+00:00",
+ "revision": 28,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3838,6 +3838,7 @@
     "no_still_with_me_after_ill_reach_out": true,
     "hybrid_stock_search": true,
     "all_wheel_drive_search": true,
+    "condition_questions_to_a_manager": true,
     "followups_sent_at_once": 4,
     "followups_per_minute": 40,
     "cars_from_current_search": 3,
@@ -3857,7 +3858,8 @@
     "cars_from_new_search_explained": "With the hybrid search on: how many more cars the new search adds (0-5).",
     "all_wheel_drive_search_explained": "On since 29 Oct 2026 (28 Oct meeting). When the customer asks about all-wheel drive (xDrive, quattro, 4MATIC, AWD, 4x4...), the AI says plainly whether their car has it, and offers all-wheel-drive cars from stock in their budget; its next question stays about all-wheel drive.",
     "all_wheel_drive_budget_stretch_percent_explained": "How loosely the budget is read for that search (0-100%): the higher of their budget and the car's price, plus this much. 25 means \"14-15K\" on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
-    "all_wheel_drive_cars_added_explained": "How many all-wheel-drive cars that search adds (0-5)."
+    "all_wheel_drive_cars_added_explained": "How many all-wheel-drive cars that search adds (0-5).",
+    "condition_questions_to_a_manager_explained": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the car's condition (mechanical, cosmetic, known issues, accidents, service history), the AI answers with what it knows (mileage, the history report) and the lead goes to Managerial Review with an alert, so a manager confirms the rest. The AI keeps the conversation going."
    },
    "locked": false
   },
