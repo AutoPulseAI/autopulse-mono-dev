@@ -25,7 +25,6 @@ async def _pending(mongo, created):
 
 
 async def test_an_active_lead_with_nothing_planned_gets_its_next_touch(mongo, live_dealer, monkeypatch):
-    monkeypatch.setattr(safety_net, "SAFETY_NET_FROM", clock.now() - timedelta(days=30))
     created = await _lead()
     await _created(created)
     await _strand(mongo, created)
@@ -36,11 +35,10 @@ async def test_an_active_lead_with_nothing_planned_gets_its_next_touch(mongo, li
     assert created["lead_id"] not in (await safety_net.check_dealer(DEALER))["planned"]
 
 
-async def test_leads_before_the_start_and_linked_duplicates_are_left_alone(mongo, live_dealer, monkeypatch):
-    monkeypatch.setattr(safety_net, "SAFETY_NET_FROM", clock.now() - timedelta(hours=1))
+async def test_leads_older_than_90_days_and_linked_duplicates_are_left_alone(mongo, live_dealer, monkeypatch):
     old = await _lead()
     await _created(old)
-    await _strand(mongo, old, age=timedelta(days=3))  # came in before the safety net's start
+    await _strand(mongo, old, age=timedelta(days=91))  # past its 90-day opportunity
     first = await _lead(name="Dup Test")
     await _car(mongo, first, "Acura", "MDX")
     await _created(first)
@@ -56,7 +54,6 @@ async def test_leads_before_the_start_and_linked_duplicates_are_left_alone(mongo
 
 async def test_a_customer_with_an_appointment_on_another_lead_is_left_to_that_workflow(mongo, live_dealer, monkeypatch):
     # Christine Pache, 26 Oct 2026: her no-show workflow ran on her other lead; the safety net planned a sales touch too.
-    monkeypatch.setattr(safety_net, "SAFETY_NET_FROM", clock.now() - timedelta(days=30))
     created = await _lead()
     await _created(created)
     await _strand(mongo, created)
@@ -64,3 +61,22 @@ async def test_a_customer_with_an_appointment_on_another_lead_is_left_to_that_wo
                                                       "dealer_id": DEALER, "stage": "appointment_no_show",
                                                       "status": "active"})
     assert created["lead_id"] not in (await safety_net.check_dealer(DEALER))["planned"]
+
+
+
+async def test_an_older_lead_and_a_partly_qualified_one_are_picked_up_a_few_an_hour(mongo, live_dealer, monkeypatch):
+    """The user, 29 Oct 2026: 552 leads from 20 Sept to mid-October had nothing since 7-8 Oct (the 26 Oct start date left
+    them out), and Larry Harris - partly qualified - had no next touch after his no-show. Every open lead under 90
+    days, partly qualified ones too, at most MAX_PER_RUN an hour."""
+    sept = await _lead()
+    await _created(sept)
+    await _strand(mongo, sept, age=timedelta(days=39))
+    larry = await _lead(name="Larry Test")
+    await _created(larry)
+    await _strand(mongo, larry, age=timedelta(days=6))
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": larry["lead_id"]}, {"$set": {"status": "partly_qualified"}})
+    monkeypatch.setattr(safety_net, "MAX_PER_RUN", 1)
+    first = (await safety_net.check_dealer(DEALER))["planned"]
+    assert len(first) == 1
+    second = (await safety_net.check_dealer(DEALER))["planned"]
+    assert set(first + second) == {sept["lead_id"], larry["lead_id"]}
