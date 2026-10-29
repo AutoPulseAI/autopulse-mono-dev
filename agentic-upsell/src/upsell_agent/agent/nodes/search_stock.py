@@ -240,12 +240,25 @@ async def turn_criteria(state: AgentState, stock_question: bool) -> tuple[Invent
     return profile_criteria, None, notes
 
 
+# 28 Oct 2026 meeting (a customer asked "is this the xDrive?" - it was rear-wheel drive - and the AI asked his budget
+# instead of whether he needs all-wheel drive): the customer's own words for all-wheel drive, any make.
+WANTS_AWD = re.compile(r"\b(?:x\s*drive|quattro|4\s*matic|4\s*motion|awd|all[- ]?wheel(?:[- ]drive)?|4wd|4x4|"
+                       r"four[- ]?wheel(?:[- ]drive)?|sh-?awd)\b", re.IGNORECASE)
+# AI Studio > Compliance > Safeguards: the all-wheel-drive search, how loosely the budget is read for it (Betsy: "14-15K"
+# for a $15,609 car means "under about $20K"), and how many all-wheel-drive cars it adds.
+AWD_ENABLED = True
+AWD_STRETCH_PERCENT = 25
+AWD_SHOWN = 3
+
+
 async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     text = state.customer_text or state.inbound_text
     stock_question = _asked_about_stock(state)
     criteria, asked_trigger, resolve_notes = await turn_criteria(state, stock_question)
     bigger = bool(BIGGER.search(text or ""))
-    trigger = asked_trigger or search_trigger(criteria, stock_question, bigger)
+    wants_awd = AWD_ENABLED and bool(WANTS_AWD.search(text or ""))
+    trigger = asked_trigger or search_trigger(criteria, stock_question, bigger) or (
+        "the customer asked about all-wheel drive" if wants_awd else None)
     pack = dict(state.context_pack or {})
     wanted = criteria.model_dump(exclude_none=True)
 
@@ -355,6 +368,13 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
         loaded.append({**original.model_dump(), "already_shown": original.vin in shown, "original_inquiry": True})
         reasoning.append(f"Their original inquiry ({original.vin}, {original.model} {original.trim or ''}) is in "
                          "stock: added to remind them of it.")
+    feature = None
+    if wants_awd and not bigger:
+        feature, extra_awd = await _awd_options(state, criteria, source, loaded, shown)
+        loaded = [*loaded, *extra_awd]
+        span.output["records"] = loaded
+        reasoning.append(f"They asked about all-wheel drive: {feature['their_car'] or 'their car'!s}; "
+                         f"{len(extra_awd)} all-wheel-drive car(s) up to {feature['budget_read_as']} added.")
     patched = _patch(pack, loaded, result.final_query, result.checked_at)
     # conversation_7: what was searched, and whether the vehicles loaded are that or the nearest we have - so the
     # reply never says "we don't have X" about a vehicle this turn didn't look for (guardrails/stock_claims.py).
@@ -366,8 +386,41 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
                                "asked": stock_question,
                                "exact": bool(loaded) and not widened and not named_unknown,
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
-                               if widened and loaded else None}
+                               if widened and loaded else None,
+                               **({"feature": feature} if feature else {})}
     return {"context_pack": patched}
+
+
+async def _awd_options(state: AgentState, criteria: InventoryCriteria, source: Any, loaded: list[dict[str, Any]],
+                       shown: set[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """What to tell Compose when the customer asks about all-wheel drive, and up to AWD_SHOWN all-wheel-drive cars in
+    their budget read loosely (the higher of the budget and the car's price, + 25%) that aren't loaded yet."""
+    car = next((v for v in loaded if v.get("found_by") in (None, "search") and not v.get("original_inquiry")), None) \
+        or (loaded[0] if loaded else None)
+    base = max(criteria.price_max or 0, int((car or {}).get("price") or 0))
+    ceiling = int(round(base * (1 + AWD_STRETCH_PERCENT / 100), -2)) if base else None
+    have = {v["vin"] for v in loaded}
+    extra: list[dict[str, Any]] = []
+    try:
+        found = await find_stock(state.dealer_id, InventoryCriteria(condition=criteria.condition, drive="AWD",
+                                                                    price_max=ceiling), source)
+        extra = [{**r.model_dump(), "already_shown": r.vin in shown, "found_by": "all_wheel_drive"}
+                 for r in found.loaded(MAX_LOADED) if r.vin not in have][:AWD_SHOWN]
+    except Exception:  # noqa: BLE001 - stock is optional for a reply
+        extra = []
+    their = (car or {}).get("drivetrain")
+    name = " ".join(str(x) for x in ((car or {}).get("year"), (car or {}).get("make"), (car or {}).get("model")) if x)
+    feature = {
+        "asked": "all-wheel drive",
+        "their_car": f"the {name} is {their}" if car and their else None,
+        "their_car_has_it": their in ("AWD", "4WD") if their else None,
+        "budget_read_as": f"${ceiling:,}" if ceiling else "any price",
+        "awd_options_loaded": [v["vin"] for v in extra],
+        "how_to_answer": ("Answer this first, plainly: does their car have all-wheel drive (xDrive, quattro, 4MATIC... "
+                          "are all-wheel drive)? If it doesn't, offer the all-wheel-drive cars loaded (found_by "
+                          "all_wheel_drive). Keep the next question about all-wheel drive, not another topic."),
+    }
+    return feature, extra
 
 
 async def _original_inquiry(state: AgentState, ctx: TurnContext, source: Any, loaded: set[str]) -> Any:

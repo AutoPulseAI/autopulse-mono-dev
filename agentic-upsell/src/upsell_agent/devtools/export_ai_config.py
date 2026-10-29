@@ -475,6 +475,14 @@ def _safeguards() -> dict[str, Any]:
                                "from both lists, and asks which car they mean when a few could fit.",
         "cars_from_current_search": "With the hybrid search on: how many cars come from the usual search (1-5).",
         "cars_from_new_search": "With the hybrid search on: how many more cars the new search adds (0-5).",
+        "all_wheel_drive_search": "On since 29 Oct 2026 (28 Oct meeting). When the customer asks about all-wheel drive "
+                                  "(xDrive, quattro, 4MATIC, AWD, 4x4...), the AI says plainly whether their car has it, "
+                                  "and offers all-wheel-drive cars from stock in their budget; its next question stays "
+                                  "about all-wheel drive.",
+        "all_wheel_drive_budget_stretch_percent": "How loosely the budget is read for that search (0-100%): the higher of "
+                                                  "their budget and the car's price, plus this much. 25 means \"14-15K\" "
+                                                  "on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
+        "all_wheel_drive_cars_added": "How many all-wheel-drive cars that search adds (0-5).",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -514,7 +522,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 23
+DEFAULTS_REVISION = 24
 
 
 def export() -> dict[str, Any]:

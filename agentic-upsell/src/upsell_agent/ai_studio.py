@@ -334,6 +334,7 @@ _ATTRS = {
     "studio_cadences": ("WAIT_WHEN_THEY_WILL_REACH_OUT",),
     "followups": ("FIRE_CONCURRENCY", "FIRE_BATCH_LIMIT"),
     "stock_match": ("ENABLED", "FROM_SEARCH", "FROM_MATCH"),
+    "search_stock": ("AWD_ENABLED", "AWD_STRETCH_PERCENT", "AWD_SHOWN"),
 }
 
 
@@ -346,12 +347,15 @@ SAFEGUARD_SWITCHES = {
     "safety_net_every_lead_has_a_next_step": ("safety_net", "ENABLED"),
     "no_still_with_me_after_ill_reach_out": ("studio_cadences", "WAIT_WHEN_THEY_WILL_REACH_OUT"),
     "hybrid_stock_search": ("stock_match", "ENABLED"),
+    "all_wheel_drive_search": ("search_stock", "AWD_ENABLED"),
 }
 SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
     "followups_sent_at_once": ("followups", "FIRE_CONCURRENCY", 1, 10),
     "followups_per_minute": ("followups", "FIRE_BATCH_LIMIT", 10, 200),
     "cars_from_current_search": ("stock_match", "FROM_SEARCH", 1, 5),
     "cars_from_new_search": ("stock_match", "FROM_MATCH", 0, 5),
+    "all_wheel_drive_budget_stretch_percent": ("search_stock", "AWD_STRETCH_PERCENT", 0, 100),
+    "all_wheel_drive_cars_added": ("search_stock", "AWD_SHOWN", 0, 5),
 }
 
 
@@ -377,10 +381,12 @@ def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import turn
     from upsell_agent.events import handlers
     from upsell_agent.scheduler import followups, safety_net, studio_cadences
+    from upsell_agent.agent.nodes import search_stock
     from upsell_agent.tools import stock_match
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
             "decide": decide, "presend": presend, "turn": turn, "handlers": handlers, "safety_net": safety_net,
-            "studio_cadences": studio_cadences, "followups": followups, "stock_match": stock_match}
+            "studio_cadences": studio_cadences, "followups": followups, "stock_match": stock_match,
+            "search_stock": search_stock}
 
 
 def _policy_module():

@@ -144,7 +144,7 @@ def test_typed_view_has_every_field_and_the_listed_price():
         "model": "CR-V", "trim": "EX", "body_type": "SUV", "condition": "used", "exterior_color": "Silver",
         "miles": 24000, "page_url": "https://dealer.example/v/VIN00000000000001",
         # The listed (internetreduced) price and a rough range, never the in-store price or MSRP.
-        "price": 27995, "price_range": "$27,000-$28,500"}
+        "price": 27995, "price_range": "$27,000-$28,500", "drivetrain": None}
     assert not any("msrp" in k or "instore" in k for k in InventoryRecord.model_fields)
     assert "stock_number" not in InventoryRecord.model_fields
 
@@ -515,3 +515,45 @@ def test_guard_allows_a_named_vehicles_listed_price_and_range_only():
     assert ok["checks"]["no_invented_numbers"], ok["violations"]
     assert draft("It's about $38k.")["checks"]["no_invented_numbers"]
     assert not draft("The 2025 Toyota RAV4 is $35,000.")["checks"]["no_invented_numbers"]
+
+
+
+async def test_all_wheel_drive_is_one_class_and_searched_on_our_side(mongo):
+    """28 Oct 2026 meeting: "is this the xDrive?" (it was rear-wheel drive). The feed's 4MATIC, quattro, AWD and 4WD, and
+    a BMW's xDrive trim, are all-wheel drive; the search keeps only those, in budget."""
+    from upsell_agent.tools.stock_search import find_stock
+    await _stock(mongo,
+                 _vehicle("VINRWD00000000001", make="BMW", model="5 Series", trim="530i", drivetrain="RWD"),
+                 _vehicle("VINXDR00000000002", make="BMW", model="5 Series", trim="540i xDrive", drivetrain=""),
+                 _vehicle("VIN4MA00000000003", make="Mercedes-Benz", model="C-Class", drivetrain="4MATIC®"),
+                 _vehicle("VINQUA00000000004", make="Audi", model="A4", drivetrain="quattro"),
+                 _vehicle("VINFWD00000000005", drivetrain="FrontTrak"),
+                 _vehicle("VINAWD00000000006", drivetrain="AWD", internetreduced=45000))
+    found = await find_stock(DEALER, InventoryCriteria(drive="AWD", price_max=30000), STUB)
+    vins = {r.vin for r in found.loaded(10)}
+    assert vins == {"VINXDR00000000002", "VIN4MA00000000003", "VINQUA00000000004"}
+    assert {r.drivetrain for r in found.loaded(10)} == {"AWD"}
+
+
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")
+async def test_asking_for_xdrive_loads_all_wheel_drive_cars_in_a_loosely_read_budget(mongo):
+    """28 Oct 2026 meeting: "is this the xDrive?" about a rear-wheel-drive BMW at $15,609, budget "14-15K" - the AI
+    said it wasn't and asked the budget. Now: their car's drivetrain, and all-wheel-drive cars up to about $19,500 (the
+    budget read loosely), go to the reply with "answer this first"."""
+    await _stock(mongo,
+                 _vehicle("VINBMW00000000001", make="BMW", model="5 Series", trim="530i", drivetrain="RWD",
+                          internetreduced=15609, added_minutes_ago=30),
+                 _vehicle("VINAUD00000000002", make="Audi", model="A4", drivetrain="quattro", internetreduced=18900),
+                 _vehicle("VINMER00000000003", make="Mercedes-Benz", model="C-Class", drivetrain="4MATIC®",
+                          internetreduced=17500),
+                 _vehicle("VINEXP00000000004", make="Audi", model="Q7", drivetrain="quattro", internetreduced=32000))
+    created = await _new_lead("Looking at a used BMW 5 Series")
+    # A portal lead names its car by VIN (the meeting's lead did).
+    await mongo["leads"].update_one({"_id": ObjectId(created["lead_id"])}, {"$set": {"vin": "VINBMW00000000001"}})
+    await _reply(created, "Is this the xDrive? My budget is 14-15k")
+    search = await _search(mongo, created)
+    vins = [r["vin"] for r in search["output"]["records"]]
+    assert "VINAUD00000000002" in vins and "VINMER00000000003" in vins and "VINEXP00000000004" not in vins
+    awd = [r for r in search["output"]["records"] if r.get("found_by") == "all_wheel_drive"]
+    assert awd and {r["drivetrain"] for r in awd} == {"AWD"}
+    assert any("all-wheel drive" in line for line in search["reasoning"])

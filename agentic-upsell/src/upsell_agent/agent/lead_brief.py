@@ -108,6 +108,8 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
         "stock": {
             "exact_match": stock.get("exact") if stock else None,
             "vehicles_loaded": len(inventory),
+            # 28 Oct 2026 meeting: a feature the customer asked about (all-wheel drive) is answered first.
+            **({"feature_asked": stock["feature"]} if stock.get("feature") else {}),
         },
         "this_message": {
             "action": decision.get("action"),
