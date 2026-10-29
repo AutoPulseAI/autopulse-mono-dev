@@ -146,6 +146,26 @@ class Sender:
         self._retry_base_s = retry_base_s
         self._sleep = sleep
 
+    async def _in_customer_language(self, db: Any, req: SendRequest, why: list[str]) -> SendRequest:
+        """28 Oct 2026 meeting (Deyvi Lopez wrote in Spanish; the appointment "I'm looking for you in the showroom" went
+        out in English): every message the AI sends - replies, appointment messages, follow-ups, fixed templates - goes
+        in the language the customer writes in (ai_lead_state.customer_language). Done here, the one place every
+        message passes; a reply already in their language is left as it is, and a failed translation never stops it."""
+        from upsell_agent.agent.reply_language import in_customer_language, needs_translation
+        from upsell_agent.config import get_settings
+        from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION
+        state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+            {"lead_id": req.lead_id}, projection={"customer_language": 1}) if req.lead_id else None
+        language = (state or {}).get("customer_language")
+        if not (needs_translation(req.text, language) or needs_translation(req.subject, language)):
+            return req
+        model = get_settings().model_extract
+        text, note = await in_customer_language(req.text, language, model)
+        subject, _ = await in_customer_language(req.subject, language, model)
+        why.append(f"In the customer's language ({language}): "
+                   + ("translated" if (note or {}).get("translated") else f"not translated ({(note or {}).get('reason')})"))
+        return replace(req, text=text or req.text, subject=subject if req.subject else req.subject)
+
     async def send(self, req: SendRequest) -> SendOutcome:
         db = dealer_scoped_db(req.dealer_id)
         messages = db.collection(AI_MESSAGES_COLLECTION)
@@ -169,6 +189,7 @@ class Sender:
             req = replace(req, media_urls=media)
             why.append("Resuming a claimed send that never reached the provider.")
         else:
+            req = await self._in_customer_language(db, req, why)
             try:
                 inserted = await messages.insert_one(self._new_row(req))
             except DuplicateKeyError:

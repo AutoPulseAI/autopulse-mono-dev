@@ -240,3 +240,28 @@ async def test_a_crm_timeout_with_no_record_is_a_failure_and_still_not_resent(mo
     driver = TimeoutDriver()
     outcome = await _sender(driver).send(_request(created))
     assert outcome.status == "failed" and driver.calls == 1
+
+
+async def test_every_message_goes_in_the_customers_language(mongo, monkeypatch):
+    """28 Oct 2026 meeting (Deyvi Lopez switched to Spanish, booked in Spanish, then the appointment check "I am looking
+    for you in the showroom" went out in English): the sender puts every message in the customer's language."""
+    from dataclasses import replace
+    from upsell_agent.agent import reply_language
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, DEV_OUTBOX_COLLECTION
+
+    async def fake(text, language, model_name, **_):
+        return (f"[{language}] {text}", {"translated": True}) if reply_language.needs_translation(text, language) \
+            else (text, None)
+    monkeypatch.setattr(reply_language, "in_customer_language", fake)
+    created = await _lead()
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
+                                                     {"$set": {"customer_language": "Spanish", "dealer_id": DEALER}},
+                                                     upsert=True)
+    showroom = "Hello, this is Nicole with Victory Cars Central. I am looking for you in the showroom - are you here?"
+    out = await _sender().send(replace(_request(created), text=showroom))
+    assert out.status == "sent"
+    sent = await mongo[DEV_OUTBOX_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert sent["text"] == f"[Spanish] {showroom}"
+    # Already in their language: left as it is.
+    await _sender().send(replace(_request(created, turn="t2"), text="¿Estás en la sala de exposición?"))
+    assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"text": "¿Estás en la sala de exposición?"}) == 1
