@@ -196,7 +196,8 @@ async def test_the_safeguards_show_in_ai_studio_and_betsys_values_win(mongo):
              safety_net_every_lead_has_a_next_step=False, no_still_with_me_after_ill_reach_out=False,
              followups_sent_at_once=99, followups_per_minute=5)
     await _publish(mongo, "compliance", "safeguards", c)
-    assert engine.STOP_ENDS_ALL_FOLLOWUPS is True and opt_out.STOP_SENTENCE_IN_MESSAGE is False
+    # Betsy, 28 Oct 2026 meeting: per channel, whatever the old published value says.
+    assert engine.STOP_ENDS_ALL_FOLLOWUPS is False and opt_out.STOP_SENTENCE_IN_MESSAGE is False
     assert turn.SECOND_FORM_IS_CONTACT is True and handlers.DUPLICATE_STAYS_QUIET is False
     assert safety_net.ENABLED is False and studio_cadences.WAIT_WHEN_THEY_WILL_REACH_OUT is False
     assert followups.FIRE_CONCURRENCY == 10 and followups.FIRE_BATCH_LIMIT == 10  # kept inside the safe range

@@ -928,6 +928,10 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
         ps.CHECKS = {**ps.CHECKS, **{k: v for k, v in c.items() if k in ps.CHECKS and isinstance(v, bool)}}
     elif key == "safeguards":
         for field, (mod, attr) in SAFEGUARD_SWITCHES.items():
+            if field == "stop_ends_all_followups":
+                # Betsy, 28 Oct 2026 meeting: an opt-out stops only its channel. The value published before that
+                # (on) no longer applies; the rule is fixed in code (compliance/engine.py).
+                continue
             if isinstance(c.get(field), bool):
                 setattr(mods[mod], attr, c[field])
         for field, (mod, attr, low, high) in SAFEGUARD_NUMBERS.items():
