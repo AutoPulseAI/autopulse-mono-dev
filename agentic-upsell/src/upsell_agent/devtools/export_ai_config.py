@@ -342,6 +342,13 @@ def status_rules() -> list[dict[str, Any]]:
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "contact_questions", "name": "Contact details the AI asks for", "content": {
+                "name_question": _decide().NAME_QUESTION, "email_questions": list(_decide().EMAIL_QUESTIONS),
+                "phone_questions": list(_decide().PHONE_QUESTIONS),
+                "ask_for_a_phone_when_missing": _decide().ASK_PHONE,
+                "what_it_does": "A missing name is asked first, then a missing email, then a missing mobile number - one "
+                                "per message, each at most twice, two days apart. The mobile number is offered, never "
+                                "pushed, and never asked of a customer who said they prefer email."}},
             {"key": "email_subjects", "name": "Email subject lines by intent", "content": {
                 "by_intent": _lead_brief().SUBJECT_IDEAS, "rule": _lead_brief().SUBJECT_RULE}},
             {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
@@ -485,6 +492,11 @@ def _safeguards() -> dict[str, Any]:
                                                   "their budget and the car's price, plus this much. 25 means \"14-15K\" "
                                                   "on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
         "all_wheel_drive_cars_added": "How many all-wheel-drive cars that search adds (0-5).",
+        "condition_questions_to_a_manager": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the "
+                                            "car's condition (mechanical, cosmetic, known issues, accidents, service "
+                                            "history), the AI answers with what it knows (mileage, the history report) "
+                                            "and the lead goes to Managerial Review with an alert, so a manager "
+                                            "confirms the rest. The AI keeps the conversation going.",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -502,6 +514,11 @@ CONFIRM_WHEN = "The morning of the appointment (the day before for an appointmen
 def _media():
     from upsell_agent.agent import vehicle_media
     return vehicle_media
+
+
+def _decide():
+    from upsell_agent.agent.nodes import decide
+    return decide
 
 
 def _lead_brief():
@@ -534,7 +551,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 26
+DEFAULTS_REVISION = 28
 
 
 def export() -> dict[str, Any]:

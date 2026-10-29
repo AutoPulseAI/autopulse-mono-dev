@@ -388,6 +388,9 @@ async def _search_stock(state: AgentState, span: NodeSpan, ctx: TurnContext) -> 
                                "showing_instead": describe_criteria(InventoryCriteria(**result.final_query))
                                if widened and loaded else None,
                                **({"feature": feature} if feature else {})}
+    if not bigger and (gone := await _their_car_left_stock(state, ctx, loaded)):
+        patched["stock_search"]["their_car"] = gone
+        reasoning.append(f"Their car ({gone['vehicle']}) is no longer in our inventory (since {gone['since']}).")
     return {"context_pack": patched}
 
 
@@ -432,6 +435,31 @@ async def _original_inquiry(state: AgentState, ctx: TurnContext, source: Any, lo
         return await get_vehicle(state.dealer_id, vin, source)
     except Exception:  # noqa: BLE001 - a reminder is never worth a failed turn
         return None
+
+
+async def _their_car_left_stock(state: AgentState, ctx: TurnContext, loaded: list[dict[str, Any]]) -> dict | None:
+    """Josue Penafiel, 29 Oct 2026: "Did you sell the other blue 2022 3 Series?" got "I can't confirm whether that one
+    sold" twice - his car (VIN on the lead) had left the dealer's inventory feed on 27 Oct, and the search, which only
+    sees what is in stock, couldn't say so. The car the lead asked about, when it is no longer in stock: what it was
+    and since when. Never says "sold" - the feed only says it is gone."""
+    vin = lead_vehicle_vin(ctx.lead, None)
+    if not vin or any(v.get("vin") == vin for v in loaded):
+        return None
+    from upsell_agent.integrations.mongodb import PLATFORM_VEHICLES_COLLECTION, dealer_scoped_db
+    try:
+        rows = await dealer_scoped_db(state.dealer_id).collection(
+            PLATFORM_VEHICLES_COLLECTION, dealer_field="dealerId").find({"vin": vin}).to_list(5)
+    except Exception:  # noqa: BLE001 - the search result stands
+        return None
+    if not rows or any(r.get("removedAt") is None for r in rows):
+        return None
+    last = max(rows, key=lambda r: r.get("removedAt"))
+    name = " ".join(str(x) for x in (last.get("year"), last.get("make"), last.get("model"), last.get("trim")) if x)
+    color = last.get("exteriorcolor")
+    return {"vehicle": f"{name}{f' in {color}' if color else ''}", "vin": vin,
+            "status": "no longer in our inventory", "since": f"{last['removedAt']:%B %d}".replace(" 0", " "),
+            "how_to_answer": ("If they ask about it: say plainly it is no longer in our inventory (never \"I can't "
+                              "confirm\" or \"sold\"), then offer the closest car loaded.")}
 
 
 async def _lead_own_vehicle(state: AgentState, ctx: TurnContext, criteria: InventoryCriteria,

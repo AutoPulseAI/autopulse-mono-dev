@@ -385,6 +385,9 @@ def _may_ask_name(lead_state: dict | None, now: datetime, field: str = "name") -
     return now - asked >= NAME_ASK_AGAIN_AFTER
 
 
+# AI Studio > Status rules > Contact details the AI asks for (the user, 29 Oct 2026: every rule shown in AI Studio).
+NAME_QUESTION = "Can you tell me how to spell your first and last name?"  # Betsy, 16 Oct 2026
+ASK_PHONE = True
 # Asked in the customer's own conversation's words, not one fixed line (the user, 28 Oct 2026: "a creative question").
 EMAIL_QUESTIONS = (
     "And what's the best email to send you the details and photos?",
@@ -432,6 +435,28 @@ def _confused_or_frustrated(text: str | None, earlier: list[str]) -> bool:
 
 def _may_ask_email(lead_state: dict | None, now: datetime) -> bool:
     return _may_ask_name(lead_state, now, "email")
+
+
+# The user, 29 Oct 2026 (Latina Neal and others: no phone on the lead, and the AI never asked): with no usable phone, a
+# mobile number is asked like the email - offered, never pushed, and never to a customer who said they prefer email.
+PHONE_QUESTIONS = (
+    "If it's easier, you can share a mobile number and I can text you updates - email works great too.",
+    "Would you like quick text updates as well? If so, what's the best mobile number for you?",
+    "If you'd rather get a text when something changes, what number should I use?",
+)
+PREFERS_EMAIL = re.compile(r"\b(?:email|e-mail)\b[^.!?\n]{0,40}\b(?:prefer\w*|best|only|works better)\b"
+                           r"|\bprefer\w*\b[^.!?\n]{0,40}\b(?:email|e-mail)\b|\b(?:email|e-mail) (?:only|me only)\b"
+                           r"|\b(?:no|don'?t|do not)\s+(?:text|call|phone)\w*\b", re.IGNORECASE)
+
+
+def phone_question(lead_id: str) -> str:
+    return PHONE_QUESTIONS[sum(map(ord, str(lead_id))) % len(PHONE_QUESTIONS)]
+
+
+def _may_ask_phone(lead_state: dict | None, now: datetime, said: list[str]) -> bool:
+    if not ASK_PHONE or any(PREFERS_EMAIL.search(t or "") for t in said):
+        return False
+    return _may_ask_name(lead_state, now, "phone")
 
 
 def not_our_own_questions(questions: list[dict[str, str]], customer_text: str | None,
@@ -1194,7 +1219,39 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
                               channel=state.channel, call=call, text_when=text_when, turn=conversation.turn)
 
 
+# 28 Oct 2026 meeting, decision D1: a question about the car's condition the AI can't answer goes to a manager.
+CONDITION_TO_MANAGER = True  # AI Studio > Compliance > Safeguards
+CONDITION_QUESTION = re.compile(
+    r"\b(?:mechanical|cosmetic|overall)\s+condition\b|\bcondition of (?:the|this|that) (?:car|vehicle|truck|suv)\b"
+    r"|\b(?:known|any)\s+(?:issues|problems|defects)\b|\bbeen in (?:an|any) accidents?\b|\baccident history\b"
+    r"|\b(?:timing (?:belt|chain)|transmission)\b.{0,30}\b(?:replaced|done|changed|issues?)\b"
+    r"|\blast (?:service|serviced|oil change)\b|\bservice records?\b|\bany (?:dents|scratches|rust)\b",
+    re.IGNORECASE)
+
+
+def _already_sent(text: str | None, pack: dict[str, Any] | None, last: int = 6) -> bool:
+    """Latina Neal, 29 Oct 2026: the same fixed reply ("Here is a link to the vehicle where you can locate the vehicle
+    history report...") went out twice in 5 minutes - the second time she asked about mileage and condition. A fixed
+    reply already among our last messages isn't placed again: the reply answers what they asked."""
+    key = re.sub(r"\W+", " ", str(text or "")).strip().lower()[:80]
+    if len(key) < 20:
+        return False
+    ours = [m for m in (pack or {}).get("working_memory") or [] if m.get("direction") == "outbound"][-last:]
+    return any(key in re.sub(r"\W+", " ", str(m.get("text") or "")).lower() for m in ours)
+
+
 async def plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
+                             *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
+                             visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
+                                                                 VisitOfferPlan | None]:
+    cannot, plan = await _plan_cannot_supply(ctx, state, profile, conversation, dealer=dealer, now=now, text=text,
+                                             hold=hold, visit_ctx=visit_ctx)
+    if cannot is not None and _already_sent(getattr(cannot, "text", None), state.context_pack):
+        return None, None
+    return cannot, plan
+
+
+async def _plan_cannot_supply(ctx: TurnContext, state: AgentState, profile: Profile, conversation: ConversationState,
                              *, dealer: DealerProfile, now: datetime, text: str, hold: str | None,
                              visit_ctx: dict[str, Any]) -> tuple[cannot_supply.CannotSupply | None,
                                                                  VisitOfferPlan | None]:
@@ -1523,6 +1580,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["vehicle_check"] = None
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
+    if order is not None and _already_sent(order.text, state.context_pack):
+        order = None  # the same fixed text already went out (Latina Neal, 29 Oct 2026)
+    if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and CONDITION_QUESTION.search(str(text or "")) \
+            and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # D1 (28 Oct 2026 meeting): the reply gives what we know (mileage, the history report); a manager confirms the
+        # rest - the lead goes to Managerial Review with an alert, and the AI keeps the conversation.
+        decision["manager_check"] = {"why": f"The customer asked about the vehicle's condition: {str(text)[:200]!r}"}
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
         decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",
@@ -1547,7 +1611,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # Betsy, 16 Oct 2026: "for n/a or null it needs to ask for the first and last name" - with one question per
         # message, the name is this message's question (the other detail waits for the next reply).
         decision["asks"] = [{"requirement": "customer_name", "label": "Name", "slots": [],
-                             "question": "Can you tell me how to spell your first and last name?",
+                             "question": NAME_QUESTION,
                              "explanation": "so we know who to ask for and can get everything ready for you"}]
         decision["slots"] = []
         decision["action"] = "ask"
@@ -1581,6 +1645,28 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["action"] = "ask"
             decision.pop("visit_offer", None)
         elif not just_booked and decision["action"] not in ("answer", "confirm", "offer_visit"):
+            decision["action"] = "ask"
+    # After the name and the email: a mobile number when none is on file (the user, 29 Oct 2026), one question per
+    # message, and only when this reply asks nothing else (or right after they gave their email, or just booked).
+    said_so_far = [str(m.get("text") or "") for m in (state.context_pack or {}).get("working_memory") or []
+                   if m.get("direction") == "inbound"] + [str(text or "")]
+    just_emailed = (bool(_found(_EMAIL, text)) or bool((ctx.lead_state or {}).get("email_asked"))) and not (
+        ctx.lead_state or {}).get("phone_asked")
+    decision["ask_phone"] = bool(
+        state.trigger == "inbound_message" and (known_first_name(state.customer_name) or known_first_name(gave_name))
+        and not resolve_recipient(ctx.lead, ctx.customer, "sms") and not _found(_PHONE, text)
+        and not decision.get("ask_name") and not decision.get("ask_email")
+        and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
+        and (just_booked or just_emailed or decision["action"] in ("acknowledge", "qualified", "partly_qualified")
+             # Never asked yet: it is this reply's one question, before the next qualifying one (asked next reply).
+             or (decision["action"] == "ask" and not (ctx.lead_state or {}).get("phone_asked")))
+        and _may_ask_phone(ctx.lead_state, now, said_so_far))
+    if decision["ask_phone"]:
+        decision["asks"] = [{"requirement": "customer_phone", "label": "Mobile number", "slots": [],
+                             "question": phone_question(state.lead_id or ""),
+                             "explanation": "so we can text quick updates - only if they'd like that"}]
+        decision["slots"] = []
+        if not just_booked and decision["action"] not in ("answer", "confirm", "offer_visit"):
             decision["action"] = "ask"
     if state.trigger == "inbound_message" and decision["action"] in ("offer_visit", "ask") \
             and _THANKS_ONLY.match(str(text or "")) and await _follow_up_promised(state, now):
@@ -1631,7 +1717,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # and stop - no visit, no question (the hold keeps the timed messages away too).
         decision["action"], decision["asks"], decision["slots"] = "acknowledge", [], []
         decision.pop("visit_offer", None)
-        decision["ask_email"] = False
+        decision["ask_email"] = decision["ask_phone"] = False
         decision["why"] = "A polite no (\"I'm all set\"): thank them, ask and offer nothing."
     decision["visit"] = visit_ctx
     decision["visit_plan"] = visit_plan.as_dict()

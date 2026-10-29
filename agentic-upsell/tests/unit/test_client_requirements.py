@@ -627,3 +627,29 @@ def test_a_handled_mark_matches_whatever_the_time_format():
     assert _same_time("2026-10-12T14:00:00.123Z", at) and _same_time(at.isoformat(), at)
     assert _same_time("2026-10-12T14:00:00Z", datetime(2026, 10, 12, 14, 0, tzinfo=UTC))
     assert not _same_time("2026-10-12T14:00:01.123Z", at) and not _same_time(None, at)
+
+
+def test_a_fixed_reply_already_sent_is_not_placed_again():
+    """Latina Neal, 29 Oct 2026: the same "vehicle history report" text went out twice in 5 minutes."""
+    from upsell_agent.agent.nodes.decide import _already_sent
+    fixed = ("Here is a link to the vehicle where you can locate the vehicle history report. If everything is to your "
+             "liking, what day works best for you to meet with us at the dealership?")
+    pack = {"working_memory": [{"direction": "outbound", "text": f"Hi Latina,\n\n{fixed} https://autopulse.ai/l/x"},
+                               {"direction": "inbound", "text": "What is the mileage and condition?"}]}
+    assert _already_sent(fixed, pack)
+    assert not _already_sent(fixed, {"working_memory": []})
+    assert not _already_sent("Ok", pack)  # too short to judge
+
+
+@pytest.mark.parametrize(("text", "condition"), [
+    ("I would also appreciate it if you could confirm the vehicle's current mileage, overall mechanical and cosmetic "
+     "condition, and whether there are any known issues", True),  # Latina Neal, 29 Oct 2026
+    ("Has it been in an accident?", True),
+    ("Has it been in any accidents?", True),
+    ("Was the timing belt replaced?", True),
+    ("When was the last service?", True),
+    ("Is it still available?", False),
+])
+def test_condition_questions_go_to_a_manager(text, condition):
+    from upsell_agent.agent.nodes.decide import CONDITION_QUESTION
+    assert bool(CONDITION_QUESTION.search(text)) is condition

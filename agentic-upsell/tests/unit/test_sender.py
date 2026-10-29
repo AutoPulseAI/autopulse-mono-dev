@@ -265,3 +265,17 @@ async def test_every_message_goes_in_the_customers_language(mongo, monkeypatch):
     # Already in their language: left as it is.
     await _sender().send(replace(_request(created, turn="t2"), text="¿Estás en la sala de exposición?"))
     assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"text": "¿Estás en la sala de exposición?"}) == 1
+
+
+async def test_an_emails_sign_off_ends_it(mongo):
+    """Conley Tjahjono, 29 Oct 2026: "Thank you" sat in the middle - the required question and the night question were
+    added after it."""
+    from dataclasses import replace
+    from upsell_agent.integrations.mongodb import DEV_OUTBOX_COLLECTION
+    created = await _lead(channel="email")
+    body = ("Hi Conley, this is Nicole, following up on the 2021 Tesla Model 3. It's here.\n\nThank you\n\n"
+            "Tell me, what are you driving now? We're closed right now. Would you like to chat now, or during business hours?")
+    await _sender().send(replace(_request(created, channel="email"), text=body))
+    sent = await mongo[DEV_OUTBOX_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert sent["text"].endswith("business hours?\n\nThank you")
+    assert sent["text"].count("Thank you") == 1

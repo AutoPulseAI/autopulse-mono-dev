@@ -318,7 +318,8 @@ _ATTRS = {
     "short_links": ("ENABLED",),
     "presend": ("CHECKS",),
     "link_resolver": ("SHAREABLE",),
-    "decide": ("BUSY_RULE", "BUSY_PHRASES"),
+    "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
+               "CONDITION_TO_MANAGER"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -349,6 +350,7 @@ SAFEGUARD_SWITCHES = {
     "no_still_with_me_after_ill_reach_out": ("studio_cadences", "WAIT_WHEN_THEY_WILL_REACH_OUT"),
     "hybrid_stock_search": ("stock_match", "ENABLED"),
     "all_wheel_drive_search": ("search_stock", "AWD_ENABLED"),
+    "condition_questions_to_a_manager": ("decide", "CONDITION_TO_MANAGER"),
 }
 SAFEGUARD_NUMBERS = {  # field -> (module, attribute, lowest, highest)
     "followups_sent_at_once": ("followups", "FIRE_CONCURRENCY", 1, 10),
@@ -740,6 +742,15 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
             if str(r.get("reason_starts_with") or "").strip())
     elif key == "status_workflows" and isinstance(c.get("map"), dict):
         mods["lifecycle"].STAFF_STATUS_EVENTS.update({k: v for k, v in c["map"].items() if v})
+    elif key == "contact_questions":
+        decide = mods["decide"]
+        if str(c.get("name_question") or "").strip():
+            decide.NAME_QUESTION = str(c["name_question"]).strip()
+        for field, attr in (("email_questions", "EMAIL_QUESTIONS"), ("phone_questions", "PHONE_QUESTIONS")):
+            if isinstance(c.get(field), list) and [q for q in c[field] if str(q).strip()]:
+                setattr(decide, attr, tuple(str(q).strip() for q in c[field] if str(q).strip()))
+        if isinstance(c.get("ask_for_a_phone_when_missing"), bool):
+            decide.ASK_PHONE = c["ask_for_a_phone_when_missing"]
     elif key == "email_subjects" and isinstance(c.get("by_intent"), dict):
         from upsell_agent.agent import lead_brief
         lead_brief.SUBJECT_IDEAS = {**lead_brief.SUBJECT_IDEAS, **{
