@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T02:13:31.762537+00:00",
- "revision": 25,
+ "exported_at": "2026-10-29T02:26:49.578881+00:00",
+ "revision": 26,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -2126,6 +2126,47 @@
      "Closed Lost": "staff_closed_lost",
      "Closed - Lost": "staff_closed_lost"
     }
+   },
+   "locked": false
+  },
+  {
+   "type": "status_rules",
+   "key": "email_subjects",
+   "name": "Email subject lines by intent",
+   "content": {
+    "by_intent": {
+     "sales": [
+      "{first_name}, the {vehicle} you asked about",
+      "Still thinking about the {vehicle}?",
+      "A quick question about the {vehicle}"
+     ],
+     "trade": [
+      "What your {trade} could be worth",
+      "A number for your trade-in",
+      "Trading in your {trade}?"
+     ],
+     "credit": [
+      "Your financing options for the {vehicle}",
+      "Getting you approved, step by step",
+      "Payments that work for you"
+     ],
+     "price_payment": [
+      "Making the {vehicle} fit your budget",
+      "Your payment options on the {vehicle}",
+      "The numbers on the {vehicle}"
+     ],
+     "service": [
+      "Your {vehicle}'s service",
+      "Time for a service visit?",
+      "Booking your service"
+     ],
+     "general": [
+      "Following up on your inquiry",
+      "A quick question for you",
+      "{first_name}, we're here to help"
+     ]
+    },
+    "rule": "Write a short, specific subject (under 50 characters) in this style, with this customer's car or name - never copy an example word for word, never all caps or clickbait."
    },
    "locked": false
   },
