@@ -55,7 +55,22 @@ def _iso(value: Any) -> Any:
 
 
 def _same_time(a: Any, b: Any) -> bool:
-    return a is not None and b is not None and _iso(a) == _iso(b)
+    """The same moment, to the millisecond, whatever the format (29 Oct 2026: marks written by a script as
+    "...14:00:00.123Z" didn't match "...14:00:00.123000+00:00", and 29 handled alerts stayed open)."""
+    if a is None or b is None:
+        return False
+    def moment(v: Any) -> datetime | None:
+        if isinstance(v, str):
+            try:
+                v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        if not isinstance(v, datetime):
+            return None
+        v = v if v.tzinfo else v.replace(tzinfo=UTC)
+        return v.replace(microsecond=v.microsecond // 1000 * 1000)
+    x, y = moment(a), moment(b)
+    return x is not None and x == y
 
 
 def notices_for(state: dict[str, Any]) -> list[dict[str, Any]]:

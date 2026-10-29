@@ -617,3 +617,13 @@ async def test_with_the_live_at_night_setting_a_night_lead_still_gets_one_messag
     assert len(await _sent(mongo, created, "email")) == 1 and not await _sent(mongo, created)
     assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
         {"lead_id": created["lead_id"], "kind": "first_reply_held", "status": "pending"})
+
+
+def test_a_handled_mark_matches_whatever_the_time_format():
+    """29 Oct 2026: a bulk "handled" written as "...00.123Z" didn't match the notice's "...00.123000+00:00"."""
+    from datetime import UTC, datetime
+    from upsell_agent.api.staff_view import _same_time
+    at = datetime(2026, 10, 12, 14, 0, 0, 123000, tzinfo=UTC)
+    assert _same_time("2026-10-12T14:00:00.123Z", at) and _same_time(at.isoformat(), at)
+    assert _same_time("2026-10-12T14:00:00Z", datetime(2026, 10, 12, 14, 0, tzinfo=UTC))
+    assert not _same_time("2026-10-12T14:00:01.123Z", at) and not _same_time(None, at)
