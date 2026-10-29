@@ -145,9 +145,25 @@ async def test_cannot_supply_answers_are_her_words(mongo, asked, starts):
 
 
 async def test_a_custom_video_request_needs_the_dealership(mongo):
+    from bson import ObjectId
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
     created = await _new_lead(mongo, vehicle=RAV4)
+    dealer_id = (await _state(mongo, created)).get("dealer_id")
+    # A live dealer: the AI's escalation reaches the CRM (Robby Torres, 28 Oct 2026 meeting).
+    await mongo[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(dealer_id)}, {"$set": {"ai_mode": "live"}},
+                                                      upsert=True)
     await _say(created, "Can you send me a video of the interior?")
     assert (await _state(mongo, created)).get("crm_status_sync", {}).get("crm_status") == "Managerial Review"
+    # Robby Torres, 28 Oct 2026 meeting: the escalation is on Dealer Action Required, and in its handled list after.
+    from upsell_agent.api.staff_view import Handled, list_notices, mark_handled
+    dealer = dealer_id
+    [row] = [n for n in (await list_notices(dealer))["notices"] if n["lead_id"] == created["lead_id"]]
+    assert row["kind"] == "manager_escalation" and "Managerial Review" in row["text"]
+    await mark_handled(created["lead_id"], Handled(dealer_id=dealer, source=row["source"], by="Mercy"))
+    assert all(n["lead_id"] != created["lead_id"] for n in (await list_notices(dealer))["notices"])
+    handled = [n for n in (await list_notices(dealer, include_handled=True))["notices"]
+               if n["lead_id"] == created["lead_id"]]
+    assert handled and handled[0]["handled"] and handled[0]["handled_by"] == "Mercy"
 
 
 # --- Buyer's order (email 12 Oct) ----------------------------------------------------------------------------------

@@ -158,6 +158,7 @@ async def list_notices(dealer_id: str, include_handled: bool = False) -> dict[st
 ALERT_KINDS: dict[str, str] = {
     "handoff": "The AI handed the lead to a person (upset, asked for a person, declined appointments, can't supply)",
     "no_staff_response": "Nobody answered a handoff",
+    "manager_escalation": "The AI set the lead to Managerial Review",
     "person_requested": "The customer asked to talk to a person (call or text not chosen yet)",
     "call_requested": "The customer asked for a call",
     "text_requested": "The customer asked for a text from a person",
@@ -185,6 +186,9 @@ ALERT_KINDS: dict[str, str] = {
 # Which kinds count (set in AI Studio: Rules & Prompts -> "Dealership Action Required: what counts").
 ACTION_KINDS = frozenset({
     "handoff", "no_staff_response",           # the AI handed the lead to a person (Betsy's cases), and no one answered
+    # Robby Torres, 28 Oct 2026 meeting: set to Managerial Review ("can't supply photos or a video") while the AI kept
+    # the lead, he was never on Dealer Action Required, open or handled. Every escalation the AI makes is listed.
+    "manager_escalation",
     "person_requested", "call_requested", "text_requested",  # the customer asked for a person (to call / text)
     "call_escalation", "sold_pending_escalation", "service_request",  # a person has to act on it
     "possible_opt_out", "bad_contact", "reply_on_closed_lead",        # a person has to decide
@@ -192,7 +196,7 @@ ACTION_KINDS = frozenset({
 
 # Kinds added after AI Studio's list could have been saved without them (a saved list without its "kinds" can't
 # say which kinds it knew).
-KINDS_ADDED_LATER = frozenset({"person_requested"})
+KINDS_ADDED_LATER = frozenset({"person_requested", "manager_escalation"})
 
 
 def needs_action(notice: dict[str, Any]) -> bool:
