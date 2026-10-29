@@ -1419,8 +1419,8 @@ async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEven
                                                        "inquiry", include_open=True, keep_requested=False)
         # The user, 28 Oct 2026 (Brian Rosenberg: "Please stop texting I'm no longer interested" - the status stayed
         # open with no note, so staff saw nothing): staff get a note in the conversation.
-        await note_inquiry_stopped(db, lead_id, message["text"], customer_id=event.customer_id,
-                                   platform=deps.platform, close=True)
+        await note_inquiry_stopped(db, lead_id, message["text"], channels=opt_out.channels,
+                                   customer_id=event.customer_id, platform=deps.platform)
     confirm = opt_out_rules.INQUIRY_CONFIRMATION.format(verb=opt_out_rules.inquiry_verb(channels))
     own = await states.find_one({"lead_id": lead_id}, projection={"stage": 1, "sold_delivered_at": 1}) or {}
     owner = not event.shadow and (own.get("stage") == lifecycle.Stage.SOLD_DELIVERED.value
@@ -1443,20 +1443,20 @@ def _stop_words(said: str) -> str:
     return " ".join(str(said or "").split())[:300]
 
 
-async def note_inquiry_stopped(db: DealerScopedDatabase, lead_id: str, said: str, *, customer_id: str | None = None,
-                               platform: Any | None = None, close: bool = False) -> dict[str, Any]:
-    """The staff note for a lead the customer asked us to stop about (agent/crm_notes.py), once per lead; with
-    `close`, the CRM status goes to Closed - Lost too (the CRM never overwrites a status staff chose)."""
-    from upsell_agent.agent import crm_notes, crm_status
-    if close:
-        await crm_status.sync_closed(db, lead_id, "inquiry_stopped", platform=platform,
-                                     reason=f"The customer asked us to stop about this inquiry: \"{_stop_words(said)}\"")
+async def note_inquiry_stopped(db: DealerScopedDatabase, lead_id: str, said: str, *, channels: Any = None,
+                               customer_id: str | None = None, platform: Any | None = None) -> dict[str, Any]:
+    """The staff note for a lead the customer asked us to stop about (agent/crm_notes.py), once per lead. The lead stays
+    open: Betsy, 28 Oct 2026 meeting - an opt-out stops only its channel, and the AI never sets Closed - Lost for one."""
+    from upsell_agent.agent import crm_notes
+    stopped = [c for c in (channels or ("sms",)) if c in ("sms", "email")] or ["sms"]
+    words = {"sms": "texts", "email": "emails"}
+    others = [words[c] for c in ("sms", "email") if c not in stopped]
+    what = " and ".join(words[c] for c in stopped)
     return await crm_notes.write(
         db, lead_id=lead_id, kind="inquiry_stopped", customer_id=customer_id, platform=platform,
         key=f"inquiry_stopped:{lead_id}",
-        text=(f"The customer asked us to stop about this inquiry: \"{_stop_words(said)}\". The lead is closed (Closed - "
-              "Lost) and the AI sends nothing more on it (no texts, emails or follow-ups); please don't contact them about it. Their consent stays: "
-              "a new inquiry from them is handled as usual, and a message from them is answered."))
+        text=(f"The customer asked us to stop about this inquiry: \"{_stop_words(said)}\". No more {what} on this lead"
+              + (f"; {others[0]} continue." if others else ".") + " The lead stays open."))
 
 
 async def _note_earlier_stop(db: DealerScopedDatabase, deps: TurnDeps, event: LeadCreatedEvent,
