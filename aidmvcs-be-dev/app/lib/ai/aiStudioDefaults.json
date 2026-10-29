@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T01:53:42.165703+00:00",
- "revision": 23,
+ "exported_at": "2026-10-29T02:03:21.930601+00:00",
+ "revision": 24,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3774,10 +3774,13 @@
     "safety_net_every_lead_has_a_next_step": true,
     "no_still_with_me_after_ill_reach_out": true,
     "hybrid_stock_search": true,
+    "all_wheel_drive_search": true,
     "followups_sent_at_once": 4,
     "followups_per_minute": 40,
     "cars_from_current_search": 3,
     "cars_from_new_search": 2,
+    "all_wheel_drive_budget_stretch_percent": 25,
+    "all_wheel_drive_cars_added": 3,
     "stop_ends_all_followups_explained": "When a customer says stop (by text or email), the AI sends no more follow-ups on that inquiry on any channel - unless they keep one (\"don't email me, text is fine\"). Their own messages are still answered. Off: only the channel they stopped.",
     "stop_sentence_in_a_longer_message_explained": "\"Please stop. I'll reach out when I'm coming\" counts as a stop, even inside a longer message.",
     "second_lead_form_counts_as_contacted_explained": "Off (recommended): a second lead form from the same customer is a new inquiry, not contact - only a message from the customer makes them Contacted.",
@@ -3788,7 +3791,10 @@
     "followups_per_minute_explained": "How many scheduled follow-ups each minute's run takes (10-200); the rest go the next minute. 40 since 26 Oct.",
     "hybrid_stock_search_explained": "On since 27 Oct 2026 (checked on 674 real leads). Besides the usual search, the whole stock is scored against what the customer asked for, so a car named differently from the feed is still found (\"540\" = 5 Series 540i, \"Sonata\" = Sonata Hybrid). The AI picks from both lists, and asks which car they mean when a few could fit.",
     "cars_from_current_search_explained": "With the hybrid search on: how many cars come from the usual search (1-5).",
-    "cars_from_new_search_explained": "With the hybrid search on: how many more cars the new search adds (0-5)."
+    "cars_from_new_search_explained": "With the hybrid search on: how many more cars the new search adds (0-5).",
+    "all_wheel_drive_search_explained": "On since 29 Oct 2026 (28 Oct meeting). When the customer asks about all-wheel drive (xDrive, quattro, 4MATIC, AWD, 4x4...), the AI says plainly whether their car has it, and offers all-wheel-drive cars from stock in their budget; its next question stays about all-wheel drive.",
+    "all_wheel_drive_budget_stretch_percent_explained": "How loosely the budget is read for that search (0-100%): the higher of their budget and the car's price, plus this much. 25 means \"14-15K\" on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
+    "all_wheel_drive_cars_added_explained": "How many all-wheel-drive cars that search adds (0-5)."
    },
    "locked": false
   },
