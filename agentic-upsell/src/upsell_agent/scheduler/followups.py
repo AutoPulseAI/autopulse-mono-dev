@@ -1649,8 +1649,11 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         # cancelled; Betsy: "Appt cadence not working"): a lead paused only because it's a duplicate still gets its
         # own appointment's reminders. Staff holding the lead (a handoff, a staff reply) still means silence.
         only_duplicate = status == "paused" and str(state.get("status_reason") or "").startswith("Duplicate of lead")
+        # The user, 29 Oct 2026 (Eliza Swiderski, Nicole Oquendo; Betsy, 28 Oct meeting): the appointment's messages
+        # go out while staff or a manager hold the lead too. An opt-out still stops them (and the send check).
+        held_by_people = status in ("paused", "handoff")
         checks = [
-            ("lead_active", status not in SILENT_STATUSES or only_duplicate, f"lead is {status}" + (
+            ("lead_active", status not in SILENT_STATUSES or only_duplicate or held_by_people, f"lead is {status}" + (
                 f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, doc["kind"]),
             ("same_appointment", same or not needs_booking_check,

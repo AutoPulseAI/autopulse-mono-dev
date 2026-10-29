@@ -96,13 +96,15 @@ async def test_a_lead_with_staff_still_becomes_a_no_show_and_never_strands(mongo
     await _fire(mongo, created, "no_show_check")
     assert (await _state(mongo, created))["stage"] == "appointment_no_show"
     before = len(await _outbox(mongo, created))
-    # The no-show flow goes on (no messages while staff hold it) and the lead goes back into follow-up.
+    # The no-show flow goes on and the lead goes back into follow-up. The user, 29 Oct 2026 (Betsy, 28 Oct meeting:
+    # "confirmation messages and post-appointment follow-ups must still be sent"): the appointment's messages go out
+    # while staff hold the lead too.
     for _ in range(3):
         set_clock(clock.now() + timedelta(hours=25))
         await followups.fire_due(_deps())
     state = await _state(mongo, created)
     assert state["stage"] == "contact_made_no_next_action"
-    assert len(await _outbox(mongo, created)) == before  # nothing sent to a lead staff hold
+    assert len(await _outbox(mongo, created)) > before
     set_clock(clock.now() + timedelta(days=120))
     await lifecycle.close_expired()
     assert (await _state(mongo, created))["stage"] == "closed_lost"
@@ -345,3 +347,34 @@ async def test_a_reply_after_a_no_show_never_puts_the_lead_back_to_appointment_s
     set_clock(clock.now() + timedelta(minutes=2))
     await _say(created, "Not rushing me, just don't want to get stuck with an SUV that has major issues")
     assert (await _state(mongo, created))["stage"] != "appointment_set"
+
+
+@flow
+async def test_a_staff_reply_keeps_the_appointment_messages(mongo):
+    """Eliza Swiderski, 29 Oct 2026: booked for 6 PM, Mercy replied by hand, and the "are you here?" check was cancelled."""
+    from upsell_agent.events.models import LeadPausedEvent
+    created, _ = await _booked_friday(mongo)
+    await handlers.handle_lead_paused(LeadPausedEvent(event_id="p1", dealer_id=DEALER, lead_id=created["lead_id"],
+                                                      reason="Staff replied by hand (Mercy Carill)"), _deps())
+    assert any(s["step"] == "no_show_check" for s in await _steps(mongo, created))
+    await _fire(mongo, created, "no_show_check")
+    assert (await _state(mongo, created))["stage"] == "appointment_no_show"
+
+
+@flow
+async def test_a_booking_moved_after_the_lead_moved_on_is_an_appointment_again(mongo):
+    """Larry Harris, 29 Oct 2026: a no-show on 26 Oct, back to Contacted - No Next Action, then the booking was moved to
+    29 Oct 2 PM - the AI ignored it: no reminders, no "are you here?"."""
+    from upsell_agent.events.models import BookingChangedEvent
+    from upsell_agent.integrations.mongodb import PLATFORM_BOOKINGS_COLLECTION, dealer_scoped_db
+    created, booking = await _booked_friday(mongo)
+    await lifecycle.apply(dealer_scoped_db(DEALER), created["lead_id"], [lifecycle.Event("appointment_missed")])
+    await lifecycle.apply(dealer_scoped_db(DEALER), created["lead_id"], [lifecycle.Event("no_show_unanswered")])
+    assert (await _state(mongo, created))["stage"] == "contact_made_no_next_action"
+    await mongo[PLATFORM_BOOKINGS_COLLECTION].update_one({"_id": booking["_id"]}, {"$set": {
+        "bookingDate": booking["bookingDate"] + timedelta(days=3)}})
+    out = await handlers.handle_booking_changed(BookingChangedEvent(
+        event_id="b1", dealer_id=DEALER, lead_id=created["lead_id"], change="moved"), _deps())
+    assert out["status"] == "appointment_replanned"
+    assert (await _state(mongo, created))["stage"] == "appointment_set"
+    assert any(s["step"] == "no_show_check" for s in await _steps(mongo, created))
