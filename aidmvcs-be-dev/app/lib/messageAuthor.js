@@ -66,8 +66,12 @@ const SENDING = new Set(["queued", "pending", "accepted", "sending", "scheduled"
 export function messageStatusLabel(email) {
   const status = String(email?.status || "").toLowerCase();
   if (["received", "incoming"].includes(status)) return "Received";
+  // 30 Oct 2026: the email's own events from SES (app/lib/ai/sesEvents.js) - like the campaigns' log.
+  if (email?.email_event === "complaint") return "Marked as spam";
+  if (status === "bounced" || email?.email_event === "bounced") return "Bounced";
   if (FAILED.has(status) || FAILED.has(String(email?.ai_delivery_status || "").toLowerCase())) return "Failed";
   if (SENDING.has(status)) return "Sending";
+  if (email?.clicked_at) return "Clicked";
   // 28 Oct 2026 meeting: "if it's opened it should show opened" (app/api/email/open).
   if (email?.opened_at) return "Opened";
   return "Delivered";
