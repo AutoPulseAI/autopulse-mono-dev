@@ -782,7 +782,8 @@ test('messages sent and received are counted by who sent them, notes and the lea
     subject: 's', message_id: `x-${Math.random()}`, mail_content: 'hi', status, communication_type: 'sms', date: ts,
     timestamp: ts, ...extra });
   // Raw rows, as live: the delivery callback writes 'delivered', which the model's enum doesn't list.
-  await Email.collection.insertMany([m(a, 'delivered', { ai_generated: true }), m(a, 'sent', { ai_generated: true, communication_type: 'email' }),
+  // The AI's text carried the car's photo: an MMS (28 Oct 2026 meeting).
+  await Email.collection.insertMany([m(a, 'delivered', { ai_generated: true, has_attachments: true }), m(a, 'sent', { ai_generated: true, communication_type: 'email' }),
     m(b, 'delivered', { message_by: new mongoose.Types.ObjectId() }), m(b, 'failed'), m(b, 'received'),
     m(a, 'note', { is_note: true }), m(b, 'received', { mail_content: '<?adf version="1.0"?>' })]);
   const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
@@ -790,7 +791,7 @@ test('messages sent and received are counted by who sent them, notes and the lea
   assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2 });
   assert.deepEqual(got.received, { total: 1, customers: 1 });
   // Delivered: the texts with a "delivered" report and the emails the mail service took - not the failed text.
-  assert.deepEqual(got.delivered, { total: 3, texts: 2, emails: 1, customers: 2 });
+  assert.deepEqual(got.delivered, { total: 3, texts: 2, mms: 1, emails: 1, customers: 2 });
   assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
 });
 

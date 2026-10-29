@@ -51,7 +51,15 @@ export async function contactedLeadIds(leadIds, { EmailModel = Email, rule = nul
 // today it should be in this list - even if they put stop"): the leads among `leadIds` with a customer message in
 // [from, to], whenever the lead came in, latest reply first: [{ _id, last_reply_at }]. A lead's own arrival (the
 // portal's email / ADF) is not a reply.
-export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received' } = {}) {
+// One channel of our messages, for the Messages card's list (28 Oct 2026 meeting: "you will add that filter"). MMS: a
+// text with a photo; SMS: a text without one.
+const CHANNEL_MATCH = {
+  sms: { communication_type: 'sms', has_attachments: { $ne: true } },
+  mms: { communication_type: 'sms', has_attachments: true },
+  email: { communication_type: { $ne: 'sms' } },
+};
+
+export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received', channel = null } = {}) {
   if (!leadIds?.length) return [];
   const at = {};
   if (from) at.$gte = from;
@@ -61,7 +69,7 @@ export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, di
   const status = direction === 'sent' ? { $nin: [...INBOUND, 'note'] } : { $in: INBOUND };
   const rows = await EmailModel.aggregate([
     { $match: { lead_id: { $in: leadIds }, status, is_note: { $ne: true }, is_lead_email: { $ne: true },
-      ...(from || to ? { timestamp: at } : {}) } },
+      ...(from || to ? { timestamp: at } : {}), ...(CHANNEL_MATCH[channel] || {}) } },
     { $project: { lead_id: 1, timestamp: 1,
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } },
@@ -80,7 +88,7 @@ const FAILED = ['failed', 'undelivered', 'bounced', 'error'];
 // sent them, and the customers' messages back. Notes and the portal's lead email are not messages.
 export async function messageActivity(leadIds, from, to, { EmailModel = Email } = {}) {
   const empty = { sent: { total: 0, ai: 0, staff: 0, automatic: 0, failed: 0, customers: 0 },
-    delivered: { total: 0, texts: 0, emails: 0, customers: 0 }, received: { total: 0, customers: 0 } };
+    delivered: { total: 0, texts: 0, mms: 0, emails: 0, customers: 0 }, received: { total: 0, customers: 0 } };
   if (!leadIds?.length) return empty;
   const at = {};
   if (from) at.$gte = from;
@@ -94,6 +102,8 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
       delivered: { $or: [{ $and: [{ $eq: ['$communication_type', 'sms'] }, { $eq: ['$status', 'delivered'] }] },
         { $and: [{ $ne: ['$communication_type', 'sms'] }, { $in: ['$status', ['sent', 'delivered']] }] }] },
       sms: { $eq: ['$communication_type', 'sms'] },
+      // 28 Oct 2026 meeting ("MMS costs more than SMS - can we show it on this dashboard?"): a text with a photo.
+      mms: { $and: [{ $eq: ['$communication_type', 'sms'] }, { $eq: ['$has_attachments', true] }] },
       ai: { $eq: ['$ai_generated', true] }, staff: { $gt: ['$message_by', null] },
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } } } },
@@ -106,6 +116,7 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
       received: { $sum: { $cond: ['$inbound', 1, 0] } },
       delivered: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered'] }, 1, 0] } },
       texts: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered', '$sms'] }, 1, 0] } },
+      mms: { $sum: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered', '$mms'] }, 1, 0] } },
       deliveredTo: { $addToSet: { $cond: [{ $and: [{ $not: ['$inbound'] }, '$delivered'] }, '$lead_id', '$$REMOVE'] } },
       sentTo: { $addToSet: { $cond: ['$inbound', '$$REMOVE', '$lead_id'] } },
       from: { $addToSet: { $cond: ['$inbound', '$lead_id', '$$REMOVE'] } } } },
@@ -113,7 +124,7 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
   if (!row) return empty;
   return { sent: { total: row.sent, ai: row.ai, staff: row.staff, automatic: row.sent - row.ai - row.staff,
     failed: row.failed, customers: row.sentTo.length },
-    delivered: { total: row.delivered, texts: row.texts, emails: row.delivered - row.texts,
+    delivered: { total: row.delivered, texts: row.texts, mms: row.mms, emails: row.delivered - row.texts,
       customers: row.deliveredTo.length },
     received: { total: row.received, customers: row.from.length } };
 }

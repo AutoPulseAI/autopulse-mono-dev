@@ -469,7 +469,8 @@ export async function GET(req) {
       const { $gte: from, $lte: to } = query.createdAt || {};
       delete query.createdAt;
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
-      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received' });
+      repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received',
+        channel: messagesSent ? url.searchParams.get("channel") : null });
       query._id = { $in: repliedOrder.map((r) => r._id) };
     } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);

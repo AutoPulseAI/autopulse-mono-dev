@@ -796,7 +796,7 @@ export default function Dashboard() {
               label="Messages Delivered"
               link={withRange('/dealer/leads?messages=sent')}
               description={activity
-                ? `SMS: ${activity.delivered.texts} · Email: ${activity.delivered.emails} · ${cardRangeText()}`
+                ? `SMS: ${activity.delivered.texts} (MMS: ${activity.delivered.mms || 0}) · Email: ${activity.delivered.emails} · ${cardRangeText()}`
                 : 'Could not count messages'}
             />
 
