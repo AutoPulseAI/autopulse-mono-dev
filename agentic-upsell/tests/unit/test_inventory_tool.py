@@ -557,3 +557,19 @@ async def test_asking_for_xdrive_loads_all_wheel_drive_cars_in_a_loosely_read_bu
     awd = [r for r in search["output"]["records"] if r.get("found_by") == "all_wheel_drive"]
     assert awd and {r["drivetrain"] for r in awd} == {"AWD"}
     assert any("all-wheel drive" in line for line in search["reasoning"])
+
+
+@pytest.mark.usefixtures("during_opening_hours", "ny_customer")
+async def test_the_car_they_asked_about_left_stock_is_said_plainly(mongo):
+    """Josue Penafiel, 29 Oct 2026: "Did you sell the other blue 2022 3 Series?" got "I can't confirm whether that one
+    sold" twice. His car had left the feed on 27 Oct: the reply is told so, with the date."""
+    await _stock(mongo,
+                 _vehicle("3MW5R7J08N8C32682", make="BMW", model="3 Series", trim="330i xDrive", color="Blue Metallic",
+                          year=2022, removedAt=datetime(2026, 10, 27, 12, 0, tzinfo=UTC)),
+                 _vehicle("3MW5U9J04M8B72313", make="BMW", model="3 Series", trim="M340i xDrive", color="Blue Metallic",
+                          year=2021))
+    created = await _new_lead("Looking at a used BMW 3 Series")
+    await mongo["leads"].update_one({"_id": ObjectId(created["lead_id"])}, {"$set": {"vin": "3MW5R7J08N8C32682"}})
+    await _reply(created, "Did you sell the other bmw blue 2022 series 3 ?")
+    search = await _search(mongo, created)
+    assert any("no longer in our inventory (since October 27)" in line for line in search["reasoning"])

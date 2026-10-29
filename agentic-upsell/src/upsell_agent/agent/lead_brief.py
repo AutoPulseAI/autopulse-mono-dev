@@ -133,6 +133,8 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
             "vehicles_loaded": len(inventory),
             # 28 Oct 2026 meeting: a feature the customer asked about (all-wheel drive) is answered first.
             **({"feature_asked": stock["feature"]} if stock.get("feature") else {}),
+            # Josue Penafiel, 29 Oct 2026: the car on the lead left the inventory - said plainly, not "I can't confirm".
+            **({"their_car_no_longer_in_stock": stock["their_car"]} if stock.get("their_car") else {}),
         },
         "this_message": {
             "action": decision.get("action"),

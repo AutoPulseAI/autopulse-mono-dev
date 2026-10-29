@@ -296,7 +296,8 @@ class StubInventorySource:
     """route.js's query for the parameters this service sends, over the local database."""
 
     async def search(self, params: dict[str, str], limit: int) -> dict[str, Any]:
-        flt: dict[str, Any] = {}
+        # route.js: `{ removedAt: null }` - a car its dealer's latest feed no longer has is gone.
+        flt: dict[str, Any] = {"removedAt": None}
         for param, fieldname in (("make", "make"), ("model", "model"), ("car_type", "condition"),
                                  ("body_type", "body")):
             if params.get(param):
