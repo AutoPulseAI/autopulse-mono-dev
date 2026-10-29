@@ -3,7 +3,7 @@
 // service requests, wrong numbers / bad contact details, possible opt-outs,
 // "not interested" reasons, bookings it made. Staff mark each one handled.
 //   /dealer/ai/alerts              open alerts
-//   /dealer/ai/alerts?all=1        including handled ones
+//   /dealer/ai/alerts?all=1        the handled ones only
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -58,7 +58,9 @@ function AlertsContent() {
 
   const kinds = useMemo(() => [...new Set(alerts.map((a) => a.kind))], [alerts]);
   const needle = query.trim().toLowerCase();
-  const filtered = alerts.filter((a) => (!kindFilter || a.kind === kindFilter) && (!needle
+  // The user, 29 Oct 2026 ("why is Robby Torres in both handled and unhandled?"): the switch shows the handled alerts
+  // only, so each lead is in one list - open, or handled.
+  const filtered = alerts.filter((a) => (showHandled ? a.handled : !a.handled) && (!kindFilter || a.kind === kindFilter) && (!needle
     || [a.lead?.name, a.lead?.phone, a.lead?.email, a.lead?.vehicle, a.text].some((v) => String(v || "").toLowerCase().includes(needle))));
   const pages = Math.max(1, Math.ceil(filtered.length / perPage));
   const current = Math.min(page, pages);
@@ -132,7 +134,7 @@ function AlertsContent() {
         ) : !shown.length ? (
           <div className="w_card">
             <p className="text-secondary-light text-center py-4 mb-0">
-              {showHandled ? "No alerts." : "Nothing needs your attention right now."}
+              {showHandled ? "No handled alerts." : "Nothing needs your attention right now."}
             </p>
           </div>
         ) : (<>
