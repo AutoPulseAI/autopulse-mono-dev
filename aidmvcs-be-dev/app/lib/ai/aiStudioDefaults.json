@@ -1,6 +1,6 @@
 {
  "exported_at": "2026-10-27T00:00:05.815056+00:00",
- "revision": 20,
+ "revision": 21,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3802,7 +3802,7 @@
    "key": "safeguards",
    "name": "Safeguards",
    "content": {
-    "stop_ends_all_followups": true,
+    "stop_ends_all_followups": false,
     "stop_sentence_in_a_longer_message": true,
     "second_lead_form_counts_as_contacted": false,
     "one_conversation_per_customer": true,
