@@ -25,6 +25,7 @@ never double-messaging a customer beats never losing a message.
 """
 
 import asyncio
+import re
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field, replace
@@ -130,6 +131,27 @@ class SendOutcome:
         return asdict(self)
 
 
+# A paragraph that is only a sign-off ("Thank you", "Thanks,", "Best regards").
+_SIGN_OFF = re.compile(r"^\s*(?:thank you|thanks|many thanks|best regards|kind regards|regards|sincerely|best)[\s.,!]*$",
+                       re.IGNORECASE)
+
+
+def _sign_off_last(req: "SendRequest", why: list[str]) -> "SendRequest":
+    """Conley Tjahjono, 29 Oct 2026: the night email read "...fees. / Thank you / Tell me, what are you driving now?
+    We're closed right now... Would you like to chat now...?" - the required question and the night question were
+    added after the sign-off. In an email the sign-off is moved to the end, after everything else."""
+    if req.channel != "email" or not req.text:
+        return req
+    parts = re.split(r"\n\s*\n", req.text.strip())
+    offs = [i for i, p in enumerate(parts) if _SIGN_OFF.match(p)]
+    if not offs or offs == [len(parts) - 1]:
+        return req
+    sign = parts[offs[-1]].strip()
+    body = [p for i, p in enumerate(parts) if i not in offs]
+    why.append("Email sign-off moved to the end (text had been added after it).")
+    return replace(req, text="\n\n".join([*body, sign]))
+
+
 class Sender:
     def __init__(
         self,
@@ -190,6 +212,7 @@ class Sender:
             why.append("Resuming a claimed send that never reached the provider.")
         else:
             req = await self._in_customer_language(db, req, why)
+            req = _sign_off_last(req, why)
             try:
                 inserted = await messages.insert_one(self._new_row(req))
             except DuplicateKeyError:
