@@ -1206,10 +1206,6 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
     db = dealer_scoped_db(event.dealer_id)
     staff_status = lifecycle.staff_status_from_reason(event.reason)
     outcome_status = lifecycle.manager_outcome_from_reason(event.reason)
-    if staff_status == "Managerial Review":
-        # The user, 31 Oct 2026: from now on every Managerial Review lead is in Dealer Action Required, whoever set it.
-        from upsell_agent.agent import crm_status
-        await crm_status.note_escalation(db, event.lead_id, "Set to Managerial Review by staff")
     if staff_status or outcome_status:
         # A cadence added in AI Studio that starts when staff set this status (scheduler/studio_cadences.py).
         status_lead = await find_lead(db, event.lead_id)

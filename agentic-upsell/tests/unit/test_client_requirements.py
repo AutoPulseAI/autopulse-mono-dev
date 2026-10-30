@@ -662,14 +662,3 @@ async def test_a_customer_hold_stops_an_ai_studio_touch(mongo):
     held = customer_hold.check({"customer_hold": {"at": clock.now(), "until": None, "reason": "not interested"}},
                                "studio_touch")
     assert held[1] is False
-
-
-async def test_staff_setting_managerial_review_adds_an_alert(mongo):
-    """The user, 31 Oct 2026: every Managerial Review lead from now on is in Dealer Action Required."""
-    from upsell_agent.agent.crm_status import note_escalation
-    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, dealer_scoped_db
-    created = await _new_lead(mongo, vehicle=RAV4)
-    dealer = (await _state(mongo, created))["dealer_id"]
-    await note_escalation(dealer_scoped_db(dealer), created["lead_id"], "Set to Managerial Review by staff")
-    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
-    assert state["staff_notice"]["kind"] == "manager_escalation"
