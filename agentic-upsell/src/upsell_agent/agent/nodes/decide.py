@@ -772,8 +772,9 @@ async def _visit_and_booking(
     built_times: list[dict[str, str]] = []
     # Stream Q: three unanswered offers are enough (seen: "attempt 4 of 3" when the customer never picked nor
     # declined); after that a visit is offered again only when they ask to come in.
+    # A scheduled touch that must end with the visit gets fresh times (past ones are dropped: drop_past_offers).
     offers_left = (not conversation.visit or conversation.visit.attempts < MAX_VISIT_ATTEMPTS
-                   or visit_wants_visit(extraction))
+                   or visit_wants_visit(extraction) or (force_offer and state.trigger == CADENCE_TRIGGER))
     if not hold and not after_hours_blocking and (slot_taken or (
             offers_left and (buying_urgency or force_offer or visit_eligible(profile, extraction, conversation.turn)))):
         # Client, 16 Oct 2026 (appointment first): a day they named ("Probably Saturday") gets that day's times, whatever
