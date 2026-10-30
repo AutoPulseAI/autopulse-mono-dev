@@ -120,6 +120,31 @@ def _new_or_used_from_stock(profile: Profile, state: AgentState) -> None:
                                                           source="stock", fact_id="stock")
 
 
+def drop_past_offers(conversation: ConversationState, now: datetime) -> None:
+    """Larry Harris, 30 Oct 2026: on Friday "What's your address?" got "Would Thursday at 10:00 AM, 2:00 PM or 7:00 PM
+    work?" - the times offered on 26 Oct for Thursday 29 Oct, kept and shown again as "still open", which he read as
+    next Thursday. A time that has passed is no offer: it can't be shown again or picked."""
+    visit = conversation.visit
+    if not visit or not visit.offered_times:
+        return
+    def ahead(t: dict[str, str]) -> bool:
+        try:
+            return datetime.fromisoformat(t["iso"]) > now
+        except (KeyError, TypeError, ValueError):
+            return False
+    # The user, 30 Oct 2026: every time is checked against today before any message - "tomorrow" offered on Monday
+    # reads "today" on Tuesday.
+    kept = []
+    for t in filter(ahead, visit.offered_times):
+        local = datetime.fromisoformat(t["iso"]).astimezone(now.tzinfo)
+        clock_time = str(t.get("display") or "").split(" at ", 1)[-1]
+        kept.append({**t, "display": f"{booking_tool.day_word(local, now)} at {clock_time}"})
+    update = {"offered_times": kept}
+    if len(kept) != len(visit.offered_times):
+        update["held_over"] = 0
+    conversation.visit = visit.model_copy(update=update)
+
+
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
     """The times we just offered, shown again: the customer answered something else ("thanks") and the offer stays
     open for this reply - the reply asks which one works instead of ending with nothing."""
@@ -755,8 +780,9 @@ async def _visit_and_booking(
     built_times: list[dict[str, str]] = []
     # Stream Q: three unanswered offers are enough (seen: "attempt 4 of 3" when the customer never picked nor
     # declined); after that a visit is offered again only when they ask to come in.
+    # A scheduled touch that must end with the visit gets fresh times (past ones are dropped: drop_past_offers).
     offers_left = (not conversation.visit or conversation.visit.attempts < MAX_VISIT_ATTEMPTS
-                   or visit_wants_visit(extraction))
+                   or visit_wants_visit(extraction) or (force_offer and state.trigger == CADENCE_TRIGGER))
     if not hold and not after_hours_blocking and (slot_taken or (
             offers_left and (buying_urgency or force_offer or visit_eligible(profile, extraction, conversation.turn)))):
         # Client, 16 Oct 2026 (appointment first): a day they named ("Probably Saturday") gets that day's times, whatever
@@ -1396,6 +1422,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             (ctx.lead_state or {}).get("customer_language") or "").strip().replace("English", "")
         reply_language = previous or (lead_language if lead_language not in ("", "English") else None)
     booking_text = dates_to_english(text) if reply_language == SPANISH else text
+    drop_past_offers(conversation, now)
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
