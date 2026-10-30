@@ -113,10 +113,6 @@ function AlertsContent() {
             value={query} onChange={(e) => setQuery(e.target.value)} />
           <Form.Check type="switch" id="alerts-show-handled" label="Show handled alerts"
             checked={showHandled} onChange={(e) => toggleHandled(e.target.checked)} />
-          {/* The user, 31 Oct 2026: "where is the managerial review?" - every lead still in that status, handled or not. */}
-          <Link className="btn btn-sm btn-outline-primary" href={`/dealer/leads?status=${encodeURIComponent("Managerial Review")}`}>
-            All leads in Managerial Review
-          </Link>
           <div className="ms-auto d-flex align-items-center gap-2">
             <small className="text-secondary-light">{filtered.length} alert{filtered.length === 1 ? "" : "s"}</small>
             <Form.Select size="sm" style={{ width: 90 }} value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
