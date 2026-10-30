@@ -1607,6 +1607,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["vehicle_check"] = None
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
+    if not_interested == "ask_why" and state.trigger == "inbound_message":
+        # David Garcia, 30 Oct 2026: he never answered "what changed?", so the lead was never escalated. The manager is
+        # told at once; a person decides whether to close it (the AI never closes a lead).
+        decision["manager_check"] = {"why": "Customer says they're not interested any more: a person decides whether "
+                                            "to close the lead"}
     if order is not None and _already_sent(order.text, state.context_pack):
         order = None  # the same fixed text already went out (Latina Neal, 29 Oct 2026)
     if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and CONDITION_QUESTION.search(str(text or "")) \

@@ -653,3 +653,12 @@ def test_a_fixed_reply_already_sent_is_not_placed_again():
 def test_condition_questions_go_to_a_manager(text, condition):
     from upsell_agent.agent.nodes.decide import CONDITION_QUESTION
     assert bool(CONDITION_QUESTION.search(text)) is condition
+
+
+async def test_a_customer_hold_stops_an_ai_studio_touch(mongo):
+    """David Garcia, 30 Oct 2026: a touch went out 16 minutes after "I'm not interested anymore"."""
+    from upsell_agent import clock
+    from upsell_agent.agent import customer_hold
+    held = customer_hold.check({"customer_hold": {"at": clock.now(), "until": None, "reason": "not interested"}},
+                               "studio_touch")
+    assert held[1] is False

@@ -170,6 +170,11 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
          and state["last_outbound_at"] > (doc["started_at"] + timedelta(minutes=1)).replace(
              tzinfo=state["last_outbound_at"].tzinfo), "another message went out after the AI's question"),
     ]
+    # David Garcia, 30 Oct 2026: "I'm not interested anymore" got "what changed?", then this touch 16 minutes later -
+    # the customer's hold stopped the other timed messages, not this one.
+    from upsell_agent.agent import customer_hold
+    held = customer_hold.check(state, "studio_touch")
+    reasons.append((not held[1], held[2]))
     if key == "still_with_me" and WAIT_WHEN_THEY_WILL_REACH_OUT and not any(failed for failed, _ in reasons):
         # Ebony Mingo, 26 Oct 2026 ("I will not be in today ... I will give you all a call" got "Still with me?" 16
         # minutes later, then "Please stop"): a customer who said they'll reach out didn't go quiet.
