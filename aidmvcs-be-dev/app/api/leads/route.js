@@ -2,6 +2,7 @@ import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
 import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { funnelLeadIds } from "@lib/appointmentFunnel";
+import { stoppedLeadIds } from "@lib/ai/stopLabels";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
@@ -390,6 +391,11 @@ export async function GET(req) {
           createdAt: { $gte: madeFrom, $lte: madeTo } }).select('lead_id').lean();
         const ids = [...new Set(made.map((b) => String(b.lead_id)))].filter((id) => mongoose.isValidObjectId(id));
         query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+
+    if (url.searchParams.get("stopped") === "1") {
+        const stopped = (await stoppedLeadIds(dealerId)).filter((id) => mongoose.isValidObjectId(id));
+        query._id = { $in: stopped.map((id) => new mongoose.Types.ObjectId(id)) };
     }
 
     if (funnelStep) {

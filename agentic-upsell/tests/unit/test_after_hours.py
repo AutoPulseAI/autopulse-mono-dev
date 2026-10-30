@@ -642,7 +642,7 @@ async def test_a_stopped_inquiry_gets_a_staff_note_and_a_new_inquiry_runs_with_a
     assert "Please stop texting I'm no longer interested" in notes[0]["text"]
     # Betsy, 28 Oct 2026 meeting: an opt-out never closes the lead.
     assert (await _state(mongo, created)).get("crm_status_sync", {}).get("crm_status") != "Closed - Lost"
-    assert "emails continue" in notes[0]["text"] and "stays open" in notes[0]["text"]
+    assert "No more texts and emails" in notes[0]["text"] and "stays open" in notes[0]["text"]
     assert await note_stopped_inquiries() == 0  # already written: the start-up backfill adds nothing
 
     again = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Maria Test",
@@ -771,3 +771,14 @@ async def test_a_customer_who_prefers_email_is_never_asked_for_a_phone(mongo, de
     created = await _email_only_lead(mongo)
     await _email_reply(created, "Email is my preferred method of communication. Thanks for the details.")
     assert not (await _last_decision(mongo, created)).get("ask_phone")
+
+
+async def test_stop_and_not_interested_stops_both_channels(mongo, dealer_with_hours):
+    """The user, 31 Oct 2026: "stop, I'm not interested" stops texts and emails; "stop texting" stops texts only."""
+    set_clock(TUESDAY_NOON)
+    no = await _lead()
+    await _say(no, "Please stop texting I'm no longer interested")
+    assert set((await _state(mongo, no))["inquiry_opt_out"]) >= {"sms", "email"}
+    only = await _lead(comments="Hi, I want a new Toyota Camry")
+    await _say(only, "Please stop texting me")
+    assert "email" not in (await _state(mongo, only))["inquiry_opt_out"]

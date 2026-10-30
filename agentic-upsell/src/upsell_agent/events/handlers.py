@@ -12,6 +12,7 @@ HOLDING_REPLY_EVERY (architecture §15, decision 12).
 """
 
 import logging
+import dataclasses
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -1425,6 +1426,10 @@ _UPDATES_NO = re.compile(r"^\W*(?:n|no|nope|nah|no\s+thanks?|no\s+thank\s+you|no
                          r"no\s+updates?|nothing|none)\W*$", re.IGNORECASE)
 
 
+_STOP_AND_NOT_INTERESTED = re.compile(r"\b(?:not|no longer|isn'?t|aren'?t)\s+(?:\w+\s+)?interested\b|\bfound (?:a|one|another)\b"
+                                      r"|\balready (?:bought|purchased)\b", re.IGNORECASE)
+
+
 async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *,
                              lead: dict | None, customer: dict | None, lead_id: str, rows: list[dict], opt_out: Any,
                              message: dict, received_at: Any, cancelled: int) -> dict[str, Any]:
@@ -1432,9 +1437,20 @@ async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEven
     message we start on this lead and channel), not the customer: their consent stays, so the owner and service side
     and a later inquiry carry on, and any message from them turns it back on. The reply is her wording, plus the
     vehicle-updates question when they have a vehicle on file."""
+    # The user, 31 Oct 2026: "stop, I'm not interested" is a no to the lead - texts and emails both stop, and a manager
+    # decides whether to close it. "Stop texting me" alone stops texts only.
+    said_no = bool(_STOP_AND_NOT_INTERESTED.search(message["text"]))
+    if said_no:
+        opt_out = dataclasses.replace(opt_out, channels=tuple(dict.fromkeys(("sms", "email", *opt_out.channels))))
     channels = tuple(c for c in opt_out.channels if c != "voice")
     now = clock.now()
     states = db.collection(AI_LEAD_STATE_COLLECTION)
+    if said_no and not event.shadow:
+        from upsell_agent.agent import crm_status, escalation
+        await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, platform=deps.platform,
+                                     event_kind="manager_escalation",
+                                     reason="Customer says they're not interested any more: a person decides whether "
+                                            "to close the lead")
     if not event.shadow:
         # "Stop contacting me" names no channel: this lead's staff calls stop too (compliance/call_check.py).
         await states.update_one({"lead_id": lead_id}, {"$set": {
