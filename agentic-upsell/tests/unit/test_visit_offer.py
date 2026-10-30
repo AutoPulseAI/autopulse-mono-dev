@@ -214,3 +214,15 @@ def test_an_unrelated_reply_keeps_the_times_on_the_table_once():
     third = plan_visit(profile=profile, extraction={}, conversation=_conversation(turn=3, visit=VisitState.model_validate(second.record)),
                        active_booking=None, built_times=TIMES, booked_this_turn=False, now=NOW)
     assert third.fire is True and third.attempt == 2
+
+
+def test_times_that_have_passed_are_no_offer():
+    """Larry Harris, 30 Oct 2026: Friday's reply offered the Thursday 29 Oct times from his 26 Oct chat."""
+    from zoneinfo import ZoneInfo
+    from upsell_agent.agent.nodes.decide import drop_past_offers
+    ny = ZoneInfo("America/New_York")
+    past = {"iso": "2026-10-29T14:00:00-04:00", "date": "2026-10-29", "time": "14:00", "display": "Thursday at 2:00 PM"}
+    ahead = {"iso": "2026-10-30T15:00:00-04:00", "date": "2026-10-30", "time": "15:00", "display": "today at 3:00 PM"}
+    conversation = _conversation(turn=3, visit=VisitState(attempts=3, offered_times=[past, ahead], offered_turn=3))
+    drop_past_offers(conversation, datetime(2026, 10, 30, 12, 34, tzinfo=ny))
+    assert conversation.visit.offered_times == [ahead]

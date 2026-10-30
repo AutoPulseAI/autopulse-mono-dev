@@ -120,6 +120,23 @@ def _new_or_used_from_stock(profile: Profile, state: AgentState) -> None:
                                                           source="stock", fact_id="stock")
 
 
+def drop_past_offers(conversation: ConversationState, now: datetime) -> None:
+    """Larry Harris, 30 Oct 2026: on Friday "What's your address?" got "Would Thursday at 10:00 AM, 2:00 PM or 7:00 PM
+    work?" - the times offered on 26 Oct for Thursday 29 Oct, kept and shown again as "still open", which he read as
+    next Thursday. A time that has passed is no offer: it can't be shown again or picked."""
+    visit = conversation.visit
+    if not visit or not visit.offered_times:
+        return
+    def ahead(t: dict[str, str]) -> bool:
+        try:
+            return datetime.fromisoformat(t["iso"]) > now
+        except (KeyError, TypeError, ValueError):
+            return False
+    kept = [t for t in visit.offered_times if ahead(t)]
+    if len(kept) != len(visit.offered_times):
+        conversation.visit = visit.model_copy(update={"offered_times": kept, "held_over": 0})
+
+
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
     """The times we just offered, shown again: the customer answered something else ("thanks") and the offer stays
     open for this reply - the reply asks which one works instead of ending with nothing."""
@@ -1396,6 +1413,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             (ctx.lead_state or {}).get("customer_language") or "").strip().replace("English", "")
         reply_language = previous or (lead_language if lead_language not in ("", "English") else None)
     booking_text = dates_to_english(text) if reply_language == SPANISH else text
+    drop_past_offers(conversation, now)
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,
         after_hours_blocking=after_hours_blocking, buying_urgency=urgency_mode == "buying")
