@@ -48,6 +48,7 @@ export default function StatusModal({
     "Visited",
     "DND",
     "Managerial Review",
+    "Opted Out",
     "Sold Pending",
     "Sold Delivered",
     "Unsold",

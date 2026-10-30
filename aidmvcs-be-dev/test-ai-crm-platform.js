@@ -904,3 +904,12 @@ maybe('stop labels: text, email, all; a START clears a text opt-out (31 Oct 2026
   assert.deepEqual(['a', 'b', 'c', 'd'].map((id) => stopLabel(stops[id])), ['Text stopped', 'All stopped', 'Email stopped', null]);
   assert.deepEqual((await stoppedLeadIds(DEALER, db)).sort(), ['a', 'b', 'c']);
 });
+
+
+test('Opted Out replaces a working status, never a booking or a sale (31 Oct 2026)', () => {
+  const at = { status: 'Opted Out', closedAt: '2026-10-31T00:00:00Z' };
+  assert.equal(closedStatusConflict({ ...at, current: 'Contacted - No Next Action' }), null);
+  assert.equal(closedStatusConflict({ ...at, current: 'Appointment Booked' }), 'staff_status_kept');
+  assert.equal(closedStatusConflict({ ...at, current: 'Sold' }), 'staff_status_kept');
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Opted Out' }), null);
+});
