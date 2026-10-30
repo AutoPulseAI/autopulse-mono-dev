@@ -225,4 +225,9 @@ def test_times_that_have_passed_are_no_offer():
     ahead = {"iso": "2026-10-30T15:00:00-04:00", "date": "2026-10-30", "time": "15:00", "display": "today at 3:00 PM"}
     conversation = _conversation(turn=3, visit=VisitState(attempts=3, offered_times=[past, ahead], offered_turn=3))
     drop_past_offers(conversation, datetime(2026, 10, 30, 12, 34, tzinfo=ny))
-    assert conversation.visit.offered_times == [ahead]
+    assert [t["iso"] for t in conversation.visit.offered_times] == [ahead["iso"]]
+    assert conversation.visit.offered_times[0]["display"] == "today at 3:00 PM"
+    stale_word = {**ahead, "display": "tomorrow at 3:00 PM"}  # worded on the 29th, read on the 30th
+    conversation = _conversation(turn=3, visit=VisitState(attempts=3, offered_times=[stale_word], offered_turn=3))
+    drop_past_offers(conversation, datetime(2026, 10, 30, 12, 34, tzinfo=ny))
+    assert conversation.visit.offered_times[0]["display"] == "today at 3:00 PM"

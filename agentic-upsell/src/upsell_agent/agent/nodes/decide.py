@@ -132,9 +132,17 @@ def drop_past_offers(conversation: ConversationState, now: datetime) -> None:
             return datetime.fromisoformat(t["iso"]) > now
         except (KeyError, TypeError, ValueError):
             return False
-    kept = [t for t in visit.offered_times if ahead(t)]
+    # The user, 30 Oct 2026: every time is checked against today before any message - "tomorrow" offered on Monday
+    # reads "today" on Tuesday.
+    kept = []
+    for t in filter(ahead, visit.offered_times):
+        local = datetime.fromisoformat(t["iso"]).astimezone(now.tzinfo)
+        clock_time = str(t.get("display") or "").split(" at ", 1)[-1]
+        kept.append({**t, "display": f"{booking_tool.day_word(local, now)} at {clock_time}"})
+    update = {"offered_times": kept}
     if len(kept) != len(visit.offered_times):
-        conversation.visit = visit.model_copy(update={"offered_times": kept, "held_over": 0})
+        update["held_over"] = 0
+    conversation.visit = visit.model_copy(update=update)
 
 
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
