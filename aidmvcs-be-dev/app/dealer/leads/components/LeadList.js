@@ -94,6 +94,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
       messagesChannel: params.get('channel') || '', // ...by text, picture text or email (28 Oct 2026 meeting)
+      stopped: params.get('stopped') || '', // leads with a stop (app/lib/ai/stopLabels.js)
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
         endDate: params.get('endDate') ? new Date(params.get('endDate')) : null
@@ -207,6 +208,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
+      if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
@@ -450,6 +452,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.email) url += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) url += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) url += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
+      if (filters.stopped) url += '&stopped=1';
       if (filters.messages) url += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.messages && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
@@ -768,6 +771,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
+      if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
@@ -1191,6 +1195,10 @@ useImperativeHandle(ref, () => ({
         )}
         {/* Assignment Filter Tabs */}
         <div className="d-flex gap-2 mb-3 lead_fltr">
+        <Button size="sm" className="text-nowrap" variant={filters.stopped ? 'custom' : 'outline-custom'}
+          onClick={() => setFilters((prev) => ({ ...prev, stopped: prev.stopped ? '' : '1', page: 1 }))}>
+          <i className="fa-regular fa-ban me-1"></i>Stopped
+        </Button>
         {canManageLeads && (
           <Button
             size="sm"
@@ -1759,6 +1767,10 @@ useImperativeHandle(ref, () => ({
                       >
                         {statusLabel(lead.fe_lead_status) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
+                      {lead.ai_stop_label && (
+                        // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.
+                        <div className="mt-1"><Badge bg="danger">{lead.ai_stop_label}</Badge></div>
+                      )}
                       {lead.ai_stage_label && (
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
                         <div className="small text-muted mt-1" title="AI stage (read only)">

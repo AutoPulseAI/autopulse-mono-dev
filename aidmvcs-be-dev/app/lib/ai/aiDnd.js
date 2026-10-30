@@ -103,7 +103,10 @@ export const READ_ONLY_STATUSES = Object.freeze(['Closed - No Longer Owns', 'Con
 // agent/crm_status.py CRM_STATUS_FOR_STAGE). One replaces only another working status - never a status staff chose.
 export const AI_WORKING_STATUSES = Object.freeze(['Lead Not Contacted', 'Contacted - No Next Action',
   'Contacted - Specific Follow-up']);
-const WORKING_FROM = Object.freeze([null, '', 'Lead', 'New', 'Contacted', ...AI_WORKING_STATUSES]);
+// The user, 31 Oct 2026: a customer who said stop shows Opted Out; a message from them moves it back to a working status.
+export const AI_OPT_OUT_STATUSES = Object.freeze(['Opted Out']);
+const WORKING_FROM = Object.freeze([null, '', 'Lead', 'New', 'Contacted', 'Opted Out', ...AI_WORKING_STATUSES]);
+const OPT_OUT_FROM = Object.freeze([...WORKING_FROM, 'Managerial Review', 'Unsold', 'No Show']);
 // Manager escalation (client, 8 Oct 2026; agentic-upsell agent/escalation.py): the AI's own escalations that need a
 // manager put the lead into the CRM's one escalation flow, Managerial Review - over a working status or Unsold /
 // No Show, never over a status staff chose for a later step (Appointment Booked, Visited, Sold, DND, ...).
@@ -144,7 +147,7 @@ const FROM_FOR_NO_LONGER_OWNS = Object.freeze(['Sold Delivered', 'Sold']);
 export function validateClosedStatusPayload(body) {
   const { errors } = validateDndPayload(body);
   const allowed = [...AI_CLOSED_STATUSES, ...AI_WORKING_STATUSES, ...AI_ESCALATION_STATUSES, ...AI_BOOKING_STATUSES,
-    ...AI_NO_SHOW_STATUSES];
+    ...AI_NO_SHOW_STATUSES, ...AI_OPT_OUT_STATUSES];
   if (!allowed.includes(body?.status)) errors.push(`status must be one of ${allowed.join(', ')}`);
   if (body?.closed_at != null && Number.isNaN(Date.parse(body.closed_at))) errors.push('closed_at must be a date');
   return { errors };
@@ -154,6 +157,7 @@ export function validateClosedStatusPayload(body) {
 export function closedStatusConflict({ status, current, changedAt, closedAt, bookingAhead = true }) {
   if (current === status) return 'already';
   if (changedAt && closedAt && new Date(changedAt) > new Date(closedAt)) return 'staff_changed_it_after';
+  if (AI_OPT_OUT_STATUSES.includes(status)) return OPT_OUT_FROM.includes(current ?? null) ? null : 'staff_status_kept';
   if (AI_NO_SHOW_STATUSES.includes(status)) return NO_SHOW_FROM.includes(current ?? null) ? null : 'staff_status_kept';
   if (AI_WORKING_STATUSES.includes(status) && AFTER_APPOINTMENT.includes(current ?? null)) {
     return bookingAhead ? 'appointment_still_ahead' : null;

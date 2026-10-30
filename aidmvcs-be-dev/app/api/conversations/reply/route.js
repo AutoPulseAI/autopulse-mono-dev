@@ -189,6 +189,17 @@ export async function POST(request) {
       }
     }
 
+    if (parentMessage.lead_id && ['sms', 'email'].includes(communicationType)) {
+      // Ebony Mingo, 30 Oct 2026: "Please stop" on 26 Oct, and a staff text still reached her - this check only knew
+      // STOP / unsubscribe, not a stop on the lead. It ends when the customer writes to us again.
+      const state = await mongoose.connection.db.collection('ai_lead_state')
+        .findOne({ lead_id: String(parentMessage.lead_id) }, { projection: { inquiry_opt_out: 1 } });
+      if (state?.inquiry_opt_out?.[communicationType]) {
+        return NextResponse.json({ message: `This customer asked us to stop ${communicationType === 'sms' ? 'texting' : 'emailing'} them about this lead.` },
+          { status: 403 });
+      }
+    }
+
     let sentMessageId = null;
     let status = 'sent';
 

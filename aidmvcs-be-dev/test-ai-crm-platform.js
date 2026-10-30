@@ -887,3 +887,29 @@ maybe('an SES bounce and a spam complaint stop emails to that address, with a no
   assert.equal(await Email.countDocuments({ lead_id: LEAD, is_note: true, mail_content: /bounced/ }), 1);
   assert.equal((await applySesEvent({ eventType: 'Open', mail: { messageId: 'unknown' } }, { Email, Lead, db })).applied, false);
 });
+
+
+maybe('stop labels: text, email, all; a START clears a text opt-out (31 Oct 2026)', async () => {
+  const { stopLabel, stopsForLeads, stoppedLeadIds } = await import('./app/lib/ai/stopLabels.js');
+  const db = mongoose.connection.db;
+  await db.collection('ai_lead_state').insertMany([
+    { dealer_id: DEALER, lead_id: 'a', customer_id: 'c1', inquiry_opt_out: { sms: { at: new Date() } } },
+    { dealer_id: DEALER, lead_id: 'b', customer_id: 'c2', inquiry_opt_out: { sms: {}, email: {} } },
+    { dealer_id: DEALER, lead_id: 'c', customer_id: 'c3' }, { dealer_id: DEALER, lead_id: 'd', customer_id: 'c4' }]);
+  await db.collection('ai_consent').insertMany([
+    { dealer_id: DEALER, customer_id: 'c3', lead_id: 'c', channel: 'email', consent_type: 'opt_out', consent_status: 'opted_out' },
+    { dealer_id: DEALER, customer_id: 'c4', lead_id: 'd', channel: 'sms', consent_type: 'opt_out', consent_status: 'opted_out' },
+    { dealer_id: DEALER, customer_id: 'c4', lead_id: 'd', channel: 'sms', consent_type: 'opt_out', consent_status: 'opted_in' }]);
+  const stops = await stopsForLeads(['a', 'b', 'c', 'd'], db);
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((id) => stopLabel(stops[id])), ['Text stopped', 'All stopped', 'Email stopped', null]);
+  assert.deepEqual((await stoppedLeadIds(DEALER, db)).sort(), ['a', 'b', 'c']);
+});
+
+
+test('Opted Out replaces a working status, never a booking or a sale (31 Oct 2026)', () => {
+  const at = { status: 'Opted Out', closedAt: '2026-10-31T00:00:00Z' };
+  assert.equal(closedStatusConflict({ ...at, current: 'Contacted - No Next Action' }), null);
+  assert.equal(closedStatusConflict({ ...at, current: 'Appointment Booked' }), 'staff_status_kept');
+  assert.equal(closedStatusConflict({ ...at, current: 'Sold' }), 'staff_status_kept');
+  assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Opted Out' }), null);
+});

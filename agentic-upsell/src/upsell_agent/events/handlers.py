@@ -12,6 +12,7 @@ HOLDING_REPLY_EVERY (architecture §15, decision 12).
 """
 
 import logging
+import dataclasses
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -894,6 +895,8 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                 # swallowed by the opt-out confirmation.
                 continue
             scope = ", ".join(opt_out.channels)
+            if not event.shadow and not await _every_channel_stopped(db, event.customer_id):
+                await _show_opted_out(db, deps, lead_id, message["text"])
             if not event.shadow and await _every_channel_stopped(db, event.customer_id):
                 # MASTER_PLAN_3 C3: the stage is Opted Out only when nothing is left to contact them on;
                 # a single-channel opt-out removes that channel and the rest carry on (Omnichannel PDF §15).
@@ -979,6 +982,9 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                 {"lead_id": lead_id}, {"$unset": {"inquiry_opt_out": ""}, "$set": {
                     "inquiry_opted_back_in": {"at": clock.now(), "message": message["text"][:300]}}})
             state = {**state, "inquiry_opt_out": None}
+            from upsell_agent.agent import crm_status
+            await crm_status.sync_status(db, lead_id, "Contacted - No Next Action", platform=deps.platform,
+                                         event_kind="opted_in", reason="The customer wrote to us again after a stop")
 
     # A possible opt-out under review is no longer resolved just because the customer wrote again (PLAN_4 stream
     # X1 item 3): the AI turn resolves it only on a clearly non-opt-out message that answers it
@@ -1425,6 +1431,18 @@ _UPDATES_NO = re.compile(r"^\W*(?:n|no|nope|nah|no\s+thanks?|no\s+thank\s+you|no
                          r"no\s+updates?|nothing|none)\W*$", re.IGNORECASE)
 
 
+_STOP_AND_NOT_INTERESTED = re.compile(r"\b(?:not|no longer|isn'?t|aren'?t)\s+(?:\w+\s+)?interested\b|\bfound (?:a|one|another)\b"
+                                      r"|\balready (?:bought|purchased)\b", re.IGNORECASE)
+
+
+async def _show_opted_out(db: DealerScopedDatabase, deps: TurnDeps, lead_id: str, said: str) -> None:
+    """The user, 31 Oct 2026: a customer who said stop shows Opted Out as the lead's status (the CRM keeps a booking, a
+    sale or DND); the label beside it says which channel."""
+    from upsell_agent.agent import crm_status
+    await crm_status.sync_status(db, lead_id, "Opted Out", platform=deps.platform, event_kind="opted_out",
+                                 reason=f"The customer asked us to stop: {str(said)[:200]!r}")
+
+
 async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *,
                              lead: dict | None, customer: dict | None, lead_id: str, rows: list[dict], opt_out: Any,
                              message: dict, received_at: Any, cancelled: int) -> dict[str, Any]:
@@ -1432,9 +1450,22 @@ async def _stop_this_inquiry(db: DealerScopedDatabase, event: InboundMessageEven
     message we start on this lead and channel), not the customer: their consent stays, so the owner and service side
     and a later inquiry carry on, and any message from them turns it back on. The reply is her wording, plus the
     vehicle-updates question when they have a vehicle on file."""
+    # The user, 31 Oct 2026: "stop, I'm not interested" is a no to the lead - texts and emails both stop, and a manager
+    # decides whether to close it. "Stop texting me" alone stops texts only.
+    said_no = bool(_STOP_AND_NOT_INTERESTED.search(message["text"]))
+    if said_no:
+        opt_out = dataclasses.replace(opt_out, channels=tuple(dict.fromkeys(("sms", "email", *opt_out.channels))))
     channels = tuple(c for c in opt_out.channels if c != "voice")
     now = clock.now()
     states = db.collection(AI_LEAD_STATE_COLLECTION)
+    if not said_no and not event.shadow:
+        await _show_opted_out(db, deps, lead_id, message["text"])
+    if said_no and not event.shadow:
+        from upsell_agent.agent import crm_status, escalation
+        await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, platform=deps.platform,
+                                     event_kind="manager_escalation",
+                                     reason="Customer says they're not interested any more: a person decides whether "
+                                            "to close the lead")
     if not event.shadow:
         # "Stop contacting me" names no channel: this lead's staff calls stop too (compliance/call_check.py).
         await states.update_one({"lead_id": lead_id}, {"$set": {

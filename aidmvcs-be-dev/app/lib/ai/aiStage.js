@@ -7,6 +7,7 @@
 // Imports are relative so the workers can use this module too.
 
 import mongoose from 'mongoose';
+import { stopLabel, stopsForLeads } from './stopLabels.js';
 
 export const AI_LEAD_STATE_COLLECTION = 'ai_lead_state';
 
@@ -30,6 +31,8 @@ export async function attachAiStages(leads, { collection = defaultCollection() }
       lead.ai_stage_label = state.stage_label || null;
       lead.ai_status = state.status || null;
     }
+    const stops = await stopsForLeads(ids);
+    for (const lead of leads) lead.ai_stop_label = stopLabel(stops[String(lead._id)]);
   } catch (error) {
     console.warn('[ai] could not read AI stages for the lead list', error?.message);
   }
