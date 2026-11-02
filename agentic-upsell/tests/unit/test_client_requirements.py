@@ -390,6 +390,8 @@ async def test_on_my_way_and_a_time_books_that_time_today(mongo):
     ("on my way", "14:30"),
     ("omw be there in half an hour", "14:30"),
     ("leaving now, be there in like 22 min", "14:25"),
+    ("I'm coming", "14:30"),  # Dante Brown, 2 Nov 2026
+    ("Hey, I'm outside", "14:00"),  # already here: an appointment now (Betsy, 2 Nov 2026 meeting)
 ])
 async def test_on_my_way_with_no_appointment_books_the_arrival(mongo, said, hhmm):
     """Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "I'm on my way. I will be there in 10 minutes" - no

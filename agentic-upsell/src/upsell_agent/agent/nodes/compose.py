@@ -19,7 +19,7 @@ from typing import Any
 from upsell_agent.agent import human_contact
 from upsell_agent.agent.context import AiBudgetExceeded, TurnContext
 from upsell_agent.agent.context_pack import HELD_FROM_MODELS, profile_layer
-from upsell_agent.agent.link_resolver import LinkPlan, fill_links, resolve_link
+from upsell_agent.agent.link_resolver import LinkPlan, fill_links, resolve_link, website_when_stock_falls_short
 from upsell_agent.agent.llm import compose_agent, run_agent
 from upsell_agent.agent.multi_vehicle import vehicle_label
 from upsell_agent.agent.state import AgentState
@@ -235,13 +235,14 @@ def plan_links(state: AgentState, ctx: TurnContext | None = None) -> LinkPlan:
     # Betsy, 22 Oct 2026: "our first outbound message ... should automatically include an image of the vehicle. Not a
     # link." (12 Oct it was "an image or link".) The photo goes with the first reply (agent/vehicle_media.py); a link
     # only when the customer asks for one, like any other reply.
-    return resolve_link(state.extraction, inventory=pack.get("inventory") or [], website=info.get("website"),
+    plan = resolve_link(state.extraction, inventory=pack.get("inventory") or [], website=info.get("website"),
                         # Dealer Setup's own pages (client, 8 Oct 2026; integrations/dealer_profile.py).
                         dealer_links={**(info.get("links") or {}),
                                       "credit_application": info.get("credit_application_link"),
                                       "trade_in": info.get("trade_in_link")},
                         referred_vin=(pack.get("referred_vehicle") or {}).get("vin"),
                         lead_vin=lead_vin)
+    return website_when_stock_falls_short(plan, pack.get("stock_search"), info.get("website"))
 
 
 def compose_payload(state: AgentState, link_plan: LinkPlan | None = None,
@@ -437,6 +438,14 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     linked = fill_links(draft, link_plan, sms_limit=draft_guard.TOUCH1_SMS_MAX if decision.get("touch1") or
                         decision.get("reply_language") else draft_guard.SMS_MAX)
     draft["link_plan"] = link_plan.as_dict()
+    if state.trigger == "inbound_message" and decision.get("action") not in ("stop", "handoff", "offer_human") \
+            and not (decision.get("visit_offer") or {}).get("service_request"):
+        # Betsy, 2 Nov 2026 meeting: never "what day works?" - two real times (agent/open_time_question.py).
+        from upsell_agent.agent.open_time_question import offer_real_times
+        from upsell_agent.integrations.dealer_profile import dealer_profile
+        if timed := await offer_real_times(draft, dealer_id=state.dealer_id, lead_id=state.lead_id, decision=decision,
+                                           dealer=await dealer_profile(state.dealer_id)):
+            linked.append(timed)
     placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
                                                   ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))
     if placed_text.strip():

@@ -64,6 +64,10 @@ DEALER_LINKS = {
 # Which of the dealership's links the AI may share at all (AI Studio -> Compliance -> Photos & links). Off: the
 # honest line instead, never the link.
 SHAREABLE: dict[str, bool] = {"website": True, **{k: True for k in DEALER_LINKS}}
+# The user, 3 Nov 2026 (Kenneth Ball: "which SUV?" twice): "if at some point we are stuck ... give them our catalog that
+# they can search through - better than saying we don't know". No single car to link, or a stock question our stock
+# doesn't answer: the website, never "which one?" (AI Studio -> Conversation rules).
+WEBSITE_WHEN_STUCK = True
 
 PlanKind = Literal["none", "vehicle", "vehicle_and_website", "website", "credit_application", "trade_in",
                    "prequalification", "hours_map", "service_scheduler", "new_car_specials", "used_car_specials",
@@ -152,6 +156,11 @@ def resolve_link(extraction: dict[str, Any] | None, *, inventory: list[dict[str,
                    if vin and vin in by_vin), None)
     if picked is None and len(by_vin) == 1:
         picked = (next(iter(by_vin)), "the only vehicle in this conversation's stock")
+    if picked is None and WEBSITE_WHEN_STUCK and website and SHAREABLE.get("website", True):
+        plan.kind, plan.website_url = "website", website
+        plan.reasons.append("They asked for a link but no one vehicle can be told apart: the website to browse, "
+                            "never \"which one?\".")
+        return plan
     if picked is None:
         plan.kind = "ask_which"
         plan.reasons.append("They asked for a link but no vehicle can be told apart: ask which one, no link.")
@@ -181,6 +190,21 @@ def resolve_link(extraction: dict[str, Any] | None, *, inventory: list[dict[str,
     return plan
 
 
+def website_when_stock_falls_short(plan: LinkPlan, stock_search: dict[str, Any] | None,
+                                   website: str | None) -> LinkPlan:
+    """A stock question ("do you have SUVs?", "anything under 20k?") that our stock doesn't answer exactly - nothing
+    found, or the nearest we have instead - also gets the website to browse everything (the user, 3 Nov 2026)."""
+    search = stock_search or {}
+    if plan.kind != "none" or not WEBSITE_WHEN_STUCK or not website or not SHAREABLE.get("website", True):
+        return plan
+    if not search.get("asked") or (search.get("found") and search.get("exact")):
+        return plan
+    plan.kind, plan.website_url = "website", website
+    plan.reasons.append(f"Their stock question ({search.get('searched_for')}) " + (
+        "found nothing" if not search.get("found") else "found only the nearest we have") + ": the website too.")
+    return plan
+
+
 def _append(text: str, addition: str, limit: int | None) -> str:
     joined = f"{text.rstrip()} {addition}".strip()
     return joined if limit is None or len(joined) <= limit else text
@@ -206,6 +230,12 @@ def fill_links(draft: dict[str, Any], plan: LinkPlan, *, sms_limit: int | None =
             filled = _append(filled, addition, sms_limit if key == "sms_text" else None)
             if filled != before:
                 done.append(f"{name}: the vehicle's page added by code (the draft left it out).")
+        if key != "email_subject" and plan.kind == "website" and plan.website_url and plan.website_url not in filled:
+            before = filled
+            filled = _append(filled, f"You can browse everything we have at {plan.website_url}",
+                             sms_limit if key == "sms_text" else None)
+            if filled != before:
+                done.append(f"{name}: the website added by code (the draft left it out).")
         if key != "email_subject" and plan.dealer_url and plan.dealer_url not in filled:
             before = filled
             filled = _append(filled, f"Here's the link: {plan.dealer_url}", sms_limit if key == "sms_text" else None)

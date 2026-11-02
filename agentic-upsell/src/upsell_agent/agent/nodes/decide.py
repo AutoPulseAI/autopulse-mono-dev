@@ -182,6 +182,7 @@ def _touch_takes_an_offer(ctx: TurnContext, state: AgentState) -> bool:
 
 # The actions that end a reply without a next step: when one fires, the visit is offered instead (Betsy, 20 Oct 2026).
 _DEAD_ENDS = frozenset({"acknowledge", "qualified", "partly_qualified"})
+OFFER_TIMES_WITH_ANSWERS = True  # AI Studio -> Conversation rules (Betsy, 2 Nov 2026: "always offer times")
 _NOT_READY = re.compile(
     r"\b(numbers? first|price first|need (the |some )?(numbers|pricing|price|info|information|details)|"
     r"not (ready|yet|sure)|think about it|let me (think|check|see)|get back to you|(will|i'?ll) let you know|"
@@ -556,12 +557,21 @@ def arrival_today(text: str, state: AgentState, dealer: DealerProfile, now: date
             "display": f"today at {when.strftime('%I:%M %p').lstrip('0')}", "arrival": True}
 
 
+# Already here: booked for now (Betsy, 2 Nov 2026 meeting: "that's an appointment set and that's an appointment shown").
+_HERE_NOW = re.compile(r"\b(?:i'?m|i am|we'?re|we are) (?:here|outside|out front|in (?:the|your) parking lot|"
+                       r"at (?:the|your) (?:dealer\w*|lot|store|front desk|entrance))\b|\bjust (?:arrived|pulled in)\b|"
+                       r"\bpulling in\b", re.IGNORECASE)
+
+
 # Betsy, 27 Oct 2026 meeting (the Dodge Charger lead: "Yeah I'm on my way, I will be there in 10 minutes" - no
 # appointment was set, so nobody at the store expected him): "if there is no appointment and the customer says I'm on
 # my way, that's an appointment - add 10 minutes to whatever time it is". Said in this message, with no booking.
 _ON_THE_WAY_NOW = re.compile(r"\bon (?:my|our) way\b|\bheading (?:over|in|there|your way)\b|\bomw\b|"
                              r"\b(?:be|get|getting|arrive|arriving) there in\b|\bbe there (?:soon|shortly)\b|"
-                             r"\b(?:coming|leaving) (?:in )?now\b", re.IGNORECASE)
+                             r"\b(?:coming|leaving) (?:in )?now\b|"
+                             # Dante Brown, 2 Nov 2026 ("I'm coming" ... "Hey, I'm outside" - a note, no appointment).
+                             r"\b(?:i'?m|i am|we'?re|we are) coming\b(?! (?:tomorrow|on|next|this|later|back|in on))|"
+                             + _HERE_NOW.pattern, re.IGNORECASE)
 _IN_MINUTES = re.compile(r"\bin (?:about |around |like )?(\d{1,3}|a few|few|half an?|an?) ?(min(?:ute)?s?|hours?|hrs?|hr)\b",
                          re.IGNORECASE)
 ARRIVAL_IF_NO_TIME = timedelta(minutes=30)
@@ -571,7 +581,7 @@ def _arrival_from_now(text: str, dealer: DealerProfile, now: datetime) -> dict[s
     """"On my way, there in 10 minutes": now + 10 (rounded up to 5 minutes); "on my way" alone: now + 30."""
     if not _ON_THE_WAY_NOW.search(text or ""):
         return None
-    wait = ARRIVAL_IF_NO_TIME
+    wait = timedelta(0) if _HERE_NOW.search(text) else ARRIVAL_IF_NO_TIME
     if m := _IN_MINUTES.search(text):
         n, unit = m.group(1).lower(), m.group(2).lower()
         amount = {"a few": 5, "few": 5, "half a": 30, "half an": 30, "a": 1, "an": 1}.get(n) or int(n)
@@ -1542,8 +1552,12 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision = decide_with(visit_plan)
     offered_before = bool(conversation.visit and conversation.visit.attempts and not conversation.visit.declined
                           and not conversation.visit.stopped)
-    after_an_offer = offered_before and (decision["action"] == "ask" or (
-        decision["action"] == "answer" and not decision.get("asks")))
+    # Betsy, 2 Nov 2026 meeting ("how much are payments?" got "we can work through the details when you come in - what
+    # day works?", and "I'll get back to you"): "we have to offer times ... if you don't offer times this is the
+    # response you get". An answer that asks nothing else ends with two real times, offered before or not.
+    after_an_offer = (offered_before and decision["action"] == "ask") or (
+        decision["action"] == "answer" and not decision.get("asks") and OFFER_TIMES_WITH_ANSWERS
+        and not visit_plan.fire)
     if ((decision["action"] in _DEAD_ENDS or after_an_offer) and not hold and not after_hours_blocking and not not_interested
             and (state.trigger in ("inbound_message", "resume_at_opening") or _touch_takes_an_offer(ctx, state))
             and not extraction.get("annoyed_at_bot")

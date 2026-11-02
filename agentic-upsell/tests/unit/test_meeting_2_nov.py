@@ -196,3 +196,23 @@ async def test_a_loop_goes_to_a_manager(mongo, live_dealer):
     assert state["status"] == "handoff" and state["status_reason"].startswith("AI stuck in a loop")
     assert state["crm_status_sync"]["crm_status"] == "Managerial Review"
     assert await _pending(mongo, created) == 0
+
+
+async def test_what_day_works_becomes_two_real_times(mongo):
+    from upsell_agent.agent.open_time_question import offer_real_times
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    set_clock(TUESDAY_NOON)
+    draft = {"sms_text": "Your payment depends on your down payment and term, and we can work through the details "
+                         "together when you come in. What day works best for you?",
+             "email_body": "Hi,\n\nWe can go over it together. When would you like to come in?\n\nThank you"}
+    done = await offer_real_times(draft, dealer_id=DEALER, lead_id=str(ObjectId()), decision={},
+                                  dealer=await dealer_profile(DEALER))
+    assert done and "What day works" not in draft["sms_text"] and " or " in draft["sms_text"]
+    assert draft["sms_text"].endswith("work for you?") and "PM" in draft["sms_text"] or "AM" in draft["sms_text"]
+    assert "When would you like" not in draft["email_body"] and len(draft["offered_times"]) == 2
+    # Times already offered: left alone. Another language: left alone.
+    kept = {"sms_text": "Would today at 2:00 PM work? What time works best?"}
+    assert await offer_real_times(kept, dealer_id=DEALER, lead_id=None, decision={},
+                                  dealer=await dealer_profile(DEALER)) is None
+    assert await offer_real_times(dict(draft), dealer_id=DEALER, lead_id=None, decision={"reply_language": "Spanish"},
+                                  dealer=await dealer_profile(DEALER)) is None

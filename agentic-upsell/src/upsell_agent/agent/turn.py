@@ -1442,6 +1442,13 @@ def _visit_record(result: dict[str, Any], lead_state: dict | None = None) -> dic
         if record.get("asked_day") and current is not None:
             return {**current, "asked_day": record["asked_day"], "asked_turn": record.get("asked_turn") or 0}
         return None
+    offered = (result.get("draft") or {}).get("offered_times")
+    if offered and not plan.get("record") and not result.get("used_template"):
+        # agent/open_time_question.py put two times in place of "what day works?": the customer's pick books.
+        current = ((lead_state or {}).get("conversation") or {}).get("visit") or {}
+        return {**current, "offered_times": offered, "pending_pick": None,
+                "attempts": int(current.get("attempts") or 0) + 1,
+                "why": "Two times offered in place of an open \"what day works?\"."}
     return plan.get("record")
 
 
