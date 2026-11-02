@@ -345,6 +345,11 @@ _PLACEHOLDER_EMAIL = re.compile(r"^(no-?reply|do-?not-?reply|donotreply|noemail|
 # (nothing until texting hours open) or "email_only".
 FIRST_CHANNEL = "text"
 AT_NIGHT = "ask_now_or_later"
+# Whether a lead form's "no" stops the texts (AutoTrader's `TCPAOptIn: false`). The user, 2 Nov 2026 (Emily Chandler: "we
+# have her phone number, why just an email?"): a lead with a phone is texted unless the customer explicitly said no -
+# a STOP, Do Not Contact, a phone marked `sms_opt_in: false`. The flag is false on every AutoTrader lead (2,849 of
+# 2,849), so since 4 Oct (0e12ea8) no AutoTrader lead got a first text. Kept on record, it no longer blocks.
+FORM_NO_BLOCKS_TEXT = False
 
 
 def _plausible(value: str, channel: Channel) -> bool:

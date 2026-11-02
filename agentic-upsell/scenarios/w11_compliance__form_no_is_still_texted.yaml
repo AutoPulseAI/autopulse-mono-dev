@@ -1,0 +1,11 @@
+name: A lead form's no doesn't stop texts; a lead with a phone gets a text
+description: The user, 2 Nov 2026 (Emily Chandler). AutoTrader's "TCPAOptIn false" is on every AutoTrader lead, so it stays on record and no longer blocks. A lead with a phone gets its first message by text, and the first follow-up by text, unless the customer explicitly said no.
+steps:
+  - advance_clock: {dealer: A, to: "Tue 12:00"}
+  - new_lead: {as: texted, dealer: A, lead_type: sales, channel: sms, name: Tia Nooptin, comments: "TCPAOptIn: false; Looking for a used CR-V", send_event: false}
+  - set_contact: {lead: texted, source: AutoTrader, zip: "10001"}
+  - send_lead_created: {lead: texted}
+  - wait_turns: {lead: texted, count: 1, timeout_s: 20}
+  - expect_outbox: {lead: texted, channel: sms, count: 1}
+  - expect_outbox: {lead: texted, channel: email, count: 0}
+  - expect_followup: {lead: texted, kind: cadence_touch, status: pending}

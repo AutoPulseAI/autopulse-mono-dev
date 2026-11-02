@@ -228,12 +228,32 @@ async def test_lead_form_opt_in_alone_needs_review(mongo, dealers):
     assert entry["consent_status"] == "review_required" and entry["evidence"]["quote"] == "TCPAOptIn: true"
 
 
-async def test_lead_form_no_blocks_followups_but_the_reply_still_goes(mongo, dealers):
+async def test_lead_form_no_is_kept_on_record_and_doesnt_stop_texts(mongo, dealers):
+    # The user, 2 Nov 2026 (Emily Chandler): a lead with a phone is texted unless they explicitly said no.
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="AutoTrader", comments="TCPAOptIn: false; hello")
+    assert (await _check(created)).outcome == "ALLOW"
+    assert (await _check(created, purpose="lead_response")).outcome == "ALLOW"
+    assert (await _check(created, is_reply=True)).outcome == "ALLOW"
+    assert (await _check(created, channel="email")).outcome == "ALLOW"
+    entry = await mongo["ai_consent"].find_one({"consent_source": "lead_form"})
+    assert entry["consent_status"] == "denied" and entry["evidence"]["quote"] == "TCPAOptIn: false"
+
+
+async def test_the_form_block_can_be_turned_back_on_in_ai_studio(mongo, dealers, monkeypatch):
+    monkeypatch.setattr("upsell_agent.channels.consent.FORM_NO_BLOCKS_TEXT", True)
     set_clock(ny(22, 12))
     created = await _lead(mongo, source="AutoTrader", comments="TCPAOptIn: false; hello")
     assert (await _check(created)).rule == "explicit_no"
     assert (await _check(created, is_reply=True)).outcome == "ALLOW"
     assert (await _check(created, channel="email")).outcome == "ALLOW"
+
+
+async def test_a_lead_form_no_never_lets_a_campaign_text_go(mongo, dealers):
+    # A campaign still needs real consent: the form's no isn't an opening for it.
+    set_clock(ny(22, 12))
+    created = await _lead(mongo, source="", dealervault=True, comments="TCPAOptIn: false; hello")
+    assert (await _check(created, campaign=True)).outcome == "BLOCK"
 
 
 async def test_opt_out_blocks_what_we_start_but_not_replies(mongo, dealers):

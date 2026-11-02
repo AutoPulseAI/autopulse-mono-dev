@@ -44,6 +44,8 @@ const LABELS = {
   invite: ["Invite sent by email (Text YES…)", "Placeholders: {number} = the dealership's texting number."],
   first_channel: ["New leads hear from us first by", ""],
   at_night: ["A lead that comes in outside texting hours", ""],
+  form_no_blocks_text: ["Don't text a lead whose form says no (AutoTrader's TCPAOptIn: false)",
+    "Off: a lead with a phone is texted unless they explicitly said no (STOP, Do Not Contact). AutoTrader sends false on every lead."],
   placeholder_emails: ["Email addresses never used", "An address starting with one of these (no-reply@…) is skipped."],
   customer_texts: ["Contacted when the customer sent at least this many texts", ""],
   customer_emails: ["…or at least this many emails", ""],

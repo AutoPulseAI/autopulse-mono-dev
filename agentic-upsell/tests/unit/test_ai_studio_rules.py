@@ -86,6 +86,17 @@ async def test_wait_for_text_at_night(mongo):
     assert not await _sent(mongo, created, "email") and not await _sent(mongo, created)
 
 
+async def test_the_lead_form_no_rule_comes_from_ai_studio(mongo):
+    from upsell_agent.channels import consent
+    assert consent.FORM_NO_BLOCKS_TEXT is False
+    c = _default("compliance", "channels")
+    assert c["form_no_blocks_text"] is False
+    c["form_no_blocks_text"] = True
+    await _publish(mongo, "compliance", "channels", c)
+    await _new_lead(mongo, vehicle=RAV4)
+    assert consent.FORM_NO_BLOCKS_TEXT is True
+
+
 async def test_placeholder_email_list(mongo):
     c = _default("compliance", "channels")
     c["placeholder_emails"] = [*c["placeholder_emails"], "leads"]

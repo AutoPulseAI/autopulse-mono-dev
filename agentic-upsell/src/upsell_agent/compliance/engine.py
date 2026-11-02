@@ -18,8 +18,9 @@ Plain code, checked in this order; the first rule that stops a message wins:
    texts until START (error 21610).
 3. **Do-not-contact**: a lead staff set to "DND" (decision 68). No national
    registry check.
-4. **Explicit no** (marketing SMS only): the phone's `sms_opt_in: false`, or
-   the lead form's `TCPAOptIn: false`.
+4. **Explicit no** (marketing SMS only): the phone's `sms_opt_in: false`. The
+   lead form's `TCPAOptIn: false` is kept on record and blocks only when
+   `consent.FORM_NO_BLOCKS_TEXT` is on (off: the user, 2 Nov 2026).
 5. **A reply** to a message the customer just sent is allowed. In a
    conversation the customer started (inbound) at any hour (decision 56); in
    an outbound one, outside 8:00-21:00 customer time the reply still goes,
@@ -476,7 +477,7 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
             check("explicit_no", False, "the phone is marked sms_opt_in: false on the customer record")
             return Decision("BLOCK", "the customer's phone is marked not to be texted (sms_opt_in: false)",
                             "explicit_no")
-        if form and not form[0]:
+        if consent.FORM_NO_BLOCKS_TEXT and form and not form[0]:
             check("explicit_no", False, f"the lead form says {form[1]!r}")
             return Decision("BLOCK", f"the lead form says the customer didn't opt in ({form[1]})", "explicit_no")
         check("explicit_no", True, "no explicit no")
