@@ -15,7 +15,6 @@ from bson import ObjectId
 
 from tests.unit.conftest import make_settings, set_clock
 from upsell_agent import clock
-from upsell_agent.agent.templates import HOLDING_REPLIES
 from upsell_agent.agent.turn import TurnDeps, run_turn
 from upsell_agent.api.leads import lead_profile
 from upsell_agent.channels.fake import FakeChannelDriver
@@ -158,40 +157,26 @@ async def test_handoff_schedules_a_staff_check_in_business_minutes(mongo, dealer
     assert [f["status"] for f in await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)] == ["cancelled"]
 
 
-async def test_one_holding_reply_every_two_hours(mongo, dealers):
+async def test_after_the_handoff_reply_the_customer_gets_nothing_more(mongo, dealers):
+    """The user, 3 Nov 2026 (Jeffry Turman: "I bought one already" was answered "our sales manager will reach out"
+    twice more; Sierra): no holding replies - every message is saved, and staff get a note."""
     created = await _handed_off(mongo)
     handoff_messages = len(await _outbox(mongo, created))
 
     _move(5)
     early = await _say(created, "Also I'm free after 5")
-    assert early["status"] == "saved_only" and "at most one holding reply" in early["reason"]
-    assert len(await _outbox(mongo, created)) == handoff_messages
-
     _move(125)
-    later = await _say(created, "Still waiting")  # a question would be answered by the AI (callback handoff)
-    assert later["status"] == "holding_reply" and later["send_status"] == "sent"
-    sent = await _outbox(mongo, created)
-    assert len(sent) == handoff_messages + 1
-    assert sent[-1]["text"] == HOLDING_REPLIES["holding"].sms.format(name="Hana")
-
+    later = await _say(created, "Still waiting")
+    assert early["status"] == later["status"] == "saved_only"
+    assert len(await _outbox(mongo, created)) == handoff_messages
     turns = await mongo[AI_TURN_LOG_COLLECTION].find(
         {"lead_id": created["lead_id"], "trigger": "inbound_held"}).sort("created_at", 1).to_list(None)
-    assert [t["outcome"] for t in turns] == ["saved_only", "holding_reply"]
+    assert [t["outcome"] for t in turns] == ["saved_only", "saved_only"]
     unanswered = await mongo[AI_MESSAGES_COLLECTION].count_documents(
         {"lead_id": created["lead_id"], "direction": "inbound", "answered_turn_id": None})
     assert unanswered == 0
-    # A holding reply never schedules a channel switch.
-    assert [f["status"] for f in await _scheduled(mongo, created, followups.KIND_CHANNEL_SWITCH)] == ["cancelled"]
-
-
-async def test_holding_reply_by_email_uses_the_email_version(mongo, dealers):
-    set_clock(ny(22, 10))
-    created = await _lead(channel="email")
-    await _say(created, "Please have a manager call me", channel="email")
-    _move(150)
-    assert (await _say(created, "Still waiting for that call", channel="email"))["status"] == "holding_reply"
-    last = (await _outbox(mongo, created, "email"))[-1]
-    assert last["subject"] == HOLDING_REPLIES["holding"].email_subject and "passed it to our sales manager" in last["text"]
+    notes = await mongo["ai_crm_notes"].find({"lead_id": created["lead_id"], "kind": "after_handoff"}).to_list(None)
+    assert any("Still waiting" in n["text"] for n in notes)
 
 
 async def test_customer_message_does_not_cancel_the_staff_check(mongo, dealers):

@@ -1499,6 +1499,12 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
                       handoff_id=turn_id, staff_alert=None,
                       # PLAN_4 stream X3 item 4: no person's decision is pending - the AI may take it back to book.
                       handoff_soft=bool(result.get("flag_human")) or reason.startswith("Customer is clearly upset"))
+        if not fields["handoff_soft"]:
+            # The user, 3 Nov 2026 (Sierra, April Carman, Jeffry Turman): a lead handed to a person stays with people -
+            # no holding replies, no taking it back when staff go quiet; a customer who asked for a person also
+            # stays with people when staff move the status (events/handlers.py). Cleared when staff hand it back.
+            fields["with_person"] = {"at": clock.now(), "reason": reason,
+                                     "asked_for_person": reason.startswith("Customer asked for a person")}
         if sent is not None and sent.status == "sent":
             # The handoff reply counts as the first "passed to the team" notice.
             fields["last_handoff_notice_at"] = clock.now()

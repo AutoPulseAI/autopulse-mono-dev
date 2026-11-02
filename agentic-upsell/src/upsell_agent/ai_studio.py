@@ -331,7 +331,7 @@ _ATTRS = {
     "staff_view": ("ACTION_KINDS",),
     # AI Studio > Compliance > Safeguards (the user, 26 Oct 2026: every rule set in code is shown and editable here).
     "turn": ("SECOND_FORM_IS_CONTACT",),
-    "handlers": ("DUPLICATE_STAYS_QUIET",),
+    "handlers": ("DUPLICATE_STAYS_QUIET", "QUIET_AFTER_HANDOFF"),
     "safety_net": ("ENABLED", "MAX_PER_RUN"),
     "studio_cadences": ("WAIT_WHEN_THEY_WILL_REACH_OUT",),
     "followups": ("FIRE_CONCURRENCY", "FIRE_BATCH_LIMIT"),
@@ -943,6 +943,8 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             mods["policy"].MAX_ASKS_PER_MESSAGE = max(1, min(3, int(c["questions_per_message"])))
         if isinstance(c.get("switch_ai_off_after_failed_drafts"), bool):
             mods["guard"].HANDOFF_AFTER_FAILED_DRAFTS = c["switch_ai_off_after_failed_drafts"]
+        if isinstance(c.get("ai_stays_quiet_after_handoff"), bool):
+            mods["handlers"].QUIET_AFTER_HANDOFF = c["ai_stays_quiet_after_handoff"]
         if isinstance(c.get("ai_resumes_after_staff_minutes"), (int, float)) and not isinstance(
                 c["ai_resumes_after_staff_minutes"], bool):
             from datetime import timedelta as _td

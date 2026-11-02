@@ -469,10 +469,15 @@ export async function cancelAllRemindersForLead(leadId) {
 export async function createManagerialReviewMessages(leadId, dealerId) {
   try {
     await dbConnect();
-    // Not skipped for an AI-live dealer (client, 8 Oct 2026): the AI pauses on a lead set to "Managerial Review"
-    // (a staff-owned status) and sends nothing, so these existing follow-ups - configured in Reminder Setting -
-    // are the one check that the customer's issue was resolved. One system, no double messages.
-    
+    // Skipped for an AI-live dealer again (the user, 3 Nov 2026; on since 8 Oct at the client's request): the
+    // "Has someone from our team reached out?" text and email went 24h / 72h later whatever happened meanwhile -
+    // Douglas Benjamin after staff closed his newer lead, an opted-out customer, a booked one, Sierra after Mercy
+    // had answered her. After a handoff the customer gets no timed message; staff get the AI's alert instead.
+    if (await aiOwnsCustomerMessages(dealerId)) {
+      console.log(`Managerial review messages skipped for dealer ${dealerId}: the AI is live`);
+      return { success: false, skipped_for_ai: true, message: 'AI owns follow-up messages' };
+    }
+
     // Get dealer's managerial review settings
     const dealer = await User.findById(dealerId);
     if (!dealer || !dealer.managerial_review_settings?.enabled) {
@@ -581,8 +586,8 @@ export async function processReminder(reminder) {
     
     // Created before the dealer's AI went live: never sent now (the AI owns
     // these messages); cancelled so the cron stops picking it up.
-    // Managerial review follow-ups still go: the AI is paused on those leads (createManagerialReviewMessages).
-    if (dealerId && reminder.message_type !== 'managerial_review' && await aiOwnsCustomerMessages(dealerId)) {
+    // Managerial review check-ins included (the user, 3 Nov 2026: createManagerialReviewMessages).
+    if (dealerId && await aiOwnsCustomerMessages(dealerId)) {
       reminder.status = 'cancelled';
       reminder.error_message = 'Skipped: the AI is live for this dealer and sends its own messages';
       await reminder.save?.();

@@ -175,6 +175,11 @@ async def fire(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
         (key == "still_with_me" and isinstance(state.get("last_outbound_at"), datetime)
          and state["last_outbound_at"] > (doc["started_at"] + timedelta(minutes=1)).replace(
              tzinfo=state["last_outbound_at"].tzinfo), "another message went out after the AI's question"),
+        # Kenneth Ball, 2 Nov 2026: Mercy texted him the Escalade's link and video and set "Contacted - No Next
+        # Action" (the AI took the lead back), and 12 minutes later the AI's "are you still with me? 2, 3 or 4 PM?"
+        # went - planned before she stepped in. Staff acting on the lead after a cadence started ends it.
+        (isinstance(state.get("paused_at"), datetime) and state["paused_at"] > doc["started_at"].replace(
+            tzinfo=state["paused_at"].tzinfo), "staff took the lead over after this cadence started"),
     ]
     # David Garcia, 30 Oct 2026: "I'm not interested anymore" got "what changed?", then this touch 16 minutes later -
     # the customer's hold stopped the other timed messages, not this one.

@@ -294,6 +294,20 @@ def test_spanish_day_and_time_words_reach_the_booking_code():
                                       TUESDAY_NOON).part_words
 
 
+def test_chinese_day_and_time_words_reach_the_booking_code():
+    # Junling Fan, 2 Nov 2026: "明天去看上午", "9点左右", "10点" were never read; the visit she confirmed wasn't booked.
+    from upsell_agent.agent.language import dates_to_english
+
+    assert dates_to_english("明天去看上午") == "tomorrow 去看 morning"
+    assert dates_to_english("9点左右") == "at 9 or so"
+    assert dates_to_english("10点") == "at 10"
+    assert dates_to_english("明天上午十点半") == "tomorrow morning at 10:30"
+    assert dates_to_english("星期六下午3点") == "Saturday afternoon at 3"
+    assert booking_tool.bare_time(dates_to_english("10点")).hour == 10
+    assert booking_tool.preferred_day(dates_to_english("明天去看上午"), _dealer(), TUESDAY_NOON).part_words
+    assert dates_to_english("是的") == "是的"
+
+
 def test_a_spanish_conversation_gets_a_spanish_reply():
     from upsell_agent.agent.nodes.guard import not_in_reply_language
 

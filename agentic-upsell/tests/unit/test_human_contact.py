@@ -18,7 +18,7 @@ from upsell_agent.channels.fake import FakeChannelDriver
 from upsell_agent.channels.sender import Sender
 from upsell_agent.devtools import simulate
 from upsell_agent.events import handlers
-from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent
+from upsell_agent.events.models import InboundMessageEvent, LeadCreatedEvent, LeadPausedEvent, LeadResumedEvent
 from upsell_agent.integrations.mongodb import (
     AI_CALL_TASKS_COLLECTION,
     AI_LEAD_STATE_COLLECTION,
@@ -59,6 +59,8 @@ TUESDAY_NIGHT = datetime(2026, 9, 23, 2, 0, tzinfo=UTC)  # 22:00 in New York: no
     ("Yes", True, CALL),  # Ishmael Ballah, 26 Oct 2026: a plain yes accepts the call offered first
     ("ok", True, CALL),
     ("Yes", False, None),
+    ("Have a real person contact Sam at 846-287-0493. Please text. Thanks.", False, TEXT),  # Sierra, 2 Nov 2026
+    ("Have the manager reach me, please call", False, CALL),
 ])
 def test_how_they_want_to_hear_from_a_person(text, answering, want):
     assert said_method(text, answering=answering) == want
@@ -281,3 +283,51 @@ async def test_a_person_asked_for_then_never_mind_takes_the_notice_back(mongo, l
     assert (await _state(mongo, created))["staff_notice"]["kind"] == "person_requested"
     await _say(created, "never mind, you can help")
     assert ((await _state(mongo, created)).get("staff_notice") or {}).get("kind") != "person_requested"
+
+
+async def _staff(created, reason):
+    await handlers.handle_lead_paused(LeadPausedEvent(event_id=f"p-{ObjectId()}", dealer_id=DEALER,
+                                                      lead_id=created["lead_id"], reason=reason), _deps())
+
+
+async def test_a_customer_who_asked_for_a_person_stays_with_people_when_staff_move_the_status(mongo, live_dealer):
+    # Sierra, 2 Nov 2026: asked for a person, Mercy texted her and set "Lead Not Contacted", and the AI answered
+    # her next message ("If it's a real person, please text Sam") with "a call or a text?" again.
+    set_clock(TUESDAY_NOON)
+    created = await _lead("Sierra Person")
+    await _say(created, "Can you have a person text me instead?")
+    assert (await _state(mongo, created))["with_person"]["asked_for_person"]
+    await _staff(created, "Staff replied by hand (Mercy Carill)")
+    await _staff(created, 'Staff moved the lead to "Lead Not Contacted"')
+    state = await _state(mongo, created)
+    assert state["status"] == "paused" and state["stage"] == "no_contact_made"
+    sent = await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": created["lead_id"]})
+    result = await _say(created, "If it's a real person, please text Sam at 847-287-0493")
+    assert result["status"] == "saved_only"
+    assert await mongo[DEV_OUTBOX_COLLECTION].count_documents({"lead_id": created["lead_id"]}) == sent
+    # No "staff went quiet" take-back either; staff hand it back with "Hand back to AI".
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": followups.KIND_STAFF_QUIET, "status": "pending"})
+    await handlers.handle_lead_resumed(LeadResumedEvent(event_id=f"r-{ObjectId()}", dealer_id=DEALER,
+                                                                 lead_id=created["lead_id"]))
+    state = await _state(mongo, created)
+    assert state["status"] == "active" and not state.get("with_person")
+
+
+async def test_the_ai_never_takes_back_a_handed_off_lead_when_staff_go_quiet(mongo, live_dealer):
+    # April Carman, 2 Nov 2026: handed to a manager over her price offer, a manager texted "$26,500 plus tax", her
+    # reply went unanswered 15 minutes, and the AI took over and pushed visits 12 times.
+    set_clock(TUESDAY_NOON)
+    created = await _lead("April Offer")
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "status": "handoff", "status_reason": "Price offer", "with_person": {"reason": "Price offer",
+                                                                           "asked_for_person": False}}})
+    await _staff(created, "Staff replied by hand (Mercy Carill)")
+    result = await _say(created, "I asked for walkaway and u give me $30000")
+    assert result["status"] == "saved_only"
+    assert not await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one(
+        {"lead_id": created["lead_id"], "kind": followups.KIND_STAFF_QUIET, "status": "pending"})
+    # Staff choosing a working status is their hand-back: the AI follows up again.
+    await _staff(created, 'Staff moved the lead to "Contacted - No Next Action"')
+    state = await _state(mongo, created)
+    assert state["status"] == "active" and not state.get("with_person")

@@ -71,9 +71,40 @@ _ES_DATE_WORDS = [
 ]
 
 
+# Junling Fan, 2 Nov 2026: "明天去看上午" (tomorrow morning), "9点左右" (around 9), "10点" (10 o'clock) were never
+# read, so the visit she confirmed was never booked. Chinese has no spaces, so these words are put into English
+# with spaces around them ("明天上午10点" -> "tomorrow morning at 10").
+_ZH_DIGITS = {"一": "1", "二": "2", "两": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7", "八": "8",
+              "九": "9", "十": "10", "十一": "11", "十二": "12"}
+_ZH_DAYS = {"一": "Monday", "二": "Tuesday", "三": "Wednesday", "四": "Thursday", "五": "Friday", "六": "Saturday",
+            "日": "Sunday", "天": "Sunday"}
+_ZH_HOUR = r"(\d{1,2}|十[一二]?|[一二两三四五六七八九])"
+_ZH_DATE_WORDS = [
+    (_ZH_HOUR + r"\s*[点點]\s*半", lambda m: f" at {_ZH_DIGITS.get(m[1], m[1])}:30 "),
+    (_ZH_HOUR + r"\s*[点點](?:\s*(\d{1,2})\s*分)?",
+     lambda m: f" at {_ZH_DIGITS.get(m[1], m[1])}" + (f":{int(m[2]):02d}" if m[2] else "") + " "),
+    (r"后天|後天", " the day after tomorrow "), (r"明天|明日", " tomorrow "), (r"今天|今日", " today "),
+    (r"上午|早上|早晨", " morning "), (r"中午", " noon "), (r"下午", " afternoon "), (r"晚上|傍晚", " evening "),
+    (r"左右", " or so "), (r"下周|下星期|下礼拜", " next week "), (r"这周|本周|这星期", " this week "),
+    (r"(?:星期|周|週|礼拜)([一二三四五六日天])", lambda m: f" {_ZH_DAYS[m[1]]} "),
+]
+_ZH = re.compile(r"[一-鿿]")
+
+
+def chinese_dates_to_english(text: str) -> str:
+    """Chinese day and time words in English, for the booking code; a message without Chinese is unchanged."""
+    out = text or ""
+    if not _ZH.search(out):
+        return out
+    for pattern, english in _ZH_DATE_WORDS:
+        out = re.sub(pattern, english, out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def dates_to_english(text: str) -> str:
-    """A Spanish message with its day and time words in English, for the booking code; other words unchanged."""
+    """A Spanish (or Chinese) message with its day and time words in English, for the booking code; other words
+    unchanged."""
     out = text or ""
     for pattern, english in _ES_DATE_WORDS:
         out = re.sub(pattern, english, out, flags=re.IGNORECASE)
-    return out
+    return chinese_dates_to_english(out)

@@ -45,7 +45,9 @@ _SPACE_BEFORE = re.compile(r"[ \t]+([,.!?;])(?=\s|$)")
 _NO_SPACE_AFTER_END = re.compile(r"\b[a-z]{2,}[.!?](?=[A-Z][a-z])")
 _NO_SPACE_AFTER_COMMA = re.compile(r"\b[A-Za-z]{2,},(?=[A-Za-z]{2,})")
 _LONE_I = re.compile(r"(?<![\w'’-])i(?:['’](?:m|ll|ve|d))?(?![\w'’-])")
-_FINAL = re.compile(r"[.!?…][\"'”’)\]]*\s*$")
+# Junling Fan, 2 Nov 2026: Chinese ends a sentence with full-width "。！？" - "…对吗？" failed as "no end mark", the
+# rewrite did too, and her "是的" confirming tomorrow at 10 AM got the safe reply instead.
+_FINAL = re.compile(r"[.!?…。！？｡．][\"'”’)\]）」』】]*\s*$")
 
 # "a" / "an" go by sound. Only lowercase words are judged (an SUV, a RAV4, an F-150 are read as letters or
 # names), and only where the sound is clear from the spelling or a list below.

@@ -18,7 +18,8 @@ export function messageAuthor(email, lead, botName) {
   }
   if (name) return { kind: "staff", label: `Sent by staff: ${name}` };
   if (idOf(by)) return { kind: "staff", label: "Sent by staff" };
-  return { kind: "system", label: "Automatic message (not the AI)" };
+  // The user, 3 Nov 2026: "Dealership reminder" (was "Automatic message (not the AI)") - still never the AI's name.
+  return { kind: "system", label: "Dealership reminder" };
 }
 
 export function noteAuthor(email, isAi) {

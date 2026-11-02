@@ -38,7 +38,7 @@ from upsell_agent.agent import (
 from upsell_agent.agent.after_hours import plan_after_hours
 from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.conversation import ConversationState, VisitState, questions_for_turn
-from upsell_agent.agent.language import SPANISH, customer_language, dates_to_english
+from upsell_agent.agent.language import SPANISH, chinese_dates_to_english, customer_language, dates_to_english
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.qualification import LeadType
 from upsell_agent.agent.sold_pending import reply_hold
@@ -1453,7 +1453,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         previous = str((ctx.lead_state or {}).get("reply_language") or "").strip() or str(
             (ctx.lead_state or {}).get("customer_language") or "").strip().replace("English", "")
         reply_language = previous or (lead_language if lead_language not in ("", "English") else None)
-    booking_text = dates_to_english(text) if reply_language == SPANISH else text
+    booking_text = dates_to_english(text) if reply_language == SPANISH else chinese_dates_to_english(text)
     drop_past_offers(conversation, now)
     visit_ctx, visit_plan = await _visit_and_booking(
         ctx, state, profile, conversation, extraction, dealer=dealer, now=now, text=booking_text, hold=hold,

@@ -182,6 +182,26 @@ async def test_still_with_me_never_starts_from_a_follow_up_and_stops_if_anything
     assert doc["status"] == "cancelled" and "another message" in doc["reason"]
 
 
+async def test_still_with_me_planned_before_staff_stepped_in_never_goes(mongo, live_dealer):
+    # Kenneth Ball, 2 Nov 2026: Mercy texted him the Escalade's link and set "Contacted - No Next Action" (the AI took
+    # the lead back), and 12 minutes later the AI's "are you still with me? 2, 3 or 4 PM?" went.
+    from tests.unit.test_human_contact import _staff
+    set_clock(TUESDAY_NOON)
+    created = await _lead("Ken Nudge")
+    await _say(created, "What colors do you have?")
+    touches = await _pending(mongo, created, studio_cadences.KIND_STUDIO_TOUCH)
+    if not touches:
+        pytest.skip("this reply asked nothing")
+    set_clock(clock.now() + timedelta(minutes=3))
+    await _staff(created, "Staff replied by hand (Mercy Carill)")
+    await _staff(created, 'Staff moved the lead to "Contacted - No Next Action"')
+    assert (await _state(mongo, created))["status"] == "active"
+    set_clock(clock.now() + timedelta(minutes=16))
+    await followups.fire_due(_deps())
+    doc = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": touches[0]["_id"]})
+    assert doc["status"] == "cancelled" and "staff took the lead over" in doc["reason"]
+
+
 async def test_busy_but_wanting_to_come_in_is_a_visit_not_a_what_time_question(mongo, live_dealer):
     set_clock(TUESDAY_NOON)
     created = await _lead("Vic Visit")
