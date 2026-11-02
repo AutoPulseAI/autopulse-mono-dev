@@ -249,6 +249,12 @@ export function AgentEditor({ content, onChange, readOnly }) {
         word, ✕ to remove). Then Save draft and Publish.</HowTo>
       {area("playbook", "How this agent talks and what it leans on", 4)}
       {area("never", "Never does", 2)}
+      {area("rules", "Extra rules for this agent", 4)}
+      <Form.Group className="mb-3">
+        <Form.Label className="fw-semibold">More words that bring this agent in</Form.Label>
+        <WordChips words={content.more_keywords || patternToWords(content.more_words)} readOnly={readOnly}
+          onChange={(next) => onChange({ ...content, more_keywords: next })} />
+      </Form.Group>
       <Form.Group className="mb-3">
         <Form.Label className="fw-semibold">This agent takes over when the customer mentions</Form.Label>
         <WordChips words={content.keywords || patternToWords(content.steps_in_when)} readOnly={readOnly}

@@ -95,8 +95,14 @@ async def start(db: DealerScopedDatabase, *, lead_id: str, customer_id: str | No
             followups = db.collection(SCHEDULED_FOLLOWUPS_COLLECTION)
             if await followups.find_one({"lead_id": lead_id, "kind": KIND_STUDIO_TOUCH, "studio_cadence": key,
                                          "status": {"$in": ["pending", "claimed"]}}):
-                out.append({"cadence": key, "created": False, "reason": "already running for this lead"})
-                continue
+                if trigger.get("type") != "ai_asked":
+                    out.append({"cadence": key, "created": False, "reason": "already running for this lead"})
+                    continue
+                # Rocco, 1 Nov 2026: the waiting nudge kept its old start, saw his reply since then and cancelled
+                # itself, and the AI's last question got no "still with me?". A new question restarts the wait.
+                await followups.update_many({"lead_id": lead_id, "kind": KIND_STUDIO_TOUCH, "studio_cadence": key,
+                                             "status": "pending"},
+                                            {"$set": {"status": "superseded", "reason": "the AI asked a new question"}})
             now = clock.now()
             await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                 {"lead_id": lead_id}, {"$set": {f"studio_cadences.{key}": {"started_at": now, "step": 0}}})

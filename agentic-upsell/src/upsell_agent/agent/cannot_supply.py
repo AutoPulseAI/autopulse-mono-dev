@@ -23,6 +23,7 @@ CREDIT_SCORE, APR, PAYMENT, OTD, CUSTOM_MEDIA, OUT_OF_STATE = (
 # ... always APPOINTMENT FIRST"; confirmed "Correct!"): a buyer's order request is first answered with the visit; her
 # question sequence (agent/buyers_order.py) runs only if the customer insists.
 BUYERS_ORDER = "buyers_order_invite"
+NEGOTIATE = "price_negotiation"  # Betsy, 2 Nov 2026 (Jordan Pena): "we can give it the answer so it can get the appointment"
 
 # Checked in this order: the first match decides (a payment question that mentions the rate is a payment question).
 _PATTERNS: tuple[tuple[str, str], ...] = (
@@ -39,6 +40,8 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
           # the AI promised to write it up): itemized fees are the same answer - appointment first.
           r"\bitemi[sz]\w*|\bdoc(?:umentation)?\s+fees?\b|\bbreak\s*down\b[^.?!]{0,30}\b(?:fees?|price|costs?)\b|"
           r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b")),
+    (NEGOTIATE, (r"\bnegotia\w*|\b(?:work|deal)\s+(?:with|on)\s+(?:the\s+|your\s+)?price\b|\b(?:come|go)\s+down\s+on\b|"
+                r"\blower\s+(?:the\s+|your\s+)?price\b|\bbest\s+price\b|\bwiggle\s+room\b|\bflexible\s+on\b")),
     # Betsy, 22 Oct 2026: "more photos" of the car is answered with its photos by MMS (agent/vehicle_media.py) - a
     # video, a walk-around or close-ups of a part are what only staff can make.
     (CUSTOM_MEDIA, (r"\bvideos?\b|\bwalk[\s-]?around\b|\bclose[\s-]?ups?\b|"
@@ -53,6 +56,10 @@ _COMPILED = tuple((topic, re.compile(p, re.IGNORECASE)) for topic, p in _PATTERN
 # Betsy's words (typos corrected). {times}: "Tuesday at 10:00 AM or Wednesday at 2:00 PM".
 _ASK_DAY = "What day this week works best for you to meet with us? I have {times} available."
 _REPLIES: dict[str, str] = {
+    # Mercy's own words (Jordan Pena, 1 Nov 2026), which got him to "Yes I can make time". Editable in AI Studio.
+    NEGOTIATE: ("Our prices are very competitive to market and transparent, and we can work with you on the other "
+                "parts of your deal. Are you interested in seeing it in person before you make your final decision? "
+                "I have {times} available."),
     BUYERS_ORDER: ("We'd be happy to prepare your buyer's order! It's most accurate in person, since we confirm your "
                    "trade, taxes and fees together. What day works best for you to come in? I have {times} available."),
     CREDIT_SCORE: ("We need to meet with you in person to discuss your credit because we have to confirm your "

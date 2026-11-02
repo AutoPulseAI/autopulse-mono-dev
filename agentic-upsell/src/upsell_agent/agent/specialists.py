@@ -93,23 +93,31 @@ _COMPILED = tuple((sid, re.compile(p, re.IGNORECASE)) for sid, p in _PATTERNS)
 # not break the system". AI Studio's own words (_PATTERNS, edited there by Betsy) are checked first and keep their
 # place; these built-in words are checked only when none of hers matched. Most specific first.
 _MORE_WORDS = (
-    (TRADE, r"\b(trad(e|ing) (it )?in|swap my|part[- ]?exchange|my (current|old|own) (car|truck|suv|van|vehicle|ride)|"
+    (TRADE, r"\b(trad(e|ing) (it )?in|swap\w*|part[- ]?exchange|get a value|value (in|on|for) (it|mine)|what('s| is) it worth|my (current|old|own) (car|truck|suv|van|vehicle|ride)|"
             r"what (would|will|can|could) you (give|offer|pay)|how much (would|will|can|could) you (give|pay|offer)|"
             r"(sell|selling) (my|our|the) (car|truck|suv|van|vehicle|\w+)|buy (my|our) (car|truck|vehicle)|"
             r"(still )?owe (on|about|around)?|upside[- ]down|negative equity|lien|loan balance|pay ?off|appraisal|"
-            r"apprais\w*|blue book|edmunds value|carmax (offer|quote)|carvana (offer|quote)|instant offer)\b"),
+            r"apprais\w*|blue book|edmunds value|carmax (offer|quote)|carvana (offer|quote)|instant offer|"
+            r"get rid of my|turn (it|mine|my \w+) in|roll (it|the balance) over|equity|lease (buyout|return|end)|"
+            r"book value|cash for my|take my (car|truck)|my (lease|loan) is)\b"),
     (CREDIT, r"\b(my credit|credit (is|isn'?t|was|history|issues?|problems?|check|app(lication)?|union)|"
              r"bad credit|poor credit|low credit|no credit|fair credit|rebuild\w* credit|(soft|hard) (pull|check)|"
              r"pre-?qualif\w*|pre-?approv\w*|get approved|will i (get|be) approved|can i get financ\w*|"
              r"first[- ]time (buyer|car)|cosign\w*|co-?sign\w*|repossess\w*|bankrupt\w*|chapter (7|13)|collections|"
-             r"itin|no ssn|no social|self[- ]employed|1099|proof of income|pay ?stubs?|buy here pay here|bhph)\b"),
+             r"itin|no ssn|no social|self[- ]employed|1099|proof of income|pay ?stubs?|buy here pay here|bhph|"
+             r"foreclos\w*|score|fico|lender|bank (approval|letter)|loan approval|income|job|on disability|"
+             r"credit app|finance app|get a loan|need a loan|down payment assistance)\b"),
     (PRICE, r"\b(price|priced|pricing|cost|costs|how much|what('s| is) the (price|number|best)|budget|afford|"
             r"monthly|a month|per month|/mo|payments?|apr|interest|rate|term|\d{2} months|out[- ]the[- ]door|otd|"
             r"all[- ]in|taxes|fees|doc fee|dealer fees?|discount|deal|best (price|deal|offer)|negotiat\w*|"
             r"lowest|cheaper|too (high|expensive)|lease|leasing|financ\w*|cash (price|deal|buyer)|down payment|"
-            r"money down|\$\s?\d|\d+k\b|msrp|incentives?|rebates?|specials?|promo\w*)\b"),
+            r"money down|\$\s?\d|\d+k\b|msrp|incentives?|rebates?|specials?|promo\w*|come down|lower|"
+            r"flexible|wiggle room|bottom line|final price|match (the|that|a) price|beat (the|that|a) price|"
+            r"pay in full|paying cash|cash)\b"),
     (SERVICE, r"\b(oil change|service (appointment|visit|department|center)|maintenance|recall|repair|check engine|"
-              r"warning light|inspection|warranty (work|claim|repair)|diagnos\w*|my car (is )?(making|shaking|leaking))\b"),
+              r"warning light|inspection|warranty (work|claim|repair)|diagnos\w*|my car (is )?(making|shaking|leaking)|"
+              r"tune[- ]?up|brakes? (job|pads?)|tire rotation|alignment|transmission (flush|service)|detail(ing)?|"
+              r"service (price|cost|special)|loaner|shuttle|bring (it|my \w+) in for)\b"),
     (SALES, r"\b(interested|interest(ed)? in|still available|available|in stock|is it (there|still)|"
             r"want (to|it)|looking (for|at|to buy)|shopping|need a (car|truck|suv|van|vehicle)|"
             r"test[- ]?drive|see (it|the car)|come (in|by|see)|visit|photos?|pictures?|pics|video|"
@@ -142,21 +150,36 @@ _MORE_BY_SPECIALIST = {
            "- Qualify in this order, one at a time, skipping what you know: new or used, the car, timeline, budget, "
            "trade.",
     PRICE: "- They push for a number: the listed price is the only number; the rest is worked out in person in a "
-           "few minutes.\n- \"Too expensive\": ask what monthly payment or total works for them.",
+           "few minutes.\n- \"Too expensive\": ask what monthly payment or total works for them.\n- Use their "
+           "situation (cash, distance, budget, target payment) in the reason to come in; never repeat \"we can discuss "
+           "it in person\" twice.",
     CREDIT: "- Never make them feel judged; never say \"all types of credit\".\n- Ask about money down or a trade, "
-            "one at a time.",
-    TRADE: "- Collect year, make, model, miles, payoff - one at a time, only what's missing.\n- Never a value or a "
-           "range; the appraisal gives the number.",
-    SERVICE: "- Get the vehicle, mileage and the problem; the service department confirms the time.",
+            "one at a time, and use the answers: they decide the real options.\n- Send the credit application link "
+            "when they want to get started.",
+    TRADE: "- Collect year, make, model, miles, payoff, condition - one at a time, only what's missing.\n- They want "
+           "to swap or trade: engage with it, ask what they still owe, and use each answer (their car, what they owe, "
+           "what they want) to give a concrete reason to come in.\n- Never a value or a range; the appraisal gives "
+           "the number. Never just send a link and repeat the same times.",
+    SERVICE: "- Get the vehicle, mileage and the problem, one at a time; the service department confirms the time.\n"
+             "- Ask what day works to bring it in; use the problem they described, never a guess at the cause.",
 }
 
 # The lead's bucket (agent/lead_bucket.py) when the message itself says nothing specific.
 _BUCKET_DEFAULT = {"credit": CREDIT, "trade_in": TRADE}
 
 
-def route(text: str | None, *, lead_type: str | None = None, bucket: str | None = None) -> tuple[Specialist, str]:
-    """(the specialist, why). The customer's own words this turn win; then a service lead; then the bucket."""
+# Jeramie Diaz, 1 Nov 2026: "get a value in it ... get approved and swap" went to Credit on "approved": a customer
+# talking about their own car's value or a swap is a trade conversation first.
+_TRADE_FIRST = re.compile(r"\b(swap\w*|still owe|get a value|value (in|on|for) (it|mine)|what('s| is) it worth)\b", re.IGNORECASE)
+
+
+def route(text: str | None, *, lead_type: str | None = None, bucket: str | None = None,
+          previous: str | None = None) -> tuple[Specialist, str]:
+    """(the specialist, why). The customer's own words this turn win; then a service lead; then the agent already on
+    the conversation (`previous`: "Hello just checking in" doesn't drop a trade talk back to sales); then the bucket."""
     said = text or ""
+    if lead_type != "service" and (match := _TRADE_FIRST.search(said)):
+        return SPECIALISTS[TRADE], f"the customer said {match.group(0)!r}"
     for sid, pattern in _COMPILED:
         if sid == SERVICE and lead_type != "service" and not re.search(
                 r"\b(recall|service|oil change|maintenance|repair|check engine|warning light)\b", said, re.IGNORECASE):
@@ -172,6 +195,8 @@ def route(text: str | None, *, lead_type: str | None = None, bucket: str | None 
             return SPECIALISTS[sid], f"the customer said {match.group(0)!r}"
     if lead_type == "service":
         return SPECIALISTS[SERVICE], "a service lead"
+    if previous in SPECIALISTS and previous != SALES and not dict(_MORE_COMPILED)[SALES].search(said):
+        return SPECIALISTS[previous], "the agent already on this conversation"
     if (match := dict(_MORE_COMPILED)[SALES].search(said)) and bucket in _BUCKET_DEFAULT:
         # A credit or trade-in lead talking about the car itself ("is it still available?", "I'm interested").
         return SPECIALISTS[SALES], f"the customer said {match.group(0)!r}"

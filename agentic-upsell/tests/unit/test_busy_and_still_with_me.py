@@ -100,7 +100,8 @@ async def test_still_with_me_after_an_unanswered_question_once(mongo, live_deale
     set_clock(TUESDAY_NOON + timedelta(minutes=16))
     await followups.fire_due(_deps())
     first = await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].find_one({"_id": touch["_id"]})
-    assert first["status"] == "cancelled"
+    # Rocco, 1 Nov 2026: a new question from the AI restarts the wait; a plain answer just cancels it.
+    assert first["status"] in ("cancelled", "superseded")
 
 
 async def test_still_with_me_off_or_replaced_by_her_own(mongo, live_dealer, monkeypatch):
@@ -199,3 +200,20 @@ async def test_call_me_monday_is_not_a_name(mongo, live_dealer):
         await _say(created, text)
     assert (await mongo["leads"].find_one({"_id": ObjectId(created["lead_id"])}))["name"] == "John Smith"
     assert "last name" not in await _last_sms(mongo, created)
+
+
+async def test_a_new_question_restarts_the_wait(mongo, live_dealer):
+    """Rocco, 1 Nov 2026: the waiting nudge saw his reply, cancelled itself, and the AI's last question got no nudge."""
+    set_clock(TUESDAY_NOON)
+    created = await _lead("Rocco Test")
+    await _say(created, "What colors do you have?")
+    if "?" not in await _last_sms(mongo, created):
+        pytest.skip("this reply asked nothing")
+    [touch] = await _pending(mongo, created, studio_cadences.KIND_STUDIO_TOUCH)
+    set_clock(TUESDAY_NOON + timedelta(minutes=4))
+    await _say(created, "probably sunday or saturday")
+    if "?" not in await _last_sms(mongo, created):
+        pytest.skip("this reply asked nothing")
+    [restarted] = await _pending(mongo, created, studio_cadences.KIND_STUDIO_TOUCH)
+    assert restarted["_id"] != touch["_id"]
+    assert restarted["due_at"] > touch["due_at"]

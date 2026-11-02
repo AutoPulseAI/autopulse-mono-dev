@@ -72,6 +72,7 @@ def agents() -> list[dict[str, Any]]:
     patterns = dict(specialists._PATTERNS)
     return [{"key": sid, "name": s.name, "content": {
         "playbook": s.playbook, "never": s.never, "steps_in_when": patterns.get(sid, "default (everything else)"),
+        "more_words": dict(specialists._MORE_WORDS).get(sid), "rules": specialists._MORE_BY_SPECIALIST.get(sid, ""),
         "lead_bucket_default": next((b for b, a in specialists._BUCKET_DEFAULT.items() if a == sid), None),
         "examples": []}} for sid, s in specialists.SPECIALISTS.items()]
 
@@ -196,9 +197,10 @@ def cadences() -> list[dict[str, Any]]:
             "stops_when": ["customer replies", "appointment set", "opt-out"],
             "steps": [{"id": "nudge", "when": "15 minutes after the AI asked a question, if they haven't replied",
                        "label": "Still with me?", "channels": ["sms"], "wait": _wait(15, "minutes", "start"),
-                       "message": ai("They were texting with us and stopped after our question. One short, friendly "
-                                     "line checking they're still there and repeating the question in a few words "
-                                     "(e.g. \"Still with me? Would Saturday at 11 work?\"). No new questions.")}]}},
+                       "message": ai("They were texting with us and stopped after our question. One short, friendly line: their "
+                                  "first name, then ask if they're still with us, then our last question again in a few "
+                                  "words (\"Rocco, are you still with me? What time on Friday is best for you?\"). No new "
+                                  "questions.")}]}},
         {"key": "unsold", "name": "Unsold (visited, didn't buy)", "content": {
             "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold - then the Short-Term "
                                                     "follow-up runs again (Days 1-7, weekly, monthly)",
@@ -342,13 +344,17 @@ def status_rules() -> list[dict[str, Any]]:
                 "rules": [{"reason_starts_with": r, "why": w} for r, w in escalation.MANAGER_ESCALATIONS]}},
             {"key": "status_workflows", "name": "Status changed by staff -> workflow", "content": {
                 "map": lifecycle.STAFF_STATUS_EVENTS}},
+            {"key": "agent_rules", "name": "Rules every agent follows", "content": {
+                "rules": specialists.EVERY_SPECIALIST}},
             {"key": "contact_questions", "name": "Contact details the AI asks for", "content": {
                 "name_question": _decide().NAME_QUESTION, "email_questions": list(_decide().EMAIL_QUESTIONS),
                 "phone_questions": list(_decide().PHONE_QUESTIONS),
                 "ask_for_a_phone_when_missing": _decide().ASK_PHONE,
-                "what_it_does": "A missing name is asked first, then a missing email, then a missing mobile number - one "
-                                "per message, each at most twice, two days apart. The mobile number is offered, never "
-                                "pushed, and never asked of a customer who said they prefer email."}},
+                "trade_questions": dict(_decide().TRADE_QUESTIONS),
+                "what_it_does": "Asked in the same message as the answer and the next step. A missing name first, then a "
+                                "missing email, then a missing mobile number - one per message, each at most twice; if "
+                                "they don't give it, it is asked again in the next reply. The mobile number is offered, "
+                                "never pushed, and never asked of a customer who said they prefer email."}},
             {"key": "email_subjects", "name": "Email subject lines by intent", "content": {
                 "by_intent": _lead_brief().SUBJECT_IDEAS, "rule": _lead_brief().SUBJECT_RULE}},
             {"key": "alert_kinds", "name": "Dealership Action Required: what counts", "content": {
@@ -497,9 +503,10 @@ def _safeguards() -> dict[str, Any]:
         "all_wheel_drive_cars_added": "How many all-wheel-drive cars that search adds (0-5).",
         "condition_questions_to_a_manager": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the "
                                             "car's condition (mechanical, cosmetic, known issues, accidents, service "
-                                            "history), the AI answers with what it knows (mileage, the history report) "
-                                            "and the lead goes to Managerial Review with an alert, so a manager "
-                                            "confirms the rest. The AI keeps the conversation going.",
+                                            "history, battery health, title), the AI answers with what it knows and "
+                                            "the lead goes to Managerial Review with an alert, so a manager confirms "
+                                            "the rest. The same when they can't easily come in (too far, a phone-only "
+                                            "purchase). The AI keeps the conversation going.",
     }
     return {**values, **{f"{k}_explained": v for k, v in explained.items()}}
 
@@ -554,7 +561,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 29
+DEFAULTS_REVISION = 30
 
 
 def export() -> dict[str, Any]:
