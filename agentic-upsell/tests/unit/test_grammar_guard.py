@@ -122,3 +122,10 @@ def _fixed_messages() -> list[str]:
 @pytest.mark.parametrize("text", _fixed_messages())
 def test_every_fixed_message_passes_the_grammar_rule(text):
     assert grammar_problems(text, needs_final_punctuation="\n" not in text) == []
+
+
+@pytest.mark.parametrize("text", ["好的，您想明天（11月3日，星期二）10:00 AM到店看车，对吗？", "谢谢您确认时间！",
+                                  "好的，您计划明天10:00 AM到店看车。", "好的（明天见）。"])
+def test_a_chinese_sentence_end_counts_as_the_final_mark(text):
+    # Junling Fan, 2 Nov 2026: "…对吗？" failed, and her yes to tomorrow at 10 AM got the safe reply.
+    assert grammar_problems(text, needs_final_punctuation=True, english=False) == []

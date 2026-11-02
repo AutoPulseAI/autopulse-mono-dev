@@ -390,3 +390,14 @@ def test_noted_as_your_visit_time_without_a_booking_is_blocked():
     booked = {"visit": {"status": "confirmed", "display": "Saturday, October 31 at 10:30 AM"}}
     assert not invalid_booking_wording(booked, draft)
     assert not invalid_booking_wording({"visit": {}}, {"sms_text": "Noted! Would Saturday at 10 or 11 work?"})
+
+
+async def test_a_chinese_time_after_our_offer_is_booked(mongo):
+    # Junling Fan, 2 Nov 2026: offered times, she wrote "明天去看上午" ... "10点" ... "是的" and was never booked.
+    created = await _lead()
+    await mongo[PLATFORM_LEADS_COLLECTION].update_one({"_id": as_object_id(created["lead_id"])},
+                                                      {"$set": {"user_language": "Chinese"}})
+    await _offer(mongo, created)
+    await _say(created, "明天上午10点")
+    booking = await _booking(mongo, created)
+    assert booking is not None and booking["bookingTime"] == "10:00"
