@@ -105,7 +105,7 @@ def test_a_missing_name_is_asked_again_two_days_later_at_most_twice():
     from upsell_agent.agent.nodes.decide import _may_ask_name
     now = datetime(2026, 10, 28, 15, tzinfo=UTC)
     assert _may_ask_name({}, now)
-    assert not _may_ask_name({"name_asked": now - timedelta(hours=5), "name_asks": 1}, now)
+    assert _may_ask_name({"name_asked": now - timedelta(hours=5), "name_asks": 1}, now)  # the next reply (2 Nov 2026)
     assert _may_ask_name({"name_asked": now - timedelta(days=3), "name_asks": 1}, now)
     assert _may_ask_name({"name_asked": (now - timedelta(days=3)).replace(tzinfo=None)}, now)  # Mongo's naive UTC
     assert not _may_ask_name({"name_asked": now - timedelta(days=9), "name_asks": 2}, now)

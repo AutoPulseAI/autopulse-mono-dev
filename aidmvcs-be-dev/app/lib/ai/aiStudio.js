@@ -121,6 +121,14 @@ const ALIGNMENTS = [
       const steps = (c.steps || []).map((st) => (when[st?.id] && st.when !== when[st.id] ? { ...st, when: when[st.id] } : st));
       return steps.some((st, i) => st !== (c.steps || [])[i]) ? { ...c, steps } : null;
     } },
+  // The user, 2 Nov 2026: every agent's words and rules show in AI Studio. Added beside the edited text, never over it.
+  { id: 'agent_words_rules_2nov', type: 'agents',
+    note: 'Updated by AutoPulse: the extra words and rules this agent uses now show here (2 Nov 2026). Your text is unchanged.',
+    change: (c, item) => {
+      const row = defaultContent(item.type, item.key);
+      if (!row || (c.more_words && c.rules)) return null;
+      return { ...c, more_words: c.more_words || row.more_words, rules: c.rules || row.rules };
+    } },
   { id: 'still_waiting_removed_28oct', type: 'messages', key: 'holding_still_waiting', retire: true,
     note: 'Removed by AutoPulse: the 30-minute "Sorry for the wait" message is no longer sent (28 Oct 2026)' },
 ];
@@ -136,7 +144,7 @@ async function alignEditedItems({ by }) {
         continue;
       }
       const live = await AiConfigVersion.findOne({ item_id: item._id, version: item.published_version }).lean();
-      const content = live && rule.change(live.content || {});
+      const content = live && rule.change(live.content || {}, item);
       if (content) {
         await newVersion(item, content, { status: 'published', note: rule.note, by: { name: by } });
         // A draft someone is working on stays theirs.

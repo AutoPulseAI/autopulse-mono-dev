@@ -145,6 +145,17 @@ def drop_past_offers(conversation: ConversationState, now: datetime) -> None:
     conversation.visit = visit.model_copy(update=update)
 
 
+def _times_worn_out(plan: VisitOfferPlan, pack: dict[str, Any] | None) -> bool:
+    """Jeramie Diaz, 1 Nov 2026: "tomorrow at 10:00 AM, 11:00 AM, or 12:00 PM" four times in 90 minutes. The same times
+    already in two of our last three messages aren't offered a third time: the reply moves the conversation on."""
+    clocks = [str(t.get("display") or "").split(" at ", 1)[-1] for t in plan.times or []]
+    if not plan.fire or not clocks or not clocks[0]:
+        return False
+    ours = [str(m.get("text") or "") for m in (pack or {}).get("working_memory") or []
+            if m.get("direction") == "outbound"][-3:]
+    return sum(all(c in t for c in clocks[:2]) for t in ours) >= 2
+
+
 def _times_on_the_table(plan: VisitOfferPlan, conversation: ConversationState) -> VisitOfferPlan | None:
     """The times we just offered, shown again: the customer answered something else ("thanks") and the offer stays
     open for this reply - the reply asks which one works instead of ending with nothing."""
@@ -395,7 +406,9 @@ _FORM_LINE = re.compile(r"^\s*[A-Z][\w /]{2,30}:\s*[^?]{0,40}$")
 # Betsy, 27 Oct 2026 meeting (an appointment with "Name unknown": the AI talked to the customer from a follow-up and
 # never asked): "that's a golden rule - fill in the blanks". A name still missing is asked again two days after the
 # first ask, at most twice, in her words ("how do I spell your first and last name?").
-NAME_ASK_AGAIN_AFTER = timedelta(days=2)
+# The user, 2 Nov 2026: a missing detail goes in with the reply - answer, next step, the question - and if they didn't
+# give it (the Tesla lead answered "Yes"), it is asked again in the next reply, not two days later.
+NAME_ASK_AGAIN_AFTER = timedelta(0)
 MAX_NAME_ASKS = 2
 
 
@@ -408,6 +421,21 @@ def _may_ask_name(lead_state: dict | None, now: datetime, field: str = "name") -
         return False
     asked = asked if asked.tzinfo else asked.replace(tzinfo=timezone.utc)
     return now - asked >= NAME_ASK_AGAIN_AFTER
+
+
+AGENT_STAYS_FOR = timedelta(hours=24)  # the agent on a conversation stays on it while the talk goes on
+# The trade agent's questions, in order, one a message (AI Studio > Status rules > Contact details the AI asks for).
+TRADE_QUESTIONS: tuple[tuple[str, str], ...] = (
+    ("trade_in.model", "What year, make and model is your car?"),
+    ("trade_in.payoff", "About how much do you still owe on it?"),
+    ("trade_in.mileage", "Roughly how many miles are on it?"),
+    ("trade_in.condition", "How would you describe its condition: excellent, good, fair or poor?"),
+)
+
+
+def values_trade_allowed(profile: Profile) -> bool:
+    """False when they told us they have no trade."""
+    return str(profile.values(include_stale=True).get("trade_in.has_trade")).lower() not in ("false", "no")
 
 
 # AI Studio > Status rules > Contact details the AI asks for (the user, 29 Oct 2026: every rule shown in AI Studio).
@@ -1247,7 +1275,11 @@ async def plan_human_contact(ctx: TurnContext, state: AgentState, conversation: 
 
 # 28 Oct 2026 meeting, decision D1: a question about the car's condition the AI can't answer goes to a manager.
 CONDITION_TO_MANAGER = True  # AI Studio > Compliance > Safeguards
+REMOTE_PURCHASE = re.compile(r"\bover the phone\b|\bphone[- ]only\b|\bby phone\b|\btoo far\b|\bfar away\b|"
+                             r"\b\d+(?:\s*-\s*\d+)?\s*(?:hrs?|hours?)\s+away\b|\bnot able to come\b|"
+                             r"\b(?:buy|purchase)\w*\s+(?:it\s+)?(?:remotely|online)\b", re.IGNORECASE)
 CONDITION_QUESTION = re.compile(
+    r"\bbattery (?:health|life|condition|degradation)\b|\bclean title\b|\btitle is clean\b|"
     r"\b(?:mechanical|cosmetic|overall)\s+condition\b|\bcondition of (?:the|this|that) (?:car|vehicle|truck|suv)\b"
     r"|\b(?:known|any)\s+(?:issues|problems|defects)\b|\bbeen in (?:an|any) accidents?\b|\baccident history\b"
     r"|\b(?:timing (?:belt|chain)|transmission)\b.{0,30}\b(?:replaced|done|changed|issues?)\b"
@@ -1518,6 +1550,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         elif on_table := _times_on_the_table(visit_plan, conversation):
             visit_plan = on_table
             decision = decide_with(visit_plan)
+    if state.trigger == "inbound_message" and _times_worn_out(visit_plan, state.context_pack):
+        # Never a dead end (client, 20-21 Oct 2026): with nothing else to say, the offer stays.
+        moved_on = dataclasses.replace(visit_plan, fire=False, why="The same times went out twice: not a third time.")
+        if (other := decide_with(moved_on))["action"] != "acknowledge":
+            visit_plan, decision = moved_on, other
     decision["dealer_address"] = dealer.address  # the fallback answers "where are you?" with it
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
     touch1 = (plan_touch1(profile, dealer, state.customer_name,
@@ -1612,6 +1649,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # told at once; a person decides whether to close it (the AI never closes a lead).
         decision["manager_check"] = {"why": "Customer says they're not interested any more: a person decides whether "
                                             "to close the lead"}
+    if cannot is None and cannot_supply.detect(text) == cannot_supply.NEGOTIATE and state.trigger == "inbound_message":
+        # Jordan Pena, 1 Nov 2026: they still push on price after our answer: a manager takes it from here.
+        decision["manager_check"] = {"why": f"The customer keeps asking to negotiate the price: {str(text)[:200]!r}"}
     if order is not None and _already_sent(order.text, state.context_pack):
         order = None  # the same fixed text already went out (Latina Neal, 29 Oct 2026)
     if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and CONDITION_QUESTION.search(str(text or "")) \
@@ -1619,6 +1659,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         # D1 (28 Oct 2026 meeting): the reply gives what we know (mileage, the history report); a manager confirms the
         # rest - the lead goes to Managerial Review with an alert, and the AI keeps the conversation.
         decision["manager_check"] = {"why": f"The customer asked about the vehicle's condition: {str(text)[:200]!r}"}
+    if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and REMOTE_PURCHASE.search(str(text or "")) \
+            and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # The Tesla lead, 1 Nov 2026: "strictly over the phone" got an apology and no manager.
+        decision["manager_check"] = {"why": f"The customer can't easily come in: {str(text)[:200]!r}"}
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
         decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",
@@ -1632,8 +1676,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # Client, 12 Oct 2026 (Betsy): "If the name is null please ask for the customer's name. We need to obtain data to
     # make an appointment." Once per conversation, never over a script, a handoff or a stop.
     from upsell_agent.agent.templates import known_first_name
+    from upsell_agent.agent.turn import _NAME_SAID_PLAINLY
+    gave_name = next((v.get("value") for v in extraction.get("values") or []
+                      if v.get("path") == "contact.name" and v.get("value")), None) or (
+        (m.group(1) if (m := _NAME_SAID_PLAINLY.search(str(text or ""))) else None))
     decision["ask_name"] = bool(
-        not known_first_name(state.customer_name) and _may_ask_name(ctx.lead_state, now)
+        not known_first_name(state.customer_name) and len(str(gave_name or "").split()) < 2  # "Sal" still needs the last
+        and _may_ask_name(ctx.lead_state, now)
         and state.trigger in ("lead_created", "inbound_message") and not decision.get("cannot_supply")
         and decision["action"] not in ("stop", "handoff", "offer_human")
         # Live, 21 Oct 2026: the first text's one question is "Tell me, what are you driving now?" (one question per
@@ -1653,18 +1702,14 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     just_booked = bool(visit_ctx.get("just_booked"))
     # The user, 28 Oct 2026: "after we have collected how you spell your first and last name, then we ask if the email
     # is not available - a creative question". The reply right after they gave their name asks for the email.
-    from upsell_agent.agent.turn import _NAME_SAID_PLAINLY
-    gave_name = next((v.get("value") for v in extraction.get("values") or []
-                      if v.get("path") == "contact.name" and v.get("value")), None) or (
-        (m.group(1) if (m := _NAME_SAID_PLAINLY.search(str(text or ""))) else None))
     just_named = bool(gave_name or (ctx.lead_state or {}).get("name_asked")) and not (
         ctx.lead_state or {}).get("email_asked")
     decision["ask_email"] = bool(
         state.trigger == "inbound_message" and (known_first_name(state.customer_name) or known_first_name(gave_name))
         and not resolve_recipient(ctx.lead, ctx.customer, "email") and not decision.get("ask_name")
         and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
-        and (just_booked or just_named or (not decision.get("asks") and decision["action"] in (
-            "acknowledge", "qualified", "partly_qualified")))
+        and (just_booked or just_named or decision["action"] in (
+            "acknowledge", "qualified", "partly_qualified", "answer", "offer_visit", "ask"))
         and _may_ask_email(ctx.lead_state, now))
     if decision["ask_email"]:
         # One question per message: the email is this reply's question.
@@ -1689,9 +1734,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         and not resolve_recipient(ctx.lead, ctx.customer, "sms") and not _found(_PHONE, text)
         and not decision.get("ask_name") and not decision.get("ask_email")
         and not decision.get("cannot_supply") and decision["action"] not in ("stop", "handoff", "offer_human")
-        and (just_booked or just_emailed or decision["action"] in ("acknowledge", "qualified", "partly_qualified")
-             # Never asked yet: it is this reply's one question, before the next qualifying one (asked next reply).
-             or (decision["action"] == "ask" and not (ctx.lead_state or {}).get("phone_asked")))
+        and (just_booked or just_emailed or decision["action"] in (
+            "acknowledge", "qualified", "partly_qualified", "answer", "offer_visit", "ask"))
         and _may_ask_phone(ctx.lead_state, now, said_so_far))
     if decision["ask_phone"]:
         decision["asks"] = [{"requirement": "customer_phone", "label": "Mobile number", "slots": [],
@@ -1757,9 +1801,31 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     decision["bucket"] = lead_bucket.for_compose(ctx.lead_state, profile.values(include_stale=True))
     # Client, 8 Oct 2026: the specialist for what the customer is talking about this turn (agent/specialists.py) -
     # the reply's expertise and limits, never the action.
+    on_it = (ctx.lead_state or {}).get("specialist") or {}
+    on_it_at = on_it.get("at")
+    if isinstance(on_it_at, datetime) and now - (on_it_at if on_it_at.tzinfo else on_it_at.replace(tzinfo=timezone.utc)) > (
+            AGENT_STAYS_FOR):
+        on_it = {}
     expert, expert_why = specialists.route(text, lead_type=getattr(profile.effective_lead_type, "value", None),
-                                           bucket=(ctx.lead_state or {}).get("bucket"))
+                                           bucket=(ctx.lead_state or {}).get("bucket"), previous=on_it.get("id"))
     decision["specialist"] = specialists.for_compose(expert, expert_why)
+    if (expert.id == specialists.TRADE and state.trigger == "inbound_message" and not hold
+            and decision["action"] not in ("stop", "handoff", "offer_human")
+            and not (decision.get("ask_name") or decision.get("ask_email") or decision.get("ask_phone"))
+            and not decision.get("cannot_supply") and visit_ctx.get("status") not in ("pending", "confirmed")
+            and not visit_ctx.get("just_booked") and values_trade_allowed(profile)):
+        # Betsy, 2 Nov 2026: "trade agent should engage and ask more trade questions, how much do you owe?"
+        path, question = next(((p, q) for p, q in TRADE_QUESTIONS if not profile.is_current(p)
+                               and getattr(conversation.asks.get(p), "count", 0) < 2), (None, None))
+        if path:
+            decision["asks"], decision["slots"] = [{"requirement": path, "label": "Trade-in", "slots": [path],
+                                                    "question": question,
+                                                    "explanation": "so the visit gets them a real number"}], [path]
+            if _times_worn_out(visit_plan, state.context_pack):
+                decision.pop("visit_offer", None)  # Jeramie: the question moves it on, not the same times again
+                decision["action"] = "ask"
+            elif decision["action"] not in ("answer", "confirm", "offer_visit"):
+                decision["action"] = "ask"
     # Client, 12 Oct 2026: what this dealership doesn't offer is off limits (Dealer Setup switches).
     offered = tuple(getattr(dealer, "departments", None) or ())
     missing = [d for d in ("new", "used", "service", "parts") if offered and d not in offered]

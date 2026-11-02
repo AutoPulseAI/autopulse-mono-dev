@@ -297,7 +297,8 @@ def _modules():
 
 
 _ATTRS = {
-    "specialists": ("SPECIALISTS", "_PATTERNS", "_COMPILED", "_BUCKET_DEFAULT"),
+    "specialists": ("SPECIALISTS", "_PATTERNS", "_COMPILED", "_BUCKET_DEFAULT", "_MORE_WORDS", "_MORE_COMPILED",
+                    "_MORE_BY_SPECIALIST", "EVERY_SPECIALIST"),
     "lead_bucket": ("BUCKET_SOURCES", "WORD_TRACKS"),
     "origin": ("INBOUND_SOURCES", "DMS_SOURCES"),
     "cannot_supply": ("_PATTERNS", "_COMPILED", "_REPLIES", "ESCALATES", "CUSTOM_LABELS"),
@@ -319,7 +320,7 @@ _ATTRS = {
     "presend": ("CHECKS",),
     "link_resolver": ("SHAREABLE",),
     "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
-               "CONDITION_TO_MANAGER"),
+               "CONDITION_TO_MANAGER", "TRADE_QUESTIONS"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -444,6 +445,14 @@ def _apply_agent(key: str, c: dict[str, Any], built_in: dict[str, Any] | None) -
         sp.SPECIALISTS[key] = sp.Specialist(key, str(c.get("name") or _names.get(("agents", key))
                                                      or key.replace("_", " ").title()),
                                             playbook, str(c.get("never") or "").strip())
+    # The agent's extra words and rules (the user, 2 Nov 2026: every agent's enhancements show in AI Studio).
+    if more := _pattern({"more_keywords": c.get("more_keywords"), "more_words": c.get("more_words")}, "more_keywords",
+                        "more_words"):
+        re.compile(more)
+        sp._MORE_WORDS = tuple((sid, more if sid == key else p) for sid, p in sp._MORE_WORDS)
+        sp._MORE_COMPILED = tuple((sid, re.compile(p, re.IGNORECASE)) for sid, p in sp._MORE_WORDS)
+    if str(c.get("rules") or "").strip():
+        sp._MORE_BY_SPECIALIST = {**sp._MORE_BY_SPECIALIST, key: str(c["rules"]).strip()}
     pattern = _pattern(c, "keywords", "steps_in_when")
     if built_in is not None and pattern == built_in.get("steps_in_when"):
         return
@@ -743,8 +752,12 @@ def _apply_status_rules(key: str, c: dict[str, Any], built_in: dict[str, Any] | 
             if str(r.get("reason_starts_with") or "").strip())
     elif key == "status_workflows" and isinstance(c.get("map"), dict):
         mods["lifecycle"].STAFF_STATUS_EVENTS.update({k: v for k, v in c["map"].items() if v})
+    elif key == "agent_rules" and str(c.get("rules") or "").strip():
+        mods["specialists"].EVERY_SPECIALIST = str(c["rules"]).strip()
     elif key == "contact_questions":
         decide = mods["decide"]
+        if isinstance(c.get("trade_questions"), dict):
+            decide.TRADE_QUESTIONS = tuple((str(k), str(v)) for k, v in c["trade_questions"].items() if str(v).strip())
         if str(c.get("name_question") or "").strip():
             decide.NAME_QUESTION = str(c["name_question"]).strip()
         for field, attr in (("email_questions", "EMAIL_QUESTIONS"), ("phone_questions", "PHONE_QUESTIONS")):

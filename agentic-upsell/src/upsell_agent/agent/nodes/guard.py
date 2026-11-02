@@ -490,6 +490,28 @@ _NOTED_VISIT = re.compile(r"\b(?:i'?ve|i have|we'?ve|we have|i'?ll|i will)\s+(?:
                           r"|\bnoted\b.*\b(?:visit|appointment)\b", re.IGNORECASE)
 
 
+_PHONE_IN_TEXT = re.compile(r"\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b")
+
+
+async def unknown_phone_numbers(state: AgentState, ctx: TurnContext) -> list[str]:
+    """The Tesla lead, 1 Nov 2026: "You can call (631) 416-6273" - a number in neither the dealer's record nor anything
+    the AI was given. A phone number in a reply must come from the dealer or the conversation."""
+    import json
+
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    draft = state.draft or {}
+    found = _PHONE_IN_TEXT.findall(f"{draft.get('sms_text') or ''} {draft.get('email_body') or ''}")
+    if not found:
+        return []
+    try:
+        profile = await dealer_profile(state.dealer_id)
+    except Exception:  # noqa: BLE001 - an unknown dealer record can't prove a number wrong
+        return []
+    known = re.sub(r"\D", "", json.dumps([profile.phone, profile.agent_phone, state.context_pack, state.decision,
+                                          ctx.lead], default=str))
+    return [n for n in found if re.sub(r"\D", "", n)[-10:] not in known]
+
+
 async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str, Any]:
     if state.fallback_reason:  # Compose failed: nothing to check
         result = {"passed": False, "checks": {}, "violations": [state.fallback_reason], "next": "fallback"}
@@ -618,6 +640,11 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if unanswered:
         result["passed"] = False
         result["violations"].append("didn't answer: " + "; ".join(unanswered))
+    made_up = await unknown_phone_numbers(state, ctx)
+    result["checks"]["no_unknown_phone_number"] = not made_up
+    if made_up:
+        result["passed"] = False
+        result["violations"].append("a phone number we don't have: " + ", ".join(made_up))
     too_many = too_many_questions(state.draft or {})
     result["checks"]["at_most_two_questions"] = not too_many
     if too_many:
