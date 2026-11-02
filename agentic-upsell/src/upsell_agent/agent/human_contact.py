@@ -39,11 +39,14 @@ _CALL = re.compile(
     r"|\b(?:a|the)\s+(?:phone\s+)?call\b|\b(?:by|over\s+the|on\s+the)\s+phone\b"
     r"|\b(?:someone|somebody|anyone|person|human|manager|salesperson|sales\s+rep|rep|you|they|guy)\s+"
     r"(?:can\s+|could\s+|to\s+|should\s+|will\s+)?(?:call|phone|ring)\b"
-    r"|^\W*(?:call|phone|calling)\b|\bcall(?:ing)?\s+(?:is|would\s+be|works|please|pls|plz|thanks)\b|\bprefer\s+a?\s*call\b",
+    r"|^\W*(?:call|phone|calling)\b|\bcall(?:ing)?\s+(?:is|would\s+be|works|please|pls|plz|thanks)\b|\bprefer\s+a?\s*call\b"
+    r"|\b(?:please|pls|plz)\s+call\b",
     re.IGNORECASE)
 _TEXT = re.compile(
     r"\b(?:text|txt|message|msg)\s+(?:me|us)\b|\b(?:a|by|via|over|through)\s+(?:text|txt|sms|message)\b"
     r"|^\W*(?:text|txt|texting|sms|message)\b|\btext(?:ing)?\s+(?:is|would\s+be|works|please|pls|plz|back|instead)\b"
+    # Sierra, 2 Nov 2026: "Have a real person contact Sam at 846-287-0493. Please text." was asked "call or text?".
+    r"|\b(?:please|pls|plz)\s+(?:text|txt|message)\b"
     r"|\b(?:someone|somebody|person|human|manager|salesperson|rep|you|they)\s+(?:can\s+|could\s+|to\s+|should\s+)?"
     r"(?:text|message)\b|\bprefer\s+(?:a\s+)?text\b|\b(?:email|e-mail)\s+(?:me|is|works|please)\b|\bby\s+e-?mail\b",
     re.IGNORECASE)

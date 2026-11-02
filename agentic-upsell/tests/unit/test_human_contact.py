@@ -59,6 +59,8 @@ TUESDAY_NIGHT = datetime(2026, 9, 23, 2, 0, tzinfo=UTC)  # 22:00 in New York: no
     ("Yes", True, CALL),  # Ishmael Ballah, 26 Oct 2026: a plain yes accepts the call offered first
     ("ok", True, CALL),
     ("Yes", False, None),
+    ("Have a real person contact Sam at 846-287-0493. Please text. Thanks.", False, TEXT),  # Sierra, 2 Nov 2026
+    ("Have the manager reach me, please call", False, CALL),
 ])
 def test_how_they_want_to_hear_from_a_person(text, answering, want):
     assert said_method(text, answering=answering) == want
