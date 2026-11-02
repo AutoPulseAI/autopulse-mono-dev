@@ -32,6 +32,7 @@ from upsell_agent.agent import (
     cannot_supply,
     human_contact,
     lead_bucket,
+    loop_check,
     service_request,
     specialists,
 )
@@ -49,6 +50,7 @@ from upsell_agent.agent.visit_offer import VisitOfferPlan, plan_day_offer, plan_
 from upsell_agent.agent.visit_offer import declines_visit as visit_declines
 from upsell_agent.agent.visit_offer import eligible as visit_eligible
 from upsell_agent.agent.visit_offer import wants_visit as visit_wants_visit
+from upsell_agent.agent.yes_words import is_yes
 from upsell_agent.channels.consent import resolve_recipient
 from upsell_agent.compliance.opt_out import POSSIBLE_OPT_OUT_REVIEW_CONFIDENCE
 from upsell_agent.integrations.dealer_profile import DealerProfile, dealer_profile
@@ -1380,6 +1382,11 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     sold_hold = reply_hold((ctx.lead_state or {}).get("stage"))
     # Stream X2: both apply when both are there (a possible opt-out on a Sold Pending lead keeps its guardrails).
     hold = f"{hold}; and {sold_hold}" if hold and sold_hold else (hold or sold_hold)
+    if status == "handoff":
+        # The user, 3 Nov 2026: a lead with a manager gets an answer to a new question only (events/handlers.py lets
+        # just those through) - nothing asked, no visit offered, nothing booked: the manager has the lead.
+        escalated = "the lead is with a manager: answer the new question only - no asks, no visit offer, no booking"
+        hold = f"{hold}; and {escalated}" if hold else escalated
     pack = state.context_pack or {}
     now = clock.now()
     text = state.customer_text or state.inbound_text
@@ -1499,6 +1506,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         wants_human = True  # their answer to "call or text?" is the request for a person
     elif person.record and person.record.get("choice") == "withdrawn":
         wants_human = False
+    # The user and Betsy, 2-3 Nov 2026 (Kenneth Ball, April Carman): the AI going round in circles goes to a manager.
+    loop = (loop_check.loop_reason(text, pack.get("working_memory")) if state.trigger == "inbound_message"
+            and status != "handoff" else None)
+
     def decide_with(plan: Any) -> dict[str, Any]:
         return next_action(profile, Flags(
             hold_questions=hold,
@@ -1524,6 +1535,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             visit_pending=plan.fire or conversation.awaiting_visit_pick,
             not_interested=not_interested,
             not_interested_reason=not_interested_reason,
+            loop=loop,
         ))
 
     _new_or_used_from_stock(profile, state)
@@ -1638,7 +1650,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["remind_original"] = {"vehicle": " ".join(str(original.get(k) or "") for k in (
                 "year", "make", "model", "trim")).strip(), "vin": original.get("vin"), "asked": asked}
             decision["vehicle_check"] = None
-        elif _STILL_WANTS.match(str(text or "")):
+        elif _STILL_WANTS.match(str(text or "")) or is_yes(text):
             # Yes, the original after all: no manager check, carry on with that car.
             decision["original_chosen"] = {"vin": original.get("vin")}
             decision["vehicle_check"] = None
@@ -1651,7 +1663,9 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                                             "to close the lead"}
     if cannot is None and cannot_supply.detect(text) == cannot_supply.NEGOTIATE and state.trigger == "inbound_message":
         # Jordan Pena, 1 Nov 2026: they still push on price after our answer: a manager takes it from here.
-        decision["manager_check"] = {"why": f"The customer keeps asking to negotiate the price: {str(text)[:200]!r}"}
+        # The user, 3 Nov 2026 (April Carman): and the AI stops - the price is the manager's (crm_status.hold_for_manager).
+        decision["manager_check"] = {"why": f"The customer keeps asking to negotiate the price: {str(text)[:200]!r}",
+                                     "hold": True}
     if order is not None and _already_sent(order.text, state.context_pack):
         order = None  # the same fixed text already went out (Latina Neal, 29 Oct 2026)
     if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and CONDITION_QUESTION.search(str(text or "")) \
@@ -1662,7 +1676,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     if CONDITION_TO_MANAGER and state.trigger == "inbound_message" and REMOTE_PURCHASE.search(str(text or "")) \
             and decision["action"] not in ("stop", "handoff", "offer_human"):
         # The Tesla lead, 1 Nov 2026: "strictly over the phone" got an apology and no manager.
-        decision["manager_check"] = {"why": f"The customer can't easily come in: {str(text)[:200]!r}"}
+        decision["manager_check"] = {"why": f"The customer can't easily come in: {str(text)[:200]!r}", "hold": True}
     if order is not None and decision["action"] not in ("stop", "handoff", "offer_human"):
         # Placed like the can't-supply answers: her text, word for word.
         decision["cannot_supply"] = {"topic": f"workflow:{order.flow}" if order.flow else "buyers_order",

@@ -36,7 +36,8 @@ def asks_to_book(text: str, now: datetime) -> bool:
 
 
 def asks_question(text: str) -> bool:
-    return any("?" in line or _QUESTION_START.search(line) for line in (text or "").splitlines() if line.strip())
+    return any("?" in line or "？" in line or _QUESTION_START.search(line)
+               for line in (text or "").splitlines() if line.strip())
 
 
 def classify(text: str, now: datetime) -> str | None:

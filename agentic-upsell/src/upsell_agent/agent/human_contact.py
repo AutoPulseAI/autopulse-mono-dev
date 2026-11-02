@@ -27,6 +27,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from upsell_agent.agent.yes_words import is_yes
+
 CALL, TEXT, OFFER = "call", "text", "offer"
 
 # "Don't call me", "no calls please", "I can't talk right now": never a call, whatever else they said.
@@ -88,7 +90,7 @@ def said_method(text: str, *, answering: bool = False) -> str | None:
     if call and sms:
         # "Call or text, either is fine" / "call me or text me": a person reaches out faster by phone.
         return CALL
-    if answering and (_EITHER.search(text) or _THAT_NUMBER.search(text) or _PLAIN_YES.match(text)):
+    if answering and (_EITHER.search(text) or _THAT_NUMBER.search(text) or _PLAIN_YES.match(text) or is_yes(text)):
         # Ishmael Ballah, 26 Oct 2026: "Would you like a call at the number ending in 5681, or a text?" - "Yes"
         # was taken as a text; a plain yes accepts the call we offered first, at the number we named.
         return CALL

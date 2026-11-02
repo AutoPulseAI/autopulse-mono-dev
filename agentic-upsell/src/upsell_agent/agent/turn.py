@@ -441,7 +441,7 @@ async def run_turn(
                 # Dealer Action Required); the AI keeps the conversation.
                 from upsell_agent.agent import crm_status, escalation
                 await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=check["why"],
-                                             event_kind="manager_escalation")
+                                             event_kind="manager_escalation", hold=bool(check.get("hold")))
             if decision.get("ask_phone") and re.search(r"\b(?:number|mobile|phone|text)\b", asked, re.IGNORECASE):
                 await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
                     {"lead_id": lead_id}, {"$set": {"phone_asked": clock.now()}, "$inc": {"phone_asks": 1}})
@@ -1038,7 +1038,7 @@ async def _escalate_form_request(db: DealerScopedDatabase, lead_id: str, form_te
         "an out-of-state customer (pick-up or shipping)" if topic == cannot_supply.OUT_OF_STATE else topic)
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
                                  reason=f"{cannot_supply.ESCALATION_REASON}: {what} (asked on the lead form)",
-                                 event_kind="cannot_supply")
+                                 event_kind="cannot_supply", hold=True)
 
 
 async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
@@ -1057,7 +1057,7 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
     if cannot.get("topic") == "buyers_order":
         from upsell_agent.agent.buyers_order import ESCALATE_REASON
         await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW, reason=ESCALATE_REASON,
-                                     event_kind="buyers_order")
+                                     event_kind="buyers_order", hold=True)
         return
     topic = str(cannot.get("topic") or "")
     custom = cannot_supply.CUSTOM_LABELS.get(topic) or (topic.split(":", 1)[1].replace("_", " ")
@@ -1067,8 +1067,10 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
             else "a number for the customer's own car" if topic == "trade_value"
             else "custom photos or a video") if cannot.get("escalates") else (
         f"confirm {check.get('vehicle')} is available before scheduling")
+    # A vehicle to check before booking is a staff check: the AI carries on (only what it can't supply holds it).
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
-                                 reason=f"{cannot_supply.ESCALATION_REASON}: {what}", event_kind="cannot_supply")
+                                 reason=f"{cannot_supply.ESCALATION_REASON}: {what}", event_kind="cannot_supply",
+                                 hold=bool(cannot.get("escalates")))
 
 
 async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
@@ -1498,12 +1500,18 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         fields.update(status="handoff", status_reason=reason, status_at=clock.now(),
                       handoff_id=turn_id, staff_alert=None,
                       # PLAN_4 stream X3 item 4: no person's decision is pending - the AI may take it back to book.
-                      handoff_soft=bool(result.get("flag_human")) or reason.startswith("Customer is clearly upset"))
+                      # Not an upset customer any more (Betsy, 2 Nov 2026: "once it's manager review it's manager
+                      # review" - a customer who isn't satisfied stays with the manager).
+                      handoff_soft=bool(result.get("flag_human")))
         if not fields["handoff_soft"]:
             # The user, 3 Nov 2026 (Sierra, April Carman, Jeffry Turman): a lead handed to a person stays with people -
             # no holding replies, no taking it back when staff go quiet; a customer who asked for a person also
             # stays with people when staff move the status (events/handlers.py). Cleared when staff hand it back.
-            fields["with_person"] = {"at": clock.now(), "reason": reason,
+            said = " / ".join(str(m.get("text") or "") for m in (result.get("context_pack") or {}).get(
+                "new_messages") or [])
+            # `about`: what the lead went to a person for - a later message about the same thing isn't answered
+            # (events/handlers.py, agent/loop_check.same_topic).
+            fields["with_person"] = {"at": clock.now(), "reason": reason, "about": f"{reason} / {said}"[:800],
                                      "asked_for_person": reason.startswith("Customer asked for a person")}
         if sent is not None and sent.status == "sent":
             # The handoff reply counts as the first "passed to the team" notice.

@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
+from upsell_agent.agent.yes_words import is_yes
+
 # Day-before and countdown messages go out at this dealer-local hour (our default: the PDF gives days, not
 # times). The send check moves them to the first time the customer's own window and the dealer allow.
 STEP_HOUR = time(10)
@@ -219,7 +221,7 @@ def classify_answer(text: str) -> Answer:
     body = (text or "").strip()
     if not body:
         return "other"
-    if _YES.match(body):
+    if _YES.match(body) or is_yes(body):
         return "yes"
     if _NO.match(body):
         return "no"

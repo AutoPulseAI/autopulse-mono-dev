@@ -18,11 +18,16 @@ MANAGER_ESCALATIONS: tuple[tuple[str, str], ...] = (
     # couldn't set an appointment after trying more than once, the customer asks to speak with anyone at the
     # dealership, asks for something the AI can't supply (a video, custom photos), or seems angry.
     ("Customer is clearly upset", "an upset customer needs a manager"),
+    # The user, 28 Oct 2026 (agent/nodes/decide.py): "do not irritate a user" - and Betsy, 2 Nov 2026: a customer who
+    # isn't satisfied is the manager's (it reached no list before).
+    ("The customer is confused or frustrated", "a frustrated customer needs a manager"),
     ("Declined a visit more than once", "the AI tried to set an appointment more than once"),
     ("Customer asked for a person", "the customer asked to talk to a person"),
     ("Customer asked for a call", "the customer asked for a call"),
     ("Customer asked for a text from a person", "the customer asked for a person to text them"),
     ("Customer asked for something the AI can't supply", "the customer asked for something only staff can provide"),
+    # The user and Betsy, 2-3 Nov 2026 (Kenneth Ball, April Carman): going round in circles is a manager's.
+    ("AI stuck in a loop", "the AI was going round in circles with the customer"),
     # Client, 1 Oct 2026 (scope answer 10): "not interested" with a reason - only a human can close-lost it.
     # (Not in Betsy's 12 Oct list; kept until she confirms - open question.)
     ("Customer says they're not interested any more", "a person decides whether to close the lead"),

@@ -158,7 +158,9 @@ async def test_a_custom_video_request_needs_the_dealership(mongo):
     from upsell_agent.api.staff_view import Handled, list_notices, mark_handled
     dealer = dealer_id
     [row] = [n for n in (await list_notices(dealer))["notices"] if n["lead_id"] == created["lead_id"]]
-    assert row["kind"] == "manager_escalation" and "Managerial Review" in row["text"]
+    # The user, 3 Nov 2026: the AI stops with the manager (one row: the hold, with the Managerial Review notice).
+    assert row["kind"] == "handoff" and "can't supply" in row["text"]
+    assert any(a["kind"] == "manager_escalation" and "Managerial Review" in a["text"] for a in row["also"])
     await mark_handled(created["lead_id"], Handled(dealer_id=dealer, source=row["source"], by="Mercy"))
     assert all(n["lead_id"] != created["lead_id"] for n in (await list_notices(dealer))["notices"])
     handled = [n for n in (await list_notices(dealer, include_handled=True))["notices"]
