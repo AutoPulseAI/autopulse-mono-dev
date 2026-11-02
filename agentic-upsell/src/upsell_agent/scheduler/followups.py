@@ -392,6 +392,11 @@ async def plan_staff_quiet(db: DealerScopedDatabase, *, lead_id: str, customer_i
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due_at.isoformat()}
 
 
+def _quiet_after_handoff() -> bool:
+    from upsell_agent.events import handlers  # imported late: handlers imports this module
+    return handlers.QUIET_AFTER_HANDOFF
+
+
 async def _fire_staff_quiet_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
     """No person answered the customer since the staff reply: the AI is back on the lead and answers what they wrote
     since (and tells staff on the lead)."""
@@ -400,7 +405,8 @@ async def _fire_staff_quiet_locked(db: DealerScopedDatabase, doc: dict, deps: An
     state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
     paused_at = state.get("paused_at")
     still = (state.get("status") == "paused" and str(state.get("status_reason") or "").startswith(STAFF_REPLY_REASON)
-             and (doc.get("paused_at") is None or paused_at == doc.get("paused_at")))
+             and (doc.get("paused_at") is None or paused_at == doc.get("paused_at"))
+             and not (_quiet_after_handoff() and state.get("with_person")))  # the user, 3 Nov 2026
     mode = await dealer_ai_mode(db.dealer_id)
     if not still or mode != "live":
         await _close(db, doc, "cancelled", reason="staff answered, or the AI was switched off" if not still

@@ -49,9 +49,10 @@ def classify(text: str, now: datetime) -> str | None:
 
 
 def is_callback_request(state: dict) -> bool:
-    """The lead went to staff only because the customer asked for a person / a call (slots/policy.py). Nothing is
-    waiting on a person's decision, so the AI keeps answering their questions until the call happens (client,
-    7 Oct 2026: "Have a manager call me at 9:30" followed by service questions got silence)."""
+    """The lead went to staff only because the customer asked for a person / a call (slots/policy.py). With
+    QUIET_AFTER_HANDOFF off (events/handlers.py), the AI keeps answering their questions until the call happens
+    (client, 7 Oct 2026: "Have a manager call me at 9:30" followed by service questions got silence). On, it doesn't
+    (the user, 3 Nov 2026: "even if it's about a car or service, the AI should not answer")."""
     return str(state.get("status_reason") or "").startswith("Customer asked for a person")
 
 

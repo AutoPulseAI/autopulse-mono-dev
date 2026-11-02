@@ -7,8 +7,9 @@ Never silent (MASTER_PLAN_2 Phase 2): every customer message ends up either
 answered by a turn or with a recorded reason. When the AI doesn't answer (the
 lead is with staff or paused, or the message was STOP / START / an opt-out), a
 short "held" turn is logged (trigger `inbound_held`) saying why. On a
-handed-off lead the customer gets a holding reply, at most one every
-HOLDING_REPLY_EVERY (architecture §15, decision 12).
+handed-off lead nothing more is sent and staff are told (QUIET_AFTER_HANDOFF;
+off, the customer gets a holding reply at most every HOLDING_REPLY_EVERY -
+architecture §15, decision 12).
 """
 
 import logging
@@ -78,6 +79,11 @@ SILENT_STATUSES = {"handoff", "paused"}
 # What the AI does with a customer's Y / N to the day-before confirmation (MASTER_PLAN_3 C5, Omnichannel PDF §8).
 APPOINTMENT_ACTIONS = ("appointment_confirmed", "appointment_clarify", "appointment_reschedule")
 HOLDING_REPLY_EVERY = timedelta(hours=2)
+# The user, 3 Nov 2026 (Sierra, Jeffry Turman, April Carman): after a handoff the AI stays quiet until staff hand the
+# lead back - no holding replies, no answering questions after a request for a person, no taking the lead back when
+# staff go quiet, and a customer who asked for a person stays with people when staff move the status. AI Studio ->
+# Conversation rules.
+QUIET_AFTER_HANDOFF = True
 
 
 async def _cancel_pending_followups(db: DealerScopedDatabase, lead_id: str, *, channel_switches_only: bool) -> int:
@@ -622,12 +628,11 @@ def _aware(value: datetime | None) -> datetime | None:
 
 def _hold_decision(state: dict, request: str | None = None) -> tuple[str, str]:
     """(action, reason) for customer messages on a lead the AI doesn't answer. `request` (PLAN_4 stream X3 item 4):
-    the customer asked to book or asked a question - they get a holding reply even inside the 2-hour window."""
+    with QUIET_AFTER_HANDOFF off, a customer who asked to book or asked a question gets a holding reply even inside
+    the 2-hour window."""
     status, why = state["status"], state.get("status_reason")
-    if status == "handoff":
+    if status == "handoff" and not QUIET_AFTER_HANDOFF:
         last = _aware(state.get("last_handoff_notice_at"))
-        # A request to book is always acknowledged; a question at most every HOLDING_REPLY_MIN_GAP, counted from
-        # the last holding reply (not from the handoff message itself); anything else every 2 hours.
         if request == "booking":
             last = None
         elif request:
@@ -638,6 +643,11 @@ def _hold_decision(state: dict, request: str | None = None) -> tuple[str, str]:
                                   f"{last:%H:%M} UTC that the team will reach out (at most one holding reply "
                                   f"every {HOLDING_REPLY_EVERY.total_seconds() / 3600:g} hours). Saved for staff.")
         return "holding_reply", f"The lead is with staff ({why or 'handed off'}): a holding reply, no AI."
+    if status == "handoff":
+        # The user, 3 Nov 2026 (Jeffry Turman: "I bought one already" - "our sales manager will reach out" twice more;
+        # Sierra): after the handoff reply the AI sends nothing; the message is saved and staff are told.
+        return "saved_only", (f"The lead is with staff ({why or 'handed off'}): the customer had the handoff "
+                              "reply, so nothing is sent - saved for staff, who are told.")
     if status == "paused":
         return "saved_only", f"Paused: a person is handling this lead ({why or 'paused by staff'}). Saved for them."
     return "saved_only", f"The customer opted out ({why or 'opted out'}). Nothing is sent."
@@ -657,17 +667,22 @@ async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *,
                 f"to book it. They wrote: \"{said}\"")
     elif request == "booking":
         text = f"The customer asked to book while the lead is with staff - please book it: \"{said}\""
+    elif request == "message":
+        text = (f"The customer wrote again while the lead is with staff - the AI doesn't answer, please reply: "
+                f"\"{said}\"")
     else:
         text = f"The customer asked a question while the lead is with staff - please answer: \"{said}\""
-    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
-        "staff_notice": {"at": clock.now(), "kind": f"after_handoff_{request}", "text": text}}})
+    if request != "message":
+        # A plain message is a note only: the handoff's own alert (what the customer needs) stays on the lead.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
+            "staff_notice": {"at": clock.now(), "kind": f"after_handoff_{request}", "text": text}}})
     await crm_notes.write(db, lead_id=lead_id, kind="after_handoff", text=text,
                           key=f"after-handoff-{rows[-1]['_id']}", platform=getattr(deps, "platform", None),
                           customer_id=customer_id)
 
 
 async def _call_after_text_request(db: DealerScopedDatabase, deps: TurnDeps, *, lead_id: str, customer_id: str,
-                                   state: dict, rows: list[dict]) -> None:
+                                   state: dict, rows: list[dict]) -> bool:
     """Ishmael Ballah, 26 Oct 2026: handed to staff as "wants a text, not a call", then wrote "Call is fine" - the
     message was only saved and the alert kept saying the opposite. The same alert is corrected (one handover per
     lead: no second alert) and a note says what they wrote."""
@@ -676,7 +691,7 @@ async def _call_after_text_request(db: DealerScopedDatabase, deps: TurnDeps, *, 
     notice = state.get("staff_notice") or {}
     said = " / ".join(str(r.get("text") or "") for r in rows)[:300]
     if notice.get("kind") != human_contact.NOTICE_TEXT_KIND or human_contact.said_method(said) != human_contact.CALL:
-        return
+        return False
     text = (f"The customer now says a call is fine - please call them (they first asked for a text). "
             f"They wrote: \"{said}\"")
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
@@ -684,6 +699,7 @@ async def _call_after_text_request(db: DealerScopedDatabase, deps: TurnDeps, *, 
                          "reason": human_contact.REASON_CALL}}})
     await crm_notes.write(db, lead_id=lead_id, kind="contact_change", text=text,
                           key=f"call-after-text-{rows[-1]['_id']}", platform=getattr(deps, "platform", None), customer_id=customer_id)
+    return True
 
 
 async def _record_held(db: DealerScopedDatabase, event: InboundMessageEvent, deps: TurnDeps, *, lead_id: str,
@@ -1000,9 +1016,10 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
     handoff_request = (after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now())
                        if state["status"] == "handoff" and not event.shadow else None)
     if ((handoff_request == "booking" and after_handoff.is_soft_handoff(state))
-            or (handoff_request and after_handoff.is_callback_request(state))):
+            or (handoff_request and not QUIET_AFTER_HANDOFF and after_handoff.is_callback_request(state))):
         # PLAN_4 stream X3 item 4: the handoff needed no person's decision (an unsafe draft, or read as upset) and
-        # the customer now asks to book: the AI takes the lead back and books it; staff are told.
+        # the customer now asks to book: the AI takes the lead back and books it; staff are told. Not after they
+        # asked for a person (the user, 3 Nov 2026: "even if it's about a car or service, the AI should not answer").
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
             "status": "active", "status_reason": None, "status_at": clock.now(), "resumed_at": clock.now(),
             "handoff_soft": None}})
@@ -1020,21 +1037,26 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
             await lifecycle.apply(db, lead_id, [lifecycle.Event("customer_replied", source="customer_reply",
                                                                 reason=f"The customer replied: {why}")],
                                   lead=lead, customer_id=event.customer_id)
-        if state["status"] == "handoff" and not event.shadow:
-            await _call_after_text_request(db, deps, lead_id=lead_id, customer_id=event.customer_id,
-                                           state=state, rows=unanswered)
+        alert_corrected = state["status"] == "handoff" and not event.shadow and await _call_after_text_request(
+            db, deps, lead_id=lead_id, customer_id=event.customer_id, state=state, rows=unanswered)
+        with_person = QUIET_AFTER_HANDOFF and state.get("with_person")
+        with_people = state["status"] == "handoff" or (state["status"] == "paused" and with_person)
         request = after_handoff.classify("\n".join(m["text"] for m in unanswered), clock.now()) \
-            if state["status"] == "handoff" else None
-        if request and not event.shadow:
+            if with_people else None
+        if with_people and meaningful and not event.shadow and not alert_corrected and (
+                QUIET_AFTER_HANDOFF or request):
+            # The user, 3 Nov 2026: the AI says nothing more after a handoff, so staff hear about every message.
             await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id,
-                                            request=request, rows=unanswered, took_back=False)
+                                            request=request or "message", rows=unanswered, took_back=False)
         action, reason = _hold_decision(state, request)
         held = await _record_held(db, event, deps, lead_id=lead_id, rows=unanswered, action=action, reason=reason,
                                   received_at=_parse_received_at(received_at),
                                   holding_kind="holding_booking" if request == "booking" else "holding")
-        if (meaningful and not event.shadow and state["status"] == "paused"
+        if (meaningful and not event.shadow and state["status"] == "paused" and not with_person
                 and str(state.get("status_reason") or "").startswith(STAFF_REPLY_REASON)):
             # Client, 20 Oct 2026 (Betsy approved, Jeffry Turman): if no person answers, the AI picks it back up.
+            # Not on a lead the AI handed to a person (the user, 3 Nov 2026, April Carman: a manager quoted her
+            # $26,500, nobody answered her reply for 15 minutes, and the AI took over and pushed visits 12 times).
             await plan_staff_quiet(db, lead_id=lead_id, customer_id=event.customer_id,
                                    channel=unanswered[-1]["channel"], paused_at=state.get("paused_at"))
         if request and held.get("send_status") == "sent":
@@ -1254,6 +1276,12 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2): a delivered sale isn't "lost" - it closes as No Longer Owns. The
         # CRM refuses this too (aiDnd.statusChangeError); an older CRM's event changes nothing and pauses nothing.
         return {"status": "refused", "reason": "Sold - Delivered isn't closed as lost", "stage_change": stage_change}
+    with_person = ((await db.collection(AI_LEAD_STATE_COLLECTION).find_one(
+        {"lead_id": event.lead_id}, projection={"with_person": 1})) or {}).get("with_person") or {}
+    if final_event in ("appointment_set", "sales_visit", "sold_pending", "sold_delivered") and with_person:
+        # Booked or visited: what the person was needed for is done.
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": event.lead_id},
+                                                                 {"$set": {"with_person": None}})
     if final_event == "appointment_set":
         return {"status": "not_paused", "reason": "Appointment Booked: the AI runs the appointment workflow",
                 "stage_change": stage_change, **extra}
@@ -1270,12 +1298,24 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # the conversation stays on the customer's open lead - one customer, one conversation.
         return {"status": "duplicate", "reason": "staff status recorded; the AI works the customer's open lead",
                 "stage_change": stage_change, **extra}
+    if final_event in ("staff_no_next_action", "staff_not_contacted") and QUIET_AFTER_HANDOFF and with_person.get(
+            "asked_for_person"):
+        # The user, 3 Nov 2026 (Sierra: asked for a person, Mercy texted her and set "Lead Not Contacted", and the AI
+        # answered her next message with "would you like a call or a text?" again): a customer who asked for a
+        # person stays with people when staff move the status. The stage is recorded; staff hand the conversation
+        # back with "Hand back to AI".
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": event.lead_id}, {"$set": {
+            "status": "paused", "paused_at": clock.now(),
+            "status_reason": "The customer asked for a person: the AI stays off until staff hand the lead back"}})
+        cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
+        return {"status": "paused", "reason": "the customer asked for a person", "followups_cancelled": cancelled,
+                "stage_change": stage_change, **extra}
     if final_event in ("unsold", "staff_no_next_action", "staff_not_contacted"):
         # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
         # fresh cadence's first touch is planned now.
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": event.lead_id}, {"$set": {"status": "active", "status_reason": None,
-                                                  "resumed_at": clock.now()}})
+                                                  "resumed_at": clock.now(), "with_person": None}})
         # Client, 20 Oct 2026 (Betsy: "nothing is happening with these leads the next day or in the same day. These
         # are hot leads"): a lead that was already in Short-Term (New Lead -> staff "Contact Made - No Next Action")
         # starts no new cadence, and a touch cancelled earlier left it with none. Whatever the stage did, the lead
@@ -1586,7 +1626,7 @@ async def handle_lead_resumed(event: LeadResumedEvent) -> dict[str, Any]:
     await _resolve_review(db, state.get("customer_id"), event.lead_id, "admin_resumed_ai", {})
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
-        {"$set": {"status": "active", "status_reason": None, "resumed_at": clock.now()},
+        {"$set": {"status": "active", "status_reason": None, "resumed_at": clock.now(), "with_person": None},
          "$setOnInsert": {"lead_id": event.lead_id, "created_at": clock.now()}},
         upsert=True,
     )

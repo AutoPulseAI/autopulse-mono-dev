@@ -61,6 +61,8 @@ const LABELS = {
     "Off (recommended): the AI sends a safe message and keeps working toward the appointment. On: the lead goes to staff."],
   ai_resumes_after_staff_minutes: ["Minutes before the AI takes back a conversation staff replied to (0 = never)",
     "When staff text a customer by hand and the customer writes back, the AI answers if no one replies within this long (at once after hours)."],
+  ai_stays_quiet_after_handoff: ["After the AI hands a lead to a person, it stays quiet until staff hand it back",
+    "On: no holding replies, no answers after the customer asked for a person, and the AI never takes the lead back when staff go quiet. A customer who asked for a person stays with staff when the status changes; staff hand it back with \"Hand back to AI\". Staff get a note for every message."],
 };
 
 const CHOICES = {

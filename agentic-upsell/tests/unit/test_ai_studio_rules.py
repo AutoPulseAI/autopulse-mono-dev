@@ -97,6 +97,17 @@ async def test_the_lead_form_no_rule_comes_from_ai_studio(mongo):
     assert consent.FORM_NO_BLOCKS_TEXT is True
 
 
+async def test_quiet_after_handoff_comes_from_ai_studio(mongo):
+    from upsell_agent.events import handlers
+    assert handlers.QUIET_AFTER_HANDOFF is True
+    c = _default("compliance", "conversation_rules")
+    assert c["ai_stays_quiet_after_handoff"] is True
+    c["ai_stays_quiet_after_handoff"] = False
+    await _publish(mongo, "compliance", "conversation_rules", c)
+    await _new_lead(mongo, vehicle=RAV4)
+    assert handlers.QUIET_AFTER_HANDOFF is False
+
+
 async def test_placeholder_email_list(mongo):
     c = _default("compliance", "channels")
     c["placeholder_emails"] = [*c["placeholder_emails"], "leads"]

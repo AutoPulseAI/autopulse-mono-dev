@@ -439,6 +439,7 @@ def compliance() -> list[dict[str, Any]]:
             "questions_per_message": _policy().MAX_ASKS_PER_MESSAGE,
             "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS,
             "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60),
+            "ai_stays_quiet_after_handoff": _handlers().QUIET_AFTER_HANDOFF,
             # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
             "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
         # The user / Betsy, 25 Oct 2026: "check things at every message" - the last look before any message leaves.
@@ -542,6 +543,11 @@ def _consent():
     return consent
 
 
+def _handlers():
+    from upsell_agent.events import handlers
+    return handlers
+
+
 def _short_links():
     from upsell_agent.agent import short_links
     return short_links
@@ -562,7 +568,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 31
+DEFAULTS_REVISION = 32
 
 
 def export() -> dict[str, Any]:
