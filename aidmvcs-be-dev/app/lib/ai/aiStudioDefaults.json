@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-02T12:40:05.231050+00:00",
- "revision": 30,
+ "exported_at": "2026-11-02T14:09:00.197197+00:00",
+ "revision": 31,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3808,6 +3808,7 @@
    "content": {
     "first_channel": "text",
     "at_night": "ask_now_or_later",
+    "form_no_blocks_text": false,
     "placeholder_emails": [
      "no-reply",
      "noreply",

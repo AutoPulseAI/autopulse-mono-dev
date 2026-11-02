@@ -429,6 +429,7 @@ def compliance() -> list[dict[str, Any]]:
             "invite": text_consent.INVITE, "confirmation": text_consent.CONFIRMATION}},
         {"key": "channels", "name": "Channels: text or email first, nights", "content": {
             "first_channel": _consent().FIRST_CHANNEL, "at_night": _consent().AT_NIGHT,
+            "form_no_blocks_text": _consent().FORM_NO_BLOCKS_TEXT,
             "placeholder_emails": ["no-reply", "noreply", "do-not-reply", "donotreply", "noemail", "no-email", "none",
                                    "test"]}},
         {"key": "contacted", "name": "What counts as Contacted", "content": {
@@ -561,7 +562,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 30
+DEFAULTS_REVISION = 31
 
 
 def export() -> dict[str, Any]:

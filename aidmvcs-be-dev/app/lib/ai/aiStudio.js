@@ -102,6 +102,10 @@ const ALIGNMENTS = [
     note: 'Updated by AutoPulse to match the AI: a lead at night gets one message asking "now, or during business '
       + 'hours?" (28 Oct 2026)',
     change: (c) => (c.at_night === 'ask_now_or_later' ? null : { ...c, at_night: 'ask_now_or_later' }) },
+  { id: 'form_no_texts_2nov', type: 'compliance', key: 'channels',
+    note: 'Updated by AutoPulse to match the AI: a lead with a phone is texted unless they explicitly said no; AutoTrader\'s '
+      + 'TCPAOptIn: false no longer stops texts (2 Nov 2026)',
+    change: (c) => (c.form_no_blocks_text === false ? null : { ...c, form_no_blocks_text: false }) },
   { id: 'opt_out_per_channel_28oct', type: 'compliance', key: 'safeguards',
     note: 'Updated by AutoPulse to match the AI: an opt-out stops only its channel (Betsy, 28 Oct 2026 meeting)',
     change: (c) => (c.stop_ends_all_followups === false ? null : { ...c, stop_ends_all_followups: false }) },

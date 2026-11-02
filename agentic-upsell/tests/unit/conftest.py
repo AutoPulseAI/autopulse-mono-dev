@@ -26,7 +26,7 @@ from upsell_agent import clock
 from upsell_agent.config import Settings
 from upsell_agent.integrations import dealer_profile, mongodb
 from upsell_agent.learning import optimizer
-from upsell_agent.tools import inventory_tool, vehicle_catalog
+from upsell_agent.tools import inventory_tool, stock_match, vehicle_catalog
 
 
 @pytest.fixture
@@ -69,6 +69,7 @@ def reset_clock():
     dealer_profile.clear_cache()
     inventory_tool.clear_cache()
     vehicle_catalog.clear_cache()
+    stock_match.clear_cache()  # the whole-stock index: another test's cars never leak in
     optimizer.clear_cache()
     yield
     clock.set_offset(0)

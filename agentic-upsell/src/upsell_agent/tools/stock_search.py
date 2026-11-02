@@ -36,6 +36,7 @@ from upsell_agent.tools.inventory_tool import (
     InventoryCriteria,
     InventoryRecord,
     InventorySource,
+    body_word,
     search_inventory,
 )
 
@@ -56,7 +57,8 @@ _COLOUR_ALIASES = {"grey": "gray"}
 def tier_of(body_type: str | None) -> int | None:
     if not body_type:
         return None
-    return next((i for i, tier in enumerate(SIZE_TIERS) if body_type.lower() in (b.lower() for b in tier)), None)
+    word = (body_word(body_type) or body_type).lower()
+    return next((i for i, tier in enumerate(SIZE_TIERS) if word in (b.lower() for b in tier)), None)
 
 
 def _colour_key(value: str) -> str:
@@ -167,7 +169,7 @@ async def _body_of(dealer_id: str, c: InventoryCriteria, source: InventorySource
     if not (c.make or c.model):
         return None
     probe = await search_inventory(dealer_id, InventoryCriteria(make=c.make, model=c.model), source, 1)
-    return next((r.body_type for r in probe.records if r.body_type), None)
+    return next((body_word(r.body_type) or r.body_type for r in probe.records if r.body_type), None)
 
 
 async def find_stock(dealer_id: str, criteria: InventoryCriteria, source: InventorySource, *,

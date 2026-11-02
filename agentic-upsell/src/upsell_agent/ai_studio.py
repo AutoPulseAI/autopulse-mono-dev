@@ -322,7 +322,7 @@ _ATTRS = {
     "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
                "CONDITION_TO_MANAGER", "TRADE_QUESTIONS"),
     "text_consent": ("INVITE", "CONFIRMATION"),
-    "consent": ("FIRST_CHANNEL", "AT_NIGHT", "_PLACEHOLDER_EMAIL"),
+    "consent": ("FIRST_CHANNEL", "AT_NIGHT", "FORM_NO_BLOCKS_TEXT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
     "guard": ("_TEAM", "HANDOFF_AFTER_FAILED_DRAFTS"),
     "policy": ("MAX_ASKS_PER_MESSAGE",),
@@ -932,6 +932,8 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             cons.FIRST_CHANNEL = c["first_channel"]
         if c.get("at_night") in ("ask_now_or_later", "email_now_text_when_open", "wait_for_text", "email_only"):
             cons.AT_NIGHT = c["at_night"]
+        if isinstance(c.get("form_no_blocks_text"), bool):
+            cons.FORM_NO_BLOCKS_TEXT = c["form_no_blocks_text"]
         words = [re.escape(str(w).strip()).replace("\\-", "-?") for w in c.get("placeholder_emails") or []
                  if str(w).strip()]
         if words:

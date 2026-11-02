@@ -503,6 +503,19 @@ async def test_a_vehicle_gone_from_stock_means_no_photo_never_a_stand_in(mongo):
 
 
 
+async def test_a_link_to_the_suv_on_an_suv_lead_sends_that_cars_page(mongo):
+    # Kenneth Ball, 2 Nov 2026: a lead about a 2020 Escalade ("4D Sport Utility" in the feed) - "Can u send me the
+    # website of the SUV" got "Which SUV?" and visit times, twice, with the car in stock.
+    await _stock(mongo, _rav4(body="4D Sport Utility"))
+    deps = _deps()
+    created = await _lead(deps)
+    await _lead_about(mongo, created)
+    await _say(created, "Can you send me the link to the SUV?", deps)
+    sms = await _last_sms(mongo, created)
+    sms["text"] = await expand_short_links(mongo, sms["text"])
+    assert PAGE in sms["text"]
+
+
 async def test_a_link_to_another_model_never_sends_the_lead_vehicles_page(mongo):
     # Krishna, 26 Oct 2026: a lead about a RAV4 ... "Can you send me the link to the CR-V?" got the RAV4's page.
     other = "VIN00000000000902"

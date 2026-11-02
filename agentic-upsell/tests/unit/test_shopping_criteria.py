@@ -30,6 +30,7 @@ from upsell_agent.agent.question_topics import is_price_question, is_stock_quest
 from upsell_agent.slots.schema import SCHEMA
 from upsell_agent.slots.validators import validate as validate_value
 from upsell_agent.tools.inventory_tool import (
+    BODY_PATTERNS,
     InventoryCriteria,
     StubInventorySource,
     criteria_from_profile,
@@ -43,6 +44,9 @@ from upsell_agent.tools.stock_search import (
     tier_of,
     trim_matches,
 )
+
+# The route's body_type for the size above SUV: the feeds' names for minivans, vans and trucks (Kenneth Ball, 2 Nov 2026).
+_BIG = ",".join(",".join(BODY_PATTERNS[w]) for w in ("Minivan", "Van", "Truck"))
 
 STUB = StubInventorySource()
 
@@ -91,7 +95,7 @@ def test_split_trim(model, expected):
 def test_new_criteria_in_the_query():
     params = InventoryCriteria(body_types=["Minivan", "Van", "Truck"], exterior_color="Pearl White", price_max=30000,
                                trim="XLE", condition="used").to_params(DEALER)
-    assert params == {"dealer_id": DEALER, "car_type": "used", "body_type": "Minivan,Van,Truck",
+    assert params == {"dealer_id": DEALER, "car_type": "used", "body_type": _BIG,
                       "exterior_color": "Pearl White", "price_range": "0-30000"}
     assert "trim" not in params  # /api/car has no trim parameter
 
@@ -253,7 +257,7 @@ async def test_same_body_type_from_another_make(mongo):
     found = await find_stock(DEALER, InventoryCriteria(make="Honda", model="CR-V", body_type="SUV"), STUB)
     assert [s["step"] for s in found.loosened] == ["make"]
     assert [r.vin for r in found.records] == ["VIN00000000000331"]
-    assert found.params == {"dealer_id": DEALER, "body_type": "SUV"}
+    assert found.params == {"dealer_id": DEALER, "body_type": ",".join(BODY_PATTERNS["SUV"])}
 
 
 async def test_body_type_is_learned_from_the_dealers_own_stock(mongo):
@@ -317,7 +321,7 @@ async def test_bigger_moves_up_again_when_a_tier_is_empty(mongo):
     await _stock(mongo, _vehicle("VIN00000000000411", make="Ford", model="F-150", body="Truck"))
     found = await find_stock(DEALER, InventoryCriteria(body_type="Sedan"), STUB, bigger=True)
     assert [s["step"] for s in found.loosened] == ["size", "size"]
-    assert found.params["body_type"] == "Minivan,Van,Truck" and [r.vin for r in found.records] == ["VIN00000000000411"]
+    assert found.params["body_type"] == _BIG and [r.vin for r in found.records] == ["VIN00000000000411"]
 
 
 async def test_nothing_is_bigger_than_the_largest_tier(mongo):
@@ -358,7 +362,7 @@ async def test_a_colour_said_in_this_message_counts_this_turn(mongo):
     await _reply(created, "Ideally in red")
     out = (await _search(mongo, created))["output"]
     assert out["colour"] == {"asked": "red", "stored": "Red"}
-    assert [r["vin"] for r in out["records"]] == ["VIN00000000000522"]
+    assert [r["vin"] for r in out["records"] if r.get("found_by") == "search"] == ["VIN00000000000522"]
 
 
 @pytest.mark.usefixtures("during_opening_hours", "ny_customer")  # PLAN_4 stream X1: a first reply waits for the customer's window
@@ -423,7 +427,7 @@ async def test_bigger_after_a_named_rav4_never_sends_the_rav4(mongo):
     search = await _search(mongo, created)
     out = search["output"]
     assert out["query"]["model"] == "RAV4"  # what the profile said
-    assert out["params"] == {"dealer_id": DEALER, "car_type": "new", "body_type": "Minivan,Van,Truck"}
+    assert out["params"] == {"dealer_id": DEALER, "car_type": "new", "body_type": _BIG}
     assert not {"make", "model", "trim"} & set(out["final_query"])
     assert [r["vin"] for r in out["records"]] == ["VIN00000000000602"]
     assert any("swapped for the next size up" in line for line in search["reasoning"])
@@ -434,8 +438,10 @@ async def test_more_matches_than_the_per_reply_limit_says_so(mongo):
     await _stock(mongo, *[_rav4(f"VIN0000000000070{i}", added_minutes_ago=i) for i in range(5)])
     created = await _new_lead("Looking at a used Toyota RAV4")
     search = await _search(mongo, created)
-    assert search["output"]["matched"] == 5 and len(search["output"]["records"]) == 3
-    assert any("(at most 3 per reply)" in line for line in search["reasoning"])
+    # The search gives 3; the whole-stock match (26 Oct 2026) adds the other 2, so all 5 reach the AI.
+    assert search["output"]["matched"] == 5
+    assert len([r for r in search["output"]["records"] if r.get("found_by") == "search"]) == 3
+    assert len(search["output"]["records"]) == 5
 
 
 async def test_nothing_new_in_the_bigger_size_offers_a_used_one(mongo):

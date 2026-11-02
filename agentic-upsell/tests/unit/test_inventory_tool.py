@@ -26,11 +26,13 @@ from upsell_agent.integrations.platform_client import StubPlatformClient
 from upsell_agent.observability.trace import MemoryTraceSink
 from upsell_agent.tools import inventory_tool
 from upsell_agent.tools.inventory_tool import (
+    BODY_PATTERNS,
     MAX_LOADED,
     InventoryCriteria,
     InventoryRecord,
     LiveInventorySource,
     StubInventorySource,
+    body_word,
     criteria_from_profile,
     get_inventory_source,
     get_vehicle,
@@ -87,7 +89,31 @@ def test_year_range_forms(year_min, year_max, expected):
 def test_all_fields_map_to_the_routes_parameter_names():
     params = InventoryCriteria(make="Toyota", model="RAV4", condition="used", body_type="SUV").to_params(DEALER)
     assert params == {"dealer_id": DEALER, "make": "Toyota", "model": "RAV4", "car_type": "used",
-                      "body_type": "SUV"}
+                      "body_type": ",".join(BODY_PATTERNS["SUV"])}
+
+
+@pytest.mark.parametrize("feed, word", [
+    ("4D Sport Utility", "SUV"), ("2D Sport Utility", "SUV"), ("SUV", "SUV"), ("4D Sedan", "Sedan"),
+    ("2D Coupe", "Coupe"), ("4D Coupe", "Coupe"), ("2D Convertible", "Convertible"), ("4D Passenger Van", "Minivan"),
+    ("4D Hatchback", "Hatchback"), ("4D Crew Cab", "Truck"), ("4D SuperCrew", "Truck"), ("2D Regular Cab", "Truck"),
+    ("3D Cargo Van", "Van"), ("4D Wagon", "Wagon"), ("", None), (None, None),
+])
+def test_the_feeds_body_types_read_as_body_words(feed, word):
+    # Kenneth Ball, 2 Nov 2026: the live feed's names (77 "4D Sport Utility", 45 "4D Sedan", ...).
+    assert body_word(feed) == word
+
+
+async def test_an_suv_search_finds_the_feeds_sport_utilities(mongo):
+    # Kenneth Ball, 2 Nov 2026: "SUV" searched as ^SUV$ matched none of the 77 "4D Sport Utility" cars.
+    await _stock(mongo, _vehicle("VIN00000000000951", make="Cadillac", model="Escalade", body="4D Sport Utility"),
+                 _vehicle("VIN00000000000952", make="Honda", model="Accord", body="4D Sedan"),
+                 _vehicle("VIN00000000000953", make="Ford", model="F-150", body="4D SuperCrew"))
+    suvs = await search_inventory(DEALER, InventoryCriteria(body_type="SUV"), STUB)
+    assert [r.model for r in suvs.records] == ["Escalade"]
+    sedans = await search_inventory(DEALER, InventoryCriteria(body_type="sedan"), STUB)
+    assert [r.model for r in sedans.records] == ["Accord"]
+    trucks = await search_inventory(DEALER, InventoryCriteria(body_types=["Minivan", "Van", "Truck"]), STUB)
+    assert [r.model for r in trucks.records] == ["F-150"]
 
 
 @pytest.mark.parametrize("raw, sent", [
@@ -422,7 +448,10 @@ async def test_turn_loads_matching_stock_into_the_pack(mongo):
     inventory = search["output"]
     assert inventory["searched"] and inventory["query"] == {"make": "Honda", "model": "CR-V", "condition": "used"}
     assert inventory["params"]["dealer_id"] == DEALER and "year" not in inventory["params"]
-    assert [r["vin"] for r in inventory["records"]] == ["VIN00000000000152", "VIN00000000000151"]
+    # The search's own cars first; the whole-stock match (26 Oct 2026) adds the new CR-V after them.
+    assert [r["vin"] for r in inventory["records"] if r.get("found_by") == "search"] == [
+        "VIN00000000000152", "VIN00000000000151"]
+    assert "VIN00000000000155" not in [r["vin"] for r in inventory["records"]]
     assert inventory["matched"] == 2 and inventory["excluded"] == [] and inventory["loosened"] == []
     assert any(line.startswith("Actually searched: ") and "VIN00000000000152" in line for line in search["reasoning"])
     assert "inventory" not in (await _load(mongo, created))["output"]  # one search per turn, not two
