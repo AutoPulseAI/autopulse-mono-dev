@@ -178,6 +178,12 @@ async def test_a_vehicle_to_check_before_booking_does_not_stop_the_ai(mongo, liv
     set_clock(TUESDAY_NOON)
     created = await _lead("Vic Vehicle")
     db = dealer_scoped_db(DEALER)
+    # Never written back: never Dealer Action Required (Betsy: an escalation is a result of contact made).
+    result = await crm_status.sync_status(db, created["lead_id"], "Managerial Review", event_kind="cannot_supply",
+                                          hold=True, reason="Customer asked for something the AI can't supply: x")
+    assert result["status"] == "skipped" and (await _state(mongo, created))["status"] == "active"
+    await mongo["ai_messages"].insert_one({"lead_id": created["lead_id"], "dealer_id": DEALER, "direction": "inbound",
+                                           "text": "Is the SUV still there?"})
     await crm_status.sync_status(db, created["lead_id"], "Managerial Review", event_kind="cannot_supply",
                                  reason="Customer asked for something the AI can't supply: confirm SUV is available")
     assert (await _state(mongo, created))["status"] == "active"
@@ -216,3 +222,37 @@ async def test_what_day_works_becomes_two_real_times(mongo):
                                   dealer=await dealer_profile(DEALER)) is None
     assert await offer_real_times(dict(draft), dealer_id=DEALER, lead_id=None, decision={"reply_language": "Spanish"},
                                   dealer=await dealer_profile(DEALER)) is None
+
+
+RAW = ("X-Received: by 2002:a05:620a:2609:b0:93f:cbd:8e20 with SMTP id af79cd13be357-944217ee2camr1689224285a.73\n"
+       "ARC-Seal: i=1; a=rsa-sha256; t=1793647142; cv=none; d=google.com\n"
+       "From: Dominick <dom@example.com>\nTo: sales@victory.test\nSubject: Re: 2024 RAM Laramie\n"
+       "MIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\n\n"
+       "Can I see it Saturday?\n\nOn Mon, Nov 2, 2026 at 2:18 PM Nicole <ai@victory.test> wrote:\n"
+       "> It's listed at $31,799, not including tax\n")
+
+
+def test_a_raw_email_source_is_read_as_what_the_customer_wrote():
+    # Dominick Telesco, 2 Nov 2026: the headers were read as his message (a fake price offer and a fake new number).
+    event = InboundMessageEvent(event_id="e", dealer_id=DEALER, customer_id="c", lead_id="l", message_id="m",
+                                channel="email", text=RAW, received_at=clock.now())
+    assert event.text == "Can I see it Saturday?"
+    empty = RAW.split("\n\n")[0] + "\n\n"
+    assert InboundMessageEvent(event_id="e", dealer_id=DEALER, customer_id="c", lead_id="l", message_id="m",
+                               channel="email", text=empty, received_at=clock.now()).text.strip() == ""
+    assert InboundMessageEvent(event_id="e", dealer_id=DEALER, customer_id="c", lead_id="l", message_id="m",
+                               channel="sms", text="From: me. To: you", received_at=clock.now()).text == \
+        "From: me. To: you"
+
+
+def test_booked_the_day_before_the_confirmation_waits_for_the_morning():
+    # Junling Fan, 2 Nov 2026: booked 3:19 PM for 10 AM tomorrow, "reply C to confirm" went out at 4:05 PM.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/New_York")
+    now = datetime(2026, 11, 2, 15, 19, tzinfo=tz)
+    steps = appointment.plan_steps(datetime(2026, 11, 3, 10, 0, tzinfo=tz), now=now, tz=tz)
+    [confirm] = [s for s in steps if s.step == appointment.STEP_CONFIRM]
+    assert confirm.due_at == datetime(2026, 11, 3, 9, 0, tzinfo=tz)
+    # Booked the morning before, still in time: the day before, as before.
+    early = appointment.plan_steps(datetime(2026, 11, 3, 10, 0, tzinfo=tz), now=now.replace(hour=8), tz=tz)
+    assert [s.due_at.date() for s in early if s.step == appointment.STEP_CONFIRM] == [now.date()]

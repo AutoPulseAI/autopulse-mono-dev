@@ -606,7 +606,9 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
         {"platform_message_id": event.message_id},
         {"$setOnInsert": {"lead_id": lead_id, "customer_id": event.customer_id, "direction": "inbound",
                           "channel": event.channel, "text": event.text, "platform_message_id": event.message_id,
-                          "created_at": event.received_at, "answered_turn_id": None}},
+                          "created_at": event.received_at,
+                          # An email with no words of the customer's own (a raw source with no body): kept, not answered.
+                          "answered_turn_id": None if event.text.strip() else "no-text"}},
         upsert=True,
     )
     if saved.upserted_id is not None:

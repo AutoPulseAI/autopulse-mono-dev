@@ -47,6 +47,10 @@ class InboundMessageEvent(BaseEvent):
         if not isinstance(value, str):
             return value
         from upsell_agent.agent.email_text import plain_text
+        from upsell_agent.agent.raw_email import is_raw, readable
+        if is_raw(value):
+            # Dominick Telesco, 2 Nov 2026: the raw email source arrived as his message (agent/raw_email.py).
+            return plain_text(readable(value)) or readable(value)
         return plain_text(value) or value
 
 

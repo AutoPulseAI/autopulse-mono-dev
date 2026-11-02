@@ -62,7 +62,9 @@ def test_a_morning_appointment_is_confirmed_two_hours_before_or_else_the_day_bef
     at_1130 = appointment.plan_steps(datetime(2026, 10, 7, 11, 30, tzinfo=NY), now=_tue(12), tz=NY)
     assert at_1130[0].step == "confirm" and at_1130[0].due_at == datetime(2026, 10, 7, 9, 30, tzinfo=NY)
     at_1030 = appointment.plan_steps(datetime(2026, 10, 7, 10, 30, tzinfo=NY), now=_tue(12), tz=NY)
-    assert at_1030[0].step == "confirm" and at_1030[0].due_at == _tue(12, 30)  # 8:30 is too early: the day before
+    # 8:30 is too early, and the day before's 10 AM has passed: the next morning at 9 (Betsy, 2 Nov 2026 meeting, Junling
+    # Fan - not "reply C to confirm" half an hour after booking).
+    assert at_1030[0].step == "confirm" and at_1030[0].due_at == datetime(2026, 10, 7, 9, 0, tzinfo=NY)
 
 
 # The user, 29 Oct 2026: within 72 hours one reminder only (the confirmation); 4+ days, one touch a day.

@@ -73,6 +73,14 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
     from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 
     closed_at = closed_at or clock.now()
+    if status == "Managerial Review" and not await customer_replied(db, lead_id):
+        # Betsy, 2 Nov 2026 meeting: "an escalation is a result of a contact made, and a call task is a result of no
+        # contact made" - a lead that never wrote back is never Dealer Action Required; it is a call task.
+        result = {"status": "skipped", "reason": "the customer hasn't replied: a call task, not Dealer Action "
+                                                 "Required", "crm_status": status}
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"crm_status_sync": {**result, "at": clock.now()}}})
+        return result
     try:
         mode = await dealer_ai_mode(db.dealer_id)
     except Exception:  # noqa: BLE001 - an unknown mode is treated as not live
@@ -103,6 +111,19 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
         if hold:
             await hold_for_manager(db, lead_id, reason)
     return result
+
+
+async def customer_replied(db: DealerScopedDatabase, lead_id: str) -> bool:
+    """The customer has written to us on this lead: a message in the AI's thread or in the CRM conversation (a reply
+    from before the AI, or one only the CRM holds). The lead's own arrival (its form email / ADF) isn't one."""
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, PLATFORM_EMAILS_COLLECTION, as_object_id
+    if await db.collection(AI_MESSAGES_COLLECTION).find_one(
+            {"lead_id": lead_id, "direction": "inbound", "text": {"$nin": [None, ""]}}, projection={"_id": 1}):
+        return True
+    return bool(await db.collection(PLATFORM_EMAILS_COLLECTION).find_one(
+        {"lead_id": {"$in": [lead_id, as_object_id(lead_id)]}, "status": {"$in": ["incoming", "received"]},
+         "is_note": {"$ne": True}, "is_lead_email": {"$ne": True}, "message_id": {"$not": {"$regex": "^lead-"}},
+         "mail_content": {"$not": {"$regex": "<\\?adf|<adf[\\s>]", "$options": "i"}}}, projection={"_id": 1}))
 
 
 async def hold_for_manager(db: DealerScopedDatabase, lead_id: str, reason: str) -> None:
