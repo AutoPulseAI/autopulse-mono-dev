@@ -35,6 +35,7 @@ from upsell_agent.tools import stock_match
 from upsell_agent.tools.inventory_tool import (
     MAX_LOADED,
     InventoryCriteria,
+    body_word,
     criteria_from_profile,
     get_inventory_source,
     get_vehicle,
@@ -140,7 +141,9 @@ async def _link_vehicle(state: AgentState, span: NodeSpan, ctx: TurnContext, pac
     if not record:
         span.reasoning = [*(span.reasoning or []), f"Link vehicle {vin} is no longer in stock."]
         return pack
-    if not named and record.model and searched not in ("", "any vehicle") \
+    # Kenneth Ball, 2 Nov 2026: "the website of the SUV" on an Escalade lead is the Escalade.
+    same_body = bool(body_word(searched)) and body_word(searched) == body_word(record.body_type)
+    if not named and record.model and searched not in ("", "any vehicle") and not same_body \
             and record.model.lower() not in searched.lower():
         # Krishna, 26 Oct 2026 ("Can you send me the link to the 3?" got the 2 Series' link): the lead's own car is
         # the link only when it's what this turn looked for.

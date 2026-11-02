@@ -73,7 +73,9 @@ def facts_from_lead(lead: dict[str, Any] | None) -> dict[str, Any]:
     lead = lead or {}
     data = lead.get("data") or {}
     vehicle = data.get("vehicle") if isinstance(data.get("vehicle"), dict) else {}
-    parts = [str(lead.get(k) or vehicle.get(k) or "").strip() for k in ("year", "make", "model")]
+    # Kenneth Ball, 2 Nov 2026: older leads keep the car in vehicle_year / vehicle_make / vehicle_model only.
+    parts = [str(lead.get(k) or vehicle.get(k) or lead.get(f"vehicle_{k}") or "").strip()
+             for k in ("year", "make", "model")]
     label = " ".join(p for p in parts if p)
     if not (parts[1] or parts[2]):
         label = str(data.get("vehicle") if isinstance(data.get("vehicle"), str) else "").strip()

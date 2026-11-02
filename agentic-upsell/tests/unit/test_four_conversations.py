@@ -11,6 +11,9 @@ def test_the_lead_vehicle_is_what_they_want():
     assert facts_from_lead({"data": {"vehicle": {"year": "2023", "make": "Honda", "model": "CR-V"}}}) == {
         "interest.model": "2023 Honda CR-V"}
     assert facts_from_lead({"data": {"comments": "hi"}}) == {}
+    # Kenneth Ball, 2 Nov 2026: an older lead keeps its car in vehicle_year / vehicle_make / vehicle_model.
+    assert facts_from_lead({"vehicle_year": "2020", "vehicle_make": "Cadillac", "vehicle_model": "Escalade"}) == {
+        "interest.model": "2020 Cadillac Escalade"}
 
 
 def test_never_books_from_the_lead_email_or_when_not_ready():

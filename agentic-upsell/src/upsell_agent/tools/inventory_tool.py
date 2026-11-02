@@ -77,6 +77,40 @@ KNOWN_MAKES = {
 BODY_WORDS = {"suv": "SUV", "truck": "Truck", "pickup": "Truck", "sedan": "Sedan", "coupe": "Coupe",
               "minivan": "Minivan", "van": "Van", "hatchback": "Hatchback", "wagon": "Wagon",
               "convertible": "Convertible"}
+# What the dealers' feeds call each body type: our own patterns, sent as the route's `^value$` regexes (never customer
+# text). Kenneth Ball, 2 Nov 2026 ("send me the website of the SUV" got "which SUV?" and visit times): the search sent
+# "SUV" and the feed says "4D Sport Utility", so a body-type search never found a car - 77 SUVs in stock, 0 found.
+BODY_PATTERNS = {
+    "SUV": ("SUV", ".*Sport Utility.*", ".* SUV", ".*Crossover.*"),
+    "Truck": ("Truck", ".*Pickup.*", ".* Cab", ".*SuperCrew", ".*SuperCab", ".*CrewMax", ".*Crew Cab.*"),
+    "Sedan": (".*Sedan.*",),
+    "Coupe": (".*Coupe.*",),
+    "Convertible": (".*Convertible.*", ".*Cabriolet.*", ".*Roadster.*"),
+    "Hatchback": (".*Hatchback.*", ".*Liftback.*"),
+    "Wagon": (".*Wagon.*",),
+    "Minivan": (".*Minivan.*", ".*Passenger Van.*"),
+    "Van": (".*Van.*",),
+}
+_BODY_ORDER = ("Minivan", "Convertible", "Truck", "SUV", "Sedan", "Coupe", "Hatchback", "Wagon", "Van")
+
+
+def body_word(body: str | None) -> str | None:
+    """"4D Sport Utility" -> "SUV": the body word a feed's body type is, or None."""
+    text = str(body or "").strip()
+    if not text:
+        return None
+    for word in _BODY_ORDER:
+        if any(re.fullmatch(p, text, re.IGNORECASE) for p in BODY_PATTERNS[word]):
+            return word
+    return None
+
+
+def _body_param(value: str) -> str:
+    """The route's body_type for one body type: a body word's feed names, else the value as said."""
+    word = next((w for w in BODY_PATTERNS if w.lower() == value.strip().lower()), None)
+    return ",".join(BODY_PATTERNS[word]) if word else safe_param(value)
+
+
 # Trim names said after a model ("RAV4 XLE"). Only used to split them off;
 # the record's own trim is what's checked (Phase 2 item 4).
 TRIM_WORDS = {"le", "xle", "se", "xse", "limited", "platinum", "sport", "touring", "ex", "ex-l", "lx", "sr5", "trd",
@@ -112,13 +146,14 @@ class InventoryCriteria(BaseModel):
     def to_params(self, dealer_id: str) -> dict[str, str]:
         """The /api/car query string. Always dealer-scoped; years only as `year_range`."""
         params = {"dealer_id": dealer_id}
-        for key, value in (("make", self.make), ("model", self.model), ("car_type", self.condition),
-                           ("body_type", self.body_type)):
+        for key, value in (("make", self.make), ("model", self.model), ("car_type", self.condition)):
             if value and (safe := safe_param(value)):
                 params[key] = safe
+        if self.body_type and (body := _body_param(self.body_type)):
+            params["body_type"] = body
         if self.body_types:
             # The route splits body_type on commas into `^value$` regexes: several at once.
-            params["body_type"] = ",".join(s for b in self.body_types if (s := safe_param(b)))
+            params["body_type"] = ",".join(s for b in self.body_types if (s := _body_param(b)))
         if self.year_min or self.year_max:
             params["year_range"] = f"{self.year_min or self.year_max}-{self.year_max or self.year_min}"
         if self.exterior_color and (colour := " ".join(self.exterior_color.replace(",", " ").split())):
