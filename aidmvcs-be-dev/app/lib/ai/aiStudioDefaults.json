@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-02T14:09:00.197197+00:00",
- "revision": 31,
+ "exported_at": "2026-11-02T19:40:27.224370+00:00",
+ "revision": 32,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -3841,6 +3841,7 @@
     "questions_per_message": 1,
     "switch_ai_off_after_failed_drafts": false,
     "ai_resumes_after_staff_minutes": 15,
+    "ai_stays_quiet_after_handoff": true,
     "busy_rule": true,
     "busy_phrases": [
      "i'm busy",
