@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-10-29T22:01:16.904059+00:00",
- "revision": 29,
+ "exported_at": "2026-11-02T12:40:05.231050+00:00",
+ "revision": 30,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -35,6 +35,8 @@
     "playbook": "Know the vehicle: say plainly when the car they asked about is here, and answer about the model, features, trims and stock from the loaded records. Qualify needs (new or used, budget range, timeline) one question at a time, and once you know enough (or they're ready) move to an appointment to see and drive it in the next 2-3 days.",
     "never": "Never claim stock, features or prices that aren't in the loaded records.",
     "steps_in_when": "default (everything else)",
+    "more_words": "\\b(interested|interest(ed)? in|still available|available|in stock|is it (there|still)|want (to|it)|looking (for|at|to buy)|shopping|need a (car|truck|suv|van|vehicle)|test[- ]?drive|see (it|the car)|come (in|by|see)|visit|photos?|pictures?|pics|video|miles|mileage|color|colour|trim|features?|options|packages?|carfax|history|accident|condition|warranty|certified|cpo|new or used|awd|4x4|4wd|seats|third row|towing|mpg|hybrid|electric|ev)\\b",
+    "rules": "- Name the exact car (year, make, model) and whether it's here; if it isn't, the closest ones in stock.\n- Qualify in this order, one at a time, skipping what you know: new or used, the car, timeline, budget, trade.",
     "lead_bucket_default": null,
     "examples": []
    },
@@ -48,6 +50,8 @@
     "playbook": "Price and payment questions: acknowledge them directly, quote only a listed price from the records, and explain that the exact payment depends on term, down payment and approval - which we work out together in person in a few minutes. Lease vs finance: explain the difference in plain words. Ask their target payment or budget; once you have it, invite them in to see real numbers.",
     "never": "Never state a monthly payment, a rate, an out-the-door price or a discount; never promise a number.",
     "steps_in_when": "\\b(price|pricing|cost|how much|monthly|per month|payment|apr|rate|interest|out the door|otd|discount|best deal|lease|financ\\w*|down payment|msrp|incentives?|rebates?)\\b",
+    "more_words": "\\b(price|priced|pricing|cost|costs|how much|what('s| is) the (price|number|best)|budget|afford|monthly|a month|per month|/mo|payments?|apr|interest|rate|term|\\d{2} months|out[- ]the[- ]door|otd|all[- ]in|taxes|fees|doc fee|dealer fees?|discount|deal|best (price|deal|offer)|negotiat\\w*|lowest|cheaper|too (high|expensive)|lease|leasing|financ\\w*|cash (price|deal|buyer)|down payment|money down|\\$\\s?\\d|\\d+k\\b|msrp|incentives?|rebates?|specials?|promo\\w*|come down|lower|flexible|wiggle room|bottom line|final price|match (the|that|a) price|beat (the|that|a) price|pay in full|paying cash|cash)\\b",
+    "rules": "- They push for a number: the listed price is the only number; the rest is worked out in person in a few minutes.\n- \"Too expensive\": ask what monthly payment or total works for them.\n- Use their situation (cash, distance, budget, target payment) in the reason to come in; never repeat \"we can discuss it in person\" twice.",
     "lead_bucket_default": null,
     "examples": []
    },
@@ -61,6 +65,8 @@
     "playbook": "Credit worries: be warm and judgement-free, never generic (never \"we work with all kinds of credit\"). Find out what decides their real options - a trade (mileage, payoff) and any money down - one question at a time. Then use what they told you: their trade, payoff and down payment need to be looked at together to see what can be done, instead of guessing from a credit score - and offer two specific times to sit down with the finance manager (\"I can reserve 5:15 today or 10:30 tomorrow - which is better?\"). If they worry about wasting their time, that is exactly why: real numbers, not a guess.",
     "never": "Never say they are approved or pre-approved, never quote a rate or a credit score requirement, never imply a guarantee.",
     "steps_in_when": "\\b(credit|approv\\w*|bad credit|no credit|repo\\w*|bankrupt\\w*|co-?signer|first time buyer|credit score|denied|financ\\w* (with|for) (bad|low|no))\\b",
+    "more_words": "\\b(my credit|credit (is|isn'?t|was|history|issues?|problems?|check|app(lication)?|union)|bad credit|poor credit|low credit|no credit|fair credit|rebuild\\w* credit|(soft|hard) (pull|check)|pre-?qualif\\w*|pre-?approv\\w*|get approved|will i (get|be) approved|can i get financ\\w*|first[- ]time (buyer|car)|cosign\\w*|co-?sign\\w*|repossess\\w*|bankrupt\\w*|chapter (7|13)|collections|itin|no ssn|no social|self[- ]employed|1099|proof of income|pay ?stubs?|buy here pay here|bhph|foreclos\\w*|score|fico|lender|bank (approval|letter)|loan approval|income|job|on disability|credit app|finance app|get a loan|need a loan|down payment assistance)\\b",
+    "rules": "- Never make them feel judged; never say \"all types of credit\".\n- Ask about money down or a trade, one at a time, and use the answers: they decide the real options.\n- Send the credit application link when they want to get started.",
     "lead_bucket_default": "credit",
     "examples": []
    },
@@ -74,6 +80,8 @@
     "playbook": "Trade-in questions: collect the trade's mileage, payoff and condition (and whether they'd sell or trade), one question at a time, never asking what they already told you. Then use it: a real appraisal, compared with their payoff and the replacement options, against what they told you matters (a newer car, a payment that doesn't jump) - and offer two specific times for the appraisal. An estimate is never an offer: the real number comes from seeing the car.",
     "never": "Never state a trade value, a range, or what the car is 'worth'.",
     "steps_in_when": "\\b(trade[- ]?in|trade (it|my|in)|my (current |old )?car (is )?worth|sell (you )?my (car|truck|vehicle)|what('s| is) my (car|truck) worth|payoff|kbb|kelley|(value|valuation|worth) (of|for|on) (\\w+ ){0,3}?(my|our) \\w+|(my|our) \\w+('s)? (value|worth)|(give|offer|pay) me for (my|our) \\w+|appraise (my|our) \\w+)\\b",
+    "more_words": "\\b(trad(e|ing) (it )?in|swap\\w*|part[- ]?exchange|get a value|value (in|on|for) (it|mine)|what('s| is) it worth|my (current|old|own) (car|truck|suv|van|vehicle|ride)|what (would|will|can|could) you (give|offer|pay)|how much (would|will|can|could) you (give|pay|offer)|(sell|selling) (my|our|the) (car|truck|suv|van|vehicle|\\w+)|buy (my|our) (car|truck|vehicle)|(still )?owe (on|about|around)?|upside[- ]down|negative equity|lien|loan balance|pay ?off|appraisal|apprais\\w*|blue book|edmunds value|carmax (offer|quote)|carvana (offer|quote)|instant offer|get rid of my|turn (it|mine|my \\w+) in|roll (it|the balance) over|equity|lease (buyout|return|end)|book value|cash for my|take my (car|truck)|my (lease|loan) is)\\b",
+    "rules": "- Collect year, make, model, miles, payoff, condition - one at a time, only what's missing.\n- They want to swap or trade: engage with it, ask what they still owe, and use each answer (their car, what they owe, what they want) to give a concrete reason to come in.\n- Never a value or a range; the appraisal gives the number. Never just send a link and repeat the same times.",
     "lead_bucket_default": "trade_in",
     "examples": []
    },
@@ -87,6 +95,8 @@
     "playbook": "Service questions: get the vehicle, current mileage and what it needs (or what it's doing), and offer a service visit - once you know what it needs, ask what day works to bring it in; the service department confirms the exact time. Maintenance or recall details only from the facts given.",
     "never": "Never invent a maintenance interval, a price, a diagnosis, or a recall; never book a service time.",
     "steps_in_when": "\\b(oil change|service (appointment|visit|department)|maintenance|brakes?|tires?|rotation|check engine|warning light|recall|repair|inspection|alignment|battery|noise|leak)\\b",
+    "more_words": "\\b(oil change|service (appointment|visit|department|center)|maintenance|recall|repair|check engine|warning light|inspection|warranty (work|claim|repair)|diagnos\\w*|my car (is )?(making|shaking|leaking)|tune[- ]?up|brakes? (job|pads?)|tire rotation|alignment|transmission (flush|service)|detail(ing)?|service (price|cost|special)|loaner|shuttle|bring (it|my \\w+) in for)\\b",
+    "rules": "- Get the vehicle, mileage and the problem, one at a time; the service department confirms the time.\n- Ask what day works to bring it in; use the problem they described, never a guess at the cause.",
     "lead_bucket_default": null,
     "examples": []
    },
@@ -1029,7 +1039,7 @@
        "text": null,
        "email_text": null,
        "email_subject": null,
-       "instruction": "They were texting with us and stopped after our question. One short, friendly line checking they're still there and repeating the question in a few words (e.g. \"Still with me? Would Saturday at 11 work?\"). No new questions.",
+       "instruction": "They were texting with us and stopped after our question. One short, friendly line: their first name, then ask if they're still with us, then our last question again in a few words (\"Rocco, are you still with me? What time on Friday is best for you?\"). No new questions.",
        "fallback": null
       }
      }
@@ -1689,6 +1699,51 @@
   },
   {
    "type": "workflows",
+   "key": "cannot_supply_price_negotiation",
+   "name": "Can't supply: price negotiation",
+   "content": {
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bnegotia\\w*|\\b(?:work|deal)\\s+(?:with|on)\\s+(?:the\\s+|your\\s+)?price\\b|\\b(?:come|go)\\s+down\\s+on\\b|\\blower\\s+(?:the\\s+|your\\s+)?price\\b|\\bbest\\s+price\\b|\\bwiggle\\s+room\\b|\\bflexible\\s+on\\b"
+    },
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "Our prices are very competitive to market and transparent, and we can work with you on the other parts of your deal. Are you interested in seeing it in person before you make your final decision? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "workflows",
    "key": "cannot_supply_custom_media",
    "name": "Can't supply: custom media",
    "content": {
@@ -2131,6 +2186,15 @@
   },
   {
    "type": "status_rules",
+   "key": "agent_rules",
+   "name": "Rules every agent follows",
+   "content": {
+    "rules": "Always, whichever specialist you are:\n- Answer what the customer actually asked first, in one or two plain sentences; then one question at most.\n- \"I'm interested\" / \"yes\" / \"still available?\" is a buyer: confirm the car and ask the next qualifying question - never \"we can go over that when you come in\".\n- Never repeat what they already told you or what we already sent (the time, the address, the car).\n- A visit is booked: answer only what they asked; no more questions about the car, budget or options.\n- \"Maybe\" / \"might not make it\" / \"not sure\" is not a no: keep the appointment, say so kindly, ask nothing.\n- \"No\" / \"not interested\" / \"I'll call you\": accept it, thank them, and stop - no times, no promises.\n- Never promise what nobody will do (options later, a call, a price check, a manager getting back) unless the decision says a person was asked to.\n- Too far / out of state: say what we can do (the car's details, a call) without pushing visit times.\n- A price offer (\"I can give 19k\"): never accept or refuse it; say a manager will look at it.\n- They're on the way: confirm, give the address, nothing else.\n- Short, warm, human; no lists, no jargon; in the customer's language."
+   },
+   "locked": false
+  },
+  {
+   "type": "status_rules",
    "key": "contact_questions",
    "name": "Contact details the AI asks for",
    "content": {
@@ -2147,7 +2211,13 @@
      "If you'd rather get a text when something changes, what number should I use?"
     ],
     "ask_for_a_phone_when_missing": true,
-    "what_it_does": "A missing name is asked first, then a missing email, then a missing mobile number - one per message, each at most twice, two days apart. The mobile number is offered, never pushed, and never asked of a customer who said they prefer email."
+    "trade_questions": {
+     "trade_in.model": "What year, make and model is your car?",
+     "trade_in.payoff": "About how much do you still owe on it?",
+     "trade_in.mileage": "Roughly how many miles are on it?",
+     "trade_in.condition": "How would you describe its condition: excellent, good, fair or poor?"
+    },
+    "what_it_does": "Asked in the same message as the answer and the next step. A missing name first, then a missing email, then a missing mobile number - one per message, each at most twice; if they don't give it, it is asked again in the next reply. The mobile number is offered, never pushed, and never asked of a customer who said they prefer email."
    },
    "locked": false
   },
@@ -3861,7 +3931,7 @@
     "all_wheel_drive_search_explained": "On since 29 Oct 2026 (28 Oct meeting). When the customer asks about all-wheel drive (xDrive, quattro, 4MATIC, AWD, 4x4...), the AI says plainly whether their car has it, and offers all-wheel-drive cars from stock in their budget; its next question stays about all-wheel drive.",
     "all_wheel_drive_budget_stretch_percent_explained": "How loosely the budget is read for that search (0-100%): the higher of their budget and the car's price, plus this much. 25 means \"14-15K\" on a $15,609 car finds all-wheel-drive cars up to about $19,500.",
     "all_wheel_drive_cars_added_explained": "How many all-wheel-drive cars that search adds (0-5).",
-    "condition_questions_to_a_manager_explained": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the car's condition (mechanical, cosmetic, known issues, accidents, service history), the AI answers with what it knows (mileage, the history report) and the lead goes to Managerial Review with an alert, so a manager confirms the rest. The AI keeps the conversation going."
+    "condition_questions_to_a_manager_explained": "On since 29 Oct 2026 (28 Oct meeting): when a customer asks about the car's condition (mechanical, cosmetic, known issues, accidents, service history, battery health, title), the AI answers with what it knows and the lead goes to Managerial Review with an alert, so a manager confirms the rest. The same when they can't easily come in (too far, a phone-only purchase). The AI keeps the conversation going."
    },
    "locked": false
   },
