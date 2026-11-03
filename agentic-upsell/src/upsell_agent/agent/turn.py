@@ -926,6 +926,13 @@ def stated_name(text: str | None, extracted: str | None) -> bool:
     return any(m.group(1).split()[0].lower() == first[0].lower() for m in _NAME_STATED.finditer(text or ""))
 
 
+def name_as_written(said: str) -> str:
+    """The name as the customer wrote it ("Darren McIntosh" stays - title() made it "Mcintosh"); one typed all in
+    lowercase or capitals is capitalised ("SEAN BURROWES" -> "Sean Burrowes")."""
+    name = " ".join(said.split())
+    return name.title() if name.islower() or name.isupper() else name
+
+
 async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | None, result: dict[str, Any],
                      inbound_text: str | None = None) -> None:
     """Client, 18 Oct 2026: the name the customer gave goes onto a lead that had none ("N/A", "null"). Betsy, 21 Oct
@@ -945,7 +952,7 @@ async def _save_name(deps: TurnDeps, dealer_id: str, lead_id: str, lead: dict | 
     if known_first_name((lead or {}).get("name")) and not stated:
         return
     try:
-        await deps.platform.set_lead_name(dealer_id, lead_id, " ".join(str(said).split()).title()[:80],
+        await deps.platform.set_lead_name(dealer_id, lead_id, name_as_written(str(said))[:80],
                                           said=(inbound_text or "").strip()[:300] if stated else None)
     except Exception:
         logger.exception("could not save the customer's name on lead %s", lead_id)

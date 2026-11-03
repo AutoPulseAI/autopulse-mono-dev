@@ -21,6 +21,7 @@ import Email from '../../models/Email.js';
 import { linkCustomerToLead } from '../customerResolver.js';
 import { parseAdfLeadEmail } from '../adfLeadParser.js';
 import { notifyAiOfInbound, notifyAiOfNewLead } from './aiDispatch.js';
+import { isPlaceholderName } from '../placeholderName.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -129,9 +130,10 @@ export function customerFromLeadEmail(text, senderEmail) {
 
 // What portals put in the name field when there is no name ("null null", "Name", "undefined"): never saved as the
 // customer's name (client, 12 Oct 2026 - a customer got "Hello again, Null").
+// The user, 3 Nov 2026 (Darren McIntosh, "Name Unknown"): the same placeholder words as the AI (app/lib/placeholderName.js).
 export function realName(value) {
   const name = String(value || '').replace(/\b(null|undefined|none|nil|n\/a)\b/gi, ' ').replace(/\s+/g, ' ').trim();
-  if (!name || /^(name|customer|client|guest|lead|unknown|first name|last name)$/i.test(name) || /@/.test(name)) {
+  if (!name || isPlaceholderName(name) || /@/.test(name)) {
     return undefined;
   }
   return name;

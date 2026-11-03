@@ -9,8 +9,9 @@ import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
 import Lead from '@models/Lead';
 import Customer from '@models/Customer';
 import { logActivity } from '@lib/activityLog';
+import { isPlaceholderName } from '@lib/placeholderName';
 
-const PLACEHOLDER = /^\s*(|n\/?a|null|null null|none|name|customer|unknown|test|undefined)\s*$/i;
+const PLACEHOLDER = { test: isPlaceholderName };
 
 export async function POST(req) {
   if (!verifyInternalServiceToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

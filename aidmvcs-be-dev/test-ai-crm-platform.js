@@ -945,3 +945,16 @@ test('Opted Out replaces a working status, never a booking or a sale (31 Oct 202
   assert.equal(closedStatusConflict({ ...at, current: 'Sold' }), 'staff_status_kept');
   assert.equal(closedStatusConflict({ status: 'Contacted - No Next Action', current: 'Opted Out' }), null);
 });
+
+// The user, 3 Nov 2026 (Darren McIntosh): "Name Unknown" is no name - the AI's name the customer texted replaces it.
+test('a placeholder lead name is any mix of the AI\'s not-a-name words', async () => {
+  const { isPlaceholderName } = await import('./app/lib/placeholderName.js');
+  for (const n of ['Name Unknown', 'N/A', 'null null', '', 'Unknown', 'Customer Name']) assert.equal(isPlaceholderName(n), true, n);
+  for (const n of ['Darren McIntosh', 'Sal', 'Name Smith']) assert.equal(isPlaceholderName(n), false, n);
+});
+
+test('a new lead never keeps a placeholder name like "Name Unknown"', async () => {
+  const { realName } = await import('./app/lib/ai/aiInbound.js');
+  for (const n of ['Name Unknown', 'null null', 'Customer Name', 'N/A']) assert.equal(realName(n), undefined, n);
+  assert.equal(realName('Darren McIntosh'), 'Darren McIntosh');
+});
