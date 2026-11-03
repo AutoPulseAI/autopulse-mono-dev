@@ -327,3 +327,18 @@ def test_times_on_one_day_name_the_day_once():
     mixed = {"sms_text": "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"}
     one_day_name(mixed)
     assert mixed["sms_text"] == "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"
+
+
+def test_no_one_is_promised_to_reach_out_to_a_customer_who_bought_elsewhere():
+    # Marcizio Araujo, 3 Nov 2026: "I brought my car already Thanks".
+    from upsell_agent.agent.nodes.compose import no_promise_after_not_interested
+    said = "Thanks for letting me know, and congratulations on your purchase! Our sales manager will reach out shortly."
+    draft = {"sms_text": said, "email_body": "Hi,\n\nCongratulations on your new car! Someone from our team will be in "
+                                             "touch soon.\n\nThank you"}
+    no_promise_after_not_interested(draft, {"not_interested": {"mode": "handoff", "reason": "bought elsewhere"}})
+    assert draft["sms_text"] == "Thanks for letting me know, and congratulations on your purchase!"
+    assert "touch" not in draft["email_body"] and "Congratulations on your new car!" in draft["email_body"]
+    # Any other handoff (they asked for a person) keeps it.
+    kept = {"sms_text": said}
+    no_promise_after_not_interested(kept, {"not_interested": None, "action": "handoff"})
+    assert kept["sms_text"] == said

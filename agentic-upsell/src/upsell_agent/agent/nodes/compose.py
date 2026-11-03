@@ -392,6 +392,25 @@ def one_day_name(draft: dict[str, Any]) -> None:
             draft[key] = "".join(tidy(part) for part in re.split(r"(?<=[.!?\n])", str(text)))
 
 
+_WILL_REACH_OUT = re.compile(
+    r"[^.!?\n]*\b(?:manager|someone|somebody|a member of our team|our team|the team|we)\b[^.!?\n]*\b(?:will|'ll|is going "
+    r"to|are going to)\s+(?:reach out|be in touch|contact you|call you|text you|follow up|get back to you|be reaching "
+    r"out)\b[^.!?\n]*[.!?]?\s*", re.IGNORECASE)
+
+
+def no_promise_after_not_interested(draft: dict[str, Any], decision: dict[str, Any]) -> None:
+    """The user, 3 Nov 2026 (Marcizio Araujo: "I brought my car already Thanks" got "Thanks for letting me know, and
+    congratulations on your purchase! Our sales manager will reach out shortly." - "he will ask: I already bought the
+    car, why will your manager reach out to me?"; Jeffry Turman, the same). A customer who isn't interested or bought
+    elsewhere is thanked; nobody is promised to reach out. The lead still goes to a person (Managerial Review)."""
+    if ((decision.get("not_interested") or {}).get("mode")) != "handoff":
+        return
+    for key in ("sms_text", "email_body"):
+        if text := draft.get(key):
+            kept = _WILL_REACH_OUT.sub("", str(text)).strip()
+            draft[key] = kept or "Thanks for letting me know."
+
+
 def one_fee_note(draft: dict[str, Any]) -> None:
     """Live, 24 Oct 2026 (Robin's first message, 566 characters -> the safe template): two cars, each with "not including
     tax, documentation and DMV fees". With more than one price, the note is said once, after the last price."""
@@ -446,6 +465,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
     one_day_name(draft)  # the AI's own words only - fixed wording placed below is never changed
+    no_promise_after_not_interested(draft, state.decision or {})
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
