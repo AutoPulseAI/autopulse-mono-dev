@@ -788,11 +788,38 @@ test('messages sent and received are counted by who sent them, notes and the lea
     m(a, 'note', { is_note: true }), m(b, 'received', { mail_content: '<?adf version="1.0"?>' })]);
   const from = new Date('2026-10-26T04:00:00Z'), to = new Date('2026-10-27T03:59:59Z');
   const got = await messageActivity([a, b], from, to);
-  assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2 });
+  assert.deepEqual(got.sent, { total: 4, ai: 2, staff: 1, automatic: 1, failed: 1, customers: 2, blasts: 0 });
   assert.deepEqual(got.received, { total: 1, customers: 1 });
   // Delivered: the texts with a "delivered" report and the emails the mail service took - not the failed text.
   assert.deepEqual(got.delivered, { total: 3, texts: 2, mms: 1, emails: 1, customers: 2 });
   assert.equal((await repliedLeadIds([a, b], from, to, { direction: 'sent' })).length, 2);
+});
+
+// Betsy, 2 Nov 2026 meeting: a staff text to many leads is a blast; Customer Replied by text and by email.
+test('a staff blast is tagged and counted, and replies split by channel', async (t) => {
+  if (!connected) return t.skip(`MongoDB not reachable at ${URI}`);
+  const { messageActivity, repliedSplit } = await import('./app/lib/contactedLeads.js');
+  const { blastIds } = await import('./app/lib/blasts.js');
+  const dealer = new mongoose.Types.ObjectId();
+  const mercy = new mongoose.Types.ObjectId();
+  const leads = [1, 2, 3, 4, 5, 6].map(() => new mongoose.Types.ObjectId());
+  const ts = new Date('2026-10-30T18:25:00Z');
+  const m = (lead_id, extra = {}) => ({ dealer_id: dealer, lead_id, sender: 's', recipient: 'r', subject: 's',
+    message_id: `x-${Math.random()}`, mail_content: 'Ready for a Manager Giveaway!!! Take advantage', status: 'delivered',
+    communication_type: 'sms', date: ts, timestamp: ts, message_by: mercy, ...extra });
+  await Email.collection.insertMany([...leads.slice(0, 5).map((id) => m(id)),
+    m(leads[5], { mail_content: 'Hi Kevin, just for you: the X7 is here today' }),
+    m(leads[0], { status: 'received', message_by: null, mail_content: 'Do you have the white X7?' }),
+    m(leads[1], { status: 'received', message_by: null, communication_type: 'email', mail_content: 'Price?' }),
+    m(leads[1], { status: 'received', message_by: null, mail_content: 'and a text' })]);
+  const thread = await Email.find({ lead_id: { $in: [leads[0], leads[5]] }, message_by: mercy }).lean();
+  const tagged = await blastIds(thread);
+  assert.equal(tagged.size, 1);
+  assert.equal(thread.find((e) => tagged.has(String(e._id))).mail_content.startsWith('Ready for'), true);
+  const from = new Date('2026-10-30T04:00:00Z'), to = new Date('2026-10-31T03:59:59Z');
+  assert.equal((await messageActivity(leads, from, to)).sent.blasts, 5);
+  const split = await repliedSplit(leads.map((_id) => ({ _id, createdAt: new Date('2026-10-01') })), from, to);
+  assert.deepEqual(split, { sms: 2, email: 1, new_leads: 0, older_leads: 2 });
 });
 
 // Betsy and Bibi, 27 Oct 2026 meeting: our own trace labels (bucket, next AI message), for AutoPulse admins only.

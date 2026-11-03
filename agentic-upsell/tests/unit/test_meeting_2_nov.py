@@ -264,3 +264,24 @@ def test_the_reply_check_catches_asking_the_same_question_again():
     assert loop_check.repeated_question("Here's our Escalade: https://x.test/esc. Want to see it today?", memory) is None
     offer = [_m("outbound", "Would today at 2:00 PM or 3:00 PM work?")]
     assert loop_check.repeated_question("Would today at 4:00 PM or 5:00 PM work?", offer) is None
+
+
+async def test_call_tasks_done_is_only_calls_made_and_each_day_is_counted(mongo):
+    # Betsy, 2 Nov 2026 meeting: "done is supposed to be when it's complete, not when it's missed or dismissed".
+    from upsell_agent.api import staff_view
+    from upsell_agent.integrations.mongodb import AI_CALL_TASKS_COLLECTION
+    set_clock(TUESDAY_NOON)
+    day = datetime(2026, 9, 22, 15, 0, tzinfo=UTC)
+    rows = [("completed", day), ("missed", day), ("cancelled", day), ("dismissed", day), ("open", day),
+            ("missed", datetime(2026, 9, 21, 15, 0, tzinfo=UTC))]
+    for status, at in rows:
+        await mongo[AI_CALL_TASKS_COLLECTION].insert_one({"dealer_id": DEALER, "lead_id": str(ObjectId()),
+                                                          "status": status, "opened_at": at, "closed_at": at})
+    assert [r["status"] for r in await staff_view.list_call_tasks(DEALER, "done")] == ["completed"]
+    assert len(await staff_view.list_call_tasks(DEALER, "missed")) == 2
+    assert {r["status"] for r in await staff_view.list_call_tasks(DEALER, "cancelled")} == {"cancelled", "dismissed"}
+    assert len(await staff_view.list_call_tasks(DEALER, "missed", date_from="2026-09-22", date_to="2026-09-22",
+                                                tz_offset_minutes=-240)) == 1
+    [today, yesterday] = await staff_view.call_tasks_by_day(DEALER, 14, -240)
+    assert today == {"day": "2026-09-22", "opened": 5, "called": 1, "missed": 1, "open": 1}
+    assert yesterday["day"] == "2026-09-21" and yesterday["missed"] == 1

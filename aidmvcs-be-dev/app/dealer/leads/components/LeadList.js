@@ -94,6 +94,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
       messagesChannel: params.get('channel') || '', // ...by text, picture text or email (28 Oct 2026 meeting)
+      repliedBy: params.get('replied_by') || '', // Customer Replied by text or email (Betsy, 2 Nov 2026 meeting)
+      sort: params.get('sort') || '', // created_desc | created_asc (Betsy, 2 Nov 2026 meeting)
       stopped: params.get('stopped') || '', // leads with a stop (app/lib/ai/stopLabels.js)
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
@@ -214,6 +216,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
+      if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
 
@@ -455,6 +459,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.stopped) url += '&stopped=1';
       if (filters.messages) url += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.messages && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if (filters.status === 'Contacted' && filters.repliedBy) url += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
+      if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
@@ -777,6 +783,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
       if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
+      if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
       
@@ -1193,6 +1201,29 @@ useImperativeHandle(ref, () => ({
             ))}
           </div>
         )}
+        {filters.status === 'Contacted' && (
+          // Betsy, 2 Nov 2026 meeting: "there must be a filter - filter by SMS, filter by email" (a customer who replied
+          // both ways is in both).
+          <div className="d-flex gap-2 mb-3 align-items-center">
+            <span className="small text-muted">Customer replied by:</span>
+            {[['', 'All'], ['sms', 'SMS'], ['email', 'Email']].map(([value, label]) => (
+              <Button key={label} size="sm" className="text-nowrap"
+                variant={(filters.repliedBy || '') === value ? 'custom' : 'outline-custom'}
+                onClick={() => setFilters((prev) => ({ ...prev, repliedBy: value, page: 1 }))}>
+                {label}
+              </Button>
+            ))}
+          </div>
+        )}
+        <div className="d-flex gap-2 mb-3 align-items-center">
+          <span className="small text-muted">Sort:</span>
+          <Form.Select size="sm" style={{ width: 220 }} value={filters.sort || ''}
+            onChange={(e) => setFilters((prev) => ({ ...prev, sort: e.target.value, page: 1 }))}>
+            <option value="">{filters.status === 'Contacted' ? 'Latest reply first' : 'Newest lead first'}</option>
+            <option value="created_desc">Created: newest first</option>
+            <option value="created_asc">Created: oldest first</option>
+          </Form.Select>
+        </div>
         {/* Assignment Filter Tabs */}
         <div className="d-flex gap-2 mb-3 lead_fltr">
         <Button size="sm" className="text-nowrap" variant={filters.stopped ? 'custom' : 'outline-custom'}
@@ -1771,12 +1802,8 @@ useImperativeHandle(ref, () => ({
                         // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.
                         <div className="mt-1"><Badge bg="danger">{lead.ai_stop_label}</Badge></div>
                       )}
-                      {lead.ai_stage_label && (
-                        // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
-                        <div className="small text-muted mt-1" title="AI stage (read only)">
-                          <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
-                        </div>
-                      )}
+                      {/* Betsy, 2 Nov 2026 meeting ("it's either Manager Review or No Next Action - which one is it?"): one
+                          status on the lead. The AI's own stage is shown to AutoPulse admins only (ai_admin below). */}
                       {lead.ai_admin && (
                         // AutoPulse super admins only (the API leaves this out for anyone else): bucket and next AI message.
                         <div className="small mt-1 text-info" title="AutoPulse admin view: the AI's bucket and its next scheduled message">

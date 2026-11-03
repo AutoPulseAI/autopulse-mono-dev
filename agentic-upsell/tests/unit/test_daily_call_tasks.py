@@ -157,7 +157,7 @@ async def test_an_unfinished_task_is_missed_and_the_afternoon_one_opens(mongo, d
     assert morning["status"] == "missed" and morning["missed_at"] and morning["assigned_to"] == AGENT
     assert afternoon["status"] == "open" and afternoon["slot"] == "afternoon" and _utc(afternoon["due_by"]) == ny(22, 19)
     # Done tab shows it as missed; the per-agent count counts it.
-    done = await list_call_tasks(DEALER, "done")
+    done = await list_call_tasks(DEALER, "missed")  # its own list (Betsy, 2 Nov 2026: Done is a call made)
     assert [t["status"] for t in done] == ["missed"]
     assert (await get_missed_by_agent(DEALER, days=30))["agents"] == [{"assigned_to": AGENT, "missed": 1}]
     # Staff can still record the late call; it stays counted as missed.

@@ -276,13 +276,42 @@ def _view(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, Any]]:
+# Betsy, 2 Nov 2026 meeting ("done is supposed to be when it's complete, not when it's missed or dismissed"): each
+# finished call task in its own list - Done is a call made.
+FINISHED_VIEWS: dict[str, list[str]] = {
+    "done": [call_tasks.COMPLETED],
+    "missed": [call_tasks.MISSED],
+    "cancelled": [call_tasks.CANCELLED, call_tasks.DISMISSED],
+}
+VIEWS = ("open", "upcoming", *FINISHED_VIEWS)
+
+
+def _day_range(date_from: str | None, date_to: str | None) -> dict[str, Any]:
+    """{"$gte", "$lt"} in UTC for the dealer-local days picked ("2026-11-02"), or {} for no range."""
+    out: dict[str, Any] = {}
+    try:
+        if date_from:
+            out["$gte"] = datetime.fromisoformat(date_from).replace(tzinfo=UTC)
+        if date_to:
+            out["$lt"] = datetime.fromisoformat(date_to).replace(tzinfo=UTC) + timedelta(days=1)
+    except ValueError:
+        return {}
+    return out
+
+
+async def list_call_tasks(dealer_id: str, view: str = "open", *, date_from: str | None = None,
+                          date_to: str | None = None, tz_offset_minutes: int = 0) -> list[dict[str, Any]]:
+    """`date_from` / `date_to`: dealer-local days (YYYY-MM-DD), `tz_offset_minutes` the dealer's offset from UTC
+    (New York in winter: -300): when the task opened (to call now), is due (waiting), or closed (the rest)."""
     db = dealer_scoped_db(dealer_id)
+    days = _day_range(date_from, date_to)
+    if days:
+        days = {k: v - timedelta(minutes=tz_offset_minutes) for k, v in days.items()}
     if view == "upcoming":
         rows = await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find(
             # PLAN_4 stream T: the next Days 1-7 morning / afternoon call task waits here too.
-            {"kind": {"$in": ["call_task", "daily_call_task"]}, "status": {"$in": ["pending", "standby"]}}).sort(
-            "due_at", 1).to_list(LIMIT)
+            {"kind": {"$in": ["call_task", "daily_call_task"]}, "status": {"$in": ["pending", "standby"]},
+             **({"due_at": days} if days else {})}).sort("due_at", 1).to_list(LIMIT)
         rows = [{"_id": r["_id"], "lead_id": r.get("lead_id"), "customer_id": r.get("customer_id"),
                  "phone": r.get("to"), "status": "waiting", "due_at": r.get("due_at"), "reason": r.get("reason"),
                  "sent_channels": r.get("sent_channels"), "created_at": r.get("created_at"),
@@ -290,14 +319,13 @@ async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, 
                  "requested": bool(r.get("requested")),
                  "source": "daily" if r.get("kind") == "daily_call_task" else "connection_timer",
                  "slot": r.get("slot"), "day": r.get("day")} for r in rows]
-    elif view == "done":
+    elif view in FINISHED_VIEWS:
         rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
-            {"status": {"$in": [call_tasks.COMPLETED, call_tasks.DISMISSED, call_tasks.CANCELLED,
-                                call_tasks.MISSED]}}).sort(
+            {"status": {"$in": FINISHED_VIEWS[view]}, **({"closed_at": days} if days else {})}).sort(
             "closed_at", -1).to_list(LIMIT)
     else:
-        rows = await db.collection(AI_CALL_TASKS_COLLECTION).find({"status": call_tasks.OPEN}).sort(
-            "opened_at", 1).to_list(LIMIT)
+        rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
+            {"status": call_tasks.OPEN, **({"opened_at": days} if days else {})}).sort("opened_at", 1).to_list(LIMIT)
     lead_ids = list({r["lead_id"] for r in rows if r.get("lead_id")})
     states = {s["lead_id"]: s for s in await db.collection(AI_LEAD_STATE_COLLECTION).find(
         {"lead_id": {"$in": lead_ids}},
@@ -308,8 +336,40 @@ async def list_call_tasks(dealer_id: str, view: str = "open") -> list[dict[str, 
 
 @router.get("/call-tasks")
 async def get_call_tasks(dealer_id: str = Query(...),
-                         view: Literal["open", "upcoming", "done"] = "open") -> list[dict[str, Any]]:
-    return await list_call_tasks(dealer_id, view)
+                         view: Literal["open", "upcoming", "done", "missed", "cancelled"] = "open",
+                         date_from: str | None = None, date_to: str | None = None,
+                         tz_offset_minutes: int = 0) -> list[dict[str, Any]]:
+    return await list_call_tasks(dealer_id, view, date_from=date_from, date_to=date_to,
+                                 tz_offset_minutes=tz_offset_minutes)
+
+
+async def call_tasks_by_day(dealer_id: str, days: int = 14, tz_offset_minutes: int = 0) -> list[dict[str, Any]]:
+    """Betsy, 2 Nov 2026 meeting ("a calendar ... so they know how many call tasks there are, how many they missed"):
+    per dealer-local day, newest first - tasks opened, called, missed."""
+    db = dealer_scoped_db(dealer_id)
+    shift = timedelta(minutes=tz_offset_minutes)
+    since = clock.now() - timedelta(days=days)
+    rows = await db.collection(AI_CALL_TASKS_COLLECTION).find(
+        {"opened_at": {"$gte": since}}, projection={"status": 1, "opened_at": 1}).to_list(None)
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        at = row.get("opened_at")
+        if not isinstance(at, datetime):
+            continue
+        day = ((at if at.tzinfo else at.replace(tzinfo=UTC)) + shift).date().isoformat()
+        each = out.setdefault(day, {"day": day, "opened": 0, "called": 0, "missed": 0, "open": 0})
+        each["opened"] += 1
+        status = row.get("status")
+        each["called"] += status == call_tasks.COMPLETED
+        each["missed"] += status == call_tasks.MISSED
+        each["open"] += status == call_tasks.OPEN
+    return sorted(out.values(), key=lambda d: d["day"], reverse=True)
+
+
+@router.get("/call-tasks/by-day")
+async def get_call_tasks_by_day(dealer_id: str = Query(...), days: int = Query(14, ge=1, le=90),
+                                tz_offset_minutes: int = 0) -> list[dict[str, Any]]:
+    return await call_tasks_by_day(dealer_id, days, tz_offset_minutes)
 
 
 @router.get("/call-tasks/missed-by-agent")

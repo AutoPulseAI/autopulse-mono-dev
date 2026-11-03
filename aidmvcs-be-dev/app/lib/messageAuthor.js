@@ -16,6 +16,8 @@ export function messageAuthor(email, lead, botName) {
   if (idOf(by) && idOf(by) === idOf(lead?.dealer_id)) {
     return { kind: "staff", label: `Sent by staff (dealer account${name ? `: ${name}` : ""})` };
   }
+  // Betsy, 2 Nov 2026 meeting: a text sent to many leads at once (app/lib/blasts.js) is marked as a blast.
+  if (email?.is_blast) return { kind: "staff", label: `Blast sent by staff${name ? `: ${name}` : ""}` };
   if (name) return { kind: "staff", label: `Sent by staff: ${name}` };
   if (idOf(by)) return { kind: "staff", label: "Sent by staff" };
   // The user, 3 Nov 2026: "Dealership reminder" (was "Automatic message (not the AI)") - still never the AI's name.

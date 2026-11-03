@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [readMessageCount, setReadMessageCount] = useState(0);
   const [contactedCount, setContactedCount] = useState(0); // Customer Replied, in the picked range
+  // Betsy, 2 Nov 2026 meeting: replied by text / by email, and today's leads vs older ones.
+  const [contactedSplit, setContactedSplit] = useState(null);
   const [activity, setActivity] = useState(null); // Messages sent / received, in the picked range (Betsy, 27 Oct 2026)
   // AI vs staff on the two appointment cards, and the Compare numbers (Betsy, 21 Oct 2026).
   // Betsy, 23 Oct 2026: {made, scheduled, showed, sold}, each {total, ai, staff} (app/lib/appointmentFunnel.js).
@@ -197,6 +199,7 @@ export default function Dashboard() {
       setManagerialReviewCount((await managerialReviewRes.json()).managerial_review || 0);
       setTodayLeadsCount((await todayLeadsRes.json()).total_leads || 0);
       setContactedCount(counts.contacted.total_leads || 0);
+      setContactedSplit(counts.contacted.replied_by || null);
       setActivity(counts.activity);
       setFunnel(counts.funnel);
       setCompareCounts(compared ? {
@@ -786,7 +789,8 @@ export default function Dashboard() {
               count={contactedCount}
               label="Customer Replied"
               link={withRange('/dealer/leads?status=Contacted')}
-              description={`${cardRangeText()}${compareText('contacted')}`}
+              description={`${contactedSplit ? `SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · From these `
+                + `dates' leads: ${contactedSplit.new_leads} · ` : ''}${cardRangeText()}${compareText('contacted')}`}
             />
 
             <CountCard
@@ -796,7 +800,8 @@ export default function Dashboard() {
               label="Messages Delivered"
               link={withRange('/dealer/leads?messages=sent')}
               description={activity
-                ? `SMS: ${activity.delivered.texts} (MMS: ${activity.delivered.mms || 0}) · Email: ${activity.delivered.emails} · ${cardRangeText()}`
+                ? `SMS: ${activity.delivered.texts} (MMS: ${activity.delivered.mms || 0}) · Email: ${activity.delivered.emails}`
+                  + `${activity.sent?.blasts ? ` · Staff blasts: ${activity.sent.blasts}` : ''} · ${cardRangeText()}`
                 : 'Could not count messages'}
             />
 

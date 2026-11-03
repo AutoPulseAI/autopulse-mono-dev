@@ -104,3 +104,12 @@ test('the customer profile lists each car their leads are about, newest first, o
   assert.deepEqual(got.map((v) => v.lead_id), ['a', 'c']);
   assert.equal(got[0].source, 'CarGurus');
 });
+
+test('a staff blast says so (Betsy, 2 Nov 2026 meeting)', async () => {
+  const { messageAuthor } = await import('./app/lib/messageAuthor.js');
+  const lead = { _id: 'l1', dealer_id: 'd1', name: 'Kevin' };
+  const mercy = { _id: 'u1', name: 'Mercy Carill' };
+  assert.equal(messageAuthor({ status: 'delivered', message_by: mercy, is_blast: true }, lead).label,
+    'Blast sent by staff: Mercy Carill');
+  assert.equal(messageAuthor({ status: 'delivered', message_by: mercy }, lead).label, 'Sent by staff: Mercy Carill');
+});

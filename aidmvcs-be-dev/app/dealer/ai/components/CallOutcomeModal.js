@@ -1,6 +1,7 @@
 "use client";
 // The prompt staff answer after a call from the Call Tasks page: how the call went
-// and what it means for the lead. It can't be closed without an answer.
+// and what it means for the lead. The X closes it as "I didn't make the call" - the task stays open (Betsy, 2 Nov 2026
+// meeting: "can you close that or is it forcing you to do something?").
 //
 //   appointment        -> the CRM's own booking flow (PUT /api/conversations/lead/status,
 //                         "Appointment Booked" + date/time + appointment type, same as the Update Status modal)
@@ -167,8 +168,8 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
   if (!task) return null;
 
   return (
-    <Modal show={show} centered backdrop="static" keyboard={false} size="lg">
-      <Modal.Header>
+    <Modal show={show} onHide={saving ? undefined : onNotCalled} centered backdrop="static" keyboard={false} size="lg">
+      <Modal.Header closeButton={Boolean(onNotCalled) && !saving}>
         <Modal.Title>
           {dismissMode ? "Dismiss this call" : "How did the call go?"}
           <small className="d-block text-secondary-light fs-6 mt-1">
