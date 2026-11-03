@@ -342,3 +342,11 @@ def test_no_one_is_promised_to_reach_out_to_a_customer_who_bought_elsewhere():
     kept = {"sms_text": said}
     no_promise_after_not_interested(kept, {"not_interested": None, "action": "handoff"})
     assert kept["sms_text"] == said
+
+
+def test_a_texted_name_keeps_its_own_capitals():
+    # Darren McIntosh, 3 Nov 2026: title() would have saved "Darren Mcintosh".
+    from upsell_agent.agent.turn import name_as_written
+    assert name_as_written("Darren McIntosh") == "Darren McIntosh"
+    assert name_as_written("SEAN  BURROWES") == "Sean Burrowes"
+    assert name_as_written("maria lopez") == "Maria Lopez"
