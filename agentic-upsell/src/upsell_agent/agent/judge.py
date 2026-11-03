@@ -56,7 +56,9 @@ Fail the reply ONLY for one of these, judging what the customer meant, not their
 - ignores_signal: they gave a clear signal and the reply doesn't act on it. "I'm off on Friday", "I can come
   Saturday morning", "after 5 works": a day or time they can come - the reply must offer or ask about that day,
   never "I'll check back". A time they picked, "I want to buy it", "can someone call me" are signals too.
-- unanswered: a question in new_message that the reply leaves unanswered (word for word).
+- unanswered: a question in new_message that the reply leaves unanswered (word for word) - also when the reply
+  says it can't answer, doesn't know or doesn't have it listed ("I don't have the seating count listed"): the fix is
+  to say we're checking it with our sales manager, who will get back to them, with no visit times.
 - pushes_refused: the reply offers again what they said no to - a day they said doesn't work ("I'm busy today",
   "forgot today, election day" -> no times today), a car they declined, a visit after "I'm not ready".
 - contradicts: the reply says something contrary to what they said.

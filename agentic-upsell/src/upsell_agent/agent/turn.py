@@ -410,6 +410,7 @@ async def run_turn(
             await _note_not_interested(db, deps.platform, lead_id, customer_id, decision, tracer.turn_id)  # stream R
             await _notify_team_of_promises(db, lead_id, result)
             await _escalate_cannot_supply(db, lead_id, result)
+            await _escalate_needs_manager(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id, result)
             if trigger == "inbound_message":
                 await _alert_arriving(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
                 await _alert_price_offer(db, deps.platform, lead_id, customer_id, inbound_text, tracer.turn_id)
@@ -1078,6 +1079,44 @@ async def _escalate_cannot_supply(db: DealerScopedDatabase, lead_id: str, result
     await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
                                  reason=f"{cannot_supply.ESCALATION_REASON}: {what}", event_kind="cannot_supply",
                                  hold=bool(cannot.get("escalates")))
+
+
+# Our own reply saying it can't answer (the writer should have flagged needs_manager instead): "I don't have the seating
+# count listed", "I can't confirm the seating" (Hannah Rudansky, 3 Nov 2026).
+_CANT_ANSWER = re.compile(
+    r"\b(?:i|we) (?:don'?t|do not) have (?:the |that |this |its |a |an )?[\w\s-]{0,30}?(?:listed|on file|"
+    r"info(?:rmation)?|details?)\b|\b(?:i|we) (?:can'?t|cannot|am not able to|'?m not able to|'?m unable to) "
+    r"(?:confirm|say|tell you|verify)\b|\bisn'?t listed\b", re.IGNORECASE)
+
+
+async def _escalate_needs_manager(db: DealerScopedDatabase, platform: Any, lead_id: str | None, customer_id: str | None,
+                                  text: str | None, turn_id: str, result: dict[str, Any]) -> None:
+    """The user, 3 Nov 2026 (Hannah Rudansky: "Is this 8 seats?", then "not interested unless it's 8 seater", got "I
+    don't have the seating count listed" and "I can't confirm the seating" with visit times): "if the AI is unsure
+    about anything, never tell the client it can't provide the details - send it to Managerial Review". A question
+    the writer couldn't answer from its facts (needs_manager), or a reply that still says it can't: the lead goes to
+    Managerial Review (Dealer Action Required), the AI holds, and the manager gets the question."""
+    if not lead_id or result.get("used_template"):
+        return
+    decision = result.get("decision") or {}
+    if (decision.get("cannot_supply") or {}).get("escalates") or decision.get("action") in ("stop", "handoff",
+                                                                                            "offer_human"):
+        return
+    draft = result.get("draft") or {}
+    said = f"{draft.get('sms_text') or ''} {draft.get('email_body') or ''}"
+    question = str(draft.get("needs_manager") or "").strip() or (
+        str(text or "").strip()[:240] if _CANT_ANSWER.search(said) else "")
+    if not question:
+        return
+    from upsell_agent.agent import cannot_supply, crm_notes, crm_status, escalation
+    await crm_status.sync_status(db, lead_id, escalation.MANAGERIAL_REVIEW,
+                                 reason=f"{cannot_supply.ESCALATION_REASON}: an answer about the car or the deal: "
+                                        f"{question[:200]!r}", event_kind="needs_manager", hold=True)
+    await crm_notes.write(db, lead_id=lead_id, kind="needs_manager", key=f"needs_manager:{turn_id}", platform=platform,
+                          customer_id=customer_id, text=(
+                              f"The customer asked: \"{question[:240]}\" - the AI doesn't have the answer, so it told "
+                              "them our sales manager will check and get back to them. Please answer them; the AI "
+                              "has stopped following up until you hand the lead back."))
 
 
 async def _notify_team_of_promises(db: DealerScopedDatabase, lead_id: str, result: dict[str, Any]) -> None:
