@@ -62,7 +62,15 @@ const LABELS = {
   ai_resumes_after_staff_minutes: ["Minutes before the AI takes back a conversation staff replied to (0 = never)",
     "When staff text a customer by hand and the customer writes back, the AI answers if no one replies within this long (at once after hours)."],
   ai_stays_quiet_after_handoff: ["After the AI hands a lead to a person, it stays quiet until staff hand it back",
-    "On: no holding replies, no answers after the customer asked for a person, and the AI never takes the lead back when staff go quiet. A customer who asked for a person stays with staff when the status changes; staff hand it back with \"Hand back to AI\". Staff get a note for every message."],
+    "On: no holding replies, no answers about what the lead went to a person for (only a new, different question is answered, never after the customer asked for a person), and the AI never takes the lead back when staff go quiet. Staff changing the status, or \"Hand back to AI\", hands it back. Staff get a note for every message."],
+  loop_goes_to_a_manager: ["When the AI goes round in circles, the lead goes to a manager",
+    "The same question twice with nothing new from the customer, the customer asking the same thing three times, or \"I already told you\": Managerial Review, and the AI stops."],
+  website_when_stuck: ["Send the website when no one car fits",
+    "A link asked for with no single car to point at, or a stock question our stock doesn't answer exactly: the website to browse, never \"which one?\"."],
+  offer_times_with_answers: ["An answer that asks nothing else ends with two real times",
+    "Betsy, 2 Nov 2026: \"we have to offer times\"."],
+  never_ask_what_day_works: ["Never \"what day works?\" - offer two real times",
+    "An open question about when they'd come in is replaced by the two earliest open times."],
 };
 
 const CHOICES = {

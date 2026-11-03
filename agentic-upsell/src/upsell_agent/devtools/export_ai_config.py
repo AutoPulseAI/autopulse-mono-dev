@@ -440,6 +440,11 @@ def compliance() -> list[dict[str, Any]]:
             "switch_ai_off_after_failed_drafts": guard.HANDOFF_AFTER_FAILED_DRAFTS,
             "ai_resumes_after_staff_minutes": int(followups.STAFF_QUIET_AFTER.total_seconds() // 60),
             "ai_stays_quiet_after_handoff": _handlers().QUIET_AFTER_HANDOFF,
+            # The 2 Nov 2026 meeting (Betsy, Bibi; the user's list 3 Nov).
+            "loop_goes_to_a_manager": _module("loop_check").ESCALATE_ON_LOOP,
+            "website_when_stuck": _module("link_resolver").WEBSITE_WHEN_STUCK,
+            "offer_times_with_answers": _decide().OFFER_TIMES_WITH_ANSWERS,
+            "never_ask_what_day_works": _module("open_time_question").ON,
             # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
             "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
         # The user / Betsy, 25 Oct 2026: "check things at every message" - the last look before any message leaves.
@@ -543,6 +548,11 @@ def _consent():
     return consent
 
 
+def _module(name: str):
+    import importlib
+    return importlib.import_module(f"upsell_agent.agent.{name}")
+
+
 def _handlers():
     from upsell_agent.events import handlers
     return handlers
@@ -568,7 +578,7 @@ LOCKED = {"prompts": ["extract"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 32
+DEFAULTS_REVISION = 33
 
 
 def export() -> dict[str, Any]:

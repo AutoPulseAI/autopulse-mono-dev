@@ -129,3 +129,16 @@ def same_topic(text: str | None, escalated_about: str | None) -> bool:
     if not new:
         return True
     return bool(new & topics(escalated_about))
+
+
+def repeated_question(draft_text: str | None, memory: list[Any] | None) -> str | None:
+    """The reply check before sending (the user, 3 Nov 2026: "before a reply goes out, check whether it answers what
+    the customer actually asked; if not, rewrite it" - Kenneth Ball got "Which SUV ... link for?" twice): the question
+    this draft ends with, when one of our last two replies already asked it. A visit offer with times is not one."""
+    if not draft_text or _OFFER.search(draft_text):
+        return None
+    asked = _question(draft_text)
+    if not asked:
+        return None
+    ours = [t for d, t in _messages(memory) if d == "outbound"][-2:]
+    return asked if any(_similar(asked, _question(t)) and not _OFFER.search(t) for t in ours) else None

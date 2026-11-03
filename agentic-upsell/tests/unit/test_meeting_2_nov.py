@@ -256,3 +256,11 @@ def test_booked_the_day_before_the_confirmation_waits_for_the_morning():
     # Booked the morning before, still in time: the day before, as before.
     early = appointment.plan_steps(datetime(2026, 11, 3, 10, 0, tzinfo=tz), now=now.replace(hour=8), tz=tz)
     assert [s.due_at.date() for s in early if s.step == appointment.STEP_CONFIRM] == [now.date()]
+
+
+def test_the_reply_check_catches_asking_the_same_question_again():
+    memory = [_m("outbound", "I can help with that. Which SUV would you like the link for?"), _m("inbound", "Yes")]
+    assert loop_check.repeated_question("Got it! Which SUV model would you like the link for?", memory)
+    assert loop_check.repeated_question("Here's our Escalade: https://x.test/esc. Want to see it today?", memory) is None
+    offer = [_m("outbound", "Would today at 2:00 PM or 3:00 PM work?")]
+    assert loop_check.repeated_question("Would today at 4:00 PM or 5:00 PM work?", offer) is None

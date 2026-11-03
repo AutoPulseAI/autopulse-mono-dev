@@ -248,3 +248,16 @@ async def test_the_contact_questions_are_edited_in_ai_studio(mongo):
     assert decide.ASK_PHONE is False and decide.PHONE_QUESTIONS == ("Got a mobile number for quick texts?",)
     ai_studio.reset()
     assert decide.ASK_PHONE is True and len(decide.PHONE_QUESTIONS) == 3
+
+
+
+async def test_the_2_nov_meeting_rules_come_from_ai_studio(mongo):
+    from upsell_agent.agent import link_resolver, loop_check, open_time_question
+    from upsell_agent.agent.nodes import decide
+    c = _default("compliance", "conversation_rules")
+    keys = ("loop_goes_to_a_manager", "website_when_stuck", "offer_times_with_answers", "never_ask_what_day_works")
+    assert all(c[k] is True for k in keys)
+    await _publish(mongo, "compliance", "conversation_rules", {**c, **{k: False for k in keys}})
+    await _new_lead(mongo, vehicle=RAV4)
+    assert not loop_check.ESCALATE_ON_LOOP and not link_resolver.WEBSITE_WHEN_STUCK
+    assert not decide.OFFER_TIMES_WITH_ANSWERS and not open_time_question.ON

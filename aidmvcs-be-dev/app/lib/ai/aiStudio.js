@@ -106,6 +106,13 @@ const ALIGNMENTS = [
     note: 'Updated by AutoPulse to match the AI: a lead with a phone is texted unless they explicitly said no; AutoTrader\'s '
       + 'TCPAOptIn: false no longer stops texts (2 Nov 2026)',
     change: (c) => (c.form_no_blocks_text === false ? null : { ...c, form_no_blocks_text: false }) },
+  { id: 'meeting_2nov', type: 'compliance', key: 'conversation_rules',
+    note: 'Updated by AutoPulse to match the AI: a loop goes to a manager, the website when no one car fits, and two '
+      + 'real times instead of "what day works?" (2 Nov 2026 meeting)',
+    change: (c) => (['loop_goes_to_a_manager', 'website_when_stuck', 'offer_times_with_answers',
+      'never_ask_what_day_works'].every((k) => typeof c[k] === 'boolean') ? null
+      : { loop_goes_to_a_manager: true, website_when_stuck: true, offer_times_with_answers: true,
+        never_ask_what_day_works: true, ...c }) },
   { id: 'quiet_after_handoff_3nov', type: 'compliance', key: 'conversation_rules',
     note: 'Updated by AutoPulse to match the AI: after a handoff the AI stays quiet until staff hand the lead back '
       + '(3 Nov 2026)',
