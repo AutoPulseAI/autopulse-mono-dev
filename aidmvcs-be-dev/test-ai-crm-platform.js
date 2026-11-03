@@ -952,3 +952,9 @@ test('a placeholder lead name is any mix of the AI\'s not-a-name words', async (
   for (const n of ['Name Unknown', 'N/A', 'null null', '', 'Unknown', 'Customer Name']) assert.equal(isPlaceholderName(n), true, n);
   for (const n of ['Darren McIntosh', 'Sal', 'Name Smith']) assert.equal(isPlaceholderName(n), false, n);
 });
+
+test('a new lead never keeps a placeholder name like "Name Unknown"', async () => {
+  const { realName } = await import('./app/lib/ai/aiInbound.js');
+  for (const n of ['Name Unknown', 'null null', 'Customer Name', 'N/A']) assert.equal(realName(n), undefined, n);
+  assert.equal(realName('Darren McIntosh'), 'Darren McIntosh');
+});
