@@ -311,3 +311,19 @@ async def test_call_tasks_done_is_only_calls_made_and_each_day_is_counted(mongo)
     [today, yesterday] = await staff_view.call_tasks_by_day(DEALER, 14, -240)
     assert today == {"day": "2026-09-22", "opened": 5, "called": 1, "missed": 1, "open": 1}
     assert yesterday["day"] == "2026-09-21" and yesterday["missed"] == 1
+
+
+def test_times_on_one_day_name_the_day_once():
+    # The user, 3 Nov 2026: "this doesn't look like a normal human being's message".
+    from upsell_agent.agent.nodes.compose import one_day_name
+    draft = {"sms_text": "No problem, Ammar! I've got tomorrow (Wednesday) at 10:00 AM, tomorrow (Wednesday) at 2:00 PM, "
+                         "or tomorrow (Wednesday) at 7:00 PM. Which one works?",
+             "email_body": "Would today at 1:00 PM or today at 3:00 PM work? Or Saturday at 10:00 AM."}
+    one_day_name(draft)
+    assert draft["sms_text"] == ("No problem, Ammar! I've got tomorrow (Wednesday) at 10:00 AM, 2:00 PM, or 7:00 PM. "
+                                 "Which one works?")
+    assert draft["email_body"] == "Would today at 1:00 PM or 3:00 PM work? Or Saturday at 10:00 AM."
+    # Different days keep their names.
+    mixed = {"sms_text": "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"}
+    one_day_name(mixed)
+    assert mixed["sms_text"] == "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"

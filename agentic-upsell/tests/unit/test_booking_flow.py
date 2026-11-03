@@ -233,8 +233,12 @@ async def test_the_offer_names_concrete_times(mongo):
     created = await _lead()
     state = await _offer(mongo, created)
     reply = await _last_sms(mongo, created)
-    for slot in state["conversation"]["visit"]["offered_times"]:
-        assert slot["display"] in reply
+    offered = state["conversation"]["visit"]["offered_times"]
+    # Each time is in the reply; the day is named once (the user, 3 Nov 2026: "today at 3:00 PM, 4:00 PM, or 5:00 PM").
+    assert offered[0]["display"] in reply
+    for slot in offered:
+        assert slot["display"].split(" at ")[-1] in reply
+    assert reply.count(offered[0]["display"].split(" at ")[0] + " at") == 1
     assert "Which one works?" in reply
 
 
