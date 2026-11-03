@@ -318,9 +318,11 @@ _ATTRS = {
     "vehicle_media": ("PHOTO_ON_FIRST_MESSAGE", "PHOTOS_ON_REQUEST"),
     "short_links": ("ENABLED",),
     "presend": ("CHECKS",),
-    "link_resolver": ("SHAREABLE",),
+    "link_resolver": ("SHAREABLE", "WEBSITE_WHEN_STUCK"),
+    "loop_check": ("ESCALATE_ON_LOOP",),
+    "open_time_question": ("ON",),
     "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
-               "CONDITION_TO_MANAGER", "TRADE_QUESTIONS"),
+               "CONDITION_TO_MANAGER", "TRADE_QUESTIONS", "OFFER_TIMES_WITH_ANSWERS"),
     "text_consent": ("INVITE", "CONFIRMATION"),
     "consent": ("FIRST_CHANNEL", "AT_NIGHT", "FORM_NO_BLOCKS_TEXT", "_PLACEHOLDER_EMAIL"),
     "draft_guard": ("SMS_MAX", "TOUCH1_SMS_MAX", "SMS_MAX_VEHICLES", "EMAIL_MAX_VEHICLES"),
@@ -386,13 +388,14 @@ def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import turn
     from upsell_agent.events import handlers
     from upsell_agent.scheduler import followups, safety_net, studio_cadences
-    from upsell_agent.agent import lead_brief
+    from upsell_agent.agent import lead_brief, loop_check, open_time_question
     from upsell_agent.agent.nodes import search_stock
     from upsell_agent.tools import stock_match
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
             "decide": decide, "presend": presend, "turn": turn, "handlers": handlers, "safety_net": safety_net,
             "studio_cadences": studio_cadences, "followups": followups, "stock_match": stock_match,
-            "search_stock": search_stock, "lead_brief": lead_brief}
+            "search_stock": search_stock, "lead_brief": lead_brief, "loop_check": loop_check,
+            "open_time_question": open_time_question}
 
 
 def _policy_module():
@@ -945,6 +948,15 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             mods["guard"].HANDOFF_AFTER_FAILED_DRAFTS = c["switch_ai_off_after_failed_drafts"]
         if isinstance(c.get("ai_stays_quiet_after_handoff"), bool):
             mods["handlers"].QUIET_AFTER_HANDOFF = c["ai_stays_quiet_after_handoff"]
+        # The 2 Nov 2026 meeting (the user's list, 3 Nov).
+        if isinstance(c.get("loop_goes_to_a_manager"), bool):
+            mods["loop_check"].ESCALATE_ON_LOOP = c["loop_goes_to_a_manager"]
+        if isinstance(c.get("website_when_stuck"), bool):
+            mods["link_resolver"].WEBSITE_WHEN_STUCK = c["website_when_stuck"]
+        if isinstance(c.get("offer_times_with_answers"), bool):
+            mods["decide"].OFFER_TIMES_WITH_ANSWERS = c["offer_times_with_answers"]
+        if isinstance(c.get("never_ask_what_day_works"), bool):
+            mods["open_time_question"].ON = c["never_ask_what_day_works"]
         if isinstance(c.get("ai_resumes_after_staff_minutes"), (int, float)) and not isinstance(
                 c["ai_resumes_after_staff_minutes"], bool):
             from datetime import timedelta as _td

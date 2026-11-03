@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-02T19:40:27.224370+00:00",
- "revision": 32,
+ "exported_at": "2026-11-03T00:00:29.982269+00:00",
+ "revision": 33,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -2136,6 +2136,10 @@
       "why": "an upset customer needs a manager"
      },
      {
+      "reason_starts_with": "The customer is confused or frustrated",
+      "why": "a frustrated customer needs a manager"
+     },
+     {
       "reason_starts_with": "Declined a visit more than once",
       "why": "the AI tried to set an appointment more than once"
      },
@@ -2154,6 +2158,10 @@
      {
       "reason_starts_with": "Customer asked for something the AI can't supply",
       "why": "the customer asked for something only staff can provide"
+     },
+     {
+      "reason_starts_with": "AI stuck in a loop",
+      "why": "the AI was going round in circles with the customer"
      },
      {
       "reason_starts_with": "Customer says they're not interested any more",
@@ -3842,6 +3850,10 @@
     "switch_ai_off_after_failed_drafts": false,
     "ai_resumes_after_staff_minutes": 15,
     "ai_stays_quiet_after_handoff": true,
+    "loop_goes_to_a_manager": true,
+    "website_when_stuck": true,
+    "offer_times_with_answers": true,
+    "never_ask_what_day_works": true,
     "busy_rule": true,
     "busy_phrases": [
      "i'm busy",

@@ -172,6 +172,7 @@ async def test_a_working_status_the_crm_missed_is_retried(mongo, monkeypatch):
     async def live(_dealer):
         return "live"
     monkeypatch.setattr("upsell_agent.integrations.dealer_mode.dealer_ai_mode", live)
+    await mongo["ai_messages"].insert_one({"lead_id": "L1", "dealer_id": "D1", "direction": "inbound", "text": "hi"})
     await mongo[AI_LEAD_STATE_COLLECTION].insert_one({"lead_id": "L1", "dealer_id": "D1", "crm_status_sync": {
         "status": "failed", "crm_status": "Managerial Review", "event": "team_promise", "reason_text": "x"}})
     assert await crm_status.retry_failed() == {"retried": 1, "synced": 1}
@@ -198,6 +199,7 @@ async def test_a_status_update_that_times_out_is_tried_once_more_at_once(mongo, 
     monkeypatch.setattr(crm_status, "_client", lambda platform: Slow())
     monkeypatch.setattr(crm_status, "RETRY_AFTER_S", 0)
     monkeypatch.setattr("upsell_agent.integrations.dealer_mode.dealer_ai_mode", live)
+    await mongo["ai_messages"].insert_one({"lead_id": "L2", "dealer_id": "D1", "direction": "inbound", "text": "hi"})
     result = await crm_status.sync_status(dealer_scoped_db("D1"), "L2", "Managerial Review", reason="x",
                                           event_kind="team_promise")
     assert result["status"] == "updated" and not answers

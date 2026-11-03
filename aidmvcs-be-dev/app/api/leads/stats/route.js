@@ -1,4 +1,4 @@
-import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
+import { contactedLeadIds, repliedLeadIds, repliedSplit } from '@lib/contactedLeads';
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
 import Email from "@models/Email";
@@ -126,11 +126,14 @@ export async function GET(request) {
 
       // "Contacted" = the customer actually talked to us (app/lib/contactedLeads.js), not a status that was set.
       let status_count;
+      let replied_by = null;
       if (fe_lead_status === 'Contacted' && statusQuery.createdAt) {
         // Betsy, 27 Oct 2026 meeting: who replied in the range, whenever the lead came in (app/lib/contactedLeads.js).
         const { fe_lead_status: _ignored, createdAt: range, ...dealerLeads } = statusQuery;
-        const ids = (await Lead.find(dealerLeads).select('_id').lean()).map((l) => l._id);
-        status_count = (await repliedLeadIds(ids, range.$gte, range.$lte)).length;
+        const leads = await Lead.find(dealerLeads).select('_id createdAt').lean();
+        status_count = (await repliedLeadIds(leads.map((l) => l._id), range.$gte, range.$lte)).length;
+        // Betsy, 2 Nov 2026 meeting: by text and by email, and today's leads vs older ones.
+        replied_by = await repliedSplit(leads, range.$gte, range.$lte);
       } else if (fe_lead_status === 'Contacted') {
         const { fe_lead_status: _ignored, ...inRange } = statusQuery;
         const ids = (await Lead.find(inRange).select('_id').lean()).map((l) => l._id);
@@ -149,7 +152,8 @@ export async function GET(request) {
       }
 
       return new Response(JSON.stringify({
-        total_leads: status_count
+        total_leads: status_count,
+        ...(replied_by ? { replied_by } : {}),
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }

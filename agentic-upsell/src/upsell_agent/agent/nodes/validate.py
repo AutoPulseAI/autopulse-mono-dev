@@ -28,6 +28,7 @@ from upsell_agent.agent.context import TurnContext
 from upsell_agent.agent.nodes.load_context import load_profile
 from upsell_agent.agent.qualification import FactSource
 from upsell_agent.agent.state import AgentState
+from upsell_agent.agent.yes_words import is_yes
 from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.dates import resolve, timeline_for
 from upsell_agent.slots.display import plain_date
@@ -208,7 +209,7 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
         fact = next((f for f in await _pending_fact_ids(ctx, state) if f["path"] == slot["path"]), None)
         if not fact or slot["path"] in extracted_paths:
             continue
-        if _YES.search(text):
+        if _YES.search(text) or is_yes(text):
             await confirm_fact(ctx.db, fact["id"])
             confirmed.append(slot["path"])
             reasoning.append(f"✓ Customer confirmed {slot['label']} = {slot['value']!r}.")

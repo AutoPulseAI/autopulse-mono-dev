@@ -138,6 +138,8 @@ class Flags:
     # PLAN_4 stream X3 item 4: the customer's own message has clear words of upset (upset_words()). Defaults to
     # True for callers that only have the model's reading.
     upset_words: bool = True
+    # The user and Betsy, 2-3 Nov 2026 (agent/loop_check.py): why this reply would go round in circles, or None.
+    loop: str | None = None
 
     @property
     def clearly_upset(self) -> bool:
@@ -223,11 +225,12 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
         # customer, appointments declined more than once (and "not interested" with a reason, client 1 Oct 2026).
         # An urgent customer is not one of them: urgency is a reason to book, not to hand off.
         "handoff": ((flags.wants_human and flags.human_contact != "offer") or flags.clearly_upset or flags.visit_handoff
-                    or not_interested_handoff,
+                    or not_interested_handoff or bool(flags.loop),
                     ("Customer asked for a person" + (f" - wants a {flags.human_contact}" if flags.human_contact
                                                       in ("call", "text") else ""))
                     if flags.wants_human and flags.human_contact != "offer"
                     else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})" if flags.clearly_upset
+                    else f"AI stuck in a loop: {flags.loop}" if flags.loop
                     else "Declined a visit more than once" if flags.visit_handoff
                     else ("Customer says they're not interested any more: "
                           + (f"{flags.not_interested_reason!r}" if flags.not_interested_reason

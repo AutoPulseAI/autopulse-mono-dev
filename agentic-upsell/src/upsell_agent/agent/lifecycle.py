@@ -246,7 +246,9 @@ def is_meaningful_reply(text: str | None) -> tuple[bool, str]:
     objection, availability or another relevant response. An auto-reply isn't
     one; neither is a message with no words (an emoji, a blank)."""
     body = (text or "").strip()
-    if not re.search(r"[A-Za-z0-9]", body):
+    # Any language's letters (Junling Fan, 2 Nov 2026: "是的" and "车的资料发给我看下" counted as "no words", and her lead
+    # moved to Contacted only at "9点左右" - for the 9).
+    if not re.search(r"[^\W_]", body):
         return False, "no words in it"
     if _AUTO_REPLY.search(body):
         return False, "it reads as an automatic reply"

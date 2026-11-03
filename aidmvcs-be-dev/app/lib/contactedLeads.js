@@ -7,6 +7,7 @@
 // The numbers are set in AI Studio (SMS, Email & Compliance -> "What counts as Contacted"; client, 13 Oct 2026).
 import Email from '../models/Email.js';
 import { AiConfigItem, AiConfigVersion } from '../models/AiConfig.js';
+import { BLAST_MIN_LEADS } from './blasts.js';
 
 const INBOUND = ['received', 'incoming'];
 const ADF = /<\?adf|<adf[\s>]/i;
@@ -57,9 +58,29 @@ const CHANNEL_MATCH = {
   sms: { communication_type: 'sms', has_attachments: { $ne: true } },
   mms: { communication_type: 'sms', has_attachments: true },
   email: { communication_type: { $ne: 'sms' } },
+  // Betsy, 2 Nov 2026 meeting ("how many replied through email, how many through text"): a customer's text, with a
+  // photo or without.
+  text: { communication_type: 'sms' },
 };
 
+// Customer Replied split by channel (Betsy, 2 Nov 2026 meeting): leads whose customer texted / emailed in [from, to]
+// (a lead that did both is in both), and how many of the replied leads came in within [from, to] (today's leads vs
+// older ones). `leads`: [{ _id, createdAt }].
+export async function repliedSplit(leads, from, to, { EmailModel = Email } = {}) {
+  const ids = leads.map((l) => l._id);
+  const [all, texts, emails] = await Promise.all([
+    repliedLeadIds(ids, from, to, { EmailModel }),
+    repliedLeadIds(ids, from, to, { EmailModel, channel: 'text' }),
+    repliedLeadIds(ids, from, to, { EmailModel, channel: 'email' }),
+  ]);
+  const created = new Map(leads.map((l) => [String(l._id), l.createdAt ? new Date(l.createdAt) : null]));
+  const inRange = (at) => at && (!from || at >= new Date(from)) && (!to || at <= new Date(to));
+  const fresh = all.filter((r) => inRange(created.get(String(r._id)))).length;
+  return { sms: texts.length, email: emails.length, new_leads: fresh, older_leads: all.length - fresh };
+}
+
 export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received', channel = null } = {}) {
+  // `channel` (CHANNEL_MATCH): sms / mms / email for our messages, text / email for the customer's replies.
   if (!leadIds?.length) return [];
   const at = {};
   if (from) at.$gte = from;
@@ -122,8 +143,16 @@ export async function messageActivity(leadIds, from, to, { EmailModel = Email } 
       from: { $addToSet: { $cond: ['$inbound', '$lead_id', '$$REMOVE'] } } } },
   ]);
   if (!row) return empty;
+  // Betsy, 2 Nov 2026 meeting: staff blasts (the same text to BLAST_MIN_LEADS+ leads, app/lib/blasts.js) on their own.
+  const blastRows = await EmailModel.aggregate([
+    { $match: { lead_id: { $in: leadIds }, ai_generated: { $ne: true }, is_note: { $ne: true },
+      status: { $nin: [...INBOUND, 'note'] }, message_by: { $ne: null }, ...(from || to ? { timestamp: at } : {}) } },
+    { $group: { _id: '$mail_content', leads: { $addToSet: '$lead_id' }, n: { $sum: 1 } } },
+    { $match: { [`leads.${BLAST_MIN_LEADS - 1}`]: { $exists: true } } },
+  ]);
+  const blasts = blastRows.reduce((sum, r) => sum + r.n, 0);
   return { sent: { total: row.sent, ai: row.ai, staff: row.staff, automatic: row.sent - row.ai - row.staff,
-    failed: row.failed, customers: row.sentTo.length },
+    failed: row.failed, customers: row.sentTo.length, blasts },
     delivered: { total: row.delivered, texts: row.texts, mms: row.mms, emails: row.delivered - row.texts,
       customers: row.deliveredTo.length },
     received: { total: row.received, customers: row.from.length } };

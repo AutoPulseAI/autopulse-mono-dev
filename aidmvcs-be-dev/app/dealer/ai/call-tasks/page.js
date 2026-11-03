@@ -2,23 +2,39 @@
 // Call Tasks: the calls the AI asks staff to make (a text and email went out over
 // an hour ago with no reply). Click-to-call opens the phone; after the call staff
 // must record the outcome (CallOutcomeModal) before the task closes.
-//   /dealer/ai/call-tasks            calls to make now
-//   /dealer/ai/call-tasks?view=upcoming   timers still waiting for a reply
-//   /dealer/ai/call-tasks?view=done       finished tasks
+//   /dealer/ai/call-tasks                  calls to make now
+//   /dealer/ai/call-tasks?view=upcoming     timers still waiting for a reply
+//   /dealer/ai/call-tasks?view=done         calls made
+//   /dealer/ai/call-tasks?view=missed       not called by the end of their window
+//   /dealer/ai/call-tasks?view=cancelled    no longer needed (the customer replied, staff took over...) or dismissed
+// Betsy, 2 Nov 2026 meeting: "done is supposed to be when it's complete, not when it's missed or dismissed"; a
+// calendar to pick a day and see how many there were and how many were missed; filters; "open lead" on the row.
 
+import Link from "next/link";
+import moment from "moment-timezone";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, Form, Nav, Pagination, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CallOutcomeModal from "../components/CallOutcomeModal";
 import LeadAiDrawer from "../components/LeadAiDrawer";
-import { aiFetch, callOutcomeLabel, formatDateTime, fromNow, stageVariant, telHref } from "../components/aiShared";
+import { aiFetch, callOutcomeLabel, formatDateTime, fromNow, leadHref, stageVariant, telHref } from "../components/aiShared";
 
 const VIEWS = [
   { key: "open", label: "To call now", icon: "fa-phone" },
   { key: "upcoming", label: "Waiting for a reply", icon: "fa-hourglass-half" },
   { key: "done", label: "Done", icon: "fa-check" },
+  { key: "missed", label: "Missed", icon: "fa-circle-exclamation" },
+  { key: "cancelled", label: "No longer needed", icon: "fa-ban" },
 ];
+const FINISHED = new Set(["done", "missed", "cancelled"]);
+const REASONS = [
+  { key: "", label: "All reasons" },
+  { key: "requested", label: "Customer asked for a call" },
+  { key: "daily", label: "New lead (Days 1-7)" },
+  { key: "no_reply", label: "No reply to a text or email" },
+];
+const reasonOf = (task) => (task.requested ? "requested" : task.source === "daily" ? "daily" : "no_reply");
 const DONE_STATUS = {
   completed: { label: "Called", variant: "success" },
   dismissed: { label: "Dismissed", variant: "secondary" },
@@ -95,7 +111,8 @@ function writePending(task) {
 function CustomerCell({ task }) {
   return (
     <>
-      <strong>{task.customer_name || "Unknown customer"}</strong>
+      {/* Betsy, 2 Nov 2026 meeting: "this customer's details were not provided" - the phone when there's no name. */}
+      <strong>{task.customer_name || task.lead?.name || task.phone || "Unknown customer"}</strong>
       {task.vehicle && <small className="d-block text-secondary-light">{task.vehicle}</small>}
     </>
   );
@@ -111,6 +128,13 @@ function CallTasksContent() {
   const searchParams = useSearchParams();
   const view = VIEWS.some((v) => v.key === searchParams.get("view")) ? searchParams.get("view") : "open";
   const { dealerParent } = useUser();
+  const dealerTimezone = dealerParent?.dealer_account_information?.time_zone || "America/New_York";
+  const tzOffset = moment.tz(dealerTimezone).utcOffset();
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
+  const [stage, setStage] = useState("");
+  const [reason, setReason] = useState("");
+  const [byDay, setByDay] = useState([]);
 
   const [tasks, setTasks] = useState([]);
   const [missed, setMissed] = useState(null); // stream T: per-agent missed counts (Done tab)
@@ -128,23 +152,37 @@ function CallTasksContent() {
     setLoading(true);
     setError("");
     try {
-      const data = await aiFetch(`/api/dealer-ai/call-tasks?view=${view}`);
+      const params = new URLSearchParams({ view, tz_offset_minutes: String(tzOffset) });
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      const [data, days] = await Promise.all([
+        aiFetch(`/api/dealer-ai/call-tasks?${params.toString()}`),
+        aiFetch(`/api/dealer-ai/call-tasks/by-day?days=14&tz_offset_minutes=${tzOffset}`).catch(() => ({ days: [] })),
+      ]);
       setTasks(data.tasks || []);
       setMissed(data.missed_by_agent || null);
+      setByDay(days.days || []);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [view]);
+  }, [view, dateFrom, dateTo, tzOffset]);
 
   const needle = query.trim().toLowerCase();
-  const filtered = needle ? tasks.filter((t) => [t.name, t.customer_name, t.lead?.name, t.phone, t.email, t.vehicle,
-    t.reason, t.why, t.outcome, t.notes].some((v) => String(v || "").toLowerCase().includes(needle))) : tasks;
+  const stages = [...new Set(tasks.map((t) => t.stage_label).filter(Boolean))].sort();
+  const filtered = tasks.filter((t) => (!needle || [t.name, t.customer_name, t.lead?.name, t.phone, t.email, t.vehicle,
+    t.reason, t.why, t.outcome, t.notes].some((v) => String(v || "").toLowerCase().includes(needle)))
+    && (!stage || t.stage_label === stage) && (!reason || reasonOf(t) === reason));
   const pages = Math.max(1, Math.ceil(filtered.length / perPage));
   const current = Math.min(page, pages);
   const shown = filtered.slice((current - 1) * perPage, current * perPage);
-  useEffect(() => setPage(1), [view, needle, perPage]);
+  useEffect(() => setPage(1), [view, needle, perPage, stage, reason, dateFrom, dateTo]);
+  const pickDay = (day) => {
+    const same = dateFrom === day && dateTo === day;
+    setDateFrom(same ? "" : day);
+    setDateTo(same ? "" : day);
+  };
 
   useEffect(() => {
     load();
@@ -217,11 +255,39 @@ function CallTasksContent() {
 
         {error && <Alert variant="danger">{error}</Alert>}
         {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
-        {view === "done" && <MissedCounts missed={missed} />}
+        {view === "missed" && <MissedCounts missed={missed} />}
+
+        {byDay.length > 0 && (
+          <div className="d-flex flex-wrap gap-2 mb-2">
+            {byDay.map((d) => (
+              <Button key={d.day} size="sm" variant={dateFrom === d.day && dateTo === d.day ? "custom" : "outline-secondary"}
+                onClick={() => pickDay(d.day)} title={`${d.opened} call tasks: ${d.called} called, ${d.missed} missed, ${d.open} open`}>
+                <span className="d-block">{moment(d.day).format("ddd MMM D")}</span>
+                <small>{d.opened} · <span className="text-success">{d.called} called</span> · <span className="text-danger">{d.missed} missed</span></small>
+              </Button>
+            ))}
+          </div>
+        )}
 
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
           <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Search name, phone, vehicle or reason"
             value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Form.Control size="sm" type="date" style={{ width: 150 }} value={dateFrom} title="From"
+            onChange={(e) => setDateFrom(e.target.value)} />
+          <Form.Control size="sm" type="date" style={{ width: 150 }} value={dateTo} title="To"
+            onChange={(e) => setDateTo(e.target.value)} />
+          <Form.Select size="sm" style={{ width: 170 }} value={stage} onChange={(e) => setStage(e.target.value)}>
+            <option value="">All stages</option>
+            {stages.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Form.Select>
+          <Form.Select size="sm" style={{ width: 210 }} value={reason} onChange={(e) => setReason(e.target.value)}>
+            {REASONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </Form.Select>
+          {(dateFrom || dateTo || stage || reason || needle) && (
+            <Button size="sm" variant="link" onClick={() => { setDateFrom(""); setDateTo(""); setStage(""); setReason(""); setQuery(""); }}>
+              Clear filters
+            </Button>
+          )}
           <small className="text-secondary-light ms-auto">{filtered.length} task{filtered.length === 1 ? "" : "s"}</small>
           <Form.Select size="sm" style={{ width: 100 }} value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
             {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
@@ -247,14 +313,16 @@ function CallTasksContent() {
             <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
           ) : !filtered.length ? (
             <p className="text-secondary-light text-center py-4 mb-0">
-              {needle ? "No call tasks match your search." : view === "open" ? "No calls to make right now."
-                : view === "upcoming" ? "Nothing waiting." : "No finished call tasks yet."}
+              {needle || stage || reason || dateFrom || dateTo ? "No call tasks match these filters."
+                : view === "open" ? "No calls to make right now." : view === "upcoming" ? "Nothing waiting."
+                  : view === "done" ? "No calls made yet." : view === "missed" ? "No missed calls."
+                    : "Nothing here."}
             </p>
           ) : (
             <div className="table-responsive">
               <Table bordered hover className="mb-0 align-middle">
                 <thead className="table-light">
-                  {view === "done" ? (
+                  {FINISHED.has(view) ? (
                     <tr>
                       <th>Customer</th><th>Result</th><th>Call outcome</th><th>Notes</th><th>By</th><th>When</th><th />
                     </tr>
@@ -266,7 +334,7 @@ function CallTasksContent() {
                   )}
                 </thead>
                 <tbody>
-                  {shown.map((task) => view === "done" ? (
+                  {shown.map((task) => FINISHED.has(view) ? (
                     <tr key={task.id}>
                       <td><CustomerCell task={task} /></td>
                       <td>
@@ -300,6 +368,9 @@ function CallTasksContent() {
                             Record late call
                           </Button>
                         )}
+                        <Button size="sm" variant="outline-custom" className="me-1" as={Link} href={leadHref(task.lead_id)}>
+                          Open lead
+                        </Button>
                         <Button size="sm" variant="outline-secondary" onClick={() => setDrawer(task)}>AI details</Button>
                       </td>
                     </tr>
@@ -331,6 +402,9 @@ function CallTasksContent() {
                             </Button>
                           </>
                         )}
+                        <Button size="sm" variant="outline-custom" className="me-1" as={Link} href={leadHref(task.lead_id)}>
+                          Open lead
+                        </Button>
                         <Button size="sm" variant="outline-secondary" onClick={() => setDrawer(task)}>AI details</Button>
                       </td>
                     </tr>

@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from upsell_agent.agent.yes_words import is_yes
+
 ASKS = re.compile(r"\bbuyer'?s?\s+order\b|\bpurchase\s+order\b|\bbuyers?\s+agreement\b|\bbill\s+of\s+sale\b",
                   re.IGNORECASE)
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|correct|absolutely|definitely|of course|i am|i do|i will|we are|we do|"
@@ -99,7 +101,7 @@ def answer_of(text: str | None) -> str | None:
     said = (text or "").strip()
     if _NO.search(said):
         return "no"
-    if _YES.search(said):
+    if _YES.search(said) or is_yes(said):
         return "yes"
     return None
 

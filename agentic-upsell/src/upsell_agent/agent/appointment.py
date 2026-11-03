@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
+from upsell_agent.agent.yes_words import is_yes
+
 # Day-before and countdown messages go out at this dealer-local hour (our default: the PDF gives days, not
 # times). The send check moves them to the first time the customer's own window and the dealer allow.
 STEP_HOUR = time(10)
@@ -53,6 +55,8 @@ NO_SHOW_MESSAGE_LATEST = timedelta(hours=2)
 # A day-before confirmation that would land closer than this to the appointment is skipped ("any
 # nonsensical day-before confirmation", §7).
 MIN_CONFIRM_LEAD = timedelta(hours=2)
+# Booked the day before for an early appointment: the morning-of confirmation may come this close to it.
+NEXT_MORNING_MIN_LEAD = timedelta(minutes=45)
 MAX_COUNTDOWNS = 10
 # Betsy, 27 Oct 2026: "if the appointment is for tomorrow I don't need to send anything else - I send them the
 # confirmation the morning of"; two or three days out, one touch; four or more, "message them every single day
@@ -149,10 +153,17 @@ def plan_steps(appt_at: datetime, *, now: datetime, tz) -> list[Step]:
         why = "the morning-of confirmation, asking C to confirm or R to reschedule"
         if confirm_at < datetime.combine(appt_day, CONFIRM_EARLIEST, tzinfo=tz):
             confirm_at = datetime.combine(appt_day - timedelta(days=1), STEP_HOUR, tzinfo=tz)
-            if confirm_at <= local_now:
-                confirm_at = local_now + timedelta(minutes=30)
             why = "the confirmation, the day before (the appointment is too early for a morning-of one)"
-        if local_now < confirm_at <= appt - MIN_CONFIRM_LEAD:
+            if confirm_at <= local_now:
+                # Betsy, 2 Nov 2026 meeting (Junling Fan: booked at 3:19 PM for 10 AM the next day, "reply C to
+                # confirm" at 4:05 PM): "if it's a next day appointment it should just be sending the appointment
+                # information, then the next morning it should be sending the confirmation".
+                confirm_at = datetime.combine(appt_day, CONFIRM_EARLIEST, tzinfo=tz)
+                why = "the morning-of confirmation (booked the day before: the details went out already)"
+                if confirm_at > appt - NEXT_MORNING_MIN_LEAD:
+                    confirm_at = appt  # no room in the morning: no confirmation (the check below drops it)
+        lead_needed = NEXT_MORNING_MIN_LEAD if why.startswith("the morning-of confirmation (booked") else MIN_CONFIRM_LEAD
+        if local_now < confirm_at <= appt - lead_needed:
             steps.append(Step(STEP_CONFIRM, confirm_at, why))
         days_out = (appt_day - today).days
         touch_days = [today + timedelta(days=n) for n in range(1, days_out)]
@@ -219,7 +230,7 @@ def classify_answer(text: str) -> Answer:
     body = (text or "").strip()
     if not body:
         return "other"
-    if _YES.match(body):
+    if _YES.match(body) or is_yes(body):
         return "yes"
     if _NO.match(body):
         return "no"

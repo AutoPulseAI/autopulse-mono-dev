@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from upsell_agent import ai_studio, clock
-from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle
+from upsell_agent.agent import after_handoff, auto_reply, duplicates, human_contact, lifecycle, loop_check
 from upsell_agent.agent.customer_key import find_customer_leads, lead_customer_id
 from upsell_agent.agent.portal_text import clean_comments
 from upsell_agent.agent.templates import known_first_name, render_holding_reply
@@ -606,7 +606,9 @@ async def record_inbound(event: InboundMessageEvent) -> str | None:
         {"platform_message_id": event.message_id},
         {"$setOnInsert": {"lead_id": lead_id, "customer_id": event.customer_id, "direction": "inbound",
                           "channel": event.channel, "text": event.text, "platform_message_id": event.message_id,
-                          "created_at": event.received_at, "answered_turn_id": None}},
+                          "created_at": event.received_at,
+                          # An email with no words of the customer's own (a raw source with no body): kept, not answered.
+                          "answered_turn_id": None if event.text.strip() else "no-text"}},
         upsert=True,
     )
     if saved.upserted_id is not None:
@@ -670,9 +672,12 @@ async def _tell_staff_after_handoff(db: DealerScopedDatabase, deps: TurnDeps, *,
     elif request == "message":
         text = (f"The customer wrote again while the lead is with staff - the AI doesn't answer, please reply: "
                 f"\"{said}\"")
+    elif request == "answered":
+        text = (f"The customer asked something new while the lead is with a manager - the AI answered only that, and "
+                f"the lead stays with you: \"{said}\"")
     else:
         text = f"The customer asked a question while the lead is with staff - please answer: \"{said}\""
-    if request != "message":
+    if request not in ("message", "answered"):
         # A plain message is a note only: the handoff's own alert (what the customer needs) stays on the lead.
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": lead_id}, {"$set": {
             "staff_notice": {"at": clock.now(), "kind": f"after_handoff_{request}", "text": text}}})
@@ -1028,7 +1033,18 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
                                         why=state.get("status_reason"))
         state = {**state, "status": "active", "status_reason": None}
 
-    if state["status"] in SILENT_STATUSES:
+    new_question = None
+    if state["status"] == "handoff" and handoff_request == "question" and QUIET_AFTER_HANDOFF:
+        # The user and Betsy, 2-3 Nov 2026: a lead with a manager gets no answer about what it went to the manager
+        # for (April Carman's price, asked again and again) - but a new, different question is answered, and only that
+        # (agent/nodes/decide.py holds asks, visit offers and booking). Never after the customer asked for a person.
+        with_person = state.get("with_person") or {}
+        joined = "\n".join(m["text"] for m in unanswered)
+        if not with_person.get("asked_for_person") and not after_handoff.is_callback_request(state) and not \
+                loop_check.same_topic(joined, with_person.get("about") or state.get("status_reason")):
+            new_question = joined
+
+    if state["status"] in SILENT_STATUSES and not new_question:
         # Staff own this conversation (or the customer opted out): the AI
         # doesn't reply, and these aren't answered later on resume either.
         meaningful, why = lifecycle.is_meaningful_reply("\n".join(m["text"] for m in unanswered))
@@ -1107,6 +1123,17 @@ async def handle_inbound_message(event: InboundMessageEvent, deps: TurnDeps,
         batch=[batch_entry(m) for m in unanswered],
     )
     await _mark_answered(db, unanswered, log["turn_id"])
+    if new_question:
+        # Answered, and the lead stays with the manager: same escalation, no follow-ups, staff told what was asked.
+        states = db.collection(AI_LEAD_STATE_COLLECTION)
+        after = await states.find_one({"lead_id": lead_id}, projection={"status": 1}) or {}
+        if after.get("status") != "handoff":
+            await states.update_one({"lead_id": lead_id}, {"$set": {
+                k: state.get(k) for k in ("status", "status_reason", "status_at", "handoff_id", "handoff_soft",
+                                          "with_person")}})
+        await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
+        await _tell_staff_after_handoff(db, deps, lead_id=lead_id, customer_id=event.customer_id, request="answered",
+                                        rows=unanswered, took_back=False)
     return {"status": "done", "turn_id": log["turn_id"], "outcome": log["outcome"],
             "send_status": log["summary"].get("send_status"), "followups_cancelled": cancelled,
             "batched": len(unanswered)}
@@ -1298,21 +1325,11 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
         # the conversation stays on the customer's open lead - one customer, one conversation.
         return {"status": "duplicate", "reason": "staff status recorded; the AI works the customer's open lead",
                 "stage_change": stage_change, **extra}
-    if final_event in ("staff_no_next_action", "staff_not_contacted") and QUIET_AFTER_HANDOFF and with_person.get(
-            "asked_for_person"):
-        # The user, 3 Nov 2026 (Sierra: asked for a person, Mercy texted her and set "Lead Not Contacted", and the AI
-        # answered her next message with "would you like a call or a text?" again): a customer who asked for a
-        # person stays with people when staff move the status. The stage is recorded; staff hand the conversation
-        # back with "Hand back to AI".
-        await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": event.lead_id}, {"$set": {
-            "status": "paused", "paused_at": clock.now(),
-            "status_reason": "The customer asked for a person: the AI stays off until staff hand the lead back"}})
-        cancelled = await _cancel_pending_followups(db, event.lead_id, channel_switches_only=False)
-        return {"status": "paused", "reason": "the customer asked for a person", "followups_cancelled": cancelled,
-                "stage_change": stage_change, **extra}
     if final_event in ("unsold", "staff_no_next_action", "staff_not_contacted"):
         # Back to follow-up for 90 days (client, 1 Oct 2026, scope Q2): the AI takes the lead back, and the
-        # fresh cadence's first touch is planned now.
+        # fresh cadence's first touch is planned now. Also after a handoff or a request for a person (Betsy, 2 Nov 2026,
+        # Giovanni Romero: "she changed it to Contact Made - No Next Action, she wanted the AI to continue" - staff
+        # changing the status is the manager's action; the user, 3 Nov 2026: "I will go with Betsy").
         await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
             {"lead_id": event.lead_id}, {"$set": {"status": "active", "status_reason": None,
                                                   "resumed_at": clock.now(), "with_person": None}})

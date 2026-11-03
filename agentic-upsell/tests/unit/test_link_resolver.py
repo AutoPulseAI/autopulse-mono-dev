@@ -64,9 +64,27 @@ def test_a_link_we_dont_hold_is_never_invented():
     assert plan.kind == "unavailable" and plan.urls == [] and plan.honest_line == OTHER_LINE
 
 
-def test_no_vehicle_to_point_at_asks_which():
+def test_no_vehicle_to_point_at_sends_the_website_not_which_one():
+    # The user, 3 Nov 2026 (Kenneth Ball: "Which SUV would you like the link for?" twice): the website to browse.
     two = [{**STOCK[0]}, {**STOCK[1], "page_url": "https://x.test/mdx"}]
-    assert resolve_link(_asked(), inventory=two, website=HOME).kind == "ask_which"
+    plan = resolve_link(_asked(), inventory=two, website=HOME)
+    assert plan.kind == "website" and plan.website_url == HOME
+    # No website on record: still asked once which one.
+    assert resolve_link(_asked(), inventory=two, website=None).kind == "ask_which"
+
+
+def test_a_stock_question_our_stock_doesnt_answer_gets_the_website():
+    from upsell_agent.agent.link_resolver import website_when_stock_falls_short
+    none_found = {"asked": True, "searched_for": "SUV", "found": 0, "exact": False}
+    nearest = {"asked": True, "searched_for": "white X7 M50", "found": 2, "exact": False}
+    exact = {"asked": True, "searched_for": "SUV", "found": 3, "exact": True}
+    assert website_when_stock_falls_short(LinkPlan(), none_found, HOME).website_url == HOME
+    assert website_when_stock_falls_short(LinkPlan(), nearest, HOME).kind == "website"
+    assert website_when_stock_falls_short(LinkPlan(), exact, HOME).kind == "none"
+    assert website_when_stock_falls_short(LinkPlan(), {**none_found, "asked": False}, HOME).kind == "none"
+    draft = {"sms_text": "We don't have an SUV under $15k right now.", "email_subject": "SUVs", "email_body": "Hi"}
+    fill_links(draft, website_when_stock_falls_short(LinkPlan(), none_found, HOME))
+    assert draft["sms_text"].endswith(f"You can browse everything we have at {HOME}")
 
 
 def test_a_vin_not_in_this_turns_stock_is_never_linked():

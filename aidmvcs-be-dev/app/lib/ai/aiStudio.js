@@ -106,6 +106,24 @@ const ALIGNMENTS = [
     note: 'Updated by AutoPulse to match the AI: a lead with a phone is texted unless they explicitly said no; AutoTrader\'s '
       + 'TCPAOptIn: false no longer stops texts (2 Nov 2026)',
     change: (c) => (c.form_no_blocks_text === false ? null : { ...c, form_no_blocks_text: false }) },
+  { id: 'escalations_2nov', type: 'status_rules', key: 'escalations',
+    note: 'Updated by AutoPulse to match the AI: a frustrated customer and the AI going round in circles go to a '
+      + 'manager (2 Nov 2026 meeting)',
+    change: (c) => {
+      const rules = Array.isArray(c.rules) ? c.rules : [];
+      const add = [
+        { reason_starts_with: 'The customer is confused or frustrated', why: 'a frustrated customer needs a manager' },
+        { reason_starts_with: 'AI stuck in a loop', why: 'the AI was going round in circles with the customer' },
+      ].filter((r) => !rules.some((x) => x.reason_starts_with === r.reason_starts_with));
+      return add.length ? { ...c, rules: [...rules, ...add] } : null;
+    } },
+  { id: 'meeting_2nov', type: 'compliance', key: 'conversation_rules',
+    note: 'Updated by AutoPulse to match the AI: a loop goes to a manager, the website when no one car fits, and two '
+      + 'real times instead of "what day works?" (2 Nov 2026 meeting)',
+    change: (c) => (['loop_goes_to_a_manager', 'website_when_stuck', 'offer_times_with_answers',
+      'never_ask_what_day_works'].every((k) => typeof c[k] === 'boolean') ? null
+      : { loop_goes_to_a_manager: true, website_when_stuck: true, offer_times_with_answers: true,
+        never_ask_what_day_works: true, ...c }) },
   { id: 'quiet_after_handoff_3nov', type: 'compliance', key: 'conversation_rules',
     note: 'Updated by AutoPulse to match the AI: after a handoff the AI stays quiet until staff hand the lead back '
       + '(3 Nov 2026)',

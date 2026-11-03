@@ -640,6 +640,17 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if unanswered:
         result["passed"] = False
         result["violations"].append("didn't answer: " + "; ".join(unanswered))
+    from upsell_agent.agent.loop_check import repeated_question
+    again = repeated_question((state.draft or {}).get("sms_text"), (state.context_pack or {}).get("working_memory"))
+    # Once: the first draft goes back with why; a rewrite is never thrown away for this alone (a safety-net reply
+    # would be worse than the rewrite).
+    first_draft = state.trigger == "inbound_message" and not state.retry_count
+    result["checks"]["no_repeated_question"] = not (again and first_draft)
+    if again and first_draft:
+        # The user, 3 Nov 2026 (Kenneth Ball): asking again what we just asked doesn't answer them - rewrite.
+        result["passed"] = False
+        result["violations"].append(f"asks again what our last reply asked ({again!r}) instead of answering what "
+                                    "they said - answer it, or send the website if no single car fits")
     made_up = await unknown_phone_numbers(state, ctx)
     result["checks"]["no_unknown_phone_number"] = not made_up
     if made_up:

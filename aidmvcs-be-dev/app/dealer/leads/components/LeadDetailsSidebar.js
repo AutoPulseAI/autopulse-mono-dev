@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Offcanvas, Form, Button, Alert, Spinner, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import { formatTimestamp } from "../../../utils/dateUtils";
 import ViewAdfModal, { isAdfLead } from "./ViewAdfModal";
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
 
@@ -320,7 +321,7 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
               <p><strong>Source:</strong> {lead.source || "N/A"}</p>
             </Col>
             <Col md={6}>
-              <p><strong>Created:</strong> {new Date(lead.createdAt).toLocaleDateString()}</p>
+              <p><strong>Created:</strong> {formatTimestamp(lead.createdAt)}</p>
               <p><strong>Last Updated:</strong> {new Date(lead.updatedAt).toLocaleDateString()}</p>
             </Col>
           </Row>

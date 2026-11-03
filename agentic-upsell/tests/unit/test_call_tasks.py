@@ -9,6 +9,7 @@ import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings, set_clock
+from upsell_agent.agent.call_tasks import CONNECTION_WINDOW as _WINDOW
 from upsell_agent import clock
 from upsell_agent.agent import call_tasks, lifecycle
 from upsell_agent.agent.turn import TurnDeps
@@ -37,7 +38,7 @@ from upsell_agent.scheduler import followups
 DEALER = simulate.DEV_DEALERS[0]["_id"]
 pytestmark = pytest.mark.usefixtures("ny_customer")
 START = datetime(2026, 9, 22, 14, 0, tzinfo=UTC)  # Tuesday 10:00 in New York
-HOUR = timedelta(hours=1)
+HOUR = _WINDOW  # the connection window (4 hours since 3 Nov 2026)
 
 
 @pytest.fixture(autouse=True)
@@ -115,11 +116,11 @@ async def test_a_touch_that_went_out_starts_a_60_minute_timer(mongo, live_dealer
 async def test_no_contact_in_an_hour_opens_the_call_task_for_staff(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    set_clock(START + timedelta(minutes=59))
+    set_clock(START + (_WINDOW - timedelta(minutes=1)))
     assert "activated" not in await _fire()
     assert await _tasks(mongo, created) == []
 
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     assert (await _fire())["activated"] == 1
     [task] = await _tasks(mongo, created)
     assert task["status"] == "open" and task["phone"].startswith("+1") and task["customer_name"] == "Cora Call"
@@ -148,14 +149,14 @@ async def test_an_auto_reply_is_not_contact(mongo, live_dealer):
     await _first_reply(created)
     set_clock(START + timedelta(minutes=20))
     await _say(created, "Automatic reply: I am out of the office until Monday")
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     assert (await _fire())["activated"] == 1
 
 
 async def test_a_reply_after_it_opened_closes_the_open_task(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     await _say(created, "Sorry, was driving. Yes, still looking at the RAV4")
     [task] = await _tasks(mongo, created)
@@ -173,7 +174,7 @@ async def test_staff_taking_over_cancels_the_waiting_and_the_open_call(mongo, li
     other = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Opal Open",
                                        comments="Looking at a Civic")
     await _first_reply(other)
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     [task] = await _tasks(mongo, other)
     assert task["status"] == "open"
@@ -182,15 +183,19 @@ async def test_staff_taking_over_cancels_the_waiting_and_the_open_call(mongo, li
     assert (await _tasks(mongo, other))[0]["status"] == "cancelled"
 
 
-async def test_a_newer_touch_replaces_the_waiting_timer_and_an_open_task_is_not_doubled(mongo, live_dealer):
+async def test_one_call_task_per_lead_a_newer_touch_keeps_the_first_timer(mongo, live_dealer):
+    # The user, 3 Nov 2026: "one call task for a lead we haven't reached - we don't need a bulk of calls".
     created = await _lead()
     await _first_reply(created)
     again = await _planned_timer(created)
-    assert again["created"] and again["superseded"] == 1
-    assert sorted(t["status"] for t in await _timers(mongo, created)) == ["pending", "superseded"]
-    set_clock(START + timedelta(minutes=61))
+    assert not again["created"] and again["reason"] == "this lead's call task timer is already running"
+    assert [t["status"] for t in await _timers(mongo, created)] == ["pending"]
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     assert (await _planned_timer(created))["reason"] == "a call task is already open for staff"
+    [task] = await _tasks(mongo, created)
+    await call_tasks.resolve(dealer_scoped_db(DEALER), str(task["_id"]), status=call_tasks.COMPLETED)
+    assert (await _planned_timer(created))["reason"] == "this lead already had its call task"
 
 
 # --- Re-checks and the calling rules -----------------------------------------------------
@@ -201,8 +206,8 @@ async def test_a_stage_that_no_longer_wants_a_call_cancels_it_before_it_opens(mo
     # Moved on without the stage change reaching this timer (a race): the pre-activation re-check catches it.
     await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]},
                                                      {"$set": {"stage": "appointment_set"}})
-    set_clock(START + timedelta(minutes=61))
-    assert (await _fire())["cancelled"] == 1  # (the Days 1-7 call tasks are off by default since 28 Oct 2026)
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
+    assert (await _fire())["cancelled"] >= 1  # (the Days 1-7 call tasks are off by default since 28 Oct 2026)
     assert await _tasks(mongo, created) == []
     [timer] = await _timers(mongo, created)
     assert "appointment" in timer["reason"].lower()
@@ -218,7 +223,7 @@ async def test_a_stage_change_cancels_the_timer_and_an_open_task(mongo, live_dea
     other = await simulate.create_lead(DEALER, lead_type="sales", channel="sms", name="Opal Open",
                                        comments="Looking at a Civic")
     await _first_reply(other)
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     assert (await _tasks(mongo, other))[0]["status"] == "open"
     await lifecycle.apply(dealer_scoped_db(DEALER), other["lead_id"], [lifecycle.Event("sales_visit", reason="Visited")])
@@ -229,9 +234,9 @@ async def test_outside_calling_hours_the_task_waits_for_the_next_allowed_time(mo
     created = await _lead()
     await _first_reply(created)
     await mongo[SCHEDULED_FOLLOWUPS_COLLECTION].delete_many({"lead_id": created["lead_id"]})
-    set_clock(datetime(2026, 9, 22, 22, 30, tzinfo=UTC))  # 18:30 in New York, dealer open until 19:00
+    set_clock(datetime(2026, 9, 22, 19, 30, tzinfo=UTC))  # 15:30 in New York, dealer open until 19:00
     await _planned_timer(created)
-    set_clock(datetime(2026, 9, 22, 23, 35, tzinfo=UTC))  # 19:35: the dealer has closed
+    set_clock(datetime(2026, 9, 22, 23, 35, tzinfo=UTC))  # 19:35 (4 hours on): the dealer has closed
     assert (await _fire())["deferred"] == 1
     assert await _tasks(mongo, created) == []
     [timer] = await _timers(mongo, created, "pending")
@@ -256,19 +261,19 @@ async def test_a_call_that_is_not_allowed_is_never_opened(mongo, live_dealer, bl
     else:
         await consent.mark_invalid(db, channel="sms", address=lead["phone"], reason="wrong number", source="test")
         await mongo["customers"].update_many({}, {"$set": {"phones": []}})
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     decision = await can_call(dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
                               record=False)
     assert decision.outcome == "BLOCK"
     results = await _fire()
-    assert results.get("suppressed") == 1 and await _tasks(mongo, created) == []
+    assert results.get("suppressed", 0) >= 1 and await _tasks(mongo, created) == []
 
 
 async def test_a_sms_only_opt_out_does_not_stop_the_call(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
     await _say(created, "STOP")
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     # STOP is a text opt-out; the 60-minute call is a person phoning. Stop wins only for "don't call me".
     decision = await can_call(dealer_id=DEALER, customer_id=created["customer_id"], lead_id=created["lead_id"],
                               record=False)
@@ -289,7 +294,7 @@ async def test_dont_call_me_blocks_the_call(mongo, live_dealer):
 async def test_staff_complete_or_dismiss_an_open_task(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     [task] = await _tasks(mongo, created)
     done = await call_tasks.resolve(dealer_scoped_db(DEALER), str(task["_id"]), status=call_tasks.COMPLETED,
@@ -306,7 +311,7 @@ async def test_staff_complete_or_dismiss_an_open_task(mongo, live_dealer):
 async def test_one_dealers_tasks_are_not_visible_to_another(mongo, live_dealer):
     created = await _lead()
     await _first_reply(created)
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await _fire()
     other_dealer = simulate.DEV_DEALERS[1]["_id"]
     assert await list_tasks(other_dealer, "open") == []

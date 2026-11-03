@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import { conversationLeadIds } from "@lib/ai/linkedLeads";
+import { blastIds } from "@lib/blasts";
 import { Types } from "mongoose";
 const { ObjectId } = Types;
 
@@ -145,9 +146,11 @@ export async function GET(req) {
             const hasExtraRecord = records.length > limit;
             const pageRecords = records.slice(0, limit);
             const conversationThread = isAfterRequest ? pageRecords : pageRecords.reverse();
+            // Betsy, 2 Nov 2026 meeting: a staff text sent to many leads at once says so (app/lib/blasts.js).
+            const blasts = await blastIds(conversationThread.map((m) => m.toObject())).catch(() => new Set());
 
             return NextResponse.json({
-                emails: conversationThread,
+                emails: conversationThread.map((m) => (blasts.has(String(m._id)) ? { ...m.toObject(), is_blast: true } : m)),
                 pageInfo: {
                     olderCursor: encodeCursor(conversationThread[0]),
                     newerCursor: encodeCursor(conversationThread[conversationThread.length - 1]),

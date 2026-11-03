@@ -66,11 +66,21 @@ async def sync_closed(db: DealerScopedDatabase, lead_id: str, event_kind: str, *
 
 
 async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, reason: str, event_kind: str,
-                      closed_at: Any = None, platform: Any | None = None) -> dict[str, Any]:
-    """Shows `status` on the CRM lead (a closing, or a working stage). Never raises; kept on the lead state."""
+                      closed_at: Any = None, platform: Any | None = None, hold: bool = False) -> dict[str, Any]:
+    """Shows `status` on the CRM lead (a closing, or a working stage). Never raises; kept on the lead state.
+    `hold`: this Managerial Review also stops the AI (hold_for_manager) - what the AI can't handle; not a check staff
+    make while the AI carries on (a vehicle's availability), nor a step the AI is still in (asking call or text)."""
     from upsell_agent.integrations.dealer_mode import dealer_ai_mode
 
     closed_at = closed_at or clock.now()
+    if status == "Managerial Review" and not await customer_replied(db, lead_id):
+        # Betsy, 2 Nov 2026 meeting: "an escalation is a result of a contact made, and a call task is a result of no
+        # contact made" - a lead that never wrote back is never Dealer Action Required; it is a call task.
+        result = {"status": "skipped", "reason": "the customer hasn't replied: a call task, not Dealer Action "
+                                                 "Required", "crm_status": status}
+        await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
+            {"lead_id": lead_id}, {"$set": {"crm_status_sync": {**result, "at": clock.now()}}})
+        return result
     try:
         mode = await dealer_ai_mode(db.dealer_id)
     except Exception:  # noqa: BLE001 - an unknown mode is treated as not live
@@ -98,7 +108,39 @@ async def sync_status(db: DealerScopedDatabase, lead_id: str, status: str, *, re
         {"lead_id": lead_id}, {"$set": {"crm_status_sync": {**result, "at": clock.now(), "closed_at": closed_at}}})
     if status == "Managerial Review" and result["status"] == "updated":
         await note_escalation(db, lead_id, reason)
+        if hold:
+            await hold_for_manager(db, lead_id, reason)
     return result
+
+
+async def customer_replied(db: DealerScopedDatabase, lead_id: str) -> bool:
+    """The customer has written to us on this lead: a message in the AI's thread or in the CRM conversation (a reply
+    from before the AI, or one only the CRM holds). The lead's own arrival (its form email / ADF) isn't one."""
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION, PLATFORM_EMAILS_COLLECTION, as_object_id
+    if await db.collection(AI_MESSAGES_COLLECTION).find_one(
+            {"lead_id": lead_id, "direction": "inbound", "text": {"$nin": [None, ""]}}, projection={"_id": 1}):
+        return True
+    return bool(await db.collection(PLATFORM_EMAILS_COLLECTION).find_one(
+        {"lead_id": {"$in": [lead_id, as_object_id(lead_id)]}, "status": {"$in": ["incoming", "received"]},
+         "is_note": {"$ne": True}, "is_lead_email": {"$ne": True}, "message_id": {"$not": {"$regex": "^lead-"}},
+         "mail_content": {"$not": {"$regex": "<\\?adf|<adf[\\s>]", "$options": "i"}}}, projection={"_id": 1}))
+
+
+async def hold_for_manager(db: DealerScopedDatabase, lead_id: str, reason: str) -> None:
+    """Betsy and the user, 2 Nov 2026 ("once it's manager review it's manager review"; Giovanni Romero, Kenneth Ball,
+    April Carman): a lead the AI sets to Managerial Review is the manager's. The AI stops - every cadence and follow-up
+    is cancelled - and answers only a new, different question (events/handlers.py) until staff change the status or
+    hand it back. A lead already handed off (agent/turn.py) keeps its own record."""
+    states = db.collection(AI_LEAD_STATE_COLLECTION)
+    state = await states.find_one({"lead_id": lead_id}, projection={"status": 1})
+    if not state or state.get("status") in ("handoff", "opted_out"):
+        return
+    now = clock.now()
+    await states.update_one({"lead_id": lead_id}, {"$set": {
+        "status": "handoff", "status_reason": reason, "status_at": now, "handoff_soft": False,
+        "with_person": {"at": now, "reason": reason, "about": reason[:800], "asked_for_person": False}}})
+    from upsell_agent.events.handlers import _cancel_pending_followups
+    await _cancel_pending_followups(db, lead_id, channel_switches_only=False)
 
 
 async def note_escalation(db: DealerScopedDatabase, lead_id: str, reason: str) -> None:

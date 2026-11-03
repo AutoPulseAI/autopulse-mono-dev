@@ -475,12 +475,20 @@ export async function GET(req) {
       const { $gte: from, $lte: to } = query.createdAt || {};
       delete query.createdAt;
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
+      // Betsy, 2 Nov 2026 meeting: "a filter - filter by SMS, filter by email" (replied_by=sms|email; a customer
+      // who did both is in both).
+      const repliedBy = { sms: 'text', email: 'email' }[url.searchParams.get("replied_by")] || null;
       repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received',
-        channel: messagesSent ? url.searchParams.get("channel") : null });
+        channel: messagesSent ? url.searchParams.get("channel") : repliedBy });
       query._id = { $in: repliedOrder.map((r) => r._id) };
     } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);
-      const contacted = await contactedLeadIds(candidates);
+      let contacted = await contactedLeadIds(candidates);
+      const repliedBy = { sms: 'text', email: 'email' }[url.searchParams.get("replied_by")] || null;
+      if (repliedBy) {
+        const by = new Set((await repliedLeadIds(contacted, null, null, { channel: repliedBy })).map((r) => String(r._id)));
+        contacted = contacted.filter((id) => by.has(String(id)));
+      }
       query._id = { $in: contacted };
     }
 
@@ -556,6 +564,15 @@ export async function GET(req) {
       const limit = parseInt(url.searchParams.get("limit")) || 10;
       
       const totalLeads = await Lead.countDocuments(query);
+      // Betsy, 2 Nov 2026 meeting ("can you sort them by created, newest?"): sort=created_desc | created_asc; the
+      // Customer Replied list is otherwise latest reply first, every other list newest lead first.
+      const sort = url.searchParams.get("sort");
+      if (repliedOrder && (sort === 'created_desc' || sort === 'created_asc')) {
+        const created = new Map((await Lead.find({ _id: { $in: repliedOrder.map((r) => r._id) } }).select('createdAt')
+          .lean()).map((l) => [String(l._id), new Date(l.createdAt || 0).getTime()]));
+        const sign = sort === 'created_asc' ? 1 : -1;
+        repliedOrder.sort((a, b) => sign * ((created.get(String(a._id)) || 0) - (created.get(String(b._id)) || 0)));
+      }
       let leads;
       if (repliedOrder) {
         const lastReply = new Map(repliedOrder.map((r) => [String(r._id), r.last_reply_at]));
@@ -568,7 +585,7 @@ export async function GET(req) {
       } else {
         leads = await Lead.find(query)
           .populate({ path: 'assigned_to', select: 'name email', strictPopulate: false })
-          .sort({ createdAt: -1 })
+          .sort({ createdAt: sort === 'created_asc' ? 1 : -1 })
           .skip((page - 1) * limit)
           .limit(limit)
           .lean();

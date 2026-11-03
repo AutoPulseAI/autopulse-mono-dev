@@ -1,5 +1,6 @@
 // context/UserContext.js
 import { createContext, useContext, useState, useEffect } from "react";
+import { setDefaultTimezone } from "../../utils/dateUtils";
 
 // Create the context
 const UserContext = createContext();
@@ -8,6 +9,10 @@ const UserContext = createContext();
 export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [dealerParent, setDealerParent] = useState(null);
+  // Every date shown reads in the dealership's time zone (app/utils/dateUtils.js).
+  useEffect(() => {
+    setDefaultTimezone(dealerParent?.dealer_account_information?.time_zone || null);
+  }, [dealerParent]);
   const [loadingParent, setLoadingParent] = useState(false);
 
   // Fetch user data on initial load (client-side only)

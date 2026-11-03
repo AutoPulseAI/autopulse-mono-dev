@@ -1,8 +1,10 @@
 "use client";
 import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect } from "react";
+import moment from "moment-timezone";
 import { Modal, Button, Form } from "react-bootstrap";
 import SlotFullNotice from "../../components/SlotFullNotice";
+import { useUser } from "../../context/UserContext";
 
 // One status modal for the lead list, the booking page and the conversation views (stream R: the booking and
 // conversations folders re-export this one). `onStatusChange` may return a promise: when it rejects with a
@@ -36,6 +38,16 @@ export default function StatusModal({
   useEffect(() => {
     if (!show) setConflict(null);
   }, [show]);
+
+  // Betsy, 2 Nov 2026 meeting (Dante Brown: Bibi booked "today 12:45 PM" from Pakistan, where it was already 3 Nov, and
+  // the visit was saved for the next day): the date and time are the dealership's - its today is the default.
+  const { dealerParent } = useUser() || {};
+  const dealerTz = dealerParent?.dealer_account_information?.time_zone || "America/New_York";
+  useEffect(() => {
+    if (show && tempStatus === "Appointment Booked" && !bookingDate) {
+      setBookingDate(moment.tz(dealerTz).format("YYYY-MM-DD"));
+    }
+  }, [show, tempStatus, bookingDate, dealerTz]);
 
   const statusOptions = [
     // In the order of the client's status list (scope §16; Betsy, 12 Oct 2026: "statuses do not look exactly as I
@@ -141,7 +153,9 @@ export default function StatusModal({
         {tempStatus === "Appointment Booked" && (
           <div className="mt-3">
             <Form.Group controlId="bookingDate" className="mb-2">
-              <Form.Label>Booking Date</Form.Label>
+              <Form.Label>
+                Booking Date <small className="text-muted">(dealership time: now {moment.tz(dealerTz).format("ddd MMM D, h:mm A")})</small>
+              </Form.Label>
               <Form.Control
                 type="date"
                 value={bookingDate}

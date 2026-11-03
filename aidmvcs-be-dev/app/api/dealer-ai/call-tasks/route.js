@@ -1,5 +1,8 @@
 // The Call Tasks page (app/dealer/ai/call-tasks).
-//   GET /api/dealer-ai/call-tasks?view=open|upcoming|done[&dealer_id=]
+//   GET /api/dealer-ai/call-tasks?view=open|upcoming|done|missed|cancelled[&date_from=&date_to=&tz_offset_minutes=]
+//       [&dealer_id=]
+// Betsy, 2 Nov 2026 meeting: Done is a call made; missed and "no longer needed" have their own lists; a date range
+// (dealer-local days) picks the day.
 // open: calls staff should make now; upcoming: the 60-minute timers still
 // waiting for a reply and the next Days 1-7 call task; done: completed, dismissed, cancelled or missed. Each row has
 // the lead's stage and last AI touch (AI service) and name / vehicle (CRM lead).
@@ -27,7 +30,7 @@ async function missedByAgent(dealerId, onlyUserId) {
   return { days: MISSED_DAYS, agents: missedCountRows(agents, names, onlyUserId) };
 }
 
-const VIEWS = ["open", "upcoming", "done"];
+const VIEWS = ["open", "upcoming", "done", "missed", "cancelled"];
 
 export async function GET(req) {
   const url = new URL(req.url);
@@ -36,7 +39,12 @@ export async function GET(req) {
   const view = url.searchParams.get("view") || "open";
   if (!VIEWS.includes(view)) return jsonError(`view must be one of ${VIEWS.join(", ")}`, 400);
 
-  const result = await callAiService("/v1/staff/call-tasks", { query: { dealer_id: session.dealerId, view } });
+  const query = { dealer_id: session.dealerId, view };
+  for (const key of ["date_from", "date_to", "tz_offset_minutes"]) {
+    const value = url.searchParams.get(key);
+    if (value) query[key] = value;
+  }
+  const result = await callAiService("/v1/staff/call-tasks", { query });
   if (!result.ok) return aiServiceError(result);
   // Stream R: "View Assigned Leads" staff (without "Manage Leads") get only their own leads' tasks.
   const onlyUserId = await assignedOnlyUserId(session.user);
@@ -44,7 +52,7 @@ export async function GET(req) {
   const leads = await leadSummaries(session.dealerId, tasks.map((t) => t.lead_id));
   return NextResponse.json({
     view,
-    ...(view === "done" ? { missed_by_agent: await missedByAgent(session.dealerId, onlyUserId) } : {}),
+    ...(view === "missed" ? { missed_by_agent: await missedByAgent(session.dealerId, onlyUserId) } : {}),
     tasks: tasks.map((task) => {
       const lead = leads[task.lead_id] || {};
       return {
