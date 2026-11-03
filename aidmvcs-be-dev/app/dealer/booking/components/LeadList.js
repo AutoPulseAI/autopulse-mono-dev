@@ -68,11 +68,23 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     }
   };
 
-  // From the dashboard card: only the appointments it counted (booking date + status)
-  const cardFilter = ['bookingStartDate', 'bookingEndDate', 'madeStartDate', 'madeEndDate', 'fe_lead_status', 'funnel',
-    'funnelStartDate', 'funnelEndDate']
+  // From the dashboard card: only the appointments it counted (status, made / funnel dates). The card's booking dates
+  // are the date range below.
+  const cardFilter = ['madeStartDate', 'madeEndDate', 'fe_lead_status', 'funnel', 'funnelStartDate', 'funnelEndDate']
     .filter((k) => urlSearchParams.get(k))
     .map((k) => `&${k}=${encodeURIComponent(urlSearchParams.get(k))}`).join('');
+  // The user, 3 Nov 2026 (Nov 2 - Nov 4 showed only 3 appointments, all of leads that came in those days): on the
+  // Appointments page the date range is the appointment's date, not the date the lead came in.
+  const appointmentDateParams = ({ startDate, endDate }) => {
+    if (!startDate && !endDate) return '';
+    const from = (startDate || endDate).toISOString();
+    const to = (endDate || startDate).toISOString();
+    return `&bookingStartDate=${from}&bookingEndDate=${to}`;
+  };
+  const urlDate = (key, cardKey) => {
+    const value = urlSearchParams.get(key) || urlSearchParams.get(cardKey);
+    return value ? new Date(value) : null;
+  };
 
   // Initialize filters and pagination from URL
   const [filters, setFilters] = useState({
@@ -80,8 +92,8 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     email: urlSearchParams.get('email') || '',
     phone: urlSearchParams.get('phone') || '',
     dateRange: {
-      startDate: urlSearchParams.get('startDate') ? new Date(urlSearchParams.get('startDate')) : null,
-      endDate: urlSearchParams.get('endDate') ? new Date(urlSearchParams.get('endDate')) : null
+      startDate: urlDate('startDate', 'bookingStartDate'),
+      endDate: urlDate('endDate', 'bookingEndDate')
     },
     page: parseInt(urlSearchParams.get('page')) || 1
   });
@@ -166,8 +178,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
-      if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
-      if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
+      queryParams += appointmentDateParams(filters.dateRange);
       queryParams += cardFilter;
 
       const token = localStorage.getItem('dealertoken');
@@ -471,10 +482,9 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
-      if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
-      if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
+      queryParams += appointmentDateParams(filters.dateRange);
       queryParams += cardFilter;
-      
+
       const token = localStorage.getItem('dealertoken');
       const res = await fetch(`/api/leads?${queryParams}`, {
         headers: {
