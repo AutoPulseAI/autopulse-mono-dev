@@ -191,7 +191,8 @@ _BOOKS_FROM_OWN_REPLY = ("inbound_message", "resume_at_opening")
 
 # A day named outright - a bare time ("I'll be there at 10:30") never moves a booking to another day.
 _NAMES_A_DAY = re.compile(r"\b(mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?\b|\btomorrow\b|"
-                          r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2}/\d{1,2}\b",
+                          r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+                          r"nov(?:ember)?|dec(?:ember)?)\.? \d{1,2}\b|\b\d{1,2}/\d{1,2}\b",
                           re.IGNORECASE)
 _RESCHEDULE_HINT = re.compile(
     r"\b(instead|reschedule|move (?:it|my appointment)|change (?:it|the time)|"
@@ -766,7 +767,9 @@ async def _visit_and_booking(
         if offered or asks_for_a_time or asked_day:
             pick = booking_tool.match_pick(text, offered, dealer, now, available=available, prefer_day=asked_day)
             picked, wanted = pick.matched or pending, pick.wanted
-        if not picked and not wanted and (chosen := _picked_by_model(extraction, dealer, now)):
+        # Hector Class, 3 Nov 2026: "Maybe 7 would be best" - the AI read today 7:00 PM; the word patterns read "May 7"
+        # and offered other times. The AI's reading decides over the patterns' guess.
+        if not picked and (chosen := _picked_by_model(extraction, dealer, now)):
             # Jermaine Palmer, 3 Nov 2026: "4 might be best", then "Ok" to "should we plan on 4:00 PM?", "4ish" and
             # "Yes" - the AI understood 4 PM every time; the word patterns didn't, and nothing was booked. The time
             # the AI read them settle on books when it's open (else the nearest open times, as for any time).

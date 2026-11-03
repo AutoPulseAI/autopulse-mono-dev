@@ -63,6 +63,10 @@ Fail the reply ONLY for one of these, judging what the customer meant, not their
   "forgot today, election day" -> no times today), a car they declined, a visit after "I'm not ready".
 - contradicts: the reply says something contrary to what they said.
 
+A visit is booked only when facts.booking is given (Hector Class, 3 Nov 2026: the fix said to accept his 7:00 PM, the
+reply said "Today at 7:00 PM works" and nothing was booked). Without it, never tell the writer to say a time works, is
+set or "see you then": the fix is to ask them to confirm that exact time ("Shall I book you for today at 7:00 PM?").
+
 Never fail a reply for: a price, time, date, weekday, address or car that is in facts or now (they are true);
 style, length, warmth, or repeating the address; the fixed_wording. When the reply is fine, ok is true and problem
 and fix are empty. When it fails, fix tells the writer in one sentence what to do, using only facts given (e.g.

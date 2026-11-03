@@ -456,7 +456,7 @@ _WHEN = re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\b|o'?clock)?|noon|mid
 
 
 # A stand-in for the real model's picked_time (Jermaine Palmer, 3 Nov 2026: "4 might be best", "4ish"): a loose hour.
-_LOOSE_HOUR = re.compile(r"\b(\d{1,2})(?:ish\b|\s+might be best\b|\s+o'?clock\b)", re.IGNORECASE)
+_LOOSE_HOUR = re.compile(r"\b(\d{1,2})(?:ish\b|\s+(?:might|would) be best\b|\s+o'?clock\b)", re.IGNORECASE)
 
 
 def _picked_time(text: str) -> dict[str, Any]:
