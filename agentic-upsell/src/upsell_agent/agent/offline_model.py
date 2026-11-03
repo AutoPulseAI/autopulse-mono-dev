@@ -298,7 +298,10 @@ _VISIT = re.compile(r"\b(come (?:in|by|see|look)|stop by|swing by|test ?drive|se
 _DECLINE_VISIT = re.compile(
     r"\b(not yet|not right now|not today|maybe later|can'?t make it|can'?t come in|i'?m just looking|"
     r"just browsing|not ready|no thanks|not this week|can'?t this week|rather not|skip that|"
-    r"not interested in (?:coming|visiting)|no,? not now)\b", re.IGNORECASE)
+    r"not interested in (?:coming|visiting)|no,? not now|busy (?:today|tomorrow)|not tomorrow)\b", re.IGNORECASE)
+# The day they say doesn't work (the live model's visit_not_on): "not today", "busy tomorrow", "can't do Friday".
+_NOT_ON = re.compile(r"\b(?:not|busy|can'?t do|cannot do|can'?t make it)\s+(?:on\s+)?(today|tonight|tomorrow|"
+                     r"(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b", re.IGNORECASE)
 _OBJECTION_PATTERNS = [
     (r"\b(busy|don'?t have time|no time|tight schedule|hard to get away)\b", "time_convenience"),
     (r"\b(just looking|just browsing|not ready|window shopping)\b", "just_looking"),
@@ -472,12 +475,13 @@ def _declines_visit(text: str, payload: dict[str, Any]) -> dict[str, Any]:
     awaiting = bool(((payload.get("context") or {}).get("conversation") or {}).get("awaiting_visit_pick"))
     if not awaiting or not _DECLINE_VISIT.search(text):
         return {"declines_visit": False, "declines_visit_confidence": 0.0, "visit_objection": "none",
-                "visit_later_when": None}
+                "visit_later_when": None, "visit_not_on": None}
     objection = next((label for pattern, label in _OBJECTION_PATTERNS if re.search(pattern, text, re.IGNORECASE)),
                      "none")
-    later = m.group(0) if (m := DATE_PHRASE.search(text)) else None
+    not_on = m.group(1) if (m := _NOT_ON.search(text)) else None
+    later = m.group(0) if (m := DATE_PHRASE.search(_NOT_ON.sub(" ", text))) else None
     return {"declines_visit": True, "declines_visit_confidence": 0.85, "visit_objection": objection,
-            "visit_later_when": later}
+            "visit_later_when": later, "visit_not_on": not_on}
 
 
 def _urgent(text: str) -> dict[str, Any]:

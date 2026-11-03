@@ -31,12 +31,17 @@ def _from_day(extraction: dict[str, Any], decision: dict[str, Any], dealer: Any,
     """Where the times start, from what the AI understood the customer said (AMMAR Saleh, 3 Nov 2026: "I forgot today,
     election day" - the AI saw today was out, and this step still put today at 1:00 PM and 2:00 PM in its reply; the
     user: "give him the time for next day or any other day of his preference - that's common sense"):
-    - a day they'd come instead ("maybe Friday"): that day;
+    - a day they'd come instead ("maybe Friday", "the end of the week"): that day (Saturday and Sunday);
+    - a day that doesn't work ("I forgot today"): the day after it;
     - they turned down the times we offered: the day after the last day those were on;
     - otherwise None (the earliest open times)."""
+    from upsell_agent.agent.nodes.decide import day_after_not_on
+
     if later := str(extraction.get("visit_later_when") or ""):
         if request := booking_tool.preferred_day(later, dealer, now):
             return request
+    if request := day_after_not_on(extraction, dealer, now):
+        return request
     offered = ((decision.get("visit_plan") or {}).get("record") or {}).get("offered_times") or []
     days = [o["date"] for o in offered if o.get("date")]
     if extraction.get("declines_visit") and days:
@@ -66,7 +71,10 @@ async def offer_real_times(draft: dict[str, Any], *, dealer_id: str, lead_id: st
     times = booking_tool.format_offer(picked, dealer)
     if len(times) < 2:
         return None
-    ask = f" Would {times[0]['display']} or {times[1]['display']} work for you?"
+    second = times[1]["display"]
+    if times[0]["date"] == times[1]["date"]:
+        second = second.split(" at ", 1)[-1]  # "tomorrow (Wednesday) at 10:00 AM or 4:00 PM"
+    ask = f" Would {times[0]['display']} or {second} work for you?"
     for key in ("sms_text", "email_body"):
         text = str(draft.get(key) or "")
         if text and not _HAS_TIME.search(text):

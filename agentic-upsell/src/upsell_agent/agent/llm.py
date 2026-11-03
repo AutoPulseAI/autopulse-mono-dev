@@ -98,6 +98,10 @@ class ExtractionResult(BaseModel):
     visit_later_when: str | None = Field(default=None, description=(
         "Only when declines_visit is true and they name a time to try again ('next month', 'in a few "
         "weeks'): their own words, exactly as said. Never a date you work out yourself."))
+    visit_not_on: str | None = Field(default=None, description=(
+        "Only when declines_visit is true and they say a day doesn't work ('I'm busy today', 'I forgot today, "
+        "election day', 'not tomorrow', 'can't do Friday'): that day in their own words ('today', 'tomorrow', "
+        "'Friday'). Never a date you work out yourself."))
     urgent: bool = Field(default=False, description=(
         "A clear urgent need: no transportation / their car broke down, they need a vehicle within 48 "
         "hours, a safety problem with their current car, or a deadline elsewhere (another offer, a lease "
@@ -267,6 +271,9 @@ Rules:
 - visit_later_when: only when declines_visit is true and they name a time to try again ("next month", "give me a
   few weeks", "after the holidays"): their own words, exactly as said, like a date slot's quote. Never work out
   the actual date yourself.
+- visit_not_on: only when declines_visit is true and they say a day doesn't work ("I'm busy today", "I forgot
+  today, election day", "no not tomorrow", "can't do Friday"): that day in their own words ("today", "tomorrow",
+  "Friday"). Never work out the actual date yourself.
 - urgent (+ urgent_confidence, urgent_reason): a clear urgent need, one of: no_transportation (no working car,
   "my car broke down"), needed_within_48h (they need a vehicle in the next day or two), safety_problem (their
   current car is unsafe to drive), external_deadline (another offer expiring, a lease ending). 0.8+ only when

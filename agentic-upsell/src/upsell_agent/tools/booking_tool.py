@@ -148,6 +148,8 @@ _REJECTED_DAY = re.compile(
     rf"\b(?:not|no|can'?t do|cannot do|can'?t make|can'?t come)\s+(?:on\s+)?(?:this\s+|next\s+)?{_DAY_NAME}\b"
     rf"|\b{_DAY_NAME}\s+(?:doesn'?t|does not|won'?t|will not)\s+work\b|\b{_DAY_NAME}\s+is\s+(?:no good|bad|out)\b",
     re.IGNORECASE)
+_WEEKEND = re.compile(r"\bend\s+of\s+(?:the|this)\s+week\b|\bthis\s+weekend\b"
+                      r"|\b(?:on\s+|over\s+|at\s+|for\s+)?the\s+weekend\b", re.IGNORECASE)
 # Parts of the day, in the dealer's own time.
 _PARTS = {"morning": (time(0), time(12)), "afternoon": (time(12), time(17)), "evening": (time(17), time(23, 59))}
 _AFTER = re.compile(r"\bafter\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE)
@@ -159,6 +161,7 @@ class DayRequest:
     day: Any  # datetime.date the customer asked for
     part: tuple[time, time] | None  # a part of the day they named, or None for any time
     part_words: str | None
+    days: int = 1  # 2 for "the end of the week": Saturday and Sunday
 
 
 def _clock(hour: str, minute: str | None, meridiem: str | None) -> time:
@@ -186,10 +189,17 @@ def preferred_day(text: str, dealer: DealerProfile, now: datetime) -> DayRequest
     """The day the customer asks to come in when they name a day but no time ("what about Monday?",
     "Monday afternoon?"); a day they turn down in the same message is ignored. None when the message names
     no day, names an exact time (match_pick handles that), or a day already past."""
+    part, words = part_of_day(text)
+    if _WEEKEND.search(text or ""):
+        # The user, 3 Nov 2026: "I'll come at the end of the week" - Saturday at a time or Sunday at a time.
+        today = now.astimezone(dealer.tz).date()
+        saturday = today + timedelta(days=(5 - today.weekday()) % 7)
+        if today.weekday() == 6:  # Sunday: today is the end of this week
+            saturday = today - timedelta(days=1)
+        return DayRequest(day=saturday, part=part, part_words=words, days=2)
     day = day_without_time(text, now.astimezone(dealer.tz))
     if day is None:
         return None
-    part, words = part_of_day(text)
     return DayRequest(day=day, part=part, part_words=words)
 
 
@@ -223,6 +233,15 @@ def times_on_day(available: list[datetime], request: DayRequest, dealer: DealerP
     by_day: dict[Any, list[datetime]] = {}
     for slot in available:
         by_day.setdefault(slot.astimezone(dealer.tz).date(), []).append(slot)
+    if request.days > 1:
+        # The end of the week: times on each of its days ("Saturday at 2:00 PM or Sunday at 3:00 PM").
+        days = [request.day + timedelta(days=n) for n in range(request.days)]
+        per_day = [[s for s in by_day.get(d, []) if fits(s)] or by_day.get(d, []) for d in days]
+        open_days = [slots for slots in per_day if slots]
+        if open_days:
+            share = max(1, count // len(open_days))
+            picked = [t for slots in open_days for t in spread(slots)[:share]]
+            return picked[:count], request.day, True
     wanted = [s for s in by_day.get(request.day, []) if fits(s)]
     if wanted:
         return spread(wanted), request.day, True
@@ -239,7 +258,8 @@ def day_word(local: datetime, now: datetime | None = None) -> str:
     from upsell_agent import clock
 
     days = (local.date() - (now or clock.now()).astimezone(local.tzinfo).date()).days
-    return "today" if days == 0 else "tomorrow" if days == 1 else local.strftime("%A")
+    # The user, 3 Nov 2026: "what about tomorrow - and name the day, checked from the calendar, never guessed".
+    return "today" if days == 0 else f"tomorrow ({local.strftime('%A')})" if days == 1 else local.strftime("%A")
 
 
 def format_offer(times: list[datetime], dealer: DealerProfile,
