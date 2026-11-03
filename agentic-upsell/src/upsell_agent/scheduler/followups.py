@@ -819,6 +819,15 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
     if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
             {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": "pending", "requested": True}):
         return {"created": False, "reason": "the customer's own call request is already waiting for calling hours"}
+    # The user, 3 Nov 2026: "one call task for a lead we haven't reached - we don't need a bulk of calls". A lead we
+    # never reached gets one call task; a later touch neither moves its timer back nor opens a second one. (A Sold
+    # Pending or appointment workflow's own calls are other workflows' and keep their timers.)
+    if stage in (lifecycle.Stage.NEW_LEAD.value, lifecycle.Stage.NO_CONTACT.value, None):
+        if await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).find_one(
+                {"lead_id": lead_id, "kind": KIND_CALL_TASK, "status": {"$in": ["pending", "standby", "claimed"]}}):
+            return {"created": False, "reason": "this lead's call task timer is already running"}
+        if await db.collection(AI_CALL_TASKS_COLLECTION).find_one({"lead_id": lead_id, "requested": {"$ne": True}}):
+            return {"created": False, "reason": "this lead already had its call task"}
     phone = await usable_recipient(db, lead, customer, "sms")
     if not phone:
         return {"created": False, "reason": "no valid phone to call"}
@@ -835,7 +844,7 @@ async def plan_call_task(db: DealerScopedDatabase, *, lead_id: str, customer_id:
         # Stream X2: the stage the touch went out in. The timer belongs to that touch: a stage change since (an
         # appointment after a cadence touch, Sold Delivered after a SOLD PENDING touch) makes it stale.
         "planned_stage": stage,
-        "reason": f"60-minute connection timer: call {phone} if no contact"})
+        "reason": f"4-hour connection timer: call {phone} if no contact"})
     return {"created": True, "followup_id": str(inserted.inserted_id), "due_at": due.isoformat(), "phone": phone,
             "superseded": superseded.modified_count}
 
@@ -2041,13 +2050,16 @@ def _same_stage_check(doc: dict, state: dict) -> tuple[str, bool, str]:
     """Stream X2: a call timer is tied to the touch that started it, so it is stale once the lead's stage has moved
     on since (records from before the field: the stage rule alone decides)."""
     planned, now_at = doc.get("planned_stage"), state.get("stage")
-    ok = not planned or planned == now_at
+    # The user, 3 Nov 2026 (4-hour call tasks): New Lead -> No Contact Made (the 3-hour name nudge went unanswered)
+    # is still no contact - exactly what the call task is for.
+    no_contact = {lifecycle.Stage.NEW_LEAD.value, lifecycle.Stage.NO_CONTACT.value}
+    ok = not planned or planned == now_at or (planned in no_contact and now_at in no_contact)
     return ("same_stage", ok, "the lead is still at the stage the touch went out in" if ok else
             f"the stage changed since the touch ({lifecycle.label(planned)} -> {lifecycle.label(now_at)})")
 
 
 async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any) -> str:
-    """The 60-minute connection timer ran out (MASTER_PLAN_3 C2). Re-read the lead, then either cancel (contact
+    """The connection timer (4 hours, call_tasks.CONNECTION_WINDOW) ran out (MASTER_PLAN_3 C2). Re-read the lead, then either cancel (contact
     happened, staff have it, the stage moved on), defer to the next allowed calling time, or open the call task
     for staff."""
     task_id = str(doc["_id"])
@@ -2065,7 +2077,7 @@ async def _fire_call_task_locked(db: DealerScopedDatabase, doc: dict, deps: Any)
         contact = [m for m in inbound if lifecycle.is_meaningful_reply(m.get("text"))[0]]
         checks = [
             ("no_contact", not contact, "the customer replied: no call needed" if contact
-             else "no meaningful reply in the 60 minutes"),
+             else "no meaningful reply within the 4 hours"),
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CALL_TASK),

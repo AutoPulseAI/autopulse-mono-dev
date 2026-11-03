@@ -330,7 +330,7 @@ async def test_no_valid_phone_no_call(mongo, dealer):
     assert (await _fire())["suppressed"] == 1
 
 
-async def test_the_first_touch_starts_the_chain_and_its_60_minute_timer_covers_day_1(mongo, dealer):
+async def test_the_first_touch_starts_the_chain_and_its_4_hour_timer(mongo, dealer):
     from upsell_agent.events import handlers
     from upsell_agent.events.models import LeadCreatedEvent
 
@@ -342,12 +342,9 @@ async def test_the_first_touch_starts_the_chain_and_its_60_minute_timer_covers_d
         customer_id=created["customer_id"], channel="sms"), _deps())
     [doc] = await _docs(mongo, created, "pending")
     assert doc["day"] == 1 and doc["slot"] == "morning"
-    set_clock(ny(22, 10, 1))
-    await _fire()
-    [skipped] = await _docs(mongo, created, "skipped")
-    assert "60-minute" in skipped["reason"]
-    [nxt] = await _docs(mongo, created, "pending")
-    assert nxt["slot"] == "afternoon"
+    # The user, 3 Nov 2026: the no-reply call task waits 4 hours (10 AM -> 2 PM), so it no longer covers the morning.
+    [timer] = await mongo["scheduled_followups"].find({"lead_id": created["lead_id"], "kind": "call_task"}).to_list(None)
+    assert timer["due_at"].replace(tzinfo=UTC, microsecond=0) == ny(22, 14)
 
 
 async def test_upcoming_lists_the_next_daily_task(mongo, dealer):

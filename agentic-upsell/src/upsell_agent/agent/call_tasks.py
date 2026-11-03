@@ -47,8 +47,9 @@ from upsell_agent.integrations.mongodb import (
     get_db,
 )
 
-# From a successful send to the call task opening, if there was no contact (client: 60 minutes).
-CONNECTION_WINDOW = timedelta(minutes=60)
+# From a successful send to the call task opening, if there was no contact (client: 60 minutes; the user, 3 Nov 2026:
+# "60 minutes doesn't make sense - track them half a day or four hours minimum, then create the call task").
+CONNECTION_WINDOW = timedelta(hours=4)
 OPEN, COMPLETED, DISMISSED, CANCELLED = "open", "completed", "dismissed", "cancelled"
 MISSED = "missed"  # stream T: not completed by the end of its window / the agent's day
 # Stream X2 (Sales Lead Blueprint box 8: "Requests phone call -> call within 5 minutes (business hours)"): a call
@@ -77,7 +78,7 @@ async def open_task(db: DealerScopedDatabase, *, lead_id: str, customer_id: str,
     A 60-minute task already open for the lead becomes the requested one."""
     tasks = db.collection(AI_CALL_TASKS_COLLECTION)
     who = customer_name or "the customer"
-    text = notice or f"Please call {who} at {phone}: our text and email went out over an hour ago with no reply."
+    text = notice or f"Please call {who} at {phone}: our text and email went out over 4 hours ago with no reply."
     existing = await tasks.find_one({"lead_id": lead_id, "status": OPEN})
     if existing:
         if requested and not existing.get("requested"):

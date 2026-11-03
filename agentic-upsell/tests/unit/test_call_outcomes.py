@@ -7,6 +7,7 @@ import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings, set_clock
+from upsell_agent.agent.call_tasks import CONNECTION_WINDOW as _WINDOW
 from upsell_agent import clock
 from upsell_agent.agent.turn import TurnDeps
 from upsell_agent.api.call_tasks import Resolution, complete
@@ -51,7 +52,7 @@ async def _open_task(mongo):
     await handlers.handle_lead_created(
         LeadCreatedEvent(event_id=created["lead_id"], dealer_id=DEALER, lead_id=created["lead_id"],
                          customer_id=created["customer_id"], channel="sms"), _deps())
-    set_clock(START + timedelta(minutes=61))
+    set_clock(START + (_WINDOW + timedelta(minutes=1)))
     await followups.fire_due(_deps())
     [task] = await mongo[AI_CALL_TASKS_COLLECTION].find({"lead_id": created["lead_id"]}).to_list(None)
     return created, str(task["_id"])

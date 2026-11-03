@@ -11,6 +11,7 @@ import pytest
 from bson import ObjectId
 
 from tests.unit.conftest import make_settings, set_clock
+from upsell_agent.agent.call_tasks import CONNECTION_WINDOW as _WINDOW
 from upsell_agent import clock
 from upsell_agent.agent import lifecycle, ownership, sold_delivered, sold_pending
 from upsell_agent.agent.lifecycle import Event, Stage
@@ -332,7 +333,7 @@ async def test_a_reply_within_the_hour_cancels_the_call_task_and_no_reply_opens_
     created = await _new_lead()
     await _staff(created, "Sold Pending")
     await _fire(mongo, created, "sold_pending_touch")
-    set_clock(clock.now() + timedelta(minutes=61))
+    set_clock(clock.now() + (_WINDOW + timedelta(minutes=1)))
     await followups.fire_due(_deps())
     assert await mongo[AI_CALL_TASKS_COLLECTION].count_documents(
         {"lead_id": created["lead_id"], "status": "open"}) == 1
