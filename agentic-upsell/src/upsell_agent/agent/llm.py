@@ -167,6 +167,14 @@ class ComposedMessage(BaseModel):
         "only in a handoff, an offer_human reply or a passed-on service request. Empty otherwise (the usual case)."))
     answered_questions: list[str] = Field(default_factory=list, description=(
         "The text of each question from answer_questions that this message answers, copied exactly"))
+    # The user, 3 Nov 2026 (Hannah Rudansky: "Is this 8 seats?" got "I don't have the seating count listed" and "I can't
+    # confirm the seating"): what the AI can't answer goes to a manager, never "I can't".
+    needs_manager: str | None = Field(default=None, description=(
+        "A question the customer asked about the vehicle or the deal that the facts you were given don't answer "
+        "(seating, a feature or option, its history, a number we don't have): that question, word for word. Then "
+        "the message never says you can't, don't know or don't have it listed - it says you're checking it with "
+        "our sales manager, who will get back to them, and offers no visit times. Null when everything they "
+        "asked is answered."))
     sms_vins: list[str] = Field(default_factory=list, description=(
         "The `vin` of every vehicle sms_text names, at most 2, each one from context.inventory. Empty if sms_text "
         "names no vehicle."))

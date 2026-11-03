@@ -152,3 +152,44 @@ async def test_a_message_whose_reply_was_held_back_is_answered_by_the_next_reply
     assert "2 new message(s) to answer" in " ".join(loaded["data"]["reasoning"])
     extracted = next(e for e in sink.events if e.get("type") == "node_started" and e.get("node") == "extract")
     assert "Please send me the link" in str(extracted["data"]["input"])
+
+
+@pytest.mark.parametrize("draft", [
+    {"sms_text": "Great question - I'm checking the seating with our sales manager, who will get back to you.",
+     "needs_manager": "Is this 8 seats ?"},
+    {"sms_text": "I don't have the seating count listed, but we can check it when you come in."},
+    {"sms_text": "I understand eight seats are a must, and I can't confirm the seating from the details here."},
+])
+async def test_what_the_ai_cannot_answer_goes_to_a_manager(mongo, draft):
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
+    await mongo[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(DEALER)}, {"$set": {"ai_mode": "live"}},
+                                                      upsert=True)
+    """Hannah Rudansky, 3 Nov 2026: "Is this 8 seats?" got "I don't have the seating count listed" and "I can't confirm
+    the seating", with visit times. The user: "never tell the client you can't - send it to Managerial Review"."""
+    from upsell_agent.agent.turn import _escalate_needs_manager
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, dealer_scoped_db
+    created = await _lead()
+    await _offer(mongo, created)  # she had written to us
+    await _escalate_needs_manager(dealer_scoped_db(DEALER), None, created["lead_id"], created["customer_id"],
+                                  "Is this 8 seats ?", "inbound-test", {"draft": draft, "decision": {"action": "answer"}})
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert state["crm_status_sync"]["crm_status"] == "Managerial Review"
+    assert state["status_reason"].startswith("Customer asked for something the AI can't supply") and "8 seats" in \
+        state["status_reason"]
+    assert state["status"] == "handoff"  # the AI holds until a person hands the lead back
+
+
+async def test_an_answered_reply_is_not_escalated(mongo):
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION
+    await mongo[PLATFORM_USERS_COLLECTION].update_one({"_id": ObjectId(DEALER)}, {"$set": {"ai_mode": "live"}},
+                                                      upsert=True)
+    from upsell_agent.agent.turn import _escalate_needs_manager
+    from upsell_agent.integrations.mongodb import AI_LEAD_STATE_COLLECTION, dealer_scoped_db
+    created = await _lead()
+    await _offer(mongo, created)
+    await _escalate_needs_manager(dealer_scoped_db(DEALER), None, created["lead_id"], created["customer_id"],
+                                  "Where are you located?", "inbound-test",
+                                  {"draft": {"sms_text": "We're at 3914 Hempstead Tpke, Levittown."},
+                                   "decision": {"action": "answer"}})
+    state = await mongo[AI_LEAD_STATE_COLLECTION].find_one({"lead_id": created["lead_id"]})
+    assert state["status"] != "handoff" and "can't supply" not in str(state.get("status_reason"))
