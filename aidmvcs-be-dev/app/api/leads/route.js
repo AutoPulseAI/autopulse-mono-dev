@@ -426,45 +426,26 @@ export async function GET(req) {
 
     // Apply message filter (read/unread) if specified
     if (messageFilter && (messageFilter === 'unread' || messageFilter === 'read')) {
-      // Find lead IDs based on message read status
-      // Count ALL messages with lead_id (both incoming and sent)
+      // Client, 2 Nov 2026 ("Unread Messages not working"): only the customer's messages can be unread - our own
+      // AI/staff messages are never opened, so counting them put 12,188 of the 12,068 listed leads under Unread.
       const messageQuery = {
         dealer_id: dealerId,
-        lead_id: { $exists: true, $ne: null }
+        lead_id: { $exists: true, $ne: null },
+        status: { $in: ['received', 'incoming'] }
       };
-
-      if (messageFilter === 'unread') {
-        // Find leads with unread messages
-        messageQuery.read = { $ne: true };
-        const leadsWithUnread = await Email.distinct('lead_id', messageQuery);
-        
-        if (leadsWithUnread.length > 0) {
-          query._id = { $in: leadsWithUnread };
-        } else {
-          // No leads with unread messages - return empty result
-          query._id = { $in: [] };
-        }
-      } else if (messageFilter === 'read') {
-        // Find leads with ONLY read messages (no unread)
-        // First, get all leads that have unread messages
-        const unreadQuery = { ...messageQuery, read: { $ne: true } };
-        const leadsWithUnread = await Email.distinct('lead_id', unreadQuery);
-        
-        // Then get all leads that have messages
-        const leadsWithMessages = await Email.distinct('lead_id', messageQuery);
-        
-        // Leads with messages but NOT in unread list = only read messages
-        const onlyReadLeads = leadsWithMessages.filter(
-          leadId => !leadsWithUnread.some(unreadId => unreadId.equals(leadId))
-        );
-        
-        if (onlyReadLeads.length > 0) {
-          query._id = { $in: onlyReadLeads };
-        } else {
-          // No leads with only read messages - return empty result
-          query._id = { $in: [] };
-        }
+      const leadsWithUnread = await Email.distinct('lead_id', { ...messageQuery, read: { $ne: true } });
+      let ids = leadsWithUnread;
+      if (messageFilter === 'read') {
+        // Leads whose customer messages have all been opened
+        const unread = new Set(leadsWithUnread.map(String));
+        ids = (await Email.distinct('lead_id', messageQuery)).filter((id) => !unread.has(String(id)));
       }
+      // Within the other lead-id filters (Stopped, the dashboard cards' lists), not instead of them
+      if (query._id?.$in) {
+        const allowed = new Set(query._id.$in.map(String));
+        ids = ids.filter((id) => allowed.has(String(id)));
+      }
+      query._id = { $in: ids };
     }
 
     let repliedOrder = null;
