@@ -1445,8 +1445,15 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
 
     # MASTER_PLAN_3 C3: a dated next step the customer asked for. The reply confirms it and asks or
     # offers nothing else (they asked us to come back later, not to keep going now).
-    dated = None if hold else plan_next_action(extraction, now=now, dealer=dealer, channel=state.channel, text=text,
-                                               awaiting_when=conversation.awaiting_when_free)
+    # Mauricio Cueva, 3 Nov 2026: "Sorry I'm working now but I'm off on Friday" (the AI: visit_later_when "Friday") got
+    # "I'll check back with you on Friday". A day this week they say they can come is a visit day - its times are
+    # offered ("Would Friday at 11:00 AM or 2:00 PM work for you to come in?"), not a check-back. "Call me Friday"
+    # (next_contact_when) is still a check-back.
+    visit_day = (_later_day(extraction, dealer, now) if visit_declines(extraction)
+                 and not extraction.get("next_contact_when") else None)
+    dated = None if hold or visit_day else plan_next_action(
+        extraction, now=now, dealer=dealer, channel=state.channel, text=text,
+        awaiting_when=conversation.awaiting_when_free)
     # Betsy, 21 Oct 2026 (item 9): busy right now and no time given ("I'm busy, talk later") - the reply asks what
     # time works best and nothing else; their answer becomes the check-back (plan_next_action, awaiting_when).
     # A visit in the same message wins ("I'm at work till 5, can I come in at 6?" books 6 PM - review 23 Oct 2026).
@@ -1455,7 +1462,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
                          and not _COMING_IN.search(text or "") and not visit_wants_visit(extraction)
                          # The user, 3 Nov 2026: "busy today" turning our times down is that day out - "ok, what
                          # about tomorrow?" with times (AMMAR Saleh), not "when should I check back?".
-                         and not (visit_declines(extraction) and day_after_not_on(extraction, dealer, now)))
+                         and not (visit_declines(extraction) and day_after_not_on(extraction, dealer, now))
+                         and not visit_day)
     if ask_when_free:
         hold = "the customer is busy right now: the reply only asks what time works to get back to them"
     if dated:

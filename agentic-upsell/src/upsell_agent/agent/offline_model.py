@@ -298,7 +298,7 @@ _VISIT = re.compile(r"\b(come (?:in|by|see|look)|stop by|swing by|test ?drive|se
 _DECLINE_VISIT = re.compile(
     r"\b(not yet|not right now|not today|maybe later|can'?t make it|can'?t come in|i'?m just looking|"
     r"just browsing|not ready|no thanks|not this week|can'?t this week|rather not|skip that|"
-    r"not interested in (?:coming|visiting)|no,? not now|busy (?:today|tomorrow)|not tomorrow)\b", re.IGNORECASE)
+    r"not interested in (?:coming|visiting)|no,? not now|busy (?:today|tomorrow)|not tomorrow|i'?m working(?: now)?)\b", re.IGNORECASE)
 # The day they say doesn't work (the live model's visit_not_on): "not today", "busy tomorrow", "can't do Friday".
 _NOT_ON = re.compile(r"\b(?:not|busy|can'?t do|cannot do|can'?t make it)\s+(?:on\s+)?(today|tonight|tomorrow|"
                      r"(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b", re.IGNORECASE)
