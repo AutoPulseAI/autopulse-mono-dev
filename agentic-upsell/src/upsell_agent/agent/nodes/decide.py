@@ -390,6 +390,19 @@ def day_after_not_on(extraction: dict[str, Any], dealer: DealerProfile, now: dat
     return booking_tool.DayRequest(day=resolved.day + timedelta(days=1), part=None, part_words=None)
 
 
+def _picked_by_model(extraction: dict[str, Any], dealer: DealerProfile, now: datetime) -> datetime | None:
+    """The visit time the AI read the customer settle on (picked_time: "today 4:00 PM"), found on the dealer's
+    calendar; None when there is none or it has passed."""
+    from upsell_agent.slots.dates import resolve as resolve_date
+
+    words = str(extraction.get("picked_time") or "")
+    resolved = resolve_date(words, now.astimezone(dealer.tz)) if words else None
+    if resolved is None or not isinstance(resolved.value, datetime):
+        return None
+    at = resolved.value if resolved.value.tzinfo else resolved.value.replace(tzinfo=dealer.tz)
+    return at if at > now else None
+
+
 # How many replies after the customer asked for a day their bare times still mean that day.
 ASKED_DAY_REPLIES = 2
 
@@ -737,9 +750,13 @@ async def _visit_and_booking(
     about_asked_day = bool(asked_day and (booking_tool.bare_time(text) or booking_tool.part_of_day(text)[0]))
     # Live, 24 Oct 2026 (Christian: "Over the phone ? At I would say 4-6 pm" was booked as a Saturday 6 PM visit): a
     # message asking for a call is never a pick of a visit time.
-    customer_picks = (state.trigger in _BOOKS_FROM_OWN_REPLY and not _NOT_READY.search(text)
+    # Jermaine Palmer, 3 Nov 2026: "4 might be best if I get off earlier I'll let you know" - "let you know" read as not
+    # ready, though the AI read him settle on 4 PM; its reading wins over the word pattern.
+    customer_picks = (state.trigger in _BOOKS_FROM_OWN_REPLY
+                      and (not _NOT_READY.search(text) or bool(extraction.get("picked_time")))
                       and human_contact.said_method(text) != human_contact.CALL)
-    if (pending or asks_for_a_time or about_asked_day or (conversation.awaiting_visit_pick and conversation.visit)) \
+    if (pending or asks_for_a_time or about_asked_day or (conversation.awaiting_visit_pick and conversation.visit)
+            or extraction.get("picked_time")) \
             and customer_picks and not hold and not after_hours_blocking:
         existing = await booking_tool.existing_bookings(state.dealer_id, dealer, now)
         available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id)
@@ -749,6 +766,12 @@ async def _visit_and_booking(
         if offered or asks_for_a_time or asked_day:
             pick = booking_tool.match_pick(text, offered, dealer, now, available=available, prefer_day=asked_day)
             picked, wanted = pick.matched or pending, pick.wanted
+        if not picked and not wanted and (chosen := _picked_by_model(extraction, dealer, now)):
+            # Jermaine Palmer, 3 Nov 2026: "4 might be best", then "Ok" to "should we plan on 4:00 PM?", "4ish" and
+            # "Yes" - the AI understood 4 PM every time; the word patterns didn't, and nothing was booked. The time
+            # the AI read them settle on books when it's open (else the nearest open times, as for any time).
+            picked = booking_tool._fresh_pick(chosen, dealer, available)
+            wanted = None if picked else chosen
         if not picked and wanted and _NOT_TODAY.search(text or "") \
                 and wanted.astimezone(dealer.tz).date() == now.astimezone(dealer.tz).date():
             # Kevin Ceaser, 26 Oct 2026: "I can't make it today I get out off work at 11pm" was read as today at 11 PM

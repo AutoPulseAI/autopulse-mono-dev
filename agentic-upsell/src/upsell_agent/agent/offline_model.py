@@ -275,6 +275,7 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
         **_possible_opt_out(text),
         **_wants_visit(text),
         **_visit_when(text, payload),
+        **_picked_time(text),
         **_declines_visit(text, payload),
         **_urgent(text),
         "next_contact_when": next_contact[0] if next_contact else None,
@@ -452,6 +453,17 @@ _WHEN = re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\b|o'?clock)?|noon|mid
                    r"sat(?:urday)?s?|sun(?:day)?s?|weekends?|weekdays?|mornings?|afternoons?|evenings?|"
                    r"after|before|whenever|any ?time|anytime|"
                    r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", re.IGNORECASE)
+
+
+# A stand-in for the real model's picked_time (Jermaine Palmer, 3 Nov 2026: "4 might be best", "4ish"): a loose hour.
+_LOOSE_HOUR = re.compile(r"\b(\d{1,2})(?:ish\b|\s+might be best\b|\s+o'?clock\b)", re.IGNORECASE)
+
+
+def _picked_time(text: str) -> dict[str, Any]:
+    if m := _LOOSE_HOUR.search(text or ""):
+        hour = int(m.group(1))
+        return {"picked_time": f"today {hour}:00 {'AM' if 8 <= hour <= 11 else 'PM'}"}
+    return {"picked_time": None}
 
 
 def _visit_when(text: str, payload: dict[str, Any]) -> dict[str, Any]:

@@ -85,6 +85,11 @@ class ExtractionResult(BaseModel):
         "time you work out yourself. Null when they didn't say when."))
     visit_when_confidence: float = Field(default=0.0, ge=0, le=1, description=(
         "How sure you are that those words are their answer to when they'd come in"))
+    picked_time: str | None = Field(default=None, description=(
+        "The visit time they settle on - one of our offered times or their own, even said loosely or tentatively "
+        "('4 might be best', '4ish', 'around 4', 'the second one', or 'ok' / 'yes' to our 'should we plan on 4:00 "
+        "PM?'): the day word and the clock time, like 'today 4:00 PM' or 'Wednesday 2:00 PM'. Null when they "
+        "haven't settled on one time."))
     declines_visit: bool = Field(default=False, description=(
         "They turn down a visit offer we just made (e.g. 'not yet', 'I'm just looking', 'maybe later'). 'Just give me "
         "your best price first', 'can't you just tell me what it's worth?', 'I don't want to waste my time if I can't "
@@ -255,6 +260,9 @@ Rules:
   time ("can I come see it tomorrow at 10?", "I'd like a test drive", "can I bring it in for service Thursday?").
   0.8+ only when they clearly ask; asking
   about opening hours alone is not a visit request.
+- picked_time: the visit time they settle on, even loosely or tentatively ("4 might be best", "4ish", "around 4",
+  "the second one", or "ok" / "yes" to our "should we plan on 4:00 PM?") - the day word and the clock time, like
+  "today 4:00 PM" or "Wednesday 2:00 PM". Null when they haven't settled on one time.
 - visit_when (+ visit_when_confidence): only when our last message asked when they'd like to come in (a
   service visit: "which day and time suit you?"). Whatever they answer with - a day, a time, a window, a
   condition ("ten in morning sounds good for me", "after my shift", "Thursdays", "any time after 3", "whenever
