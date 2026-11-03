@@ -12,7 +12,7 @@
 
 import Link from "next/link";
 import moment from "moment-timezone";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, Form, Nav, Pagination, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
@@ -130,8 +130,18 @@ function CallTasksContent() {
   const { dealerParent } = useUser();
   const dealerTimezone = dealerParent?.dealer_account_information?.time_zone || "America/New_York";
   const tzOffset = moment.tz(dealerTimezone).utcOffset();
-  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
-  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
+  // Client, 4 Nov 2026: today (the dealer's day) is picked when the page opens; "Clear filters" shows every day.
+  const today = moment.tz(dealerTimezone).format("YYYY-MM-DD");
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") ?? today);
+  const [dateTo, setDateTo] = useState(searchParams.get("to") ?? today);
+  const defaultDay = useRef(today);
+  useEffect(() => {
+    // The dealer's time zone arrives after the first render: move the default day with it unless it was changed.
+    if (today === defaultDay.current) return;
+    setDateFrom((d) => (d === defaultDay.current ? today : d));
+    setDateTo((d) => (d === defaultDay.current ? today : d));
+    defaultDay.current = today;
+  }, [today]);
   const [stage, setStage] = useState("");
   const [reason, setReason] = useState("");
   const [byDay, setByDay] = useState([]);
@@ -257,15 +267,25 @@ function CallTasksContent() {
         {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
         {view === "missed" && <MissedCounts missed={missed} />}
 
+        {/* Client, 4 Nov 2026: "what are these messy filters" - the day and its count ran together ("Tue Nov 328").
+            One row of day cards, the day on top and its numbers labelled underneath. */}
         {byDay.length > 0 && (
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            {byDay.map((d) => (
-              <Button key={d.day} size="sm" variant={dateFrom === d.day && dateTo === d.day ? "custom" : "outline-secondary"}
-                onClick={() => pickDay(d.day)} title={`${d.opened} call tasks: ${d.called} called, ${d.missed} missed, ${d.open} open`}>
-                <span className="d-block">{moment(d.day).format("ddd MMM D")}</span>
-                <small>{d.opened} · <span className="text-success">{d.called} called</span> · <span className="text-danger">{d.missed} missed</span></small>
-              </Button>
-            ))}
+          <div className="d-flex gap-2 mb-2 pb-1" style={{ overflowX: "auto" }}>
+            {byDay.map((d) => {
+              const picked = dateFrom === d.day && dateTo === d.day;
+              return (
+                <Button key={d.day} size="sm" variant={picked ? "custom" : "outline-secondary"} onClick={() => pickDay(d.day)}
+                  title={`${d.opened} call tasks: ${d.called} called, ${d.missed} missed, ${d.open} open`}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", flex: "0 0 auto", lineHeight: 1.25 }}>
+                  <strong>{d.day === today ? "Today" : moment(d.day).format("ddd MMM D")}</strong>
+                  <small style={{ whiteSpace: "nowrap" }}>
+                    {d.opened} task{d.opened === 1 ? "" : "s"}
+                    {" · "}<span className={picked ? "" : "text-success"}>{d.called} called</span>
+                    {" · "}<span className={picked ? "" : "text-danger"}>{d.missed} missed</span>
+                  </small>
+                </Button>
+              );
+            })}
           </div>
         )}
 
