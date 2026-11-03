@@ -1,6 +1,6 @@
 """The 2 Nov 2026 meeting (Betsy, Bibi, the user) and the user's list of 3 Nov 2026."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from bson import ObjectId
@@ -224,6 +224,32 @@ async def test_what_day_works_becomes_two_real_times(mongo):
                                   dealer=await dealer_profile(DEALER)) is None
 
 
+async def test_times_follow_what_the_customer_said(mongo):
+    """AMMAR Saleh, 3 Nov 2026: offered today at 1, 2 or 3 PM, he wrote "I forgot today, election day". The AI read it
+    as turning the times down and asked for a better day; this step put today at 1:00 PM and 2:00 PM back in. The
+    user: "give him the time for next day or any other day of his preference - that's common sense"."""
+    from upsell_agent.agent.open_time_question import offer_real_times
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    set_clock(TUESDAY_NOON)
+    today = clock.now().date()
+    offered = [{"date": today.isoformat(), "display": "today at 1:00 PM"},
+               {"date": today.isoformat(), "display": "today at 2:00 PM"}]
+    decision = {"visit_plan": {"record": {"offered_times": offered}}}
+    draft = {"sms_text": "No worries, Ammar. What day works better for you?"}
+    said = {"declines_visit": True, "visit_objection": "time_convenience", "visit_later_when": None}
+    assert await offer_real_times(draft, dealer_id=DEALER, lead_id=None, decision=decision,
+                                  dealer=await dealer_profile(DEALER), extraction=said)
+    days = {t["date"] for t in draft["offered_times"]}
+    assert today.isoformat() not in days and "today" not in draft["sms_text"], draft["sms_text"]
+    # A day they'd come instead: that day.
+    friday = (today + timedelta(days=(4 - today.weekday()) % 7)).isoformat()
+    draft = {"sms_text": "No problem. What day works for you?"}
+    assert await offer_real_times(draft, dealer_id=DEALER, lead_id=None, decision=decision,
+                                  dealer=await dealer_profile(DEALER),
+                                  extraction={**said, "visit_later_when": "Friday"})
+    assert {t["date"] for t in draft["offered_times"]} == {friday}, draft["sms_text"]
+
+
 RAW = ("X-Received: by 2002:a05:620a:2609:b0:93f:cbd:8e20 with SMTP id af79cd13be357-944217ee2camr1689224285a.73\n"
        "ARC-Seal: i=1; a=rsa-sha256; t=1793647142; cv=none; d=google.com\n"
        "From: Dominick <dom@example.com>\nTo: sales@victory.test\nSubject: Re: 2024 RAM Laramie\n"
@@ -285,3 +311,19 @@ async def test_call_tasks_done_is_only_calls_made_and_each_day_is_counted(mongo)
     [today, yesterday] = await staff_view.call_tasks_by_day(DEALER, 14, -240)
     assert today == {"day": "2026-09-22", "opened": 5, "called": 1, "missed": 1, "open": 1}
     assert yesterday["day"] == "2026-09-21" and yesterday["missed"] == 1
+
+
+def test_times_on_one_day_name_the_day_once():
+    # The user, 3 Nov 2026: "this doesn't look like a normal human being's message".
+    from upsell_agent.agent.nodes.compose import one_day_name
+    draft = {"sms_text": "No problem, Ammar! I've got tomorrow (Wednesday) at 10:00 AM, tomorrow (Wednesday) at 2:00 PM, "
+                         "or tomorrow (Wednesday) at 7:00 PM. Which one works?",
+             "email_body": "Would today at 1:00 PM or today at 3:00 PM work? Or Saturday at 10:00 AM."}
+    one_day_name(draft)
+    assert draft["sms_text"] == ("No problem, Ammar! I've got tomorrow (Wednesday) at 10:00 AM, 2:00 PM, or 7:00 PM. "
+                                 "Which one works?")
+    assert draft["email_body"] == "Would today at 1:00 PM or 3:00 PM work? Or Saturday at 10:00 AM."
+    # Different days keep their names.
+    mixed = {"sms_text": "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"}
+    one_day_name(mixed)
+    assert mixed["sms_text"] == "Would Saturday at 10:00 AM or Sunday at 11:00 AM work for you?"

@@ -367,6 +367,31 @@ def no_doubled_words(draft: dict[str, Any]) -> None:
             draft[key] = _DOUBLED.sub(r"\1", str(draft[key]))
 
 
+_WEEKDAY = r"(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day"
+_DAY_AT = re.compile(rf"\b(today|tonight|tomorrow(?: \({_WEEKDAY}\))?|{_WEEKDAY}(?:, [A-Z][a-z]+ \d{{1,2}})?) at (?=\d)",
+                     re.IGNORECASE)
+
+
+def one_day_name(draft: dict[str, Any]) -> None:
+    """The user, 3 Nov 2026: "tomorrow (Wednesday) at 10:00 AM, tomorrow (Wednesday) at 2:00 PM, or tomorrow (Wednesday)
+    at 7:00 PM doesn't look like a normal human being's message - will tomorrow (Wednesday) at 2pm or 3pm work for
+    you?". Times on the same day name the day once: "tomorrow (Wednesday) at 10:00 AM, 2:00 PM, or 7:00 PM"."""
+    def tidy(sentence: str) -> str:
+        seen: set[str] = set()
+
+        def once(m: re.Match) -> str:
+            day = m.group(1).lower()
+            if day in seen:
+                return ""
+            seen.add(day)
+            return m.group(0)
+        return _DAY_AT.sub(once, sentence)
+
+    for key in ("sms_text", "email_body"):
+        if text := draft.get(key):
+            draft[key] = "".join(tidy(part) for part in re.split(r"(?<=[.!?\n])", str(text)))
+
+
 def one_fee_note(draft: dict[str, Any]) -> None:
     """Live, 24 Oct 2026 (Robin's first message, 566 characters -> the safe template): two cars, each with "not including
     tax, documentation and DMV fees". With more than one price, the note is said once, after the last price."""
@@ -420,6 +445,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
 
     draft = {**result.model_dump(), "attempt": payload["attempt"]}
     ctx.model_calls.append({"step": "compose", **call.as_metrics()})
+    one_day_name(draft)  # the AI's own words only - fixed wording placed below is never changed
     placed = place_touch1_intro(draft, ((state.decision or {}).get("touch1") or {}).get("intro"))
     extras = place_touch1_extras(draft, (state.decision or {}).get("touch1"))
     scripted = place_cannot_supply(draft, (state.decision or {}).get("cannot_supply"), state.customer_name)
@@ -444,7 +470,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
         from upsell_agent.agent.open_time_question import offer_real_times
         from upsell_agent.integrations.dealer_profile import dealer_profile
         if timed := await offer_real_times(draft, dealer_id=state.dealer_id, lead_id=state.lead_id, decision=decision,
-                                           dealer=await dealer_profile(state.dealer_id)):
+                                           dealer=await dealer_profile(state.dealer_id), extraction=state.extraction):
             linked.append(timed)
     placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
                                                   ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))

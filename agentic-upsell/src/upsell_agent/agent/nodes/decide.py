@@ -356,7 +356,8 @@ async def _times_for_day(ctx: TurnContext, state: AgentState, dealer: DealerProf
     times, day, on_day = booking_tool.times_on_day(available, request, dealer)
     zones = tuple(((ctx.compliance or {}).get("zone") or {}).get("zones") or ())
     built = booking_tool.format_offer(times, dealer, customer_zones=zones)
-    info = {"asked": _day_words(request.day), "part": request.part_words, "on_that_day": on_day,
+    asked = "the end of the week" if request.days > 1 else _day_words(request.day)  # not "Saturday works"
+    info = {"asked": asked, "part": request.part_words, "on_that_day": on_day,
             "offered_day": _day_words(day) if day else None}
     return built, info
 
@@ -374,6 +375,19 @@ def _later_day(extraction: dict[str, Any], dealer: DealerProfile, now: datetime)
     if request is None or not 0 < (request.day - today).days <= LATER_DAY_MAX_DAYS:
         return None
     return request
+
+
+def day_after_not_on(extraction: dict[str, Any], dealer: DealerProfile, now: datetime) -> booking_tool.DayRequest | None:
+    """The day after the one the AI read as not working for them (visit_not_on: "I forgot today, election day" ->
+    today), found on the dealer's calendar now - never worked out by the model (AMMAR Saleh, 3 Nov 2026)."""
+    from upsell_agent.slots.dates import resolve as resolve_date
+
+    words = str(extraction.get("visit_not_on") or "")
+    local_now = now.astimezone(dealer.tz)
+    resolved = resolve_date(words, local_now) if words else None
+    if resolved is None or resolved.day < local_now.date():
+        return None
+    return booking_tool.DayRequest(day=resolved.day + timedelta(days=1), part=None, part_words=None)
 
 
 # How many replies after the customer asked for a day their bare times still mean that day.
@@ -766,6 +780,17 @@ async def _visit_and_booking(
                 return visit_ctx, plan_day_offer(
                     profile=profile, conversation=conversation, built_times=built, asked_day=later.day.isoformat(),
                     why=f"Not now, but {extraction.get('visit_later_when')!r}: offering that day's open times.")
+        if not picked and not pending and visit_declines(extraction) and (
+                after := day_after_not_on(extraction, dealer, now)):
+            # AMMAR Saleh, 3 Nov 2026 ("I forgot today, election day"); the user: "ok, what about tomorrow - name the
+            # day, from the calendar". The day after the one that doesn't work, offered at once.
+            built, info = await _times_for_day(ctx, state, dealer, now, after)
+            if built:
+                # No day_request: they didn't ask for that day ("Wednesday works" would be wrong) - the writer has
+                # their message and the times, with the weekday named.
+                return visit_ctx, plan_day_offer(
+                    profile=profile, conversation=conversation, built_times=built, asked_day=after.day.isoformat(),
+                    why=f"{extraction.get('visit_not_on')!r} doesn't work for them: offering {info['offered_day']}.")
         if not picked and not pending and not visit_declines(extraction) and (
                 request := booking_tool.preferred_day(text, dealer, now) or _part_on_known_day(
                     text, asked_day, offered, dealer, now)):
@@ -1427,7 +1452,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
     # A visit in the same message wins ("I'm at work till 5, can I come in at 6?" books 6 PM - review 23 Oct 2026).
     ask_when_free = bool(not dated and not hold and state.trigger == "inbound_message"
                          and BUSY_NOW.search(text or "") and not conversation.awaiting_when_free
-                         and not _COMING_IN.search(text or "") and not visit_wants_visit(extraction))
+                         and not _COMING_IN.search(text or "") and not visit_wants_visit(extraction)
+                         # The user, 3 Nov 2026: "busy today" turning our times down is that day out - "ok, what
+                         # about tomorrow?" with times (AMMAR Saleh), not "when should I check back?".
+                         and not (visit_declines(extraction) and day_after_not_on(extraction, dealer, now)))
     if ask_when_free:
         hold = "the customer is busy right now: the reply only asks what time works to get back to them"
     if dated:

@@ -233,8 +233,12 @@ async def test_the_offer_names_concrete_times(mongo):
     created = await _lead()
     state = await _offer(mongo, created)
     reply = await _last_sms(mongo, created)
-    for slot in state["conversation"]["visit"]["offered_times"]:
-        assert slot["display"] in reply
+    offered = state["conversation"]["visit"]["offered_times"]
+    # Each time is in the reply; the day is named once (the user, 3 Nov 2026: "today at 3:00 PM, 4:00 PM, or 5:00 PM").
+    assert offered[0]["display"] in reply
+    for slot in offered:
+        assert slot["display"].split(" at ")[-1] in reply
+    assert reply.count(offered[0]["display"].split(" at ")[0] + " at") == 1
     assert "Which one works?" in reply
 
 
@@ -341,26 +345,58 @@ async def test_a_bare_time_is_read_on_the_asked_day_even_if_that_offer_never_wen
 
 async def test_not_today_but_the_end_of_the_week_gets_that_days_times_not_a_manager(mongo):
     """Melissa Ross, 28 Oct 2026 (a Wednesday): "I cannot today. I might be able to at the end of the week" went to a
-    manager ("Our sales manager will reach out shortly"). Friday's open times are offered at once instead."""
+    manager ("Our sales manager will reach out shortly"). The end of the week's open times are offered at once instead:
+    Saturday and Sunday (the user, 3 Nov 2026: "Saturday at 2 PM or Sunday at 3 PM, whatever works for you")."""
     set_clock(_dt(2026, 10, 28, 15, 0, tzinfo=ZoneInfo("America/New_York")))
     created = await _lead()
     await _offer(mongo, created)
     await _say(created, "I cannot today. I might be able to at the end of the week")
     state = await _state(mongo, created)
     assert state["status"] != "handoff"
-    assert _days(state["conversation"]["visit"]["offered_times"]) == {"2026-10-30"}
+    # The test dealer is closed on Sundays: Saturday only (the calendar decides, never a guess).
+    assert _days(state["conversation"]["visit"]["offered_times"]) == {"2026-10-31"}
     assert "manager" not in (await _last_sms(mongo, created)).lower()
+
+
+@pytest.mark.parametrize("said", ["Not today, I'm busy", "I'm busy today"])
+async def test_busy_today_gets_tomorrows_times_with_the_day_named(mongo, said):
+    """AMMAR Saleh, 3 Nov 2026 (a Tuesday): "I forgot today, election day" got today's times again. The user: "offer
+    them ok what about tomorrow - and name the day, checked from the calendar". Not "when should I check back?"."""
+    set_clock(_dt(2026, 11, 3, 10, 22, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, said)
+    visit = (await _state(mongo, created))["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-11-04"}, visit.get("why")
+    sms = await _last_sms(mongo, created)
+    assert "tomorrow (Wednesday) at" in sms and "check back" not in sms
+
+
+def test_the_end_of_the_week_is_a_time_on_saturday_and_one_on_sunday():
+    # The user, 3 Nov 2026: "ask them Saturday at a specific time or Sunday at a time - whatever works for you".
+    from upsell_agent.integrations.dealer_profile import profile_from_record
+    from upsell_agent.tools import booking_tool
+    dealer = profile_from_record("d1", {"timezone": "America/New_York"})
+    tuesday = _dt(2026, 11, 3, 10, 22, tzinfo=ZoneInfo("America/New_York"))
+    request = booking_tool.preferred_day("I'll be coming at the end of the week", dealer, tuesday)
+    assert request.day.isoformat() == "2026-11-07" and request.days == 2
+    ny = ZoneInfo("America/New_York")
+    open_slots = [_dt(2026, 11, d, h, 0, tzinfo=ny) for d in (6, 7, 8) for h in (11, 14, 16)]
+    times, _, _ = booking_tool.times_on_day(open_slots, request, dealer, count=2)
+    assert [t.date().isoformat() for t in times] == ["2026-11-07", "2026-11-08"]
 
 
 def test_a_decline_naming_a_later_day_gives_that_day():
     """The live model marks Melissa's message a decline with visit_later_when "at the end of the week" (agent/nodes/
-    decide.py _later_day): Friday is offered; a day further out than a week is left to the dated follow-up."""
+    decide.py _later_day): Saturday and Sunday are offered; a day further out than a week is left to the dated
+    follow-up."""
     from upsell_agent.agent.nodes.decide import _later_day
     from upsell_agent.integrations.dealer_profile import profile_from_record
     dealer = profile_from_record("d1", {"timezone": "America/New_York"})
     wednesday = _dt(2026, 10, 28, 15, 0, tzinfo=ZoneInfo("America/New_York"))
     said = {"declines_visit": True, "visit_later_when": "at the end of the week"}
-    assert _later_day(said, dealer, wednesday).day.isoformat() == "2026-10-30"
+    later = _later_day(said, dealer, wednesday)
+    assert later.day.isoformat() == "2026-10-31" and later.days == 2
     assert _later_day({**said, "visit_later_when": "in a month"}, dealer, wednesday) is None
     assert _later_day({"declines_visit": True}, dealer, wednesday) is None
 
