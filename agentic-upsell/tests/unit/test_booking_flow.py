@@ -389,6 +389,27 @@ async def test_a_day_they_are_off_is_offered_not_a_check_back(mongo):
     assert "Friday at" in sms and "check back" not in sms, sms
 
 
+def test_maybe_is_not_may():
+    # Hector Class, 3 Nov 2026: "Maybe 7 would be best" was read as May 7.
+    from upsell_agent.slots.dates import resolve
+    tuesday = _dt(2026, 11, 3, 12, 13, tzinfo=ZoneInfo("America/New_York"))
+    for said in ("Maybe 7 would be best", "maybe 5", "Decent 4"):
+        assert resolve(said, tuesday) is None, said
+    assert resolve("Dec 4", tuesday).day.isoformat() == "2026-12-04"
+    assert resolve("Sept 12", tuesday).day.month == 9
+
+
+async def test_maybe_five_books_today_at_five(mongo):
+    """Hector Class, 3 Nov 2026: offered today at 3, 5 or 7 PM, he wrote "Maybe 7 would be best" - read as Thursday, May 7
+    (not open), so nothing was booked while the reply said "Today at 7:00 PM works"."""
+    set_clock(_dt(2026, 11, 3, 12, 13, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, "Maybe 5 would be best")  # the test store offers 3, 4 or 5 PM
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == "17:00", await _last_sms(mongo, created)
+
+
 @pytest.mark.parametrize("said", ["4 might be best if I get off earlier I'll let you know",
                                   "If I get off early I'll come straight. It's gonna be 4ish"])
 async def test_a_loose_time_they_settle_on_books(mongo, said):

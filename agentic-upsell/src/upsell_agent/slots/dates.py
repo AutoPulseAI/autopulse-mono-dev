@@ -32,10 +32,14 @@ _NUMBER_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "fi
 _LATE_NIGHT_UNTIL = time(4)
 
 _DAY = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?"
-_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Hector Class, 3 Nov 2026: "Maybe 7 would be best" was read as May 7 ("may" + any letters matched "Maybe"; "Decent 4"
+# was December 4). A month is its name or its abbreviation, nothing longer.
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|"
+          r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?![a-z])")
 # Like _MONTH but without "may": alone (no day number after it) it's too often an
 # ordinary word ("may I", "I may") to safely read as the month.
-_MONTH_ONLY = r"(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+_MONTH_ONLY = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|"
+               r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?![a-z])")
 _TIME = re.compile(r"\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?!\w)|\bat\s+(\d{1,2})(?::(\d{2}))?\b|\b(noon)\b",
                    re.IGNORECASE)
 
