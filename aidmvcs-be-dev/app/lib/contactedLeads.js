@@ -76,7 +76,10 @@ export async function repliedSplit(leads, from, to, { EmailModel = Email } = {})
   const created = new Map(leads.map((l) => [String(l._id), l.createdAt ? new Date(l.createdAt) : null]));
   const inRange = (at) => at && (!from || at >= new Date(from)) && (!to || at <= new Date(to));
   const fresh = all.filter((r) => inRange(created.get(String(r._id)))).length;
-  return { sms: texts.length, email: emails.length, new_leads: fresh, older_leads: all.length - fresh };
+  // The user, 3 Nov 2026: "5 leads came in today, 2 of them replied, 40 older leads replied" - in_range_leads is the 5.
+  const inRangeLeads = leads.filter((l) => inRange(l.createdAt ? new Date(l.createdAt) : null)).length;
+  return { sms: texts.length, email: emails.length, new_leads: fresh, older_leads: all.length - fresh,
+    in_range_leads: inRangeLeads };
 }
 
 export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received', channel = null } = {}) {

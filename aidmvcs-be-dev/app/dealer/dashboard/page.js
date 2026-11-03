@@ -789,8 +789,12 @@ export default function Dashboard() {
               count={contactedCount}
               label="Customer Replied"
               link={withRange('/dealer/leads?status=Contacted')}
-              description={`${contactedSplit ? `SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · From these `
-                + `dates' leads: ${contactedSplit.new_leads} · ` : ''}${cardRangeText()}${compareText('contacted')}`}
+              // The user, 3 Nov 2026: "5 leads came in today, 2 of them replied, 40 older leads replied" - the range's
+              // own leads first, then older leads, then the channel they replied by.
+              description={`${contactedSplit ? `${isTodayRange ? "Today's" : "These dates'"} leads: `
+                + `${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} replied · Older leads: `
+                + `${contactedSplit.older_leads} · SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · ` : ''}`
+                + `${cardRangeText()}${compareText('contacted')}`}
             />
 
             <CountCard

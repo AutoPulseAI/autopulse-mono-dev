@@ -819,7 +819,12 @@ test('a staff blast is tagged and counted, and replies split by channel', async 
   const from = new Date('2026-10-30T04:00:00Z'), to = new Date('2026-10-31T03:59:59Z');
   assert.equal((await messageActivity(leads, from, to)).sent.blasts, 5);
   const split = await repliedSplit(leads.map((_id) => ({ _id, createdAt: new Date('2026-10-01') })), from, to);
-  assert.deepEqual(split, { sms: 2, email: 1, new_leads: 0, older_leads: 2 });
+  assert.deepEqual(split, { sms: 2, email: 1, new_leads: 0, older_leads: 2, in_range_leads: 0 });
+  // "5 leads came in today, 2 of them replied" (the user, 3 Nov 2026): the range's own leads are counted too.
+  const today = await repliedSplit(leads.map((_id, i) => ({ _id, createdAt: i < 3 ? new Date('2026-10-30T12:00:00Z')
+    : new Date('2026-10-01') })), from, to);
+  assert.equal(today.in_range_leads, 3);
+  assert.equal(today.new_leads + today.older_leads, 2);
 });
 
 // Betsy and Bibi, 27 Oct 2026 meeting: our own trace labels (bucket, next AI message), for AutoPulse admins only.
