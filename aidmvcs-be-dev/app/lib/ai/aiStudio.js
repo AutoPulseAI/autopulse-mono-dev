@@ -124,6 +124,10 @@ const ALIGNMENTS = [
       'never_ask_what_day_works'].every((k) => typeof c[k] === 'boolean') ? null
       : { loop_goes_to_a_manager: true, website_when_stuck: true, offer_times_with_answers: true,
         never_ask_what_day_works: true, ...c }) },
+  { id: 'judge_3nov', type: 'compliance', key: 'conversation_rules',
+    note: 'Updated by AutoPulse to match the AI: a judge checks each reply against what the customer said before it is '
+      + 'sent (3 Nov 2026)',
+    change: (c) => (typeof c.judge_before_sending === 'boolean' ? null : { ...c, judge_before_sending: true }) },
   { id: 'quiet_after_handoff_3nov', type: 'compliance', key: 'conversation_rules',
     note: 'Updated by AutoPulse to match the AI: after a handoff the AI stays quiet until staff hand the lead back '
       + '(3 Nov 2026)',

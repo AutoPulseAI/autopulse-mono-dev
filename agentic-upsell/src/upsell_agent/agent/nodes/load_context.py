@@ -57,6 +57,10 @@ async def load_profile(ctx: TurnContext, state: AgentState):
     return build_profile(lead_type, current, history)
 
 
+# Earlier customer messages a held-back reply left unanswered, taken into this turn (at most).
+MAX_EARLIER_UNANSWERED = 5
+
+
 async def _new_messages(ctx: TurnContext, state: AgentState) -> tuple[list[PackMessage], dict[str, Any]]:
     """The customer messages this turn answers, and the filter that keeps
     them out of the history."""
@@ -64,6 +68,22 @@ async def _new_messages(ctx: TurnContext, state: AgentState) -> tuple[list[PackM
     if state.new_message_ids:
         ids = [as_object_id(i) for i in state.new_message_ids]
         rows = await messages.find({"_id": {"$in": ids}}).to_list(None)
+        if rows and state.lead_id:
+            # Mazher Khan, 3 Nov 2026: "Please send me the link", then "So I can see" 5 seconds later. The reply with
+            # the link was held back as superseded ("the reply to that message answers both"), but the newer turn read
+            # only "So I can see" and sent photos without the link. Every customer message since our last message that
+            # went out is answered now, not only this turn's own.
+            first = min(r["created_at"] for r in rows)
+            last_sent = await messages.find_one({"lead_id": state.lead_id, "direction": "outbound", "status": "sent"},
+                                                sort=[("created_at", -1)])
+            since = {"$gt": last_sent["created_at"]} if last_sent else {}
+            held = await messages.find({"lead_id": state.lead_id, "direction": "outbound", "presend": "superseded",
+                                        "created_at": {**since, "$lt": first}}).to_list(MAX_EARLIER_UNANSWERED)
+            held_turns = [h["turn_id"] for h in held if h.get("turn_id")]
+            if held_turns:
+                rows += await messages.find({"lead_id": state.lead_id, "direction": "inbound", "_id": {"$nin": ids},
+                                             "answered_turn_id": {"$in": held_turns}}).to_list(MAX_EARLIER_UNANSWERED)
+                ids = [r["_id"] for r in rows]
         rows.sort(key=lambda r: r["created_at"])
         return [to_pack_message(r) for r in rows], {"_id": {"$nin": ids}}
     text = state.inbound_text.strip()

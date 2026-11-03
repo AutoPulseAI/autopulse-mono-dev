@@ -321,6 +321,7 @@ _ATTRS = {
     "link_resolver": ("SHAREABLE", "WEBSITE_WHEN_STUCK"),
     "loop_check": ("ESCALATE_ON_LOOP",),
     "open_time_question": ("ON",),
+    "judge": ("ON",),
     "decide": ("BUSY_RULE", "BUSY_PHRASES", "NAME_QUESTION", "EMAIL_QUESTIONS", "PHONE_QUESTIONS", "ASK_PHONE",
                "CONDITION_TO_MANAGER", "TRADE_QUESTIONS", "OFFER_TIMES_WITH_ANSWERS"),
     "text_consent": ("INVITE", "CONFIRMATION"),
@@ -388,14 +389,14 @@ def _media_modules() -> dict[str, Any]:
     from upsell_agent.agent import turn
     from upsell_agent.events import handlers
     from upsell_agent.scheduler import followups, safety_net, studio_cadences
-    from upsell_agent.agent import lead_brief, loop_check, open_time_question
+    from upsell_agent.agent import judge, lead_brief, loop_check, open_time_question
     from upsell_agent.agent.nodes import search_stock
     from upsell_agent.tools import stock_match
     return {"vehicle_media": vehicle_media, "short_links": short_links, "link_resolver": link_resolver,
             "decide": decide, "presend": presend, "turn": turn, "handlers": handlers, "safety_net": safety_net,
             "studio_cadences": studio_cadences, "followups": followups, "stock_match": stock_match,
             "search_stock": search_stock, "lead_brief": lead_brief, "loop_check": loop_check,
-            "open_time_question": open_time_question}
+            "open_time_question": open_time_question, "judge": judge}
 
 
 def _policy_module():
@@ -957,6 +958,8 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             mods["decide"].OFFER_TIMES_WITH_ANSWERS = c["offer_times_with_answers"]
         if isinstance(c.get("never_ask_what_day_works"), bool):
             mods["open_time_question"].ON = c["never_ask_what_day_works"]
+        if isinstance(c.get("judge_before_sending"), bool):
+            mods["judge"].ON = c["judge_before_sending"]
         if isinstance(c.get("ai_resumes_after_staff_minutes"), (int, float)) and not isinstance(
                 c["ai_resumes_after_staff_minutes"], bool):
             from datetime import timedelta as _td

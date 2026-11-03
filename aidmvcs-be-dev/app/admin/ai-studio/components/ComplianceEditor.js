@@ -71,6 +71,9 @@ const LABELS = {
     "Betsy, 2 Nov 2026: \"we have to offer times\"."],
   never_ask_what_day_works: ["Never \"what day works?\" - offer two real times",
     "An open question about when they'd come in is replaced by the two earliest open times."],
+  judge_before_sending: ["A judge checks each reply before it is sent",
+    "A reply that ignores what the customer said (a day they can come, a question, a day they ruled out) goes back to "
+    + "the AI once to be rewritten."],
 };
 
 const CHOICES = {

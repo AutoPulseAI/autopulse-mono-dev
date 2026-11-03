@@ -372,6 +372,37 @@ async def test_busy_today_gets_tomorrows_times_with_the_day_named(mongo, said):
     assert "tomorrow (Wednesday) at" in sms and "check back" not in sms
 
 
+async def test_a_day_they_are_off_is_offered_not_a_check_back(mongo):
+    """Mauricio Cueva, 3 Nov 2026 (a Tuesday), after three offers (two of them our own follow-ups): "Sorry i'm working
+    now but I'm off on Friday" got "No problem, Mauricio. I'll check back with you on Friday, November 6." The user:
+    "ask: should I book you on Friday at this time - it's a clear signal"."""
+    set_clock(_dt(2026, 11, 3, 10, 45, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await mongo[AI_LEAD_STATE_COLLECTION].update_one({"lead_id": created["lead_id"]}, {"$set": {
+        "conversation.visit.attempts": 3, "conversation.visit.declines": 1}})
+    await _say(created, "Sorry i'm working now but I'm off on Friday but i see the price went up a little bit")
+    state = await _state(mongo, created)
+    visit = state["conversation"]["visit"]
+    assert _days(visit["offered_times"]) == {"2026-11-06"}, visit.get("why")
+    sms = await _last_sms(mongo, created)
+    assert "Friday at" in sms and "check back" not in sms, sms
+
+
+@pytest.mark.parametrize("said", ["4 might be best if I get off earlier I'll let you know",
+                                  "If I get off early I'll come straight. It's gonna be 4ish"])
+async def test_a_loose_time_they_settle_on_books(mongo, said):
+    """Jermaine Palmer, 3 Nov 2026: offered 1, 2 or 3 PM, he wrote "4 might be best", then "Ok" to "should we plan on
+    4:00 PM?", "4ish" and "Yes" - never booked, and offered 1, 2 or 3 PM twice more. The time the AI reads him settle on
+    books (picked_time; the offline model stands in for it)."""
+    set_clock(_dt(2026, 11, 3, 10, 25, tzinfo=ZoneInfo("America/New_York")))
+    created = await _lead()
+    await _offer(mongo, created)
+    await _say(created, said)
+    booking = await _booking(mongo, created)
+    assert booking and booking["bookingTime"] == "16:00", await _last_sms(mongo, created)
+
+
 def test_the_end_of_the_week_is_a_time_on_saturday_and_one_on_sunday():
     # The user, 3 Nov 2026: "ask them Saturday at a specific time or Sunday at a time - whatever works for you".
     from upsell_agent.integrations.dealer_profile import profile_from_record
