@@ -10,6 +10,7 @@ earliest open times (the same times a visit offer gives), unless the reply alrea
 """
 
 import re
+from datetime import date, timedelta
 from typing import Any
 
 from upsell_agent import clock
@@ -25,8 +26,27 @@ _OPEN = re.compile(
 _HAS_TIME = re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE)
 
 
+def _from_day(extraction: dict[str, Any], decision: dict[str, Any], dealer: Any,
+              now: Any) -> booking_tool.DayRequest | None:
+    """Where the times start, from what the AI understood the customer said (AMMAR Saleh, 3 Nov 2026: "I forgot today,
+    election day" - the AI saw today was out, and this step still put today at 1:00 PM and 2:00 PM in its reply; the
+    user: "give him the time for next day or any other day of his preference - that's common sense"):
+    - a day they'd come instead ("maybe Friday"): that day;
+    - they turned down the times we offered: the day after the last day those were on;
+    - otherwise None (the earliest open times)."""
+    if later := str(extraction.get("visit_later_when") or ""):
+        if request := booking_tool.preferred_day(later, dealer, now):
+            return request
+    offered = ((decision.get("visit_plan") or {}).get("record") or {}).get("offered_times") or []
+    days = [o["date"] for o in offered if o.get("date")]
+    if extraction.get("declines_visit") and days:
+        return booking_tool.DayRequest(day=date.fromisoformat(max(days)) + timedelta(days=1), part=None,
+                                       part_words=None)
+    return None
+
+
 async def offer_real_times(draft: dict[str, Any], *, dealer_id: str, lead_id: str | None, decision: dict[str, Any],
-                           dealer: Any) -> str | None:
+                           dealer: Any, extraction: dict[str, Any] | None = None) -> str | None:
     """Replaces the open question in place; returns what was done (for the trace), or None."""
     if not ON or decision.get("reply_language") or (decision.get("visit_offer") or {}).get("times"):
         return None
@@ -36,9 +56,14 @@ async def offer_real_times(draft: dict[str, Any], *, dealer_id: str, lead_id: st
     if not any(_OPEN.search(t) and not _HAS_TIME.search(t) for t in texts):
         return None
     now = clock.now()
-    existing = await booking_tool.existing_bookings(dealer_id, dealer, now)
-    times = booking_tool.format_offer(booking_tool.offer_times(
-        booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id), count=2), dealer)
+    start = _from_day(extraction or {}, decision, dealer, now)
+    today = now.astimezone(dealer.tz).date()
+    span = booking_tool.DAYS_AHEAD + max(0, (start.day - today).days) if start else booking_tool.DAYS_AHEAD
+    existing = await booking_tool.existing_bookings(dealer_id, dealer, now, days_ahead=span)
+    available = booking_tool.available_times(dealer, existing, now, exclude_lead_id=lead_id, days_ahead=span)
+    picked = booking_tool.times_on_day(available, start, dealer, count=2)[0] if start else \
+        booking_tool.offer_times(available, count=2)
+    times = booking_tool.format_offer(picked, dealer)
     if len(times) < 2:
         return None
     ask = f" Would {times[0]['display']} or {times[1]['display']} work for you?"

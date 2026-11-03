@@ -1,6 +1,6 @@
 """The 2 Nov 2026 meeting (Betsy, Bibi, the user) and the user's list of 3 Nov 2026."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from bson import ObjectId
@@ -222,6 +222,32 @@ async def test_what_day_works_becomes_two_real_times(mongo):
                                   dealer=await dealer_profile(DEALER)) is None
     assert await offer_real_times(dict(draft), dealer_id=DEALER, lead_id=None, decision={"reply_language": "Spanish"},
                                   dealer=await dealer_profile(DEALER)) is None
+
+
+async def test_times_follow_what_the_customer_said(mongo):
+    """AMMAR Saleh, 3 Nov 2026: offered today at 1, 2 or 3 PM, he wrote "I forgot today, election day". The AI read it
+    as turning the times down and asked for a better day; this step put today at 1:00 PM and 2:00 PM back in. The
+    user: "give him the time for next day or any other day of his preference - that's common sense"."""
+    from upsell_agent.agent.open_time_question import offer_real_times
+    from upsell_agent.integrations.dealer_profile import dealer_profile
+    set_clock(TUESDAY_NOON)
+    today = clock.now().date()
+    offered = [{"date": today.isoformat(), "display": "today at 1:00 PM"},
+               {"date": today.isoformat(), "display": "today at 2:00 PM"}]
+    decision = {"visit_plan": {"record": {"offered_times": offered}}}
+    draft = {"sms_text": "No worries, Ammar. What day works better for you?"}
+    said = {"declines_visit": True, "visit_objection": "time_convenience", "visit_later_when": None}
+    assert await offer_real_times(draft, dealer_id=DEALER, lead_id=None, decision=decision,
+                                  dealer=await dealer_profile(DEALER), extraction=said)
+    days = {t["date"] for t in draft["offered_times"]}
+    assert today.isoformat() not in days and "today" not in draft["sms_text"], draft["sms_text"]
+    # A day they'd come instead: that day.
+    friday = (today + timedelta(days=(4 - today.weekday()) % 7)).isoformat()
+    draft = {"sms_text": "No problem. What day works for you?"}
+    assert await offer_real_times(draft, dealer_id=DEALER, lead_id=None, decision=decision,
+                                  dealer=await dealer_profile(DEALER),
+                                  extraction={**said, "visit_later_when": "Friday"})
+    assert {t["date"] for t in draft["offered_times"]} == {friday}, draft["sms_text"]
 
 
 RAW = ("X-Received: by 2002:a05:620a:2609:b0:93f:cbd:8e20 with SMTP id af79cd13be357-944217ee2camr1689224285a.73\n"

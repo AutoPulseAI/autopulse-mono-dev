@@ -444,7 +444,7 @@ async def compose(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[s
         from upsell_agent.agent.open_time_question import offer_real_times
         from upsell_agent.integrations.dealer_profile import dealer_profile
         if timed := await offer_real_times(draft, dealer_id=state.dealer_id, lead_id=state.lead_id, decision=decision,
-                                           dealer=await dealer_profile(state.dealer_id)):
+                                           dealer=await dealer_profile(state.dealer_id), extraction=state.extraction):
             linked.append(timed)
     placed_text = " ".join(str(t or "") for t in (((decision.get("cannot_supply") or {}).get("text") if scripted else ""),
                                                   ((decision.get("touch1") or {}).get("lead_answers") if extras else "")))
