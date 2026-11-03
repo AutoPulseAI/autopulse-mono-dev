@@ -367,7 +367,10 @@ def prompts() -> list[dict[str, Any]]:
     return [{"key": "compose", "name": "Writer (every customer message)",
              "content": {"text": llm.COMPOSE_INSTRUCTIONS, "editable_sections": ["WHO YOU ARE", "HOW TO WRITE"]}},
             {"key": "extract", "name": "Reader (what the customer said)",
-             "content": {"text": llm.EXTRACT_INSTRUCTIONS, "editable_sections": []}}]
+             "content": {"text": llm.EXTRACT_INSTRUCTIONS, "editable_sections": []}},
+            # The user, 3 Nov 2026: "add a judge - agents verify their own decisions".
+            {"key": "judge", "name": "Judge (checks each reply before it is sent)",
+             "content": {"text": _module("judge").INSTRUCTIONS, "editable_sections": []}}]
 
 
 def _hhmm(t: Any) -> str:
@@ -445,6 +448,8 @@ def compliance() -> list[dict[str, Any]]:
             "website_when_stuck": _module("link_resolver").WEBSITE_WHEN_STUCK,
             "offer_times_with_answers": _decide().OFFER_TIMES_WITH_ANSWERS,
             "never_ask_what_day_works": _module("open_time_question").ON,
+            # The user, 3 Nov 2026: a judge checks each reply against what the customer said before it is sent.
+            "judge_before_sending": _module("judge").ON,
             # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
             "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
         # The user / Betsy, 25 Oct 2026: "check things at every message" - the last look before any message leaves.
@@ -573,12 +578,12 @@ def _decide():
     return decide
 
 
-LOCKED = {"prompts": ["extract"]}
+LOCKED = {"prompts": ["extract", "judge"]}
 
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 34
+DEFAULTS_REVISION = 35
 
 
 def export() -> dict[str, Any]:

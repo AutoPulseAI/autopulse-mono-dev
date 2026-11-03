@@ -93,6 +93,8 @@ class AgentState(BaseModel):
     draft: dict[str, Any] | None = None
     guard_result: dict[str, Any] | None = None
     retry_count: int = 0
+    # The first draft, when the judge (agent/judge.py) was its only objection: sent if the rewrite fails other checks.
+    judged_draft: dict[str, Any] | None = None
     # used_template: the reply came from agent/templates.py for any reason.
     # used_fallback: specifically because the guard rejected the AI's drafts.
     used_template: bool = False

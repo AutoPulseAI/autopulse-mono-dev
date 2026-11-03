@@ -838,6 +838,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if bad_grammar:
         result["passed"] = False
         result["violations"] += bad_grammar
+    # The user, 3 Nov 2026 ("add a judge - agents verify their own decisions"): the first draft of a reply is checked
+    # against what the customer said (agent/judge.py); a miss goes back to the writer once with the judge's fix.
+    from upsell_agent.agent import judge as judge_
+    verdict = await judge_.judge(state, ctx)
+    if verdict is not None:
+        result["judge"] = verdict
+        result["checks"]["judge"] = verdict["ok"]
+        if not verdict["ok"]:
+            result["passed"] = False
+            result["violations"].append(f"the judge: {verdict['problem']} Do this instead: {verdict['fix']}".strip())
     will_retry = not result["passed"] and state.retry_count < MAX_REWRITES
     result["next"] = "send" if result["passed"] else ("compose" if will_retry else "fallback")
 
@@ -852,7 +862,16 @@ async def guard(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[str
     if will_retry:
         await ctx.tracer.retry("guard", "compose", reason="; ".join(result["violations"]),
                                attempt=state.retry_count + 1)
-        return {"guard_result": result, "retry_count": state.retry_count + 1}
+        only_judge = verdict is not None and not verdict["ok"] and len(result["violations"]) == 1
+        return {"guard_result": result, "retry_count": state.retry_count + 1,
+                **({"judged_draft": state.draft} if only_judge else {})}
+    if not result["passed"] and state.judged_draft:
+        # The judge's rewrite failed another check: the first draft, which passed every check but the judge's, goes -
+        # never the safe template in its place.
+        result.update(passed=True, next="send")
+        span.reasoning.append("The rewrite failed: the first draft (only the judge objected to it) is sent.")
+        span.edge_label = "approved"
+        return {"guard_result": result, "draft": state.judged_draft}
     if not result["passed"]:
         in_a_row = int(((state.context_pack or {}).get("conversation") or {}).get("fallbacks_in_a_row") or 0) + 1
         repeated = in_a_row >= FALLBACKS_BEFORE_HANDOFF
