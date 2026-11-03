@@ -123,3 +123,32 @@ async def test_a_failed_rewrite_sends_the_first_draft_not_the_template(mongo, ve
     summary = (finished.get("data") or {}).get("summary") or {}
     assert not summary.get("used_template") and not summary.get("fallback_reason"), summary
     assert summary.get("send_status") == "sent", summary
+
+
+async def test_a_message_whose_reply_was_held_back_is_answered_by_the_next_reply(mongo):
+    """Mazher Khan, 3 Nov 2026: "Please send me the link", then "So I can see" 5 seconds later. The reply with the link
+    was held back as superseded; the newer turn read only "So I can see" and sent photos without the link."""
+    from upsell_agent.events import handlers
+    from upsell_agent.integrations.mongodb import AI_MESSAGES_COLLECTION
+    created = await _lead()
+    await _offer(mongo, created)
+
+    def event(text):
+        return InboundMessageEvent(event_id=f"m-{ObjectId()}", dealer_id=DEALER, customer_id=created["customer_id"],
+                                   lead_id=created["lead_id"], message_id=f"m-{ObjectId()}", channel="sms", text=text,
+                                   received_at=clock.now())
+
+    await handlers.record_inbound(event("Please send me the link"))
+    # Its own turn ran and its reply was held back (superseded) - the message is marked answered all the same.
+    await mongo[AI_MESSAGES_COLLECTION].update_one({"text": "Please send me the link"},
+                                                   {"$set": {"answered_turn_id": "inbound-held-back"}})
+    await mongo[AI_MESSAGES_COLLECTION].insert_one({
+        "dealer_id": DEALER, "lead_id": created["lead_id"], "direction": "outbound", "channel": "sms",
+        "turn_id": "inbound-held-back", "status": "suppressed", "presend": "superseded", "created_at": clock.now(),
+        "text": "Here's the link to the car: https://autopulse.ai/l/X"})
+    sink = MemoryTraceSink()
+    await _say(created, "So I can see", sink)
+    loaded = next(e for e in sink.events if e.get("type") == "node_finished" and e.get("node") == "load_context")
+    assert "2 new message(s) to answer" in " ".join(loaded["data"]["reasoning"])
+    extracted = next(e for e in sink.events if e.get("type") == "node_started" and e.get("node") == "extract")
+    assert "Please send me the link" in str(extracted["data"]["input"])
