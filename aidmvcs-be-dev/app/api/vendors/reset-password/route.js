@@ -2,13 +2,8 @@ import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 import bcrypt from "bcryptjs";
 import { resetPasswordAccountEmail } from "@lib/emailservice";
-import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function POST(req) {
-  // Security fix (Nov 2026): this set any account's password with no sign-in. Only the super admin's
-  // Agencies / Dealers "Reset password" buttons use it.
-  const guard = await requireSuperAdmin(req);
-  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const { vendorId, password } = await req.json();

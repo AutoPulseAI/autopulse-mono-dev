@@ -63,7 +63,7 @@ async function userFromToken(token) {
 }
 
 // Every signed-in user the request carries: the Bearer one alone when it is valid, else each valid session cookie.
-async function requestUsers(req) {
+export async function requestUsers(req) {
   const bearer = await userFromToken(bearerToken(req));
   if (bearer) return [bearer];
   const users = [];
