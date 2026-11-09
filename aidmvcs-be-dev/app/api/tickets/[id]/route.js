@@ -109,7 +109,13 @@ export async function DELETE(req, { params }) {
     // Await params in Next.js 15+
     const { id } = await params;
     
-    const ticket = await Ticket.findByIdAndDelete(id);
+    // Security fix (Nov 2026): deleted any ticket with no sign-in; now the ticket's own people or a super admin.
+    const found = await Ticket.findById(id).select("createdBy assignedTo").lean();
+    if (found) {
+      const access = await ticketAccess(req, found);
+      if (access.response) return access.response;
+    }
+    const ticket = found ? await Ticket.findByIdAndDelete(id) : null;
 
     if (!ticket) {
       return Response.json(
