@@ -6,7 +6,7 @@ import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, REPLY_FILTERS, STATE, collection, dealerForms,
   leadRowsForIds, leadsReceived, localDateTime, localDay, notYet, replies, windowFor,
 } from './common.js';
-import { shared } from './executive.js';
+import { SHOWN_BASIS, SHOWN_TEXT, shared } from './executive.js';
 
 const D = 'lead_source';
 const BY = ['lead_source'];
@@ -62,8 +62,8 @@ export const LEAD_SOURCE_KPIS = [
   },
   {
     id: 'source.shown', label: 'Shown', dashboard: D, grain: 'booking', kind: KIND.COUNT,
-    dateBasis: 'Booking.bookingDate', numerator: 'Appointments scheduled in the range marked showed or completed, by '
-      + 'the lead\'s provider.', denominator: null, inclusions: 'Recorded outcomes only.',
+    dateBasis: 'Booking.bookingDate', numerator: `${SHOWN_TEXT} By the lead's provider.`, denominator: null,
+    inclusions: 'As exec.shown.', basedOn: SHOWN_BASIS,
     exclusions: 'Cancelled; duplicates.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: BY,
     columns: BOOKING_COLUMNS, evaluate: async (args, ctx) => ({ rows: await shared.shownRows(args, ctx) }),
   },

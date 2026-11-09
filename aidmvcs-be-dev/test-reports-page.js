@@ -1,9 +1,11 @@
-// The Reports page (P1 plan items 1, 4, 5): every live KPI's number equals its drill-down ids and its CSV rows for
-// the same filters; dealer-local date boundaries; who may call /api/reports/kpis; blocked / needs-data KPIs return a
-// state, never a number; the status normaliser; the legacy-status script's dry run changes nothing.
+// The Reports page (P1 plan items 1, 4, 5): every live KPI tied to leads opens the Leads list
+// (/api/leads?report_kpi=) with exactly the leads behind its number, and that list's CSV has the same rows;
+// Shown / Show rate (past appointments only) and Shown = the Dashboard's "Appointments Showed"; dealer-local date
+// boundaries; who may call /api/reports/kpis; blocked / needs-data KPIs return a state, never a number; the status
+// normaliser; the legacy-status script's dry run changes nothing.
 //
-// Uses its own local MongoDB database (reportspage_test, wiped before each test, dropped at the end; skipped when
-// MongoDB is not reachable) and its own Redis database for the cache test (REPORTS_TEST_REDIS_DB, default 13).
+// Uses its own local MongoDB database (reportspage_test, collections cleared before each test, dropped at the end;
+// skipped when MongoDB is not reachable) and its own Redis database for the cache test (REPORTS_TEST_REDIS_DB, default 13).
 //   Run: node --test test-reports-page.js
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,6 +44,9 @@ const { default: moment } = await import('moment-timezone');
 const { default: Redis } = await import('ioredis');
 const { default: User } = await import('./app/models/User.js');
 const route = await import('./app/api/reports/kpis/route.js');
+const leadsRoute = await import('./app/api/leads/route.js');
+const { appointmentFunnel } = await import('./app/lib/appointmentFunnel.js');
+const { localDayRange } = await import('./app/lib/reporting/time.js');
 const { closeCache, CACHE_PREFIX } = await import('./app/api/reports/kpis/cache.js');
 const { listKpis, getKpi, runKpi, evaluateKpi, kpisForDashboard, listDashboards } = await import(
   './app/lib/reporting/registry.js');
@@ -59,8 +64,27 @@ const auth = (userId, extra) => ({ Authorization: `Bearer ${token(userId, extra)
 const call = (qs, headers = {}) => route.GET(new Request(`http://localhost/api/reports/kpis?${qs}`, { headers }));
 const base = (extra = '') => `dealer_id=${DEALER}&start_date=${DAY}&end_date=${DAY}${extra}`;
 
-// Count CSV records (quoted fields may hold commas; the route turns line breaks into spaces).
-const csvRows = (text) => text.split('\r\n').filter(Boolean).length - 1;
+// The Leads list a Reports number opens (KpiCards linkFor): report_kpi, the day's instants, the page's filters.
+const DAY_RANGE = localDayRange(DAY, DAY, NY);
+const reportLink = (kpi, { variant = '', extra = '' } = {}) => {
+  const q = new URLSearchParams({ report_kpi: kpi, startDate: DAY_RANGE.start.toISOString(),
+    endDate: DAY_RANGE.end.toISOString() });
+  if (variant) q.set('report_filters', variant.replace(/^&/, ''));
+  return `${q.toString()}${extra}`;
+};
+const leadsCall = (qs, headers) => leadsRoute.GET(new Request(`http://localhost/api/leads?dealer_id=${DEALER}&${qs}`,
+  { headers }));
+async function leadList(qs, headers = auth(ADMIN)) {
+  const res = await leadsCall(`limit=100&${qs}`, headers);
+  assert.equal(res.status, 200, qs);
+  return res.json();
+}
+// The list's Export CSV: a header line, then one line per lead.
+async function leadCsvRows(qs, headers = auth(ADMIN)) {
+  const res = await leadsCall(`format=csv&${qs}`, headers);
+  assert.equal(res.status, 200, qs);
+  return (await res.text()).split('\n').filter(Boolean).slice(1).length;
+}
 
 // --- pure: normaliser --------------------------------------------------------------------------------------------
 
@@ -293,7 +317,8 @@ async function seed() {
 
 beforeEach(async () => {
   if (!connected) return;
-  await mongoose.connection.dropDatabase();
+  // Clear, not drop: dropping per test runs the local mongod out of file handles.
+  for (const c of await mongoose.connection.db.collections()) await c.deleteMany({});
   await seed();
   await clearCache();
 });
@@ -302,7 +327,11 @@ const needDb = (t) => { if (!connected) { t.skip('MongoDB not reachable'); retur
 const FILTER_VARIANTS = ['', `&lead_source=CarGurus`, `&assigned_to=${STAFF}`, '&actor=ai', '&appointment_type=service',
   '&channel=sms'];
 
-test('every live KPI: count = drill-down ids = CSV rows, for the same filters', async (t) => {
+// KPIs whose records are not tied to leads: not clickable.
+const NOT_LEADS = ['dq.dms_import_errors', 'dq.duplicate_customers', 'dq.merged_customers', 'source.vdp_clicks',
+  'source.website_clicks', 'service.vehicles_on_file'];
+
+test('every live KPI: its Leads list = its leads, CSV = list; lead KPIs list exactly the number', async (t) => {
   if (needDb(t)) return;
   let checked = 0;
   for (const variant of FILTER_VARIANTS) {
@@ -317,35 +346,139 @@ test('every live KPI: count = drill-down ids = CSV rows, for the same filters', 
           assert.equal(k.value, null, `${k.id} has no number`);
           assert.equal(k.count, null);
           assert.ok(k.reason);
+          assert.equal(k.leads_link, false, `${k.id} not clickable`);
           continue;
         }
-        const rowsRes = await call(base(`&kpi=${k.id}&rows=1${variant}`), auth(ADMIN));
-        assert.equal(rowsRes.status, 200, k.id);
-        const drill = await rowsRes.json();
-        assert.equal(drill.ids.length, k.count, `${k.id}${variant} drill ids`);
-        assert.equal(new Set(drill.ids).size, drill.ids.length, `${k.id} unique ids`);
-        assert.equal(drill.rows.length, k.count);
-        const csvRes = await call(base(`&kpi=${k.id}&format=csv${variant}`), auth(ADMIN));
-        assert.equal(csvRes.status, 200);
-        assert.match(csvRes.headers.get('content-type'), /text\/csv/);
-        assert.equal(csvRows(await csvRes.text()), k.count, `${k.id}${variant} csv rows`);
-        if (k.kind === 'rate') {
-          const den = await (await call(base(`&kpi=${k.id}&rows=1&part=denominator${variant}`), auth(ADMIN))).json();
-          assert.equal(den.count, k.denominator.count, `${k.id} denominator`);
-        }
         for (const [by, groups] of Object.entries(k.breakdowns || {})) {
-          for (const g of groups) {
-            const gr = await (await call(base(`&kpi=${k.id}&rows=1&by=${by}&group=${encodeURIComponent(g.key)}${variant}`),
-              auth(ADMIN))).json();
-            assert.equal(gr.count, g.count, `${k.id} ${by}=${g.key}`);
-          }
           assert.equal(groups.reduce((s, g) => s + g.count, 0), k.count, `${k.id} ${by} groups sum`);
+        }
+        if (NOT_LEADS.includes(k.id)) assert.equal(k.leads_link, false, k.id);
+        if (!k.leads_link) continue;
+        const parts = [['', k.count]];
+        if (k.kind === 'rate') parts.push(['&report_part=denominator', k.denominator.count]);
+        for (const [extra, number] of parts) {
+          const qs = reportLink(k.id, { variant, extra });
+          const list = await leadList(qs);
+          const chip = list.drill.filters[0];
+          assert.equal(chip.param, 'report_kpi');
+          assert.equal(chip.card_count, number, `${k.id}${extra}${variant} records`);
+          assert.equal(list.pagination.totalItems, chip.lead_count, `${k.id}${extra}${variant} list = its leads`);
+          if (k.grain === 'lead') assert.equal(list.pagination.totalItems, number, `${k.id}${extra}${variant} = number`);
+          if (list.pagination.totalItems !== number) assert.ok(chip.note, `${k.id}: a note says why the list differs`);
+          assert.equal(await leadCsvRows(qs), list.pagination.totalItems, `${k.id}${extra}${variant} CSV = list`);
+        }
+        // A breakdown group's list (lead KPIs, no filter): exactly the group's number.
+        if (!variant && k.grain === 'lead') {
+          for (const [by, groups] of Object.entries(k.breakdowns || {})) {
+            for (const g of groups) {
+              const list = await leadList(reportLink(k.id, { extra: `&report_by=${by}&report_group=${encodeURIComponent(g.key)}` }));
+              assert.equal(list.pagination.totalItems, g.count, `${k.id} ${by}=${g.key}`);
+            }
+          }
         }
         checked += 1;
       }
     }
   }
-  assert.ok(checked > 300, `checked ${checked}`);
+  assert.ok(checked > 250, `checked ${checked}`);
+});
+
+test('Leads list ?report_kpi=: only for admins; ignored for the dealer and its staff; paging and sorting keep it',
+  async (t) => {
+    if (needDb(t)) return;
+    const plain = reportLink('exec.crm_sold').replace(/^report_kpi=[^&]*&/, ''); // the same dates, no report_kpi
+    for (const who of [DEALER, STAFF]) {
+      const all = await leadList(plain, auth(who));
+      const list = await leadList(reportLink('exec.crm_sold'), auth(who));
+      assert.equal(list.drill, undefined, 'no chip');
+      assert.equal(list.pagination.totalItems, all.pagination.totalItems, 'param ignored: the plain list');
+      assert.equal(all.pagination.totalItems, 3, 'leads received that day');
+      assert.equal(await leadCsvRows(reportLink('exec.crm_sold'), auth(who)), 3);
+    }
+    // "Login as" from a super admin: applied.
+    const as = auth(DEALER, { impersonated_by: String(ADMIN), impersonator_type: 'admin' });
+    const sold = await leadList(reportLink('exec.crm_sold'), as);
+    assert.deepEqual(sold.data.map((l) => String(l._id)), [String(L.a)]);
+    assert.equal(sold.drill.filters[0].label, 'Report: CRM sold');
+    assert.deepEqual(sold.drill.range, { from: DAY, to: DAY });
+    // Page 2 / sorted: the same leads.
+    const received = reportLink('exec.leads_received');
+    const p1 = await leadList(`${received}&limit=2&page=1&sort=created_asc`);
+    const p2 = await leadList(`${received}&limit=2&page=2&sort=created_asc`);
+    assert.equal(p1.pagination.totalItems, 3);
+    assert.deepEqual([...p1.data, ...p2.data].map((l) => String(l._id)), [L.a, L.c, L.b].map(String));
+    // Unknown or not-lead KPIs: the plain list.
+    for (const kpi of ['nope', 'dq.dms_import_errors', 'sales.showroom_visits']) {
+      const list = await leadList(reportLink(kpi));
+      assert.equal(list.drill, undefined, kpi);
+    }
+    // Several appointments on one lead: the list is the leads, and says so.
+    const set = await leadList(reportLink('appointments.set'));
+    assert.equal(set.drill.filters[0].card_count, 4);
+    assert.equal(set.pagination.totalItems, 4);
+    const sched = await leadList(reportLink('appointments.scheduled'));
+    assert.equal(sched.drill.filters[0].card_count, 3);
+    assert.equal(sched.pagination.totalItems, 3);
+    await mongoose.connection.db.collection('bookings').insertOne({ dealer_id: String(DEALER), lead_id: String(L.a),
+      customerName: 'x', bookingDate: at(`${DAY} 00:00:00`), bookingTime: '18:00', booking_status: 'pending',
+      created_by: 'staff', createdAt: at('2026-11-01 09:00:00') });
+    const more = await leadList(reportLink('appointments.scheduled'));
+    assert.equal(more.drill.filters[0].card_count, 4);
+    assert.equal(more.pagination.totalItems, 3);
+    assert.match(more.drill.filters[0].note, /1 more appointment is on a lead already listed/);
+  });
+
+test('Shown / Show rate: past appointments only; Shown = the Dashboard\'s "Appointments Showed"', async (t) => {
+  if (needDb(t)) return;
+  const db = mongoose.connection.db;
+  const d = String(DEALER);
+  const args = (now) => ({ dealerId: d, from: DAY, to: DAY, tz: NY, spec: {}, now });
+  // Scheduled for 5 Nov (not cancelled): ai 10:00 (showed), staff 15:00 (no-show recorded), noOutcome 16:00 (lead
+  // "visited", lower case - not a Dashboard visit status), and the duplicate of ai (counted once).
+  const at1230 = at(`${DAY} 12:30:00`);
+  let shown = await evaluateKpi('exec.shown', args(at1230), {});
+  let rate = await evaluateKpi('exec.show_rate', args(at1230), {});
+  assert.deepEqual(shown.ids, [String(B.ai)]);
+  // At 12:30 only the 10:00 appointment is past: 1 of 1. 15:00 and 16:00 are still ahead.
+  assert.deepEqual([rate.value, rate.numerator.count, rate.denominator.count], [100, 1, 1]);
+  assert.deepEqual((await evaluateKpi('appointments.upcoming', args(at1230), {})).ids.sort(),
+    [B.staff, B.noOutcome].map(String).sort());
+  assert.equal((await evaluateKpi('appointments.no_show', args(at1230), {})).count, 0);
+  // After 16:00: all three past, one shown -> 1 of 3; the two others are no-shows (recorded or not).
+  const evening = at(`${DAY} 20:00:00`);
+  rate = await evaluateKpi('exec.show_rate', args(evening), {});
+  assert.deepEqual([rate.value, rate.numerator.count, rate.denominator.count], [33.33, 1, 3]);
+  assert.deepEqual((await evaluateKpi('appointments.no_show', args(evening), {})).ids.sort(),
+    [B.staff, B.noOutcome].map(String).sort());
+  // Cancelled ones are never in it (B.cancelled is on 7 Nov; one more cancelled on 5 Nov changes nothing).
+  await db.collection('bookings').insertOne({ dealer_id: d, lead_id: String(L.c), customerName: 'x', showed: true,
+    bookingDate: at(`${DAY} 00:00:00`), bookingTime: '09:00', booking_status: 'cancelled', createdAt: at(`${DAY} 01:00:00`) });
+  assert.equal((await evaluateKpi('exec.show_rate', args(evening), {})).denominator.count, 3);
+  // The lead's status counts, as on the Dashboard: Ben (noOutcome) becomes Unsold -> shown.
+  await db.collection('leads').updateOne({ _id: L.b }, { $set: { fe_lead_status: 'Unsold' } });
+  rate = await evaluateKpi('appointments.show_rate', args(evening), {});
+  assert.deepEqual([rate.numerator.count, rate.denominator.count], [2, 3]);
+  // The card's text.
+  const card = (await (await call(base('&dashboard=executive'), auth(ADMIN))).json()).kpis
+    .find((k) => k.id === 'exec.show_rate');
+  assert.equal(card.denominator_label, 'past appointments');
+  assert.ok(card.leads_link);
+  assert.match(getKpi('exec.show_rate').denominator, /already passed/);
+  assert.match(getKpi('exec.shown').numerator, /Appointments Showed/);
+  assert.match(getKpi('appointments.no_show').numerator, /passed .* not cancelled and not shown/);
+  for (const k of listKpis()) assert.ok(k.basedOn, `${k.id} names its source`);
+
+  // Same dates, same number as the Dashboard card. The duplicate of B.ai (same lead, day, time) is counted once on the
+  // Reports page; the Dashboard counts it again (its lead is Sold Pending) - without it the two agree.
+  const { start, end } = localDayRange(DAY, DAY, NY);
+  const funnel = async () => (await appointmentFunnel({ dealerId: d, start, end })).showed.total;
+  shown = await evaluateKpi('exec.shown', args(evening), {});
+  const dupes = (await evaluateKpi('dq.duplicate_bookings', args(evening), {})).count;
+  assert.equal(await funnel(), shown.count + dupes);
+  await db.collection('bookings').deleteOne({ _id: B.dup });
+  shown = await evaluateKpi('exec.shown', args(evening), {});
+  assert.equal(shown.count, await funnel());
+  assert.equal((await evaluateKpi('appointments.shown', args(evening), {})).count, await funnel());
 });
 
 test('values: dealer-local day boundaries and the fixed defects', async (t) => {
@@ -365,11 +498,11 @@ test('values: dealer-local day boundaries and the fixed defects', async (t) => {
   assert.deepEqual((await v('appointments.ai_assisted')).ids, [String(B.staff)]);
   assert.deepEqual((await v('appointments.unknown_creator')).ids, [String(B.service)]);
   assert.deepEqual((await v('dq.duplicate_bookings')).ids, [String(B.dup)]);
-  // Scheduled for 5 Nov: ai (showed), staff (no-show), noOutcome. Show rate = 1 / 2.
+  // Scheduled for 5 Nov: ai (showed), staff (no-show), noOutcome - all past now. Show rate = 1 / 3.
   assert.equal((await v('appointments.scheduled')).count, 3);
   const rate = await v('appointments.show_rate');
-  assert.equal(rate.value, 50);
-  assert.equal(rate.denominator.count, 2);
+  assert.equal(rate.value, 33.33);
+  assert.equal(rate.denominator.count, 3);
   // 'visited' (lower case) counts as a visit; 'Sold' (legacy) before the range doesn't make Old's first sale today.
   assert.deepEqual((await v('sales.proxy_visits')).ids, [String(L.b)]);
   assert.deepEqual((await v('exec.crm_sold')).ids, [String(L.a)]);
@@ -425,7 +558,6 @@ test('route: 401 / 403 / 404 / 200', async (t) => {
   // The dealer and its staff: the page doesn't exist for them (feature not visible).
   assert.equal((await call(base('&dashboard=executive'), auth(DEALER))).status, 404);
   assert.equal((await call(base('&dashboard=executive'), auth(STAFF))).status, 404);
-  assert.equal((await call(base('&kpi=exec.leads_received&rows=1'), auth(DEALER))).status, 404);
   assert.equal((await call(`dealer_id=${DEALER}&check=1`, auth(STAFF))).status, 404);
   // A forged impersonation claim from a non-admin doesn't count.
   assert.equal((await call(base('&dashboard=executive'), auth(DEALER, { impersonated_by: String(OTHER) }))).status, 404);
@@ -440,7 +572,8 @@ test('route: 401 / 403 / 404 / 200', async (t) => {
   // Bad input.
   assert.equal((await call(base('&dashboard=nope'), auth(ADMIN))).status, 400);
   assert.equal((await call(`dealer_id=${DEALER}&dashboard=executive`, auth(ADMIN))).status, 400);
-  assert.equal((await call(base('&kpi=nope&rows=1'), auth(ADMIN))).status, 404);
+  // The old drill-down table's API is gone: kpi= alone is not a tab.
+  assert.equal((await call(base('&kpi=exec.leads_received&rows=1'), auth(ADMIN))).status, 400);
   const defs = await (await call(`dealer_id=${DEALER}&definitions=1`, auth(ADMIN))).json();
   assert.equal(defs.kpis.length, listKpis().length);
   const opts = await (await call(`dealer_id=${DEALER}&options=1`, auth(ADMIN))).json();
@@ -460,12 +593,8 @@ test('blocked and needs-data KPIs return a state, not a number', async (t) => {
   assert.equal(proxy.state, 'live');
   assert.equal(proxy.count, 1);
   for (const kpi of ['sales.showroom_visits', 'source.roi', 'appointments.moved']) {
-    const res = await call(base(`&kpi=${kpi}&rows=1`), auth(ADMIN));
-    assert.equal(res.status, 409, kpi);
-    const b = await res.json();
-    assert.ok(['blocked', 'needs_data'].includes(b.state));
-    assert.equal(b.rows, undefined);
-    assert.equal((await call(base(`&kpi=${kpi}&format=csv`), auth(ADMIN))).status, 409);
+    const list = await leadList(reportLink(kpi));
+    assert.equal(list.drill, undefined, `${kpi}: not clickable, the list ignores it`);
   }
   const r = await runKpi('source.roi', { dealerId: String(DEALER), from: DAY, tz: NY });
   assert.equal(r.state, 'needs_data');
@@ -473,7 +602,7 @@ test('blocked and needs-data KPIs return a state, not a number', async (t) => {
   assert.equal(r.ids, null);
 });
 
-test('cache: totals cached five minutes per dealer + tab + range + filters; drill-downs never', async (t) => {
+test('cache: totals cached five minutes per dealer + tab + range + filters; the Leads lists never', async (t) => {
   if (needDb(t)) return;
   if (!redis) { t.skip('Redis not reachable'); return; }
   const first = await (await call(base('&dashboard=executive'), auth(ADMIN))).json();
@@ -489,10 +618,10 @@ test('cache: totals cached five minutes per dealer + tab + range + filters; dril
   assert.equal(second.last_updated, first.last_updated);
   const leads = (b) => b.kpis.find((k) => k.id === 'exec.leads_received').count;
   assert.equal(leads(second), 3);
-  // Drill-down / CSV are live.
-  const drill = await (await call(base('&kpi=exec.leads_received&rows=1'), auth(ADMIN))).json();
-  assert.equal(drill.count, 4);
-  assert.equal(csvRows(await (await call(base('&kpi=exec.leads_received&format=csv'), auth(ADMIN))).text()), 4);
+  // The Leads list it opens (and its CSV) is live.
+  const drill = await leadList(reportLink('exec.leads_received'));
+  assert.equal(drill.pagination.totalItems, 4);
+  assert.equal(await leadCsvRows(reportLink('exec.leads_received')), 4);
   // Different filters -> a different entry.
   const filtered = await (await call(base('&dashboard=executive&lead_source=CarGurus'), auth(ADMIN))).json();
   assert.equal(filtered.cached, false);

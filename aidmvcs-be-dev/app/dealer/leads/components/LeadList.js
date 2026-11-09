@@ -16,11 +16,17 @@ import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
 
-// The dashboard's admin "Customer replies by lead age" / "Appointments made" links (app/api/leads/route.js
-// drillFilter): carried on every list fetch and on Export CSV, so the CSV rows are the list.
+// The dashboard's admin "Customer replies by lead age" / "Appointments made" links and the Reports page's numbers
+// (report_kpi, with its part / breakdown group / filters) (app/api/leads/route.js drillFilter): carried on every list
+// fetch and on Export CSV, so the CSV rows are the list.
+const REPORT_PARAMS = { report_kpi: 'reportKpi', report_part: 'reportPart', report_by: 'reportBy',
+  report_group: 'reportGroup', report_filters: 'reportFilters' };
 const drillQuery = (f) => (f.replyCohort ? `&reply_cohort=${encodeURIComponent(f.replyCohort)}` : '')
-  + (f.apptAttribution ? `&appt_attribution=${encodeURIComponent(f.apptAttribution)}` : '');
-const DRILL_KEYS = { reply_cohort: 'replyCohort', appt_attribution: 'apptAttribution' };
+  + (f.apptAttribution ? `&appt_attribution=${encodeURIComponent(f.apptAttribution)}` : '')
+  + (f.reportKpi ? Object.entries(REPORT_PARAMS).filter(([, key]) => f[key])
+    .map(([param, key]) => `&${param}=${encodeURIComponent(f[key])}`).join('') : '');
+const DRILL_KEYS = { reply_cohort: ['replyCohort'], appt_attribution: ['apptAttribution'],
+  report_kpi: Object.values(REPORT_PARAMS) };
 const drillRangeText = (range) => {
   if (!range?.from) return '';
   const from = moment(range.from, 'YYYY-MM-DD');
@@ -114,6 +120,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       stopped: params.get('stopped') || '', // leads with a stop (app/lib/ai/stopLabels.js)
       replyCohort: params.get('reply_cohort') || '', // dashboard: customers replied by lead age (admins)
       apptAttribution: params.get('appt_attribution') || '', // dashboard: appointments made by AI / staff (admins)
+      ...Object.fromEntries(Object.entries(REPORT_PARAMS).map(([param, key]) => [key, params.get(param) || ''])), // Reports page (admins)
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
         endDate: params.get('endDate') ? new Date(params.get('endDate')) : null
@@ -618,10 +625,12 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // The × on a dashboard drill chip: drop that filter only (URL and list).
   const clearDrill = (param) => {
     const params = new URLSearchParams(window.location.search);
+    const keys = DRILL_KEYS[param] || [];
+    for (const [p, key] of Object.entries(REPORT_PARAMS)) if (keys.includes(key)) params.delete(p);
     params.delete(param);
     params.set('page', '1');
     replaceUrl(`/dealer/leads?${params.toString()}`);
-    setFilters((prev) => ({ ...prev, [DRILL_KEYS[param]]: '', page: 1 }));
+    setFilters((prev) => ({ ...prev, ...Object.fromEntries(keys.map((key) => [key, ''])), page: 1 }));
   };
 
   const clearFilters = () => {
@@ -1230,7 +1239,7 @@ useImperativeHandle(ref, () => ({
                   <button type="button" className="btn-close" style={{ fontSize: '0.6rem' }}
                     aria-label={`Clear ${f.label}`} onClick={() => clearDrill(f.param)} />
                 </Badge>
-                {f.note && <small className="text-muted d-block mt-1">{f.card_count != null ? `${f.card_count} on the dashboard · ${f.lead_count} ${f.lead_count === 1 ? 'lead' : 'leads'} listed · ` : ''}{f.note}</small>}
+                {f.note && <small className="text-muted d-block mt-1">{f.card_count != null ? `${f.card_count} on the ${f.where || 'dashboard'} · ${f.lead_count} ${f.lead_count === 1 ? 'lead' : 'leads'} listed · ` : ''}{f.note}</small>}
               </div>
             ))}
           </div>

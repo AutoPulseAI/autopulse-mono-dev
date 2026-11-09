@@ -127,6 +127,9 @@ async function seedActivity(dealerId = DEALER, tz = NY) {
     booking({ lead_id: String(leadStaff), created_by: 'staff', createdAt: at(`${DAY} 12:00`, tz), bookingDate: at('2026-11-13 10:00', tz) }),
     booking({ lead_id: String(leadPlain), created_by: 'staff', createdAt: at(`${DAY} 13:00`, tz), bookingDate: at('2026-11-14 10:00', tz), booking_status: 'cancelled' }),
     booking({ lead_id: String(leadOld), created_by: 'staff', createdAt: at('2026-11-05 13:00', tz), bookingDate: at(`${DAY} 10:00`, tz), showed: true }),
+    // Due that day, set earlier, no outcome recorded: its time has passed, so it is a no-show.
+    booking({ lead_id: String(leadPlain), created_by: 'staff', createdAt: at('2026-11-01 13:00', tz),
+      bookingDate: at(`${DAY} 00:00`, tz), bookingTime: '15:00', booking_status: 'pending' }),
   ]);
 }
 
@@ -333,6 +336,13 @@ test('snapshot numbers equal replyCohorts / attributeAppointments for that day',
     [3, 1, 1, 1]);
   assert.equal(m.appointments.cancelled, 1);
   assert.equal(m.appointments_due.shown, 1);
+  // Show rate = shown / past appointments (the Reports page's definition): 1 of 2.
+  assert.deepEqual([m.appointments_due.no_show, m.appointments_due.show_rate_pct, m.appointments_due.show_rate_of],
+    [1, 50, 2]);
+  assert.equal(m.appointments_due.show_rate_pct, due.outcomes.show_rate.value);
+  const { html, text } = renderDailyEmail({ snapshot: snap, dashboardUrl: 'https://crm.example.test/dealer/dashboard' });
+  assert.match(html, /Show rate/);
+  assert.match(text, /show rate 50% \(1 of 2 past\)/);
   assert.deepEqual([m.replies.todays_leads, m.replies.past_leads, m.replies.total], [1, 1, 2]);
   assert.deepEqual(m.replies.cumulative, { d7: 1, d15: 1, d30: 1, d60: 0 });
   assert.equal(m.leads.received, 1);

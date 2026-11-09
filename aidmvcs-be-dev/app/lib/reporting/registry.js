@@ -8,6 +8,7 @@
 import Booking from '../../models/Booking.js';
 import Lead from '../../models/Lead.js';
 import { repliedLeadIds } from '../contactedLeads.js';
+import { bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 import { attributeAppointments } from './appointmentAttribution.js';
 import { replyCohorts } from './replyCohorts.js';
 import { getDealerTimezone, localDayRange, toLocalDate } from './time.js';
@@ -15,8 +16,6 @@ import { DASHBOARDS, KIND, REPORT_KPIS, STATE } from './kpis/index.js';
 import { median, pct } from './kpis/common.js';
 
 const TZ_NOTE = 'Dealer-local calendar days (User.dealer_account_information.time_zone, default America/New_York).';
-const SOLD = ['Sold', 'Sold Pending', 'Sold Delivered'];
-const CAME = ['Visited', 'Unsold', ...SOLD];
 
 async function windowFor(args) {
   const tz = args.tz || await getDealerTimezone(args.dealerId);
@@ -103,11 +102,8 @@ const KPIS = [
       const w = await windowFor(args);
       const scheduled = await Booking.find({ dealer_id: String(args.dealerId), booking_status: { $ne: 'cancelled' },
         bookingDate: { $gte: w.start, $lte: w.end } }).select('_id lead_id showed booking_status').lean();
-      const leadIds = [...new Set(scheduled.map((b) => b.lead_id))].filter((id) => /^[0-9a-f]{24}$/i.test(String(id)));
-      const leads = leadIds.length ? await Lead.find({ _id: { $in: leadIds } }).select('fe_lead_status').lean() : [];
-      const status = new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
-      return scheduled.filter((b) => b.showed === true || b.booking_status === 'completed'
-        || CAME.includes(status.get(b.lead_id))).map((b) => String(b._id));
+      const status = await leadStatuses(scheduled.map((b) => b.lead_id));
+      return scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id)))).map((b) => String(b._id));
     },
   },
 
@@ -176,6 +172,14 @@ const KPIS = [
 // state 'live' = computed now; 'blocked' (waits on other work, e.g. the Desk Log) and 'needs_data' (the data isn't
 // recorded yet) are listed with their definitions and the reason, and never return a number.
 for (const k of REPORT_KPIS) KPIS.push({ status: 'new', version: 1, state: STATE.LIVE, kind: KIND.COUNT, ...k });
+
+// What the older (non-tab) KPIs' definitions come from.
+for (const k of KPIS) {
+  if (k.basedOn) continue;
+  if (k.status === 'existing') k.basedOn = `Existing ${k.usedBy}.`;
+  else if (k.id.startsWith('replies.')) k.basedOn = 'SOW §8B Deliverable F3: customer reply cohorts.';
+  else if (k.id.startsWith('appt.attr.')) k.basedOn = 'SOW §8A Deliverable F2: appointment attribution.';
+}
 
 const BY_ID = new Map(KPIS.map((k) => [k.id, k]));
 
@@ -254,6 +258,13 @@ export async function evaluateKpi(id, args, ctx = {}) {
   }
   for (const by of k.breakdowns || []) res.breakdowns[by] = groupCounts(rows, by);
   return res;
+}
+
+// Whether a KPI's records are tied to leads (its rows carry lead_id, or lead_ids for customer rows): only those
+// numbers open the Leads list (/dealer/leads?report_kpi=<id>). Import errors, clicks, campaign totals... are not.
+export function isLeadLinked(def) {
+  return Boolean(def && def.dashboard && (def.state || STATE.LIVE) === STATE.LIVE
+    && (def.columns || []).some(([key]) => key === 'lead_id' || key === 'lead_ids'));
 }
 
 // Definitions only (no functions), for the Definitions page and CSV.

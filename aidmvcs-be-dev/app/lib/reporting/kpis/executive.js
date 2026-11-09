@@ -22,14 +22,22 @@ export const shared = {
     return memo(ctx, 'rows:appt_scheduled', async () => bookingRows((await attribution(args, ctx, 'scheduled')).rows,
       args, ctx));
   },
-  // Same rule as appointmentAttribution.outcomes(): showed = true or completed.
+  // Shown / No-show / Show rate: ONE definition everywhere (the Dashboard's "Appointments Showed" card, the daily
+  // email via appointmentAttribution.outcomes()). Of the scheduled appointments (not cancelled):
+  //   shown     marked shown, completed, or the lead is now Visited / Unsold / Sold* (appointmentFunnel.bookingShowed)
+  //   due       its date and time have passed (dealer time zone), or it is already shown (the customer came)
+  //   no-show   due and not shown;  upcoming  not passed yet and not shown;  show rate = shown / due
   async shownRows(args, ctx) {
-    return (await shared.apptScheduledRows(args, ctx)).filter((r) => r.showed === 'yes'
-      || r.booking_status === 'completed');
+    return (await shared.apptScheduledRows(args, ctx)).filter((r) => r._shown);
+  },
+  async dueRows(args, ctx) {
+    return (await shared.apptScheduledRows(args, ctx)).filter((r) => r._shown || r._past);
   },
   async noShowRows(args, ctx) {
-    return (await shared.apptScheduledRows(args, ctx)).filter((r) => r.showed === 'no'
-      && r.booking_status !== 'completed');
+    return (await shared.apptScheduledRows(args, ctx)).filter((r) => r._past && !r._shown);
+  },
+  async upcomingRows(args, ctx) {
+    return (await shared.apptScheduledRows(args, ctx)).filter((r) => !r._past && !r._shown);
   },
   async soldRows(args, ctx) {
     return firstStatusChangeLeads(args, ctx, 'sold', SOLD_REGEX);
@@ -67,6 +75,18 @@ export const shared = {
     });
   },
 };
+
+// The definition texts of Shown / No-show / Show rate, shared by the Executive, Appointments and Lead source tabs.
+export const SHOWN_TEXT = 'Appointments scheduled in the range (not cancelled) the customer came to: marked showed '
+  + '(Booking.showed = true), completed, or the lead\'s status is now Visited / Unsold / Sold / Sold Pending / Sold '
+  + 'Delivered - the same rule as the Dashboard card "Appointments Showed".';
+export const NO_SHOW_TEXT = 'Appointments scheduled in the range whose date and time have passed (dealer time zone), '
+  + 'not cancelled and not shown.';
+export const SHOW_RATE_DENOMINATOR = 'Appointments scheduled in the range whose date and time have already passed '
+  + '(dealer time zone), not cancelled: shown + no-show. Future appointments are not counted. (An appointment already '
+  + 'marked shown counts as past even if its time is later that day.)';
+export const SHOWN_BASIS = 'Dashboard card "Appointments Showed" (app/lib/appointmentFunnel.js bookingShowed); SOW §8 '
+  + 'Deliverable F: "Show rates ... must not change meaning across dashboards".';
 
 const REPLIED_COLUMNS = [['customer_key', 'Customer key'], ['customer', 'Customer'], ['first_reply_local', 'First reply day'],
   ['lead_ids', 'Lead IDs'], ['reply_messages', 'Reply messages'], ['lead_age_days', 'Lead age (days)'],
@@ -153,27 +173,24 @@ export const EXECUTIVE_KPIS = [
   },
   {
     id: 'exec.shown', label: 'Shown', dashboard: D, grain: 'booking', kind: KIND.COUNT,
-    dateBasis: 'Booking.bookingDate',
-    numerator: 'Appointments scheduled in the range marked showed (Booking.showed = true) or completed.',
-    denominator: null, inclusions: 'Only outcomes recorded on the booking.',
-    exclusions: 'Cancelled bookings; duplicates. The lead\'s current status is NOT used (the old dashboard counts a '
-      + 'booking as shown when the lead is now Visited/Sold).',
-    source: ['bookings'], filters: BOOKING_FILTERS, breakdowns: ['creator', 'department'], columns: BOOKING_COLUMNS,
+    dateBasis: 'Booking.bookingDate (the appointment day)',
+    numerator: SHOWN_TEXT, denominator: null,
+    inclusions: 'pending, confirmed, completed bookings whose appointment day is in the range.',
+    exclusions: 'Cancelled bookings; duplicates (same lead, day and time: counted once).',
+    basedOn: SHOWN_BASIS,
+    source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: ['creator', 'department'], columns: BOOKING_COLUMNS,
     evaluate: async (args, ctx) => ({ rows: await shared.shownRows(args, ctx) }),
   },
   {
     id: 'exec.show_rate', label: 'Show rate', dashboard: D, grain: 'booking', kind: KIND.RATE, unit: '%',
-    dateBasis: 'Booking.bookingDate',
-    numerator: 'Shown appointments (exec.shown).',
-    denominator: 'Scheduled appointments in the range with a recorded outcome: shown + no-show (Booking.showed = '
-      + 'false). Bookings with no outcome recorded are left out, never counted as no-shows.',
-    inclusions: 'As exec.shown.', exclusions: 'Cancelled; duplicates; no outcome recorded.',
-    source: ['bookings'], filters: BOOKING_FILTERS, columns: BOOKING_COLUMNS,
-    evaluate: async (args, ctx) => {
-      const shown = await shared.shownRows(args, ctx);
-      const noShow = await shared.noShowRows(args, ctx);
-      return { rows: shown, denominatorRows: [...shown, ...noShow] };
-    },
+    dateBasis: 'Booking.bookingDate (the appointment day) and Booking.bookingTime, dealer time zone',
+    numerator: 'Shown (exec.shown).', denominator: SHOW_RATE_DENOMINATOR, denominatorLabel: 'past appointments',
+    inclusions: 'Appointments scheduled in the range whose time has passed.',
+    exclusions: 'Cancelled bookings; appointments still ahead (future); duplicates.',
+    basedOn: SHOWN_BASIS,
+    source: ['bookings', 'leads'], filters: BOOKING_FILTERS, columns: BOOKING_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: await shared.shownRows(args, ctx),
+      denominatorRows: await shared.dueRows(args, ctx) }),
   },
   {
     id: 'exec.crm_sold', label: 'CRM sold', dashboard: D, grain: 'lead', kind: KIND.COUNT,
