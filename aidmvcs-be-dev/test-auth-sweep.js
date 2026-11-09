@@ -437,3 +437,91 @@ test('auth/reset-password: an operator object as the token is refused', async (t
   const ok = await POST(req('/api/auth/reset-password', { method: 'POST', body: { token: 'real-token', email: 'a@t.test', newPassword: 'new-pass-123' } }));
   assert.equal(ok.status, 200, 'the emailed link still works');
 });
+
+// --- routes outside the candidate list (a method with no check in a file that had one elsewhere) ----------------
+
+test('roles/[id] PUT: only the role\'s own account, only its own kind of permission; admin roles super admin only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Role } = await import('./app/models/Role.js');
+  const { default: Permission } = await import('./app/models/Permission.js');
+  const P_DEALER = id(40), P_ADMIN = id(41), ROLE_A = id(42), ROLE_SUPER = id(43);
+  await Permission.collection.insertMany([{ _id: P_DEALER, permission_name: 'Manage Leads', entity: 'dealer' },
+    { _id: P_ADMIN, permission_name: 'Manage Dealers', entity: 'admin' }]);
+  await Role.collection.insertMany([{ _id: ROLE_A, name: 'Sales', entity: 'dealer', entity_id: DEALER_A, permissions: [] },
+    { _id: ROLE_SUPER, name: 'Admin', entity: 'admin', entity_id: ADMIN, permissions: [] }]);
+  const { PUT } = await route('roles/[id]');
+  const put = (headers, roleId, permissions) => PUT(req('/api/x', { method: 'PUT', headers, body: { permissions } }), ctx({ id: String(roleId) }));
+  assert.equal((await put({}, ROLE_A, [String(P_DEALER)])).status, 401);
+  assert.equal((await put(bearer(DEALER_B), ROLE_A, [String(P_DEALER)])).status, 403);
+  assert.equal((await put(bearer(DEALER_A), ROLE_SUPER, [String(P_ADMIN)])).status, 403);
+  assert.equal((await put(bearer(DEALER_A), ROLE_A, [String(P_ADMIN)])).status, 403, 'no admin permission on a dealer role');
+  assert.equal((await Role.collection.findOne({ _id: ROLE_A })).permissions.length, 0);
+  assert.equal((await put(bearer(DEALER_A), ROLE_A, [String(P_DEALER)])).status, 200);
+  assert.equal((await put(cookie('admintoken', ADMIN), ROLE_SUPER, [String(P_ADMIN)])).status, 200);
+});
+
+test('leads DELETE, campaigns/[id], conversation notes, dealer settings GETs: the dealer\'s own only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Lead } = await import('./app/models/Lead.js');
+  const { default: Campaign } = await import('./app/models/Campaign.js');
+  const { default: Email } = await import('./app/models/Email.js');
+  const LEAD_B = id(30), CAMP_B = id(31), NOTE_B = id(32);
+  await Lead.collection.insertOne({ _id: LEAD_B, dealer_id: DEALER_B, name: 'Customer' });
+  await Campaign.collection.insertOne({ _id: CAMP_B, name: 'B', dealer_id: DEALER_B, stats: { sent: 0 } });
+  await Email.collection.insertOne({ _id: NOTE_B, lead_id: LEAD_B, dealer_id: String(DEALER_B), communication_type: 'note', timestamp: new Date() });
+
+  const leads = (await route('leads')).DELETE;
+  const del = (headers) => leads(req('/api/leads', { method: 'DELETE', headers, body: { id: String(LEAD_B) } }));
+  assert.equal((await del({})).status, 401);
+  assert.equal((await del(bearer(DEALER_A))).status, 403);
+  assert.equal(await Lead.collection.countDocuments({ _id: LEAD_B }), 1);
+
+  const camp = await route('campaigns/[id]');
+  const c = ctx({ id: String(CAMP_B) });
+  for (const [m, body] of [['GET'], ['PUT', { name: 'x' }], ['DELETE']]) {
+    assert.equal((await camp[m](req('/api/x', { method: m, body }), c)).status, 401, m);
+    assert.equal((await camp[m](req('/api/x', { method: m, headers: bearer(DEALER_A), body }), c)).status, 403, m);
+  }
+  assert.equal((await camp.GET(req('/api/x', { headers: bearer(DEALER_B) }), c)).status, 200);
+  assert.equal(await Campaign.collection.countDocuments({ _id: CAMP_B }), 1);
+
+  const notes = await route('conversations/notes');
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`, { headers: bearer(DEALER_B) }))).status, 200);
+  assert.equal((await notes.DELETE(req(`/api/x?note_id=${NOTE_B}&dealer_id=${DEALER_B}`, { method: 'DELETE', headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await notes.POST(req('/api/x', { method: 'POST', headers: bearer(DEALER_A), body: { lead_id: String(LEAD_B), content: 'x', dealer_id: String(DEALER_B) } }))).status, 403);
+  assert.equal(await Email.collection.countDocuments({ _id: NOTE_B }), 1);
+
+  const setting = (await route('dealers/setting')).GET;
+  const reminders = (await route('dealers/reminder-settings')).GET;
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`))).status, 401);
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`, { headers: cookie('dealertoken', DEALER_B) }))).status, 200);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_B) }))).status, 200);
+  assert.equal((await del(bearer(DEALER_B))).status, 200, 'own lead deleted');
+});
+
+test('vendors GET/PATCH and tickets/[id] DELETE', async (t) => {
+  if (needDb(t)) return;
+  const vendors = await route('vendors');
+  const patch = (headers) => vendors.PATCH(req('/api/vendors', { method: 'PATCH', headers, body: { vendorId: String(DEALER_A), password: 'pwned-1234' } }));
+  assert.equal((await patch({})).status, 401);
+  assert.equal((await patch(bearer(AGENCY))).status, 403);
+  assert.equal((await User.findById(DEALER_A).lean()).password, 'secret-hash');
+  assert.equal((await vendors.GET(req('/api/vendors'))).status, 401);
+  assert.equal((await vendors.GET(req('/api/vendors', { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await vendors.GET(req('/api/vendors', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+
+  const { default: Ticket } = await import('./app/models/Ticket.js');
+  const T = id(61);
+  await Ticket.collection.insertOne({ _id: T, title: 'A', createdBy: DEALER_A, createdByModel: 'dealer', messages: [] });
+  const one = await route('tickets/[id]');
+  const c = ctx({ id: String(T) });
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE' }), c)).status, 401);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_B) }), c)).status, 403);
+  assert.equal(await Ticket.collection.countDocuments({ _id: T }), 1);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_A) }), c)).status, 200);
+});
