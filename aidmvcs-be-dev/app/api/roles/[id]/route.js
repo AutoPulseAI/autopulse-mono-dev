@@ -16,19 +16,10 @@ export async function GET(request) {
     // Build the query object
     const query = {};
 
-    const authHeader = request.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
+    // Security fix (Nov 2026): same rule as GET /api/roles (any signed-in user could list any account's roles, and a
+    // bad token was a 500): with entity_id that account, without one the super admin.
+    const guard = entity_id ? await requireActingFor(request, entity_id) : await requireSuperAdmin(request);
+    if (guard.response) return guard.response;
     if (type) {
       query.entity = type;
     }

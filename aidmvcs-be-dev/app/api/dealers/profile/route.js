@@ -3,7 +3,7 @@ import User from "@models/User";
 
 import Role from "@models/Role";
 import Permission from "@models/Permission";
-import jwt from "jsonwebtoken";
+import { requireActingFor } from "@lib/apiGuard";
 
 export async function GET(req) {
   try {
@@ -11,21 +11,11 @@ export async function GET(req) {
 
     //  Extract Token
     const userId = (new URL(req.url).searchParams.get("dealer_id"));
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-    
-
+    // Security fix (Nov 2026): any signed-in user could read any account's profile (and a bad token was a 500).
+    // Now the account itself, its dealership/agency or a super admin (the dealer/agency/admin user contexts ask
+    // for their own parent account).
+    const guard = await requireActingFor(req, userId);
+    if (guard.response) return guard.response;
     //  Fetch User (Excluding Password) & Populate Role
     const user = await User.findById(userId)
           .select("-password")

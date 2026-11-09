@@ -3,6 +3,7 @@ import Ticket from "@models/Ticket";
 import User from "@models/User";
 import { sendTicketMessageEmail } from "@lib/emailservice";
 import jwt from 'jsonwebtoken';
+import { ticketAccess } from '@lib/ticketAccess';
 export const dynamic = 'force-dynamic';
 
 export async function PUT(req, { params }) {
@@ -43,18 +44,10 @@ export async function PUT(req, { params }) {
       );
     }
 
-    // Check authorization (ticket creator, assigned support staff, admins, or vendors can update status)
-    const isCreator = ticket.createdBy?.equals(user_id);
-    const isAssigned = ticket.assignedTo?.equals(user_id);
-    const isAdmin = type === 'admin';
-    const isVendor = type === 'vendor';
-    
-    if (!isCreator && !isAssigned && !isAdmin && !isVendor) {
-      return Response.json(
-        { success: false, message: 'Not authorized' },
-        { status: 403 }
-      );
-    }
+    // Security fix (Nov 2026): any agency (type vendor) could change any ticket's status. Now the super admin or the
+    // ticket's own people (its creator or assignee, or their dealership/agency), as for reading it.
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
 
     ticket.status = status;
     await ticket.save();

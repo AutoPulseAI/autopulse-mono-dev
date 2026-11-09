@@ -29,6 +29,7 @@ import {
   toDisplayLanguageName,
   translateReminderBundle,
 } from '@lib/serverTranslateOutgoing.js';
+import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 
 // Helper function to strip HTML tags, CSS, and extract only plain text content
 function stripTagsRegex(html) {
@@ -200,26 +201,13 @@ async function createAppointmentNotificationRecord(leadId, dealerId, messageType
 export async function PUT(request) {
   let messageBy = null; // Default to null (system message)
   let actorName = null; // for the customer timeline (app/lib/activityLog.js)
-  try {
-    const authHeader = request.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      // Set message_by to user ID for authenticated users
-      if (currentUser) {
-        messageBy = currentUser._id;
-        actorName = currentUser.name || currentUser.email || null;
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-  } catch (err) {
-    console.warn("Token verification failed in reply route:", err.message);
-    // Continue without token - messageBy will remain null
-  }
+  // Security fix (Nov 2026): a bad or expired token used to fall through (the catch only warned), so anyone could
+  // change any lead's status and trigger its booking/messages. Now a valid sign-in (Bearer or the sign-in cookie)
+  // is required, and the lead's dealer is checked below.
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn.response;
+  messageBy = signedIn.user._id;
+  actorName = signedIn.user.name || signedIn.user.email || null;
   try {
     const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type, contact_note } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
@@ -252,6 +240,8 @@ export async function PUT(request) {
         { status: 404 }
       );
     }
+    const leadGuard = await requireDealerAccess(request, String(originalLead.dealer_id));
+    if (leadGuard.response) return leadGuard.response;
     // PLAN_4 stream X2: a status the AI's lifecycle can't follow (Closed - Lost on a delivered sale) is refused here.
     const changeError = statusChangeError(originalLead.status, status);
     if (changeError) {

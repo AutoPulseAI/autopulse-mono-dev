@@ -11,6 +11,7 @@ import { sendSMS } from '@lib/sms';
 import {  onFollowUpEvent} from '@lib/followupService.js';
 import { notifyAiOfStaffReply } from '@lib/ai/aiStaff';
 import jwt from 'jsonwebtoken';
+import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 
 function normalizeUserLanguage(raw) {
   const v = raw == null ? '' : String(raw).trim();
@@ -54,26 +55,14 @@ export async function POST(request) {
     let messageBy = null; // Default to null (system message)
     let authHeaderForDownstream = null;
     
-    try {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        authHeaderForDownstream = authHeader;
-        const token = authHeader.split(" ")[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        currentUser = await User.findById(decoded.userId).select('_id name email type');
-        // Set message_by to user ID for authenticated users
-        if (currentUser) {
-          messageBy = currentUser._id;
-        }else{
-          return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-        }
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    } catch (err) {
-      console.warn("Token verification failed in reply route:", err.message);
-      // Continue without token - messageBy will remain null
-    }
+    // Security fix (Nov 2026): a bad or expired token used to fall through (the catch only warned), so anyone could
+    // send an email/SMS to any lead's customer as that dealer. Now a valid sign-in (Bearer or the sign-in cookie) is
+    // required, and the conversation's dealer is checked below.
+    const signedIn = await requireUser(request);
+    if (signedIn.response) return signedIn.response;
+    currentUser = signedIn.user;
+    messageBy = currentUser._id;
+    authHeaderForDownstream = request.headers.get("Authorization") || null;
 
     const {
         leadId,
@@ -110,6 +99,13 @@ export async function POST(request) {
         { status: 404 }
       );
     }
+    // The message's dealer, or (an older message without one) its lead's dealer.
+    let conversationDealerId = parentMessage.dealer_id;
+    if (!conversationDealerId && parentMessage.lead_id) {
+      conversationDealerId = (await Lead.findById(parentMessage.lead_id).select('dealer_id').lean())?.dealer_id;
+    }
+    const dealerGuard = await requireDealerAccess(request, conversationDealerId ? String(conversationDealerId) : null);
+    if (dealerGuard.response) return dealerGuard.response;
   
      const dealer = await User.findOne({
             '_id': parentMessage.dealer_id

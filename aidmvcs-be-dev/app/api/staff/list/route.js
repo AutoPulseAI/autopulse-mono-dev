@@ -3,7 +3,7 @@ import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 import Permission from "@models/Permission";
 import Role from "@models/Role";
-import jwt from "jsonwebtoken";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch staff members for a dealer (only those with Manage Leads or View Assigned Leads permissions)
 export async function GET(req) {
@@ -19,19 +19,11 @@ export async function GET(req) {
         { status: 400 }
       );
     }
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
+    // Security fix (Nov 2026): any signed-in user could list any dealer's staff; now that dealer, its agency or a
+    // super admin (and a bad token is a 401, not a 500).
+    const guard = await requireDealerAccess(req, String(dealerId));
+    if (guard.response) return guard.response;
+
     // Find all staff members where parent_id matches the dealer
     const allStaff = await User.find({
       parent_id: dealerId,
