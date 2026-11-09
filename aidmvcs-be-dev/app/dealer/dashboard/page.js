@@ -1,8 +1,13 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+// Leads Dashboard. Its first tab, Overview, is the dashboard every dealer sees. Where the reports are visible (super
+// admins, also through "login as"; app/dealer/reports/reportsAccess.js) a tab row adds one tab per report, under the
+// same date picker: /dealer/dashboard?tab=executive ... (SOW 8B: enhance the existing dashboard). Dealers and staff
+// get no tab row and the Overview only.
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "../context/UserContext";
 import useFetch from "../../hooks/useFetch";
-import { Spinner, Alert } from "react-bootstrap";
+import { Spinner, Alert, Nav } from "react-bootstrap";
 import moment from "moment-timezone";
 import {
   BarChart, Bar, XAxis, YAxis,
@@ -16,12 +21,29 @@ import ActivityOverTimeDataBar from "./components/ActivityOverTimeDataBar";
 import LeadSourceDataPie from "./components/LeadSourceDataPie";
 import LeadSourceDistributionPie from "./components/LeadSourceDistributionPie";
 import ReplyCohortsSection from "./components/ReplyCohortsSection";
+import ReportView from "../reports/components/ReportView";
+import { DASHBOARD_TABS, dashboardTab, reportsVisible } from "../reports/reportsAccess";
 //import ReportAnalytics from "./components/ReportAnalytics";
 
 
-export default function Dashboard() {
+function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
+  // The report tabs: only where the reports are visible to this session (null while that is checked). The tab is kept
+  // in the URL (?tab=), so Back from a Leads list opened from a report number returns to the same tab.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [reportsAllowed, setReportsAllowed] = useState(null);
+  const reportsDealerId = dealerParent?.id || dealerParent?._id || null;
+  useEffect(() => {
+    if (!reportsDealerId) return undefined;
+    let live = true;
+    reportsVisible(reportsDealerId).then((ok) => { if (live) setReportsAllowed(ok); });
+    return () => { live = false; };
+  }, [reportsDealerId]);
+  const tab = dashboardTab(searchParams.get('tab'), reportsAllowed);
+  const selectTab = (key) => router.replace(key === 'overview' ? '/dealer/dashboard' : `/dealer/dashboard?tab=${key}`,
+    { scroll: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [leadStats, setLeadStats] = useState(null);
@@ -219,9 +241,11 @@ export default function Dashboard() {
     }
   }, [dealerParent?.id, fetchData, fetchRangeCounts, getTodayDateRange]);
 
+  // The Overview's numbers, fetched only while the Overview is shown (again when the user comes back to it).
   useEffect(() => {
+    if (tab !== 'overview') return;
     fetchDashboardData(dateRange.startDate, dateRange.endDate, dateRange.compare);
-  }, [dealerParent, dateRange.startDate, dateRange.endDate, dateRange.compare, fetchDashboardData]);
+  }, [dealerParent, dateRange.startDate, dateRange.endDate, dateRange.compare, fetchDashboardData, tab]);
 
   // The first range is today in the browser's clock; once the dealer's timezone is known it becomes the dealer's today.
   const hasSyncedToday = useRef(false);
@@ -247,7 +271,60 @@ export default function Dashboard() {
     );
   }
 
-  if (loading) {
+  // The date picker heads every tab; the tab row only shows where the report tabs are visible.
+  const pageHead = (
+    <div className="page_head">
+      <div className="row align-items-center">
+        <div className="col col-12">
+          <div className="d-flex align-items-center">
+            <h3 className="page_title mb-0 me-auto">
+              Leads Dashboard
+              {dateRange.startDate && dateRange.endDate && (
+                <small className="text-muted ms-2">
+                  ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
+                </small>
+              )}
+            </h3>
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <DashboardDatePicker
+                value={dateRange}
+                onChange={handleDateRangeChange}
+                timezone={dealerTimezone}
+              />
+              <small className="text-muted" style={{fontSize: '0.75rem'}} title={`All dates are interpreted in your business timezone: ${dealerTimezone}`}>
+                <i className="fa-solid fa-clock me-1"></i>
+                {dealerTimezone.split('/').pop()}
+              </small>
+            </div>
+            <small className="text-muted d-block mt-1" style={{fontSize: '0.7rem'}}>
+            
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+  const tabRow = reportsAllowed === true ? (
+    <Nav variant="tabs" activeKey={tab} className="mb-3" onSelect={selectTab}>
+      {DASHBOARD_TABS.map(([key, label]) => (
+        <Nav.Item key={key}><Nav.Link eventKey={key}>{label}</Nav.Link></Nav.Item>
+      ))}
+    </Nav>
+  ) : null;
+
+  if (tab && tab !== 'overview') {
+    return (
+      <div className="page_content">
+        {pageHead}
+        <div className="page_body">
+          {tabRow}
+          <ReportView tab={tab} dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />
+        </div>
+      </div>
+    );
+  }
+
+  if (loading || !tab) {
     return (
       <div className="page_content">
         <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
@@ -260,6 +337,7 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="page_content">
+        {tabRow}
         <Alert variant="danger">{error}</Alert>
       </div>
     );
@@ -716,38 +794,10 @@ export default function Dashboard() {
 
   return (
     <div className="page_content">
-      <div className="page_head">
-        <div className="row align-items-center">
-          <div className="col col-12">
-            <div className="d-flex align-items-center">
-              <h3 className="page_title mb-0 me-auto">
-                Leads Dashboard
-                {dateRange.startDate && dateRange.endDate && (
-                  <small className="text-muted ms-2">
-                    ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
-                  </small>
-                )}
-              </h3>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <DashboardDatePicker
-                  value={dateRange}
-                  onChange={handleDateRangeChange}
-                  timezone={dealerTimezone}
-                />
-                <small className="text-muted" style={{fontSize: '0.75rem'}} title={`All dates are interpreted in your business timezone: ${dealerTimezone}`}>
-                  <i className="fa-solid fa-clock me-1"></i>
-                  {dealerTimezone.split('/').pop()}
-                </small>
-              </div>
-              <small className="text-muted d-block mt-1" style={{fontSize: '0.7rem'}}>
-              
-              </small>
-            </div>
-          </div>
-        </div>
-      </div>
+      {pageHead}
 
       <div className="page_body">
+        {tabRow}
         {/* Dashboard Counts */}
         <div className="dashboard_counts">
           <div className="row gx-2 gx-lg-4">
@@ -1121,4 +1171,9 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+// useSearchParams needs a Suspense boundary for the production build.
+export default function DashboardPage() {
+  return <Suspense fallback={null}><Dashboard /></Suspense>;
 }
