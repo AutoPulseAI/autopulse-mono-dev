@@ -4,10 +4,14 @@ import stripe from "@lib/stripe";
 import User from "@models/User";
 import Package from "@models/Package";
 import dbConnect from "@lib/mongodb";
+import { requireActingFor } from "@lib/apiGuard";
 
 export async function POST(request) {
   await dbConnect();
   const body = await request.json();
+  // Security fix (Nov 2026): only the account itself (or its dealership/agency, or a super admin); this had no sign-in check.
+  const guard = await requireActingFor(request, body?.user_id);
+  if (guard.response) return guard.response;
 
   try {
     const user = await User.findById(body.user_id);

@@ -3,6 +3,7 @@ import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import { conversationLeadIds } from "@lib/ai/linkedLeads";
 import { blastIds } from "@lib/blasts";
+import { requireDealerOrSuperAdmin } from "@lib/apiGuard";
 import { Types } from "mongoose";
 const { ObjectId } = Types;
 
@@ -161,6 +162,11 @@ export async function GET(req) {
         }
 
         // Regular filtering when no lead_id is provided
+        // Security fix (Nov 2026): a whole dealer's conversations - that dealer, its agency or a super admin. (The
+        // lead_id path above stays open: the DealerSocket iframe, app/iframe/lead/[leadId], calls it without a
+        // sign-in.)
+        const dealerGuard = await requireDealerOrSuperAdmin(req, dealer_id);
+        if (dealerGuard.response) return dealerGuard.response;
         const emails = await Email.find(filter)
             .populate({
                 path: 'message_by',

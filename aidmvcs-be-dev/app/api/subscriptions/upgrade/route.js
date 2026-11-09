@@ -5,6 +5,7 @@ import User from "@models/User";
 import Package from "@models/Package";
 import Subscription from "@models/Subscription";
 import dbConnect from "@lib/mongodb";
+import { requireActingFor } from "@lib/apiGuard";
 
 export async function POST(request) {
   await dbConnect();
@@ -12,6 +13,9 @@ export async function POST(request) {
 
   try {
     const { user_id, package_id, current_subscription_id } = body;
+    // Security fix (Nov 2026): only the account itself (or its dealership/agency, or a super admin); this had no sign-in check.
+    const guard = await requireActingFor(request, user_id);
+    if (guard.response) return guard.response;
     
     // Validate inputs
     if (!user_id || !package_id || !current_subscription_id) {
@@ -33,6 +37,10 @@ export async function POST(request) {
         { error: "User, package, or subscription not found" },
         { status: 404 }
       );
+    }
+
+    if (String(currentSubscription.user_id) !== String(user._id)) {
+      return NextResponse.json({ error: "User, package, or subscription not found" }, { status: 404 });
     }
 
     // Check if this is actually an upgrade (new package must be higher value)

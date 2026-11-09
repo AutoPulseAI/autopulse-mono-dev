@@ -5,9 +5,13 @@ import User from "@models/User";
 import Package from "@models/Package";
 import Subscription from "@models/Subscription";
 import dbConnect from "@lib/mongodb";
+import { requireUser, requireActingFor } from "@lib/apiGuard";
 
 import { dealersubscriptionActivated } from "@lib/emailservice";
 export async function POST(request) {
+  // Security fix (Nov 2026): the subscribe success page (signed in) confirms its own Stripe checkout.
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn.response;
   await dbConnect();
   const body = await request.json();
   const sessionId = body.session_id;
@@ -27,6 +31,8 @@ export async function POST(request) {
     }
 
     const userId = session.metadata.user_id;
+    const guard = await requireActingFor(request, userId);
+    if (guard.response) return guard.response;
     const packageId = session.metadata.package_id;
     const isUpgrade = session.metadata.is_upgrade === 'true';
     const currentSubscriptionId = session.metadata.current_subscription_id;

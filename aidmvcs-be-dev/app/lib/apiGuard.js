@@ -122,6 +122,18 @@ export async function requireAgencyAccess(req, vendorId, dealerId) {
   return { response: denied(403) };
 }
 
+// Routes that act for one account named in the request (a ticket's creator, a subscription's owner, ...): the
+// account itself, a super admin, its dealership's owner/staff, its agency's staff, or the agency of that dealer
+// (the same rule as requireDealerAccess, plus "yourself").
+export async function requireActingFor(req, accountId) {
+  const users = await requestUsers(req);
+  if (!users.length) return { response: denied(401) };
+  if (accountId === null || accountId === undefined || String(accountId) === "") return { response: denied(403) };
+  const self = users.find((u) => String(u._id) === String(accountId));
+  if (self) return { user: self };
+  return requireDealerAccess(req, accountId);
+}
+
 // A signed-in caller's own dealership (dealer owner -> self, dealer staff -> parent), or null for admin/agency.
 export function ownDealerId(user) {
   if (!user || user.type !== "dealer") return null;

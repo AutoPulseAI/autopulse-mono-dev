@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@lib/mongodb';
 import Vehicle from '@models/Vehicle';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code') || 'GTZNO7M8';

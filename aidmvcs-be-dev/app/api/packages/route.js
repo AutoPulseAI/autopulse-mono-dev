@@ -5,8 +5,12 @@ import { getServerSession } from "next-auth";
 
 import dbConnect from "@lib/mongodb";
 import stripe from "@lib/stripe";
+import { requireSuperAdmin, requireUser } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): the plan list is for signed-in users (subscribe pages, admin).
+  const guard = await requireUser(request);
+  if (guard.response) return guard.response;
   await dbConnect();
   const { searchParams } = new URL(request.url);
   const forUserType = searchParams.get('for_user_type');
@@ -41,6 +45,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // Security fix (Nov 2026): only the super admin manages packages (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   await dbConnect();
   
   try {

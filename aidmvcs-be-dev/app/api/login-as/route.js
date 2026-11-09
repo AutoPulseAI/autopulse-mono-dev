@@ -17,7 +17,12 @@ export async function POST(req) {
     const authHeader = req.headers.get("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+      } catch {
+        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+      }
       currentUser = await User.findById(decoded.userId).select('_id name email type');
       if (!currentUser) {
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
@@ -27,7 +32,8 @@ export async function POST(req) {
     }
     
     // Find the dealer
-    const user = await User.findById(userId).populate("role");
+    // Never send back the password hash, sign-in code or reset token.
+    const user = await User.findById(userId).select("-password -otp -otpExpiresAt -otpAttempts -resetToken -resetTokenExpires").populate("role");
     if (!user ) {
       return new Response(JSON.stringify({ message: "Dealer not found" }), {
         status: 404,

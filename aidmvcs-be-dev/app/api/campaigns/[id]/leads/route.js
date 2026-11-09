@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import CampaignLead from "@models/CampaignLead";
 import Campaign from "@models/Campaign";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch all leads for a specific campaign
 export async function GET(req, { params }) {
@@ -21,6 +22,9 @@ export async function GET(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): the campaign's own dealer, its agency or a super admin (it listed any campaign's leads).
+    const guard = await requireDealerAccess(req, String(campaign.dealer_id));
+    if (guard.response) return guard.response;
 
     const campaignIdStr = id.toString();
     const totalLeads = await CampaignLead.countDocuments({ campaign_id: campaignIdStr });

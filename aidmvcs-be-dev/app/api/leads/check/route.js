@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { checkLeadByIdentifiers } from '../../../lib/dealersocket-worknote.js';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function POST(request) {
+  // Security fix (Nov 2026): this can write work notes into a dealer's DealerSocket; super admin only (no caller in the app; the workers call checkLeadByIdentifiers directly).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     
@@ -55,6 +59,9 @@ export async function POST(request) {
 }
 
 export async function GET(request) {
+  // Security fix (Nov 2026): this can write work notes into a dealer's DealerSocket; super admin only (no caller in the app; the workers call checkLeadByIdentifiers directly).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   return NextResponse.json(
     { 
       message: 'Use POST method to check leads',

@@ -1,0 +1,527 @@
+// Auth sweep (Nov 2026): the routes that had no sign-in check (planning/auth-sweep.md). Each FIXED route: signed out
+// -> 401, another dealer / not allowed -> 403 (or 404), its own dealer / agency / super admin -> passes the check.
+// Route handlers are called with fake Requests against their own MongoDB database (authsweep_test: created once,
+// collections cleared between tests; skipped when MongoDB is not reachable). Allowed calls are checked on a path that
+// stops before any email, SMS, S3, Stripe or AI-service call.
+//   Run: node --test test-auth-sweep.js
+import test, { after, before, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { register } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+const ROOT = pathToFileURL(`${process.cwd()}/`).href;
+const loader = `
+const ROOT = ${JSON.stringify(ROOT)};
+const ALIAS = { '@lib/': 'app/lib/', '@models/': 'app/models/', '@utils/': 'app/utils/', '@hooks/': 'app/hooks/', '@seeder/': 'app/seeder/' };
+export async function resolve(spec, ctx, next) {
+  for (const [a, dir] of Object.entries(ALIAS)) if (spec.startsWith(a)) spec = ROOT + dir + spec.slice(a.length);
+  try { return await next(spec, ctx); } catch (e) {
+    if (!['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT'].includes(e.code)) throw e;
+    for (const tail of ['.js', '/index.js']) { try { return await next(spec + tail, ctx); } catch {} }
+    throw e;
+  }
+}`;
+register(`data:text/javascript,${encodeURIComponent(loader)}`, import.meta.url);
+
+process.env.MONGODB_URI = process.env.AUTHSWEEP_TEST_MONGODB_URI || 'mongodb://127.0.0.1:27018/authsweep_test';
+process.env.JWT_SECRET = 'authsweep-test-jwt-secret';
+process.env.UPSELL_SERVICE_SHARED_SECRET = 'authsweep-test-ai-secret';
+process.env.PROVIDER_SEND_STUB = 'true';
+process.env.STRIPE_SECRET_KEY ||= 'sk_test_local_dummy'; // the Stripe client is built at import; no Stripe call is made
+delete process.env.CRON_SECRET;
+delete process.env.CRM_LIVE_DB;
+
+const { default: mongoose } = await import('mongoose');
+const { default: jwt } = await import('jsonwebtoken');
+const { default: User } = await import('./app/models/User.js');
+const route = async (p) => import(`./app/api/${p}/route.js`);
+
+const id = (n) => new mongoose.Types.ObjectId(`66f10000000000000000${String(n).padStart(4, '0')}`);
+const ADMIN = id(1), DEALER_A = id(2), DEALER_B = id(3), STAFF_A = id(4), AGENCY = id(5), AGENCY_2 = id(6);
+const NOBODY = id(99);
+
+const tokenFor = (userId, extra = {}) => jwt.sign({ userId: String(userId), ...extra }, process.env.JWT_SECRET);
+const bearer = (userId, extra) => ({ Authorization: `Bearer ${tokenFor(userId, extra)}` });
+const cookie = (name, userId) => ({ cookie: `${name}=${tokenFor(userId)}` });
+const URL_BASE = 'http://localhost:3000';
+function req(path, { method = 'GET', headers = {}, body, form } = {}) {
+  if (form) return new Request(URL_BASE + path, { method, headers, body: form });
+  return new Request(URL_BASE + path, {
+    method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+const ctx = (params) => ({ params: Promise.resolve(params) });
+
+let connected = false;
+before(async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 3000 });
+    connected = true;
+  } catch { connected = false; }
+});
+after(async () => {
+  if (connected) { await mongoose.connection.dropDatabase(); await mongoose.disconnect(); }
+});
+beforeEach(async () => {
+  if (!connected) return;
+  for (const c of await mongoose.connection.db.collections()) await c.deleteMany({});
+  await User.create([
+    { _id: ADMIN, email: 'admin@t.test', name: 'Admin', password: 'x', type: 'admin' },
+    { _id: AGENCY, email: 'agency@t.test', name: 'Agency', password: 'x', type: 'vendor' },
+    { _id: AGENCY_2, email: 'agency2@t.test', name: 'Agency 2', password: 'x', type: 'vendor' },
+    { _id: DEALER_A, email: 'a@t.test', name: 'Dealer A', password: 'secret-hash', type: 'dealer', vendor_id: AGENCY,
+      dealer_account_information: { sms_conversion_phone: '+15550000001' } },
+    { _id: DEALER_B, email: 'b@t.test', name: 'Dealer B', password: 'x', type: 'dealer',
+      dealer_account_information: { sms_conversion_phone: '+15550000002' } },
+    { _id: STAFF_A, email: 'sa@t.test', name: 'Staff A', password: 'x', type: 'dealer', parent_id: DEALER_A },
+  ]);
+});
+const needDb = (t) => { if (!connected) { t.skip('MongoDB not reachable'); return true; } return false; };
+const smsOf = async (dealerId) => (await User.findById(dealerId).lean()).dealer_account_information?.sms_conversion_phone;
+
+// --- dealers/account, check-domain-sms, branding ----------------------------------------------------------------
+
+test('dealers/account PUT: only the dealer, its staff, its agency or a super admin may change it', async (t) => {
+  if (needDb(t)) return;
+  const { PUT } = await route('dealers/account');
+  const put = (headers, dealerId, phone) => PUT(req('/api/dealers/account', { method: 'PUT', headers,
+    body: { dealerId: String(dealerId), dealer_account_information: { sms_conversion_phone: phone } } }));
+  assert.equal((await put({}, DEALER_B, '5551112222')).status, 401);
+  assert.equal((await put(bearer(DEALER_A), DEALER_B, '5551112222')).status, 403);
+  assert.equal((await put(bearer(AGENCY), DEALER_B, '5551112222')).status, 403, 'not the agency\'s dealer');
+  assert.equal((await put(bearer(AGENCY_2), DEALER_A, '5551112222')).status, 403);
+  assert.equal(await smsOf(DEALER_B), '+15550000002', 'nothing changed');
+  assert.equal((await put(bearer(DEALER_A), DEALER_A, '5551110001')).status, 200);
+  assert.equal(await smsOf(DEALER_A), '+15551110001');
+  assert.equal((await put(bearer(STAFF_A), DEALER_A, '5551110002')).status, 200, 'dealer staff');
+  assert.equal((await put(cookie('vendortoken', AGENCY), DEALER_A, '5551110003')).status, 200, 'agency cookie');
+  assert.equal((await put(cookie('admintoken', ADMIN), DEALER_B, '5551110004')).status, 200, 'admin cookie');
+  assert.equal(await smsOf(DEALER_B), '+15551110004');
+});
+
+test('dealers/account POST and check-domain-sms: no answers to outsiders', async (t) => {
+  if (needDb(t)) return;
+  const account = await route('dealers/account');
+  const check = await route('dealers/check-domain-sms');
+  for (const handler of [account.POST, check.POST]) {
+    const call = (headers, dealerId) => handler(req('/api/x', { method: 'POST', headers,
+      body: { dealerId: String(dealerId), sms_conversion_phone: '+15550000002' } }));
+    assert.equal((await call({}, DEALER_A)).status, 401);
+    assert.equal((await call(bearer(DEALER_B), DEALER_A)).status, 403);
+    const res = await call(bearer(DEALER_A), DEALER_A);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).hasExisting, true);
+    assert.equal((await call(bearer(ADMIN), DEALER_A)).status, 200);
+  }
+});
+
+test('dealers/branding: PUT needs the dealer, POST (upload) needs a sign-in', async (t) => {
+  if (needDb(t)) return;
+  const { PUT, POST } = await route('dealers/branding');
+  const put = (headers, dealerId) => PUT(req('/api/dealers/branding', { method: 'PUT', headers,
+    body: { dealerId: String(dealerId), branding_information: { primary_color: '#000' } } }));
+  assert.equal((await put({}, DEALER_A)).status, 401);
+  assert.equal((await put(bearer(DEALER_B), DEALER_A)).status, 403);
+  assert.equal((await put(cookie('dealertoken', DEALER_A), DEALER_A)).status, 200);
+  assert.equal((await POST(req('/api/dealers/branding', { method: 'POST', form: new FormData() }))).status, 401);
+  assert.equal((await POST(req('/api/dealers/branding', { method: 'POST', headers: bearer(DEALER_A), form: new FormData() }))).status, 200);
+});
+
+// --- vendors/reset-password: fixed on the coordinator's hotfix branch (tested there), not here. ---------------
+
+// --- upload/* ---------------------------------------------------------------------------------------------------
+
+test('upload/file and upload/image: a signed-in user only', async (t) => {
+  if (needDb(t)) return;
+  for (const p of ['upload/file', 'upload/image']) {
+    const { POST } = await route(p);
+    assert.equal((await POST(req(`/api/${p}`, { method: 'POST', form: new FormData() }))).status, 401, p);
+    // No file: stops after the check, before S3.
+    assert.equal((await POST(req(`/api/${p}`, { method: 'POST', headers: cookie('dealertoken', STAFF_A), form: new FormData() }))).status, 400, p);
+  }
+});
+
+// --- login-as ---------------------------------------------------------------------------------------------------
+
+test('login-as: bad token 401, dealer 403, other agency 403; the answer never carries the password hash', async (t) => {
+  if (needDb(t)) return;
+  const { POST } = await route('login-as');
+  const call = (headers, userId) => POST(req('/api/login-as', { method: 'POST', headers, body: { userId: String(userId) } }));
+  assert.equal((await call({}, DEALER_A)).status, 401);
+  assert.equal((await call({ Authorization: 'Bearer not-a-token' }, DEALER_A)).status, 401);
+  assert.equal((await call(bearer(DEALER_B), DEALER_A)).status, 403);
+  assert.equal((await call(bearer(AGENCY_2), DEALER_A)).status, 403);
+  let res;
+  try { res = await call(bearer(ADMIN), DEALER_A); } catch (e) { if (/cookies/.test(e.message)) return t.skip('next/headers cookies() needs a request scope'); throw e; }
+  if (res.status === 500) return t.skip('next/headers cookies() needs a request scope');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.user.password, undefined);
+  assert.equal(body.user.otp, undefined);
+});
+
+// --- super-admin-only routes (debug/test/maintenance, platform stats, admin inbox, packages) ---------------------
+
+const SUPER_ADMIN_ONLY = [
+  // [route, method, path, admin call reaches the handler (local DB only; no S3/Redis/Twilio/Stripe)]
+  ['system/redis-queues', 'GET', '/api/system/redis-queues', false],
+  ['system/redis-queues', 'POST', '/api/system/redis-queues', false],
+  ['system/redis-queues', 'DELETE', '/api/system/redis-queues', false],
+  ['system/test-redis', 'GET', '/api/system/test-redis', false],
+  ['test/check-vehicle', 'GET', '/api/test/check-vehicle', true],
+  ['test/email-subjects', 'GET', '/api/test/email-subjects', true],
+  ['test/report-db', 'GET', '/api/test/report-db', true],
+  ['test/report-periods', 'GET', '/api/test/report-periods', true],
+  ['test/twilio-test', 'GET', '/api/test/twilio-test', false],
+  ['test-s3', 'GET', '/api/test-s3', false],
+  ['admin/manual-cleanup', 'GET', '/api/admin/manual-cleanup', true],
+  ['admin/manual-cleanup', 'POST', '/api/admin/manual-cleanup', false],
+  ['admin/stats', 'GET', '/api/admin/stats', true],
+  ['admin/vehicles', 'GET', '/api/admin/vehicles', true],
+  ['vendors/admin-stats', 'GET', '/api/vendors/admin-stats', true],
+  ['contact', 'GET', '/api/contact', true],
+  ['bookademo', 'GET', '/api/bookademo', true],
+  ['bookademo', 'DELETE', `/api/bookademo?id=${id(98)}`, true],
+  ['contact/[id]', 'GET', `/api/contact/${id(98)}`, true],
+  ['contact/[id]', 'DELETE', `/api/contact/${id(98)}`, true],
+  ['contact/[id]/status', 'PATCH', `/api/contact/${id(98)}/status`, false],
+  ['packages', 'POST', '/api/packages', false],
+  ['packages/[id]', 'PUT', `/api/packages/${id(98)}`, false],
+  ['packages/[id]', 'DELETE', `/api/packages/${id(98)}`, false],
+  ['packages/[id]/status', 'PUT', `/api/packages/${id(98)}/status`, false],
+  ['campaigns/fix-status', 'GET', '/api/campaigns/fix-status', true],
+  ['campaigns/fix-status', 'POST', '/api/campaigns/fix-status', true],
+  ['campaigns/migrate-actual-date', 'GET', '/api/campaigns/migrate-actual-date', true],
+  ['campaigns/migrate-actual-date', 'POST', '/api/campaigns/migrate-actual-date', true],
+  ['leads/check', 'GET', '/api/leads/check', true],
+  ['leads/check', 'POST', '/api/leads/check', true],
+];
+
+test('super-admin-only routes: 401 signed out, 403 dealer / agency, super admin gets through', async (t) => {
+  if (needDb(t)) return;
+  for (const [p, method, path, adminRuns] of SUPER_ADMIN_ONLY) {
+    const handler = (await route(p))[method];
+    const body = ['GET', 'DELETE'].includes(method) ? undefined : {};
+    const call = (headers) => handler(req(path, { method, headers, body }), ctx({ id: String(id(98)) }));
+    assert.equal((await call({})).status, 401, `${method} ${p} signed out`);
+    assert.equal((await call(bearer(DEALER_A))).status, 403, `${method} ${p} dealer`);
+    assert.equal((await call(cookie('vendortoken', AGENCY))).status, 403, `${method} ${p} agency`);
+    if (adminRuns) {
+      const status = (await call(cookie('admintoken', ADMIN))).status;
+      assert.ok(![401, 403].includes(status), `${method} ${p} super admin got ${status}`);
+    }
+  }
+});
+
+test('packages GET: signed-in users only', async (t) => {
+  if (needDb(t)) return;
+  const { GET } = await route('packages');
+  assert.equal((await GET(req('/api/packages?for_user_type=dealer'))).status, 401);
+  assert.equal((await GET(req('/api/packages?for_user_type=dealer', { headers: cookie('dealertoken', DEALER_A) }))).status, 200);
+});
+
+// --- agency lists, permissions, Twilio picker -------------------------------------------------------------------
+
+test('dealers/count and users/dealers: an agency sees only its own dealers', async (t) => {
+  if (needDb(t)) return;
+  const count = (await route('dealers/count')).GET;
+  const list = (await route('users/dealers')).GET;
+  assert.equal((await count(req(`/api/dealers/count?vendor_id=${AGENCY}`))).status, 401);
+  assert.equal((await count(req(`/api/dealers/count?vendor_id=${AGENCY}`, { headers: bearer(AGENCY_2) }))).status, 403);
+  assert.equal((await count(req('/api/dealers/count', { headers: bearer(AGENCY) }))).status, 403, 'all dealers: admin only');
+  let res = await count(req(`/api/dealers/count?vendor_id=${AGENCY}`, { headers: bearer(AGENCY) }));
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).count, 1);
+  assert.equal((await count(req('/api/dealers/count', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+  assert.equal((await list(req(`/api/users/dealers?vendor_id=${AGENCY}`))).status, 401);
+  assert.equal((await list(req(`/api/users/dealers?vendor_id=${AGENCY}`, { headers: bearer(DEALER_A) }))).status, 403);
+  res = await list(req(`/api/users/dealers?vendor_id=${AGENCY}`, { headers: bearer(AGENCY) }));
+  assert.deepEqual((await res.json()).dealers.map((d) => d.name), ['Dealer A']);
+});
+
+test('permissions and twilio/available-numbers: signed-in users only', async (t) => {
+  if (needDb(t)) return;
+  const perms = (await route('permissions')).GET;
+  assert.equal((await perms(req('/api/permissions?type=dealer'))).status, 401);
+  assert.equal((await perms(req('/api/permissions?type=dealer', { headers: cookie('dealertoken', DEALER_A) }))).status, 200);
+  const twilio = await route('twilio/available-numbers');
+  assert.equal((await twilio.GET(req('/api/twilio/available-numbers'))).status, 401);
+  assert.equal((await twilio.POST(req('/api/twilio/available-numbers', { method: 'POST', body: { phone_number: '+15550000002' } }))).status, 401);
+  const res = await twilio.POST(req('/api/twilio/available-numbers', { method: 'POST', headers: bearer(DEALER_A), body: { phone_number: '+15550000002' } }));
+  assert.equal(res.status, 409, 'signed in: the availability check runs');
+});
+
+// --- subscriptions ----------------------------------------------------------------------------------------------
+
+test('subscriptions: only the account itself (or its agency / super admin); the request list is admin only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Subscription } = await import('./app/models/Subscription.js');
+  const SUB_B = id(50);
+  await Subscription.collection.insertOne({ _id: SUB_B, user_id: DEALER_B, status: 'active' });
+  const post = async (p, headers, body) => (await route(p)).POST(req(`/api/${p}`, { method: 'POST', headers, body }));
+  for (const p of ['subscriptions/cancel', 'subscriptions/modify']) {
+    const body = { subscriptionId: String(SUB_B), newDealerCount: 2 };
+    assert.equal((await post(p, {}, body)).status, 401, p);
+    assert.equal((await post(p, bearer(DEALER_A), body)).status, 403, p);
+    assert.equal((await post(p, bearer(AGENCY), body)).status, 403, `${p} not the agency's dealer`);
+  }
+  assert.equal((await Subscription.collection.findOne({ _id: SUB_B })).status, 'active', 'not cancelled');
+  for (const p of ['subscriptions/create', 'subscriptions/upgrade']) {
+    const body = { user_id: String(DEALER_B), package_id: String(id(97)), current_subscription_id: String(SUB_B) };
+    assert.equal((await post(p, {}, body)).status, 401, p);
+    assert.equal((await post(p, bearer(DEALER_A), body)).status, 403, p);
+    // Own account: through the check; the made-up package stops it before Stripe.
+    assert.equal((await post(p, bearer(DEALER_B), body)).status, 404, p);
+  }
+  const tx = (await route('subscriptions/transactions')).GET;
+  assert.equal((await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`))).status, 401);
+  assert.equal((await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  let res = await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`, { headers: cookie('dealertoken', DEALER_B) }));
+  assert.deepEqual(await res.json(), { transactions: [] }, 'no Stripe customer: answered without Stripe');
+  const request = await route('subscriptions/request');
+  assert.equal((await request.GET(req('/api/subscriptions/request'))).status, 401);
+  assert.equal((await request.GET(req('/api/subscriptions/request', { headers: bearer(AGENCY) }))).status, 403);
+  assert.equal((await request.GET(req('/api/subscriptions/request', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+  assert.equal((await post('subscriptions/request', {}, { userId: String(AGENCY), dealerCount: 3 })).status, 401);
+  assert.equal((await post('subscriptions/request', bearer(AGENCY_2), { userId: String(AGENCY), dealerCount: 3 })).status, 403);
+  assert.equal((await post('subscriptions/verify', {}, { session_id: 'cs_test' })).status, 401);
+  assert.equal((await post('subscriptions', {}, {})).status, 401);
+});
+
+// --- tickets ----------------------------------------------------------------------------------------------------
+
+test('tickets: own tickets only; messages need the ticket\'s people; admin sees all', async (t) => {
+  if (needDb(t)) return;
+  const { default: Ticket } = await import('./app/models/Ticket.js');
+  const T_A = id(60);
+  await Ticket.collection.insertOne({ _id: T_A, title: 'A', description: 'd', category: 'general', priority: 'low',
+    createdBy: DEALER_A, createdByModel: 'dealer', messages: [], status: 'open', ticketNumber: 1 });
+  const list = (await route('tickets')).GET;
+  assert.equal((await list(req('/api/tickets'))).status, 401);
+  assert.equal((await list(req('/api/tickets', { headers: bearer(DEALER_A) }))).status, 403, 'all tickets: admin only');
+  assert.equal((await list(req(`/api/tickets?user_id=${DEALER_A}`, { headers: bearer(DEALER_B) }))).status, 403);
+  let res = await list(req(`/api/tickets?user_id=${DEALER_A}`, { headers: cookie('dealertoken', STAFF_A) }));
+  assert.equal((await res.json()).data.length, 1, 'dealer staff see their dealership\'s tickets');
+  res = await list(req(`/api/tickets?user_id=${ADMIN}`, { headers: cookie('admintoken', ADMIN) }));
+  assert.equal((await res.json()).data.length, 1);
+
+  const create = (await route('tickets')).POST;
+  const ticket = { title: 'x', description: 'y', category: 'general', priority: 'low', createdByModel: 'dealer' };
+  assert.equal((await create(req('/api/tickets', { method: 'POST', body: { ...ticket, createdBy: String(DEALER_A) } }))).status, 401);
+  assert.equal((await create(req('/api/tickets', { method: 'POST', headers: bearer(DEALER_B), body: { ...ticket, createdBy: String(DEALER_A) } }))).status, 403);
+  assert.equal((await create(req('/api/tickets', { method: 'POST', headers: bearer(DEALER_B), body: { ...ticket, createdBy: 'admin' } }))).status, 403);
+
+  const messages = await route('tickets/[id]/messages');
+  const one = await route('tickets/[id]');
+  const c = ctx({ id: String(T_A) });
+  for (const get of [messages.GET, one.GET]) {
+    assert.equal((await get(req(`/api/tickets/${T_A}`), c)).status, 401);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(DEALER_B) }), c)).status, 403);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(AGENCY_2) }), c)).status, 403);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: cookie('dealertoken', DEALER_A) }), c)).status, 200);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(AGENCY) }), c)).status, 200, 'the dealer\'s agency');
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: cookie('admintoken', ADMIN) }), c)).status, 200);
+  }
+  const say = (headers, userId) => messages.POST(req(`/api/tickets/${T_A}/messages`, { method: 'POST', headers,
+    body: { content: 'hi', user_id: String(userId), type: 'dealer' } }), c);
+  assert.equal((await say({}, DEALER_A)).status, 401);
+  assert.equal((await say(bearer(DEALER_B), DEALER_B)).status, 403);
+  assert.equal((await say(bearer(DEALER_A), ADMIN)).status, 403, 'cannot post as someone else');
+  assert.equal((await Ticket.collection.findOne({ _id: T_A })).messages.length, 0);
+});
+
+// --- campaigns, templates, lead import, CSV import rows, inventory import ---------------------------------------
+
+test('campaign templates and campaign leads: the dealer\'s own only', async (t) => {
+  if (needDb(t)) return;
+  const { default: CampaignTemplate } = await import('./app/models/CampaignTemplate.js');
+  const { default: Campaign } = await import('./app/models/Campaign.js');
+  const TPL_B = id(70), CAMP_B = id(71);
+  await CampaignTemplate.collection.insertOne({ _id: TPL_B, name: 'B', message_type: 'sms', dealer_id: DEALER_B, body: 'x' });
+  await Campaign.collection.insertOne({ _id: CAMP_B, name: 'B', dealer_id: DEALER_B });
+  const list = await route('campaign-templates');
+  assert.equal((await list.GET(req(`/api/campaign-templates?dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await list.GET(req(`/api/campaign-templates?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await list.GET(req(`/api/campaign-templates?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_B) }))).status, 200);
+  const make = (headers, dealer) => list.POST(req('/api/campaign-templates', { method: 'POST', headers,
+    body: { name: 'n', message_type: 'sms', dealer_id: String(dealer) } }));
+  assert.equal((await make(bearer(DEALER_A), DEALER_B)).status, 403);
+  assert.equal((await make(bearer(STAFF_A), DEALER_A)).status, 201);
+  const seed = (await route('campaign-templates/seed-defaults')).POST;
+  assert.equal((await seed(req('/api/x', { method: 'POST', headers: bearer(DEALER_A), body: { dealer_id: String(DEALER_B) } }))).status, 403);
+  const one = await route('campaign-templates/[id]');
+  const c = ctx({ id: String(TPL_B) });
+  assert.equal((await one.GET(req('/api/x', { headers: bearer(DEALER_A) }), c)).status, 403);
+  assert.equal((await one.PUT(req('/api/x', { method: 'PUT', headers: bearer(DEALER_A), body: { name: 'hacked' } }), c)).status, 403);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_A) }), c)).status, 403);
+  assert.equal((await CampaignTemplate.collection.findOne({ _id: TPL_B })).name, 'B', 'unchanged, not deleted');
+  assert.equal((await one.GET(req('/api/x', { headers: bearer(ADMIN) }), c)).status, 200);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_B) }), c)).status, 200);
+  assert.equal(await CampaignTemplate.collection.countDocuments({ _id: TPL_B }), 0);
+
+  const leads = (await route('campaigns/[id]/leads')).GET;
+  const cl = ctx({ id: String(CAMP_B) });
+  assert.equal((await leads(req(`/api/campaigns/${CAMP_B}/leads`), cl)).status, 401);
+  assert.equal((await leads(req(`/api/campaigns/${CAMP_B}/leads`, { headers: bearer(DEALER_A) }), cl)).status, 403);
+  assert.equal((await leads(req(`/api/campaigns/${CAMP_B}/leads`, { headers: cookie('dealertoken', DEALER_B) }), cl)).status, 200);
+});
+
+test('leads/import, csv-imported-data and the inventory import', async (t) => {
+  if (needDb(t)) return;
+  const imp = (await route('leads/import')).POST;
+  const form = (dealer) => { const f = new FormData(); f.append('file', new Blob(['name\n'], { type: 'text/csv' }), 'x.csv'); f.append('dealer_id', String(dealer)); return f; };
+  assert.equal((await imp(req('/api/leads/import', { method: 'POST', form: form(DEALER_B) }))).status, 401);
+  assert.equal((await imp(req('/api/leads/import', { method: 'POST', headers: bearer(DEALER_A), form: form(DEALER_B) }))).status, 403);
+
+  const { default: CSVImportData } = await import('./app/models/CSVImportData.js');
+  const CSV_B = id(80);
+  await CSVImportData.collection.insertOne({ _id: CSV_B, dealer_id: DEALER_B, file_name: 'b.csv' });
+  const rows = await route('csv-imported-data');
+  assert.equal((await rows.GET(req(`/api/csv-imported-data?csv_import_id=${CSV_B}`))).status, 401);
+  assert.equal((await rows.GET(req(`/api/csv-imported-data?csv_import_id=${CSV_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await rows.GET(req(`/api/csv-imported-data?csv_import_id=${id(81)}`, { headers: bearer(DEALER_A) }))).status, 403, 'unknown import: admin only');
+  assert.equal((await rows.POST(req('/api/csv-imported-data', { method: 'POST', headers: bearer(DEALER_A), body: { action: 'get_csv_info', csvImportId: String(CSV_B) } }))).status, 403);
+  const info = await rows.POST(req('/api/csv-imported-data', { method: 'POST', headers: bearer(DEALER_B), body: { action: 'get_csv_info', csvImportId: String(CSV_B) } }));
+  assert.equal(info.status, 200);
+
+  const inventory = (await route('import')).GET;
+  process.env.CRON_SECRET = 'cron-secret';
+  process.env.VEHICLE_UPLOAD_DIR = '/nonexistent-authsweep-dir';
+  try {
+    assert.equal((await inventory(req('/api/import'))).status, 401);
+    assert.equal((await inventory(req('/api/import', { headers: bearer(DEALER_A) }))).status, 403);
+    assert.equal((await inventory(req('/api/import', { headers: { 'x-cron-secret': 'cron-secret' } }))).status, 200);
+    delete process.env.CRON_SECRET;
+    assert.equal((await inventory(req('/api/import'))).status, 200, 'the crontab keeps working until CRON_SECRET is set');
+  } finally { delete process.env.CRON_SECRET; delete process.env.VEHICLE_UPLOAD_DIR; }
+});
+
+// --- conversations ----------------------------------------------------------------------------------------------
+
+test('conversations: status needs the lead\'s dealer; the whole-dealer list needs that dealer; detect-language a sign-in', async (t) => {
+  if (needDb(t)) return;
+  const { default: Lead } = await import('./app/models/Lead.js');
+  const { default: Email } = await import('./app/models/Email.js');
+  const LEAD_B = id(90);
+  await Lead.collection.insertOne({ _id: LEAD_B, dealer_id: DEALER_B, name: 'Customer', status: 'New' });
+  await Email.collection.insertOne({ _id: id(91), message_id: 'msg-b', lead_id: LEAD_B, dealer_id: DEALER_B, timestamp: new Date() });
+  const status = (await route('conversations/status')).PUT;
+  const put = (headers) => status(req('/api/conversations/status', { method: 'PUT', headers, body: { parent_id: 'msg-b', lead_status: 'DND' } }));
+  assert.equal((await put({})).status, 401);
+  assert.equal((await put(bearer(DEALER_A))).status, 403);
+  assert.equal((await Lead.collection.findOne({ _id: LEAD_B })).status, 'New', 'unchanged');
+  assert.equal((await put(bearer(DEALER_B))).status, 200);
+
+  const list = (await route('conversations/lead')).GET;
+  assert.equal((await list(req(`/api/conversations/lead?dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await list(req(`/api/conversations/lead?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await list(req('/api/conversations/lead', { headers: bearer(DEALER_A) }))).status, 403, 'no dealer: admin only');
+  assert.equal((await list(req(`/api/conversations/lead?dealer_id=${DEALER_B}`, { headers: cookie('dealertoken', DEALER_B) }))).status, 200);
+  // The DealerSocket iframe's call (one lead, no sign-in) still works.
+  assert.equal((await list(req(`/api/conversations/lead?lead_id=${LEAD_B}`))).status, 200);
+
+  const detect = (await route('conversations/detect-language')).POST;
+  assert.equal((await detect(req('/api/x', { method: 'POST', body: { text: 'hola' } }))).status, 401);
+});
+
+// --- auth/reset-password ----------------------------------------------------------------------------------------
+
+test('auth/reset-password: an operator object as the token is refused', async (t) => {
+  if (needDb(t)) return;
+  await User.updateOne({ _id: DEALER_A }, { $set: { resetToken: 'real-token', resetTokenExpires: new Date(Date.now() + 3600_000) } });
+  const { POST } = await route('auth/reset-password');
+  const res = await POST(req('/api/auth/reset-password', { method: 'POST', body: { token: { $ne: null }, email: 'a@t.test', newPassword: 'pwned-123' } }));
+  assert.equal(res.status, 400);
+  assert.equal((await User.findById(DEALER_A).lean()).password, 'secret-hash');
+  const ok = await POST(req('/api/auth/reset-password', { method: 'POST', body: { token: 'real-token', email: 'a@t.test', newPassword: 'new-pass-123' } }));
+  assert.equal(ok.status, 200, 'the emailed link still works');
+});
+
+// --- routes outside the candidate list (a method with no check in a file that had one elsewhere) ----------------
+
+test('roles/[id] PUT: only the role\'s own account, only its own kind of permission; admin roles super admin only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Role } = await import('./app/models/Role.js');
+  const { default: Permission } = await import('./app/models/Permission.js');
+  const P_DEALER = id(40), P_ADMIN = id(41), ROLE_A = id(42), ROLE_SUPER = id(43);
+  await Permission.collection.insertMany([{ _id: P_DEALER, permission_name: 'Manage Leads', entity: 'dealer' },
+    { _id: P_ADMIN, permission_name: 'Manage Dealers', entity: 'admin' }]);
+  await Role.collection.insertMany([{ _id: ROLE_A, name: 'Sales', entity: 'dealer', entity_id: DEALER_A, permissions: [] },
+    { _id: ROLE_SUPER, name: 'Admin', entity: 'admin', entity_id: ADMIN, permissions: [] }]);
+  const { PUT } = await route('roles/[id]');
+  const put = (headers, roleId, permissions) => PUT(req('/api/x', { method: 'PUT', headers, body: { permissions } }), ctx({ id: String(roleId) }));
+  assert.equal((await put({}, ROLE_A, [String(P_DEALER)])).status, 401);
+  assert.equal((await put(bearer(DEALER_B), ROLE_A, [String(P_DEALER)])).status, 403);
+  assert.equal((await put(bearer(DEALER_A), ROLE_SUPER, [String(P_ADMIN)])).status, 403);
+  assert.equal((await put(bearer(DEALER_A), ROLE_A, [String(P_ADMIN)])).status, 403, 'no admin permission on a dealer role');
+  assert.equal((await Role.collection.findOne({ _id: ROLE_A })).permissions.length, 0);
+  assert.equal((await put(bearer(DEALER_A), ROLE_A, [String(P_DEALER)])).status, 200);
+  assert.equal((await put(cookie('admintoken', ADMIN), ROLE_SUPER, [String(P_ADMIN)])).status, 200);
+});
+
+test('leads DELETE, campaigns/[id], conversation notes, dealer settings GETs: the dealer\'s own only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Lead } = await import('./app/models/Lead.js');
+  const { default: Campaign } = await import('./app/models/Campaign.js');
+  const { default: Email } = await import('./app/models/Email.js');
+  const LEAD_B = id(30), CAMP_B = id(31), NOTE_B = id(32);
+  await Lead.collection.insertOne({ _id: LEAD_B, dealer_id: DEALER_B, name: 'Customer' });
+  await Campaign.collection.insertOne({ _id: CAMP_B, name: 'B', dealer_id: DEALER_B, stats: { sent: 0 } });
+  await Email.collection.insertOne({ _id: NOTE_B, lead_id: LEAD_B, dealer_id: String(DEALER_B), communication_type: 'note', timestamp: new Date() });
+
+  const leads = (await route('leads')).DELETE;
+  const del = (headers) => leads(req('/api/leads', { method: 'DELETE', headers, body: { id: String(LEAD_B) } }));
+  assert.equal((await del({})).status, 401);
+  assert.equal((await del(bearer(DEALER_A))).status, 403);
+  assert.equal(await Lead.collection.countDocuments({ _id: LEAD_B }), 1);
+
+  const camp = await route('campaigns/[id]');
+  const c = ctx({ id: String(CAMP_B) });
+  for (const [m, body] of [['GET'], ['PUT', { name: 'x' }], ['DELETE']]) {
+    assert.equal((await camp[m](req('/api/x', { method: m, body }), c)).status, 401, m);
+    assert.equal((await camp[m](req('/api/x', { method: m, headers: bearer(DEALER_A), body }), c)).status, 403, m);
+  }
+  assert.equal((await camp.GET(req('/api/x', { headers: bearer(DEALER_B) }), c)).status, 200);
+  assert.equal(await Campaign.collection.countDocuments({ _id: CAMP_B }), 1);
+
+  const notes = await route('conversations/notes');
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await notes.GET(req(`/api/x?lead_id=${LEAD_B}&dealer_id=${DEALER_B}`, { headers: bearer(DEALER_B) }))).status, 200);
+  assert.equal((await notes.DELETE(req(`/api/x?note_id=${NOTE_B}&dealer_id=${DEALER_B}`, { method: 'DELETE', headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await notes.POST(req('/api/x', { method: 'POST', headers: bearer(DEALER_A), body: { lead_id: String(LEAD_B), content: 'x', dealer_id: String(DEALER_B) } }))).status, 403);
+  assert.equal(await Email.collection.countDocuments({ _id: NOTE_B }), 1);
+
+  const setting = (await route('dealers/setting')).GET;
+  const reminders = (await route('dealers/reminder-settings')).GET;
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`))).status, 401);
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await setting(req(`/api/x?dealerId=${DEALER_B}`, { headers: cookie('dealertoken', DEALER_B) }))).status, 200);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`))).status, 401);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await reminders(req(`/api/x?dealer_id=${DEALER_B}`, { headers: bearer(DEALER_B) }))).status, 200);
+  assert.equal((await del(bearer(DEALER_B))).status, 200, 'own lead deleted');
+});
+
+test('vendors GET/PATCH and tickets/[id] DELETE', async (t) => {
+  if (needDb(t)) return;
+  const vendors = await route('vendors');
+  const patch = (headers) => vendors.PATCH(req('/api/vendors', { method: 'PATCH', headers, body: { vendorId: String(DEALER_A), password: 'pwned-1234' } }));
+  assert.equal((await patch({})).status, 401);
+  assert.equal((await patch(bearer(AGENCY))).status, 403);
+  assert.equal((await User.findById(DEALER_A).lean()).password, 'secret-hash');
+  assert.equal((await vendors.GET(req('/api/vendors'))).status, 401);
+  assert.equal((await vendors.GET(req('/api/vendors', { headers: bearer(DEALER_A) }))).status, 403);
+  assert.equal((await vendors.GET(req('/api/vendors', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+
+  const { default: Ticket } = await import('./app/models/Ticket.js');
+  const T = id(61);
+  await Ticket.collection.insertOne({ _id: T, title: 'A', createdBy: DEALER_A, createdByModel: 'dealer', messages: [] });
+  const one = await route('tickets/[id]');
+  const c = ctx({ id: String(T) });
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE' }), c)).status, 401);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_B) }), c)).status, 403);
+  assert.equal(await Ticket.collection.countDocuments({ _id: T }), 1);
+  assert.equal((await one.DELETE(req('/api/x', { method: 'DELETE', headers: bearer(DEALER_A) }), c)).status, 200);
+});

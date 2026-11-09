@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import CampaignTemplate from "@models/CampaignTemplate";
 import { verifyToken } from "@lib/auth";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch all templates for a dealer
 export async function GET(req) {
@@ -26,6 +27,9 @@ export async function GET(req) {
     if (!dealerId) {
       return NextResponse.json({ error: "dealer_id is required" }, { status: 400 });
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, dealerId);
+    if (guard.response) return guard.response;
 
     const query = { dealer_id: dealerId };
     if (messageType) {
@@ -76,6 +80,9 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, String(dealer_id));
+    if (guard.response) return guard.response;
 
     // If setting as default, unset other defaults for this dealer and message_type
     if (is_default) {

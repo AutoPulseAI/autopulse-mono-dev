@@ -5,6 +5,7 @@ import Lead from '@models/Lead';
 import User from '@models/User';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 import jwt from 'jsonwebtoken';
+import { requireDealerAccess } from '@lib/apiGuard';
 
 function normalizeUserLanguage(raw) {
   const v = raw == null ? '' : String(raw).trim();
@@ -55,6 +56,10 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): notes belong to the dealer named; that dealer, its agency or a super admin (the
+    // token was optional and the dealer never checked).
+    const noteGuard = await requireDealerAccess(request, String(dealer_id));
+    if (noteGuard.response) return noteGuard.response;
 
     // Find the last message in the lead's conversation thread
     let parentMessageId = null;
@@ -175,6 +180,10 @@ export async function GET(request) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): notes belong to the dealer named; that dealer, its agency or a super admin (the
+    // token was optional and the dealer never checked).
+    const noteGuard = await requireDealerAccess(request, String(dealer_id));
+    if (noteGuard.response) return noteGuard.response;
 
     // Find all notes for this lead
     const notes = await Email.find({
@@ -236,6 +245,10 @@ export async function PUT(request) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): notes belong to the dealer named; that dealer, its agency or a super admin (the
+    // token was optional and the dealer never checked).
+    const noteGuard = await requireDealerAccess(request, String(dealer_id));
+    if (noteGuard.response) return noteGuard.response;
 
     // Find and update the note
     const note = await Email.findOne({
@@ -296,6 +309,10 @@ export async function DELETE(request) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): notes belong to the dealer named; that dealer, its agency or a super admin (the
+    // token was optional and the dealer never checked).
+    const noteGuard = await requireDealerAccess(request, String(dealer_id));
+    if (noteGuard.response) return noteGuard.response;
 
     // Delete the note
     const result = await Email.deleteOne({

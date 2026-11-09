@@ -6,9 +6,13 @@ import Package from "@models/Package";
 import { getServerSession } from "next-auth";
 //import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import dbConnect from "@lib/mongodb"; 
+import { requireUser } from "@lib/apiGuard";
 import stripe from "@lib/stripe";
 
 export async function POST(request) {
+  // Security fix (Nov 2026): signed-in users only (this handler is unfinished and fails anyway).
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn.response;
   await dbConnect();
   //const session = await getServerSession(authOptions);
 

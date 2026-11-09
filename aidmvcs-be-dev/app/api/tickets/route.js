@@ -3,6 +3,7 @@ import Ticket from "@models/Ticket";
 import User from "@models/User"; // Import User model to check type
 import Counter from "@models/Counter";
 import { sendNewTicketAdminEmail } from "@lib/emailservice";
+import { requireActingFor, requireSuperAdmin, requireUser } from "@lib/apiGuard";
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
@@ -11,6 +12,10 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const user_id = searchParams.get('user_id');
+    // Security fix (Nov 2026): a user's own tickets (user_id = the signed-in account or its dealership/agency);
+    // without user_id (every ticket) only the super admin. This listed every ticket to anyone.
+    const guard = user_id ? await requireActingFor(req, user_id) : await requireSuperAdmin(req);
+    if (guard.response) return guard.response;
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 10;
     const skip = (page - 1) * limit;
@@ -114,6 +119,18 @@ export async function POST(request) {
     await dbConnect();
     
     const { title, description, category, priority, createdBy, createdByModel, attachments } = await request.json();
+
+    // Security fix (Nov 2026): a ticket is opened as the signed-in account (or its dealership/agency). The admin's
+    // form sends createdBy "admin", which only a super admin may use.
+    const signedIn = await requireUser(request);
+    if (signedIn.response) return signedIn.response;
+    if (createdBy !== "admin") {
+      const guard = await requireActingFor(request, createdBy);
+      if (guard.response) return guard.response;
+    } else {
+      const guard = await requireSuperAdmin(request);
+      if (guard.response) return guard.response;
+    }
     
     console.log('Received ticket creation data:', {
       title,

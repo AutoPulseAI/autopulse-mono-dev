@@ -6,9 +6,12 @@ import Lead from "@models/Lead";
 import jwt from "jsonwebtoken";
 import User from "@models/User";
 import moment from "moment-timezone";
+import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch a single campaign by ID
 export async function GET(req, { params }) {
+  const signedIn = await requireUser(req);
+  if (signedIn.response) return signedIn.response;
   try {
     await dbConnect();
     const { id } = await params;
@@ -24,6 +27,9 @@ export async function GET(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): the campaign's own dealer, its agency or a super admin (this had no dealer check).
+    const campaignGuard = await requireDealerAccess(req, String(campaign.dealer_id?._id || campaign.dealer_id));
+    if (campaignGuard.response) return campaignGuard.response;
 
     return NextResponse.json({ campaign }, { status: 200 });
   } catch (error) {
@@ -37,6 +43,8 @@ export async function GET(req, { params }) {
 
 // PUT: Update a campaign
 export async function PUT(req, { params }) {
+  const signedIn = await requireUser(req);
+  if (signedIn.response) return signedIn.response;
   try {
     await dbConnect();
     const { id } = await params;
@@ -63,6 +71,9 @@ export async function PUT(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): the campaign's own dealer, its agency or a super admin (this had no dealer check).
+    const campaignGuard = await requireDealerAccess(req, String(campaign.dealer_id?._id || campaign.dealer_id));
+    if (campaignGuard.response) return campaignGuard.response;
 
     // Check if campaign can be edited
     // MOST IMPORTANT: Cannot edit if any messages have been sent
@@ -303,6 +314,8 @@ export async function PUT(req, { params }) {
 
 // DELETE: Delete a campaign
 export async function DELETE(req, { params }) {
+  const signedIn = await requireUser(req);
+  if (signedIn.response) return signedIn.response;
   try {
     await dbConnect();
     const { id } = await params;
@@ -315,6 +328,9 @@ export async function DELETE(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): the campaign's own dealer, its agency or a super admin (this had no dealer check).
+    const campaignGuard = await requireDealerAccess(req, String(campaign.dealer_id?._id || campaign.dealer_id));
+    if (campaignGuard.response) return campaignGuard.response;
 
     // MOST IMPORTANT: Prevent deletion if any messages have been sent
     if (campaign.stats?.sent > 0) {

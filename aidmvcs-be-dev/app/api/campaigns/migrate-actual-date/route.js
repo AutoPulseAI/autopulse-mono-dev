@@ -3,9 +3,13 @@ import dbConnect from "@lib/mongodb";
 import Campaign from "@models/Campaign";
 import User from "@models/User";
 import moment from "moment-timezone";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 // POST: Migrate existing campaigns to add actual_scheduled_date
 export async function POST(req) {
+  // Security fix (Nov 2026): one-off maintenance across every dealer's campaigns, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
 
@@ -91,6 +95,9 @@ export async function POST(req) {
 
 // GET: Check migration status
 export async function GET(req) {
+  // Security fix (Nov 2026): one-off maintenance across every dealer's campaigns, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
 

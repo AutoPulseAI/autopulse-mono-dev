@@ -22,6 +22,7 @@ import Role from '@models/Role';
 import Permission from '@models/Permission';
 import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
+import { requireUser, requireDealerAccess } from '@lib/apiGuard';
 import { attachAiStages, attachAiAdminLabels } from '@lib/ai/aiStage';
 import { loadSettingsEditor } from '@lib/apiAuth';
 import { replyCohorts } from '@lib/reporting/replyCohorts';
@@ -843,8 +844,18 @@ export async function POST(req) {
 
 // DELETE: Remove a lead by ID
 export async function DELETE(req) {
+    // Security fix (Nov 2026): this deleted any lead by id with no sign-in. Now the lead's own dealer (owner or
+    // staff), its agency or a super admin.
+    const signedIn = await requireUser(req);
+    if (signedIn.response) return signedIn.response;
     try {
+        await dbConnect();
         const { id } = await req.json();
+        if (!mongoose.isValidObjectId(id)) return NextResponse.json({ error: "Invalid lead id" }, { status: 400 });
+        const lead = await Lead.findById(id).select("dealer_id").lean();
+        if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+        const guard = await requireDealerAccess(req, String(lead.dealer_id));
+        if (guard.response) return guard.response;
         await Lead.findByIdAndDelete(id);
         return NextResponse.json({ message: "Lead deleted successfully" }, { status: 200 });
     } catch (error) {

@@ -5,8 +5,13 @@ import Lead from "@models/Lead";
 import Email from "@models/Email";
 import FollowUpJob from '@models/FollowUpJob.js'; // Using same Email model for SMS too
 import { onLeadStatusChange ,onFollowUpEvent} from '@lib/followupService.js';
+import { requireUser, requireDealerAccess } from '@lib/apiGuard';
 
 export async function PUT(request) {
+  // Security fix (Nov 2026): changed any lead's status by message id with no sign-in. Now the lead's own dealer,
+  // its agency or a super admin (no caller in the app today; the CRM uses /api/conversations/lead/status).
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn.response;
   try {
     await dbConnect();
     const { parent_id, lead_id,lead_status } = await request.json();
@@ -40,6 +45,11 @@ export async function PUT(request) {
                 ] 
             });
            
+            if (!existingLead) {
+              return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+            }
+            const guard = await requireDealerAccess(request, String(existingLead.dealer_id));
+            if (guard.response) return guard.response;
             const updates = {};
             if (lead_status) {
                 updates.lead_status = lead_status;

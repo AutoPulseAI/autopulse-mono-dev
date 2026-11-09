@@ -2,8 +2,12 @@
 import { NextResponse } from 'next/server';
 import { Contacts } from '@models/Contacts';
 import dbConnect from "@lib/mongodb";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(request, { params }) {
+  // Security fix (Nov 2026): the admin inbox (contact / demo requests) is super admin only; the public form POST stays open.
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     
@@ -31,6 +35,9 @@ export async function GET(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  // Security fix (Nov 2026): the admin inbox (contact / demo requests) is super admin only; the public form POST stays open.
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
     try {
       await dbConnect();
       

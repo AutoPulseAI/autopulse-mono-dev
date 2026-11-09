@@ -5,8 +5,12 @@ import { getServerSession } from "next-auth";
 
 import dbConnect from "@lib/mongodb";
 import stripe from "@lib/stripe";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function PUT(request, { params }) {
+  // Security fix (Nov 2026): only the super admin manages packages (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   await dbConnect();
  
 
@@ -52,6 +56,9 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  // Security fix (Nov 2026): only the super admin manages packages (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   await dbConnect();
   const session = await getServerSession(authOptions);
 

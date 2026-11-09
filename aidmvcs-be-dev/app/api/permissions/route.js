@@ -2,8 +2,12 @@ import dbConnect from "@lib/mongodb"; //  Correct Relative Import
 import Permission from "@models/Permission";
 import { EXPORT_DETAIL } from "next/dist/shared/lib/constants";
 import { REPL_MODE_SLOPPY } from "repl";
+import { requireUser } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): the role screens (signed in) read this; it had no sign-in check.
+  const guard = await requireUser(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
