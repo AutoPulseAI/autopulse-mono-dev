@@ -138,7 +138,13 @@ const UserSchema = new mongoose.Schema(
         revenue: { type: Boolean, default: true }
       },
       custom_message: { type: String, default: "" },
-      last_settings_updated: { type: Date, default: null }
+      last_settings_updated: { type: Date, default: null },
+      // Daily performance email (app/lib/reports/dailyReport.js). Set only by a super admin
+      // (/api/admin/daily-report): 'off' sends nothing; 'internal' sends only to DAILY_REPORT_INTERNAL_RECIPIENTS;
+      // 'live' sends to default_email above. The dealer's own settings save never touches these.
+      daily_email_mode: { type: String, enum: ["off", "internal", "live"], default: "off" },
+      daily_email_mode_updated_at: { type: Date, default: null },
+      daily_email_mode_updated_by: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
     }
   },
   { timestamps: true }
