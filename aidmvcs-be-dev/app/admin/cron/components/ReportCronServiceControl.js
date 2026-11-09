@@ -76,7 +76,7 @@ export default function ReportCronServiceControl() {
       const data = await response.json();
       
       if (data.success) {
-        setMessage('Manual report check completed successfully');
+        setMessage(data.message || 'Manual report check completed successfully');
         // Refresh status after check
         await fetchServiceStatus();
       } else {
@@ -105,7 +105,7 @@ export default function ReportCronServiceControl() {
       const data = await response.json();
       
       if (data.success) {
-        setMessage('Overdue report processing completed successfully');
+        setMessage(data.message || 'Overdue report processing completed successfully');
         // Refresh status after processing
         await fetchServiceStatus();
       } else {
@@ -128,6 +128,12 @@ export default function ReportCronServiceControl() {
           <h6 className={`${serviceStatus?.isRunning ? 'text-success' : 'text-danger'}`}>{serviceStatus?.isRunning ? 'Running' : 'Stopped'}</h6>
         </div>
       </div>
+
+      {serviceStatus?.disabled && (
+        <div className="mb-4 p-3 rounded-md bg-yellow-100 text-yellow-800">
+          {serviceStatus.message}
+        </div>
+      )}
 
       {message && (
         <div className={`mb-4 p-3 rounded-md ${
