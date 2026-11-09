@@ -260,6 +260,13 @@ export async function evaluateKpi(id, args, ctx = {}) {
   return res;
 }
 
+// Whether a KPI's records are tied to leads (its rows carry lead_id, or lead_ids for customer rows): only those
+// numbers open the Leads list (/dealer/leads?report_kpi=<id>). Import errors, clicks, campaign totals... are not.
+export function isLeadLinked(def) {
+  return Boolean(def && def.dashboard && (def.state || STATE.LIVE) === STATE.LIVE
+    && (def.columns || []).some(([key]) => key === 'lead_id' || key === 'lead_ids'));
+}
+
 // Definitions only (no functions), for the Definitions page and CSV.
 export function listKpis() {
   return KPIS.map(definition);

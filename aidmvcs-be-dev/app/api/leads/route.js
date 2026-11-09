@@ -28,8 +28,10 @@ import { loadSettingsEditor } from '@lib/apiAuth';
 import { replyCohorts } from '@lib/reporting/replyCohorts';
 import { attributeAppointments } from '@lib/reporting/appointmentAttribution';
 import { getDealerTimezone } from '@lib/reporting/time';
-import { APPT_ATTRIBUTION, REPLY_COHORTS, apptAttributionLeads, apptDrillNote, replyCohortLeads, replyDrillNote }
-  from '@lib/reporting/drillLeads';
+import { APPT_ATTRIBUTION, REPLY_COHORTS, apptAttributionLeads, apptDrillNote, replyCohortLeads, replyDrillNote,
+  reportDrillNote, reportKpiLeads } from '@lib/reporting/drillLeads';
+import { evaluateKpi, getKpi, isLeadLinked } from '@lib/reporting/registry';
+import { REPORTS, parseFilterSpec } from '@lib/reporting/filters';
 import { callerSeesFeature, localRange } from '../reports/reply-cohorts/reportAccess.js';
 
 // Helper function to normalize phone numbers for search
@@ -632,10 +634,14 @@ async function drillFilter({ req, url, currentUser, dealerId, startDate, endDate
   const appt = url.searchParams.get("appt_attribution");
   const wantCohort = cohort && Object.hasOwn(REPLY_COHORTS, cohort);
   const wantAppt = appt && Object.hasOwn(APPT_ATTRIBUTION, appt);
-  if (!dealerId || (!wantCohort && !wantAppt)) return null;
+  const reportDef = getKpi(url.searchParams.get("report_kpi") || "");
+  const wantReport = isLeadLinked(reportDef);
+  if (!dealerId || (!wantCohort && !wantAppt && !wantReport)) return null;
   const seeCohort = wantCohort && await callerSeesFeature(req, currentUser, dealerId, "reply_cohorts");
   const seeAppt = wantAppt && await callerSeesFeature(req, currentUser, dealerId, "appointment_attribution");
-  if (!seeCohort && !seeAppt) return null;
+  const seeReport = wantReport && await callerSeesFeature(req, currentUser, dealerId, "reports_page");
+  if (!seeCohort && !seeAppt && !seeReport) return null;
+  if (seeReport && !seeCohort && !seeAppt) return reportDrill({ url, dealerId, def: reportDef, startDate, endDate });
 
   const tz = await getDealerTimezone(dealerId);
   const range = localRange(startDate, endDate, tz);
@@ -669,6 +675,44 @@ async function drillFilter({ req, url, currentUser, dealerId, startDate, endDate
       note: apptDrillNote({ card_count: got.card_count, listed: found.size, missing }) });
   }
   return { lead_ids: ids, meta };
+}
+
+// ?report_kpi=<id> (the Reports page, admins): the leads behind that number for the picked dealer-local days, with the
+// page's filters (report_filters, the Reports page's own query string), a breakdown group (report_by + report_group)
+// and the rate's "out of" part (report_part=denominator). Rows come from the KPI registry, so the list is the number.
+async function reportDrill({ url, dealerId, def, startDate, endDate }) {
+  const p = url.searchParams;
+  const tz = await getDealerTimezone(dealerId);
+  const input = new URLSearchParams(p.get("report_filters") || "");
+  for (const k of ["from", "to", "basis", "dealer_id"]) input.delete(k);
+  if (startDate) input.set("from", startDate);
+  if (endDate) input.set("to", endDate);
+  const parsed = parseFilterSpec(input, { report: REPORTS.KPI_REPORTS, tz });
+  const part = p.get("report_part") === "denominator" && def.kind === "rate" ? "denominator" : "numerator";
+  const by = p.get("report_by") && (def.breakdowns || []).includes(p.get("report_by")) ? p.get("report_by") : null;
+  const group = by ? (p.get("report_group") ?? "") : null;
+  const label = `Report: ${def.label}${part === "denominator" ? ` (out of: ${def.denominatorLabel || "all"})` : ""}`
+    + `${by ? ` · ${group}` : ""}`;
+  if (!parsed.ok) {
+    return { lead_ids: [], meta: { range: null, filters: [{ param: "report_kpi", value: def.id, label,
+      note: `Pick a date range (${parsed.errors.join("; ")})` }] } };
+  }
+  const { spec } = parsed;
+  const ev = await evaluateKpi(def.id, { dealerId: String(dealerId), from: spec.from, to: spec.to, tz, spec });
+  let rows = part === "denominator" ? ev.denominatorRows || [] : ev.rows;
+  if (by) rows = rows.filter((r) => String(r._g?.[by] ?? "Unknown") === group);
+  const got = reportKpiLeads(rows);
+  const oids = got.lead_ids.filter((id) => mongoose.isValidObjectId(id));
+  const found = new Set((oids.length ? await Lead.find({ _id: { $in: oids }, dealer_id: dealerId }).select("_id").lean()
+    : []).map((l) => String(l._id)));
+  const missing = rows.filter((r) => {
+    const own = r.lead_id ? [String(r.lead_id)] : String(r.lead_ids || "").split(/\s+/).filter(Boolean);
+    return !own.some((id) => found.has(id));
+  }).length;
+  const note = reportDrillNote({ grain: def.grain, card_count: got.card_count, listed: found.size, missing });
+  return { lead_ids: [...found], meta: { range: { from: spec.from, to: spec.to }, filters: [{ param: "report_kpi",
+    value: def.id, label, where: "report", card_count: got.card_count, lead_count: found.size, not_listed: missing,
+    note }] } };
 }
 
 // POST: Create a new lead

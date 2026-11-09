@@ -1,6 +1,7 @@
 "use client";
-// Dealer > Reports (SOW 8 Deliverable F; P1 plan items 1, 4, 5): one tab per report, one filter bar for all of them,
-// every number opens the exact records behind it with a CSV of the same records. Numbers come from
+// Dealer > Reports (SOW 8 Deliverable F; P1 plan items 1, 4, 5): one tab per report, one filter bar for all of them.
+// A number tied to leads opens the Leads list with exactly those leads (/dealer/leads?report_kpi=<id>, same dates and
+// filters; app/api/leads/route.js), like the Dashboard's cards; that list's Export CSV is the list. Numbers come from
 // GET /api/reports/kpis (app/lib/reporting/registry.js). Shown only where the 'reports_page' feature is visible
 // (super admins, also through "login as"); for anyone else the API answers 404 and this page says so.
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,9 +12,8 @@ import { useUser } from "../context/UserContext";
 import { presetRange } from "../dashboard/components/dateRanges";
 import FilterBar from "./components/FilterBar";
 import { Breakdown, GroupTable, KpiGrid } from "./components/KpiCards";
-import DrillDown from "./components/DrillDown";
 import Definitions from "./components/Definitions";
-import { reportsGet } from "./reportsApi";
+import { reportQuery, reportsGet } from "./reportsApi";
 
 const TABS = [
   ["executive", "Executive"], ["appointments", "Appointments"], ["ai", "AI performance"],
@@ -68,7 +68,7 @@ function Trend({ kpis, from, to }) {
   );
 }
 
-function TabBody({ tab, report, open }) {
+function TabBody({ tab, report, linkFor }) {
   const kpis = report.kpis;
   const k = (id) => kpis.find((x) => x.id === id);
   const live = kpis.filter((x) => x.state === "live" || x.state === "error");
@@ -81,27 +81,27 @@ function TabBody({ tab, report, open }) {
           status changes stand in for it (marked proxy).
         </Alert>
       )}
-      <KpiGrid kpis={live} onOpen={open} />
+      <KpiGrid kpis={live} linkFor={linkFor} />
       {tab === "executive" && <Trend kpis={kpis} from={report.range.from} to={report.range.to} />}
       {tab === "appointments" && (
         <div className="row">
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="creator" title="Set, by who made it" onOpen={open} /></div>
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="department" title="Set, sales / service" onOpen={open} /></div>
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" onOpen={open} /></div>
+          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="creator" title="Set, by who made it" linkFor={linkFor} /></div>
+          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="department" title="Set, sales / service" linkFor={linkFor} /></div>
+          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" linkFor={linkFor} /></div>
         </div>
       )}
       {tab === "ai" && (
         <div className="row">
-          <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" onOpen={open} /></div>
-          <div className="col-md-6"><Breakdown kpi={k("ai.messages_sent")} by="channel" title="AI messages by channel" onOpen={open} /></div>
+          <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" linkFor={linkFor} /></div>
+          <div className="col-md-6"><Breakdown kpi={k("ai.messages_sent")} by="channel" title="AI messages by channel" linkFor={linkFor} /></div>
         </div>
       )}
       {tab === "lead_source" && (
-        <GroupTable title="Funnel by lead source" firstColumn="Lead source" by="lead_source" onOpen={open}
+        <GroupTable title="Funnel by lead source" firstColumn="Lead source" by="lead_source" linkFor={linkFor}
           kpis={["source.leads", "source.replied_leads", "source.appointments", "source.shown", "source.crm_sold"].map(k)} />
       )}
       {tab === "bdc" && (
-        <GroupTable title="By staff member (current lead owner)" firstColumn="Staff" by="staff" onOpen={open}
+        <GroupTable title="By staff member (current lead owner)" firstColumn="Staff" by="staff" linkFor={linkFor}
           kpis={["bdc.assigned_leads", "bdc.speed_to_lead", "bdc.staff_texts", "bdc.staff_emails",
             "bdc.call_tasks_completed", "bdc.meaningful_contacts", "bdc.call_tasks_missed", "bdc.call_tasks_overdue",
             "bdc.appointments_by_owner"].map(k)} />
@@ -136,7 +136,6 @@ export default function ReportsPage() {
   const [error, setError] = useState(null);
   const [hidden, setHidden] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [drill, setDrill] = useState(null);
 
   // Default: the last 30 days, in the dealer's time zone.
   useEffect(() => {
@@ -156,6 +155,23 @@ export default function ReportsPage() {
   }, [range, tz]);
   const params = useMemo(() => (dates && dealerId ? { dealer_id: dealerId, ...dates, ...filters } : null),
     [dates, dealerId, filters]);
+
+  // The Leads list for one number (or one breakdown group, or a rate's "out of" part): the page's dates as the
+  // dealer-local days' instants (as the Dashboard's links send them) and the page's filters.
+  const linkFor = useCallback((kpi, { by, group, part } = {}) => {
+    if (!kpi?.leads_link || !dates) return null;
+    const q = new URLSearchParams({ report_kpi: kpi.id });
+    q.set("startDate", moment.tz(dates.start_date, "YYYY-MM-DD", tz).startOf("day").toISOString());
+    q.set("endDate", moment.tz(dates.end_date, "YYYY-MM-DD", tz).endOf("day").toISOString());
+    if (part === "denominator") q.set("report_part", "denominator");
+    if (by) {
+      q.set("report_by", by);
+      q.set("report_group", group);
+    }
+    const f = reportQuery(filters);
+    if (f) q.set("report_filters", f);
+    return `/dealer/leads?${q.toString()}`;
+  }, [dates, tz, filters]);
 
   const fail = (e) => {
     if (e.status === 404) setHidden(true);
@@ -220,9 +236,8 @@ export default function ReportsPage() {
             : <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
         ) : loading && !shown ? (
           <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
-        ) : shown ? <TabBody tab={tab} report={shown} open={(kpi, g = {}) => setDrill({ kpi, ...g })} /> : null}
+        ) : shown ? <TabBody tab={tab} report={shown} linkFor={linkFor} /> : null}
       </div>
-      <DrillDown target={drill} params={params} onClose={() => setDrill(null)} />
     </div>
   );
 }
