@@ -276,8 +276,14 @@ async function seed() {
   await db.collection('ai_call_tasks').insertMany([
     { dealer_id: d, lead_id: String(L.a), assigned_to: String(STAFF), status: 'completed', outcome: 'connected',
       opened_at: at(`${DAY} 05:00:00`), closed_at: at(`${DAY} 06:00:00`) },
+    // As agentic-upsell agent/call_tasks.py mark_missed writes it: missed_at and closed_at at the same time.
     { dealer_id: d, lead_id: String(L.b), assigned_to: String(STAFF2), status: 'missed', due_by: at(`${DAY} 17:00:00`),
-      missed_at: at(`${DAY} 17:00:00`), opened_at: at(`${DAY} 09:00:00`) },
+      missed_at: at(`${DAY} 17:00:00`), closed_at: at(`${DAY} 17:00:00`), opened_at: at(`${DAY} 09:00:00`) },
+    // Missed in the morning, the call made later (resolve(): status completed, closed_at moves, missed_at stays): on
+    // the Call Tasks page it is under Done, not Missed.
+    { dealer_id: d, lead_id: String(L.c), assigned_to: String(STAFF2), status: 'completed', outcome: 'no_answer',
+      due_by: at(`${DAY} 12:00:00`), missed_at: at(`${DAY} 12:00:00`), closed_at: at(`${DAY} 14:00:00`),
+      opened_at: at(`${DAY} 08:00:00`) },
     { dealer_id: d, lead_id: String(L.c), assigned_to: String(STAFF2), status: 'open', due_by: at(`${DAY} 18:00:00`),
       opened_at: at(`${DAY} 09:00:00`) },
   ]);
@@ -526,7 +532,9 @@ test('values: dealer-local day boundaries and the fixed defects', async (t) => {
   assert.equal((await v('ai.handoffs')).count, 2);
   assert.equal((await v('exec.customers_replied')).count, 2);
   assert.equal((await v('bdc.meaningful_contacts')).count, 1);
-  assert.equal((await v('bdc.call_tasks_missed')).count, 1);
+  // The Call Tasks page's Missed list for the day: status still missed, by closed_at (not the late-completed one).
+  assert.deepEqual((await v('bdc.call_tasks_missed')).rows.map((r) => r.lead_id), [String(L.b)]);
+  assert.equal((await v('bdc.call_tasks_completed')).count, 2);
   assert.equal((await v('dq.legacy_status')).count, 1);
   assert.equal((await v('dq.duplicate_customers')).count, 2);
   assert.equal((await v('source.vdp_clicks')).count, 1);
