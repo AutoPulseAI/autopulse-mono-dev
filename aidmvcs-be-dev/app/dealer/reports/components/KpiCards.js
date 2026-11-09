@@ -15,7 +15,8 @@ export function formatValue(k) {
   return Number(k.value).toLocaleString();
 }
 
-const NEW_TAB = { target: "_blank", rel: "noopener noreferrer" };
+// Same tab, like the Dashboard cards.
+const NEW_TAB = {};
 
 export function KpiCard({ kpi, linkFor }) {
   const live = kpi.state === "live";
