@@ -439,17 +439,20 @@ test('Shown / Show rate: past appointments only; Shown = the Dashboard\'s "Appoi
   let shown = await evaluateKpi('exec.shown', args(at1230), {});
   let rate = await evaluateKpi('exec.show_rate', args(at1230), {});
   assert.deepEqual(shown.ids, [String(B.ai)]);
-  // At 12:30 only the 10:00 appointment is past: 1 of 1. 15:00 and 16:00 are still ahead.
-  assert.deepEqual([rate.value, rate.numerator.count, rate.denominator.count], [100, 1, 1]);
-  assert.deepEqual((await evaluateKpi('appointments.upcoming', args(at1230), {})).ids.sort(),
-    [B.staff, B.noOutcome].map(String).sort());
-  assert.equal((await evaluateKpi('appointments.no_show', args(at1230), {})).count, 0);
-  // After 16:00: all three past, one shown -> 1 of 3; the two others are no-shows (recorded or not).
+  // At 12:30 the 10:00 appointment is past (shown) and the 15:00 one is already marked a no-show (a decided outcome,
+  // like an early "shown"): 1 of 2. 16:00 has no outcome and is still ahead.
+  assert.deepEqual([rate.value, rate.numerator.count, rate.denominator.count], [50, 1, 2]);
+  assert.deepEqual((await evaluateKpi('appointments.upcoming', args(at1230), {})).ids, [String(B.noOutcome)]);
+  assert.deepEqual((await evaluateKpi('appointments.no_show', args(at1230), {})).ids, [String(B.staff)]);
+  assert.equal((await evaluateKpi('appointments.not_recorded', args(at1230), {})).count, 0);
+  // After 16:00: all three past, one shown -> 1 of 3. Only the one staff marked is a no-show (Booking.showed = false);
+  // the 16:00 one has no outcome recorded - not a no-show (owner, 10 Nov 2026).
   const evening = at(`${DAY} 20:00:00`);
   rate = await evaluateKpi('exec.show_rate', args(evening), {});
   assert.deepEqual([rate.value, rate.numerator.count, rate.denominator.count], [33.33, 1, 3]);
-  assert.deepEqual((await evaluateKpi('appointments.no_show', args(evening), {})).ids.sort(),
-    [B.staff, B.noOutcome].map(String).sort());
+  assert.deepEqual((await evaluateKpi('appointments.no_show', args(evening), {})).ids, [String(B.staff)]);
+  assert.deepEqual((await evaluateKpi('appointments.not_recorded', args(evening), {})).ids, [String(B.noOutcome)]);
+  assert.equal((await evaluateKpi('appointments.upcoming', args(evening), {})).count, 0);
   // Cancelled ones are never in it (B.cancelled is on 7 Nov; one more cancelled on 5 Nov changes nothing).
   await db.collection('bookings').insertOne({ dealer_id: d, lead_id: String(L.c), customerName: 'x', showed: true,
     bookingDate: at(`${DAY} 00:00:00`), bookingTime: '09:00', booking_status: 'cancelled', createdAt: at(`${DAY} 01:00:00`) });
@@ -463,9 +466,14 @@ test('Shown / Show rate: past appointments only; Shown = the Dashboard\'s "Appoi
     .find((k) => k.id === 'exec.show_rate');
   assert.equal(card.denominator_label, 'past appointments');
   assert.ok(card.leads_link);
-  assert.match(getKpi('exec.show_rate').denominator, /already passed/);
-  assert.match(getKpi('exec.shown').numerator, /Appointments Showed/);
-  assert.match(getKpi('appointments.no_show').numerator, /passed .* not cancelled and not shown/);
+  assert.match(getKpi('exec.show_rate').denominator, /past or already decided/);
+  assert.match(getKpi('exec.shown').numerator, /^Recorded shows: .*Appointments Showed/);
+  assert.match(getKpi('appointments.no_show').numerator, /marked as a no-show \(Booking.showed = false\)/);
+  assert.match(getKpi('appointments.not_recorded').numerator, /no outcome recorded/);
+  assert.deepEqual(['exec.shown', 'exec.show_rate', 'appointments.shown', 'appointments.show_rate', 'source.shown',
+    'appointments.no_show', 'appointments.not_recorded'].map((id) => getKpi(id).label),
+  ['Shown (recorded)', 'Show rate (recorded)', 'Shown (recorded)', 'Show rate (recorded)', 'Shown (recorded)',
+    'No-show (marked)', 'No outcome recorded']);
   for (const k of listKpis()) assert.ok(k.basedOn, `${k.id} names its source`);
 
   // Same dates, same number as the Dashboard card. The duplicate of B.ai (same lead, day, time) is counted once on the

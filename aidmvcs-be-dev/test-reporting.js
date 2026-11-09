@@ -257,13 +257,15 @@ test('findDuplicates / outcomes', () => {
   const leadStatus = new Map([['L-visited', 'Visited'], ['L-sold', 'Sold Delivered']]);
   const o = outcomes([
     b({ showed: true }), b({ booking_status: 'completed' }), b({ lead_id: 'L-visited' }), // shown x3
-    b({ showed: false }), b({ bookingTime: '11:59' }), b({ bookingDate: day('2026-11-01') }), // past, not shown x3
+    b({ showed: false }), // marked no-show
+    b({ bookingTime: '11:59' }), b({ bookingDate: day('2026-11-01') }), // past, no outcome recorded x2
     b({ bookingTime: '12:30' }), b({ bookingDate: day('2026-11-09') }), // still ahead x2
     b({ lead_id: 'L-sold', bookingDate: day('2026-11-10') }), // ahead but the lead is sold: shown (counts as past)
     b({ booking_status: 'cancelled', showed: true }), b({ booking_status: 'cancelled', bookingDate: day('2026-11-01') }),
   ], { leadStatus, now, tz: NY });
   assert.equal(o.shown, 4);
-  assert.equal(o.no_show, 3);
+  assert.equal(o.no_show, 1);
+  assert.equal(o.not_recorded, 2);
   assert.equal(o.upcoming, 2);
   assert.equal(o.cancelled, 2);
   assert.equal(o.completed, 1);

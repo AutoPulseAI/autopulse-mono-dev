@@ -61,7 +61,7 @@ export const LEAD_SOURCE_KPIS = [
     evaluate: async (args, ctx) => ({ rows: await shared.apptSetRows(args, ctx) }),
   },
   {
-    id: 'source.shown', label: 'Shown', dashboard: D, grain: 'booking', kind: KIND.COUNT,
+    id: 'source.shown', label: 'Shown (recorded)', dashboard: D, grain: 'booking', kind: KIND.COUNT,
     dateBasis: 'Booking.bookingDate', numerator: `${SHOWN_TEXT} By the lead's provider.`, denominator: null,
     inclusions: 'As exec.shown.', basedOn: SHOWN_BASIS,
     exclusions: 'Cancelled; duplicates.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: BY,

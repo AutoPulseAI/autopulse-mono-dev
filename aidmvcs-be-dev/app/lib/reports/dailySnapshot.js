@@ -25,7 +25,8 @@ import { DEFINITIONS_VERSION as REPLY_VERSION, replyCohorts } from '../reporting
 import { dealerTimezone, isValidLocalDate, localDayRange } from '../reporting/time.js';
 import { AI_OUTBOX_COLLECTION } from '../ai/aiOutbox.js';
 
-export const SNAPSHOT_DEFINITIONS = 'daily-email-v2'; // v2: show rate = shown / past appointments
+// v2: show rate = shown / past appointments; v3: no_show = marked no-show only, not_recorded = past with no outcome
+export const SNAPSHOT_DEFINITIONS = 'daily-email-v3';
 export const UNAVAILABLE = Object.freeze(['appointments.rescheduled']);
 
 const isOid = (id) => id != null && /^[0-9a-f]{24}$/i.test(String(id));
@@ -84,7 +85,7 @@ export async function computeDailySnapshot({ dealerId, reportDate, now = new Dat
   } : null;
   const appointmentsDue = due ? {
     total: due.totals.total, shown: due.outcomes.shown, no_show: due.outcomes.no_show,
-    upcoming: due.outcomes.upcoming, show_rate_pct: due.outcomes.show_rate.value,
+    not_recorded: due.outcomes.not_recorded, upcoming: due.outcomes.upcoming, show_rate_pct: due.outcomes.show_rate.value,
     show_rate_of: due.outcomes.show_rate.denominator,
   } : null;
   const replyMetrics = replies ? {
