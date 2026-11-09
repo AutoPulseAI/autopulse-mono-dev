@@ -154,9 +154,23 @@ export const BDC_KPIS = [
   taskKpi('bdc.meaningful_contacts', 'Meaningful contacts (connected calls)', 'Completed call tasks with outcome '
     + 'connected, closed in the range.', 'connected', { status: 'completed', outcome: 'connected' }, 'closed_at',
   'ai_call_tasks.closed_at'),
-  taskKpi('bdc.call_tasks_missed', 'Missed call tasks', 'Call tasks marked missed in the range (still open at their '
-    + 'due time; ai_call_tasks.missed_at). Staff may still record an outcome later; missed_at stays.',
-  'missed', {}, 'missed_at', 'ai_call_tasks.missed_at'),
+  // Investigated 10 Nov 2026 (11,706 in 30 days on one dealer). agentic-upsell agent/call_tasks.py: mark_missed sets
+  // status 'missed' + missed_at + closed_at (same time) on every task still open at its due_by; resolve() can later
+  // turn a missed task into completed / dismissed (closed_at moves, missed_at stays). One OPEN task per lead at a time,
+  // but each touch (connection timer, agent/call_tasks.py open_task) and each Days 1-7 half-day
+  // (scheduler/daily_call_tasks.py, up to 2 per lead per workday) opens a new one, so an unworked lead adds a missed
+  // task per touch / half-day - many per lead, by design, not duplicates of one task. The Call Tasks page's Missed
+  // list (app/api/dealer-ai/call-tasks -> AI service api/staff_view.py list_call_tasks view=missed) shows tasks whose
+  // status is STILL 'missed', by closed_at in the picked dealer-local days (300 rows at most per list). This KPI
+  // counts exactly that list's rows (without the 300 cap). Tasks missed and later completed are not in it (the page's
+  // per-agent "missed in 30 days", missed_by_agent, counts those too: missed_at, rolling 30 days); the reconcile
+  // script prints both.
+  taskKpi('bdc.call_tasks_missed', 'Missed call tasks', 'Call tasks whose status is missed (still open at their due '
+    + 'time, agentic-upsell agent/call_tasks.py mark_missed) closed in the range - the Call Tasks page\'s Missed list for '
+    + 'the same days. A missed task staff later completed or dismissed leaves the Missed list and this count.',
+  'missed', { status: 'missed' }, 'closed_at', 'ai_call_tasks.closed_at (= missed_at for a missed task)',
+  { exclusions: 'Missed tasks later completed / dismissed (they moved to Done / Cancelled). Each touch or half-day '
+    + 'opens its own task, so one lead can have several. No real dial counts: there is no phone-system call log.' }),
   taskKpi('bdc.call_tasks_overdue', 'Open call tasks past due', 'Call tasks still open whose due time (due_by) is in '
     + 'the range and already passed.', 'overdue', { status: 'open' }, 'due_by',
   'ai_call_tasks.due_by', {}, { beforeNow: true }),

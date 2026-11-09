@@ -45,11 +45,12 @@ export const LEAD_SOURCE_KPIS = [
     id: 'source.replied_leads', label: 'Replied', dashboard: D, grain: 'lead', kind: KIND.COUNT,
     dateBasis: 'emails.timestamp of the reply', numerator: 'Leads (any lead date) whose customer sent a qualifying '
       + 'reply in the range, by the lead\'s provider (replyCohorts rows, distinct lead).', denominator: null,
-    inclusions: 'As Customers replied.', exclusions: 'Replies with no lead link.', source: ['emails', 'leads'],
+    inclusions: 'As Customers replied.', exclusions: 'Replies with no lead link, a deleted lead or another '
+      + 'dealer\'s lead (only the dealer\'s own leads are listed).', source: ['emails', 'leads'],
     filters: REPLY_FILTERS, breakdowns: BY, columns: LEAD_COLUMNS,
     evaluate: async (args, ctx) => {
       const report = await replies(args, ctx);
-      const ids = [...new Set(report.rows.map((r) => r.lead_id).filter(Boolean))];
+      const ids = [...new Set(report.rows.filter((r) => r.on_dealer_lead).map((r) => r.lead_id))];
       return { rows: await leadRowsForIds(ids, args, ctx) };
     },
   },
@@ -61,7 +62,7 @@ export const LEAD_SOURCE_KPIS = [
     evaluate: async (args, ctx) => ({ rows: await shared.apptSetRows(args, ctx) }),
   },
   {
-    id: 'source.shown', label: 'Shown', dashboard: D, grain: 'booking', kind: KIND.COUNT,
+    id: 'source.shown', label: 'Shown (recorded)', dashboard: D, grain: 'booking', kind: KIND.COUNT,
     dateBasis: 'Booking.bookingDate', numerator: `${SHOWN_TEXT} By the lead's provider.`, denominator: null,
     inclusions: 'As exec.shown.', basedOn: SHOWN_BASIS,
     exclusions: 'Cancelled; duplicates.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: BY,

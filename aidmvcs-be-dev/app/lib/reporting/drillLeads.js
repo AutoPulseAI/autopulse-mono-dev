@@ -12,21 +12,27 @@
 //               its lead; a booking / message / task row is its lead; a customer row is its leads (lead_ids). Several
 //               records on one lead are one lead in the list.
 // Pure: the routes run the reports and pass them in.
+import { BUCKETS, CUMULATIVE_BUCKETS, PAST_BUCKETS } from './replyCohorts.js';
 
+// Bucket lists come from ./replyCohorts.js, so a card and its list can't drift. Owner, 10 Nov 2026: the last follow-up
+// group is 60-90 days (b60_90) and replies on leads older than 90 days are their own group (b91); the old b60 link
+// ("60+") keeps working as the union of the two.
 export const REPLY_COHORTS = Object.freeze({
   today: { buckets: ['d0'], label: "Replied — today's leads" },
-  past: { buckets: ['d1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_plus'], label: 'Replied — past leads' },
-  all: { buckets: ['d0', 'd1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_plus', 'needs_review'], label: 'Customers replied' },
-  d7: { buckets: ['d7_14', 'd15_29', 'd30_59', 'd60_plus'], label: 'Replied — lead 7+ days old' },
-  d15: { buckets: ['d15_29', 'd30_59', 'd60_plus'], label: 'Replied — lead 15+ days old' },
-  d30: { buckets: ['d30_59', 'd60_plus'], label: 'Replied — lead 30+ days old' },
-  d60: { buckets: ['d60_plus'], label: 'Replied — lead 60+ days old' },
+  past: { buckets: [...PAST_BUCKETS], label: 'Replied — past leads' },
+  all: { buckets: [...BUCKETS], label: 'Customers replied' },
+  d7: { buckets: [...CUMULATIVE_BUCKETS.d7], label: 'Replied — lead 7+ days old' },
+  d15: { buckets: [...CUMULATIVE_BUCKETS.d15], label: 'Replied — lead 15+ days old' },
+  d30: { buckets: [...CUMULATIVE_BUCKETS.d30], label: 'Replied — lead 30+ days old' },
+  d60: { buckets: [...CUMULATIVE_BUCKETS.d60], label: 'Replied — lead 60+ days old' },
   b0: { buckets: ['d0'], label: 'Replied — lead 0 days old (today)' },
   b1_6: { buckets: ['d1_6'], label: 'Replied — lead 1-6 days old' },
   b7_14: { buckets: ['d7_14'], label: 'Replied — lead 7-14 days old' },
   b15_29: { buckets: ['d15_29'], label: 'Replied — lead 15-29 days old' },
   b30_59: { buckets: ['d30_59'], label: 'Replied — lead 30-59 days old' },
-  b60: { buckets: ['d60_plus'], label: 'Replied — lead 60+ days old' },
+  b60_90: { buckets: ['d60_90'], label: 'Replied — lead 60-90 days old' },
+  b91: { buckets: ['d91_plus'], label: 'Replied — lead older than 90 days (came back after follow-ups ended)' },
+  b60: { buckets: ['d60_90', 'd91_plus'], label: 'Replied — lead 60+ days old' },
 });
 
 export const APPT_ATTRIBUTION = Object.freeze({
