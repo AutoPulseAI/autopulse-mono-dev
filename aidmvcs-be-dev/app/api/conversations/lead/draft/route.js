@@ -5,6 +5,7 @@ import Lead from "@models/Lead";
 import User from "@models/User";
 import { Types } from "mongoose";
 import jwt from "jsonwebtoken";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 const { ObjectId } = Types;
 
@@ -146,6 +147,10 @@ export async function POST(request) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): any signed-in user could draft from (and read) any lead's conversation; now the
+    // lead's dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(request, String(lead.dealer_id));
+    if (guard.response) return guard.response;
 
     const { thread, warning } = await getConversationThread(lead_id);
 

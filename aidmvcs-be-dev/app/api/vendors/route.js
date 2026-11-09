@@ -150,22 +150,12 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  // Security fix (Nov 2026): any signed-in user (a dealer, too) could create, edit (email, role, parent) or delete any account through this; only the super admin's Agencies screens use it.
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
     try {
       await dbConnect();
       const { name, email, phone, website,  password } = await req.json();
-      const authHeader = req.headers.get("Authorization");
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        const token = authHeader.split(" ")[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const currentUser = await User.findById(decoded.userId).select('_id name email type');
-        if (currentUser) {
-          const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-        }else{
-          return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-        }
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
 
       if (!name || !email || !password) {
         return new Response(JSON.stringify({ message: "All fields are required." }), { status: 400 });
@@ -239,22 +229,12 @@ export async function POST(req) {
 }
 
 export async function PUT(req) {
+  // Security fix (Nov 2026): any signed-in user (a dealer, too) could create, edit (email, role, parent) or delete any account through this; only the super admin's Agencies screens use it.
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const { name ,vendorId,email, role, parent_id,phone, website } = await req.json();
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
     const vendor = await User.findById(vendorId);
     if (!vendor) {
       return new Response(JSON.stringify({ message: "Vendor not found." }), { status: 404 });
@@ -296,23 +276,13 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
+  // Security fix (Nov 2026): any signed-in user (a dealer, too) could create, edit (email, role, parent) or delete any account through this; only the super admin's Agencies screens use it.
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const { vendorId } = await req.json();
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-    const vendor = await User.findByIdAndDelete(vendorId);
+    const vendor = await User.findOneAndDelete({ _id: vendorId, type: "vendor" });
     if (!vendor) {
       return new Response(JSON.stringify({ message: "Vendor not found." }), { status: 404 });
     }

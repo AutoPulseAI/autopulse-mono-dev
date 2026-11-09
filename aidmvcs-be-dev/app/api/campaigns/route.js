@@ -5,6 +5,7 @@ import CampaignLead from "@models/CampaignLead";
 import jwt from "jsonwebtoken";
 import User from "@models/User";
 import moment from "moment-timezone";
+import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch all campaigns with filtering
 export async function GET(req) {
@@ -26,6 +27,15 @@ export async function GET(req) {
     }
 
     const dealerId = url.searchParams.get("dealer_id");
+    // Security fix (Nov 2026): the token was optional, so with no token this listed every dealer's campaigns
+    // (query {}) or any named dealer's. Now a sign-in is required and the dealer (named, or the caller's own) must
+    // be one the caller may see.
+    const signedIn = await requireUser(req);
+    if (signedIn.response) return signedIn.response;
+    const caller = currentUser || signedIn.user;
+    const targetDealerId = dealerId || String(caller.parent_id || caller._id);
+    const guard = await requireDealerAccess(req, targetDealerId);
+    if (guard.response) return guard.response;
     const status = url.searchParams.get("status");
     const page = parseInt(url.searchParams.get("page")) || 1;
     const limit = parseInt(url.searchParams.get("limit")) || 10;
@@ -33,13 +43,7 @@ export async function GET(req) {
     // Build query
     let query = {};
     
-    if (dealerId) {
-      query.dealer_id = dealerId;
-    } else if (currentUser) {
-      // If no dealer_id provided, use current user's dealer_id
-      const activeDealerId = currentUser.parent_id || currentUser._id;
-      query.dealer_id = activeDealerId;
-    }
+    query.dealer_id = targetDealerId;
 
     if (status) {
       query.status = status;
@@ -113,6 +117,11 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): this created (and scheduled the sending of) a campaign for any dealer_id with no
+    // sign-in. Now that dealer, its agency or a super admin.
+    const dealerGuard = await requireDealerAccess(req, String(data.dealer_id));
+    if (dealerGuard.response) return dealerGuard.response;
+    currentUser = currentUser || dealerGuard.user;
 
     if (!data.message_type || !["email", "sms"].includes(data.message_type)) {
       return NextResponse.json(

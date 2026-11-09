@@ -1,6 +1,9 @@
 import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import jwt from "jsonwebtoken";
+import Lead from "@models/Lead";
+import mongoose from "mongoose";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +47,14 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): any signed-in user could mark any lead's messages read; now the lead's dealer, its
+    // agency or a super admin.
+    const lead = mongoose.isValidObjectId(lead_id) ? await Lead.findById(lead_id).select('dealer_id').lean() : null;
+    if (!lead) {
+      return Response.json({ success: false, message: 'Lead not found' }, { status: 404 });
+    }
+    const guard = await requireDealerAccess(req, String(lead.dealer_id));
+    if (guard.response) return guard.response;
     
     // Mark all messages for this lead as read
     const result = await Email.updateMany(

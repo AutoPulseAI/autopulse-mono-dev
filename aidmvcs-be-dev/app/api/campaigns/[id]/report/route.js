@@ -5,6 +5,7 @@ import CampaignLead from "@models/CampaignLead";
 import CampaignTracking from "@models/CampaignTracking";
 import jwt from "jsonwebtoken";
 import User from "@models/User";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 /**
  * GET /api/campaigns/[id]/report
@@ -51,18 +52,10 @@ export async function GET(req, { params }) {
 
     // Authorization check - only dealer/agency/admin can view their campaigns
     const dealerId = campaign.dealer_id?._id?.toString() || campaign.dealer_id?.toString();
-    const userDealerId = currentUser.parent_id?.toString() || currentUser._id.toString();
-    
-    if (
-      currentUser.role !== "admin" &&
-      currentUser.role !== "agency" &&
-      userDealerId !== dealerId
-    ) {
-      return NextResponse.json(
-        { error: "Unauthorized to view this campaign" },
-        { status: 403 }
-      );
-    }
+    // Security note (Nov 2026): this compared currentUser.role (a Role id) with "admin"/"agency", which never
+    // matched, so only the dealer itself got in. The shared rule: that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, dealerId);
+    if (guard.response) return guard.response;
 
     // Convert campaign_id to string for queries
     const campaignIdStr = campaign._id.toString();
