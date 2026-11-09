@@ -1,7 +1,11 @@
 import ReportSchedule from '../../../models/ReportSchedule.js';
 import dbConnect from '../../../lib/mongodb.js';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     

@@ -6,8 +6,12 @@ import {
   pauseAllQueues, 
   resumeAllQueues 
 } from '@lib/queue';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
-export async function GET() {
+export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     console.log('📊 Getting Redis queue status...');
     
@@ -33,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     const { action, queueName } = await req.json();
     
@@ -87,7 +94,10 @@ export async function POST(req) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     console.log('🧹 Clearing all Redis queues via DELETE request...');
     

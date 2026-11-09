@@ -1,6 +1,10 @@
 import twilioService from '../../../lib/twilioService.js';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
-export async function GET() {
+export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     // Check if Twilio is configured
     const isConfigured = twilioService.isConfigured();
