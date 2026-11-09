@@ -7,6 +7,7 @@ import { setupCampaignWorker } from './campaignWorker.js';
 import { setupDealerVaultWorkers } from './dealervault/index.js';
 import { setupDealerVaultSqsConsumer } from './dealervault/sqsConsumer.js';
 import { setupAdfTradeWorker } from './adfTradeWorker.js';
+import { setupDailyReportWorker } from './dailyReportWorker.js';
 import { AI_EVENT_RETRY_QUEUE, postAiEvent, processAiEventRetryJob } from '../lib/ai/aiEvents.js';
 import { AI_OUTBOX_REPLAY_EVERY_MS, noteForStaff, replayAiOutbox } from '../lib/ai/aiOutbox.js';
 import { getDealerAiMode } from '../lib/ai/aiMode.js';
@@ -62,6 +63,8 @@ if (!onLiveDb) {
   console.log('CRM_LIVE_DB: campaign and DealerVault workers are off (the live servers run them).');
 }
 setupAdfTradeWorker(redis);
+// Daily performance email (app/lib/reports/dailyReport.js). Sends only for dealers an admin switched on.
+if (!onLiveDb) setupDailyReportWorker(redis);
 // Re-delivers AI-service events that failed on the first try (app/lib/ai/aiEvents.js).
 const aiEventRetryWorker = new Worker(AI_EVENT_RETRY_QUEUE, processAiEventRetryJob, { connection: redis });
 // PLAN_4 stream X3 item 6: events stored after every retry failed (ai_event_outbox) are replayed once the AI
