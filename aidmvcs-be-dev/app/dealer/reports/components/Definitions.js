@@ -11,7 +11,7 @@ export default function Definitions({ data }) {
   const labels = useMemo(() => Object.fromEntries((data?.dashboards || []).map((d) => [d.id, d.label])), [data]);
   if (!data) return null;
   const needle = q.trim().toLowerCase();
-  const rows = data.kpis.filter((k) => !needle || [k.id, k.label, k.numerator, k.dateBasis]
+  const rows = data.kpis.filter((k) => !needle || [k.id, k.label, k.numerator, k.dateBasis, k.basedOn]
     .some((v) => String(v || "").toLowerCase().includes(needle)));
   return (
     <div className="w_card">
@@ -41,7 +41,10 @@ export default function Definitions({ data }) {
                   <td><small>{k.dateBasis}</small></td>
                   <td><small>{k.inclusions || "–"}</small></td>
                   <td><small>{k.exclusions}</small></td>
-                  <td><small>{(k.source || []).join(", ")}</small></td>
+                  <td>
+                    {k.basedOn && <small className="d-block">{k.basedOn}</small>}
+                    <small className="text-muted">{(k.source || []).join(", ")}</small>
+                  </td>
                   <td>
                     <Badge bg={bg}>{text}</Badge>
                     {k.reason && <div><small className="text-muted">{k.reason}</small></div>}

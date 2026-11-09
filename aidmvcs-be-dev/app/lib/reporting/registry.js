@@ -173,6 +173,14 @@ const KPIS = [
 // recorded yet) are listed with their definitions and the reason, and never return a number.
 for (const k of REPORT_KPIS) KPIS.push({ status: 'new', version: 1, state: STATE.LIVE, kind: KIND.COUNT, ...k });
 
+// What the older (non-tab) KPIs' definitions come from.
+for (const k of KPIS) {
+  if (k.basedOn) continue;
+  if (k.status === 'existing') k.basedOn = `Existing ${k.usedBy}.`;
+  else if (k.id.startsWith('replies.')) k.basedOn = 'SOW §8B Deliverable F3: customer reply cohorts.';
+  else if (k.id.startsWith('appt.attr.')) k.basedOn = 'SOW §8A Deliverable F2: appointment attribution.';
+}
+
 const BY_ID = new Map(KPIS.map((k) => [k.id, k]));
 
 function definition(k) {
