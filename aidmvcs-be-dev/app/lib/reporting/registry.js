@@ -11,6 +11,8 @@ import { repliedLeadIds } from '../contactedLeads.js';
 import { attributeAppointments } from './appointmentAttribution.js';
 import { replyCohorts } from './replyCohorts.js';
 import { getDealerTimezone, localDayRange, toLocalDate } from './time.js';
+import { DASHBOARDS, KIND, REPORT_KPIS, STATE } from './kpis/index.js';
+import { median, pct } from './kpis/common.js';
 
 const TZ_NOTE = 'Dealer-local calendar days (User.dealer_account_information.time_zone, default America/New_York).';
 const SOLD = ['Sold', 'Sold Pending', 'Sold Delivered'];
@@ -170,12 +172,88 @@ const KPIS = [
   })),
 ];
 
+// ---- the Reports page KPIs (app/lib/reporting/kpis/*, one module per tab) ---------------------------------------
+// state 'live' = computed now; 'blocked' (waits on other work, e.g. the Desk Log) and 'needs_data' (the data isn't
+// recorded yet) are listed with their definitions and the reason, and never return a number.
+for (const k of REPORT_KPIS) KPIS.push({ status: 'new', version: 1, state: STATE.LIVE, kind: KIND.COUNT, ...k });
+
 const BY_ID = new Map(KPIS.map((k) => [k.id, k]));
 
 function definition(k) {
   const def = { ...k, timezone: TZ_NOTE };
   delete def.evaluate;
+  if (!def.state) def.state = STATE.LIVE;
   return def;
+}
+
+export { DASHBOARDS, STATE, KIND };
+
+export function listDashboards() {
+  return DASHBOARDS.map((d) => ({ ...d }));
+}
+
+// The KPIs of one Reports tab, in registry order.
+export function kpisForDashboard(dashboard) {
+  return KPIS.filter((k) => k.dashboard === dashboard).map(definition);
+}
+
+const FILTER_KEYS = ['source', 'lead_source', 'assigned_to', 'actor', 'appointment_type', 'channel'];
+
+// Filters the caller set that this KPI can't apply (shown next to its number; never silently dropped).
+export function ignoredFilters(k, spec = {}) {
+  return FILTER_KEYS.filter((f) => spec[f] != null && !(Array.isArray(spec[f]) && !spec[f].length)
+    && !(k.filters || []).includes(f));
+}
+
+function groupCounts(rows, by) {
+  const m = new Map();
+  for (const r of rows) {
+    const key = r._g?.[by] ?? 'Unknown';
+    m.set(key, (m.get(key) || 0) + 1);
+  }
+  return [...m.entries()].map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || String(a.key).localeCompare(String(b.key)));
+}
+
+function dayCounts(rows) {
+  const m = {};
+  for (const r of rows) if (r._day) m[r._day] = (m[r._day] || 0) + 1;
+  return m;
+}
+
+/**
+ * Evaluate a Reports-page KPI with its rows. args: { dealerId, from, to, tz, spec, now }.
+ * @returns {Promise<{id, state, reason?, kind, grain, unit, value, count, ids, numerator?, denominator?, rows,
+ *   denominatorRows?, breakdowns, trend, ignored_filters}>}
+ */
+export async function evaluateKpi(id, args, ctx = {}) {
+  const k = BY_ID.get(id);
+  if (!k) throw new Error(`unknown KPI "${id}"`);
+  const base = { id, state: k.state || STATE.LIVE, kind: k.kind || KIND.COUNT, grain: k.grain, unit: k.unit || null,
+    ignored_filters: ignoredFilters(k, args.spec || {}) };
+  if (base.state !== STATE.LIVE) {
+    return { ...base, reason: k.reason, value: null, count: null, ids: null, rows: null, breakdowns: {}, trend: null };
+  }
+  const out = await k.evaluate({ ...args, spec: args.spec || {} }, ctx);
+  const rows = Array.isArray(out) ? out.map((i) => ({ id: String(i), _g: {} })) : out.rows;
+  const ids = rows.map((r) => String(r.id));
+  if (new Set(ids).size !== ids.length) throw new Error(`${id}: duplicate row ids`);
+  const res = { ...base, count: ids.length, ids, rows, breakdowns: {}, trend: k.trend ? dayCounts(rows) : null };
+  if (res.kind === KIND.RATE) {
+    const den = out.denominatorRows || [];
+    const denIds = new Set(den.map((r) => String(r.id)));
+    if (!ids.every((i) => denIds.has(i))) throw new Error(`${id}: numerator not inside denominator`);
+    res.denominatorRows = den;
+    res.numerator = { count: ids.length };
+    res.denominator = { count: den.length, ids: den.map((r) => String(r.id)) };
+    res.value = pct(ids.length, den.length);
+  } else if (res.kind === KIND.MEDIAN) {
+    res.value = median(rows.map((r) => Number(r.minutes)));
+  } else {
+    res.value = ids.length;
+  }
+  for (const by of k.breakdowns || []) res.breakdowns[by] = groupCounts(rows, by);
+  return res;
 }
 
 // Definitions only (no functions), for the Definitions page and CSV.
@@ -196,6 +274,11 @@ export function getKpi(id) {
 export async function runKpi(id, args, ctx = {}) {
   const k = BY_ID.get(id);
   if (!k) throw new Error(`unknown KPI "${id}"`);
+  if (k.dashboard) {
+    const r = await evaluateKpi(id, args, ctx);
+    const { rows, denominatorRows, ...rest } = r; // eslint-disable-line no-unused-vars
+    return rest;
+  }
   const ids = await k.evaluate(args, ctx);
   return { id, grain: k.grain, ids, count: ids.length };
 }

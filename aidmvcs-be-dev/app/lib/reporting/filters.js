@@ -15,12 +15,17 @@ import { DEFAULT_TIMEZONE, isValidLocalDate, toLocalDate } from './time.js';
 export const REPORTS = Object.freeze({
   REPLY_COHORTS: 'reply_cohorts',
   APPOINTMENT_ATTRIBUTION: 'appointment_attribution',
+  // The Reports page (app/dealer/reports): one filter bar for every tab. Each KPI says which of these filters it can
+  // apply (app/lib/reporting/kpis); the others are reported back for that KPI, never silently ignored.
+  KPI_REPORTS: 'kpi_reports',
 });
 
 // Date basis each report accepts (first = default).
 export const DATE_BASES = Object.freeze({
   [REPORTS.REPLY_COHORTS]: ['reply'],
   [REPORTS.APPOINTMENT_ATTRIBUTION]: ['created', 'scheduled'],
+  // Each KPI has its own fixed date basis (its definition); the range is the only date input.
+  [REPORTS.KPI_REPORTS]: ['kpi'],
 });
 
 // Which filters each report can apply. A filter listed in KNOWN_UNSUPPORTED, or not supported by the report, comes
@@ -28,6 +33,7 @@ export const DATE_BASES = Object.freeze({
 const SUPPORTED = Object.freeze({
   [REPORTS.REPLY_COHORTS]: ['source', 'lead_source', 'assigned_to', 'channel'],
   [REPORTS.APPOINTMENT_ATTRIBUTION]: ['source', 'lead_source', 'assigned_to', 'actor', 'appointment_type'],
+  [REPORTS.KPI_REPORTS]: ['source', 'lead_source', 'assigned_to', 'actor', 'appointment_type', 'channel'],
 });
 
 const NOT_FOR_REPORT = Object.freeze({
