@@ -16,6 +16,7 @@ import { aiMayChangeBooking } from '@lib/ai/aiOwnership';
 import { aiOwnsCustomerMessages, cancelAllRemindersForLead, createAppointmentReminders } from '@lib/appointmentReminderService';
 import { bookingChangeKind, notifyAiOfBookingChange, notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
 import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
+import { isAuthorizedForDealer } from '@lib/customerListing';
 import {
   ACTIVE_BOOKING_STATUSES,
   bookingDayUtc,
@@ -620,6 +621,9 @@ export async function GET(request) {
       if (!booking || (dealer_id && String(booking.dealer_id) !== String(dealer_id))) {
         return json({ error: 'Booking not found' }, 404);
       }
+      if (caller.kind === 'staff' && !(await isAuthorizedForDealer(caller.user, booking.dealer_id))) {
+        return json({ error: 'Booking not found' }, 404);
+      }
       return json({ booking });
     }
 
@@ -666,6 +670,9 @@ export async function PUT(request) {
 
   try {
     const caller = await bookingCaller(request);
+    // Changing a booking (cancel, move, showed) is for the AI service and signed-in staff only; the public customer
+    // booking page only creates bookings (POST). Before this anyone with a booking id could change it.
+    if (caller.kind === 'customer') return json({ error: 'Unauthorized' }, 401);
     const body = await request.json();
     const { bookingId, booking_status, booking_date, showed, allow_overbook } = body;
     const booking_time = body.booking_time ? (normalizeBookingTime(body.booking_time) || body.booking_time) : body.booking_time;
@@ -673,6 +680,11 @@ export async function PUT(request) {
     const existingBooking = bookingId && mongoose.isValidObjectId(bookingId) ? await Booking.findById(bookingId) : null;
     // PLAN_4 stream X3 item 11: the AI service (one shared secret for every dealer) must name the booking's dealer.
     if (!existingBooking || !aiMayChangeBooking(caller, existingBooking, body.dealer_id)) {
+      return json({ error: 'Booking not found' }, 404);
+    }
+    // Staff change only their own dealership's bookings (super admin and the owning agency too), answered like a
+    // missing booking otherwise.
+    if (caller.kind === 'staff' && !(await isAuthorizedForDealer(caller.user, existingBooking.dealer_id))) {
       return json({ error: 'Booking not found' }, 404);
     }
     if (booking_status !== undefined && !Booking.schema.path('booking_status').enumValues.includes(booking_status)) {
