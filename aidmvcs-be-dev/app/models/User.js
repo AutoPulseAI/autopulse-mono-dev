@@ -94,6 +94,7 @@ const UserSchema = new mongoose.Schema(
     ai_mode: { type: String, enum: ["off", "shadow", "live"], default: "off" },
     otp: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },
+    otpAttempts: { type: Number, default: 0 },
     resetToken: { type: String, default: null },
     resetTokenExpires: { type: Date, default: null },
     branding_information:{ type: Object, default: {} },

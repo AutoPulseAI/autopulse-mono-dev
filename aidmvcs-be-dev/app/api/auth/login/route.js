@@ -5,9 +5,15 @@ import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import { SESSION_DAYS } from "@lib/session";
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { sendOtpEmail } from "@lib/emailservice";
 
-const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
+// 4 digits, as the sign-in screens expect; from a secure random source.
+const generateOtp = () => String(randomInt(1000, 10000));
+// Wrong codes allowed before the code stops working and a new one must be requested.
+const MAX_OTP_ATTEMPTS = 5;
+// Local runs stub every email (PROVIDER_SEND_STUB), so only there the code comes back for the screen to fill in.
+const returnOtpInResponse = () => ['true', '1', 'yes'].includes(String(process.env.PROVIDER_SEND_STUB || '').toLowerCase());
 
 function json(data, status = 200) {
   return NextResponse.json(data, { status });
@@ -35,50 +41,29 @@ export async function POST(req) {
 
     // === CASE 1: OTP verification ===
     if (otp) {
-      // Skip OTP verification for admin users
+      // Admins sign in with their password only (CASE 2); a code never signs an admin in.
       if (typeNormalized === "admin") {
-        const token = jwt.sign(
-          { 
-            userId: user._id, 
-            role: user?.role?.name, 
-            type: user.type,
-            rememberDevice
-          }, 
-          process.env.JWT_SECRET, 
-          { expiresIn: rememberDevice ? "60d" : SESSION_DAYS + "d" }
-        );
-
-        const cookiename = `${user.type}token`;
-        const cookieStore = await cookies();
-        cookieStore.set({
-          name: cookiename,
-          value: token,
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          maxAge: rememberDevice ? 60 * 24 * 60 * 60 : SESSION_DAYS * 86400,
-          path: "/",
-        });
-
-        return json({
-          token,
-          user: {
-            _id: user._id,
-            email: user.email,
-            name: user.name,
-            type: user.type,
-            role: user.role
-          }
-        });
+        return json({ message: "Invalid request." }, 400);
       }
 
       // Normal OTP verification for non-admin users
-      if (!user.otp || user.otp !== otp || new Date() > new Date(user.otpExpiresAt)) {
+      if (!user.otp || new Date() > new Date(user.otpExpiresAt)) {
+        return json({ message: "Invalid or expired OTP." }, 401);
+      }
+      if (user.otp !== String(otp)) {
+        const attempts = (user.otpAttempts || 0) + 1;
+        if (attempts >= MAX_OTP_ATTEMPTS) {
+          await User.updateOne({ _id: user._id }, { $set: { otp: null, otpExpiresAt: null, otpAttempts: 0 } });
+        } else {
+          await User.updateOne({ _id: user._id }, { $set: { otpAttempts: attempts } });
+        }
         return json({ message: "Invalid or expired OTP." }, 401);
       }
 
       // Clear OTP after successful verification
       user.otp = null;
       user.otpExpiresAt = null;
+      user.otpAttempts = 0;
       await user.save();
 
       const token = jwt.sign(
@@ -163,6 +148,7 @@ export async function POST(req) {
       const newOtp = generateOtp();
       user.otp = newOtp;
       user.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+      user.otpAttempts = 0;
 
       const updatedUser = await user.save({ new: true });
       
@@ -181,7 +167,7 @@ export async function POST(req) {
       return json({
         otp_sent: true,
         message: "OTP sent to your email.",
-        otp: newOtp,
+        ...(returnOtpInResponse() ? { otp: newOtp } : {}),
         rememberDevice
       });
     }
