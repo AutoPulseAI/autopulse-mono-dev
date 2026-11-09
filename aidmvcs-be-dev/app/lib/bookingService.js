@@ -304,42 +304,127 @@ export function slotErrorStatus(check) {
   return check.reason === 'slot_full' ? 409 : 422;
 }
 
+// --- Booking history (P1 item 3) --------------------------------------------------------------------------------
+// Every writer records who changed a booking and how, in the SAME update as the change itself. If that extra part
+// can't be written (the server or Mongoose rejects it), the change is written again without it, so a history problem
+// never fails or loses a booking. Network errors are not retried (the first write may have landed).
+
+export const BOOKING_HISTORY_LIMIT = 100;
+const HISTORY_RETRYABLE = new Set(['ValidationError', 'CastError', 'StrictModeError', 'MongoServerError',
+  'MongoBulkWriteError']);
+const isObjectIdLike = (v) => v != null && /^[0-9a-f]{24}$/i.test(String(v));
+
+// One history entry. actor: {type: 'ai'|'staff'|'customer'|'system'|'unknown', id?, name?}.
+export function historyEntry({ action, actor = null, via = 'unknown', from, to, at = new Date() }) {
+  const entry = { at, action, actor_type: actor?.type || 'unknown', via: via || 'unknown' };
+  if (isObjectIdLike(actor?.id)) entry.actor_id = String(actor.id);
+  if (actor?.name) entry.actor_name = String(actor.name);
+  if (from !== undefined) entry.from = from;
+  if (to !== undefined) entry.to = to;
+  return entry;
+}
+
+export function historyPush(...entries) {
+  return { history: { $each: entries, $slice: -BOOKING_HISTORY_LIMIT } };
+}
+
+// {date: 'YYYY-MM-DD' dealer-local, time} for a history from / to.
+export function bookingSlotRef(bookingDate, bookingTime, tz) {
+  return { date: bookingDate ? moment(bookingDate).tz(tz || DEFAULT_TIMEZONE).format('YYYY-MM-DD') : null,
+    time: bookingTime ?? null };
+}
+
+// Base update (or new document) + the history part: operators ($set, $inc, $push) are merged key by key.
+export function mergeUpdates(base, extra) {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(extra || {})) {
+    if (key.startsWith('$') && out[key] && typeof out[key] === 'object') out[key] = { ...out[key], ...value };
+    else out[key] = value;
+  }
+  return out;
+}
+
+// write(update) with the history part; once more with `base` alone when that is rejected. Returns
+// {result, history: true|false}.
+export async function writeWithHistory(write, base, extra, { logger = console, label = 'booking' } = {}) {
+  if (!extra || !Object.keys(extra).length) return { result: await write(base), history: false };
+  let combined;
+  try {
+    combined = mergeUpdates(base, extra);
+  } catch (error) {
+    logger.error?.(`[${label}] booking history not recorded`, error?.message);
+    return { result: await write(base), history: false };
+  }
+  try {
+    return { result: await write(combined), history: true };
+  } catch (error) {
+    if (!HISTORY_RETRYABLE.has(error?.name)) throw error;
+    logger.error?.(`[${label}] booking history not recorded; saving the booking without it`, error?.message);
+    return { result: await write(base), history: false };
+  }
+}
+
 // Staff set the lead to Visited (showed = true) or No Show (false): recorded on
 // the lead's latest active booking that isn't in the future (dealer-local day).
 // Visited also completes it. Returns the updated fields, or null.
-export async function markLeadBookingShowed(Booking, { leadId, dealer, showed, now = new Date() }) {
+// actor: who did it (the status route's staff user), when known.
+export async function markLeadBookingShowed(Booking, { leadId, dealer, showed, now = new Date(), actor = null }) {
   const today = moment(now).tz(dealerTimezone(dealer)).startOf('day').utc().toDate();
   const booking = await Booking.findOne({
     lead_id: String(leadId), booking_status: { $in: ACTIVE_BOOKING_STATUSES }, bookingDate: { $lte: today },
   }).sort({ bookingDate: -1, _id: -1 }).lean();
   if (!booking) return null;
   const set = { showed: Boolean(showed), showed_at: now, ...(showed ? { booking_status: 'completed' } : {}) };
-  await Booking.updateOne({ _id: booking._id }, { $set: set });
+  const statusChanged = Boolean(showed) && booking.booking_status !== 'completed';
+  const base = { $set: { ...set, ...(statusChanged ? { statusChangedAt: now } : {}) } };
+  const extra = { $push: historyPush(historyEntry({ action: showed ? 'showed' : 'no_show', at: now,
+    actor: actor || { type: 'staff' }, via: 'lead_status',
+    ...(statusChanged ? { from: { booking_status: booking.booking_status }, to: { booking_status: 'completed' } }
+      : {}) })) };
+  await writeWithHistory((u) => Booking.updateOne({ _id: booking._id }, u), base, extra, { label: 'showed' });
   return { _id: booking._id, ...set };
 }
 
 // Staff booked from the lead screen (status "Appointment Booked"): the lead's
 // active Booking is moved to the new time, or one is created, so staff and AI
 // bookings share one calendar (and one capacity check).
-export async function upsertLeadBooking(Booking, { lead, dealer, date, time, createdBy = 'staff', appointmentType = null }) {
+// actor: the staff user who did it ({type: 'staff', id, name}), when the caller passes it.
+export async function upsertLeadBooking(Booking, { lead, dealer, date, time, createdBy = 'staff', appointmentType = null,
+  actor = null, now = new Date() }) {
   const type = appointmentTypeFor(lead, appointmentType);
-  const day = bookingDayUtc(date, dealerTimezone(dealer));
+  const tz = dealerTimezone(dealer);
+  const day = bookingDayUtc(date, tz);
   const bookingTime = normalizeBookingTime(time);
   if (!day || !bookingTime) return null;
+  const who = actor || { type: createdBy === 'ai' ? 'ai' : 'staff' };
   const existing = await Booking.findOne({ lead_id: String(lead._id), booking_status: { $in: ['pending', 'confirmed'] } })
-    .sort({ _id: -1 });
+    .sort({ _id: -1 }).lean();
   if (existing) {
-    await Booking.updateOne({ _id: existing._id }, { $set: { bookingDate: day, bookingTime, appointment_type: type } });
     // Michael Gaston-Simpson, 26 Oct 2026: his 2:00 PM became 2:31 PM with no record of who changed it.
     const moved = String(existing.bookingTime) !== String(bookingTime)
       || new Date(existing.bookingDate).getTime() !== day.getTime();
+    const extra = moved ? {
+      $set: { last_rescheduled_at: now },
+      $inc: { reschedule_count: 1 },
+      $push: historyPush(historyEntry({ action: 'rescheduled', at: now, actor: who, via: 'lead_status',
+        from: bookingSlotRef(existing.bookingDate, existing.bookingTime, tz), to: bookingSlotRef(day, bookingTime, tz) })),
+    } : null;
+    await writeWithHistory((u) => Booking.updateOne({ _id: existing._id }, u),
+      { $set: { bookingDate: day, bookingTime, appointment_type: type } }, extra, { label: 'lead booking' });
     return { _id: existing._id, bookingDate: day, bookingTime, created: false, moved,
       previous: { bookingDate: existing.bookingDate, bookingTime: existing.bookingTime } };
   }
-  const created = await Booking.create({
+  const doc = {
     dealer_id: String(lead.dealer_id), lead_id: String(lead._id), customerName: lead.name || 'Customer',
     email: lead.email || undefined, phone: lead.phone || undefined, bookingDate: day, bookingTime,
     created_by: createdBy, appointment_type: type,
-  });
+  };
+  const { result: created } = await writeWithHistory((d) => Booking.create(d), doc, {
+    created_via: 'lead_status',
+    ...(isObjectIdLike(who.id) ? { created_by_user_id: String(who.id) } : {}),
+    ...(who.name ? { created_by_name: String(who.name) } : {}),
+    history: [historyEntry({ action: 'created', at: now, actor: who, via: 'lead_status',
+      to: { ...bookingSlotRef(day, bookingTime, tz), booking_status: 'pending', appointment_type: type } })],
+  }, { label: 'lead booking' });
   return { _id: created._id, bookingDate: day, bookingTime, created: true };
 }

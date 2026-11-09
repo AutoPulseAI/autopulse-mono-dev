@@ -14,6 +14,10 @@
 //   ai_influenced = ai + ai_assisted (derived, not a category); ai_influence_pct only when total > 0.
 // Duplicates: bookings of one (dealer, lead, bookingDate, bookingTime) that are not cancelled - the lowest _id is the
 // appointment, the others are left out of every count and listed in excluded.duplicates.
+// Changes (from the booking history written since P1 item 3; older changes were never recorded, so they are not in
+// it): bookings rescheduled / cancelled in the range, by the actor of their latest such change in the range
+// (ai / staff / customer / system / unknown). A booking moved 3 times counts once. Cancelled also uses cancelled_at /
+// cancelled_by where a booking has no cancel entry. Event basis, independent of `basis`; the filters apply.
 // Date basis: 'created' = Booking.createdAt in the dealer-local range (cancelled bookings stay counted on the day
 // they were set, SOW 8A); 'scheduled' = Booking.bookingDate in the range, not cancelled (as appointmentFunnel.js).
 //
@@ -107,6 +111,34 @@ export function findDuplicates(bookings) {
   return dup;
 }
 
+export const CHANGE_ACTORS = Object.freeze(['ai', 'staff', 'customer', 'system', 'unknown']);
+const CANCEL_ACTIONS = new Set(['cancelled', 'deduplicated']);
+
+// Pure. Rescheduled / cancelled bookings in [start, end] from their history, by actor (see the header).
+export function historyChanges(bookings, { start, end }) {
+  const empty = () => ({ total: 0, by_actor: Object.fromEntries(CHANGE_ACTORS.map((a) => [a, 0])), booking_ids: [] });
+  const out = { rescheduled: empty(), cancelled: empty() };
+  const inRange = (at) => at && new Date(at) >= start && new Date(at) <= end;
+  const actorOf = (t) => (CHANGE_ACTORS.includes(t) ? t : 'unknown');
+  const add = (bucket, id, actor) => {
+    bucket.total += 1;
+    bucket.by_actor[actorOf(actor)] += 1;
+    bucket.booking_ids.push(id);
+  };
+  for (const b of bookings) {
+    const history = Array.isArray(b.history) ? b.history : [];
+    const latest = (pred) => history.filter((h) => h && pred(h.action) && inRange(h.at))
+      .sort((x, y) => new Date(y.at) - new Date(x.at))[0];
+    const moved = latest((a) => a === 'rescheduled');
+    if (moved) add(out.rescheduled, String(b._id), moved.actor_type);
+    const cancel = latest((a) => CANCEL_ACTIONS.has(a));
+    if (cancel) add(out.cancelled, String(b._id), cancel.actor_type);
+    else if (b.booking_status === 'cancelled' && inRange(b.cancelled_at)) add(out.cancelled, String(b._id), b.cancelled_by);
+  }
+  for (const bucket of Object.values(out)) bucket.booking_ids.sort();
+  return out;
+}
+
 /**
  * Appointment attribution for one dealer.
  * @param {{dealerId: string, from: string|Date, to?: string|Date, basis?: 'created'|'scheduled', filters?: object,
@@ -191,6 +223,20 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
     };
   }).sort((a, b) => a.booking_id.localeCompare(b.booking_id));
 
+  // Changes in the range, from the booking history (one query; bookings with no history entry or cancel stamp in the
+  // range never match).
+  let changed = await BookingM.collection.find({ dealer_id: { $in: dealerForms }, ...bookingMatch(spec),
+    $or: [{ history: { $elemMatch: { action: { $in: ['rescheduled', ...CANCEL_ACTIONS] }, at: { $gte: start, $lte: end } } } },
+      { cancelled_at: { $gte: start, $lte: end } }] },
+  { projection: { _id: 1, lead_id: 1, booking_status: 1, cancelled_at: 1, cancelled_by: 1, history: 1 } }).toArray();
+  if (hasLeadFilter(spec) && changed.length) {
+    const ids = [...new Set(changed.map((b) => b.lead_id).filter(isOid).map(String))];
+    const pass = new Set((ids.length ? await LeadM.collection.find({ _id: { $in: ids.map(oid) },
+      dealer_id: { $in: dealerForms }, ...leadMatch(spec) }, { projection: { _id: 1 } }).toArray() : [])
+      .map((l) => String(l._id)));
+    changed = changed.filter((b) => pass.has(String(b.lead_id)));
+  }
+
   return {
     dealer_id: dealerStr,
     tz: zone,
@@ -204,5 +250,6 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
     outcomes: outcomes(counted),
     rows,
     excluded: { duplicates },
+    changes: { basis: 'event', source: 'booking history (recorded from P1 item 3 on)', ...historyChanges(changed, { start, end }) },
   };
 }
