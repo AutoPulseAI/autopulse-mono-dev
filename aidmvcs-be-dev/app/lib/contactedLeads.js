@@ -6,6 +6,7 @@
 //     first inbound email of an email lead, so it doesn't count).
 // The numbers are set in AI Studio (SMS, Email & Compliance -> "What counts as Contacted"; client, 13 Oct 2026).
 import Email from '../models/Email.js';
+import Lead from '../models/Lead.js';
 import { AiConfigItem, AiConfigVersion } from '../models/AiConfig.js';
 import { BLAST_MIN_LEADS } from './blasts.js';
 
@@ -13,6 +14,35 @@ const INBOUND = ['received', 'incoming'];
 const ADF = /<\?adf|<adf[\s>]/i;
 const DEFAULT_RULE = { customer_texts: 1, customer_emails: 2 };
 let cached = { at: 0, rule: DEFAULT_RULE };
+
+// The lead's own arrival message for dealers without the live AI (P1 plan item 2, G-043..G-047). app/worker/leadworker.js
+// saves the lead form's comments as an inbound row right after saving the lead: status 'incoming', parent_message_id
+// and parent_conversation both stored as null, message_id = the provider id of the first reply or "msg-<time>" (so the
+// "lead-" rule below misses it). No customer message is written that way: texts are saved 'received'
+// (api/system/sms, worker/processSms, lib/ai/aiInbound) and emails 'incoming' with the mail's own threading fields
+// (api/system/route.js; '' from its form posts). To be sure, the row must also be written within
+// LEAD_ARRIVAL_WINDOW_MS of the lead's createdAt - the worker writes it a moment after the lead (a few seconds at most
+// when it first sends the old auto-reply). A real reply a minute later is never this row.
+export const LEAD_ARRIVAL_WINDOW_MS = 30_000;
+
+export function isLeadArrivalRow(m, leadCreatedAt) {
+  if (!m || m.status !== 'incoming' || m.parent_message_id !== null || m.parent_conversation !== null) return false;
+  if (!leadCreatedAt || !m.timestamp) return false;
+  const gap = new Date(m.timestamp).getTime() - new Date(leadCreatedAt).getTime();
+  return gap >= -1000 && gap <= LEAD_ARRIVAL_WINDOW_MS;
+}
+
+// The _ids of the arrival rows among the inbound rows `match` selects (one small query on the candidates only).
+export async function leadArrivalRowIds(match, { EmailModel = Email, LeadModel = Lead } = {}) {
+  const candidates = await EmailModel.find({ ...match, status: 'incoming', parent_message_id: { $type: 'null' },
+    parent_conversation: { $type: 'null' } }).select('_id lead_id timestamp status parent_message_id parent_conversation')
+    .lean();
+  if (!candidates.length) return [];
+  const leadIds = [...new Set(candidates.map((c) => c.lead_id).filter(Boolean).map(String))];
+  const leads = leadIds.length ? await LeadModel.find({ _id: { $in: leadIds } }).select('_id createdAt').lean() : [];
+  const created = new Map(leads.map((l) => [String(l._id), l.createdAt]));
+  return candidates.filter((c) => isLeadArrivalRow(c, created.get(String(c.lead_id)))).map((c) => c._id);
+}
 
 export async function contactedRule() {
   if (Date.now() - cached.at < 60000) return cached.rule;
@@ -30,11 +60,13 @@ export async function contactedRule() {
   return rule;
 }
 
-export async function contactedLeadIds(leadIds, { EmailModel = Email, rule = null } = {}) {
+export async function contactedLeadIds(leadIds, { EmailModel = Email, LeadModel = Lead, rule = null } = {}) {
   if (!leadIds?.length) return [];
   const { customer_texts: minTexts, customer_emails: minEmails } = rule || await contactedRule();
+  const base = { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true }, is_lead_email: { $ne: true } };
+  const arrivals = await leadArrivalRowIds(base, { EmailModel, LeadModel });
   const rows = await EmailModel.aggregate([
-    { $match: { lead_id: { $in: leadIds }, status: { $in: INBOUND }, is_note: { $ne: true }, is_lead_email: { $ne: true } } },
+    { $match: { ...base, ...(arrivals.length ? { _id: { $nin: arrivals } } : {}) } },
     { $project: { lead_id: 1, communication_type: 1,
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } },
@@ -66,12 +98,12 @@ const CHANNEL_MATCH = {
 // Customer Replied split by channel (Betsy, 2 Nov 2026 meeting): leads whose customer texted / emailed in [from, to]
 // (a lead that did both is in both), and how many of the replied leads came in within [from, to] (today's leads vs
 // older ones). `leads`: [{ _id, createdAt }].
-export async function repliedSplit(leads, from, to, { EmailModel = Email } = {}) {
+export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadModel = Lead } = {}) {
   const ids = leads.map((l) => l._id);
   const [all, texts, emails] = await Promise.all([
-    repliedLeadIds(ids, from, to, { EmailModel }),
-    repliedLeadIds(ids, from, to, { EmailModel, channel: 'text' }),
-    repliedLeadIds(ids, from, to, { EmailModel, channel: 'email' }),
+    repliedLeadIds(ids, from, to, { EmailModel, LeadModel }),
+    repliedLeadIds(ids, from, to, { EmailModel, LeadModel, channel: 'text' }),
+    repliedLeadIds(ids, from, to, { EmailModel, LeadModel, channel: 'email' }),
   ]);
   const created = new Map(leads.map((l) => [String(l._id), l.createdAt ? new Date(l.createdAt) : null]));
   const inRange = (at) => at && (!from || at >= new Date(from)) && (!to || at <= new Date(to));
@@ -82,7 +114,8 @@ export async function repliedSplit(leads, from, to, { EmailModel = Email } = {})
     in_range_leads: inRangeLeads };
 }
 
-export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, direction = 'received', channel = null } = {}) {
+export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, LeadModel = Lead, direction = 'received',
+  channel = null } = {}) {
   // `channel` (CHANNEL_MATCH): sms / mms / email for our messages, text / email for the customer's replies.
   if (!leadIds?.length) return [];
   const at = {};
@@ -91,9 +124,12 @@ export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, di
   // Betsy, 27 Oct 2026 meeting: "how many went out today - who did they go out to": direction 'sent' is the same list
   // for our messages to the customer (AI, staff or automatic; not notes).
   const status = direction === 'sent' ? { $nin: [...INBOUND, 'note'] } : { $in: INBOUND };
+  const base = { lead_id: { $in: leadIds }, status, is_note: { $ne: true }, is_lead_email: { $ne: true },
+    ...(from || to ? { timestamp: at } : {}), ...(CHANNEL_MATCH[channel] || {}) };
+  // A customer's message only: the lead's own arrival row (non-AI dealers) is not a reply.
+  const arrivals = direction === 'sent' ? [] : await leadArrivalRowIds(base, { EmailModel, LeadModel });
   const rows = await EmailModel.aggregate([
-    { $match: { lead_id: { $in: leadIds }, status, is_note: { $ne: true }, is_lead_email: { $ne: true },
-      ...(from || to ? { timestamp: at } : {}), ...(CHANNEL_MATCH[channel] || {}) } },
+    { $match: { ...base, ...(arrivals.length ? { _id: { $nin: arrivals } } : {}) } },
     { $project: { lead_id: 1, timestamp: 1,
       adf: { $regexMatch: { input: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, '$mail_content', ''] },
         regex: ADF.source, options: 'i' } },
