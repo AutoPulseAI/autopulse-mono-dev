@@ -18,6 +18,29 @@ export function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+// Whether `user` (the signed-in account, already allowed for dealerId) may see a report feature: a super admin signed
+// in directly, or a dealer account opened through "login as" (the token's impersonated_by). Also used by
+// /api/leads for the dashboard's reply / appointment drill-down links.
+export async function callerSeesFeature(req, user, dealerId, feature) {
+  if (!user) return false;
+  // "Login as" tokens carry the dealer's id; loadSettingsEditor reads the token's impersonated_by.
+  const editor = await loadSettingsEditor(req);
+  const sameUser = editor.user && String(editor.user._id) === String(user._id);
+  const superAdmin = user.type === "admin" || Boolean(sameUser && editor.superAdmin);
+  return isFeatureVisible(feature, { user, superAdmin, dealerId: String(dealerId) });
+}
+
+// The dashboard's ISO instants as the dealer's local calendar days -> { from, to } or { error }.
+export function localRange(startValue, endValue, tz) {
+  const from = toLocalDate(startValue, tz);
+  const to = toLocalDate(endValue, tz);
+  if (!from || !to) return { error: "start_date and end_date are required" };
+  if (to < from) return { error: "end_date is before start_date" };
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
+  if (days > MAX_RANGE_DAYS) return { error: `pick at most ${MAX_RANGE_DAYS} days` };
+  return { from, to };
+}
+
 /** @returns {Promise<{response: Response} | {dealerId: string, tz: string, from: string, to: string, searchParams}>} */
 export async function reportRequest(req, feature) {
   const { searchParams } = new URL(req.url);
@@ -25,21 +48,12 @@ export async function reportRequest(req, feature) {
   await dbConnect();
   const access = await requireDealerAccess(req, dealerId);
   if (access.response) return { response: access.response };
-
-  // "Login as" tokens carry the dealer's id; loadSettingsEditor reads the token's impersonated_by.
-  const editor = await loadSettingsEditor(req);
-  const sameUser = editor.user && String(editor.user._id) === String(access.user._id);
-  const superAdmin = access.user.type === "admin" || Boolean(sameUser && editor.superAdmin);
-  if (!isFeatureVisible(feature, { user: access.user, superAdmin, dealerId: String(dealerId) })) {
+  if (!(await callerSeesFeature(req, access.user, dealerId, feature))) {
     return { response: denied(404, "Not found") };
   }
 
   const tz = await getDealerTimezone(dealerId);
-  const from = toLocalDate(searchParams.get("start_date"), tz);
-  const to = toLocalDate(searchParams.get("end_date"), tz);
-  if (!from || !to) return { response: json({ error: "start_date and end_date are required" }, 400) };
-  if (to < from) return { response: json({ error: "end_date is before start_date" }, 400) };
-  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
-  if (days > MAX_RANGE_DAYS) return { response: json({ error: `pick at most ${MAX_RANGE_DAYS} days` }, 400) };
-  return { dealerId: String(dealerId), tz, from, to, searchParams };
+  const range = localRange(searchParams.get("start_date"), searchParams.get("end_date"), tz);
+  if (range.error) return { response: json({ error: range.error }, 400) };
+  return { dealerId: String(dealerId), tz, from: range.from, to: range.to, searchParams };
 }
