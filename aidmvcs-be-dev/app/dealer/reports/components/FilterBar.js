@@ -1,20 +1,15 @@
 "use client";
-// One filter bar for every Reports tab. Only the filters app/lib/reporting/filters.js supports for the Reports page
-// (REPORTS.KPI_REPORTS): date range (dealer time zone, the Dashboard's picker), source, lead source, assigned staff,
-// AI / human and sales / service. Campaign and new / used are not offered: the data isn't there yet.
+// One filter bar for every report tab of the Dashboard. Only the filters app/lib/reporting/filters.js supports for the
+// reports (REPORTS.KPI_REPORTS): source, lead source, assigned staff, AI / human and sales / service. The dates are the
+// Dashboard's own picker at the top of the page. Campaign and new / used are not offered: the data isn't there yet.
 import { Button, Form } from "react-bootstrap";
-import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker";
 
-export default function FilterBar({ range, onRange, timezone, filters, onFilters, options }) {
+export default function FilterBar({ filters, onFilters, options }) {
   const set = (key) => (e) => onFilters({ ...filters, [key]: e.target.value });
   const any = Object.values(filters).some(Boolean);
   return (
     <div className="w_card mb-3">
       <div className="d-flex flex-wrap align-items-center gap-2">
-        <DashboardDatePicker value={range} onChange={onRange} timezone={timezone} />
-        <small className="text-muted" title={`All dates are your business days in ${timezone}`}>
-          <i className="fa-solid fa-clock me-1"></i>{timezone.split("/").pop()}
-        </small>
         <Form.Select size="sm" style={{ width: "auto" }} value={filters.source} onChange={set("source")}
           aria-label="Source">
           <option value="">All sources</option>
