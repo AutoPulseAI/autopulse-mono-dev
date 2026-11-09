@@ -8,6 +8,39 @@ import Permission from "@models/Permission";
 import { sendStaffAccountEmail, resetPasswordAccountEmail } from "@lib/emailservice";
 import { normalizeUserEmail } from "@utils/userEmail";
 import { parseWorkSchedule } from "@lib/workSchedule";
+import mongoose from "mongoose";
+import { requireUser, denied } from "@lib/apiGuard";
+
+// The signed-in caller and the account its employees belong to: a dealer or agency owner's own id, or for their
+// staff the owner (parent_id). Super admins (type "admin") manage every account as before.
+async function staffCaller(req) {
+  const { user, response } = await requireUser(req);
+  if (response) return { response };
+  return { user, root: user.type === 'admin' ? null : String(user.parent_id || user._id) };
+}
+
+function isOwnStaff(caller, staff) {
+  return staff.type === caller.user.type && String(staff.parent_id || '') === caller.root;
+}
+
+// A dealer/agency may not pick another type or parent, nor give an admin-only role. Its staff (not the owner) need
+// the "Manage Employee" permission, the one that shows the Employee Management page (dealer/agency Sidebar).
+async function manageStaffDenial(caller, { type, parent_id, role }) {
+  const { user, root } = caller;
+  if (type !== undefined && type !== null && type !== '' && type !== user.type) return denied(403);
+  if (parent_id && String(parent_id) !== root) return denied(403);
+  if (role) {
+    if (!mongoose.isValidObjectId(role)) return denied(403);
+    const roleDoc = await Role.findById(role).select('entity');
+    if (!roleDoc || roleDoc.entity !== user.type) return denied(403);
+  }
+  if (user.parent_id) {
+    const withRole = await User.findById(user._id).select('role').populate({ path: 'role', populate: { path: 'permissions' } });
+    const names = withRole?.role?.permissions?.map((p) => p.permission_name) || [];
+    if (!names.includes("Manage Employee")) return denied(403);
+  }
+  return null;
+}
 
 export async function GET(req) {
   try {
@@ -20,23 +53,15 @@ export async function GET(req) {
     const email = url.searchParams.get("email") || '';
     const role = url.searchParams.get("role") || '';
     const limit = 10;
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-    // Build the base query
+    const caller = await staffCaller(req);
+    if (caller.response) return caller.response;
+    // Build the base query. A dealer or agency only ever lists its own employees (it used to be able to pass any
+    // type/parent_id and list admins or other dealerships' staff).
     let query = { type: type };
     
-    if (parent_id && type !== 'admin') {
+    if (caller.user.type !== 'admin') {
+      query = { type: caller.user.type, parent_id: caller.root };
+    } else if (parent_id && type !== 'admin') {
       query.parent_id = parent_id;
     }
 
@@ -76,32 +101,32 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, role, type,parent_id, work_schedule } = await req.json();
+    const body = await req.json();
+    const { name, email, password, role, work_schedule } = body;
+    let { type, parent_id } = body;
     const emailNorm = normalizeUserEmail(email);
     // Staff work schedule (app/lib/workSchedule.js); unset = the dealership's opening hours.
     const schedule = work_schedule === undefined ? { value: undefined } : parseWorkSchedule(work_schedule);
     if (schedule.error) return Response.json({ message: schedule.error }, { status: 422 });
 
     // Check if email already exists (stored canonical lowercase)
+    const caller = await staffCaller(req);
+    if (caller.response) return caller.response;
+    // Only a super admin may choose the new user's type and parent. A dealer or agency creates its own employees:
+    // same type, under its own account (before this any signed-in user could create a super admin).
+    if (caller.user.type !== 'admin') {
+      const denial = await manageStaffDenial(caller, { type, parent_id, role });
+      if (denial) return denial;
+      type = caller.user.type;
+      parent_id = caller.root;
+    }
+
     const existingUser = await User.findOne({ email: emailNorm });
     if (existingUser) {
       return Response.json(
         { message: "Email already exists. Please use a different email." },
         { status: 400 }
       );
-    }
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
     }
     const hashedPassword = await bcrypt.hash(password, 10); 
     // Create a new user
@@ -142,23 +167,18 @@ export async function PUT(req) {
     const schedule = work_schedule === undefined ? null : parseWorkSchedule(work_schedule);
     if (schedule?.error) return new Response(JSON.stringify({ message: schedule.error }), { status: 422 });
 
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
+    const caller = await staffCaller(req);
+    if (caller.response) return caller.response;
     // Find the staff member to update
-    const staff = await User.findById(staffId);
+    const staff = mongoose.isValidObjectId(staffId) ? await User.findById(staffId) : null;
     if (!staff) {
       return new Response(JSON.stringify({ message: "Staff not found" }), { status: 404 });
+    }
+    // A dealer or agency edits only its own employees (name, email, password, role).
+    if (caller.user.type !== 'admin') {
+      if (!isOwnStaff(caller, staff)) return new Response(JSON.stringify({ message: "Staff not found" }), { status: 404 });
+      const denial = await manageStaffDenial(caller, { role });
+      if (denial) return denial;
     }
 
     const emailNorm = email != null && String(email).trim() !== "" ? normalizeUserEmail(email) : null;
@@ -238,18 +258,15 @@ export async function DELETE(req) {
   try {
     await dbConnect();
     const { staffId } = await req.json();
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+    const caller = await staffCaller(req);
+    if (caller.response) return caller.response;
+    if (caller.user.type !== 'admin') {
+      const target = mongoose.isValidObjectId(staffId) ? await User.findById(staffId).select('_id type parent_id') : null;
+      if (!target || !isOwnStaff(caller, target)) {
+        return new Response(JSON.stringify({ message: "User not found" }), { status: 404 });
       }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+      const denial = await manageStaffDenial(caller, {});
+      if (denial) return denial;
     }
 
     const user = await User.findByIdAndDelete(staffId);
