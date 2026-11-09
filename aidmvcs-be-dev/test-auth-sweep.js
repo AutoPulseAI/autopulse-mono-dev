@@ -27,6 +27,7 @@ process.env.MONGODB_URI = process.env.AUTHSWEEP_TEST_MONGODB_URI || 'mongodb://1
 process.env.JWT_SECRET = 'authsweep-test-jwt-secret';
 process.env.UPSELL_SERVICE_SHARED_SECRET = 'authsweep-test-ai-secret';
 process.env.PROVIDER_SEND_STUB = 'true';
+process.env.STRIPE_SECRET_KEY ||= 'sk_test_local_dummy'; // the Stripe client is built at import; no Stripe call is made
 delete process.env.CRON_SECRET;
 delete process.env.CRM_LIVE_DB;
 
@@ -172,4 +173,58 @@ test('login-as: bad token 401, dealer 403, other agency 403; the answer never ca
   const body = await res.json();
   assert.equal(body.user.password, undefined);
   assert.equal(body.user.otp, undefined);
+});
+
+// --- super-admin-only routes (debug/test/maintenance, platform stats, admin inbox, packages) ---------------------
+
+const SUPER_ADMIN_ONLY = [
+  // [route, method, path, admin call reaches the handler (local DB only; no S3/Redis/Twilio/Stripe)]
+  ['system/redis-queues', 'GET', '/api/system/redis-queues', false],
+  ['system/redis-queues', 'POST', '/api/system/redis-queues', false],
+  ['system/redis-queues', 'DELETE', '/api/system/redis-queues', false],
+  ['system/test-redis', 'GET', '/api/system/test-redis', false],
+  ['test/check-vehicle', 'GET', '/api/test/check-vehicle', true],
+  ['test/email-subjects', 'GET', '/api/test/email-subjects', true],
+  ['test/report-db', 'GET', '/api/test/report-db', true],
+  ['test/report-periods', 'GET', '/api/test/report-periods', true],
+  ['test/twilio-test', 'GET', '/api/test/twilio-test', false],
+  ['test-s3', 'GET', '/api/test-s3', false],
+  ['admin/manual-cleanup', 'GET', '/api/admin/manual-cleanup', true],
+  ['admin/manual-cleanup', 'POST', '/api/admin/manual-cleanup', false],
+  ['admin/stats', 'GET', '/api/admin/stats', true],
+  ['admin/vehicles', 'GET', '/api/admin/vehicles', true],
+  ['vendors/admin-stats', 'GET', '/api/vendors/admin-stats', true],
+  ['contact', 'GET', '/api/contact', true],
+  ['bookademo', 'GET', '/api/bookademo', true],
+  ['bookademo', 'DELETE', `/api/bookademo?id=${id(98)}`, true],
+  ['contact/[id]', 'GET', `/api/contact/${id(98)}`, true],
+  ['contact/[id]', 'DELETE', `/api/contact/${id(98)}`, true],
+  ['contact/[id]/status', 'PATCH', `/api/contact/${id(98)}/status`, false],
+  ['packages', 'POST', '/api/packages', false],
+  ['packages/[id]', 'PUT', `/api/packages/${id(98)}`, false],
+  ['packages/[id]', 'DELETE', `/api/packages/${id(98)}`, false],
+  ['packages/[id]/status', 'PUT', `/api/packages/${id(98)}/status`, false],
+];
+
+test('super-admin-only routes: 401 signed out, 403 dealer / agency, super admin gets through', async (t) => {
+  if (needDb(t)) return;
+  for (const [p, method, path, adminRuns] of SUPER_ADMIN_ONLY) {
+    const handler = (await route(p))[method];
+    const body = ['GET', 'DELETE'].includes(method) ? undefined : {};
+    const call = (headers) => handler(req(path, { method, headers, body }), ctx({ id: String(id(98)) }));
+    assert.equal((await call({})).status, 401, `${method} ${p} signed out`);
+    assert.equal((await call(bearer(DEALER_A))).status, 403, `${method} ${p} dealer`);
+    assert.equal((await call(cookie('vendortoken', AGENCY))).status, 403, `${method} ${p} agency`);
+    if (adminRuns) {
+      const status = (await call(cookie('admintoken', ADMIN))).status;
+      assert.ok(![401, 403].includes(status), `${method} ${p} super admin got ${status}`);
+    }
+  }
+});
+
+test('packages GET: signed-in users only', async (t) => {
+  if (needDb(t)) return;
+  const { GET } = await route('packages');
+  assert.equal((await GET(req('/api/packages?for_user_type=dealer'))).status, 401);
+  assert.equal((await GET(req('/api/packages?for_user_type=dealer', { headers: cookie('dealertoken', DEALER_A) }))).status, 200);
 });
