@@ -3,6 +3,19 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@lib/mongodb';
 import CSVImportedData from '@models/CSVImportedData';
 import CSVImportData from '@models/CSVImportData';
+import { requireDealerOrSuperAdmin, requireUser } from '@lib/apiGuard';
+import mongoose from 'mongoose';
+
+// Security fix (Nov 2026): one CSV import's rows belong to its dealer; that dealer, its agency or a super admin.
+// Both methods had no sign-in check.
+async function csvImportAccess(request, csvImportId) {
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn;
+  const csv = mongoose.isValidObjectId(csvImportId)
+    ? await CSVImportData.findById(csvImportId).select('dealer_id').lean()
+    : null;
+  return requireDealerOrSuperAdmin(request, csv?.dealer_id ? String(csv.dealer_id) : null);
+}
 
 export async function GET(request) {
   try {
@@ -21,6 +34,8 @@ export async function GET(request) {
         { status: 400 }
       );
     }
+    const access = await csvImportAccess(request, csvImportId);
+    if (access.response) return access.response;
     
     // Get imported data with CSV info
     const importedData = await CSVImportedData.getWithCsvInfo(csvImportId, {
@@ -62,6 +77,8 @@ export async function POST(request) {
     await dbConnect();
     
     const { action, csvImportId } = await request.json();
+    const access = await csvImportAccess(request, csvImportId);
+    if (access.response) return access.response;
     
     if (action === 'get_stats' && csvImportId) {
       const stats = await CSVImportedData.getStatsByCsvImportId(csvImportId);
