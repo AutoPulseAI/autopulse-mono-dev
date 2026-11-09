@@ -3,11 +3,15 @@ import dbConnect from '@lib/mongodb';
 import Vehicle from '@models/Vehicle';
 import User from '@models/User';
 import { NextResponse } from 'next/server';
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(request) {
   await dbConnect();
   const { searchParams } = new URL(request.url);
   const dealerId = searchParams.get('dealer_id');
+  // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+  const access = await requireDealerOrSuperAdmin(request, dealerId);
+  if (access.response) return access.response;
   const page = parseInt(searchParams.get('page')) || 1;
   const limit = parseInt(searchParams.get('limit')) || 10;
   const vin = searchParams.get('vin') || '';

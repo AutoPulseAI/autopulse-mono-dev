@@ -1,6 +1,9 @@
 import dbConnect from "@lib/mongodb";
 import ReportSchedule from "@models/ReportSchedule";
 import User from "@models/User";
+import { requireDealerAccess, requireSuperAdmin } from "@lib/apiGuard";
+// Signed-in users only, for their own dealership (the report schedule page; super admin: any). This had no sign-in
+// check, so anyone with a dealer id could read or change who receives its reports.
 
 export async function GET(req) {
   try {
@@ -11,6 +14,8 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const dealerId = searchParams.get("dealer_id");
+    const access = await requireDealerAccess(req, dealerId);
+    if (access.response) return access.response;
     
     console.log("Looking for dealer_id:", dealerId);
 
@@ -119,6 +124,8 @@ export async function PUT(req) {
     console.log("Request body:", JSON.stringify(requestBody, null, 2));
     
     const { dealerId, schedules, reportEmail, timezone, includeMetrics, customMessage, isActive } = requestBody;
+    const access = await requireDealerAccess(req, dealerId);
+    if (access.response) return access.response;
 
     if (!dealerId || !reportEmail) {
       console.log("Missing required fields:", { dealerId, reportEmail });
@@ -528,7 +535,10 @@ function calculateNextExecutionTime(frequency, days, time, userTimezone = "Ameri
   }
 }
 
-export async function POST() {
+export async function POST(req) {
+  // A test that writes a sample schedule: super admin only.
+  const access = await requireSuperAdmin(req);
+  if (access.response) return access.response;
   try {
     console.log("POST request received for testing report settings");
     

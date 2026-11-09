@@ -3,6 +3,7 @@ import Lead from '@models/Lead';
 import User from '@models/User';
 import moment from 'moment-timezone';
 import { messageActivity } from '@lib/contactedLeads';
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 // The dashboard's Messages card (Betsy, 27 Oct 2026 meeting): messages sent and received in the picked range, in the
 // dealer's own days (app/lib/contactedLeads.js messageActivity).
@@ -11,6 +12,9 @@ export async function GET(request) {
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const dealerId = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealerId);
+    if (access.response) return access.response;
     if (!dealerId) return Response.json({ error: 'dealer_id is required' }, { status: 400 });
     let from = null, to = null;
     if (searchParams.get('start_date') && searchParams.get('end_date')) {

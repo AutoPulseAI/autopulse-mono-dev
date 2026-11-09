@@ -4,6 +4,7 @@ import VehicleClick from '@models/VehicleClick';
 import Vehicle from '@models/Vehicle';
 import User from '@models/User';
 import moment from 'moment-timezone';
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(request) {
   try {
@@ -11,6 +12,9 @@ export async function GET(request) {
     
     const { searchParams } = new URL(request.url);
     const dealerId = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealerId);
+    if (access.response) return access.response;
     const vehicleId = searchParams.get('vehicle_id');
     const vin = searchParams.get('vin');
     const shortCode = searchParams.get('short_code');

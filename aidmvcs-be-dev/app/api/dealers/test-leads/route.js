@@ -1,5 +1,6 @@
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(req) {
   try {
@@ -7,6 +8,9 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const dealerId = searchParams.get("dealer_id");
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(req, dealerId);
+    if (access.response) return access.response;
     
     if (!dealerId) {
       return new Response(JSON.stringify({ message: "Dealer ID is required" }), {
