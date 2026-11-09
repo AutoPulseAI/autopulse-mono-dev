@@ -5,7 +5,7 @@ export const metadata = {
   description: "Autopulse AI's privacy policy, including how we collect, use, and protect information, and details of our SMS/text messaging program.",
 };
 
-const LAST_UPDATED = "September 2, 2026";
+const LAST_UPDATED = "November 9, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
@@ -100,7 +100,35 @@ export default function PrivacyPolicyPage() {
           </li>
         </ul>
 
-        <h2>4. How We Share Information</h2>
+        <h2>4. WhatsApp, Facebook Messenger, and Instagram</h2>
+        <p>
+          When a dealership connects its WhatsApp number, Facebook Page, or Instagram account to
+          Autopulse AI, we receive and store the messages sent and received on that account so the
+          dealership can read and reply from its inbox.
+        </p>
+        <p>
+          This includes the message content, attachments, the sender’s name and identifier, the
+          time of the message, and its delivery status.
+        </p>
+        <p>
+          WhatsApp may be connected through Twilio or directly through Meta’s WhatsApp setup. A
+          number uses one of these at a time. Facebook Messenger and Instagram messages are sent and
+          received through Meta.
+        </p>
+        <p>
+          Employees of that dealership can view these conversations and reply. A dealership can see
+          only its own accounts and conversations.
+        </p>
+        <p>
+          We use this information to deliver messages and operate the inbox. We do not sell it, and
+          we do not use it to advertise to those customers.
+        </p>
+        <p>
+          To ask us to delete this information, contact us as described in the Contact Us section.
+          Disconnecting an account stops new messages from that account from coming into Autopulse.
+        </p>
+
+        <h2>5. How We Share Information</h2>
         <p>We may share information with:</p>
         <ul>
           <li>
@@ -118,40 +146,40 @@ export default function PrivacyPolicyPage() {
         </ul>
         <p>We do not sell your personal information.</p>
 
-        <h2>5. Data Security</h2>
+        <h2>6. Data Security</h2>
         <p>
           We use reasonable administrative, technical, and physical safeguards designed to
           protect the information we collect. However, no method of transmission or storage is
           completely secure, and we cannot guarantee absolute security.
         </p>
 
-        <h2>6. Data Retention</h2>
+        <h2>7. Data Retention</h2>
         <p>
           We retain personal information for as long as necessary to fulfill the purposes
           described in this policy, unless a longer retention period is required or permitted by
           law.
         </p>
 
-        <h2>7. Your Choices</h2>
+        <h2>8. Your Choices</h2>
         <p>
           In addition to SMS opt-out instructions above, you may contact us at any time to ask
           questions about the information we hold about you, request corrections, or request
           deletion, subject to applicable law.
         </p>
 
-        <h2>8. Children&apos;s Privacy</h2>
+        <h2>9. Children&apos;s Privacy</h2>
         <p>
           Our services are not directed to individuals under the age of 18, and we do not
           knowingly collect personal information from children.
         </p>
 
-        <h2>9. Changes to This Policy</h2>
+        <h2>10. Changes to This Policy</h2>
         <p>
           We may update this Privacy Policy from time to time. Changes will be posted on this
           page with an updated &quot;Last updated&quot; date.
         </p>
 
-        <h2>10. Contact Us</h2>
+        <h2>11. Contact Us</h2>
         <p>
           If you have questions about this Privacy Policy or our SMS program, contact us at:
         </p>
