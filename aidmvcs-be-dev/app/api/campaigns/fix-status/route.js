@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import Campaign from "@models/Campaign";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 /**
  * POST endpoint to fix campaigns that are incorrectly marked as "active"
  * when their scheduled date is still in the future
  */
 export async function POST(req) {
+  // Security fix (Nov 2026): one-off maintenance across every dealer's campaigns, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
 
@@ -66,6 +70,9 @@ export async function POST(req) {
  * GET endpoint to check for campaigns that need fixing
  */
 export async function GET(req) {
+  // Security fix (Nov 2026): one-off maintenance across every dealer's campaigns, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import CampaignTemplate from "@models/CampaignTemplate";
 import { verifyToken } from "@lib/auth";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 // GET: Fetch a single template
 export async function GET(req, { params }) {
@@ -24,6 +25,9 @@ export async function GET(req, { params }) {
     if (!template) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, String(template.dealer_id));
+    if (guard.response) return guard.response;
 
     return NextResponse.json({ data: template }, { status: 200 });
   } catch (error) {
@@ -58,6 +62,9 @@ export async function PUT(req, { params }) {
     if (!template) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, String(template.dealer_id));
+    if (guard.response) return guard.response;
 
     // If setting as default, unset other defaults for this dealer and message_type
     if (is_default && !template.is_default) {
@@ -105,11 +112,15 @@ export async function DELETE(req, { params }) {
     }
 
     const { id } = await params;
-    const template = await CampaignTemplate.findByIdAndDelete(id);
+    const template = await CampaignTemplate.findById(id).select("dealer_id");
 
     if (!template) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, String(template.dealer_id));
+    if (guard.response) return guard.response;
+    await CampaignTemplate.deleteOne({ _id: template._id });
 
     return NextResponse.json(
       { message: "Template deleted successfully" },

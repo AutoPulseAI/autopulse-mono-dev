@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import CampaignTemplate from "@models/CampaignTemplate";
 import { verifyToken } from "@lib/auth";
+import { requireDealerAccess } from "@lib/apiGuard";
 import { welcomeTemplateHTML, welcomeTemplateData } from "@lib/templates/campaign-templates/welcomeTemplate";
 import { promotionTemplateHTML, promotionTemplateData } from "@lib/templates/campaign-templates/promotionTemplate";
 import { newsletterTemplateHTML, newsletterTemplateData } from "@lib/templates/campaign-templates/newsletterTemplate";
@@ -30,6 +31,9 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): the token was checked but not the dealer; only that dealer, its agency or a super admin.
+    const guard = await requireDealerAccess(req, String(dealer_id));
+    if (guard.response) return guard.response;
 
     // Check if default templates already exist
     const existingTemplates = await CampaignTemplate.find({
