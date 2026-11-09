@@ -70,17 +70,11 @@ export async function PUT(req, { params }) {
       );
     }
 
-    const isCreator = ticket.createdBy?.equals(userId);
-    const isAssigned = ticket.assignedTo?.equals(userId);
-    const isAdmin = type === "admin";
-    const isVendor = type === "vendor";
-
-    if (!isCreator && !isAssigned && !isAdmin && !isVendor) {
-      return Response.json(
-        { success: false, message: "Not authorized" },
-        { status: 403 }
-      );
-    }
+    // Security fix (Nov 2026): any agency (type vendor) could edit any ticket. Now the super admin or the ticket's own
+    // people, as for reading it.
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
+    const isAdmin = access.user?.type === "admin";
 
     // Only admin can update priority and category
     if (title) ticket.title = title;
