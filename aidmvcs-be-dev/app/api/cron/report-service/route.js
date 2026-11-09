@@ -1,6 +1,10 @@
 import reportCronService from '@lib/reportCronService';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel's cron buttons (super admin session) or the server's scheduler with CRON_SECRET.
 
-export async function GET() {
+export async function GET(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     // Get service status
     const status = reportCronService.getStatus();
@@ -26,6 +30,8 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     const { action } = await req.json();
     

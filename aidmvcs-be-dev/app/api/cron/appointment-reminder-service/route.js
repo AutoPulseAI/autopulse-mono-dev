@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import appointmentReminderCronService from '@lib/appointmentReminderCronService';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
+// are still let through, see app/lib/apiGuard.js requireCronCaller).
 
 export async function GET(req) {
+  const cronAuth = await requireCronCaller(req, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action') || 'status';
@@ -52,6 +57,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  const cronAuth = await requireCronCaller(req, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     const body = await req.json();
     const { action, intervalMinutes } = body;

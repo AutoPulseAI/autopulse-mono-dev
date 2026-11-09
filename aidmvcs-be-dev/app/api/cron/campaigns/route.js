@@ -3,12 +3,17 @@ import dbConnect from '@lib/mongodb.js';
 import Campaign from '@models/Campaign.js';
 import CampaignLead from '@models/CampaignLead.js';
 import { getQueue } from '@lib/queue.js';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
+// are still let through, see app/lib/apiGuard.js requireCronCaller).
 
 /**
  * POST endpoint for cron-triggered campaign execution
  * Finds campaigns ready to execute and queues jobs for each lead
  */
 export async function POST(request) {
+  const cronAuth = await requireCronCaller(request, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     await dbConnect();
     
@@ -148,6 +153,8 @@ export async function POST(request) {
  * GET endpoint to check campaign execution status
  */
 export async function GET(request) {
+  const cronAuth = await requireCronCaller(request, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     await dbConnect();
     

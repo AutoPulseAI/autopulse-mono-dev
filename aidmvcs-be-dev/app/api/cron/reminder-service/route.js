@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import reminderCronService from '@lib/reminderCronService';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel's cron buttons (super admin session) or the server's scheduler with CRON_SECRET.
 
 export async function GET(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action') || 'status';
@@ -52,6 +56,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     const body = await req.json();
     const { action, intervalMinutes } = body;
