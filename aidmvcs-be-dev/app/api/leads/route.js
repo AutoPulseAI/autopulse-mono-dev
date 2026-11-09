@@ -693,6 +693,11 @@ export async function POST(req) {
       if (!dealer) {
         throw new Error('Dealer not found');
       }
+      // Security fix (Nov 2026): a bad or expired token fell through (the catch below only warns), so anyone could
+      // add a lead to any dealer, which queues the first message to that customer. Now that dealer, its agency or a
+      // super admin.
+      const dealerGuard = await requireDealerAccess(req, String(dealer._id));
+      if (dealerGuard.response) return dealerGuard.response;
       try {
         const authHeader = req.headers.get("Authorization");
         if (authHeader && authHeader.startsWith("Bearer ")) {
