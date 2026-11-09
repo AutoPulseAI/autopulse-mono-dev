@@ -1,6 +1,7 @@
 import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import jwt from "jsonwebtoken";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,10 @@ export async function GET(req) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): any signed-in user could ask for any dealer's counts; now that dealer, its agency or a
+    // super admin.
+    const guard = await requireDealerAccess(req, String(dealer_id));
+    if (guard.response) return guard.response;
     
     // Count unread messages (all messages with lead_id, regardless of status)
     const unreadCount = await Email.countDocuments({
