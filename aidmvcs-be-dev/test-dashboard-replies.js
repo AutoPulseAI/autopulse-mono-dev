@@ -210,7 +210,7 @@ maybe('reply-cohorts route: 401 without sign-in, 403 for another dealer, 404 whi
   assert.equal((await get(splitRoute, path.replace('reply-cohorts', 'appointment-split'), bearer(DEALER_A))).status, 404);
 });
 
-maybe('reply-cohorts route: super admin (direct or "login as") gets the counts; rows only with rows=1', async () => {
+maybe('reply-cohorts route: super admin (direct or "login as") gets the counts, never customer rows', async () => {
   const lead = await seedLead(at('2026-10-20 09:00'), { name: 'Jordan Fox' });
   await seedEmail(lead, at('2026-11-05 10:00'));
   await seedEmail(lead, at('2026-11-05 10:05'), { status: 'sent', message_by: STAFF_A });
@@ -224,16 +224,14 @@ maybe('reply-cohorts route: super admin (direct or "login as") gets the counts; 
   assert.equal(body.buckets.d15_29, 1);
   assert.equal(body.rows, undefined);
   assert.equal(body.units, undefined);
-  // "Login as": the dealer's token stamped impersonated_by the admin.
+  // "Login as": the dealer's token stamped impersonated_by the admin. The old "View customers" table's rows=1 is
+  // gone (the cards open the Leads list): still the counts only.
   res = await get(replyRoute, `${path}&rows=1`, bearer(DEALER_A, { impersonated_by: String(ADMIN),
     impersonator_type: 'admin' }));
   assert.equal(res.status, 200);
   body = await res.json();
-  assert.equal(body.rows.length, 1);
-  assert.equal(body.rows[0].customer_name, 'Jordan Fox');
-  assert.equal(body.rows[0].age_days, 16);
-  assert.equal(body.rows[0].handler, 'staff');
-  assert.equal(body.rows[0].channel, 'sms');
+  assert.equal(body.totals.customers_replied, 1);
+  assert.equal(body.rows, undefined);
   // All time (no dates): 400 for a caller who can see it.
   assert.equal((await get(replyRoute, `/api/reports/reply-cohorts?dealer_id=${DEALER_A}`, bearer(ADMIN))).status, 400);
 });

@@ -84,7 +84,7 @@ export function apptAttributionLeads(report, key) {
 // The small note under the list's filter chip: why the list can be shorter than the card.
 export function replyDrillNote({ needs_review: review, repeat_days: repeat }) {
   const parts = [];
-  if (review) parts.push(`${plural(review, 'customer needs', 'customers need')} review (no single lead) and ${review === 1 ? 'is' : 'are'} not listed - see "View customers" on the dashboard`);
+  if (review) parts.push(`${plural(review, 'customer needs', 'customers need')} review (no single lead) and ${review === 1 ? 'is' : 'are'} not listed`);
   if (repeat) parts.push(`${plural(repeat, 'repeat day', 'repeat days')} of the same lead ${repeat === 1 ? 'is' : 'are'} listed once`);
   return parts.join('; ');
 }
