@@ -15,6 +15,7 @@ import LeadStatusBar from "./components/LeadStatusBar";
 import ActivityOverTimeDataBar from "./components/ActivityOverTimeDataBar";
 import LeadSourceDataPie from "./components/LeadSourceDataPie";
 import LeadSourceDistributionPie from "./components/LeadSourceDistributionPie";
+import ReplyCohortsSection from "./components/ReplyCohortsSection";
 //import ReportAnalytics from "./components/ReportAnalytics";
 
 
@@ -862,6 +863,16 @@ export default function Dashboard() {
             />
           </div>
         </div>
+
+        {/* Customer replies by lead age (P1 plan items 2-3): renders nothing unless the report is visible to this
+            caller (admins first); the cards above are unchanged. */}
+        <ReplyCohortsSection
+          dealerId={dealerParent.id}
+          startDate={dateRange.startDate}
+          endDate={dateRange.endDate}
+          timezone={dealerTimezone}
+          rangeText={cardRangeText()}
+        />
 
         {/* Full Calendar - inserted after second row 
         <div className="row gx-2 gx-xl-3">

@@ -4,7 +4,8 @@
 // Definitions (project owner, 9 Nov 2026):
 //   Reply            any qualifying inbound customer message - the inbound rules of app/lib/contactedLeads.js
 //                    (repliedLeadIds): status received/incoming, not a note, not the portal/ADF lead email
-//                    (is_lead_email, ADF body), message_id not "lead-..." (the lead's own arrival). STOP is a reply.
+//                    (is_lead_email, ADF body), message_id not "lead-..." (the lead's own arrival, AI dealers), not the
+//                    non-AI lead arrival row (contactedLeads.js isLeadArrivalRow). STOP is a reply.
 //   Lead received    Lead.createdAt ("Lead Date").
 //   Lead age         calendar days from lead received to the reply, both as dealer-local dates.
 //   Customer         Customer.merged_into ?? Lead.customer_id ?? 'lead:'+lead._id (merged_into followed one level).
@@ -19,7 +20,9 @@
 //                    customers_replied. Cumulative d7/d15/d30/d60 overlap, are built from the buckets, and leave
 //                    needs_review out. Never add them up.
 //   Handler          (F3 note 2.6) the first outbound message on the same lead after the reply, before the next
-//                    inbound message and before the end of the reply's local day + 24 h: ai_generated -> 'ai';
+//                    inbound message and before the end of the reply's local day + 24 h, that actually went out
+//                    (status sent/delivered, RESPONSE_STATUSES - a failed, undelivered or bounced message, a pending
+//                    one or a draft is skipped and the next one is looked at): ai_generated -> 'ai';
 //                    message_by set -> 'staff'; neither -> 'automatic' (n8n / platform templates; never AI);
 //                    none -> 'unanswered'. A reply with no lead_id -> 'unknown'.
 //
@@ -29,6 +32,7 @@ import Booking from '../../models/Booking.js';
 import Customer from '../../models/Customer.js';
 import Email from '../../models/Email.js';
 import Lead from '../../models/Lead.js';
+import { isLeadArrivalRow } from '../contactedLeads.js';
 import { REPORTS, describeSpec, hasLeadFilter, leadMatch, parseFilterSpec, replyMatch } from './filters.js';
 import { calendarDayDiff, endOfLocalDayPlus, getDealerTimezone, localDate, localDayRange } from './time.js';
 
@@ -41,6 +45,10 @@ export const ADF = /<\?adf|<adf[\s>]/i;
 export const LEAD_ARRIVAL_ID = /^lead-/;
 // Not a message to the customer, for the handler rule.
 const NOT_OUTBOUND = new Set([...INBOUND, 'note', 'draft']);
+// An answer the customer got: the send succeeded ('sent'; email has no delivery report) or the delivery report said
+// delivered. Same rule as appointmentAttribution.js AI_SENT_STATUSES; failed / undelivered / bounced / error /
+// pending never count.
+export const RESPONSE_STATUSES = Object.freeze(['sent', 'delivered']);
 export const HANDLER_WINDOW_HOURS = 24;
 
 export const BUCKETS = Object.freeze(['d0', 'd1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_plus', 'needs_review']);
@@ -230,6 +238,7 @@ export function handlersFor(replies, messages, { tz }) {
       if (t > cap) break;
       if (INBOUND.includes(m.status)) break;
       if (m.is_note === true || m.communication_type === 'note' || NOT_OUTBOUND.has(m.status)) continue;
+      if (!RESPONSE_STATUSES.includes(m.status)) continue;
       if (m.ai_generated === true) handler = 'ai';
       else if (m.message_by) handler = 'staff';
       else handler = 'automatic';
@@ -284,7 +293,8 @@ export async function replyCohorts({ dealerId, from, to, filters = {}, tz, now =
     message_id: { $not: LEAD_ARRIVAL_ID },
     mail_content: { $not: ADF },
     ...replyMatch(spec),
-  }, { projection: { _id: 1, lead_id: 1, timestamp: 1, communication_type: 1, sender: 1 } }).toArray();
+  }, { projection: { _id: 1, lead_id: 1, timestamp: 1, communication_type: 1, sender: 1, status: 1,
+    parent_message_id: 1, parent_conversation: 1 } }).toArray();
 
   // 2. Their leads and customers.
   const leadIdStrs = [...new Set(inbound.map((m) => m.lead_id).filter(isOid).map(String))];
@@ -307,8 +317,11 @@ export async function replyCohorts({ dealerId, from, to, filters = {}, tz, now =
     customer_key: customerKeyFor(l, l.customer_id ? customerById.get(String(l.customer_id)) : null),
   }]));
 
-  // A lead filter keeps only replies whose lead is found and matches it.
-  const kept = leadFilter ? inbound.filter((m) => m.lead_id && passing.has(String(m.lead_id))) : inbound;
+  // The lead's own arrival row (non-AI dealers, app/worker/leadworker.js) is not a reply - same rule as
+  // contactedLeads.js. A lead filter keeps only replies whose lead is found and matches it.
+  const leadCreated = new Map(leads.map((l) => [String(l._id), l.createdAt]));
+  const replies = inbound.filter((m) => !(m.lead_id && isLeadArrivalRow(m, leadCreated.get(String(m.lead_id)))));
+  const kept = leadFilter ? replies.filter((m) => m.lead_id && passing.has(String(m.lead_id))) : replies;
 
   // 3. Handlers: every message on those leads from the first reply to the last reply's day end + 24 h.
   const keptLeadOids = [...new Set(kept.map((m) => m.lead_id).filter(isOid).map(String))].map(oid);
