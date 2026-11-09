@@ -7,10 +7,18 @@ import mongoose from "mongoose";
 import { sendRegistrationEmail } from "@lib/emailservice"; // Assuming you have an email service
 import { normalizeUserEmail } from "@utils/userEmail";
 
+// Public sign-up (app/(auth)/dealer/register, app/(auth)/agency/register) creates a dealer or an agency, never an
+// admin, and never under someone else's agency (on 9 Nov 2026 this route was used to create admin accounts).
+const SELF_SIGNUP_TYPES = new Set(["dealer", "vendor"]);
+
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, type, phone, website, vendor_id = null } = await req.json();
+    const { name, email, password, type, phone, website } = await req.json();
+    const vendor_id = null;
+    if (!SELF_SIGNUP_TYPES.has(String(type || "").toLowerCase())) {
+      return new Response(JSON.stringify({ message: "Invalid account type." }), { status: 400 });
+    }
     const emailNorm = normalizeUserEmail(email);
 
     // Validate required fields
