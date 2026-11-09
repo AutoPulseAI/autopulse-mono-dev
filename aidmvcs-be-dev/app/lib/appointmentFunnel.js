@@ -6,12 +6,53 @@
 //   scheduled  appointments set for a day in the range (not cancelled)
 //   showed     those of them the customer came to (marked shown, or the lead is now Visited / Sold / Unsold)
 //   sold       leads with an appointment that staff moved to a Sold status in the range
+//
+// The "showed" rule (bookingShowed) and "has its time passed" (appointmentPassed) are exported: the Reports page and
+// the daily email use these same functions, so every screen counts Shown, No-show and Show rate the same way.
+import moment from 'moment-timezone';
+import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Lead from '../models/Lead.js';
 import ActivityLog from '../models/ActivityLog.js';
+import { DEFAULT_TIMEZONE, parseTimeOfDay } from './bookingService.js';
 
 const SOLD = ['Sold', 'Sold Pending', 'Sold Delivered'];
 const CAME = ['Visited', 'Unsold', ...SOLD];
+export const CAME_STATUSES = Object.freeze([...CAME]);
+
+/**
+ * Did the customer come to this appointment? Marked shown (Booking.showed = true), completed, or the lead's status is
+ * now Visited / Unsold / Sold / Sold Pending / Sold Delivered. Cancelled bookings are left out by the callers.
+ * @param {{showed?: boolean|null, booking_status?: string}} booking  @param {string|undefined} leadStatus
+ */
+export function bookingShowed(booking, leadStatus) {
+  return booking.showed === true || booking.booking_status === 'completed' || CAME.includes(leadStatus);
+}
+
+// When the appointment starts: Booking.bookingDate is the dealer-local day at midnight (in UTC) and bookingTime
+// "HH:MM" dealer-local (app/lib/bookingService.js). A time that can't be read counts as the end of that day.
+export function appointmentStart(booking, tz = DEFAULT_TIMEZONE) {
+  if (!booking?.bookingDate) return null;
+  const day = moment(booking.bookingDate).tz(tz).format('YYYY-MM-DD');
+  const minutes = parseTimeOfDay(booking.bookingTime);
+  const local = moment.tz(day, 'YYYY-MM-DD', tz);
+  return (minutes == null ? local.endOf('day') : local.add(minutes, 'minutes')).toDate();
+}
+
+// Has the appointment's date and time already passed (dealer time zone)?
+export function appointmentPassed(booking, { now = new Date(), tz = DEFAULT_TIMEZONE } = {}) {
+  const start = appointmentStart(booking, tz);
+  return Boolean(start && start <= now);
+}
+
+// lead id -> fe_lead_status, for bookingShowed.
+export async function leadStatuses(leadIds, { LeadModel = Lead } = {}) {
+  const ids = [...new Set(leadIds.filter((id) => id != null && mongoose.isValidObjectId(String(id))).map(String))];
+  if (!ids.length) return new Map();
+  const leads = await LeadModel.collection.find({ _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) } },
+    { projection: { fe_lead_status: 1 } }).toArray();
+  return new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
+}
 
 const byAi = (b) => b.created_by === 'ai' || b.created_by === 'customer';
 
@@ -43,11 +84,9 @@ export async function funnelLeadIds({ dealerId, start, end, step }) {
   }
   const scheduled = await Booking.find({ dealer_id, booking_status: { $ne: 'cancelled' },
     ...(range ? { bookingDate: range } : {}) }).select('lead_id showed booking_status').lean();
-  const leadIds = [...new Set(scheduled.map((b) => b.lead_id))];
-  const leads = leadIds.length ? await Lead.find({ _id: { $in: leadIds } }).select('fe_lead_status').lean() : [];
-  const status = new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
-  return [...new Set(scheduled.filter((b) => b.showed === true || b.booking_status === 'completed'
-    || CAME.includes(status.get(b.lead_id))).map((b) => String(b.lead_id)))];
+  const status = await leadStatuses(scheduled.map((b) => b.lead_id));
+  return [...new Set(scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id))))
+    .map((b) => String(b.lead_id)))];
 }
 
 export async function appointmentFunnel({ dealerId, start, end }) {
@@ -57,12 +96,8 @@ export async function appointmentFunnel({ dealerId, start, end }) {
     .select('lead_id created_by').lean();
   const scheduled = await Booking.find({ dealer_id, booking_status: { $ne: 'cancelled' },
     ...(range ? { bookingDate: range } : {}) }).select('lead_id created_by showed booking_status').lean();
-  const scheduledLeads = [...new Set(scheduled.map((b) => b.lead_id))];
-  const leads = scheduledLeads.length
-    ? await Lead.find({ _id: { $in: scheduledLeads } }).select('fe_lead_status').lean() : [];
-  const status = new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
-  const showed = scheduled.filter((b) => b.showed === true || b.booking_status === 'completed'
-    || CAME.includes(status.get(b.lead_id)));
+  const status = await leadStatuses(scheduled.map((b) => b.lead_id));
+  const showed = scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id))));
 
   const soldLogs = await ActivityLog.find({ dealer_id, action: 'status_changed', to: { $in: SOLD },
     ...(range ? { at: range } : {}) }).select('lead_id').lean();

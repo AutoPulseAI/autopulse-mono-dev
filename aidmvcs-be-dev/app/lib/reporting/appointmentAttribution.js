@@ -28,8 +28,9 @@ import Email from '../../models/Email.js';
 import Lead from '../../models/Lead.js';
 import { REPORTS, bookingMatch, describeSpec, hasLeadFilter, leadMatch, parseFilterSpec } from './filters.js';
 import { getDealerTimezone, localDayRange } from './time.js';
+import { appointmentPassed, bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 
-export const DEFINITIONS_VERSION = 'appt-attr-v1';
+export const DEFINITIONS_VERSION = 'appt-attr-v2'; // v2: show rate = shown / past appointments
 export const CATEGORY = Object.freeze({ AI: 'ai', AI_ASSISTED: 'ai_assisted', HUMAN_ONLY: 'human_only',
   UNKNOWN: 'unknown' });
 export const CATEGORIES = Object.freeze(Object.values(CATEGORY));
@@ -72,22 +73,27 @@ export function summarize(rows) {
   return t;
 }
 
-// Pure. Outcomes of the counted bookings. Show rate = shown / (shown + no_show) - the outcomes staff (or the AI)
-// actually recorded; bookings with no recorded outcome are listed separately, never folded into no-show.
-export function outcomes(bookings) {
-  const o = { shown: 0, no_show: 0, cancelled: 0, completed: 0, no_outcome: 0 };
+// Pure. Outcomes of the counted bookings - the same definition as the Reports page and the Dashboard card
+// "Appointments Showed" (app/lib/appointmentFunnel.js):
+//   cancelled  booking_status cancelled (never shown, no-show or upcoming)
+//   shown      not cancelled and bookingShowed(): marked shown, completed, or the lead is now Visited / Unsold / Sold*
+//   no_show    not cancelled, not shown, and its date and time have passed (dealer time zone)
+//   upcoming   not cancelled, not shown, still ahead
+//   show_rate  shown / (shown + no_show): shown out of the appointments that are past. Future ones are not counted.
+// leadStatus: Map lead id -> fe_lead_status; now / tz: when "past" is decided.
+export function outcomes(bookings, { leadStatus = new Map(), now = new Date(), tz } = {}) {
+  const o = { shown: 0, no_show: 0, cancelled: 0, completed: 0, upcoming: 0 };
   for (const b of bookings) {
-    const shown = b.showed === true || b.booking_status === 'completed';
-    if (b.booking_status === 'cancelled') o.cancelled += 1;
     if (b.booking_status === 'completed') o.completed += 1;
-    if (shown) o.shown += 1;
-    else if (b.showed === false) o.no_show += 1;
-    else if (b.booking_status !== 'cancelled') o.no_outcome += 1;
+    if (b.booking_status === 'cancelled') { o.cancelled += 1; continue; }
+    if (bookingShowed(b, leadStatus.get(String(b.lead_id)))) o.shown += 1;
+    else if (appointmentPassed(b, { now, tz })) o.no_show += 1;
+    else o.upcoming += 1;
   }
   const denominator = o.shown + o.no_show;
   o.show_rate = { numerator: o.shown, denominator,
     value: denominator > 0 ? Math.round((o.shown / denominator) * 10000) / 100 : null,
-    definition: 'shown / (shown + no_show); bookings without a recorded outcome are not in the denominator' };
+    definition: 'shown / past appointments (shown + no-show); cancelled and future appointments are not counted' };
   return o;
 }
 
@@ -247,7 +253,8 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
     definitions_version: DEFINITIONS_VERSION,
     as_of: now,
     totals: summarize(rows),
-    outcomes: outcomes(counted),
+    outcomes: outcomes(counted, { leadStatus: await leadStatuses(counted.map((b) => b.lead_id), { LeadModel: LeadM }),
+      now, tz: zone }),
     rows,
     excluded: { duplicates },
     changes: { basis: 'event', source: 'booking history (recorded from P1 item 3 on)', ...historyChanges(changed, { start, end }) },

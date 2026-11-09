@@ -15,7 +15,7 @@ import Email from './app/models/Email.js';
 import Lead from './app/models/Lead.js';
 import User from './app/models/User.js';
 import { repliedLeadIds } from './app/lib/contactedLeads.js';
-import { appointmentFunnel } from './app/lib/appointmentFunnel.js';
+import { appointmentFunnel, appointmentPassed, bookingShowed } from './app/lib/appointmentFunnel.js';
 import {
   calendarDayDiff, getDealerTimezone, isValidLocalDate, localDate, localDayRange, toLocalDate,
 } from './app/lib/reporting/time.js';
@@ -229,14 +229,40 @@ test('findDuplicates / outcomes', () => {
     { _id: 'b0', dealer_id: 'D', lead_id: 'L', bookingDate: d, bookingTime: '10:00', booking_status: 'cancelled' },
   ]);
   assert.deepEqual([...dup.entries()], [['b2', 'b1']]);
-  const o = outcomes([{ showed: true }, { booking_status: 'completed' }, { showed: false },
-    { booking_status: 'cancelled' }, { showed: null, booking_status: 'pending' }]);
-  assert.equal(o.shown, 2);
-  assert.equal(o.no_show, 1);
-  assert.equal(o.cancelled, 1);
+  // Show rate = shown / past appointments (dealer time zone); future and cancelled ones are not in the denominator.
+  const now = at('2026-11-06 12:00');
+  const day = (local) => moment.tz(local, 'YYYY-MM-DD', NY).startOf('day').toDate();
+  const b = (o) => ({ lead_id: 'L0', bookingDate: day('2026-11-06'), bookingTime: '09:00', booking_status: 'pending',
+    showed: null, ...o });
+  const leadStatus = new Map([['L-visited', 'Visited'], ['L-sold', 'Sold Delivered']]);
+  const o = outcomes([
+    b({ showed: true }), b({ booking_status: 'completed' }), b({ lead_id: 'L-visited' }), // shown x3
+    b({ showed: false }), b({ bookingTime: '11:59' }), b({ bookingDate: day('2026-11-01') }), // past, not shown x3
+    b({ bookingTime: '12:30' }), b({ bookingDate: day('2026-11-09') }), // still ahead x2
+    b({ lead_id: 'L-sold', bookingDate: day('2026-11-10') }), // ahead but the lead is sold: shown (counts as past)
+    b({ booking_status: 'cancelled', showed: true }), b({ booking_status: 'cancelled', bookingDate: day('2026-11-01') }),
+  ], { leadStatus, now, tz: NY });
+  assert.equal(o.shown, 4);
+  assert.equal(o.no_show, 3);
+  assert.equal(o.upcoming, 2);
+  assert.equal(o.cancelled, 2);
   assert.equal(o.completed, 1);
-  assert.equal(o.no_outcome, 1);
-  assert.deepEqual([o.show_rate.numerator, o.show_rate.denominator, o.show_rate.value], [2, 3, 66.67]);
+  assert.deepEqual([o.show_rate.numerator, o.show_rate.denominator, o.show_rate.value], [4, 7, 57.14]);
+  // Nothing past yet: no rate (never 0%).
+  assert.equal(outcomes([b({ bookingDate: day('2026-11-09') })], { now, tz: NY }).show_rate.value, null);
+});
+
+test('appointmentPassed: the appointment\'s date and time in the dealer\'s time zone', () => {
+  const booking = { bookingDate: moment.tz('2026-11-06', 'YYYY-MM-DD', LA).startOf('day').toDate(), bookingTime: '09:00' };
+  // 09:00 Los Angeles = 12:00 New York.
+  assert.equal(appointmentPassed(booking, { now: at('2026-11-06 11:59'), tz: LA }), false);
+  assert.equal(appointmentPassed(booking, { now: at('2026-11-06 12:00'), tz: LA }), true);
+  // A time that can't be read: passed once the day is over.
+  const odd = { ...booking, bookingTime: 'soon' };
+  assert.equal(appointmentPassed(odd, { now: at('2026-11-07 02:59'), tz: LA }), false);
+  assert.equal(appointmentPassed(odd, { now: at('2026-11-07 03:00'), tz: LA }), true);
+  assert.equal(bookingShowed({ showed: false }, 'Unsold'), true);
+  assert.equal(bookingShowed({ showed: false }, 'visited'), false, 'exact statuses, as the Dashboard card');
 });
 
 // --- pure: feature flags and registry definitions --------------------------------------------------------------

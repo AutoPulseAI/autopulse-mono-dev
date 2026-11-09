@@ -870,7 +870,6 @@ export default function Dashboard() {
           dealerId={dealerParent.id}
           startDate={dateRange.startDate}
           endDate={dateRange.endDate}
-          timezone={dealerTimezone}
           rangeText={cardRangeText()}
         />
 
