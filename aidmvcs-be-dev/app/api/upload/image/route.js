@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { uploadToS3 } from '@lib/aws-s3';
+import { requireUser } from '@lib/apiGuard';
 
 export async function POST(request) {
+  // Security fix (Nov 2026): anyone could put files in our public S3 bucket. Only signed-in users (support tickets, the page editor).
+  const guard = await requireUser(request);
+  if (guard.response) return guard.response;
   try {
     const formData = await request.formData();
     // Support both 'images' (multiple) and 'file' (single) for different use cases
