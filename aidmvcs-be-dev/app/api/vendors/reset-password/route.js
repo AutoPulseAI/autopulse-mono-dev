@@ -2,10 +2,15 @@ import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 import bcrypt from "bcryptjs";
 import { resetPasswordAccountEmail } from "@lib/emailservice";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function POST(req) {
   try {
     await dbConnect();
+    // Only a super admin sets another account's password (Admin > Agencies / Dealers > Change Password). This route
+    // had no sign-in check and was used on 9 Nov 2026 to take over an account.
+    const { response } = await requireSuperAdmin(req);
+    if (response) return response;
     const { vendorId, password } = await req.json();
 
     // Validate input
