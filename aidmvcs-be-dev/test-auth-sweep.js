@@ -228,3 +228,113 @@ test('packages GET: signed-in users only', async (t) => {
   assert.equal((await GET(req('/api/packages?for_user_type=dealer'))).status, 401);
   assert.equal((await GET(req('/api/packages?for_user_type=dealer', { headers: cookie('dealertoken', DEALER_A) }))).status, 200);
 });
+
+// --- agency lists, permissions, Twilio picker -------------------------------------------------------------------
+
+test('dealers/count and users/dealers: an agency sees only its own dealers', async (t) => {
+  if (needDb(t)) return;
+  const count = (await route('dealers/count')).GET;
+  const list = (await route('users/dealers')).GET;
+  assert.equal((await count(req(`/api/dealers/count?vendor_id=${AGENCY}`))).status, 401);
+  assert.equal((await count(req(`/api/dealers/count?vendor_id=${AGENCY}`, { headers: bearer(AGENCY_2) }))).status, 403);
+  assert.equal((await count(req('/api/dealers/count', { headers: bearer(AGENCY) }))).status, 403, 'all dealers: admin only');
+  let res = await count(req(`/api/dealers/count?vendor_id=${AGENCY}`, { headers: bearer(AGENCY) }));
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).count, 1);
+  assert.equal((await count(req('/api/dealers/count', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+  assert.equal((await list(req(`/api/users/dealers?vendor_id=${AGENCY}`))).status, 401);
+  assert.equal((await list(req(`/api/users/dealers?vendor_id=${AGENCY}`, { headers: bearer(DEALER_A) }))).status, 403);
+  res = await list(req(`/api/users/dealers?vendor_id=${AGENCY}`, { headers: bearer(AGENCY) }));
+  assert.deepEqual((await res.json()).dealers.map((d) => d.name), ['Dealer A']);
+});
+
+test('permissions and twilio/available-numbers: signed-in users only', async (t) => {
+  if (needDb(t)) return;
+  const perms = (await route('permissions')).GET;
+  assert.equal((await perms(req('/api/permissions?type=dealer'))).status, 401);
+  assert.equal((await perms(req('/api/permissions?type=dealer', { headers: cookie('dealertoken', DEALER_A) }))).status, 200);
+  const twilio = await route('twilio/available-numbers');
+  assert.equal((await twilio.GET(req('/api/twilio/available-numbers'))).status, 401);
+  assert.equal((await twilio.POST(req('/api/twilio/available-numbers', { method: 'POST', body: { phone_number: '+15550000002' } }))).status, 401);
+  const res = await twilio.POST(req('/api/twilio/available-numbers', { method: 'POST', headers: bearer(DEALER_A), body: { phone_number: '+15550000002' } }));
+  assert.equal(res.status, 409, 'signed in: the availability check runs');
+});
+
+// --- subscriptions ----------------------------------------------------------------------------------------------
+
+test('subscriptions: only the account itself (or its agency / super admin); the request list is admin only', async (t) => {
+  if (needDb(t)) return;
+  const { default: Subscription } = await import('./app/models/Subscription.js');
+  const SUB_B = id(50);
+  await Subscription.collection.insertOne({ _id: SUB_B, user_id: DEALER_B, status: 'active' });
+  const post = async (p, headers, body) => (await route(p)).POST(req(`/api/${p}`, { method: 'POST', headers, body }));
+  for (const p of ['subscriptions/cancel', 'subscriptions/modify']) {
+    const body = { subscriptionId: String(SUB_B), newDealerCount: 2 };
+    assert.equal((await post(p, {}, body)).status, 401, p);
+    assert.equal((await post(p, bearer(DEALER_A), body)).status, 403, p);
+    assert.equal((await post(p, bearer(AGENCY), body)).status, 403, `${p} not the agency's dealer`);
+  }
+  assert.equal((await Subscription.collection.findOne({ _id: SUB_B })).status, 'active', 'not cancelled');
+  for (const p of ['subscriptions/create', 'subscriptions/upgrade']) {
+    const body = { user_id: String(DEALER_B), package_id: String(id(97)), current_subscription_id: String(SUB_B) };
+    assert.equal((await post(p, {}, body)).status, 401, p);
+    assert.equal((await post(p, bearer(DEALER_A), body)).status, 403, p);
+    // Own account: through the check; the made-up package stops it before Stripe.
+    assert.equal((await post(p, bearer(DEALER_B), body)).status, 404, p);
+  }
+  const tx = (await route('subscriptions/transactions')).GET;
+  assert.equal((await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`))).status, 401);
+  assert.equal((await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`, { headers: bearer(DEALER_A) }))).status, 403);
+  let res = await tx(req(`/api/subscriptions/transactions?user_id=${DEALER_B}`, { headers: cookie('dealertoken', DEALER_B) }));
+  assert.deepEqual(await res.json(), { transactions: [] }, 'no Stripe customer: answered without Stripe');
+  const request = await route('subscriptions/request');
+  assert.equal((await request.GET(req('/api/subscriptions/request'))).status, 401);
+  assert.equal((await request.GET(req('/api/subscriptions/request', { headers: bearer(AGENCY) }))).status, 403);
+  assert.equal((await request.GET(req('/api/subscriptions/request', { headers: cookie('admintoken', ADMIN) }))).status, 200);
+  assert.equal((await post('subscriptions/request', {}, { userId: String(AGENCY), dealerCount: 3 })).status, 401);
+  assert.equal((await post('subscriptions/request', bearer(AGENCY_2), { userId: String(AGENCY), dealerCount: 3 })).status, 403);
+  assert.equal((await post('subscriptions/verify', {}, { session_id: 'cs_test' })).status, 401);
+  assert.equal((await post('subscriptions', {}, {})).status, 401);
+});
+
+// --- tickets ----------------------------------------------------------------------------------------------------
+
+test('tickets: own tickets only; messages need the ticket\'s people; admin sees all', async (t) => {
+  if (needDb(t)) return;
+  const { default: Ticket } = await import('./app/models/Ticket.js');
+  const T_A = id(60);
+  await Ticket.collection.insertOne({ _id: T_A, title: 'A', description: 'd', category: 'general', priority: 'low',
+    createdBy: DEALER_A, createdByModel: 'dealer', messages: [], status: 'open', ticketNumber: 1 });
+  const list = (await route('tickets')).GET;
+  assert.equal((await list(req('/api/tickets'))).status, 401);
+  assert.equal((await list(req('/api/tickets', { headers: bearer(DEALER_A) }))).status, 403, 'all tickets: admin only');
+  assert.equal((await list(req(`/api/tickets?user_id=${DEALER_A}`, { headers: bearer(DEALER_B) }))).status, 403);
+  let res = await list(req(`/api/tickets?user_id=${DEALER_A}`, { headers: cookie('dealertoken', STAFF_A) }));
+  assert.equal((await res.json()).data.length, 1, 'dealer staff see their dealership\'s tickets');
+  res = await list(req(`/api/tickets?user_id=${ADMIN}`, { headers: cookie('admintoken', ADMIN) }));
+  assert.equal((await res.json()).data.length, 1);
+
+  const create = (await route('tickets')).POST;
+  const ticket = { title: 'x', description: 'y', category: 'general', priority: 'low', createdByModel: 'dealer' };
+  assert.equal((await create(req('/api/tickets', { method: 'POST', body: { ...ticket, createdBy: String(DEALER_A) } }))).status, 401);
+  assert.equal((await create(req('/api/tickets', { method: 'POST', headers: bearer(DEALER_B), body: { ...ticket, createdBy: String(DEALER_A) } }))).status, 403);
+  assert.equal((await create(req('/api/tickets', { method: 'POST', headers: bearer(DEALER_B), body: { ...ticket, createdBy: 'admin' } }))).status, 403);
+
+  const messages = await route('tickets/[id]/messages');
+  const one = await route('tickets/[id]');
+  const c = ctx({ id: String(T_A) });
+  for (const get of [messages.GET, one.GET]) {
+    assert.equal((await get(req(`/api/tickets/${T_A}`), c)).status, 401);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(DEALER_B) }), c)).status, 403);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(AGENCY_2) }), c)).status, 403);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: cookie('dealertoken', DEALER_A) }), c)).status, 200);
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: bearer(AGENCY) }), c)).status, 200, 'the dealer\'s agency');
+    assert.equal((await get(req(`/api/tickets/${T_A}`, { headers: cookie('admintoken', ADMIN) }), c)).status, 200);
+  }
+  const say = (headers, userId) => messages.POST(req(`/api/tickets/${T_A}/messages`, { method: 'POST', headers,
+    body: { content: 'hi', user_id: String(userId), type: 'dealer' } }), c);
+  assert.equal((await say({}, DEALER_A)).status, 401);
+  assert.equal((await say(bearer(DEALER_B), DEALER_B)).status, 403);
+  assert.equal((await say(bearer(DEALER_A), ADMIN)).status, 403, 'cannot post as someone else');
+  assert.equal((await Ticket.collection.findOne({ _id: T_A })).messages.length, 0);
+});
