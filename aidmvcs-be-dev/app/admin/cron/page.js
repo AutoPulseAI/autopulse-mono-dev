@@ -1,5 +1,6 @@
 "use client";
 import ReportCronServiceControl from "./components/ReportCronServiceControl";
+import DailyReportControl from "./components/DailyReportControl";
 
 export default function CronPage() {
 
@@ -23,6 +24,7 @@ export default function CronPage() {
           <div className="row gx-2 gx-xxl-4 gx-xl-3">
             <div className="col col-12">
               <ReportCronServiceControl />
+              <DailyReportControl />
             </div>
           </div>
         </div>
