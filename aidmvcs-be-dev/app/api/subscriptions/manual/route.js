@@ -5,23 +5,14 @@ import User from "@models/User";
 import Package from "@models/Package";
 import dbConnect from "@lib/mongodb";
 import { subscriptionActivatedmanual } from "@lib/emailservice";
-import jwt from "jsonwebtoken";
+import { requireSuperAdmin } from "@lib/apiGuard";
 export async function POST(request) {
   await dbConnect();
   const body = await request.json();
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const currentUser = await User.findById(decoded.userId).select('_id name email type');
-    if (currentUser) {
-      const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-  }else{
-    return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-  }
+  // Security fix (Nov 2026): any signed-in user (a dealer, too) could give any account a free manual subscription,
+  // and a bad token was a 500. Only the super admin's "Assign package" screen uses this.
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     const [user, pkg] = await Promise.all([
       User.findById(body.user_id),

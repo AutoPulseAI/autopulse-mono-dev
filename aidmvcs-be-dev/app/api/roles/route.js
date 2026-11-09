@@ -3,21 +3,24 @@ import Role from "@models/Role";
 import Permission from "@models/Permission";
 import User from "@models/User";
 import jwt from "jsonwebtoken";
+import { requireUser, requireActingFor, requireSuperAdmin } from "@lib/apiGuard";
+import { roleEditGuard, foreignPermissions } from "@lib/roleAccess";
 
 export async function POST(req) {
   try {
     await dbConnect();
     
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId; // Get current user ID
-
+    // Security fix (Nov 2026): a bad token was a 500 and the caller could pick any entity (a dealer could create an
+    // "admin" role) with any permissions. Now a valid sign-in, the caller's own kind of role, and permissions of it.
+    const signedIn = await requireUser(req);
+    if (signedIn.response) return signedIn.response;
+    const userId = signedIn.user._id; // Get current user ID
     const { name, entity, permissions } = await req.json();
+    if (entity !== signedIn.user.type) {
+      return new Response(JSON.stringify({ message: "You can only create roles for your own account." }), { status: 403 });
+    }
+    const foreign = await foreignPermissions(permissions, entity);
+    if (foreign) return foreign;
     if(entity !=='admin'){
       const existingRole = await Role.findOne({ name, entity,entity_id:userId });
       if (existingRole) {
@@ -52,22 +55,12 @@ export async function GET(request) {
     const type = searchParams.get("type"); // Get the type parameter from the request
     const entity_id = searchParams.get("entity_id"); // Get the entity_id parameter
 
-    // Build the query object
-    const authHeader = request.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
+    // Security fix (Nov 2026): any signed-in user could list any account's roles. With entity_id: that account (its
+    // owner/staff, its agency or a super admin); without one (the admin's role pages): super admin.
+    const guard = entity_id ? await requireActingFor(request, entity_id) : await requireSuperAdmin(request);
+    if (guard.response) return guard.response;
+
     const query = {};
-    
     if (type) {
       query.entity = type;
     }
@@ -101,19 +94,11 @@ export async function PUT(req) {
     if (!role) {
       return new Response(JSON.stringify({ message: "Role not found" }), { status: 404 });
     }
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-    }
+    // Security fix (Nov 2026): any signed-in user could rename any role or give it any permissions.
+    const guard = await roleEditGuard(req, role);
+    if (guard.response) return guard.response;
+    const foreign = await foreignPermissions(permissions, role.entity);
+    if (foreign) return foreign;
     role.name = name || role.name;
     role.permissions = permissions || role.permissions;
     await role.save();
@@ -130,20 +115,15 @@ export async function DELETE(req) {
     await dbConnect();
     const { roleId } = await req.json();
 
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.userId).select('_id name email type');
-      if (currentUser) {
-        const userPermissions = currentUser?.role?.permissions?.map(p => p.permission_name) || [];
-      }else{
-        return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-      }
-    }else{
-      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+    // Security fix (Nov 2026): any signed-in user could delete any role.
+    const signedIn = await requireUser(req);
+    if (signedIn.response) return signedIn.response;
+    const found = await Role.findById(roleId);
+    if (found) {
+      const guard = await roleEditGuard(req, found);
+      if (guard.response) return guard.response;
     }
-    const role = await Role.findByIdAndDelete(roleId);
+    const role = found ? await Role.findByIdAndDelete(roleId) : null;
     if (!role) {
       return new Response(JSON.stringify({ message: "Role not found" }), { status: 404 });
     }
