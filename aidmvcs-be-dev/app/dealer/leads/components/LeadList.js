@@ -16,6 +16,20 @@ import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
 
+// The dashboard's admin "Customer replies by lead age" / "Appointments made" links (app/api/leads/route.js
+// drillFilter): carried on every list fetch and on Export CSV, so the CSV rows are the list.
+const drillQuery = (f) => (f.replyCohort ? `&reply_cohort=${encodeURIComponent(f.replyCohort)}` : '')
+  + (f.apptAttribution ? `&appt_attribution=${encodeURIComponent(f.apptAttribution)}` : '');
+const DRILL_KEYS = { reply_cohort: 'replyCohort', appt_attribution: 'apptAttribution' };
+const drillRangeText = (range) => {
+  if (!range?.from) return '';
+  const from = moment(range.from, 'YYYY-MM-DD');
+  const to = moment(range.to || range.from, 'YYYY-MM-DD');
+  if (from.isSame(to, 'day')) return from.format('MMM D, YYYY');
+  return from.isSame(to, 'year') ? `${from.format('MMM D')} – ${to.format('MMM D, YYYY')}`
+    : `${from.format('MMM D, YYYY')} – ${to.format('MMM D, YYYY')}`;
+};
+
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
@@ -23,6 +37,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const canManageLeads = useCan("Manage Leads");
   const canViewAssignedLeads = useCan("View Assigned Leads");
   const [leads, setLeads] = useState([]);
+  const [drill, setDrill] = useState(null); // the list's drill-filter chips, from /api/leads (null = none applied)
   const [paginationDirection, setPaginationDirection] = useState(null);
   const paginationDirectionRef = useRef(null); // Use ref to hold direction reliably across renders
   const lastSelectedLeadIdRef = useRef(null); // Track last selected lead to prevent re-selection
@@ -97,6 +112,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       repliedBy: params.get('replied_by') || '', // Customer Replied by text or email (Betsy, 2 Nov 2026 meeting)
       sort: params.get('sort') || '', // created_desc | created_asc (Betsy, 2 Nov 2026 meeting)
       stopped: params.get('stopped') || '', // leads with a stop (app/lib/ai/stopLabels.js)
+      replyCohort: params.get('reply_cohort') || '', // dashboard: customers replied by lead age (admins)
+      apptAttribution: params.get('appt_attribution') || '', // dashboard: appointments made by AI / staff (admins)
       dateRange: {
         startDate: params.get('startDate') ? new Date(params.get('startDate')) : null,
         endDate: params.get('endDate') ? new Date(params.get('endDate')) : null
@@ -218,6 +235,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
+      queryParams += drillQuery(filters);
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
 
@@ -232,6 +250,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
       const newLeads = data.data || [];
       const newCurrentPage = data.pagination?.currentPage || page;
+      setDrill(data.drill || null);
       
       setLeads(newLeads);
       setPagination({
@@ -461,6 +480,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.messages && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) url += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
+      url += drillQuery(filters);
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
@@ -593,6 +613,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       dateRange: { startDate, endDate },
       page: 1
     });
+  };
+
+  // The × on a dashboard drill chip: drop that filter only (URL and list).
+  const clearDrill = (param) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete(param);
+    params.set('page', '1');
+    replaceUrl(`/dealer/leads?${params.toString()}`);
+    setFilters((prev) => ({ ...prev, [DRILL_KEYS[param]]: '', page: 1 }));
   };
 
   const clearFilters = () => {
@@ -785,6 +814,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
+      queryParams += drillQuery(filters);
       if (filters.dateRange.startDate) queryParams += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) queryParams += `&endDate=${filters.dateRange.endDate.toISOString()}`;
       
@@ -799,6 +829,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       
       const newLeads = data.data || [];
       const newCurrentPage = data.pagination?.currentPage || page;
+      setDrill(data.drill || null);
       
       setLeads(newLeads);
       setPagination({
@@ -1188,6 +1219,22 @@ useImperativeHandle(ref, () => ({
       )}
 
       <div className="w_card">
+        {drill?.filters?.length > 0 && (
+          // From the dashboard's "Customer replies by lead age" / "Appointments made" (admins): the leads behind the
+          // number; the note says who is counted there but not listed.
+          <div className="mb-3">
+            {drill.filters.map((f) => (
+              <div key={f.param} className="mb-1">
+                <Badge bg="light" text="dark" className="border d-inline-flex align-items-center gap-2 py-2 px-2">
+                  <span>{f.label}{drill.range ? ` · ${drillRangeText(drill.range)}` : ''}</span>
+                  <button type="button" className="btn-close" style={{ fontSize: '0.6rem' }}
+                    aria-label={`Clear ${f.label}`} onClick={() => clearDrill(f.param)} />
+                </Badge>
+                {f.note && <small className="text-muted d-block mt-1">{f.card_count != null ? `${f.card_count} on the dashboard · ${f.lead_count} ${f.lead_count === 1 ? 'lead' : 'leads'} listed · ` : ''}{f.note}</small>}
+              </div>
+            ))}
+          </div>
+        )}
         {filters.messages === 'sent' && (
           // The Messages card's list by channel (28 Oct 2026 meeting: "how can I see which ones were emails?").
           <div className="d-flex gap-2 mb-3 align-items-center">

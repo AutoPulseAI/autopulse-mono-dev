@@ -13,6 +13,9 @@ const BUCKET_BARS = [
   ["d0", "0 (today)"], ["d1_6", "1-6"], ["d7_14", "7-14"], ["d15_29", "15-29"], ["d30_59", "30-59"],
   ["d60_plus", "60+"], ["needs_review", "Needs review"],
 ];
+// Each bar's /dealer/leads?reply_cohort= value (app/lib/reporting/drillLeads.js). Needs review has no single lead: it
+// opens the "View customers" table instead.
+const BAR_COHORT = { d0: "b0", d1_6: "b1_6", d7_14: "b7_14", d15_29: "b15_29", d30_59: "b30_59", d60_plus: "b60" };
 const HANDLER_LABELS = { ai: "AI", staff: "Staff", automatic: "Automatic", unanswered: "Not answered", unknown: "Unknown" };
 const BUCKET_LABELS = Object.fromEntries(BUCKET_BARS);
 
@@ -87,6 +90,27 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, time
 
   if (state.status === "hidden" || state.status === "loading") return null;
 
+  // Like every other dashboard card: the leads list with this card's filter and the picked dates (the same
+  // startDate/endDate params the cards above send).
+  const leadsLink = (param, value) => {
+    const q = new URLSearchParams({ [param]: value });
+    if (startKey && endKey) {
+      q.set("startDate", startKey);
+      q.set("endDate", endKey);
+    }
+    return `/dealer/leads?${q.toString()}`;
+  };
+  const openLeads = (param, value) => window.open(leadsLink(param, value), "_blank", "noopener,noreferrer");
+  const onBarClick = (entry) => {
+    const key = entry?.key ?? entry?.payload?.key;
+    if (key === "needs_review") openRows();
+    else if (BAR_COHORT[key]) openLeads("reply_cohort", BAR_COHORT[key]);
+  };
+  const apptLink = (category, text, n) => (
+    <a href={leadsLink("appt_attribution", category)} target="_blank" rel="noopener noreferrer"
+      title="Open these appointments' leads">{text} {n}</a>
+  );
+
   const fmt = (at) => (at ? moment.utc(at).tz(timezone).format("MM/DD/YYYY h:mm A") : "");
   const fmtDay = (at) => (at ? moment.utc(at).tz(timezone).format("MM/DD/YYYY") : "");
   const appointmentText = (r) => (r.has_appointment ? (r.booked_after_reply ? "Yes (booked after reply)" : "Yes") : "No");
@@ -154,10 +178,11 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, time
 
       <div className="row gx-2 gx-lg-4">
         <CountCard iconClass="fa-light fa-calendar-day" count={t.todays_leads_replied ?? 0}
-          label="Replied from Today's Leads" description={`Lead received the same day as the reply${basisNote}`} />
+          label="Replied from Today's Leads" link={leadsLink("reply_cohort", "today")} description={`Lead received the same day as the reply${basisNote}`} />
         <CountCard iconClass="fa-light fa-clock-rotate-left" count={t.past_leads_replied ?? 0}
-          label="Replied from Past Leads" description="Lead received 1 or more days before the reply" />
+          label="Replied from Past Leads" link={leadsLink("reply_cohort", "past")} description="Lead received 1 or more days before the reply" />
         <CountCard iconClass="fa-light fa-users" count={t.customers_replied ?? 0} label="Total Customers Replied"
+          link={leadsLink("reply_cohort", "all")}
           description={`Today's + past + needs review (${t.needs_review ?? 0}) · ${t.inbound_messages ?? 0} messages`} />
       </div>
 
@@ -166,10 +191,14 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, time
         These overlap — don&apos;t add them up (a 60+ day customer is also in 7+, 15+ and 30+).
       </small>
       <div className="row gx-2 gx-lg-4">
-        <CountCard iconClass="fa-light fa-hourglass-start" count={c.d7 ?? 0} label="Replied, lead 7+ days old" />
-        <CountCard iconClass="fa-light fa-hourglass-half" count={c.d15 ?? 0} label="Replied, lead 15+ days old" />
-        <CountCard iconClass="fa-light fa-hourglass-end" count={c.d30 ?? 0} label="Replied, lead 30+ days old" />
-        <CountCard iconClass="fa-light fa-hourglass" count={c.d60 ?? 0} label="Replied, lead 60+ days old" />
+        <CountCard iconClass="fa-light fa-hourglass-start" count={c.d7 ?? 0} label="Replied, lead 7+ days old"
+          link={leadsLink("reply_cohort", "d7")} />
+        <CountCard iconClass="fa-light fa-hourglass-half" count={c.d15 ?? 0} label="Replied, lead 15+ days old"
+          link={leadsLink("reply_cohort", "d15")} />
+        <CountCard iconClass="fa-light fa-hourglass-end" count={c.d30 ?? 0} label="Replied, lead 30+ days old"
+          link={leadsLink("reply_cohort", "d30")} />
+        <CountCard iconClass="fa-light fa-hourglass" count={c.d60 ?? 0} label="Replied, lead 60+ days old"
+          link={leadsLink("reply_cohort", "d60")} />
       </div>
 
       <div className="row gx-2 gx-xl-3">
@@ -185,17 +214,20 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, time
                 <XAxis dataKey="name" interval={0} fontSize={12} />
                 <YAxis allowDecimals={false} />
                 <Tooltip cursor={{ fill: "rgba(0, 0, 0, 0.1)" }} />
-                <Bar dataKey="value" name="Customers">
+                <Bar dataKey="value" name="Customers" onClick={onBarClick} style={{ cursor: "pointer" }}>
                   {chartData.map((entry) => (
-                    <Cell key={entry.key} fill={entry.key === "needs_review" ? "#adb5bd" : "var(--primary)"} />
+                    <Cell key={entry.key} fill={entry.key === "needs_review" ? "#adb5bd" : "var(--primary)"}
+                      style={{ cursor: "pointer" }} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
             {s && (
               <small className="text-muted d-block mt-2">
-                <strong>Appointments made:</strong> AI {s.ai} / AI-assisted {s.ai_assisted} / Human-only {s.human_only}
-                {" "}/ Unknown {s.unknown}
+                <strong>Appointments made:</strong> {apptLink("ai", "AI", s.ai)}
+                {" / "}{apptLink("ai_assisted", "AI-assisted", s.ai_assisted)}
+                {" / "}{apptLink("human_only", "Human-only", s.human_only)}
+                {" / "}{apptLink("unknown", "Unknown", s.unknown)}
                 <span className="ms-1">(total {s.total}; bookings created {rangeText})</span>
               </small>
             )}
