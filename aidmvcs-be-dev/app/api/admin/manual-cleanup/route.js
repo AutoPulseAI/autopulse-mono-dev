@@ -1,8 +1,12 @@
 import { cleanupOldReports, cleanupFutureReports, getScheduleStatusSummary } from '../../../utils/reportScheduler.js';
 import dbConnect from '../../../lib/mongodb.js';
 import ReportSchedule from '../../../models/ReportSchedule.js';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function POST(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     
@@ -102,7 +106,10 @@ export async function POST(request) {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     

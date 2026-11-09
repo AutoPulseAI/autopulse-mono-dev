@@ -5,6 +5,7 @@ import Permission from "@models/Permission";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { sendStaffAccountEmail } from "@lib/emailservice";
+import { requireAgencyAccess, requireSuperAdmin } from "@lib/apiGuard";
 
 // GET - Fetch Dealers
 export async function GET(req) {
@@ -13,6 +14,9 @@ export async function GET(req) {
       const url = new URL(req.url);
       const page = parseInt(url.searchParams.get("page")) || 1;
       const vendorId = url.searchParams.get("vendor_id"); // Get vendor_id from query params
+      // Security fix (Nov 2026): an agency counts its own dealers; every dealer's count is the super admin's.
+      const guard = vendorId ? await requireAgencyAccess(req, vendorId) : await requireSuperAdmin(req);
+      if (guard.response) return guard.response;
       const limit = 10;
 
       // Build the query object

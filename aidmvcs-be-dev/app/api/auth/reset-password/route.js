@@ -7,8 +7,9 @@ export async function POST(req) {
     await dbConnect();
     const { token, email, newPassword } = await req.json();
 
-    // Validate input
-    if (!token || !email || !newPassword) {
+    // Validate input. Security fix (Nov 2026): the token must be a plain string - a JSON object such as
+    // {"$ne": null} was passed to the query as an operator and matched any pending reset for that email.
+    if (typeof token !== "string" || typeof newPassword !== "string" || !token || !email || !newPassword) {
       return new Response(
         JSON.stringify({ message: "All fields are required" }),
         { status: 400 }

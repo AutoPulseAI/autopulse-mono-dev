@@ -3,6 +3,8 @@ import Ticket from "@models/Ticket";
 import User from "@models/User";
 export const dynamic = 'force-dynamic';
 import { sendTicketMessageEmail } from "@lib/emailservice";
+import { requireActingFor } from "@lib/apiGuard";
+import { ticketAccess } from "@lib/ticketAccess";
 
 export async function GET(req, { params }) {
   try {
@@ -23,8 +25,8 @@ export async function GET(req, { params }) {
       );
     }
 
-    // Check authorization
-   
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
 
     return Response.json({ 
       success: true, 
@@ -65,6 +67,9 @@ export async function POST(req, { params }) {
       );
     }
 
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
+
     // Validate user_id is a valid ObjectId
     if (!user_id || typeof user_id !== 'string' || user_id.length !== 24) {
       return Response.json(
@@ -72,6 +77,9 @@ export async function POST(req, { params }) {
         { status: 400 }
       );
     }
+    // The message is sent as the signed-in account (or its dealership/agency), never as someone else.
+    const actingAs = await requireActingFor(req, user_id);
+    if (actingAs.response) return actingAs.response;
 
     // Process attachments to extract URLs only
     let processedAttachments = [];

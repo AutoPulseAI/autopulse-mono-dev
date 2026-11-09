@@ -4,8 +4,12 @@ import stripe from "@lib/stripe";
 import User from "@models/User";
 import Subscription from "@models/Subscription";
 import dbConnect from "@lib/mongodb";
+import { requireUser, requireActingFor } from "@lib/apiGuard";
 
 export async function POST(request) {
+  // Security fix (Nov 2026): only the account itself (or its dealership/agency, or a super admin); this had no sign-in check.
+  const signedIn = await requireUser(request);
+  if (signedIn.response) return signedIn.response;
   await dbConnect();
   const body = await request.json();
 
@@ -30,6 +34,8 @@ export async function POST(request) {
         { status: 404 }
       );
     }
+    const guard = await requireActingFor(request, subscription.user_id?._id || subscription.user_id);
+    if (guard.response) return guard.response;
 
     // Validate dealer count
     const minDealers = subscription.package_id.min_dealers || 1;

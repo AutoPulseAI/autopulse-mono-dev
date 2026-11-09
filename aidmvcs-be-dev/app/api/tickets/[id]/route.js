@@ -1,6 +1,7 @@
 import dbConnect from "@lib/mongodb";
 import Ticket from "@models/Ticket";
 import jwt from "jsonwebtoken";
+import { ticketAccess } from "@lib/ticketAccess";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): this GET had no sign-in check (PUT/DELETE below already check the token).
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
 
     return Response.json({ success: true, data: ticket });
   } catch (error) {
@@ -105,7 +109,13 @@ export async function DELETE(req, { params }) {
     // Await params in Next.js 15+
     const { id } = await params;
     
-    const ticket = await Ticket.findByIdAndDelete(id);
+    // Security fix (Nov 2026): deleted any ticket with no sign-in; now the ticket's own people or a super admin.
+    const found = await Ticket.findById(id).select("createdBy assignedTo").lean();
+    if (found) {
+      const access = await ticketAccess(req, found);
+      if (access.response) return access.response;
+    }
+    const ticket = found ? await Ticket.findByIdAndDelete(id) : null;
 
     if (!ticket) {
       return Response.json(

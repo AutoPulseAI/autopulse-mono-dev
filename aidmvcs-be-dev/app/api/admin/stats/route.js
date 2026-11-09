@@ -3,8 +3,12 @@ import { NextResponse } from 'next/server';
 import User from '@models/User';
 import Subscription from '@models/Subscription';
 import dbConnect from '@lib/mongodb';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     

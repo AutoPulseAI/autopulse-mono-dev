@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
+import { requireDealerAccess } from "@lib/apiGuard";
 const sanitizeDomain = (inputDomain, baseDomain = "jugaadtravel.com") => {
     try {
         let sanitizedDomain = inputDomain.trim().toLowerCase().replace(/^https?:\/\//i, "");
@@ -18,6 +19,12 @@ export async function POST(req) {
     try {
         await dbConnect();
         const { dealerId, domain_name, sms_conversion_phone } = await req.json();
+
+        // Security fix (Nov 2026): only that dealer, its agency or a super admin (it was open to anyone).
+        if (dealerId) {
+            const guard = await requireDealerAccess(req, String(dealerId));
+            if (guard.response) return guard.response;
+        }
 
         if (!dealerId) {
             return new Response(JSON.stringify({ message: "Dealer ID is required" }), {

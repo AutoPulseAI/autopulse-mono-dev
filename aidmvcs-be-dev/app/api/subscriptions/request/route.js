@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import User from "@models/User";
 import SubscriptionRequest from "@models/SubscriptionRequest";
 import dbConnect from "@lib/mongodb";
+import { requireActingFor, requireSuperAdmin } from "@lib/apiGuard";
 import { sendSubscriptionRequestAdminEmail } from '@lib/emailservice';
 import mongoose from 'mongoose';
 
@@ -19,6 +20,9 @@ export async function POST(request) {
       email, 
       dealerCount 
     } = await request.json();
+    // Security fix (Nov 2026): only the account itself (or its dealership/agency, or a super admin); this had no sign-in check.
+    const guard = await requireActingFor(request, userId);
+    if (guard.response) return guard.response;
 
     // Validate required fields
     if (!userId || !dealerCount) {
@@ -116,15 +120,9 @@ export async function GET(request) {
       throw new Error('Database connection not ready');
     }
 
-    // Verify admin permissions (you'll need to implement your auth check)
-    const isAdmin = true; // Replace with actual admin check
-
-    if (!isAdmin) {
-      return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Security fix (Nov 2026): the admin's subscription request list; this was open to anyone.
+    const guard = await requireSuperAdmin(request);
+    if (guard.response) return guard.response;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';

@@ -1,6 +1,7 @@
 import User from "@models/User";
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
+import { requireAgencyAccess } from "@lib/apiGuard";
 
 export async function GET(request) {
   try {
@@ -15,6 +16,9 @@ export async function GET(request) {
         { status: 400 }
       );
     }
+    // Security fix (Nov 2026): an agency's own dealer list (or a super admin); this listed any agency's dealers.
+    const guard = await requireAgencyAccess(request, vendor_id);
+    if (guard.response) return guard.response;
 
     const dealers = await User.find(
       { vendor_id, type: "dealer" },

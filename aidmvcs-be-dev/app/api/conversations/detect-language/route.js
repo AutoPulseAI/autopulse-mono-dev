@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@lib/apiGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -11,6 +12,9 @@ function getOpenAiKey() {
 }
 
 export async function POST(req) {
+  // Security fix (Nov 2026): an OpenAI call on our key; signed-in users only (no caller in the app today).
+  const guard = await requireUser(req);
+  if (guard.response) return guard.response;
   try {
     const apiKey = getOpenAiKey();
     if (!apiKey) {

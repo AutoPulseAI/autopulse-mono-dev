@@ -1,6 +1,7 @@
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
+import { requireDealerAccess } from "@lib/apiGuard";
 
 // Follow-up settings are edited by AutoPulse super admins only; dealers view them (client, 8 Oct 2026 meeting).
 
@@ -99,6 +100,9 @@ export async function GET(req) {
                 headers: { "Content-Type": "application/json" },
             });
         }
+        // Security fix (Nov 2026): a dealer's follow-up settings, for that dealer, its agency or a super admin.
+        const guard = await requireDealerAccess(req, String(dealerId));
+        if (guard.response) return guard.response;
 
         const dealer = await User.findById(dealerId);
         if (!dealer) {

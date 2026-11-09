@@ -5,8 +5,12 @@ import { DemoRequest } from '@models/DemoRequest';
 import dbConnect from "@lib/mongodb";
 import { sendDemoRequestEmail } from "@lib/emailservice";
 import { validateDemoPayload } from "@lib/formValidation";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): the admin inbox (contact / demo requests) is super admin only; the public form POST stays open.
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     
@@ -132,6 +136,9 @@ export async function POST(request) {
 }
 
 export async function DELETE(request) {
+  // Security fix (Nov 2026): the admin inbox (contact / demo requests) is super admin only; the public form POST stays open.
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
 

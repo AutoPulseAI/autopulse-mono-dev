@@ -1,8 +1,12 @@
 import twilioService from '../../../lib/twilioService.js';
 import dbConnect from '../../../lib/mongodb.js';
 import User from '../../../models/User.js';
+import { requireUser } from "@lib/apiGuard";
 
 export async function GET(request) {
+  // Security fix (Nov 2026): the dealer's SMS number picker (signed in); it listed our Twilio numbers to anyone.
+  const guard = await requireUser(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     
@@ -107,6 +111,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // Security fix (Nov 2026): the dealer's SMS number picker (signed in); it listed our Twilio numbers to anyone.
+  const guard = await requireUser(request);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     

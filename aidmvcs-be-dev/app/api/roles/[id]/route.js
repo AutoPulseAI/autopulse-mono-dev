@@ -3,6 +3,7 @@ import Role from "@models/Role";
 import Permission from "@models/Permission";
 import jwt from "jsonwebtoken";
 import User from "@models/User";
+import { requireActingFor, requireSuperAdmin } from "@lib/apiGuard";
 
 
 export async function GET(request) {
@@ -53,6 +54,9 @@ export async function GET(request) {
 }
 
 export async function PUT(req, { params }) {
+  // Security fix (Nov 2026): this changed any role's name and permissions with no sign-in (e.g. give a staff role
+  // every permission). Now an admin role only by the super admin; a dealer/agency role only by that account
+  // (its owner, staff, its agency or a super admin), and only with permissions of the role's own kind.
   try {
     await dbConnect();
     const { id } = await params;
@@ -61,6 +65,17 @@ export async function PUT(req, { params }) {
     const role = await Role.findById(id);
     if (!role) {
       return new Response(JSON.stringify({ message: "Role not found" }), { status: 404 });
+    }
+    const guard = role.entity === "admin" || !role.entity_id
+      ? await requireSuperAdmin(req)
+      : await requireActingFor(req, String(role.entity_id));
+    if (guard.response) return guard.response;
+    if (Array.isArray(permissions) && permissions.length) {
+      const ids = [...new Set(permissions.map((p) => String(p?._id ?? p)))];
+      const own = await Permission.countDocuments({ _id: { $in: ids }, entity: role.entity });
+      if (own !== ids.length) {
+        return new Response(JSON.stringify({ message: "Those permissions are not for this kind of role." }), { status: 403 });
+      }
     }
 
     role.name = name || role.name;

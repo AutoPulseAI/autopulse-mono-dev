@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { Readable } from 'stream';
 import csv from 'csv-parser';
+import { requireDealerAccess } from '@lib/apiGuard';
 
 // POST: Import multiple leads from CSV file
 export async function POST(request) {
@@ -34,6 +35,10 @@ export async function POST(request) {
                 { status: 400 }
             );
         }
+        // Security fix (Nov 2026): leads are imported only into the caller's own dealer (or its agency's, or by a
+        // super admin); this took any dealer_id with no sign-in.
+        const guard = await requireDealerAccess(request, String(dealerId));
+        if (guard.response) return guard.response;
 
         // Convert file to readable stream
         const buffer = await file.arrayBuffer();

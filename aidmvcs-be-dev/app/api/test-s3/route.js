@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
+import { requireSuperAdmin } from "@lib/apiGuard";
 
-export async function GET() {
+export async function GET(request) {
+  // Security fix (Nov 2026): debug/maintenance route, super admin only (it had no sign-in check).
+  const guard = await requireSuperAdmin(request);
+  if (guard.response) return guard.response;
   try {
     // Check environment variables
     const requiredEnvVars = [
