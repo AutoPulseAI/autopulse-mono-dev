@@ -10,6 +10,17 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { sendStaffAccountEmail } from "@lib/emailservice";
 import { normalizeUserEmail } from "@utils/userEmail";
+import { requireUser, denied } from "@lib/apiGuard";
+
+// Who manages dealers: a super admin (every dealer), or an agency and its staff (only the dealers whose vendor_id is
+// the agency). Dealers themselves never use this route. These methods used to have no sign-in check at all.
+async function dealerManager(req) {
+  const { user, response } = await requireUser(req);
+  if (response) return { response };
+  if (user.type === "admin") return { user, agencyId: null };
+  if (user.type === "vendor") return { user, agencyId: String(user.parent_id || user._id) };
+  return { response: denied(403) };
+}
 
 // GET - Fetch Dealers
 // Add this new route handler in route.js
@@ -27,6 +38,8 @@ export async function GET(req) {
     const vendorId = url.searchParams.get("vendor_id");
     const format = url.searchParams.get("format"); // 'csv' for export
     const limit = format === 'csv' ? 0 : 10; // No limit for CSV export
+    const manager = await dealerManager(req);
+    if (manager.response) return manager.response;
 
     // Build the query object
     const query = { type: "dealer", parent_id: { $eq: null } };
@@ -66,6 +79,10 @@ export async function GET(req) {
     // Vendor filter
     if (vendorId) {
       query.vendor_id = vendorId;
+    }
+    // An agency only ever sees its own dealers.
+    if (manager.agencyId) {
+      query.vendor_id = manager.agencyId;
     }
 
     if (format === 'csv') {
@@ -140,7 +157,12 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await dbConnect();
-    const { name, email, password, vendor_id = null } = await req.json();
+    const manager = await dealerManager(req);
+    if (manager.response) return manager.response;
+    const body = await req.json();
+    const { name, email, password } = body;
+    // An agency creates dealers under itself only.
+    const vendor_id = manager.agencyId ? manager.agencyId : (body.vendor_id ?? null);
     const emailNorm = normalizeUserEmail(email);
 
     // Validate required fields
@@ -260,17 +282,23 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     await dbConnect();
-    const { dealer_id, name, email, vendor_id } = await req.json();
+    const manager = await dealerManager(req);
+    if (manager.response) return manager.response;
+    const body = await req.json();
+    const { dealer_id, name, email } = body;
+    let { vendor_id } = body;
 
     if (!dealer_id) {
       return new Response(JSON.stringify({ message: "Dealer ID is required." }), { status: 400 });
     }
 
     // Check if email is being changed and validate it
-    const existingDealer = await User.findById(dealer_id);
-    if (!existingDealer) {
+    const existingDealer = mongoose.isValidObjectId(dealer_id) ? await User.findById(dealer_id) : null;
+    if (!existingDealer || (manager.agencyId && String(existingDealer.vendor_id || "") !== manager.agencyId)) {
       return new Response(JSON.stringify({ message: "Dealer not found." }), { status: 404 });
     }
+    // An agency cannot move its dealer to another agency.
+    if (manager.agencyId && vendor_id !== undefined) vendor_id = manager.agencyId;
 
     const emailNorm = email != null && String(email).trim() !== "" ? normalizeUserEmail(email) : null;
     if (emailNorm && emailNorm !== normalizeUserEmail(existingDealer.email)) {
@@ -338,10 +366,19 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     await dbConnect();
+    const manager = await dealerManager(req);
+    if (manager.response) return manager.response;
     const { dealerId } = await req.json();
 
     if (!dealerId) {
       return new Response(JSON.stringify({ message: "Dealer ID is required." }), { status: 400 });
+    }
+    // Deleting cascades (follow-ups, subscriptions, vehicles, roles, email accounts): a super admin, or the agency
+    // that owns this dealer (the agency Dealers page has a Delete button), only.
+    if (manager.agencyId) {
+      const owned = mongoose.isValidObjectId(dealerId)
+        ? await User.findOne({ _id: dealerId, type: "dealer", vendor_id: manager.agencyId }).select("_id") : null;
+      if (!owned) return new Response(JSON.stringify({ message: "Dealer not found." }), { status: 404 });
     }
 
     const deletedDealer = await User.findByIdAndDelete(dealerId);
