@@ -24,6 +24,12 @@ import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
 import { attachAiStages, attachAiAdminLabels } from '@lib/ai/aiStage';
 import { loadSettingsEditor } from '@lib/apiAuth';
+import { replyCohorts } from '@lib/reporting/replyCohorts';
+import { attributeAppointments } from '@lib/reporting/appointmentAttribution';
+import { getDealerTimezone } from '@lib/reporting/time';
+import { APPT_ATTRIBUTION, REPLY_COHORTS, apptAttributionLeads, apptDrillNote, replyCohortLeads, replyDrillNote }
+  from '@lib/reporting/drillLeads';
+import { callerSeesFeature, localRange } from '../reports/reply-cohorts/reportAccess.js';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -415,6 +421,17 @@ export async function GET(req) {
         query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
     }
 
+    // The dashboard's "Customer replies by lead age" cards and "Appointments made" split (admin section): exactly the
+    // leads behind the number, for the picked dealer-local days (startDate/endDate are then the reply / booking
+    // dates, not the lead's). Ignored unless the caller may see those features (same gate as the section).
+    const drill = await drillFilter({ req, url, currentUser, dealerId, startDate, endDate });
+    if (drill) {
+        delete query.createdAt;
+        const allowed = query._id?.$in ? new Set(query._id.$in.map(String)) : null;
+        const ids = drill.lead_ids.filter((id) => mongoose.isValidObjectId(id) && (!allowed || allowed.has(String(id))));
+        query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+
     // Apply unassigned filter if needed
     if (unassignedFilter) {
       orConditions.push(unassignedFilter);
@@ -591,6 +608,7 @@ export async function GET(req) {
 
       return new Response(JSON.stringify({
         data: leads,
+        ...(drill ? { drill: drill.meta } : {}),
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(totalLeads / limit),
@@ -606,7 +624,52 @@ export async function GET(req) {
   }
 }
 
-// POST: Create a new lead
+// ?reply_cohort= / ?appt_attribution= (dashboard admin section): null when absent, unknown or not visible to the
+// caller (the list is then exactly as without them); otherwise { lead_ids, meta } - meta is shown on the list.
+async function drillFilter({ req, url, currentUser, dealerId, startDate, endDate }) {
+  const cohort = url.searchParams.get("reply_cohort");
+  const appt = url.searchParams.get("appt_attribution");
+  const wantCohort = cohort && Object.hasOwn(REPLY_COHORTS, cohort);
+  const wantAppt = appt && Object.hasOwn(APPT_ATTRIBUTION, appt);
+  if (!dealerId || (!wantCohort && !wantAppt)) return null;
+  const seeCohort = wantCohort && await callerSeesFeature(req, currentUser, dealerId, "reply_cohorts");
+  const seeAppt = wantAppt && await callerSeesFeature(req, currentUser, dealerId, "appointment_attribution");
+  if (!seeCohort && !seeAppt) return null;
+
+  const tz = await getDealerTimezone(dealerId);
+  const range = localRange(startDate, endDate, tz);
+  const meta = { range: range.error ? null : range, filters: [] };
+  if (range.error) {
+    meta.filters.push({ param: seeCohort ? "reply_cohort" : "appt_attribution",
+      label: seeCohort ? REPLY_COHORTS[cohort].label : APPT_ATTRIBUTION[appt], note: `Pick a date range (${range.error})` });
+    return { lead_ids: [], meta };
+  }
+  let ids = null;
+  const intersect = (next) => { ids = ids ? next.filter((id) => ids.includes(id)) : next; };
+  if (seeCohort) {
+    const report = await replyCohorts({ dealerId: String(dealerId), from: range.from, to: range.to, tz });
+    const got = replyCohortLeads(report, cohort);
+    intersect(got.lead_ids);
+    meta.filters.push({ param: "reply_cohort", value: cohort, label: REPLY_COHORTS[cohort].label,
+      card_count: got.card_count, lead_count: got.lead_ids.length, not_listed: got.needs_review,
+      note: replyDrillNote(got) });
+  }
+  if (seeAppt) {
+    const report = await attributeAppointments({ dealerId: String(dealerId), from: range.from, to: range.to,
+      basis: "created", tz });
+    const got = apptAttributionLeads(report, appt);
+    const oids = got.lead_ids.filter((id) => mongoose.isValidObjectId(id));
+    const found = new Set((oids.length ? await Lead.find({ _id: { $in: oids }, dealer_id: dealerId }).select("_id").lean()
+      : []).map((l) => String(l._id)));
+    const missing = report.rows.filter((r) => r.category === appt && !found.has(String(r.lead_id))).length;
+    intersect([...found]);
+    meta.filters.push({ param: "appt_attribution", value: appt, label: APPT_ATTRIBUTION[appt],
+      card_count: got.card_count, lead_count: found.size, not_listed: missing,
+      note: apptDrillNote({ card_count: got.card_count, listed: found.size, missing }) });
+  }
+  return { lead_ids: ids, meta };
+}
+
 // POST: Create a new lead
 export async function POST(req) {
     try {
