@@ -1,6 +1,7 @@
 import dbConnect from "@lib/mongodb";
 import Ticket from "@models/Ticket";
 import jwt from "jsonwebtoken";
+import { ticketAccess } from "@lib/ticketAccess";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(req, { params }) {
         { status: 404 }
       );
     }
+    // Security fix (Nov 2026): this GET had no sign-in check (PUT/DELETE below already check the token).
+    const access = await ticketAccess(req, ticket);
+    if (access.response) return access.response;
 
     return Response.json({ success: true, data: ticket });
   } catch (error) {
