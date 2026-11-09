@@ -3,6 +3,7 @@ import dbConnect from '@lib/mongodb';
 import DealerWebsiteClick from '@models/DealerWebsiteClick';
 import User from '@models/User';
 import moment from 'moment-timezone';
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(request) {
   try {
@@ -10,6 +11,9 @@ export async function GET(request) {
     
     const { searchParams } = new URL(request.url);
     const dealerId = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealerId);
+    if (access.response) return access.response;
     const shortCode = searchParams.get('short_code');
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');

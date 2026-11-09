@@ -2,6 +2,21 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import EmailAccount from "@models/EmailAccount";
 import { addHestiaEmailAccount } from "@utils/hestiaCloudflare";
+import { requireDealerAccess, requireUser, denied } from "@lib/apiGuard";
+
+// Signed-in users only, for their own dealership's accounts (an agency: its dealers' and its own; super admin: all).
+// These methods used to have no sign-in check (GET returned any dealer's accounts).
+const accountAccess = (req, ownerId) => requireDealerAccess(req, ownerId);
+
+// PUT/DELETE name an account by id: allowed when the caller may access the account's dealer.
+async function existingAccountAccess(req, id) {
+  const signedIn = await requireUser(req);
+  if (signedIn.response) return signedIn;
+  const account = mongoose.isValidObjectId(id) ? await EmailAccount.findById(id).select("dealer_id") : null;
+  if (!account) return { response: NextResponse.json({ message: "Email account not found" }, { status: 404 }) };
+  const access = await accountAccess(req, account.dealer_id);
+  return access.response ? { response: denied(access.response.status) } : access;
+}
 
 // ✅ GET: Fetch all email accounts
 export async function GET(req) {
@@ -11,6 +26,8 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const dealer_id = searchParams.get("dealer_id");
+      const access = await accountAccess(req, dealer_id);
+      if (access.response) return access.response;
       const emailAccounts = await EmailAccount.find({ dealer_id });
       return NextResponse.json(emailAccounts);
   } catch (err) {
@@ -23,6 +40,8 @@ export async function POST(req) {
     const { dealer_id, account_name, event_type, email_address, email_password, active, domain } = await req.json();
 
     try {
+        const access = await accountAccess(req, dealer_id);
+        if (access.response) return access.response;
         // Check if the email address already exists in MongoDB
         const existingAccount = await EmailAccount.findOne({ email_address });
         if (existingAccount) {
@@ -57,6 +76,8 @@ export async function PUT(req) {
     const { id, account_name, event_type, email_address, email_password, active } = await req.json();
 
     try {
+        const access = await existingAccountAccess(req, id);
+        if (access.response) return access.response;
         // Update email account in MongoDB
         const updatedAccount = await EmailAccount.findByIdAndUpdate(
             id,
@@ -79,6 +100,8 @@ export async function DELETE(req) {
     const { id } = await req.json();
 
     try {
+        const access = await existingAccountAccess(req, id);
+        if (access.response) return access.response;
         // Find the email account in MongoDB
         const emailAccount = await EmailAccount.findById(id);
         if (!emailAccount) {

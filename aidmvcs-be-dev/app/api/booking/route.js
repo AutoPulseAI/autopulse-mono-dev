@@ -16,6 +16,7 @@ import { aiMayChangeBooking } from '@lib/ai/aiOwnership';
 import { aiOwnsCustomerMessages, cancelAllRemindersForLead, createAppointmentReminders } from '@lib/appointmentReminderService';
 import { bookingChangeKind, notifyAiOfBookingChange, notifyAiOfStaffStatus } from '@lib/ai/aiStaff';
 import { verifyInternalServiceToken } from '@lib/internalServiceAuth';
+import { isAuthorizedForDealer } from '@lib/customerListing';
 import {
   ACTIVE_BOOKING_STATUSES,
   bookingDayUtc,
@@ -29,6 +30,7 @@ import {
   slotErrorStatus,
   slotsForDay,
   appointmentTypeFor, nextAvailableSlot, nextSlotSentence, normalizeAppointmentType,
+  bookingSlotRef, historyEntry, historyPush, writeWithHistory,
 } from '@lib/bookingService';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
 import { appointmentBookingSMSTemplate } from '@lib/templates/appointmentSMSTemplate.js';
@@ -228,6 +230,26 @@ async function bookingCaller(request) {
   return { kind: 'customer', user: null };
 }
 
+// History (P1 item 3): who acted and through what. created_via 'booking_page' only when the public booking page
+// says so (it sends source: 'booking_page'); any other call without a token is 'unknown'.
+function callerActor(caller) {
+  if (caller.kind === 'staff') return { type: 'staff', id: caller.user?._id, name: caller.user?.name };
+  return { type: caller.kind };
+}
+function callerVia(caller, body) {
+  if (caller.kind === 'ai') return 'ai_service';
+  if (caller.kind === 'staff') return 'booking_api';
+  return body?.source === 'booking_page' ? 'booking_page' : 'unknown';
+}
+
+// The lead's active (pending / confirmed) booking of this appointment type; a booking without a type counts as sales.
+async function activeBookingOfType(dealerId, leadId, appointmentType) {
+  return Booking.findOne({
+    dealer_id: String(dealerId), lead_id: String(leadId), booking_status: { $in: ['pending', 'confirmed'] },
+    appointment_type: appointmentType === 'service' ? 'service' : { $in: ['sales', null] },
+  }).sort({ updatedAt: -1, _id: -1 }).lean();
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -304,35 +326,94 @@ export async function POST(request) {
     // Staff may overbook on purpose; the AI and the customer page never can.
     const appointmentType = appointmentTypeFor(existingLead, body.appointment_type);
     const overbook = caller.kind === 'staff' && allow_overbook === true;
-    if (!overbook) {
-      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
-      if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+    const now = new Date();
+    const actor = callerActor(caller);
+    const via = callerVia(caller, body);
+
+    // P1 item 3 (G-049): the lead already has an active booking of this type (a rebooking at another time). It is
+    // moved to the new date/time - same booking id, same slot check as a move (PUT) - instead of a second active
+    // booking being created. The answer is the same shape as a new booking, with moved: true.
+    let booking = null;
+    let movedFrom = null;
+    const active = await activeBookingOfType(dealer_id, lead_id, appointmentType);
+    if (active) {
+      // As PUT: a move never writes an unreadable date (a new booking would fail validation instead).
+      if (!bookingDay) return json({ error: 'bookingDate must be YYYY-MM-DD' }, 422);
+      if (!overbook) {
+        const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+          excludeBookingId: active._id, appointmentType });
+        if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+          excludeBookingId: active._id, appointmentType });
+      }
+      const previous = { bookingDate: active.bookingDate, bookingTime: active.bookingTime };
+      const { result: movedBooking, history: moveRecorded } = await writeWithHistory(
+        (u) => Booking.findOneAndUpdate({ _id: active._id, booking_status: { $in: ['pending', 'confirmed'] } }, u,
+          { new: true }),
+        { $set: { bookingDate: bookingDay, bookingTime } },
+        { $set: { last_rescheduled_at: now }, $inc: { reschedule_count: 1 },
+          $push: historyPush(historyEntry({ action: 'rescheduled', at: now, actor, via,
+            from: bookingSlotRef(previous.bookingDate, previous.bookingTime, dealerTimezone),
+            to: bookingSlotRef(bookingDay, bookingTime, dealerTimezone) })) },
+        { label: 'booking move' });
+      if (movedBooking) {
+        // Two requests for the slot's last place: the later one gives it back (the booking keeps its old time).
+        if (!overbook && !(await keepsPlaceInSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+          bookingId: movedBooking._id, appointmentType }))) {
+          await writeWithHistory((u) => Booking.updateOne({ _id: movedBooking._id }, u), { $set: previous },
+            moveRecorded ? { $inc: { reschedule_count: -1 }, $push: historyPush(historyEntry({ action: 'reverted',
+              at: new Date(), actor, via, from: bookingSlotRef(bookingDay, bookingTime, dealerTimezone),
+              to: bookingSlotRef(previous.bookingDate, previous.bookingTime, dealerTimezone) })) } : null,
+            { label: 'booking move' });
+          const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+            excludeBookingId: movedBooking._id, appointmentType });
+          return slotRejection(check.ok ? { ...check, ok: false, reason: 'slot_full',
+            message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check,
+          { dealer: dealerDoc, date: bookingDate, time: bookingTime, excludeBookingId: movedBooking._id,
+            appointmentType });
+        }
+        booking = movedBooking;
+        movedFrom = previous;
+      }
+      // Cancelled or completed in the meantime: a new booking is created below, as before.
     }
 
-    // Create new booking
-    const booking = new Booking({
-      dealer_id,
-      lead_id,
-      customerName: customerName || existingLead.name,
-      email: email || existingLead.email,
-      phone: phone || existingLead.phone,
-      bookingDate: bookingDay || undefined,
-      bookingTime,
-      notes,
-      created_by: caller.kind,
-      appointment_type: appointmentType,
-    });
+    if (!booking) {
+      if (!overbook) {
+        const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+        if (!check.ok) return slotRejection(check, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+      }
 
-    await booking.save();
+      // Create new booking
+      const { result: createdBooking } = await writeWithHistory((doc) => Booking.create(doc), {
+        dealer_id,
+        lead_id,
+        customerName: customerName || existingLead.name,
+        email: email || existingLead.email,
+        phone: phone || existingLead.phone,
+        bookingDate: bookingDay || undefined,
+        bookingTime,
+        notes,
+        created_by: caller.kind,
+        appointment_type: appointmentType,
+      }, {
+        created_via: via,
+        ...(caller.kind === 'staff' && caller.user?._id ? { created_by_user_id: caller.user._id } : {}),
+        ...(caller.kind === 'staff' && caller.user?.name ? { created_by_name: caller.user.name } : {}),
+        history: [historyEntry({ action: 'created', at: now, actor, via,
+          to: { ...bookingSlotRef(bookingDay, bookingTime, dealerTimezone), booking_status: 'pending',
+            appointment_type: appointmentType } })],
+      }, { label: 'booking create' });
+      booking = createdBooking;
 
-    // Two requests for the slot's last place: the later one gives it back.
-    if (!overbook && !(await keepsPlaceInSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
-      bookingId: booking._id, appointmentType }))) {
-      await Booking.deleteOne({ _id: booking._id });
-      const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
-      return slotRejection(check.ok ? { ...check, ok: false, reason: 'slot_full',
-        message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check,
-      { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+      // Two requests for the slot's last place: the later one gives it back.
+      if (!overbook && !(await keepsPlaceInSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime,
+        bookingId: booking._id, appointmentType }))) {
+        await Booking.deleteOne({ _id: booking._id });
+        const check = await checkBookingSlot(Booking, { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+        return slotRejection(check.ok ? { ...check, ok: false, reason: 'slot_full',
+          message: `The ${check.slot} slot on ${bookingDate} was just taken` } : check,
+        { dealer: dealerDoc, date: bookingDate, time: bookingTime, appointmentType });
+      }
     }
 
     // Initialize updates object
@@ -378,10 +459,16 @@ export async function POST(request) {
         sender: caller.kind === 'ai' ? 'AutoPulse AI' : (caller.user?.name || 'AutoPulse'), recipient: 'staff',
         subject: 'Lead Note',
         // Betsy, 28 Oct 2026 meeting: "let's not use military time" - "Saturday, October 31 at 10:30 AM", not "15:00".
-        mail_content: `Set to Appointment Booked by ${who}: visit on ${moment.tz(`${bookingDate} ${bookingTime}`,
-          'YYYY-MM-DD HH:mm', dealerTimezone).format('dddd, MMMM D [at] h:mm A')}`,
+        mail_content: movedFrom
+          ? `Appointment moved by ${who}: from ${moment(movedFrom.bookingDate).tz(dealerTimezone).format('dddd, MMMM D')
+          } at ${moment(movedFrom.bookingTime, 'HH:mm').format('h:mm A')} to ${moment.tz(`${bookingDate} ${bookingTime}`,
+            'YYYY-MM-DD HH:mm', dealerTimezone).format('dddd, MMMM D [at] h:mm A')}`
+          : `Set to Appointment Booked by ${who}: visit on ${moment.tz(`${bookingDate} ${bookingTime}`,
+            'YYYY-MM-DD HH:mm', dealerTimezone).format('dddd, MMMM D [at] h:mm A')}`,
         dealer_id: String(dealer_id), lead_id: existingLead._id, status: 'sent', communication_type: 'note',
-        is_note: true, internal_use: true, message_id: `note_booking_${booking._id}_${noteAt.getTime()}`,
+        is_note: true, internal_use: true,
+        // note_booking_moved_ like the status screen's move note: note_booking_<id>_ stays the creation note.
+        message_id: `${movedFrom ? 'note_booking_moved_' : 'note_booking_'}${booking._id}_${noteAt.getTime()}`,
         timestamp: noteAt, date: noteAt, ai_generated: caller.kind === 'ai',
       });
     } catch (noteError) {
@@ -583,8 +670,22 @@ export async function POST(request) {
     // the appointment's messages (MASTER_PLAN_3 C5). No-op for `off` dealers.
     if (caller.kind !== 'ai') {
       await notifyAiOfStaffStatus({ leadId: lead_id, dealerId: dealer_id, status: 'Appointment Booked' });
+      // A rebooking moved the existing booking: the AI re-plans its messages, as for a move on the booking screen.
+      if (movedFrom) {
+        await notifyAiOfBookingChange({ leadId: lead_id, dealerId: dealer_id, bookingId: booking._id, change: 'moved' });
+      }
     }
 
+    if (movedFrom) {
+      return json({
+        success: true,
+        booking,
+        bookingId: String(booking._id),
+        moved: true,
+        previous: movedFrom,
+        leadUpdated: statusJustChanged
+      }, 200);
+    }
     return json({
       success: true,
       booking,
@@ -618,6 +719,9 @@ export async function GET(request) {
       if (!mongoose.isValidObjectId(booking_id)) return json({ error: 'Booking not found' }, 404);
       const booking = await Booking.findById(booking_id).lean();
       if (!booking || (dealer_id && String(booking.dealer_id) !== String(dealer_id))) {
+        return json({ error: 'Booking not found' }, 404);
+      }
+      if (caller.kind === 'staff' && !(await isAuthorizedForDealer(caller.user, booking.dealer_id))) {
         return json({ error: 'Booking not found' }, 404);
       }
       return json({ booking });
@@ -666,6 +770,9 @@ export async function PUT(request) {
 
   try {
     const caller = await bookingCaller(request);
+    // Changing a booking (cancel, move, showed) is for the AI service and signed-in staff only; the public customer
+    // booking page only creates bookings (POST). Before this anyone with a booking id could change it.
+    if (caller.kind === 'customer') return json({ error: 'Unauthorized' }, 401);
     const body = await request.json();
     const { bookingId, booking_status, booking_date, showed, allow_overbook } = body;
     const booking_time = body.booking_time ? (normalizeBookingTime(body.booking_time) || body.booking_time) : body.booking_time;
@@ -673,6 +780,11 @@ export async function PUT(request) {
     const existingBooking = bookingId && mongoose.isValidObjectId(bookingId) ? await Booking.findById(bookingId) : null;
     // PLAN_4 stream X3 item 11: the AI service (one shared secret for every dealer) must name the booking's dealer.
     if (!existingBooking || !aiMayChangeBooking(caller, existingBooking, body.dealer_id)) {
+      return json({ error: 'Booking not found' }, 404);
+    }
+    // Staff change only their own dealership's bookings (super admin and the owning agency too), answered like a
+    // missing booking otherwise.
+    if (caller.kind === 'staff' && !(await isAuthorizedForDealer(caller.user, existingBooking.dealer_id))) {
       return json({ error: 'Booking not found' }, 404);
     }
     if (booking_status !== undefined && !Booking.schema.path('booking_status').enumValues.includes(booking_status)) {
@@ -712,15 +824,49 @@ export async function PUT(request) {
 
     const { booking: leadBooking, ...bookingUpdates } = updates;
     const previous = { bookingDate: existingBooking.bookingDate, bookingTime: existingBooking.bookingTime };
-    const updatedBooking = await Booking.findByIdAndUpdate(
-      bookingId,
-      { $set: bookingUpdates },
-      { new: true }
-    );
+
+    // History (P1 item 3): who changed what, in the same update; dropped, never failing the change, if it can't be
+    // written. statusChangedAt is set here because findByIdAndUpdate skips the model's save hook.
+    const now = new Date();
+    const actor = callerActor(caller);
+    const via = callerVia(caller, body);
+    const entries = [];
+    const extraSet = {};
+    let rescheduled = false;
+    const statusChanged = booking_status !== undefined && booking_status !== existingBooking.booking_status;
+    if (statusChanged) {
+      bookingUpdates.statusChangedAt = now;
+      entries.push(historyEntry({ action: booking_status === 'cancelled' ? 'cancelled' : 'status_changed', at: now,
+        actor, via, from: { booking_status: existingBooking.booking_status ?? null }, to: { booking_status } }));
+      if (booking_status === 'cancelled') Object.assign(extraSet, { cancelled_at: now, cancelled_by: caller.kind });
+    }
+    if (dateChanged && updates.bookingDate && (String(newTime) !== String(existingBooking.bookingTime)
+      || new Date(updates.bookingDate).getTime() !== new Date(existingBooking.bookingDate).getTime())) {
+      rescheduled = true;
+      extraSet.last_rescheduled_at = now;
+      entries.push(historyEntry({ action: 'rescheduled', at: now, actor, via,
+        from: bookingSlotRef(previous.bookingDate, previous.bookingTime, dealerTimezone),
+        to: bookingSlotRef(updates.bookingDate, newTime, dealerTimezone) }));
+    }
+    if (typeof showed === 'boolean') {
+      entries.push(historyEntry({ action: showed ? 'showed' : 'no_show', at: now, actor, via }));
+    }
+    const extra = entries.length ? {
+      ...(Object.keys(extraSet).length ? { $set: extraSet } : {}),
+      ...(rescheduled ? { $inc: { reschedule_count: 1 } } : {}),
+      $push: historyPush(...entries),
+    } : null;
+    const { result: updatedBooking, history: historyRecorded } = await writeWithHistory(
+      (u) => Booking.findByIdAndUpdate(bookingId, u, { new: true }),
+      { $set: bookingUpdates }, extra, { label: 'booking update' });
 
     if (dateChanged && dealerDoc && stillActive && !overbook && !(await keepsPlaceInSlot(Booking, {
       dealer: dealerDoc, date: newDate, time: newTime, bookingId, appointmentType: existingBooking.appointment_type }))) {
-      await Booking.updateOne({ _id: bookingId }, { $set: previous });
+      await writeWithHistory((u) => Booking.updateOne({ _id: bookingId }, u), { $set: previous },
+        historyRecorded && rescheduled ? { $inc: { reschedule_count: -1 }, $push: historyPush(historyEntry({
+          action: 'reverted', at: new Date(), actor, via, from: bookingSlotRef(updates.bookingDate, newTime, dealerTimezone),
+          to: bookingSlotRef(previous.bookingDate, previous.bookingTime, dealerTimezone) })) } : null,
+        { label: 'booking update' });
       return json({ success: false, error: 'slot_taken', message: `The ${newTime} slot on ${newDate} was just taken` }, 409);
     }
 

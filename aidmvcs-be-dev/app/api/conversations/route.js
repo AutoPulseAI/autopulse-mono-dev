@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import { simpleParser } from "mailparser";
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(req) {
     try {
@@ -10,6 +11,9 @@ export async function GET(req) {
         
         const { searchParams } = new URL(req.url);
         const dealer_id = searchParams.get("dealer_id");
+        // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+        const access = await requireDealerOrSuperAdmin(req, dealer_id);
+        if (access.response) return access.response;
         const parent_conversation = searchParams.get("parent_conversation") || null;
         const sender = searchParams.get("sender");
         const communication_type = searchParams.get("communication_type");

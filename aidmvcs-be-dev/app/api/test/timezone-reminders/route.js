@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { createAppointmentReminders } from '@lib/appointmentReminderService';
 import dbConnect from '@lib/mongodb';
 import User from '@models/User';
+import { requireDealerAccess, requireSuperAdmin } from '@lib/apiGuard';
 
 export async function POST(req) {
+  // Changes a dealer's time zone and creates test reminders: super admin only (no sign-in check before).
+  const access = await requireSuperAdmin(req);
+  if (access.response) return access.response;
   try {
     const body = await req.json();
     const { dealerId, bookingDate, bookingTime, timezone } = body;
@@ -70,6 +74,9 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const dealerId = searchParams.get('dealerId');
+    // The campaign pages read their own dealership's time zone (signed in; super admin: any).
+    const access = await requireDealerAccess(req, dealerId);
+    if (access.response) return access.response;
 
     if (!dealerId) {
       return NextResponse.json({

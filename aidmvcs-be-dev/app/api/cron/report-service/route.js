@@ -1,6 +1,14 @@
-import reportCronService from '@lib/reportCronService';
+import reportCronService, { LEGACY_REPORTS_DISABLED_MESSAGE } from '@lib/reportCronService';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel's cron buttons (super admin session) or the server's scheduler with CRON_SECRET.
+// The old report sender is retired: start / check / process-overdue answer with a message pointing to the daily
+// performance email (app/lib/reports/dailyReport.js, /api/admin/daily-report) and send nothing. The route stays so
+// the admin page keeps working; stop, cleanup-orphaned and diagnose are unchanged.
+const RETIRED_ACTIONS = new Set(['start', 'check', 'process-overdue']);
 
-export async function GET() {
+export async function GET(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     // Get service status
     const status = reportCronService.getStatus();
@@ -26,14 +34,17 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const cronAuth = await requireCronCaller(req);
+  if (cronAuth.response) return cronAuth.response;
   try {
     const { action } = await req.json();
-    
-    if (action === 'start') {
-      reportCronService.start();
+
+    if (RETIRED_ACTIONS.has(action)) {
       return new Response(JSON.stringify({
         success: true,
-        message: 'Report cron service started successfully'
+        disabled: true,
+        sent: 0,
+        message: LEGACY_REPORTS_DISABLED_MESSAGE
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -43,24 +54,6 @@ export async function POST(req) {
       return new Response(JSON.stringify({
         success: true,
         message: 'Report cron service stopped successfully'
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } else if (action === 'check') {
-      await reportCronService.manualCheck();
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'Manual report check completed'
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } else if (action === 'process-overdue') {
-      await reportCronService.processOverdueReports();
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'Overdue report processing completed'
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },

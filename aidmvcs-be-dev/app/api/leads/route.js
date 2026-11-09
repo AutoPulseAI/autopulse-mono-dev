@@ -73,6 +73,14 @@ export async function GET(req) {
     
     // Get all filter parameters
     let dealerId = url.searchParams.get("dealer_id");
+    // A dealer_id in the query (list and CSV export) must be the caller's own dealership, a dealer of the caller's
+    // agency, or any dealer for a super admin; it used to be trusted as sent.
+    if (dealerId && !(await isAuthorizedForDealer(currentUser, dealerId))) {
+      return new Response(JSON.stringify({ message: "Forbidden" }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
     if (!dealerId && currentUser) {
       dealerId = currentUser.type === "dealer"
         ? currentUser._id.toString()

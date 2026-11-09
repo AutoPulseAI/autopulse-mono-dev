@@ -3,8 +3,12 @@ import { NextResponse } from 'next/server';
 import Lead from '@models/Lead';
 import User from '@models/User';
 import dbConnect from '@lib/mongodb';
+import { requireSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(request) {
+  // Every dealer's lead counts: super admin only (no sign-in check before).
+  const access = await requireSuperAdmin(request);
+  if (access.response) return access.response;
   try {
     await dbConnect();
     

@@ -6,6 +6,7 @@ import User from "@models/User";
 import moment from "moment-timezone";
 import { bookingCreatorSplit } from "@lib/bookingCreator";
 import { appointmentFunnel } from "@lib/appointmentFunnel";
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(request) {
   try {
@@ -13,6 +14,9 @@ export async function GET(request) {
     
     const { searchParams } = new URL(request.url);
     const dealer_id = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealer_id);
+    if (access.response) return access.response;
     let start_date = searchParams.get('start_date');
     let end_date = searchParams.get('end_date');
     const managerial_review_only = searchParams.get('managerial_review_only') === 'true';

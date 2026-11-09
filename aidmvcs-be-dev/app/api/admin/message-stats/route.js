@@ -3,6 +3,7 @@ import dbConnect from "@lib/mongodb";
 import Email from "@models/Email";
 import User from "@models/User";
 import moment from "moment-timezone";
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 
 export async function GET(request) {
@@ -13,6 +14,9 @@ export async function GET(request) {
     const start_date = searchParams.get('start_date');
     const end_date = searchParams.get('end_date');
     const dealer_id = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealer_id);
+    if (access.response) return access.response;
     
     // Get dealer timezone if dealer_id is provided
     let dealerTimezone = 'America/New_York';

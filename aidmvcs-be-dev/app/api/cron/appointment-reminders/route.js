@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { processAllPendingReminders, getPendingReminders } from '@lib/appointmentReminderService';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
+// are still let through, see app/lib/apiGuard.js requireCronCaller).
 
 /**
  * Cron endpoint to process all pending appointment reminders
@@ -7,6 +10,8 @@ import { processAllPendingReminders, getPendingReminders } from '@lib/appointmen
  * GET /api/cron/appointment-reminders?action=check - Check pending reminders without processing
  */
 export async function GET(req) {
+  const cronAuth = await requireCronCaller(req, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action');
@@ -55,6 +60,8 @@ export async function GET(req) {
  * POST /api/cron/appointment-reminders with { action: 'check' } - Check pending reminders without processing
  */
 export async function POST(req) {
+  const cronAuth = await requireCronCaller(req, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     let body = {};
     try {

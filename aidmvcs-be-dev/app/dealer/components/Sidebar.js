@@ -4,6 +4,8 @@ import { useCan } from "../../hooks/PermissionsContext";
 import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
+import { useUser } from "../context/UserContext";
+import { reportsVisible } from "../reports/reportsAccess";
 
 const AI_ALERT_COUNT_REFRESH_MS = 120_000;
 
@@ -50,6 +52,17 @@ const Sidebar = ({ isOpen, onClose }) => {
     };
   }, [canSeeAi]);
 
+  // Reports (app/dealer/reports): only where the reports feature is visible to this session (super admin, also
+  // through "login as"). Dealers and staff make no request and see no change (reportsAccess.js).
+  const { dealerParent } = useUser();
+  const reportsDealerId = dealerParent?.id || dealerParent?._id || null;
+  const [showReports, setShowReports] = useState(false);
+  useEffect(() => {
+    let live = true;
+    reportsVisible(reportsDealerId).then((ok) => { if (live) setShowReports(ok); });
+    return () => { live = false; };
+  }, [reportsDealerId]);
+
   // Helper function to add 'active' class
   const getLinkClass = (href) => {
     return pathname === href ? "nav-link active" : "nav-link";
@@ -88,6 +101,14 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-chart-column"></i>Dashboard
           </Link>
         </li>
+
+        {showReports && (
+          <li>
+            <Link href="/dealer/reports" className={getLinkClass("/dealer/reports")}>
+              <i className="fa-regular fa-chart-pie"></i>Reports
+            </Link>
+          </li>
+        )}
 
         {(hasManageLeads || hasViewAssigned) && (
           <li>

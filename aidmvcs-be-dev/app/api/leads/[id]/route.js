@@ -7,6 +7,8 @@ import { authOptions } from "@lib/auth";
 import User from "@models/User";
 import jwt from 'jsonwebtoken';
 import { validContactType } from '@lib/leadContactType';
+import mongoose from 'mongoose';
+import { requireDealerAccess } from '@lib/apiGuard';
 
 export async function GET(request, { params }) {
   try {
@@ -65,6 +67,11 @@ export async function PUT(request, { params }) {
    
    
     const { id } = await params;
+    // Staff edit only their own dealership's leads (super admin: any; agency: its dealers'), else "not found".
+    const target = mongoose.isValidObjectId(id) ? await Lead.findById(id).select('dealer_id').lean() : null;
+    if (!target) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    const access = await requireDealerAccess(request, target.dealer_id);
+    if (access.response) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     const body = await request.json();
     
     console.log('Updating lead:', id, 'with data:', body);

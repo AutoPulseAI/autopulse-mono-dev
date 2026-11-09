@@ -6,6 +6,7 @@ import Vehicle from "@models/Vehicle";
 import ReportSchedule from "@models/ReportSchedule";
 import moment from "moment-timezone";
 import { contactedLeadIds } from "@lib/contactedLeads";
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 export async function GET(req) {
   try {
@@ -13,6 +14,9 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const dealerId = searchParams.get("dealer_id");
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(req, dealerId);
+    if (access.response) return access.response;
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     

@@ -69,7 +69,7 @@ export default function BookingForm() {
             const response = await fetch("/api/booking", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+                body: JSON.stringify({ ...formData, source: "booking_page" }),
             });
 
             const data = await response.json();

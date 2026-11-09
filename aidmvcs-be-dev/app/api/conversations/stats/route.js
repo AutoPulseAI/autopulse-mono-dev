@@ -6,6 +6,7 @@ import Permission from '@models/Permission';
 import User from '@models/User';
 import jwt from 'jsonwebtoken';
 import moment from 'moment-timezone';
+import { requireDealerAccess } from '@lib/apiGuard';
 
 export async function GET(request) {
   try {
@@ -24,6 +25,10 @@ export async function GET(request) {
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    // Signed-in users only, for their own dealership (super admin: any).
+    const access = await requireDealerAccess(request, dealer_id);
+    if (access.response) return access.response;
 
     // Get dealer timezone
     const dealer = await User.findById(dealer_id);

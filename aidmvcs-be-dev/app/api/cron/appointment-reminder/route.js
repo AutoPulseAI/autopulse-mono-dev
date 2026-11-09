@@ -8,6 +8,9 @@ import { sendEmail } from '@lib/email.js';
 import { sendSMS } from '@lib/sms.js';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 import moment from 'moment-timezone';
+import { requireCronCaller } from '@lib/apiGuard';
+// Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
+// are still let through, see app/lib/apiGuard.js requireCronCaller).
 
 /**
  * POST endpoint for cron-triggered appointment reminders
@@ -15,6 +18,8 @@ import moment from 'moment-timezone';
  * booking_id is actually lead_id in AppointmentReminder table
  */
 export async function POST(request) {
+  const cronAuth = await requireCronCaller(request, { openUntilSecretSet: true });
+  if (cronAuth.response) return cronAuth.response;
   try {
     await dbConnect();
     

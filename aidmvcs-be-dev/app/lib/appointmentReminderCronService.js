@@ -116,6 +116,8 @@ class AppointmentReminderCronService {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              // The route needs the cron secret once it is configured (app/lib/apiGuard.js requireCronCaller).
+              ...(process.env.CRON_SECRET ? { 'x-cron-secret': process.env.CRON_SECRET } : {}),
             },
             body: JSON.stringify({
               reminder_id: reminder._id.toString(),

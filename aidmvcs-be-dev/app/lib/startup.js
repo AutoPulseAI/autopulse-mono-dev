@@ -8,8 +8,8 @@ export async function initializeServices() {
   try {
     console.log('🚀 Initializing application services...');
     
-    // Start the report cron service
-    reportCronService.start();
+    // The old report cron service is retired (a no-op); daily dealer emails run in the BullMQ worker
+    // (app/lib/reports/dailyReport.js), so nothing is started for reports here.
     
     // Start the CSV processing cron service (with error handling)
     try {

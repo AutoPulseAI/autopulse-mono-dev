@@ -5,6 +5,8 @@ import { getServerSession } from "next-auth";
 import dbConnect from "@lib/mongodb";
 import { authOptions } from "@lib/auth";
 import { addHestiaEmailAccount } from "@utils/hestiaCloudflare";
+import mongoose from "mongoose";
+import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 
 const deleteHestiaEmailAccount = async (email, domain) => {
     const HESTIA_CP_API_URL = process.env.HESTIA_CP_API_URL;
@@ -44,10 +46,15 @@ export async function DELETE(request, { params }) {
   
     try {
         // Find the email account in MongoDB
-        const emailAccount = await EmailAccount.findById(id);
+        // Signed-in users only, for their own dealership's (or agency's) accounts; this had no sign-in check.
+        const signedIn = await requireUser(request);
+        if (signedIn.response) return signedIn.response;
+        const emailAccount = mongoose.isValidObjectId(id) ? await EmailAccount.findById(id) : null;
         if (!emailAccount) {
             return NextResponse.json({ message: "Email account not found" }, { status: 404 });
         }
+        const access = await requireDealerAccess(request, emailAccount.dealer_id);
+        if (access.response) return access.response;
         try{
         // Delete the email account from HestiaCP
             const hestiaResponse = await deleteHestiaEmailAccount(emailAccount.email_address, emailAccount.domain);

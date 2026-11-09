@@ -2,8 +2,12 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@lib/mongodb';
 import CSVImportData from '@models/CSVImportData';
+import { requireSuperAdmin } from '@lib/apiGuard';
+// The admin dashboard's CSV import panel (super admin; its fetches send the admin sign-in cookie). No check before.
 
 export async function GET(request) {
+  const access = await requireSuperAdmin(request);
+  if (access.response) return access.response;
   try {
     await dbConnect();
     
@@ -66,6 +70,8 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const access = await requireSuperAdmin(request);
+  if (access.response) return access.response;
   try {
     await dbConnect();
     

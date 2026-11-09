@@ -2,6 +2,7 @@ import dbConnect from '@lib/mongodb';
 import Vehicle from '@models/Vehicle';
 import Lead from '@models/Lead';
 import { NextResponse } from 'next/server';
+import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 
 function dedupeCaseInsensitive(values) {
   const map = new Map();
@@ -33,6 +34,9 @@ export async function GET(request) {
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const dealerId = searchParams.get('dealer_id');
+    // Signed-in users only, for their own dealership (super admin: any; no dealer_id: super admin only).
+    const access = await requireDealerOrSuperAdmin(request, dealerId);
+    if (access.response) return access.response;
 
     if (!dealerId) {
       return NextResponse.json({ error: 'Dealer ID is required' }, { status: 400 });

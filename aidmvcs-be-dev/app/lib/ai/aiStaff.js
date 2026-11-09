@@ -14,6 +14,7 @@
 
 import { aiRouting, getDealerAiMode } from './aiMode.js';
 import { sendAiEvent } from './aiEvents.js';
+import { historyEntry, historyPush, writeWithHistory } from '../bookingService.js';
 
 // Moving a lead to one of these means staff own the conversation now. Same
 // set the platform's own follow-up route already treats as "stop"
@@ -152,17 +153,25 @@ export function leftAppointmentBooked(previousStatus, status) {
 
 // The status route's side of it (PLAN_4 stream S): the lead's own active bookings are cancelled (the slot is
 // free again) and the AI is told at once. Returns how many bookings were cancelled. Never throws.
+// actor: the staff user who changed the status ({type: 'staff', id, name}), when the caller passes it; the booking
+// history records the cancel with it (P1 item 3).
 export async function cancelBookingsForStatusChange({
   Booking, leadId, dealerId, previousStatus, status, notify = notifyAiOfBookingChange, logger = console,
-  now = () => new Date(),
+  now = () => new Date(), actor = null,
 }) {
   if (!leftAppointmentBooked(previousStatus, status)) return { cancelled: 0 };
   try {
     const active = await Booking.find({ lead_id: String(leadId), booking_status: { $in: ['pending', 'confirmed'] } })
-      .select('_id').lean();
+      .select('_id booking_status').lean();
     if (!active.length) return { cancelled: 0 };
-    await Booking.updateMany({ _id: { $in: active.map((b) => b._id) } },
-      { $set: { booking_status: 'cancelled', statusChangedAt: now() } });
+    const at = now();
+    const who = actor || { type: 'staff' };
+    await writeWithHistory((u) => Booking.updateMany({ _id: { $in: active.map((b) => b._id) } }, u),
+      { $set: { booking_status: 'cancelled', statusChangedAt: at } },
+      { $set: { cancelled_at: at, cancelled_by: who.type || 'staff' },
+        $push: historyPush(historyEntry({ action: 'cancelled', at, actor: who, via: 'lead_status',
+          to: { booking_status: 'cancelled', lead_status: status } })) },
+      { logger, label: 'status cancel' });
     const ai = await notify({ leadId, dealerId, bookingId: active[active.length - 1]._id, change: 'cancelled' });
     return { cancelled: active.length, ai };
   } catch (error) {

@@ -2,6 +2,8 @@ import User from '@models/User';
 import ReportSchedule from '@models/ReportSchedule';
 import dbConnect from '@lib/mongodb';
 
+const LEGACY_REPORT_LOOKUP_ENABLED = false;
+
 /**
  * Get all dealers who have reports scheduled for the current time
  * OPTIMIZED VERSION: Query ReportSchedule directly instead of querying all users first
@@ -9,6 +11,9 @@ import dbConnect from '@lib/mongodb';
  * @returns {Array} Array of dealers with scheduled reports
  */
 export async function getScheduledReports(currentTime = new Date()) {
+  // RETIRED (P1 plan item 6): the old report sender is off for good, so nothing is ever "due" here. The daily dealer
+  // email runs in the worker (app/lib/reports/dailyReport.js). The original lookup is kept below for reference only.
+  if (!LEGACY_REPORT_LOOKUP_ENABLED) return [];
   try {
     await dbConnect();
     

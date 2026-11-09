@@ -2,6 +2,7 @@ import Lead from "@models/Lead";
 import User from "@models/User";
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
+import { requireAgencyAccess } from '@lib/apiGuard';
 
 
 export async function GET(request) {
@@ -11,6 +12,9 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const vendor_id = searchParams.get('vendor_id');
     const dealer_id = searchParams.get('dealer_id');
+    // The agency's own dashboard (or a super admin), for its own dealers only.
+    const access = await requireAgencyAccess(request, vendor_id, dealer_id);
+    if (access.response) return access.response;
     const start_date = searchParams.get('start_date');
     const end_date = searchParams.get('end_date');
 
