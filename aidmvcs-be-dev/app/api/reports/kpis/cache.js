@@ -1,12 +1,12 @@
 // Five-minute cache of computed Reports-page totals in the app's existing Redis (the same settings as
 // app/lib/queue.js: REDIS_URL, or REDIS_HOST / REDIS_PORT / REDIS_DB / REDIS_PASSWORD). Only dashboard totals are
-// cached - never drill-down rows or CSVs. A Redis that is down or slow never breaks the page: the totals are then
+// cached. A Redis that is down or slow never breaks the page: the totals are then
 // computed every time. REPORTS_CACHE=off turns the cache off.
 import crypto from 'crypto';
 import Redis from 'ioredis';
 
 export const CACHE_TTL_SECONDS = 300;
-export const CACHE_PREFIX = 'reports:kpis:v1';
+export const CACHE_PREFIX = 'reports:kpis:v2'; // v2: show rate over past appointments, leads_link
 const OP_TIMEOUT_MS = 800;
 
 let client = null;

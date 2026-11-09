@@ -2,8 +2,8 @@
 // Every number comes from the shared reporting library, so the email and the dashboard agree:
 //   appointments      attributeAppointments(basis 'created'): appointments SET that day, AI / AI-assisted / human-only
 //                     / unknown, AI-influenced %, and what happened to them since (cancelled, ...)
-//   appointments_due  attributeAppointments(basis 'scheduled'): appointments that were DUE that day - shown, no-show,
-//                     no outcome recorded
+//   appointments_due  attributeAppointments(basis 'scheduled'): appointments that were DUE that day - shown, no-show
+//                     (past, not shown) and the show rate = shown / past appointments, the Reports page's definition
 //   replies           replyCohorts: customers who replied that day - today's leads / past leads / total, and the
 //                     overlapping 7+/15+/30+/60+ day groups; handlers.ai = customer messages the AI answered
 //   leads             leads received that day (Lead.createdAt), from the same replyCohorts call
@@ -25,7 +25,7 @@ import { DEFINITIONS_VERSION as REPLY_VERSION, replyCohorts } from '../reporting
 import { dealerTimezone, isValidLocalDate, localDayRange } from '../reporting/time.js';
 import { AI_OUTBOX_COLLECTION } from '../ai/aiOutbox.js';
 
-export const SNAPSHOT_DEFINITIONS = 'daily-email-v1';
+export const SNAPSHOT_DEFINITIONS = 'daily-email-v2'; // v2: show rate = shown / past appointments
 export const UNAVAILABLE = Object.freeze(['appointments.rescheduled']);
 
 const isOid = (id) => id != null && /^[0-9a-f]{24}$/i.test(String(id));
@@ -84,7 +84,8 @@ export async function computeDailySnapshot({ dealerId, reportDate, now = new Dat
   } : null;
   const appointmentsDue = due ? {
     total: due.totals.total, shown: due.outcomes.shown, no_show: due.outcomes.no_show,
-    no_outcome: due.outcomes.no_outcome, show_rate_pct: due.outcomes.show_rate.value,
+    upcoming: due.outcomes.upcoming, show_rate_pct: due.outcomes.show_rate.value,
+    show_rate_of: due.outcomes.show_rate.denominator,
   } : null;
   const replyMetrics = replies ? {
     todays_leads: replies.totals.todays_leads_replied, past_leads: replies.totals.past_leads_replied,

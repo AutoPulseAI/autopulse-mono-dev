@@ -8,6 +8,7 @@
 import Booking from '../../models/Booking.js';
 import Lead from '../../models/Lead.js';
 import { repliedLeadIds } from '../contactedLeads.js';
+import { bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 import { attributeAppointments } from './appointmentAttribution.js';
 import { replyCohorts } from './replyCohorts.js';
 import { getDealerTimezone, localDayRange, toLocalDate } from './time.js';
@@ -15,8 +16,6 @@ import { DASHBOARDS, KIND, REPORT_KPIS, STATE } from './kpis/index.js';
 import { median, pct } from './kpis/common.js';
 
 const TZ_NOTE = 'Dealer-local calendar days (User.dealer_account_information.time_zone, default America/New_York).';
-const SOLD = ['Sold', 'Sold Pending', 'Sold Delivered'];
-const CAME = ['Visited', 'Unsold', ...SOLD];
 
 async function windowFor(args) {
   const tz = args.tz || await getDealerTimezone(args.dealerId);
@@ -103,11 +102,8 @@ const KPIS = [
       const w = await windowFor(args);
       const scheduled = await Booking.find({ dealer_id: String(args.dealerId), booking_status: { $ne: 'cancelled' },
         bookingDate: { $gte: w.start, $lte: w.end } }).select('_id lead_id showed booking_status').lean();
-      const leadIds = [...new Set(scheduled.map((b) => b.lead_id))].filter((id) => /^[0-9a-f]{24}$/i.test(String(id)));
-      const leads = leadIds.length ? await Lead.find({ _id: { $in: leadIds } }).select('fe_lead_status').lean() : [];
-      const status = new Map(leads.map((l) => [String(l._id), l.fe_lead_status]));
-      return scheduled.filter((b) => b.showed === true || b.booking_status === 'completed'
-        || CAME.includes(status.get(b.lead_id))).map((b) => String(b._id));
+      const status = await leadStatuses(scheduled.map((b) => b.lead_id));
+      return scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id)))).map((b) => String(b._id));
     },
   },
 

@@ -17,6 +17,7 @@ import User from '../../../models/User.js';
 import Booking from '../../../models/Booking.js';
 import { leadMatch, hasLeadFilter } from '../filters.js';
 import { attributeAppointments } from '../appointmentAttribution.js';
+import { appointmentPassed, bookingShowed } from '../../appointmentFunnel.js';
 import { replyCohorts } from '../replyCohorts.js';
 import { getDealerTimezone, localDayRange, toLocalDate, localDate } from '../time.js';
 import { normalizeProvider, normalizeStatus } from '../normalize.js';
@@ -197,9 +198,12 @@ export const BOOKING_COLUMNS = Object.freeze([
 export const CATEGORY_LABELS = Object.freeze({ ai: 'AI', ai_assisted: 'AI-assisted', human_only: 'Human only',
   unknown: 'Unknown' });
 
-// attributeAppointments rows -> booking rows (one per booking id).
+// attributeAppointments rows -> booking rows (one per booking id). _shown / _past: the one Shown rule (the Dashboard's
+// "Appointments Showed" card, app/lib/appointmentFunnel.js bookingShowed) and whether the appointment's date and time
+// have passed (dealer time zone) - Shown, No-show and Show rate are built from these two.
 export async function bookingRows(attrRows, args, ctx) {
   const w = await windowFor(args);
+  const now = args.now ? new Date(args.now) : new Date();
   const leads = await leadsByIds(attrRows.map((r) => r.lead_id), ctx);
   const names = await staffNames([...leads.values()].filter(Boolean).map((l) => l.assigned_to), ctx);
   const ids = attrRows.map((r) => r.booking_id).filter(isOid);
@@ -229,6 +233,8 @@ export async function bookingRows(attrRows, args, ctx) {
       lead_source: provider,
       assigned_to: staff,
       _day: localDay(r.created_at, w.tz),
+      _shown: r.booking_status !== 'cancelled' && bookingShowed(r, lead?.fe_lead_status),
+      _past: appointmentPassed({ bookingDate: r.booking_date, bookingTime: r.booking_time }, { now, tz: w.tz }),
       _g: { lead_source: provider, staff, creator: CATEGORY_LABELS[r.category] || r.category,
         department: r.appointment_type === 'service' ? 'Service' : 'Sales' },
     };
