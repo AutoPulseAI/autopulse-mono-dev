@@ -10,7 +10,7 @@ import Lead from '../../models/Lead.js';
 import { repliedLeadIds } from '../contactedLeads.js';
 import { bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 import { attributeAppointments } from './appointmentAttribution.js';
-import { replyCohorts } from './replyCohorts.js';
+import { CUMULATIVE_BUCKETS, PAST_BUCKETS, replyCohorts } from './replyCohorts.js';
 import { getDealerTimezone, localDayRange, toLocalDate } from './time.js';
 import { DASHBOARDS, KIND, REPORT_KPIS, STATE } from './kpis/index.js';
 import { median, pct } from './kpis/common.js';
@@ -108,40 +108,74 @@ const KPIS = [
   },
 
   // ---- new: customer reply cohorts (SOW 8B) ---------------------------------------------------------------------
+  // SOW 8B: "Date ranges count unique customer-day pairs for daily activity and distinct customers for period totals;
+  // label each basis clearly." The customer-day numbers say "customer-days"; the distinct one says "(distinct)".
   ...[
-    ['replies.customers', 'Total customers replied', 'All (customer, day) pairs with a qualifying reply.',
-      () => true],
-    ['replies.todays_leads', "Replied from today's leads", 'Customer-days whose reply lead was received the same local '
-      + 'day (age 0).', (u) => u.bucket === 'd0'],
-    ['replies.past_leads', 'Replied from past leads', 'Customer-days whose reply lead is 1+ days old.',
-      (u) => !['d0', 'needs_review'].includes(u.bucket)],
-    ['replies.needs_review', 'Replies needing review', 'Customer-days whose reply could not be tied to one lead age '
-      + '(no / unknown / other-dealer lead, lead after reply, or two leads with different ages that day).',
+    ['replies.customers', 'Customer-days with a reply', 'All (customer, dealer-local day) pairs with a qualifying '
+      + 'reply: a customer who replied on 3 days of the range is 3. The age groups add up to this. On one day it '
+      + 'equals "Customers replied (distinct)".', () => true],
+    ['replies.todays_leads', "Customer-days replied from today's leads", 'Customer-days whose reply lead was '
+      + 'received the same local day (age 0).', (u) => u.bucket === 'd0'],
+    ['replies.past_leads', 'Customer-days replied from past leads', 'Customer-days whose reply lead is 1+ days old '
+      + '(including leads older than 90 days).', (u) => PAST_BUCKETS.includes(u.bucket)],
+    ['replies.needs_review', 'Customer-days needing review', 'Customer-days whose reply could not be tied to one lead '
+      + 'age (no / unknown / other-dealer lead, lead after reply, or two leads with different ages that day).',
     (u) => u.bucket === 'needs_review'],
-    ['replies.age_7_plus', 'Replied, lead 7+ days old (overlapping)', 'Customer-days with lead age >= 7.',
-      (u) => ['d7_14', 'd15_29', 'd30_59', 'd60_plus'].includes(u.bucket)],
-    ['replies.age_15_plus', 'Replied, lead 15+ days old (overlapping)', 'Customer-days with lead age >= 15.',
-      (u) => ['d15_29', 'd30_59', 'd60_plus'].includes(u.bucket)],
-    ['replies.age_30_plus', 'Replied, lead 30+ days old (overlapping)', 'Customer-days with lead age >= 30.',
-      (u) => ['d30_59', 'd60_plus'].includes(u.bucket)],
-    ['replies.age_60_plus', 'Replied, lead 60+ days old (overlapping)', 'Customer-days with lead age >= 60.',
-      (u) => u.bucket === 'd60_plus'],
+    ['replies.age_7_plus', 'Customer-days replied, lead 7+ days old (overlapping)', 'Customer-days with lead age >= 7.',
+      (u) => CUMULATIVE_BUCKETS.d7.includes(u.bucket)],
+    ['replies.age_15_plus', 'Customer-days replied, lead 15+ days old (overlapping)', 'Customer-days with lead age '
+      + '>= 15.', (u) => CUMULATIVE_BUCKETS.d15.includes(u.bucket)],
+    ['replies.age_30_plus', 'Customer-days replied, lead 30+ days old (overlapping)', 'Customer-days with lead age '
+      + '>= 30.', (u) => CUMULATIVE_BUCKETS.d30.includes(u.bucket)],
+    ['replies.age_60_plus', 'Customer-days replied, lead 60+ days old (overlapping)', 'Customer-days with lead age '
+      + '>= 60 (60-90 and older than 90).', (u) => CUMULATIVE_BUCKETS.d60.includes(u.bucket)],
+    ['replies.age_60_90', 'Customer-days replied, lead 60-90 days old', 'Customer-days with lead age 60..90 (the last '
+      + 'part of the AI\'s 91-day follow-up, agentic-upsell agent/cadence.py LAST_DAY = 90).',
+    (u) => u.bucket === 'd60_90'],
+    ['replies.age_over_90', 'Customer-days replied, lead older than 90 days (came back after follow-ups ended)',
+      'Customer-days with lead age >= 91: the AI\'s follow-up (days 0-90) had ended; the customer came back on their '
+      + 'own.', (u) => u.bucket === 'd91_plus'],
   ].map(([id, label, numerator, pred]) => ({
-    id, label, grain: 'customer_day', status: 'new', version: 1,
+    id, label, grain: 'customer_day', status: 'new', version: 2,
     dateBasis: 'emails.timestamp of the reply; lead age from Lead.createdAt, both as dealer-local dates',
     numerator, denominator: null,
-    exclusions: 'Staff / AI / automatic outbound messages, notes, delivery receipts, the portal/ADF lead email, '
-      + 'message_id "lead-...". Customer = Customer.merged_into ?? Lead.customer_id ?? lead. Buckets 0, 1-6, '
-      + '7-14, 15-29, 30-59, 60+, needs review sum to the total; the 7+/15+/30+/60+ cohorts overlap.',
+    exclusions: 'Staff / AI / automatic outbound messages, notes, the portal/ADF lead email, message_id "lead-...", '
+      + 'the non-AI lead arrival row (contactedLeads.js isLeadArrivalRow). Customer = Customer.merged_into ?? '
+      + 'Lead.customer_id ?? lead. Groups 0, 1-6, 7-14, 15-29, 30-59, 60-90, older than 90, needs review sum to the '
+      + 'customer-days; the 7+/15+/30+/60+ cohorts overlap.',
     source: ['emails', 'leads', 'customers'], usedBy: 'Dealer dashboard reply section; daily email',
     evaluate: async (args, ctx) => unitIds(await replies(args, ctx), pred),
   })),
   {
-    id: 'replies.inbound_messages', label: 'Inbound reply messages', grain: 'message', status: 'new', version: 1,
-    dateBasis: 'emails.timestamp', numerator: 'Every qualifying inbound customer message in the range (not '
-      + 'de-duplicated).', denominator: null, exclusions: 'As replies.customers.', source: ['emails'],
-    usedBy: 'Dealer dashboard reply section',
-    evaluate: async (args, ctx) => (await replies(args, ctx)).rows.map((r) => r.email_id),
+    id: 'replies.distinct_customers', label: 'Customers replied (distinct)', grain: 'customer', status: 'new',
+    version: 1, dateBasis: 'emails.timestamp of the reply (dealer-local days)',
+    numerator: 'Distinct customers with at least one qualifying reply in the range, each customer once however many '
+      + 'days they replied on (SOW 8B "distinct customers for period totals").', denominator: null,
+    exclusions: 'As replies.customers.', source: ['emails', 'leads', 'customers'],
+    usedBy: 'Dealer dashboard reply section ("Customers Replied (distinct)")',
+    evaluate: async (args, ctx) => [...new Set((await replies(args, ctx)).units.map((u) => u.customer_key))],
+  },
+  {
+    id: 'replies.inbound_messages', label: 'Inbound reply messages (on the dealer\'s leads)', grain: 'message',
+    status: 'new', version: 2, dateBasis: 'emails.timestamp',
+    numerator: 'Every qualifying inbound customer message in the range whose emails.lead_id is one of the dealer\'s '
+      + 'leads (not de-duplicated). Same population as the Dashboard Messages card "received" (contactedLeads.js '
+      + 'messageActivity: lead_id in the dealer\'s leads), with more exclusions - so never larger than it.',
+    denominator: null, exclusions: 'As replies.customers; messages not on one of the dealer\'s leads are counted in '
+      + 'replies.unlinked_messages instead.', source: ['emails', 'leads'],
+    usedBy: 'Dealer dashboard reply section; daily email',
+    evaluate: async (args, ctx) => (await replies(args, ctx)).rows.filter((r) => r.on_dealer_lead)
+      .map((r) => r.email_id),
+  },
+  {
+    id: 'replies.unlinked_messages', label: 'Inbound messages not on one of the dealer\'s leads', grain: 'message',
+    status: 'new', version: 1, dateBasis: 'emails.timestamp',
+    numerator: 'Qualifying inbound messages of the dealer (emails.dealer_id) in the range with no lead_id, a lead_id '
+      + 'that is not a lead, or a lead of another dealer. Their customer-days are in "needs review". The Dashboard '
+      + 'cannot see these (it selects messages by the dealer\'s lead ids).', denominator: null,
+    exclusions: 'As replies.customers.', source: ['emails', 'leads'], usedBy: 'Dealer dashboard reply section',
+    evaluate: async (args, ctx) => (await replies(args, ctx)).rows.filter((r) => !r.on_dealer_lead)
+      .map((r) => r.email_id),
   },
 
   // ---- new: appointment attribution (SOW 8A) -------------------------------------------------------------------

@@ -7,13 +7,20 @@ import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import CountCard from "./CountCard";
 
+// The exclusive lead-age groups (app/lib/reporting/replyCohorts.js BUCKETS). Owner, 10 Nov 2026: the AI follows a lead
+// for days 0-90, so the last follow-up group is 60-90 and a reply on an older lead is its own group - the customer came
+// back after follow-ups ended (never "90+"). [key, axis label, tooltip label]
 const BUCKET_BARS = [
-  ["d0", "0 (today)"], ["d1_6", "1-6"], ["d7_14", "7-14"], ["d15_29", "15-29"], ["d30_59", "30-59"],
-  ["d60_plus", "60+"], ["needs_review", "Needs review"],
+  ["d0", "0 (today)", "Lead received today (0 days)"], ["d1_6", "1-6", "Lead 1-6 days old"],
+  ["d7_14", "7-14", "Lead 7-14 days old"], ["d15_29", "15-29", "Lead 15-29 days old"],
+  ["d30_59", "30-59", "Lead 30-59 days old"], ["d60_90", "60-90", "Lead 60-90 days old"],
+  ["d91_plus", "Older than 90", "Older than 90 days — customer came back after follow-ups ended"],
+  ["needs_review", "Needs review", "Needs review (no single lead)"],
 ];
 // Each bar's /dealer/leads?reply_cohort= value (app/lib/reporting/drillLeads.js). Needs review has no single lead: its
 // bar is not clickable.
-const BAR_COHORT = { d0: "b0", d1_6: "b1_6", d7_14: "b7_14", d15_29: "b15_29", d30_59: "b30_59", d60_plus: "b60" };
+const BAR_COHORT = { d0: "b0", d1_6: "b1_6", d7_14: "b7_14", d15_29: "b15_29", d30_59: "b30_59", d60_90: "b60_90",
+  d91_plus: "b91" };
 
 function authHeaders() {
   try {
@@ -96,8 +103,13 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, rang
   const t = d.totals || {};
   const c = d.cumulative || {};
   const days = d.range?.from && d.range?.to && d.range.from !== d.range.to;
-  const basisNote = days ? " · a customer replying on several days counts once per day" : "";
-  const chartData = BUCKET_BARS.map(([key, name]) => ({ key, name, value: d.buckets?.[key] || 0 }));
+  const basisNote = days ? " · customer-days: a customer replying on several days counts once per day" : "";
+  const chartData = BUCKET_BARS.map(([key, name, full]) => ({ key, name, full, value: d.buckets?.[key] || 0 }));
+  // SOW 8B: "Date ranges count unique customer-day pairs for daily activity and distinct customers for period totals;
+  // label each basis clearly." On one day the two are the same number.
+  const distinct = t.distinct_customers ?? t.customers_replied ?? 0;
+  const messagesNote = `${t.inbound_messages ?? 0} messages on your leads`
+    + (t.unlinked_messages ? ` + ${t.unlinked_messages} not on one of your leads` : "");
   const s = split?.totals;
 
   return (
@@ -113,15 +125,18 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, rang
         <CountCard iconClass="fa-light fa-calendar-day" count={t.todays_leads_replied ?? 0}
           label="Replied from Today's Leads" link={leadsLink("reply_cohort", "today")} description={`Lead received the same day as the reply${basisNote}`} />
         <CountCard iconClass="fa-light fa-clock-rotate-left" count={t.past_leads_replied ?? 0}
-          label="Replied from Past Leads" link={leadsLink("reply_cohort", "past")} description="Lead received 1 or more days before the reply" />
-        <CountCard iconClass="fa-light fa-users" count={t.customers_replied ?? 0} label="Total Customers Replied"
+          label="Replied from Past Leads" link={leadsLink("reply_cohort", "past")} description={`Lead received 1 or more days before the reply${basisNote}`} />
+        <CountCard iconClass="fa-light fa-users" count={distinct} label="Customers Replied (distinct)"
           link={leadsLink("reply_cohort", "all")}
-          description={`Today's + past + needs review (${t.needs_review ?? 0}) · ${t.inbound_messages ?? 0} messages`} />
+          description={days
+            ? `Each customer once for the whole range · ${t.customers_replied ?? 0} customer-days with a reply (today's + past + needs review ${t.needs_review ?? 0}; the groups below add up to this) · ${messagesNote}`
+            : `Today's + past + needs review (${t.needs_review ?? 0}) · ${messagesNote}`} />
       </div>
 
       <small className="text-muted d-block mb-2">
         <i className="fa-regular fa-circle-info me-1"></i>
-        These overlap — don&apos;t add them up (a 60+ day customer is also in 7+, 15+ and 30+).
+        These overlap — don&apos;t add them up (a 60+ day customer is also in 7+, 15+ and 30+). 60+ includes leads older
+        than 90 days (customers who came back after follow-ups ended).
       </small>
       <div className="row gx-2 gx-lg-4">
         <CountCard iconClass="fa-light fa-hourglass-start" count={c.d7 ?? 0} label="Replied, lead 7+ days old"
@@ -138,16 +153,19 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, rang
         <div className="col col-lg-12 col-12">
           <div className="w_card">
             <h3 className="w_card_title">
-              Customers replied by lead age (days)
-              <small className="text-muted ms-2">each customer in exactly one group</small>
+              {days ? "Customer-days with a reply, by lead age (days)" : "Customers replied by lead age (days)"}
+              <small className="text-muted ms-2">
+                {days ? "each customer-day in exactly one group" : "each customer in exactly one group"}
+              </small>
             </h3>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" interval={0} fontSize={12} />
                 <YAxis allowDecimals={false} />
-                <Tooltip cursor={{ fill: "rgba(0, 0, 0, 0.1)" }} />
-                <Bar dataKey="value" name="Customers" onClick={onBarClick}>
+                <Tooltip cursor={{ fill: "rgba(0, 0, 0, 0.1)" }}
+                  labelFormatter={(label, items) => items?.[0]?.payload?.full || label} />
+                <Bar dataKey="value" name={days ? "Customer-days" : "Customers"} onClick={onBarClick}>
                   {chartData.map((entry) => (
                     <Cell key={entry.key} fill={entry.key === "needs_review" ? "#adb5bd" : "var(--primary)"}
                       style={{ cursor: BAR_COHORT[entry.key] ? "pointer" : "default" }} />

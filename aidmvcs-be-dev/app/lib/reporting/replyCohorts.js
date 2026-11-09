@@ -13,12 +13,24 @@
 //                    lead received on a later local day than the reply (negative age) -> "needs_review". A customer whose same-day replies fall in
 //                    different age buckets (two opportunities) -> "needs_review" (SOW 8B: "if ambiguous ... not
 //                    arbitrary oldest or newest lead").
-//   Unit             (customer, local day): a customer replying several times on one day is 1 customer; every
-//                    message counts in inbound_messages. Over a multi-day range the cards count customer-day pairs
-//                    (SOW 8B "daily activity" basis); totals.distinct_customers is the plain distinct count.
-//   Buckets          exclusive d0, d1_6, d7_14, d15_29, d30_59, d60_plus, needs_review - they sum to
-//                    customers_replied. Cumulative d7/d15/d30/d60 overlap, are built from the buckets, and leave
-//                    needs_review out. Never add them up.
+//   Unit             (customer, local day): a customer replying several times on one day is 1 customer. Over a
+//                    multi-day range totals.customers_replied counts customer-day pairs ("Customer-days with a
+//                    reply", SOW 8B "daily activity" basis) and totals.distinct_customers the distinct customers
+//                    ("Customers replied (distinct)", SOW 8B "period totals"). On one day they are equal.
+//   Messages         (SOW 8B "each qualifying message contributes to inbound reply messages") every qualifying message
+//                    is one row. totals.inbound_messages = the rows on one of THIS dealer's leads (the same population
+//                    as the Dashboard's Messages card "received", app/lib/contactedLeads.js messageActivity, which
+//                    selects by the dealer's lead ids - so this number can never be larger than the Dashboard's);
+//                    totals.unlinked_messages = the rest: rows with no lead_id, a lead_id that is not a lead, or a
+//                    lead of another dealer (their customer-days are in needs_review). Reconciled 10 Nov 2026: the
+//                    old total (dealer_id match, linked or not) was larger than the Dashboard's by these rows.
+//   Buckets          exclusive d0, d1_6, d7_14, d15_29, d30_59, d60_90, d91_plus, needs_review - they sum to
+//                    customers_replied. Owner, 10 Nov 2026: the AI follows a lead for days 0-90 (agentic-upsell
+//                    agent/cadence.py LAST_DAY = 90; Day 91 closes it, agent/lifecycle.py OPPORTUNITY_DAYS), so the
+//                    last follow-up group is 60-90 and d91_plus is "Older than 90 days - customer came back after
+//                    follow-ups ended" (never "90+"). Cumulative d7/d15/d30/d60 (the SOW's 7+/15+/30+/60+) overlap,
+//                    are built from the buckets (d60 = d60_90 + d91_plus) and leave needs_review out. Never add them
+//                    up.
 //   Handler          (F3 note 2.6) the first outbound message on the same lead after the reply, before the next
 //                    inbound message and before the end of the reply's local day + 24 h, that actually went out
 //                    (status sent/delivered, RESPONSE_STATUSES - a failed, undelivered or bounced message, a pending
@@ -36,7 +48,7 @@ import { isLeadArrivalRow } from '../contactedLeads.js';
 import { REPORTS, describeSpec, hasLeadFilter, leadMatch, parseFilterSpec, replyMatch } from './filters.js';
 import { calendarDayDiff, endOfLocalDayPlus, getDealerTimezone, localDate, localDayRange } from './time.js';
 
-export const DEFINITIONS_VERSION = 'reply-cohorts-v1';
+export const DEFINITIONS_VERSION = 'reply-cohorts-v2'; // v2: 60-90 / older than 90 groups; inbound_messages on the dealer's leads only
 
 // Same rules as app/lib/contactedLeads.js (INBOUND, ADF, "^lead-"); kept in step by test-reporting.js, which checks
 // the qualifying leads against repliedLeadIds().
@@ -51,10 +63,22 @@ const NOT_OUTBOUND = new Set([...INBOUND, 'note', 'draft']);
 export const RESPONSE_STATUSES = Object.freeze(['sent', 'delivered']);
 export const HANDLER_WINDOW_HOURS = 24;
 
-export const BUCKETS = Object.freeze(['d0', 'd1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_plus', 'needs_review']);
+// The AI's follow-up window: lead age 0..FOLLOW_UP_LAST_DAY (agentic-upsell agent/cadence.py LAST_DAY).
+export const FOLLOW_UP_LAST_DAY = 90;
+export const BUCKETS = Object.freeze(['d0', 'd1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_90', 'd91_plus',
+  'needs_review']);
 export const BUCKET_LABELS = Object.freeze({
   d0: "Today's leads (0 days)", d1_6: '1-6 days', d7_14: '7-14 days', d15_29: '15-29 days', d30_59: '30-59 days',
-  d60_plus: '60+ days', needs_review: 'Needs review',
+  d60_90: '60-90 days', d91_plus: 'Older than 90 days — customer came back after follow-ups ended',
+  needs_review: 'Needs review',
+});
+// Lead-age buckets of 1+ days (past leads), and those of each cumulative card.
+export const PAST_BUCKETS = Object.freeze(['d1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_90', 'd91_plus']);
+export const CUMULATIVE_BUCKETS = Object.freeze({
+  d7: ['d7_14', 'd15_29', 'd30_59', 'd60_90', 'd91_plus'],
+  d15: ['d15_29', 'd30_59', 'd60_90', 'd91_plus'],
+  d30: ['d30_59', 'd60_90', 'd91_plus'],
+  d60: ['d60_90', 'd91_plus'],
 });
 export const REVIEW_REASONS = Object.freeze({
   NO_LEAD_LINK: 'no_lead_link',
@@ -71,7 +95,8 @@ export function bucketForAge(age) {
   if (age <= 14) return 'd7_14';
   if (age <= 29) return 'd15_29';
   if (age <= 59) return 'd30_59';
-  return 'd60_plus';
+  if (age <= FOLLOW_UP_LAST_DAY) return 'd60_90';
+  return 'd91_plus';
 }
 
 export function emptyBuckets() {
@@ -80,12 +105,8 @@ export function emptyBuckets() {
 
 // Overlapping cards from the exclusive buckets, so they can't drift.
 export function cumulativeFromBuckets(b) {
-  return {
-    d7: b.d7_14 + b.d15_29 + b.d30_59 + b.d60_plus,
-    d15: b.d15_29 + b.d30_59 + b.d60_plus,
-    d30: b.d30_59 + b.d60_plus,
-    d60: b.d60_plus,
-  };
+  return Object.fromEntries(Object.entries(CUMULATIVE_BUCKETS)
+    .map(([k, list]) => [k, list.reduce((s, x) => s + (b[x] || 0), 0)]));
 }
 
 export function customerKeyFor(lead, customer) {
@@ -114,6 +135,7 @@ export function classifyReplies(replies, { tz }) {
     let review_reason = null;
     let age_days = null;
     let customer_key;
+    let on_dealer_lead = false;
     if (!r.lead_id) {
       review_reason = REVIEW_REASONS.NO_LEAD_LINK;
       customer_key = senderKey(r.sender);
@@ -122,6 +144,7 @@ export function classifyReplies(replies, { tz }) {
       customer_key = `lead:${r.lead_id}`;
     } else {
       customer_key = r.lead.customer_key || `lead:${r.lead._id}`;
+      on_dealer_lead = Boolean(r.lead.dealer_ok);
       if (!r.lead.dealer_ok) review_reason = REVIEW_REASONS.LEAD_OTHER_DEALER;
       else if (!r.lead.createdAt) review_reason = REVIEW_REASONS.LEAD_NOT_FOUND;
       else {
@@ -141,6 +164,7 @@ export function classifyReplies(replies, { tz }) {
       age_days,
       row_bucket,
       review_reason,
+      on_dealer_lead,
       channel: r.channel,
       handler: r.handler || null,
       has_appointment: Boolean(r.has_appointment),
@@ -185,7 +209,7 @@ export function classifyReplies(replies, { tz }) {
     if (u.bucket === 'needs_review' && !row.review_reason) row.review_reason = u.review_reason;
   }
 
-  const past = buckets.d1_6 + buckets.d7_14 + buckets.d15_29 + buckets.d30_59 + buckets.d60_plus;
+  const past = PAST_BUCKETS.reduce((s, b) => s + buckets[b], 0);
   const customers_replied = unitList.length;
   const sum = BUCKETS.reduce((s, b) => s + buckets[b], 0);
   if (sum !== customers_replied) throw new Error(`reply buckets (${sum}) != customers (${customers_replied})`);
@@ -200,7 +224,8 @@ export function classifyReplies(replies, { tz }) {
       needs_review: buckets.needs_review,
       customers_replied,
       distinct_customers: new Set(unitList.map((u) => u.customer_key)).size,
-      inbound_messages: rows.length,
+      inbound_messages: rows.filter((r) => r.on_dealer_lead).length,
+      unlinked_messages: rows.filter((r) => !r.on_dealer_lead).length,
     },
     buckets,
     cumulative: cumulativeFromBuckets(buckets),

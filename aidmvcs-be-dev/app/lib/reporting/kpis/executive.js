@@ -143,10 +143,12 @@ export const EXECUTIVE_KPIS = [
     },
   },
   {
-    id: 'exec.customers_replied', label: 'Customers replied', dashboard: D, grain: 'customer', kind: KIND.COUNT,
-    dateBasis: 'emails.timestamp of the customer\'s message (dealer-local day)',
+    id: 'exec.customers_replied', label: 'Customers replied (distinct)', dashboard: D, grain: 'customer',
+    kind: KIND.COUNT, dateBasis: 'emails.timestamp of the customer\'s message (dealer-local day)',
     numerator: 'Distinct customers who sent at least one qualifying inbound message in the range, whatever the lead '
-      + 'date (app/lib/reporting/replyCohorts.js; customer = Customer.merged_into ?? Lead.customer_id ?? lead).',
+      + 'date, each customer ONCE for the whole range (app/lib/reporting/replyCohorts.js; customer = '
+      + 'Customer.merged_into ?? Lead.customer_id ?? lead). Not the "Customer-days with a reply" of the dashboard\'s '
+      + 'reply-age section, which counts a customer once per day replied (SOW 8B: both bases, each labelled).',
     denominator: null, inclusions: 'Any inbound customer text or email, including STOP.',
     exclusions: 'Notes, the portal/ADF lead email, message_id "lead-..." (the lead\'s own arrival), our own messages.',
     source: ['emails', 'leads', 'customers'], filters: REPLY_FILTERS, breakdowns: ['lead_source'], trend: true,
