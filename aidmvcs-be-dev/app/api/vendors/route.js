@@ -8,8 +8,12 @@ import jwt from "jsonwebtoken";
 
 import { sendStaffAccountEmail } from "@lib/emailservice";
 import { normalizeUserEmail } from "@utils/userEmail";
+import { requireSuperAdmin } from "@lib/apiGuard";
 
 export async function GET(req) {
+  // Security fix (Nov 2026): the list of every agency (admin Agencies page and the admin dealer form's agency picker); super admin only.
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const url = new URL(req.url);
@@ -324,6 +328,9 @@ export async function DELETE(req) {
 }
 
 export async function PATCH(req) {
+  // Security fix (Nov 2026): set any account's password with no sign-in (same hole as /api/vendors/reset-password); super admin only, no caller in the app.
+  const guard = await requireSuperAdmin(req);
+  if (guard.response) return guard.response;
   try {
     await dbConnect();
     const { vendorId, password } = await req.json();
