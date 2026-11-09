@@ -1,6 +1,7 @@
 // app/api/dealers/branding/route.js
 import  dbConnect  from "@lib/mongodb";
 import User from "@models/User";
+import { requireDealerAccess, requireUser } from "@lib/apiGuard";
 //import { generatePresignedUrl, getObjectUrl } from "@lib/aws-s3";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
@@ -12,6 +13,12 @@ export async function PUT(req) {
    
 
     const { dealerId, branding_information } = await req.json();
+
+    // Security fix (Nov 2026): only that dealer, its agency or a super admin may change its branding.
+    if (dealerId) {
+      const guard = await requireDealerAccess(req, String(dealerId));
+      if (guard.response) return guard.response;
+    }
 
     if (!dealerId) {
       return Response.json({ message: "Dealer ID is required" }, { status: 400 });
@@ -65,6 +72,9 @@ const s3 = new S3Client({
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req) {
+  // Security fix (Nov 2026): logo/banner upload to our S3 bucket needs a signed-in user.
+  const guard = await requireUser(req);
+  if (guard.response) return guard.response;
   try {
     const formData = await req.formData();
     const files = {

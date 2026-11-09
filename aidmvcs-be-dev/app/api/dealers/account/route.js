@@ -3,6 +3,7 @@ import User from "@models/User";
 import moment from 'moment-timezone';
 import { nanoid } from 'nanoid';
 import { addHestiaDomain, addCloudflareDNS, getHestiaDNSRecords } from "@utils/hestiaCloudflare";
+import { requireDealerAccess } from "@lib/apiGuard";
 const format24hToAMPM = (time24) => {
     if (!time24) return "";
     const [hours, minutes] = time24.split(":");
@@ -55,6 +56,19 @@ export async function PUT(req) {
     try {
         await dbConnect();
         const { dealerId, dealer_account_information } = await req.json();
+
+        // Security fix (Nov 2026): this changed any dealer's SMS number, domain and contact details with no sign-in.
+        // Now only that dealer's own account, its agency, or a super admin.
+        if (dealerId) {
+            const guard = await requireDealerAccess(req, String(dealerId));
+            if (guard.response) return guard.response;
+        }
+        if (!dealer_account_information || typeof dealer_account_information !== "object") {
+            return new Response(JSON.stringify({ message: "dealer_account_information is required" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+            });
+        }
 
         if (!dealerId) {
             return new Response(JSON.stringify({ message: "Dealer ID is required" }), {
@@ -313,6 +327,12 @@ export async function POST(req) {
     try {
         await dbConnect();
         const { dealerId, domain_name, sms_conversion_phone } = await req.json();
+
+        // Security fix (Nov 2026): same rule as PUT (it told anyone which domains / SMS numbers are taken).
+        if (dealerId) {
+            const guard = await requireDealerAccess(req, String(dealerId));
+            if (guard.response) return guard.response;
+        }
 
         if (!dealerId) {
             return new Response(JSON.stringify({ message: "Dealer ID is required" }), {
