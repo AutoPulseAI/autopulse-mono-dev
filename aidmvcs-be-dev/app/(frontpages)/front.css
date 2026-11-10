@@ -622,21 +622,42 @@ box-shadow: none;
     font-size: var(--rem1);
     line-height: var(--rem1-5);
     padding: var(--rem0-75) var(--rem1);
-    border-color: var(--f-border-light);
+    border-color: color-mix(in srgb, var(--f-text), transparent 60%);
     border-radius: var(--rem0-25);
     font-weight: 400;
 }
 .front_contact .form-control:focus {
     color: var(--f-text);
     background-color: transparent;
-    border-color: var(--f-border-light);
+    border-color: var(--blue);
     box-shadow: none;
+}
+/* SMS opt-in checkbox (app/lib/smsConsent.js): a plain, clearly visible box beside its text */
+.front_contact .sms_consent {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--rem0-75);
+    padding-left: 0;
+}
+.front_contact .sms_consent input[type="checkbox"] {
+    appearance: auto;
+    flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0.2rem 0 0;
+    padding: 0;
+    accent-color: var(--blue);
+    cursor: pointer;
+}
+.front_contact .sms_consent label {
+    color: var(--f-text);
+    cursor: pointer;
 }
 .front_contact select option {
     color: var(--f-dark);
 }
 .front_contact input::placeholder, .front_contact textarea::placeholder {
-    color: var(--f-text-dark);
+    color: var(--f-text);
     opacity: 1; /* Firefox */
   }
   

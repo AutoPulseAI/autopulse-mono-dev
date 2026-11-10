@@ -9,12 +9,17 @@ export const SMS_CONSENT_TEXT =
 export const TERMS_URL = "/terms-and-conditions";
 export const PRIVACY_URL = "/privacy-policy";
 
-const CONSENT_BLOCK =
-  '<div class="form-check mb-3 text-start" data-autopulse-sms-consent>' +
-  '<input class="form-check-input" type="checkbox" name="smsConsent" id="smsConsent" />' +
-  `<label class="form-check-label" for="smsConsent"><small>${SMS_CONSENT_TEXT} ` +
-  `<a href="${TERMS_URL}" target="_blank">Terms and Conditions</a> | ` +
-  `<a href="${PRIVACY_URL}" target="_blank">Privacy Policy</a></small></label></div>`;
+// Plain string pieces joined at run time: the production build mangled the earlier template-literal
+// version (the Terms link came out as `<a href="/terms-and-conditions<a href=...`).
+const CONSENT_BLOCK = [
+  '<div class="sms_consent mb-3 text-start" data-autopulse-sms-consent>',
+  '<input type="checkbox" name="smsConsent" id="smsConsent" />',
+  '<label for="smsConsent"><small>',
+  SMS_CONSENT_TEXT,
+  ' <a href="', TERMS_URL, '" target="_blank">Terms and Conditions</a>',
+  ' | <a href="', PRIVACY_URL, '" target="_blank">Privacy Policy</a>',
+  "</small></label></div>",
+].join("");
 
 // Adds the unticked SMS opt-in checkbox to each contact form in page-editor HTML, above its
 // "By submitting" note (or its submit button), unless the form already has one. Done on the
