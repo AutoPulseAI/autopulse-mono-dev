@@ -156,6 +156,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             </Link>
           </li>
 
+        <li>
+            <Link href="/admin/cron" className={getLinkClass("/admin/cron")}>
+              <i className="fa-regular fa-chart-simple"></i>Report Cron Service
+            </Link>
+          </li>
+
                   {(manage_role || manage_staff) && (
           <li className="submenu">
             <button
