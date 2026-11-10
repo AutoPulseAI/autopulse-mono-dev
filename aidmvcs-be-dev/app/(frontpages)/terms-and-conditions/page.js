@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Container } from "react-bootstrap";
 
 export const metadata = {
@@ -5,7 +6,7 @@ export const metadata = {
   description: "Autopulse AI's terms and conditions, including the terms of our SMS/text messaging program.",
 };
 
-const LAST_UPDATED = "September 2, 2026";
+const LAST_UPDATED = "November 10, 2026";
 
 export default function TermsAndConditionsPage() {
   return (
@@ -76,7 +77,16 @@ export default function TermsAndConditionsPage() {
           </li>
           <li>
             No mobile information collected through this SMS program will be shared with third
-            parties or affiliates for their own marketing or promotional purposes.
+            parties or affiliates for marketing or promotional purposes. Text messaging opt-in
+            data and consent will not be shared with any third parties.
+          </li>
+          <li>
+            <strong>Consent is not a condition of purchase.</strong> You do not have to agree to
+            receive text messages to buy any vehicle, product, or service.
+          </li>
+          <li>
+            <strong>Privacy.</strong> See our <Link href="/privacy-policy">Privacy Policy</Link> for
+            how we collect, use, and protect your information.
           </li>
         </ul>
 

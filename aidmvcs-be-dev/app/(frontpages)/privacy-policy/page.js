@@ -5,7 +5,7 @@ export const metadata = {
   description: "Autopulse AI's privacy policy, including how we collect, use, and protect information, and details of our SMS/text messaging program.",
 };
 
-const LAST_UPDATED = "November 9, 2026";
+const LAST_UPDATED = "November 10, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
@@ -98,6 +98,10 @@ export default function PrivacyPolicyPage() {
             for their own marketing or promotional purposes. Your mobile information is used
             solely to facilitate the SMS communications described in this policy.
           </li>
+          <li>
+            <strong>Consent is not a condition of purchase.</strong> You do not have to agree to
+            receive text messages to buy any vehicle, product, or service.
+          </li>
         </ul>
 
         <h2>4. WhatsApp, Facebook Messenger, and Instagram</h2>
@@ -144,6 +148,11 @@ export default function PrivacyPolicyPage() {
             or governmental request.
           </li>
         </ul>
+        <p>
+          No mobile information will be shared with third parties or affiliates for marketing or
+          promotional purposes. All of the categories above exclude text messaging originator
+          opt-in data and consent; this information will not be shared with any third parties.
+        </p>
         <p>We do not sell your personal information.</p>
 
         <h2>6. Data Security</h2>
