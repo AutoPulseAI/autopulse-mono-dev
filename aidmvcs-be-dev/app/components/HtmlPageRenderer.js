@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SMS_CONSENT_TEXT, TERMS_URL, PRIVACY_URL } from "@lib/smsConsent";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[+()\-.\s\d]{7,20}$/;
@@ -18,7 +17,6 @@ const FORM_ENDPOINTS = [
       phone: { required: false, label: "Phone", pattern: PHONE_RE, patternMessage: "Please enter a valid phone number" },
       message: { required: true, label: "Message", minLength: 10 },
     },
-    smsConsent: true,
   },
   {
     selector: "form[data-autopulse-demo]",
@@ -71,32 +69,6 @@ function setFieldError(form, name, message) {
 
 function clearFieldError(field) {
   field.classList.remove("is-invalid");
-}
-
-// Adds the unticked SMS opt-in checkbox above the submit button of a contact form saved in the
-// page editor, unless the page already has one. Ticking it requires a phone number.
-function addSmsConsent(form) {
-  if (form.querySelector('[name="smsConsent"]')) return;
-  const submit = form.querySelector("button[type=submit]");
-  if (!submit) return;
-  const block = document.createElement("div");
-  block.className = "form-check mb-3 text-start";
-  block.setAttribute("data-autopulse-sms-consent", "");
-  block.innerHTML =
-    '<input class="form-check-input" type="checkbox" name="smsConsent" id="smsConsent" />' +
-    '<label class="form-check-label" for="smsConsent"><small></small></label>';
-  const label = block.querySelector("small");
-  label.append(`${SMS_CONSENT_TEXT} `);
-  const link = (href, text) => {
-    const a = document.createElement("a");
-    a.href = href;
-    a.target = "_blank";
-    a.textContent = text;
-    return a;
-  };
-  label.append(link(TERMS_URL, "Terms and Conditions"), " | ", link(PRIVACY_URL, "Privacy Policy"));
-  const anchor = submit.parentElement?.querySelector("p") || submit;
-  anchor.parentElement.insertBefore(block, anchor);
 }
 
 /**
@@ -202,11 +174,8 @@ export default function HtmlPageRenderer({ html }) {
 
     // Suppress native validation bubbles; our handler shows inline errors
     const applyNovalidate = () => {
-      FORM_ENDPOINTS.forEach(({ selector, smsConsent }) => {
-        document.querySelectorAll(selector).forEach((form) => {
-          form.setAttribute("novalidate", "");
-          if (smsConsent) addSmsConsent(form);
-        });
+      FORM_ENDPOINTS.forEach(({ selector }) => {
+        document.querySelectorAll(selector).forEach((form) => form.setAttribute("novalidate", ""));
       });
     };
     applyNovalidate();
