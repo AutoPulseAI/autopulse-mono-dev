@@ -1,9 +1,12 @@
 "use client";
-// Clickable charts on top of each report tab (Bibi, 11 Nov 2026: charts instead of number cards, like the
-// DealerSocket dashboard). Every bar or slice opens the same Leads list its number opens (linkFor: /dealer/leads?
+// Clickable charts for each report section of the Dashboard (Bibi, 11 Nov 2026: charts instead of number cards, like
+// the DealerSocket dashboard). Every bar or slice opens the same Leads list its number opens (linkFor: /dealer/leads?
 // report_kpi=..., same dates and filters), so a chart never shows a number the cards and tables don't. Only live
 // counts are charted; rates, medians and numbers that are not available yet stay in the "All numbers" section.
 // Colours: fixed categorical order (dataviz reference palette), one colour for single-series charts.
+import { useMemo, useState } from "react";
+import { Button } from "react-bootstrap";
+import moment from "moment-timezone";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis,
   YAxis } from "recharts";
 
@@ -132,50 +135,75 @@ export function GroupBars({ kpis, by, title, linkFor, className = "col-12" }) {
   );
 }
 
-// The charts for each tab. `k(id)` returns the tab's KPI by id (undefined when missing).
-export function TabCharts({ tab, k, kpis, linkFor }) {
+const TREND_KPIS = [["exec.leads_received", "Leads"], ["exec.appointments_set", "Appointments set"],
+  ["exec.customers_replied", "Customers replied"], ["exec.crm_sold", "CRM sold"]];
+
+// Leads, replies, appointments and sales per day / week / month. A bar opens that day's (week's, month's) leads.
+export function Trend({ kpis, from, to, linkFor }) {
+  const [grain, setGrain] = useState("day");
+  const byId = useMemo(() => Object.fromEntries(kpis.filter(Boolean).map((k) => [k.id, k])), [kpis]);
+  const data = useMemo(() => {
+    const buckets = new Map();
+    const key = (d) => (grain === "day" ? d : grain === "week" ? moment(d).startOf("week").format("YYYY-MM-DD")
+      : d.slice(0, 7));
+    for (let d = moment(from); d.isSameOrBefore(to, "day") && buckets.size < 800; d.add(1, "day")) {
+      const k = key(d.format("YYYY-MM-DD"));
+      if (!buckets.has(k)) buckets.set(k, { date: k });
+    }
+    for (const [id, label] of TREND_KPIS) {
+      for (const [day, n] of Object.entries(byId[id]?.trend || {})) {
+        const b = buckets.get(key(day)) || { date: key(day) };
+        b[label] = (b[label] || 0) + n;
+        buckets.set(key(day), b);
+      }
+    }
+    const rows = [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+    // Start at the first day with anything (All time would otherwise begin in 2015).
+    const first = rows.findIndex((r) => Object.keys(r).length > 1);
+    return first > 0 ? rows.slice(first) : rows;
+  }, [byId, from, to, grain]);
+  if (!TREND_KPIS.some(([id]) => byId[id])) return null;
+  return (
+    <div className="col col-12 mb-3">
+      <div className="w_card">
+        <div className="d-flex align-items-center mb-2">
+          <h3 className="w_card_title mb-0 me-auto">Over time</h3>
+          {["day", "week", "month"].map((g) => (
+            <Button key={g} size="sm" className="ms-1" variant={grain === g ? "dark" : "outline-dark"}
+              onClick={() => setGrain(g)}>{g === "day" ? "Daily" : g === "week" ? "Weekly" : "Monthly"}</Button>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="date" />
+            <YAxis allowDecimals={false} />
+            <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} />
+            <Legend formatter={legendText} />
+            {TREND_KPIS.map(([id, label], i) => (
+              <Bar key={label} dataKey={label} fill={SERIES[i]} radius={[4, 4, 0, 0]} cursor="pointer"
+                onClick={(row) => {
+                  const day = row?.payload?.date;
+                  const kpi = byId[id];
+                  if (!day || !kpi || !row?.payload?.[label]) return;
+                  const start = moment(day).startOf(grain).format("YYYY-MM-DD");
+                  const end = moment(day).endOf(grain).format("YYYY-MM-DD");
+                  go({ link: linkFor?.(kpi, { from: start < from ? from : start, to: end > to ? to : end }) });
+                }} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// The charts of one Dashboard section (ReportSections.js). `k(id)` returns a KPI by id from the section's reports
+// (undefined while loading or missing), `kpisOf(dashboard)` all of one report's KPIs, `range` the report's dates.
+export function SectionCharts({ section, k, kpisOf, range, linkFor }) {
   const ids = (list) => list.map(k);
   let charts = null;
-  if (tab === "executive") {
-    charts = (
-      <>
-        <KpiChart title="Leads to sale" linkFor={linkFor}
-          kpis={ids(["exec.leads_received", "exec.customers_replied", "exec.appointments_set", "exec.shown",
-            "exec.crm_sold"])} />
-        <BreakdownChart title="Appointments set, by who made them" kpi={k("exec.appointments_set")} by="creator"
-          type="donut" linkFor={linkFor} />
-        <BreakdownChart title="Leads by source" kpi={k("exec.leads_received")} by="lead_source" linkFor={linkFor} />
-        <BreakdownChart title="CRM sold, by source" kpi={k("exec.crm_sold")} by="lead_source" linkFor={linkFor} />
-      </>
-    );
-  } else if (tab === "appointments") {
-    charts = (
-      <>
-        <KpiChart title="What happened to them" type="donut" linkFor={linkFor}
-          kpis={ids(["appointments.shown", "appointments.no_show", "appointments.not_recorded",
-            "appointments.upcoming"])} />
-        <KpiChart title="Who made them" type="donut" linkFor={linkFor}
-          kpis={ids(["appointments.by_ai", "appointments.ai_assisted", "appointments.human_only",
-            "appointments.unknown_creator"])} />
-        <KpiChart title="Sales / service" type="donut" linkFor={linkFor}
-          kpis={ids(["appointments.sales", "appointments.service"])} />
-        <BreakdownChart title="Appointments set, by lead source" kpi={k("appointments.set")} by="lead_source"
-          linkFor={linkFor} />
-      </>
-    );
-  } else if (tab === "ai") {
-    charts = (
-      <>
-        <KpiChart title="Appointments from the AI" linkFor={linkFor}
-          kpis={ids(["ai.appointments_ai", "ai.appointments_assisted"])} />
-        <BreakdownChart title="AI messages, by channel" kpi={k("ai.messages_sent")} by="channel" type="donut"
-          linkFor={linkFor} />
-        <BreakdownChart title="Handoffs to staff, by reason" kpi={k("ai.handoffs")} by="reason" linkFor={linkFor} />
-        <BreakdownChart title="AI conversations, by lead source" kpi={k("ai.conversations")} by="lead_source"
-          linkFor={linkFor} />
-      </>
-    );
-  } else if (tab === "lead_source") {
+  if (section === "sources") {
     charts = (
       <>
         <GroupBars title="Top sources: leads, appointments, shown, sold" by="lead_source" linkFor={linkFor}
@@ -185,20 +213,45 @@ export function TabCharts({ tab, k, kpis, linkFor }) {
         <BreakdownChart title="Campaign leads" kpi={k("source.campaign_leads")} by="campaign" linkFor={linkFor} />
       </>
     );
-  } else if (tab === "bdc") {
+  } else if (section === "outcomes") {
     charts = (
       <>
+        <KpiChart title="Leads to sale" linkFor={linkFor}
+          kpis={ids(["exec.leads_received", "exec.customers_replied", "exec.appointments_set", "exec.shown",
+            "exec.crm_sold"])} />
+        <KpiChart title="What happened to the appointments" type="donut" linkFor={linkFor}
+          kpis={ids(["appointments.shown", "appointments.no_show", "appointments.not_recorded",
+            "appointments.upcoming"])} />
+        <KpiChart title="Appointments: sales / service" type="donut" linkFor={linkFor}
+          kpis={ids(["appointments.sales", "appointments.service"])} />
+        {range && <Trend kpis={ids(TREND_KPIS.map(([id]) => id))} from={range.from} to={range.to}
+          linkFor={linkFor} />}
+      </>
+    );
+  } else if (section === "work") {
+    charts = (
+      <>
+        <KpiChart title="Appointments: who made them" type="donut" linkFor={linkFor}
+          kpis={ids(["appointments.by_ai", "appointments.ai_assisted", "appointments.human_only",
+            "appointments.unknown_creator"])} />
+        <BreakdownChart title="AI handoffs to staff, by reason" kpi={k("ai.handoffs")} by="reason"
+          linkFor={linkFor} />
         <GroupBars title="By staff member" by="staff" linkFor={linkFor}
           kpis={ids(["bdc.staff_texts", "bdc.staff_emails", "bdc.call_tasks_completed",
             "bdc.appointments_by_owner"])} />
         <KpiChart title="Call tasks" linkFor={linkFor}
           kpis={ids(["bdc.call_tasks_completed", "bdc.meaningful_contacts", "bdc.call_tasks_missed",
             "bdc.call_tasks_overdue"])} />
-        <BreakdownChart title="Leads with no response yet, by source" kpi={k("bdc.no_response")} by="lead_source"
-          linkFor={linkFor} />
       </>
     );
-  } else if (tab === "service") {
+  } else if (section === "sales") {
+    charts = (
+      <>
+        <BreakdownChart title="CRM sold, by source" kpi={k("exec.crm_sold")} by="lead_source" linkFor={linkFor} />
+        <KpiChart title="Sales status changes" kpis={kpisOf("sales")} linkFor={linkFor} />
+      </>
+    );
+  } else if (section === "service") {
     charts = (
       <>
         <KpiChart title="Service customers" linkFor={linkFor}
@@ -209,9 +262,8 @@ export function TabCharts({ tab, k, kpis, linkFor }) {
           by="creator" type="donut" linkFor={linkFor} />
       </>
     );
-  } else {
-    // Data quality, Sales / Desk Log: one bar per number.
-    charts = <KpiChart title="Numbers in this range" kpis={kpis} linkFor={linkFor} className="col-12" />;
+  } else if (section === "health") {
+    charts = <KpiChart title="Data health" kpis={kpisOf("data_quality")} linkFor={linkFor} className="col-12" />;
   }
   return <div className="row gx-2 gx-lg-4">{charts}</div>;
 }
