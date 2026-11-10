@@ -38,6 +38,14 @@ const contactSchema = new mongoose.Schema({
     trim: true,
     maxlength: [2000, 'Message cannot exceed 2000 characters']
   },
+  // SMS opt-in from the public contact form (proof of consent for carriers)
+  smsConsent: {
+    type: Boolean,
+    default: false
+  },
+  smsConsentAt: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
