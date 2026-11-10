@@ -15,6 +15,8 @@ export function validateContactPayload(raw) {
   const email = trim(raw?.email);
   const phone = trim(raw?.phone);
   const message = trim(raw?.message);
+  // Checkbox: FormData sends "on" when ticked and nothing when not; JSON clients may send true.
+  const smsConsent = raw?.smsConsent === true || raw?.smsConsent === "on" || raw?.smsConsent === "true";
 
   if (!firstName) return fieldError("First name is required");
   if (firstName.length > 50) return fieldError("First name cannot exceed 50 characters");
@@ -27,9 +29,14 @@ export function validateContactPayload(raw) {
   if (!message) return fieldError("Message is required");
   if (message.length < 10) return fieldError("Message must be at least 10 characters");
   if (message.length > 2000) return fieldError("Message cannot exceed 2000 characters");
+  if (smsConsent && !phone) return fieldError("Please enter your mobile number to receive text messages");
 
   const data = { firstName, lastName, email, message };
   if (phone) data.phone = phone;
+  if (smsConsent) {
+    data.smsConsent = true;
+    data.smsConsentAt = new Date();
+  }
   return { ok: true, data };
 }
 

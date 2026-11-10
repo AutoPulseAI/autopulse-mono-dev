@@ -77,6 +77,12 @@ export default function ContactDetail({ contact, onBack }) {
             <p><strong>Name:</strong> {contact.firstName} {contact.lastName}</p>
             <p><strong>Email:</strong> {contact.email}</p>
             <p><strong>Phone:</strong> {contact.phone && <span>{contact.phone}</span>}</p>
+            <p>
+              <strong>SMS consent:</strong>{" "}
+              {contact.smsConsent
+                ? `Yes${contact.smsConsentAt ? ` (${formatTimestamp(contact.smsConsentAt, NYC_TIMEZONE)} NYC)` : ""}`
+                : "No"}
+            </p>
             <p><strong>IP Address:</strong> {contact.ipAddress || 'N/A'}</p>
             <p><strong>Source:</strong> {contact.source || 'website'}</p>
             <p><strong>Created at (NYC):</strong> {formatTimestamp(contact.createdAt, NYC_TIMEZONE)}</p>

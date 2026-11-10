@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Form, Button, Col, Container, Row, Alert } from "react-bootstrap";
 import parse from "html-react-parser";
+import { SMS_CONSENT_TEXT, TERMS_URL, PRIVACY_URL } from "@lib/smsConsent";
 
 function ContactFormInner({
   formTitle,
@@ -18,11 +19,12 @@ function ContactFormInner({
     email: "",
     phone: "",
     message: "",
+    smsConsent: false,
   });
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
 
   const handleSubmit = async (e) => {
@@ -33,6 +35,10 @@ function ContactFormInner({
 
     if (form.checkValidity() === false) {
       e.stopPropagation();
+      return;
+    }
+    if (formData.smsConsent && !formData.phone?.trim()) {
+      setError("Please enter your mobile number to receive text messages");
       return;
     }
 
@@ -48,7 +54,7 @@ function ContactFormInner({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Submission failed");
       setSubmitted(true);
-      setFormData({ firstName: "", lastName: "", email: "", phone: "", message: "" });
+      setFormData({ firstName: "", lastName: "", email: "", phone: "", message: "", smsConsent: false });
       setValidated(false);
     } catch (err) {
       setError(err.message || "There was an error submitting your form.");
@@ -97,7 +103,22 @@ function ContactFormInner({
                     <Form.Control.Feedback type="invalid">Please enter a message (min 10 characters).</Form.Control.Feedback>
                   </Form.Group>
                   <Col md={12}>
-                    <p><small>By submitting this form, you agree to our <a href="/terms-of-services" target="_blank">Terms of Service</a>.</small></p>
+                    <Form.Check
+                      type="checkbox"
+                      id="smsConsent"
+                      name="smsConsent"
+                      className="mb-3 text-start"
+                      checked={formData.smsConsent}
+                      onChange={handleChange}
+                      label={
+                        <small>
+                          {SMS_CONSENT_TEXT}{" "}
+                          <a href={TERMS_URL} target="_blank">Terms and Conditions</a> |{" "}
+                          <a href={PRIVACY_URL} target="_blank">Privacy Policy</a>
+                        </small>
+                      }
+                    />
+                    <p><small>By submitting this form, you agree to our <a href={TERMS_URL} target="_blank">Terms and Conditions</a>.</small></p>
                     <Button variant="frontfilled" type="submit" disabled={submitted}>
                       {submitted ? "Sending..." : "Send"}
                     </Button>
