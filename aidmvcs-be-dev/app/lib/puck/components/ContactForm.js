@@ -107,7 +107,7 @@ function ContactFormInner({
                       type="checkbox"
                       id="smsConsent"
                       name="smsConsent"
-                      className="mb-3 text-start"
+                      className="sms_consent mb-3 text-start"
                       checked={formData.smsConsent}
                       onChange={handleChange}
                       label={
