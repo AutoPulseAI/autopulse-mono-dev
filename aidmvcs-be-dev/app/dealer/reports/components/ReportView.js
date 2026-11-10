@@ -12,6 +12,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import FilterBar from "./FilterBar";
 import { Breakdown, GroupTable, KpiGrid } from "./KpiCards";
 import Definitions from "./Definitions";
+import { TabCharts } from "./Charts";
 import { reportQuery, reportsGet } from "../reportsApi";
 
 const ALL_TIME_FROM = "2015-01-01";
@@ -29,10 +30,10 @@ export const OVERVIEW_DUPLICATES = new Set([
   "source.leads", "source.replied_leads", "source.appointments", "source.shown",
 ]);
 
-function Trend({ kpis, from, to }) {
+function Trend({ kpis, from, to, linkFor }) {
   const [grain, setGrain] = useState("day");
+  const byId = useMemo(() => Object.fromEntries(kpis.map((k) => [k.id, k])), [kpis]);
   const data = useMemo(() => {
-    const byId = Object.fromEntries(kpis.map((k) => [k.id, k]));
     const buckets = new Map();
     const key = (d) => (grain === "day" ? d : grain === "week" ? moment(d).startOf("week").format("YYYY-MM-DD")
       : d.slice(0, 7));
@@ -48,7 +49,7 @@ function Trend({ kpis, from, to }) {
       }
     }
     return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }, [kpis, from, to, grain]);
+  }, [byId, from, to, grain]);
   return (
     <div className="w_card mb-3">
       <div className="d-flex align-items-center mb-2">
@@ -65,14 +66,28 @@ function Trend({ kpis, from, to }) {
           <YAxis allowDecimals={false} />
           <Tooltip />
           <Legend />
-          {TREND_KPIS.map(([, label, color]) => <Bar key={label} dataKey={label} fill={color} />)}
+          {TREND_KPIS.map(([id, label, color]) => (
+            <Bar key={label} dataKey={label} fill={color} cursor="pointer" onClick={(row) => {
+              const day = row?.payload?.date;
+              const kpi = byId[id];
+              if (!day || !kpi || !row?.payload?.[label]) return;
+              const unit = grain === "day" ? "day" : grain === "week" ? "week" : "month";
+              const start = moment(day).startOf(unit).format("YYYY-MM-DD");
+              const end = moment(day).endOf(unit).format("YYYY-MM-DD");
+              const link = linkFor?.(kpi, { from: start < from ? from : start, to: end > to ? to : end });
+              if (link) window.location.assign(link);
+            }} />
+          ))}
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
+// Each tab: clickable charts first (Bibi), then Betsy's tables, then every number with its definition behind
+// "All numbers" (the cards, the breakdown tables and what is not available yet).
 function TabBody({ tab, report, linkFor }) {
+  const [open, setOpen] = useState(false);
   const kpis = report.kpis;
   const k = (id) => kpis.find((x) => x.id === id);
   const live = kpis.filter((x) => (x.state === "live" || x.state === "error") && !OVERVIEW_DUPLICATES.has(x.id));
@@ -85,21 +100,8 @@ function TabBody({ tab, report, linkFor }) {
           status changes stand in for it (marked proxy).
         </Alert>
       )}
-      <KpiGrid kpis={live} linkFor={linkFor} />
-      {tab === "executive" && <Trend kpis={kpis} from={report.range.from} to={report.range.to} />}
-      {tab === "appointments" && (
-        <div className="row">
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="creator" title="Set, by who made it" linkFor={linkFor} /></div>
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="department" title="Set, sales / service" linkFor={linkFor} /></div>
-          <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" linkFor={linkFor} /></div>
-        </div>
-      )}
-      {tab === "ai" && (
-        <div className="row">
-          <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" linkFor={linkFor} /></div>
-          <div className="col-md-6"><Breakdown kpi={k("ai.messages_sent")} by="channel" title="AI messages by channel" linkFor={linkFor} /></div>
-        </div>
-      )}
+      <TabCharts tab={tab} k={k} kpis={kpis} linkFor={linkFor} />
+      {tab === "executive" && <Trend kpis={kpis} from={report.range.from} to={report.range.to} linkFor={linkFor} />}
       {tab === "lead_source" && (
         <GroupTable title="Funnel by lead source" firstColumn="Lead source" by="lead_source" linkFor={linkFor}
           kpis={["source.leads", "source.replied_leads", "source.appointments", "source.shown", "source.crm_sold"].map(k)} />
@@ -110,18 +112,41 @@ function TabBody({ tab, report, linkFor }) {
             "bdc.call_tasks_completed", "bdc.meaningful_contacts", "bdc.call_tasks_missed", "bdc.call_tasks_overdue",
             "bdc.appointments_by_owner"].map(k)} />
       )}
-      {notYet.length > 0 && (
-        <div className="w_card mb-3">
-          <h3 className="w_card_title">Not available yet</h3>
-          <ul className="mb-0">
-            {notYet.map((x) => (
-              <li key={x.id}>
-                <strong>{x.label}</strong>{" "}
-                <small className="text-muted">({x.state === "blocked" ? "blocked" : "needs data"}: {x.reason})</small>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="mb-3">
+        <Button size="sm" variant="outline-dark" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Hide all numbers" : `Show all numbers (${live.length + notYet.length})`}
+        </Button>
+      </div>
+      {open && (
+        <>
+          <KpiGrid kpis={live} linkFor={linkFor} />
+          {tab === "appointments" && (
+            <div className="row">
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="creator" title="Set, by who made it" linkFor={linkFor} /></div>
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="department" title="Set, sales / service" linkFor={linkFor} /></div>
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" linkFor={linkFor} /></div>
+            </div>
+          )}
+          {tab === "ai" && (
+            <div className="row">
+              <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" linkFor={linkFor} /></div>
+              <div className="col-md-6"><Breakdown kpi={k("ai.messages_sent")} by="channel" title="AI messages by channel" linkFor={linkFor} /></div>
+            </div>
+          )}
+          {notYet.length > 0 && (
+            <div className="w_card mb-3">
+              <h3 className="w_card_title">Not available yet</h3>
+              <ul className="mb-0">
+                {notYet.map((x) => (
+                  <li key={x.id}>
+                    <strong>{x.label}</strong>{" "}
+                    <small className="text-muted">({x.state === "blocked" ? "blocked" : "needs data"}: {x.reason})</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
     </>
   );
@@ -151,11 +176,11 @@ export default function ReportView({ tab, dealerId, tz, range }) {
 
   // The Leads list for one number (or one breakdown group, or a rate's "out of" part): the picked dates as the
   // dealer-local days' instants (as the Overview's links send them) and the tab's filters.
-  const linkFor = useCallback((kpi, { by, group, part } = {}) => {
+  const linkFor = useCallback((kpi, { by, group, part, from, to } = {}) => {
     if (!kpi?.leads_link) return null;
     const q = new URLSearchParams({ report_kpi: kpi.id });
-    q.set("startDate", moment.tz(dates.start_date, "YYYY-MM-DD", tz).startOf("day").toISOString());
-    q.set("endDate", moment.tz(dates.end_date, "YYYY-MM-DD", tz).endOf("day").toISOString());
+    q.set("startDate", moment.tz(from || dates.start_date, "YYYY-MM-DD", tz).startOf("day").toISOString());
+    q.set("endDate", moment.tz(to || dates.end_date, "YYYY-MM-DD", tz).endOf("day").toISOString());
     if (part === "denominator") q.set("report_part", "denominator");
     if (by) {
       q.set("report_by", by);
