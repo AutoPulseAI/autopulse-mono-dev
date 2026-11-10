@@ -1,7 +1,9 @@
 // Appointments report (SOW 8 Deliverable F, gap G-037; KPI dictionary A-F 3.4). Every number here counts bookings
 // and lists bookings (app/lib/reporting/appointmentAttribution.js decides which bookings count and who made them).
 import { BOOKING_COLUMNS, BOOKING_FILTERS, KIND, STATE, notYet } from './common.js';
-import { NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, SHOW_RATE_DENOMINATOR, shared } from './executive.js';
+import {
+  NOT_RECORDED_TEXT, NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, SHOW_RATE_DENOMINATOR, shared,
+} from './executive.js';
 
 const D = 'appointments';
 const SET_BASIS = 'Booking.createdAt (the day it was set)';
@@ -34,18 +36,21 @@ export const APPOINTMENT_KPIS = [
       + 'recorded).' }),
   schedKpi('appointments.scheduled', 'Scheduled for these dates', 'Bookings on a day in the range, not cancelled.',
     (a, c) => shared.apptScheduledRows(a, c)),
-  schedKpi('appointments.shown', 'Shown', SHOWN_TEXT, (a, c) => shared.shownRows(a, c),
+  schedKpi('appointments.shown', 'Shown (recorded)', SHOWN_TEXT, (a, c) => shared.shownRows(a, c),
     { source: ['bookings', 'leads'], basedOn: SHOWN_BASIS }),
-  schedKpi('appointments.no_show', 'No-show', NO_SHOW_TEXT, (a, c) => shared.noShowRows(a, c),
-    { source: ['bookings', 'leads'], basedOn: SHOWN_BASIS }),
+  schedKpi('appointments.no_show', 'No-show (marked)', NO_SHOW_TEXT, (a, c) => shared.noShowRows(a, c),
+    { source: ['bookings', 'leads'], basedOn: `${SHOWN_BASIS} No-show: Booking.showed = false, written when staff `
+      + 'record a no-show (app/lib/bookingService.js markLeadBookingShowed, app/api/booking).' }),
+  schedKpi('appointments.not_recorded', 'No outcome recorded', NOT_RECORDED_TEXT,
+    (a, c) => shared.notRecordedRows(a, c), { source: ['bookings', 'leads'], basedOn: SHOWN_BASIS }),
   schedKpi('appointments.upcoming', 'Still ahead', 'Appointments scheduled in the range whose date and time have not '
-    + 'passed yet (dealer time zone), not cancelled and not shown. Not in the show rate.',
+    + 'passed yet (dealer time zone), not cancelled, with no outcome recorded. Not in the show rate.',
   (a, c) => shared.upcomingRows(a, c), { source: ['bookings', 'leads'], basedOn: SHOWN_BASIS }),
   {
-    id: 'appointments.show_rate', label: 'Show rate', dashboard: D, grain: 'booking', kind: KIND.RATE, unit: '%',
-    dateBasis: `${SCHED_BASIS} and Booking.bookingTime, dealer time zone`, numerator: 'Shown (appointments.shown).',
+    id: 'appointments.show_rate', label: 'Show rate (recorded)', dashboard: D, grain: 'booking', kind: KIND.RATE, unit: '%',
+    dateBasis: `${SCHED_BASIS} and Booking.bookingTime, dealer time zone`, numerator: 'Recorded shows (appointments.shown).',
     denominator: SHOW_RATE_DENOMINATOR, denominatorLabel: 'past appointments',
-    inclusions: 'Appointments scheduled in the range whose time has passed.',
+    inclusions: 'Appointments scheduled in the range whose time has passed, or already marked shown / no-show.',
     exclusions: `Cancelled; appointments still ahead (future). ${DUP}`, source: ['bookings', 'leads'],
     basedOn: SHOWN_BASIS, filters: BOOKING_FILTERS, columns: BOOKING_COLUMNS,
     evaluate: async (args, ctx) => ({ rows: await shared.shownRows(args, ctx),

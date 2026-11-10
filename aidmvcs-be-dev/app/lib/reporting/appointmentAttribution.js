@@ -30,7 +30,8 @@ import { REPORTS, bookingMatch, describeSpec, hasLeadFilter, leadMatch, parseFil
 import { getDealerTimezone, localDayRange } from './time.js';
 import { appointmentPassed, bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 
-export const DEFINITIONS_VERSION = 'appt-attr-v2'; // v2: show rate = shown / past appointments
+// v2: show rate = shown / past appointments; v3: no-show = marked no-show only, past with no outcome = not_recorded
+export const DEFINITIONS_VERSION = 'appt-attr-v3';
 export const CATEGORY = Object.freeze({ AI: 'ai', AI_ASSISTED: 'ai_assisted', HUMAN_ONLY: 'human_only',
   UNKNOWN: 'unknown' });
 export const CATEGORIES = Object.freeze(Object.values(CATEGORY));
@@ -77,23 +78,30 @@ export function summarize(rows) {
 // "Appointments Showed" (app/lib/appointmentFunnel.js):
 //   cancelled  booking_status cancelled (never shown, no-show or upcoming)
 //   shown      not cancelled and bookingShowed(): marked shown, completed, or the lead is now Visited / Unsold / Sold*
-//   no_show    not cancelled, not shown, and its date and time have passed (dealer time zone)
-//   upcoming   not cancelled, not shown, still ahead
-//   show_rate  shown / (shown + no_show): shown out of the appointments that are past. Future ones are not counted.
+//   no_show       not cancelled, not shown, and staff marked it a no-show (Booking.showed === false, written by
+//                 lib/bookingService.js / api/booking with a 'no_show' history entry)
+//   not_recorded  not cancelled, not shown, not marked a no-show, and its date and time have passed (dealer time zone):
+//                 nobody recorded an outcome - NOT a no-show (owner, 10 Nov 2026)
+//   upcoming      not cancelled, no outcome, still ahead
+//   show_rate     shown / (shown + no_show + not_recorded): RECORDED shows out of the past (or already decided)
+//                 appointments. Future ones are not counted. Labelled "(recorded)": an appointment the customer came to
+//                 that nobody recorded is in the denominator only.
 // leadStatus: Map lead id -> fe_lead_status; now / tz: when "past" is decided.
 export function outcomes(bookings, { leadStatus = new Map(), now = new Date(), tz } = {}) {
-  const o = { shown: 0, no_show: 0, cancelled: 0, completed: 0, upcoming: 0 };
+  const o = { shown: 0, no_show: 0, not_recorded: 0, cancelled: 0, completed: 0, upcoming: 0 };
   for (const b of bookings) {
     if (b.booking_status === 'completed') o.completed += 1;
     if (b.booking_status === 'cancelled') { o.cancelled += 1; continue; }
     if (bookingShowed(b, leadStatus.get(String(b.lead_id)))) o.shown += 1;
-    else if (appointmentPassed(b, { now, tz })) o.no_show += 1;
+    else if (b.showed === false) o.no_show += 1;
+    else if (appointmentPassed(b, { now, tz })) o.not_recorded += 1;
     else o.upcoming += 1;
   }
-  const denominator = o.shown + o.no_show;
+  const denominator = o.shown + o.no_show + o.not_recorded;
   o.show_rate = { numerator: o.shown, denominator,
     value: denominator > 0 ? Math.round((o.shown / denominator) * 10000) / 100 : null,
-    definition: 'shown / past appointments (shown + no-show); cancelled and future appointments are not counted' };
+    definition: 'recorded shows / past appointments (shown + no-show + no outcome recorded); cancelled and future '
+      + 'appointments are not counted' };
   return o;
 }
 

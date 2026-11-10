@@ -53,6 +53,23 @@ function showRate(due, sectionStale) {
   return `${p} (${n(due.shown)} of ${n(due.show_rate_of)} past)`;
 }
 
+// [label, value, note] rows. Snapshots v3+ split the past appointments that were not shown into marked no-shows and "no outcome recorded"
+// (owner, 10 Nov 2026); older snapshots have one number for both, labelled as such.
+function noShowRows(due, sectionStale) {
+  if (due?.not_recorded === undefined && due?.no_show != null) {
+    return [['No-show or no outcome recorded', n(due.no_show, sectionStale), 'Report made before the two were split']];
+  }
+  return [['No-show (marked)', n(due?.no_show, sectionStale), 'Staff marked the customer as a no-show'],
+    ['No outcome recorded', n(due?.not_recorded, sectionStale), 'Past, but nobody marked shown or no-show']];
+}
+
+function noShowText(due, sectionStale) {
+  if (due?.not_recorded === undefined && due?.no_show != null) {
+    return `no-show or no outcome recorded ${n(due.no_show, sectionStale)}`;
+  }
+  return `no-show (marked) ${n(due?.no_show, sectionStale)} | no outcome recorded ${n(due?.not_recorded, sectionStale)}`;
+}
+
 const SOURCE_LABELS = {
   appointments: 'Appointments set', appointments_due: 'Appointment results', replies: 'Customer replies',
   ai_messages: 'AI messages', ai_service: 'AI service events',
@@ -155,9 +172,9 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
   ].join(''))}
         ${heading('Appointment results', 'Appointments that were due this day')}
         ${table([
-    row('Shown', n(due.shown, dueStale)),
-    row('No-show', n(due.no_show, dueStale)),
-    row('Show rate', showRate(due, dueStale), 'Shown out of the appointments that were due'),
+    row('Shown (recorded)', n(due.shown, dueStale), 'Staff recorded the customer as shown'),
+    ...noShowRows(due, dueStale).map((cells) => row(...cells)),
+    row('Show rate (recorded)', showRate(due, dueStale), 'Recorded shows out of the appointments that were due'),
     row('Cancelled', n(a.cancelled, aStale), 'Of the appointments set this day'),
     row('Rescheduled', unavailable.has('appointments.rescheduled') ? DASH : n(a.rescheduled, aStale),
       unavailable.has('appointments.rescheduled') ? 'Not tracked yet' : ''),
@@ -200,7 +217,7 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     staleList.length ? 'Some data may be incomplete; figures shown as "—" could not be confirmed.' : null,
     `Total appointments set: ${n(a.total, aStale)} (AI-influenced ${pct(a.ai_influence_pct, aStale)})`,
     `  AI ${n(a.ai, aStale)} | AI-assisted ${n(a.ai_assisted, aStale)} | Human only ${n(a.human_only, aStale)} | Unknown ${n(a.unknown, aStale)}`,
-    `Due that day: shown ${n(due.shown, dueStale)} | no-show ${n(due.no_show, dueStale)} | show rate ${showRate(due, dueStale)}`,
+    `Due that day: shown (recorded) ${n(due.shown, dueStale)} | ${noShowText(due, dueStale)} | show rate (recorded) ${showRate(due, dueStale)}`,
     `Cancelled ${n(a.cancelled, aStale)} | Rescheduled ${DASH} (not tracked yet)`,
     `Customers replied: today's leads ${n(r.todays_leads, rStale)} | past leads ${n(r.past_leads, rStale)} | total ${n(r.total, rStale)}`,
     `By lead age (overlapping groups): 7+ ${n(cum.d7, rStale)} | 15+ ${n(cum.d15, rStale)} | 30+ ${n(cum.d30, rStale)} | 60+ ${n(cum.d60, rStale)}`,

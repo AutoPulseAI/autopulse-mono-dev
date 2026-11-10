@@ -23,7 +23,8 @@ import {
   KNOWN_UNSUPPORTED, REPORTS, bookingMatch, leadMatch, parseFilterSpec, replyMatch,
 } from './app/lib/reporting/filters.js';
 import {
-  BUCKETS, bucketForAge, classifyReplies, cumulativeFromBuckets, handlersFor, replyCohorts,
+  BUCKETS, BUCKET_LABELS, FOLLOW_UP_LAST_DAY, bucketForAge, classifyReplies, cumulativeFromBuckets, handlersFor,
+  replyCohorts,
 } from './app/lib/reporting/replyCohorts.js';
 import {
   attributeAppointments, classifyBooking, findDuplicates, outcomes, summarize,
@@ -129,10 +130,15 @@ test('parseFilterSpec reads URLSearchParams; fragments map to real fields', () =
 
 // --- pure: reply cohorts ---------------------------------------------------------------------------------------
 
-test('bucketForAge: the SOW 8B ages', () => {
-  const ages = [0, 6, 7, 14, 15, 29, 30, 59, 60, 61];
+test('bucketForAge: the SOW 8B ages and the 91-day follow-up window (owner, 10 Nov 2026)', () => {
+  const ages = [0, 6, 7, 14, 15, 29, 30, 59, 60, 61, 89, 90, 91, 365];
   assert.deepEqual(ages.map(bucketForAge),
-    ['d0', 'd1_6', 'd7_14', 'd7_14', 'd15_29', 'd15_29', 'd30_59', 'd30_59', 'd60_plus', 'd60_plus']);
+    ['d0', 'd1_6', 'd7_14', 'd7_14', 'd15_29', 'd15_29', 'd30_59', 'd30_59', 'd60_90', 'd60_90', 'd60_90', 'd60_90',
+      'd91_plus', 'd91_plus']);
+  assert.equal(FOLLOW_UP_LAST_DAY, 90);
+  assert.deepEqual(BUCKETS, ['d0', 'd1_6', 'd7_14', 'd15_29', 'd30_59', 'd60_90', 'd91_plus', 'needs_review']);
+  assert.match(BUCKET_LABELS.d91_plus, /^Older than 90 days — customer came back after follow-ups ended$/);
+  for (const label of Object.values(BUCKET_LABELS)) assert.doesNotMatch(label, /90\+/);
   assert.equal(bucketForAge(-1), 'needs_review');
   assert.equal(bucketForAge(null), 'needs_review');
 });
@@ -152,7 +158,9 @@ test('classifyReplies: buckets always sum to customers, over random fixtures', (
     });
     const r = classifyReplies(replies, { tz: NY });
     assert.equal(sum(r.buckets), r.totals.customers_replied);
-    assert.equal(r.totals.inbound_messages, 20);
+    // Every message is one row: on one of the dealer's leads (inbound_messages) or not (unlinked_messages).
+    assert.equal(r.totals.inbound_messages + r.totals.unlinked_messages, 20);
+    assert.equal(r.totals.inbound_messages, replies.filter((x) => x.lead?.dealer_ok).length);
     assert.equal(r.totals.todays_leads_replied + r.totals.past_leads_replied + r.totals.needs_review,
       r.totals.customers_replied);
     for (const row of r.rows) assert.ok(BUCKETS.includes(row.bucket));
@@ -160,8 +168,20 @@ test('classifyReplies: buckets always sum to customers, over random fixtures', (
 });
 
 test('cumulativeFromBuckets overlaps and leaves needs_review out', () => {
-  const c = cumulativeFromBuckets({ d0: 1, d1_6: 1, d7_14: 2, d15_29: 2, d30_59: 2, d60_plus: 2, needs_review: 5 });
-  assert.deepEqual(c, { d7: 8, d15: 6, d30: 4, d60: 2 });
+  const c = cumulativeFromBuckets({ d0: 1, d1_6: 1, d7_14: 2, d15_29: 2, d30_59: 2, d60_90: 2, d91_plus: 3,
+    needs_review: 5 });
+  // The SOW's 60+ card keeps counting every lead 60 days or older: 60-90 and older than 90.
+  assert.deepEqual(c, { d7: 11, d15: 9, d30: 7, d60: 5 });
+});
+
+test('registry: the two "customers replied" numbers say which basis they count (SOW 8B)', () => {
+  assert.equal(getKpi('replies.customers').label, 'Customer-days with a reply');
+  assert.equal(getKpi('replies.customers').grain, 'customer_day');
+  assert.equal(getKpi('replies.distinct_customers').label, 'Customers replied (distinct)');
+  assert.equal(getKpi('exec.customers_replied').label, 'Customers replied (distinct)');
+  for (const k of listKpis().filter((x) => x.grain === 'customer_day')) assert.match(k.label, /^Customer-days /, k.id);
+  assert.match(getKpi('replies.age_over_90').label, /older than 90 days \(came back after follow-ups ended\)/);
+  assert.match(getKpi('replies.inbound_messages').numerator, /one of the dealer's leads/);
 });
 
 test('handlersFor: first outbound after the reply, before the next inbound, within day + 24 h', () => {
@@ -237,13 +257,15 @@ test('findDuplicates / outcomes', () => {
   const leadStatus = new Map([['L-visited', 'Visited'], ['L-sold', 'Sold Delivered']]);
   const o = outcomes([
     b({ showed: true }), b({ booking_status: 'completed' }), b({ lead_id: 'L-visited' }), // shown x3
-    b({ showed: false }), b({ bookingTime: '11:59' }), b({ bookingDate: day('2026-11-01') }), // past, not shown x3
+    b({ showed: false }), // marked no-show
+    b({ bookingTime: '11:59' }), b({ bookingDate: day('2026-11-01') }), // past, no outcome recorded x2
     b({ bookingTime: '12:30' }), b({ bookingDate: day('2026-11-09') }), // still ahead x2
     b({ lead_id: 'L-sold', bookingDate: day('2026-11-10') }), // ahead but the lead is sold: shown (counts as past)
     b({ booking_status: 'cancelled', showed: true }), b({ booking_status: 'cancelled', bookingDate: day('2026-11-01') }),
   ], { leadStatus, now, tz: NY });
   assert.equal(o.shown, 4);
-  assert.equal(o.no_show, 3);
+  assert.equal(o.no_show, 1);
+  assert.equal(o.not_recorded, 2);
   assert.equal(o.upcoming, 2);
   assert.equal(o.cancelled, 2);
   assert.equal(o.completed, 1);
@@ -370,9 +392,9 @@ async function seedBooking(dealerId, leadId, extra = {}) {
   return _id;
 }
 
-maybe('replyCohorts: SOW 8B lead ages 0, 6, 7, 14, 15, 29, 30, 59, 60, 61', async () => {
+maybe('replyCohorts: SOW 8B lead ages 0, 6, 7, 14, 15, 29, 30, 59, 60, 61 and the follow-up edge 89, 90, 91', async () => {
   const dealer = await seedDealer();
-  const ages = [0, 6, 7, 14, 15, 29, 30, 59, 60, 61];
+  const ages = [0, 6, 7, 14, 15, 29, 30, 59, 60, 61, 89, 90, 91];
   for (const age of ages) {
     const customer = await seedCustomer(dealer);
     const lead = await seedLead(dealer, moment.tz('2026-11-05 08:00', 'YYYY-MM-DD HH:mm', NY).subtract(age, 'days')
@@ -381,12 +403,17 @@ maybe('replyCohorts: SOW 8B lead ages 0, 6, 7, 14, 15, 29, 30, 59, 60, 61', asyn
   }
   const r = await replyCohorts({ dealerId: dealer, from: DAY });
   assert.equal(r.tz, NY);
-  assert.deepEqual(r.buckets, { d0: 1, d1_6: 1, d7_14: 2, d15_29: 2, d30_59: 2, d60_plus: 2, needs_review: 0 });
-  assert.deepEqual(r.cumulative, { d7: 8, d15: 6, d30: 4, d60: 2 });
-  assert.equal(r.totals.customers_replied, 10);
+  // 60, 61, 89 and 90 are the last follow-up group; 91 is "older than 90 days" (the AI follows a lead for days 0-90).
+  assert.deepEqual(r.buckets, { d0: 1, d1_6: 1, d7_14: 2, d15_29: 2, d30_59: 2, d60_90: 4, d91_plus: 1,
+    needs_review: 0 });
+  assert.deepEqual(r.cumulative, { d7: 11, d15: 9, d30: 7, d60: 5 });
+  assert.equal(r.totals.customers_replied, 13);
   assert.equal(r.totals.todays_leads_replied, 1);
-  assert.equal(r.totals.past_leads_replied, 9);
-  assert.equal(r.totals.inbound_messages, 10);
+  assert.equal(r.totals.past_leads_replied, 12);
+  assert.equal(r.totals.inbound_messages, 13);
+  assert.equal(r.totals.unlinked_messages, 0);
+  const bucketOf = new Map(r.rows.map((x) => [x.age_days, x.bucket]));
+  assert.deepEqual([59, 60, 89, 90, 91].map((a) => bucketOf.get(a)), ['d30_59', 'd60_90', 'd60_90', 'd60_90', 'd91_plus']);
   assert.equal(r.totals.new_leads, 1);
   assert.equal(sum(r.buckets), r.totals.customers_replied);
   assert.deepEqual(r.rows.map((x) => x.age_days).sort((a, b) => a - b), ages);
@@ -430,7 +457,7 @@ maybe('replyCohorts: two leads of one customer', async () => {
   assert.equal(r.totals.customers_replied, 3);
   assert.equal(r.totals.inbound_messages, 5);
   assert.equal(r.buckets.needs_review, 1);
-  assert.equal(r.buckets.d60_plus, 1);
+  assert.equal(r.buckets.d60_90, 1);
   assert.equal(r.buckets.d1_6, 1);
   assert.equal(r.totals.new_leads, 1);
   const review = r.units.find((u) => u.bucket === 'needs_review');
@@ -553,7 +580,11 @@ maybe('replyCohorts: unresolvable replies go to needs review; other dealers neve
   const okLead = await seedLead(dealer, at('2026-11-05 07:00'));
   await reply(new ObjectId(dealer), okLead, '2026-11-05 09:00');
   const r = await replyCohorts({ dealerId: dealer, from: DAY });
-  assert.equal(r.totals.inbound_messages, 6);
+  // On the dealer's own leads: the future lead's reply and the ok one. The other 4 (no lead, deleted lead, another
+  // dealer's lead) are not on one of its leads - the Dashboard can't see them either.
+  assert.equal(r.totals.inbound_messages, 2);
+  assert.equal(r.totals.unlinked_messages, 4);
+  assert.equal(r.rows.filter((x) => x.on_dealer_lead).length, 2);
   assert.equal(r.buckets.needs_review, 4);
   assert.equal(r.buckets.d0, 1);
   assert.equal(r.totals.customers_replied, 5);

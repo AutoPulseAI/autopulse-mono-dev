@@ -198,9 +198,10 @@ export const BOOKING_COLUMNS = Object.freeze([
 export const CATEGORY_LABELS = Object.freeze({ ai: 'AI', ai_assisted: 'AI-assisted', human_only: 'Human only',
   unknown: 'Unknown' });
 
-// attributeAppointments rows -> booking rows (one per booking id). _shown / _past: the one Shown rule (the Dashboard's
-// "Appointments Showed" card, app/lib/appointmentFunnel.js bookingShowed) and whether the appointment's date and time
-// have passed (dealer time zone) - Shown, No-show and Show rate are built from these two.
+// attributeAppointments rows -> booking rows (one per booking id). _shown / _noshow / _past: the one Shown rule (the
+// Dashboard's "Appointments Showed" card, app/lib/appointmentFunnel.js bookingShowed), staff marked it a no-show
+// (Booking.showed === false), and whether the appointment's date and time have passed (dealer time zone) - Shown,
+// No-show, No outcome recorded and Show rate are built from these three.
 export async function bookingRows(attrRows, args, ctx) {
   const w = await windowFor(args);
   const now = args.now ? new Date(args.now) : new Date();
@@ -234,6 +235,7 @@ export async function bookingRows(attrRows, args, ctx) {
       assigned_to: staff,
       _day: localDay(r.created_at, w.tz),
       _shown: r.booking_status !== 'cancelled' && bookingShowed(r, lead?.fe_lead_status),
+      _noshow: r.booking_status !== 'cancelled' && r.showed === false,
       _past: appointmentPassed({ bookingDate: r.booking_date, bookingTime: r.booking_time }, { now, tz: w.tz }),
       _g: { lead_source: provider, staff, creator: CATEGORY_LABELS[r.category] || r.category,
         department: r.appointment_type === 'service' ? 'Service' : 'Sales' },

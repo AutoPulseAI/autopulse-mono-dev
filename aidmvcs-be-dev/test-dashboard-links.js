@@ -94,7 +94,9 @@ const cardNumber = (d, key) => ({
   today: d.totals.todays_leads_replied, past: d.totals.past_leads_replied, all: d.totals.customers_replied,
   d7: d.cumulative.d7, d15: d.cumulative.d15, d30: d.cumulative.d30, d60: d.cumulative.d60,
   b0: d.buckets.d0, b1_6: d.buckets.d1_6, b7_14: d.buckets.d7_14, b15_29: d.buckets.d15_29,
-  b30_59: d.buckets.d30_59, b60: d.buckets.d60_plus,
+  b30_59: d.buckets.d30_59, b60_90: d.buckets.d60_90, b91: d.buckets.d91_plus,
+  // The old 60+ link (bookmarks, older pages) = the two groups it was split into (owner, 10 Nov 2026).
+  b60: d.buckets.d60_90 + d.buckets.d91_plus,
 }[key]);
 
 // --- pure ------------------------------------------------------------------------------------------------------
@@ -213,6 +215,13 @@ maybe('reply_cohort: every card and bar lists exactly the leads behind its numbe
   assert.deepEqual(b15, [leads.l20, leads.c2].map(String).sort());
   const ids = (await list(`reply_cohort=d60&${listRange(DAY)}`)).data.map((l) => String(l._id)).sort();
   assert.deepEqual(ids, [leads.l90, leads.l91].map(String).sort());
+  // Lead age 90 is the last follow-up group; 91 came back after follow-ups ended. b60 (old link) is both.
+  assert.deepEqual((await list(`reply_cohort=b60_90&${listRange(DAY)}`)).data.map((l) => String(l._id)),
+    [String(leads.l90)]);
+  assert.deepEqual((await list(`reply_cohort=b91&${listRange(DAY)}`)).data.map((l) => String(l._id)),
+    [String(leads.l91)]);
+  assert.deepEqual((await list(`reply_cohort=b60&${listRange(DAY)}`)).data.map((l) => String(l._id)).sort(), ids);
+  assert.match((await list(`reply_cohort=b91&${listRange(DAY)}`)).drill.filters[0].label, /older than 90 days/);
   // "Login as" sees it too; combined with the other filters as usual.
   assert.equal((await list(`reply_cohort=d60&${listRange(DAY)}`, LOGIN_AS())).pagination.totalItems, 2);
   await Lead.collection.updateOne({ _id: leads.l90 }, { $set: { name: 'Zed Unique' } });
