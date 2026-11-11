@@ -1531,6 +1531,7 @@ async def _update_lead_state(db: DealerScopedDatabase, lead_id: str | None, trig
         not_interested_reason=(decision.get("not_interested") or {}).get("reason"),
         human_contact=_human_contact_record(result),
         asked_when_free=bool(decision.get("ask_when_free")),
+        asked_delivery=(decision.get("not_interested") or {}).get("mode") == "ask_delivery",
         confirmed_fact=(decision.get("confirm") or {}).get("fact_id"),
         used_fallback=bool(result.get("used_fallback")),
     )
