@@ -74,6 +74,8 @@ test('sub-source: the live lead emails', () => {
     [{ name: 'Dealer Inspire/Get E-Price' }, 'Get E-Price'],
     [{ name: 'Capital One Auto Navigator' }, 'Auto Navigator'],
     [{ name: 'Victory Cars Central' }, null],
+    [{ name: 'CARFAX.com' }, null],
+    [{ name: 'CARFAX.com', service: 'CARFAX Car Listings' }, 'Car Listings'],
     [{}, null],
   ];
   for (const [input, want] of cases) assert.equal(adfSubSource(input), want, JSON.stringify(input));
