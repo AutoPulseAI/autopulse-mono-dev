@@ -1,4 +1,5 @@
-// Betsy's source and sub-source report (app/lib/reporting/sourcePerformance.js, GET /api/reports/source-performance):
+// The Dashboard's full report download (app/lib/reporting/fullReport.js, GET /api/reports/full) and Betsy's
+// source and sub-source report (app/lib/reporting/sourcePerformance.js, GET /api/reports/source-performance):
 // the sub-source read from the lead email (the live samples of 11 Nov 2026), the report's rows and both ways of
 // counting, its "All Types" row equal to the Lead sources numbers, the CSV, who may download it, and the backfill
 // script (dry run writes nothing; --apply fills only empty sub-sources).
@@ -42,6 +43,8 @@ const { adfSubSource, parseAdfLeadEmail } = await import('./app/lib/adfLeadParse
 const { evaluateKpi } = await import('./app/lib/reporting/registry.js');
 const { sourcePerformance, sourcePerformanceCsv, upType } = await import('./app/lib/reporting/sourcePerformance.js');
 const route = await import('./app/api/reports/source-performance/route.js');
+const fullRoute = await import('./app/api/reports/full/route.js');
+const { fullReport, fullReportCsv } = await import('./app/lib/reporting/fullReport.js');
 const { backfillSubSource } = await import('./scripts/backfill-sub-source.js');
 
 const { ObjectId } = mongoose.Types;
@@ -254,4 +257,42 @@ test('backfill: dry run writes nothing; --apply fills only empty sub-sources', a
   const subs = Object.fromEntries((await db.collection('leads').find({ _id: { $in: [NEW, SET, NONE, VIA_EMAIL] } })
     .toArray()).map((l) => [String(l._id), l.sub_source ?? null]));
   assert.deepEqual(subs, { [NEW]: 'Reengagement', [SET]: 'Kept', [NONE]: null, [VIA_EMAIL]: 'Leads' });
+});
+
+test('full report: Executive first, then the source table both ways, then the other reports', async (t) => {
+  if (needDb(t)) return;
+  const report = await fullReport(args);
+  assert.deepEqual(report.sections.map((x) => x.id),
+    ['executive', 'appointments', 'ai', 'lead_source', 'bdc', 'service', 'data_quality', 'sales']);
+  const exec = report.sections[0];
+  const leads = exec.rows.find((r) => r.id === 'exec.leads_received');
+  assert.equal(leads.value, (await evaluateKpi('exec.leads_received', args)).count);
+  // A number that can't be counted yet says so - never a zero.
+  for (const r of report.sections.flatMap((x) => x.rows).filter((x) => x.note.startsWith('Not available yet'))) {
+    assert.equal(r.value, '', r.id);
+  }
+  assert.equal(report.sources.timeframe.rows[0].sold, 2);
+  assert.equal(report.sources.current.rows[0].sold, 1);
+  const csv = fullReportCsv(report, { company: 'Victory Cars Central', from: '11/5/2026', to: '11/5/2026',
+    generated: 'now' });
+  const at = (text) => csv.indexOf(text);
+  assert.ok(at('EXECUTIVE') > 0);
+  assert.ok(at('EXECUTIVE') < at('SOURCE AND SUB SOURCE PERFORMANCE - Within timeframe'));
+  assert.ok(at('Within timeframe') < at('SOURCE AND SUB SOURCE PERFORMANCE - From current leads'));
+  assert.ok(at('From current leads') < at('APPOINTMENTS'));
+  assert.match(csv, /^Dealership Performance Report\r\nVictory Cars Central\r\n/);
+});
+
+test('full report download: follows the dates; admins only', async (t) => {
+  if (needDb(t)) return;
+  const get = (qs, token) => fullRoute.GET(new Request(`http://localhost/api/reports/full?${qs}`,
+    { headers: { Authorization: `Bearer ${token}` } }));
+  const qs = `dealer_id=${DEALER}&start_date=2026-11-01&end_date=2026-11-30`;
+  assert.equal((await get(qs, sign({ userId: String(DEALER), type: 'dealer' }))).status, 404);
+  const res = await get(qs, sign({ userId: String(ADMIN), type: 'admin' }));
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('Content-Disposition'), /filename="dealership-report_2026-11-01_2026-11-30\.csv"/);
+  const csv = await res.text();
+  assert.match(csv, /Report Period: 11\/1\/2026 - 11\/30\/2026/);
+  assert.match(csv, /\r\nVictory Cars Central,All Types,All Sources,All Sub-Sources,4,,2,/);
 });
