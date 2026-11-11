@@ -112,21 +112,28 @@ const reportsApi = (qs, token) => route.GET(new Request(`http://localhost/api/re
 async function sectionsFromSource() {
   const src = await readFile(new URL('./app/dealer/reports/components/ReportSections.js', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('export const SECTIONS'), src.indexOf(']);', src.indexOf('export const SECTIONS')));
-  return [...block.matchAll(/key: "(\w+)", title: "([^"]+)", own: \[([^\]]*)\], uses: \[([^\]]*)\], open: (true|false)/g)]
-    .map(([, key, title, own, uses, open]) => ({ key, title, open: open === 'true',
+  return [...block.matchAll(/key: "(\w+)", tag: "([^"]+)", title: "([^"]+)", own: \[([^\]]*)\],\s*uses: \[([^\]]*)\]/g)]
+    .map(([, key, tag, title, own, uses]) => ({ key, tag, title,
       own: [...own.matchAll(/"(\w+)"/g)].map((m) => m[1]), uses: [...uses.matchAll(/"(\w+)"/g)].map((m) => m[1]) }));
 }
 
-test('sections: every SOW dashboard is in exactly one section, in the agreed order', async () => {
+test('report tags: every SOW dashboard is behind exactly one tag, in the agreed order', async () => {
   const sections = await sectionsFromSource();
   assert.deepEqual(sections.map((s) => s.key), ['sources', 'outcomes', 'work', 'sales', 'service', 'health']);
-  // The first four open by default; Service and Data health start closed.
-  assert.deepEqual(sections.map((s) => s.open), [true, true, true, true, false, false]);
   const owned = sections.flatMap((s) => s.own);
-  assert.equal(new Set(owned).size, owned.length, 'no report listed in two sections');
+  assert.equal(new Set(owned).size, owned.length, 'no report behind two tags');
   const known = listDashboards().map((d) => d.id).sort();
   assert.deepEqual([...owned].sort(), known);
   for (const s of sections) for (const d of s.uses) assert.ok(known.includes(d), d);
+});
+
+test('report tags: nothing is shown or loaded until a tag is picked', async () => {
+  const src = await readFile(new URL('./app/dealer/reports/components/ReportSections.js', import.meta.url), 'utf8');
+  // No tag remembered = nothing picked; data is asked for only for the picked tag; filter choices only once one is.
+  assert.match(src, /function readActive\(\)[\s\S]*?: null;/);
+  assert.match(src, /const wanted = useMemo\(\(\) => \(section \? \[\.\.\.section\.own, \.\.\.section\.uses\] : \[\]\)/);
+  assert.match(src, /const needOptions = Boolean\(section\) && !options\.loaded;/);
+  assert.match(src, /\{section && \(/);
 });
 
 test('dealer and staff: no report sections, no extra request, the reports API still 404s', async (t) => {
