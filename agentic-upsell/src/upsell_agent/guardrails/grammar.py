@@ -34,7 +34,11 @@ _URL = re.compile(r"\b(?:https?://|www\.)\S+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|net|o
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
 _ABBREVIATIONS = re.compile(
     r"\b(?:e\.g|i\.e|etc|vs|approx|est|st|ave|blvd|dr|mr|mrs|ms|jr|sr|inc|ltd|corp|dept|"
-    r"jan|feb|aug|sept|oct|nov|a\.m|p\.m|u\.s|u\.s\.a)\.", re.IGNORECASE)
+    # 12 Nov 2026 (harness tests/unit/test_text_post_processing.py): the address and day abbreviations dealership
+    # messages use - "3914 Hempstead Tpke. near ..." / "is Tues. ok?" were rejected as a lowercase sentence start.
+    r"rd|hwy|tpke|pkwy|ln|ct|pl|sq|ste|apt|fl|bldg|mt|ft|"
+    r"mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|"
+    r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|a\.m|p\.m|u\.s|u\.s\.a)\.", re.IGNORECASE)
 # Inches ('18" wheels'), list markers ("1)", "a)") and ":)" aren't quotation marks or parentheses.
 _NOT_PUNCTUATION_PAIRS = re.compile(r"(?<=\d)\"|(?:^|(?<=\s))[\dA-Za-z]\)|[:;]-?[()]")
 
@@ -48,6 +52,8 @@ _LONE_I = re.compile(r"(?<![\w'’-])i(?:['’](?:m|ll|ve|d))?(?![\w'’-])")
 # Junling Fan, 2 Nov 2026: Chinese ends a sentence with full-width "。！？" - "…对吗？" failed as "no end mark", the
 # rewrite did too, and her "是的" confirming tomorrow at 10 AM got the safe reply instead.
 _FINAL = re.compile(r"[.!?…。！？｡．][\"'”’)\]）」』】]*\s*$")
+# A text that ends on an emoji or a smiley ("...open 🙂", "See you then :)", "Thanks!!! 🙏") is finished (12 Nov 2026).
+_ENDS_ON_EMOJI = re.compile(r"(?:[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2764\uFE0F\u200D]|[:;]-?[)(DPp])\s*$")
 
 # "a" / "an" go by sound. Only lowercase words are judged (an SUV, a RAV4, an F-150 are read as letters or
 # names), and only where the sound is clear from the spelling or a list below.
@@ -150,7 +156,7 @@ def grammar_problems(text: str, *, exempt: Iterable[str] = (), needs_final_punct
     problems += _unbalanced("\n".join(segments))
     if needs_final_punctuation:
         tail = text.rstrip()
-        if not (_FINAL.search(tail) or any(tail.endswith(p) for p in exempt)
+        if not (_FINAL.search(tail) or _ENDS_ON_EMOJI.search(tail) or any(tail.endswith(p) for p in exempt)
                 or _mask(tail).endswith(("LINK", "EMAIL"))):
             problems.append("the message doesn't end with a period, question mark or exclamation point")
     return list(dict.fromkeys(problems))

@@ -126,9 +126,52 @@ def _without_own_price(text: str, price_line: str | None) -> str:
     price = re.search(r"\$\d[\d,]*\d", price_line or "")
     if not price or text.count(price.group(0)) < 1:
         return text
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    kept = [s for s in sentences if price.group(0) not in s or s.strip() == (price_line or "").strip()]
-    return " ".join(kept)
+    # The user, 12 Nov 2026: this used to split the whole email into sentences and join them with spaces - every
+    # paragraph and the sign-off ran together ("...DMV fees. Thank you"), and a price sentence with no full stop
+    # ("It's $27,995 and I have 2:30 PM or 5:00 PM open 🙂") took the rest of the email, sign-off included, with it.
+    # Now: paragraph by paragraph (the sign-off is never part of a sentence), and only a sentence that is just the
+    # price goes - one that also offers times, a day or asks something stays (a repeated price beats a lost offer).
+    def keep(sentence: str) -> bool:
+        return (price.group(0) not in sentence or sentence.strip() == (price_line or "").strip()
+                or bool(_MORE_THAN_PRICE.search(sentence)))
+
+    out: list[str] = []
+    for part in re.split(r"(\n\s*\n)", text):
+        if not part.strip() or re.fullmatch(r"\n\s*\n", part):
+            out.append(part)
+            continue
+        lines = []
+        for line in part.split("\n"):
+            lines.append(" ".join(s for s in split_sentences(line) if keep(s)).rstrip())
+        out.append("\n".join(ln for ln in lines if ln.strip()))
+    # A paragraph left empty takes its break with it.
+    return re.sub(r"(\n\s*\n){2,}", "\n\n", "".join(out)).strip("\n")
+
+
+# Abbreviations a sentence doesn't end at ("e.g. heated seats" was cut in two and "heated seats." left starting
+# lowercase - the grammar check rejected the first email; harness tests/unit/test_text_post_processing.py).
+_ABBREVIATION = re.compile(r"(?:\b(?:e\.g|i\.e|a\.m|p\.m|vs|etc|approx|est|no|mr|mrs|ms|dr|jr|sr|st|ave|blvd|rd|tpke|hwy|"
+                           r"inc|co|ltd|dept|apt|mt|ft|u\.s|u\.s\.a)\.)$", re.IGNORECASE)
+_INITIAL = re.compile(r"(?:^|\s)[A-Z]\.$")  # "John F. Kennedy" - a capital letter on its own, not the s of "John's."
+
+
+def split_sentences(text: str) -> list[str]:
+    """Sentences: split after . ! ? when the next one starts with a capital, a digit or a quote, never after an
+    abbreviation or an initial."""
+    pieces = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'\u201c(\$])", text)
+    out: list[str] = []
+    for piece in pieces:
+        if out and (_ABBREVIATION.search(out[-1]) or _INITIAL.search(out[-1])):
+            out[-1] = f"{out[-1]} {piece}"
+        else:
+            out.append(piece)
+    return out
+
+
+# A sentence that carries more than the price: times, a day, a question, a next step.
+_MORE_THAN_PRICE = re.compile(r"\?|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|"
+                              r"thursday|friday|saturday|sunday|weekend|test drive|appointment|visit|come in|stop by)\b",
+                              re.IGNORECASE)
 
 
 def place_touch1_extras(draft: dict[str, Any], touch1: dict[str, Any] | None) -> list[str]:
