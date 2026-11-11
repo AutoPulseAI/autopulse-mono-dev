@@ -114,7 +114,8 @@ export function customerFromLeadEmail(text, senderEmail) {
       if (adf) {
         return { kind: 'adf', name: realName(adf.name), email: adf.email ? adf.email.toLowerCase() : undefined,
           phone: adf.phone ? String(adf.phone).replace(/\D/g, '').slice(-10) || undefined : undefined,
-          comments: adf.comments || '', source: adf.source || 'ADF/XML', vehicle: adfVehicle(adf.vehicle) };
+          comments: adf.comments || '', source: adf.source || 'ADF/XML', sub_source: adf.subSource || null,
+          vehicle: adfVehicle(adf.vehicle) };
       }
     } catch {
       // an ADF the parser can't read falls through to the plain-email reading
@@ -302,7 +303,8 @@ export async function handleInboundEmailLive({ currentEmail, dealer, notifyNewLe
     lead = await new Lead({
       ...newLeadFields({ dealerId, channel, comments: leadEmail ? (leadEmail.comments || text) : text,
         name: contact.name, email: contact.email, phone: contact.phone }),
-      ...(leadEmail ? { source: leadEmail.source, ...vehicleFields(leadEmail.vehicle),
+      ...(leadEmail ? { source: leadEmail.source, sub_source: leadEmail.sub_source || null,
+        ...vehicleFields(leadEmail.vehicle),
         data: { comments: leadEmail.comments || text, channel, created_by: `ai_live_inbound_${leadEmail.kind}`,
           ...(leadEmail.vehicle ? { vehicle: leadEmail.vehicle } : {}) } } : {}),
       ...(returning ? { previous_lead_id: returning._id } : {}),

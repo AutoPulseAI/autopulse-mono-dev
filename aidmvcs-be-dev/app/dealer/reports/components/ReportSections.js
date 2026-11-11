@@ -17,7 +17,7 @@ import FilterBar from "./FilterBar";
 import { Breakdown, GroupTable, KpiGrid } from "./KpiCards";
 import Definitions from "./Definitions";
 import { SectionCharts } from "./Charts";
-import { reportQuery, reportsGet } from "../reportsApi";
+import { downloadSourceReport, reportQuery, reportsGet } from "../reportsApi";
 
 const ALL_TIME_FROM = "2015-01-01";
 const NO_FILTERS = { source: "", lead_source: "", assigned_to: "", actor: "", appointment_type: "" };
@@ -112,7 +112,40 @@ function AllNumbers({ section, kpis, k, linkFor }) {
   );
 }
 
-function Section({ def, reports, linkFor, tz }) {
+// Betsy's source / sub-source report as a CSV (app/lib/reporting/sourcePerformance.js): same dates and filters as the
+// screen; "In timeframe" counts everything in the range, "From current leads" only what belongs to leads received in it.
+function SourceReportDownload({ params }) {
+  const [basis, setBasis] = useState("timeframe");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const download = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadSourceReport({ ...params, basis });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <div className="btn-group btn-group-sm" role="group" aria-label="How to count">
+        {[["timeframe", "In timeframe"], ["current", "From current leads"]].map(([key, label]) => (
+          <Button key={key} size="sm" variant={basis === key ? "dark" : "outline-dark"} onClick={() => setBasis(key)}
+            aria-pressed={basis === key}>{label}</Button>
+        ))}
+      </div>
+      <Button size="sm" variant="outline-dark" onClick={download} disabled={busy || !params}>
+        <i className="fa-regular fa-download me-1"></i>{busy ? "Preparing..." : "Download source / sub-source report (CSV)"}
+      </Button>
+      {error && <small className="text-danger">{error}</small>}
+    </div>
+  );
+}
+
+function Section({ def, reports, linkFor, tz, params }) {
   const all = [...def.own, ...def.uses];
   const loaded = all.map((d) => reports[d]).filter(Boolean);
   const byId = new Map(loaded.flatMap((r) => r.kpis.map((x) => [x.id, x])));
@@ -145,6 +178,7 @@ function Section({ def, reports, linkFor, tz }) {
                 .join("; ")}
             </Alert>
           )}
+          {def.key === "sources" && <SourceReportDownload params={params} />}
           <SectionCharts section={def.key} k={k} kpisOf={kpisOf} range={first?.range} linkFor={linkFor} />
           <AllNumbers section={def.key} kpis={ownKpis} k={k} linkFor={linkFor} />
         </>
@@ -261,7 +295,7 @@ export default function ReportSections({ dealerId, tz, range }) {
       {section && (
         <>
           <FilterBar filters={filters} onFilters={setFilters} options={options} />
-          <Section def={section} reports={reports} linkFor={linkFor} tz={tz} />
+          <Section def={section} reports={reports} linkFor={linkFor} tz={tz} params={params} />
         </>
       )}
       {active === DEFINITIONS && (definitions ? <Definitions data={definitions} />
