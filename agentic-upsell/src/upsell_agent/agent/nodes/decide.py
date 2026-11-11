@@ -1105,6 +1105,15 @@ def is_service_lead(profile: Profile) -> bool:
     return profile.lead_type == LeadType.SERVICE
 
 
+def first_text_of_the_conversation(trigger: str | None, channel: str | None, pack: dict | None) -> bool:
+    """The morning message (after a night lead got its first message by email) going out as the customer's first
+    text: it must be the FTC first message (Betsy, 10-12 Nov 2026), not "Good morning ... we're open now"."""
+    if trigger != "resume_at_opening" or channel != "sms":
+        return False
+    memory = (pack or {}).get("working_memory") or []
+    return not any(m.get("direction") == "outbound" and (m.get("channel") or "sms") == "sms" for m in memory)
+
+
 def plan_touch1(profile: Profile, dealer: DealerProfile, customer_first_name: str | None,
                 origin: str | None = None) -> dict[str, Any]:
     """Touch 1's required structure (Omnichannel PDF §3, MASTER_PLAN_3 C4):
@@ -1645,9 +1654,14 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             visit_plan, decision = moved_on, other
     decision["dealer_address"] = dealer.address  # the fallback answers "where are you?" with it
     # MASTER_PLAN_3 C4: Touch 1's required structure, and the theme when this turn is a cadence touch.
+    # Betsy, 10-12 Nov 2026 (a night lead's first text was the morning message - no AI disclosure, no vehicle photo -
+    # and the customer opted out): the first TEXT a customer gets is the FTC first message, also when the morning
+    # message is that text. Still one message in the morning (the user, 28 Oct 2026).
+    first_message = state.trigger == "lead_created" or first_text_of_the_conversation(
+        state.trigger, state.channel, state.context_pack)
     touch1 = (plan_touch1(profile, dealer, state.customer_name,
                          origin=((ctx.compliance or {}).get("origin") or {}).get("origin"))
-              if state.trigger == "lead_created" and decision["action"] not in ("stop", "handoff", "offer_human")
+              if first_message and decision["action"] not in ("stop", "handoff", "offer_human")
               else None)
     if touch1:
         touch1.update(first_reply_extras(ctx, state, dealer))
@@ -1707,6 +1721,10 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         after_hours.cancel_resume = True
         after_hours.why = f"No after-hours choice: the reply is a {decision['action']}."
     decision["after_hours"] = after_hours.as_dict()
+    if decision.get("touch1") and state.trigger != "lead_created" and decision["after_hours"].get("mode") == "resume":
+        # The FTC first message IS the morning text (Betsy, 10-12 Nov 2026): not "Good morning ... we're open now",
+        # nor AI Studio's morning wording, on top of it or in its place. What the turn records stays as it is.
+        decision["after_hours"] = {**decision["after_hours"], "mode": None, "first_text": True}
     # Stream Q: buying urgency, for Compose to lean into getting them in soon (never a handoff by itself).
     decision["urgency"] = ({"reason": urgency_reason} if urgency_mode == "buying"
                            and decision["action"] not in ("stop", "handoff", "offer_human") else None)
