@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useUser } from "../context/UserContext";
 import useFetch from "../../hooks/useFetch";
 import { Spinner, Alert } from "react-bootstrap";
+import { useRouter } from "next/navigation";
+import { openFromDashboard, takeBackRange, keepRange } from "../components/backLink";
 import moment from "moment-timezone";
 import {
   BarChart, Bar, XAxis, YAxis,
@@ -28,6 +30,8 @@ import { reportsVisible } from "../reports/reportsAccess";
 function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
+  // Chart and source clicks open the Leads list in this tab (client, 11 Nov 2026), with a way back.
+  const router = useRouter();
   // The report sections: only where the reports are visible to this session (null while that is checked).
   const [reportsAllowed, setReportsAllowed] = useState(null);
   const reportsDealerId = dealerParent?.id || dealerParent?._id || null;
@@ -243,10 +247,20 @@ function Dashboard() {
   useEffect(() => {
     if (!dealerParent?.id || !dealerTimezone || hasSyncedToday.current) return;
     hasSyncedToday.current = true;
+    // Back from a Leads list opened here: the range the user had, not Today.
+    const kept = takeBackRange();
+    if (kept) {
+      setDateRange(kept);
+      return;
+    }
     const [start, end] = presetRange('today', dealerTimezone);
     setDateRange({ startDate: start.clone().startOf('day').utc().toDate(), endDate: end.clone().endOf('day').utc().toDate(),
       preset: 'today', compare: null });
   }, [dealerParent?.id, dealerTimezone]);
+
+  useEffect(() => {
+    if (hasSyncedToday.current) keepRange(dateRange);
+  }, [dateRange]);
 
   const handleDateRangeChange = ({ startDate, endDate, preset, compare }) => {
     setDateRange({ startDate: startDate || null, endDate: endDate || null, preset: preset || 'custom', compare: compare || null });
@@ -577,7 +591,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?source=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openFromDashboard(url, router);
     }
   };
 
@@ -585,7 +599,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?lead_source=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openFromDashboard(url, router);
     }
   };
 
@@ -594,7 +608,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?status=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openFromDashboard(url, router);
     }
   };
 
@@ -630,7 +644,7 @@ function Dashboard() {
       }
 
       const url = `/dealer/leads?startDate=${encodeURIComponent(startDate.toISOString())}&endDate=${encodeURIComponent(endDate.toISOString())}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openFromDashboard(url, router);
     }
   };
 
@@ -669,7 +683,7 @@ function Dashboard() {
       if (messageType) {
         url += `&response_mode=${messageType}`;
       }
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openFromDashboard(url, router);
     }
   };
 

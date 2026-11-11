@@ -4,6 +4,7 @@
 // the link (same <a className="d-block"> as dashboard/components/CountCard.js), and a rate card links its count and its
 // "out of" number. Numbers not tied to leads, and blocked / needs-data KPIs, are plain.
 import { Badge, Table } from "react-bootstrap";
+import { rememberBack } from "../../components/backLink";
 
 const ICONS = { lead: "fa-magnet", customer: "fa-users", booking: "fa-calendar-check", message: "fa-messages",
   call_task: "fa-phone", ai_touch: "fa-message-bot" };
@@ -15,8 +16,8 @@ export function formatValue(k) {
   return Number(k.value).toLocaleString();
 }
 
-// Same tab, like the Dashboard cards.
-const NEW_TAB = {};
+// Same tab, with a way back to the Dashboard (client, 11 Nov 2026).
+const back = (link) => ({ onClick: () => rememberBack(link) });
 
 export function KpiCard({ kpi, linkFor }) {
   const live = kpi.state === "live";
@@ -27,7 +28,7 @@ export function KpiCard({ kpi, linkFor }) {
   const sub = rate ? (
     <>
       {kpi.numerator?.count ?? 0} of{" "}
-      {denLink ? <a href={denLink} {...NEW_TAB}>{kpi.denominator.count}</a> : kpi.denominator.count}
+      {denLink ? <a href={denLink} {...back(denLink)}>{kpi.denominator.count}</a> : kpi.denominator.count}
       {kpi.denominator_label ? ` ${kpi.denominator_label}` : ""}
     </>
   ) : kpi.kind === "median" ? `over ${kpi.count ?? 0}` : null;
@@ -35,7 +36,7 @@ export function KpiCard({ kpi, linkFor }) {
     <div className="w_card d_counts_card h-100" style={live ? undefined : { opacity: 0.75 }}>
       <div className="d_counts_icon"><i className={`fa-regular ${ICONS[kpi.grain] || "fa-chart-column"}`}></i></div>
       <div className="d_counts_info">
-        <h3>{rate && link ? <a href={link} {...NEW_TAB}>{value}</a> : value}</h3>
+        <h3>{rate && link ? <a href={link} {...back(link)}>{value}</a> : value}</h3>
         <p>
           {kpi.label}
           {kpi.proxy && <Badge bg="secondary" className="ms-1">proxy</Badge>}
@@ -55,7 +56,7 @@ export function KpiCard({ kpi, linkFor }) {
   );
   return (
     <div className="col col-lg-3 col-md-6 col-12 mb-3">
-      {link && !rate ? <a href={link} className="d-block h-100" {...NEW_TAB}>{content}</a> : content}
+      {link && !rate ? <a href={link} className="d-block h-100" {...back(link)}>{content}</a> : content}
     </div>
   );
 }
@@ -67,7 +68,7 @@ export function KpiGrid({ kpis, linkFor }) {
 // A count that opens its group's leads when the KPI is tied to leads; otherwise just the number.
 function GroupCount({ kpi, by, group, count, linkFor }) {
   const link = count && linkFor ? linkFor(kpi, { by, group }) : null;
-  return link ? <a href={link} {...NEW_TAB}>{count}</a> : <>{count}</>;
+  return link ? <a href={link} {...back(link)}>{count}</a> : <>{count}</>;
 }
 
 // One breakdown of one KPI (e.g. appointments by creator).

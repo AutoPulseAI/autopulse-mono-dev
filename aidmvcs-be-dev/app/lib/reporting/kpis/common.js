@@ -93,7 +93,7 @@ export function replies(args, ctx) {
 
 // Lead fields the rows show.
 const LEAD_FIELDS = { name: 1, email: 1, phone: 1, source: 1, lead_source: 1, fe_lead_status: 1, assigned_to: 1,
-  customer_id: 1, createdAt: 1, dealer_id: 1, contact_type: 1 };
+  customer_id: 1, createdAt: 1, dealer_id: 1, contact_type: 1, sub_source: 1 };
 
 export async function leadsByIds(ids, ctx) {
   const want = [...new Set(ids.filter(isOid).map(String))];

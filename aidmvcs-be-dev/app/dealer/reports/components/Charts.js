@@ -6,6 +6,7 @@
 // Colours: fixed categorical order (dataviz reference palette), one colour for single-series charts.
 import { useMemo, useState } from "react";
 import { Button } from "react-bootstrap";
+import { openFromDashboard } from "../../components/backLink";
 import moment from "moment-timezone";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis,
   YAxis } from "recharts";
@@ -19,10 +20,8 @@ const legendText = (text) => <span style={{ color: INK }}>{text}</span>;
 const hideZero = (v) => (v ? v : "");
 
 const isCount = (k) => k && k.state === "live" && k.kind === "count";
-const go = (row) => {
-  const link = row?.payload?.link ?? row?.link;
-  if (link) window.location.assign(link);
-};
+// Opens the Leads list in this tab, with a way back to the Dashboard (../../components/backLink.js).
+const go = (row) => openFromDashboard(row?.payload?.link ?? row?.link);
 
 function ChartCard({ title, children, className = "col-lg-6 col-12" }) {
   return (

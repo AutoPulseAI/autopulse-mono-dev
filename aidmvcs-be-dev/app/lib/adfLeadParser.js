@@ -1,4 +1,5 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
+import { PROVIDER_ALIASES } from "./reporting/normalize.js";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -151,6 +152,48 @@ function contactName(contact) {
   return combined || firstText(names);
 }
 
+// The sub-source of a lead (Betsy, 10 Nov 2026: eLead's "Source and Sub Source Performance" report): what the
+// provider says beyond its own name. From the live lead emails (11 Nov 2026):
+//   name "Cars.com",  service "Cars.com Leads"        -> "Leads"
+//   name "CarGurus Reengagement"                       -> "Reengagement"
+//   name "Edmunds",   service "Edmunds Direct"         -> "Direct"
+//   name "Dealer Inspire/Get E-Price"                  -> "Get E-Price"
+//   name "CarGurus",  service "CarGurus"               -> null (no sub-source)
+// The provider's own words are taken off the front (its alias in app/lib/reporting/normalize.js, else its name);
+// a service that doesn't start with the provider is the sub-source as it is. The source itself is unchanged.
+const clean = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
+const SEPARATORS = /^[\s/:|,\-\u2013\u2014]+|[\s/:|,\-\u2013\u2014]+$/g;
+
+function withoutProvider(value, name) {
+  for (const [re] of PROVIDER_ALIASES) {
+    const front = new RegExp(`^\\s*(?:${re.source})`, "i");
+    if (front.test(value)) return value.replace(front, "").replace(SEPARATORS, "");
+  }
+  if (name && value.toLowerCase().startsWith(name.toLowerCase())) {
+    return value.slice(name.length).replace(SEPARATORS, "");
+  }
+  return value === name ? "" : value.replace(SEPARATORS, "");
+}
+
+export function adfSubSource({ name, service } = {}) {
+  const n = clean(name);
+  const s = clean(service);
+  for (const value of [s, n]) {
+    if (!value) continue;
+    const rest = withoutProvider(value, n);
+    if (rest) return rest;
+  }
+  return null;
+}
+
+// The provider's name and service in a parsed ADF tree (null when it has no prospect).
+export function adfProvider(parsed) {
+  const prospect = asArray(child(child(parsed, "adf"), "prospect"))[0];
+  if (!prospect) return null;
+  const provider = child(prospect, "provider");
+  return { name: firstText(child(provider, "name")), service: firstText(child(provider, "service")) };
+}
+
 /**
  * Returns null for regular (non-ADF) email. A detected but unparseable ADF payload
  * throws AdfParseError even after sanitization is applied; callers should catch that
@@ -188,6 +231,10 @@ export function parseAdfLeadEmail(content) {
       firstText(child(vendor, "vendorname")) ||
       attribute(prospectId, "source") ||
       "ADF/XML",
+    subSource: adfSubSource({
+      name: firstText(child(provider, "name")),
+      service: firstText(child(provider, "service")),
+    }),
     externalLeadId: text(prospectId),
     requestDate: firstText(child(prospect, "requestdate")),
     comments: firstText(child(customer, "comments")) || firstText(child(prospect, "comments")),

@@ -5,7 +5,10 @@
 // dealer-local day (app/lib/reporting/replyCohorts.js), unlike the lead-based "Customer Replied" card above it.
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CountCard from "./CountCard";
+import { openFromDashboard, rememberBack } from "../../components/backLink";
 
 // The exclusive lead-age groups (app/lib/reporting/replyCohorts.js BUCKETS). Owner, 10 Nov 2026: the AI follows a lead
 // for days 0-90, so the last follow-up group is 60-90 and a reply on an older lead is its own group - the customer came
@@ -40,6 +43,7 @@ function rangeQuery(dealerId, startDate, endDate) {
 }
 
 export default function ReplyCohortsSection({ dealerId, startDate, endDate, rangeText }) {
+  const router = useRouter();
   const [state, setState] = useState({ status: "loading", data: null });
   const [split, setSplit] = useState(null);
 
@@ -78,14 +82,15 @@ export default function ReplyCohortsSection({ dealerId, startDate, endDate, rang
     }
     return `/dealer/leads?${q.toString()}`;
   };
-  const openLeads = (param, value) => window.open(leadsLink(param, value), "_blank", "noopener,noreferrer");
+  // Opens in this tab (client, 11 Nov 2026), with a way back.
+  const openLeads = (param, value) => openFromDashboard(leadsLink(param, value), router);
   const onBarClick = (entry) => {
     const key = entry?.key ?? entry?.payload?.key;
     if (BAR_COHORT[key]) openLeads("reply_cohort", BAR_COHORT[key]);
   };
   const apptLink = (category, text, n) => (
-    <a href={leadsLink("appt_attribution", category)} target="_blank" rel="noopener noreferrer"
-      title="Open these appointments' leads">{text} {n}</a>
+    <Link href={leadsLink("appt_attribution", category)} onClick={() => rememberBack(leadsLink("appt_attribution", category))}
+      title="Open these appointments' leads">{text} {n}</Link>
   );
 
   if (state.status === "needs_range") {

@@ -230,6 +230,7 @@ export async function processEmail(job) {
         phone: adfLead.phone,
         source: adfLead.source,
         lead_source: adfLead.source,
+        sub_source: adfLead.subSource || null,
         dealer_id,
         sourcemail: currentEmail.message_id,
         lead_status: 'ADF Lead',

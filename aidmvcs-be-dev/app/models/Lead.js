@@ -7,6 +7,9 @@
       email: { type: String }, // Optional: You can make this required if needed
       phone: { type: String }, // Optional: You can make this required if needed
       source: { type: String, default: 'email' }, // Default value for source
+      // What the lead provider says beyond its own name, e.g. CarGurus "Reengagement" (ADF provider name / service;
+      // app/lib/adfLeadParser.js adfSubSource). Null = no sub-source. For the source / sub-source report.
+      sub_source: { type: String, default: null },
       // Betsy, 27 Oct 2026 meeting: how the lead came in - internet, phone-up or walk-in (app/lib/leadContactType.js).
       contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
 
