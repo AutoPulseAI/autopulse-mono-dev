@@ -1,6 +1,7 @@
-// The reports as Dashboard tabs (app/dealer/dashboard/page.js): a dealer or its staff gets no report tabs (no request,
-// Overview only, and the reports API still answers 404), a super admin - directly or through "login as" - gets them;
-// /dealer/reports redirects to /dealer/dashboard?tab=executive; the sidebar has no Reports entry.
+// The reports as sections of the Dashboard (app/dealer/dashboard/page.js, 11 Nov 2026: one page, no tabs): a dealer or
+// its staff gets no report sections (no request, and the reports API still answers 404), a super admin - directly or
+// through "login as" - gets them; every SOW dashboard is in a section; /dealer/reports redirects to /dealer/dashboard;
+// the sidebar has no Reports entry.
 //
 // Uses its own local MongoDB database (dashboardtabs_test, collections cleared before each test, dropped at the end;
 // DB tests are skipped when MongoDB is not reachable).
@@ -39,7 +40,7 @@ const { default: jwt } = await import('jsonwebtoken');
 const { default: User } = await import('./app/models/User.js');
 const route = await import('./app/api/reports/kpis/route.js');
 const { closeCache } = await import('./app/api/reports/kpis/cache.js');
-const { DASHBOARD_TABS, dashboardTab, reportsVisible } = await import('./app/dealer/reports/reportsAccess.js');
+const { reportsVisible } = await import('./app/dealer/reports/reportsAccess.js');
 const { listDashboards } = await import('./app/lib/reporting/registry.js');
 
 const { ObjectId } = mongoose.Types;
@@ -107,40 +108,34 @@ function closeBrowser() {
 const reportsApi = (qs, token) => route.GET(new Request(`http://localhost/api/reports/kpis?${qs}`,
   { headers: { Authorization: `Bearer ${token}` } }));
 
-test('tabs: Overview first, then one per report, in the order the Reports page had', () => {
-  assert.deepEqual(DASHBOARD_TABS[0], ['overview', 'Overview']);
-  const reportKeys = DASHBOARD_TABS.slice(1).map(([k]) => k);
-  assert.deepEqual(reportKeys, ['executive', 'appointments', 'ai', 'lead_source', 'bdc', 'service', 'data_quality',
-    'sales', 'definitions']);
-  // Every report tab is a dashboard the API knows (definitions is its own call).
-  const known = new Set(listDashboards().map((d) => d.id));
-  for (const k of reportKeys.filter((x) => x !== 'definitions')) assert.ok(known.has(k), k);
+// The sections are read from the component's source: it is JSX, which plain node can't import.
+async function sectionsFromSource() {
+  const src = await readFile(new URL('./app/dealer/reports/components/ReportSections.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('export const SECTIONS'), src.indexOf(']);', src.indexOf('export const SECTIONS')));
+  return [...block.matchAll(/key: "(\w+)", title: "([^"]+)", own: \[([^\]]*)\], uses: \[([^\]]*)\], open: (true|false)/g)]
+    .map(([, key, title, own, uses, open]) => ({ key, title, open: open === 'true',
+      own: [...own.matchAll(/"(\w+)"/g)].map((m) => m[1]), uses: [...uses.matchAll(/"(\w+)"/g)].map((m) => m[1]) }));
+}
+
+test('sections: every SOW dashboard is in exactly one section, in the agreed order', async () => {
+  const sections = await sectionsFromSource();
+  assert.deepEqual(sections.map((s) => s.key), ['sources', 'outcomes', 'work', 'sales', 'service', 'health']);
+  // The first four open by default; Service and Data health start closed.
+  assert.deepEqual(sections.map((s) => s.open), [true, true, true, true, false, false]);
+  const owned = sections.flatMap((s) => s.own);
+  assert.equal(new Set(owned).size, owned.length, 'no report listed in two sections');
+  const known = listDashboards().map((d) => d.id).sort();
+  assert.deepEqual([...owned].sort(), known);
+  for (const s of sections) for (const d of s.uses) assert.ok(known.includes(d), d);
 });
 
-test('dashboardTab: Overview unless the report tabs are visible', () => {
-  // Not visible (a dealer or staff): always the Overview, whatever ?tab= says.
-  for (const req of [null, '', 'overview', 'executive', 'definitions', 'nope']) {
-    assert.equal(dashboardTab(req, false), 'overview', String(req));
-  }
-  // Visible: the asked-for tab; unknown or missing = Overview.
-  assert.equal(dashboardTab('executive', true), 'executive');
-  assert.equal(dashboardTab('definitions', true), 'definitions');
-  assert.equal(dashboardTab(null, true), 'overview');
-  assert.equal(dashboardTab('nope', true), 'overview');
-  // Still checking: the Overview needs no check; a report tab waits (null) instead of flashing the Overview.
-  assert.equal(dashboardTab(null, null), 'overview');
-  assert.equal(dashboardTab('overview', null), 'overview');
-  assert.equal(dashboardTab('executive', null), null);
-});
-
-test('dealer and staff: no report tabs, no extra request, the reports API still 404s', async (t) => {
+test('dealer and staff: no report sections, no extra request, the reports API still 404s', async (t) => {
   if (needDb(t)) return;
   try {
     for (const who of ['dealer', 'staff']) {
       const calls = browserAs(TOKENS[who]);
       assert.equal(await reportsVisible(String(DEALER)), false, who);
       assert.deepEqual(calls, [], `${who} makes no request`);
-      assert.equal(dashboardTab('executive', false), 'overview');
       assert.equal((await reportsApi(`dealer_id=${DEALER}&check=1`, TOKENS[who])).status, 404, who);
       assert.equal((await reportsApi(`dealer_id=${DEALER}&dashboard=executive&start_date=2026-11-01`,
         TOKENS[who])).status, 404, who);
@@ -152,20 +147,19 @@ test('dealer and staff: no report tabs, no extra request, the reports API still 
   } finally { closeBrowser(); }
 });
 
-test('super admin through "login as": the report tabs show', async (t) => {
+test('super admin through "login as": the report sections show', async (t) => {
   if (needDb(t)) return;
   try {
     const calls = browserAs(TOKENS.loginAs);
     assert.equal(await reportsVisible(String(DEALER)), true);
     assert.deepEqual(calls, [`/api/reports/kpis?check=1&dealer_id=${DEALER}`]);
-    assert.equal(dashboardTab('executive', true), 'executive');
     const res = await reportsApi(`dealer_id=${DEALER}&dashboard=executive&start_date=2026-11-01&end_date=2026-11-05`,
       TOKENS.loginAs);
     assert.equal(res.status, 200);
   } finally { closeBrowser(); }
 });
 
-test('no sign-in or no dealer yet: no tabs', async () => {
+test('no sign-in or no dealer yet: no report sections', async () => {
   try {
     browserAs(null);
     assert.equal(await reportsVisible(String(DEALER)), false);
@@ -174,20 +168,20 @@ test('no sign-in or no dealer yet: no tabs', async () => {
   } finally { closeBrowser(); }
 });
 
-test('/dealer/reports redirects to the Executive tab of the Dashboard', async () => {
+test('/dealer/reports redirects to the Dashboard', async () => {
   const { default: ReportsRedirect } = await import('./app/dealer/reports/page.js');
   let err = null;
   try { ReportsRedirect(); } catch (e) { err = e; }
   assert.ok(err, 'redirect throws');
-  assert.match(String(err.digest), /^NEXT_REDIRECT;[a-z]+;\/dealer\/dashboard\?tab=executive;/);
+  assert.match(String(err.digest), /^NEXT_REDIRECT;[a-z]+;\/dealer\/dashboard;/);
 });
 
-test('the sidebar has no Reports entry; the Dashboard gates its tab row on the same check', async () => {
+test('the sidebar has no Reports entry; the Dashboard shows the sections only after the same check', async () => {
   const sidebar = await readFile(new URL('./app/dealer/components/Sidebar.js', import.meta.url), 'utf8');
   assert.ok(!sidebar.includes('/dealer/reports'));
   assert.ok(!sidebar.includes('reportsVisible'));
   const page = await readFile(new URL('./app/dealer/dashboard/page.js', import.meta.url), 'utf8');
   assert.match(page, /reportsVisible\(reportsDealerId\)/);
-  assert.match(page, /const tabRow = reportsAllowed === true \?/);
-  assert.match(page, /dashboardTab\(searchParams\.get\('tab'\), reportsAllowed\)/);
+  assert.match(page, /reportsAllowed === true && \(\s*<ReportSections /);
+  assert.ok(!/tabRow|DASHBOARD_TABS|\?tab=/.test(page), 'no tab row left');
 });

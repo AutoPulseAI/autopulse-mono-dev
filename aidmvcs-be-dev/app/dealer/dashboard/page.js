@@ -1,13 +1,12 @@
 "use client";
-// Leads Dashboard. Its first tab, Overview, is the dashboard every dealer sees. Where the reports are visible (super
-// admins, also through "login as"; app/dealer/reports/reportsAccess.js) a tab row adds one tab per report, under the
-// same date picker: /dealer/dashboard?tab=executive ... (SOW 8B: enhance the existing dashboard). Dealers and staff
-// get no tab row and the Overview only.
+// Leads Dashboard, the dashboard every dealer sees. Where the reports are visible (super admins, also through
+// "login as"; app/dealer/reports/reportsAccess.js) the report sections follow the headline cards on this same page,
+// under the same date picker (11 Nov 2026: one page in sections, not tabs; SOW 8B: enhance the existing dashboard).
+// Dealers and staff see the Dashboard exactly as before.
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "../context/UserContext";
 import useFetch from "../../hooks/useFetch";
-import { Spinner, Alert, Nav } from "react-bootstrap";
+import { Spinner, Alert } from "react-bootstrap";
 import moment from "moment-timezone";
 import {
   BarChart, Bar, XAxis, YAxis,
@@ -21,18 +20,15 @@ import ActivityOverTimeDataBar from "./components/ActivityOverTimeDataBar";
 import LeadSourceDataPie from "./components/LeadSourceDataPie";
 import LeadSourceDistributionPie from "./components/LeadSourceDistributionPie";
 import ReplyCohortsSection from "./components/ReplyCohortsSection";
-import ReportView from "../reports/components/ReportView";
-import { DASHBOARD_TABS, dashboardTab, reportsVisible } from "../reports/reportsAccess";
+import ReportSections from "../reports/components/ReportSections";
+import { reportsVisible } from "../reports/reportsAccess";
 //import ReportAnalytics from "./components/ReportAnalytics";
 
 
 function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
-  // The report tabs: only where the reports are visible to this session (null while that is checked). The tab is kept
-  // in the URL (?tab=), so Back from a Leads list opened from a report number returns to the same tab.
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  // The report sections: only where the reports are visible to this session (null while that is checked).
   const [reportsAllowed, setReportsAllowed] = useState(null);
   const reportsDealerId = dealerParent?.id || dealerParent?._id || null;
   useEffect(() => {
@@ -41,9 +37,6 @@ function Dashboard() {
     reportsVisible(reportsDealerId).then((ok) => { if (live) setReportsAllowed(ok); });
     return () => { live = false; };
   }, [reportsDealerId]);
-  const tab = dashboardTab(searchParams.get('tab'), reportsAllowed);
-  const selectTab = (key) => router.replace(key === 'overview' ? '/dealer/dashboard' : `/dealer/dashboard?tab=${key}`,
-    { scroll: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [leadStats, setLeadStats] = useState(null);
@@ -241,11 +234,9 @@ function Dashboard() {
     }
   }, [dealerParent?.id, fetchData, fetchRangeCounts, getTodayDateRange]);
 
-  // The Overview's numbers, fetched only while the Overview is shown (again when the user comes back to it).
   useEffect(() => {
-    if (tab !== 'overview') return;
     fetchDashboardData(dateRange.startDate, dateRange.endDate, dateRange.compare);
-  }, [dealerParent, dateRange.startDate, dateRange.endDate, dateRange.compare, fetchDashboardData, tab]);
+  }, [dealerParent, dateRange.startDate, dateRange.endDate, dateRange.compare, fetchDashboardData]);
 
   // The first range is today in the browser's clock; once the dealer's timezone is known it becomes the dealer's today.
   const hasSyncedToday = useRef(false);
@@ -271,7 +262,6 @@ function Dashboard() {
     );
   }
 
-  // The date picker heads every tab; the tab row only shows where the report tabs are visible.
   const pageHead = (
     <div className="page_head">
       <div className="row align-items-center">
@@ -304,27 +294,7 @@ function Dashboard() {
       </div>
     </div>
   );
-  const tabRow = reportsAllowed === true ? (
-    <Nav variant="tabs" activeKey={tab} className="mb-3" onSelect={selectTab}>
-      {DASHBOARD_TABS.map(([key, label]) => (
-        <Nav.Item key={key}><Nav.Link eventKey={key}>{label}</Nav.Link></Nav.Item>
-      ))}
-    </Nav>
-  ) : null;
-
-  if (tab && tab !== 'overview') {
-    return (
-      <div className="page_content">
-        {pageHead}
-        <div className="page_body">
-          {tabRow}
-          <ReportView tab={tab} dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />
-        </div>
-      </div>
-    );
-  }
-
-  if (loading || !tab) {
+  if (loading) {
     return (
       <div className="page_content">
         <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
@@ -337,7 +307,6 @@ function Dashboard() {
   if (error) {
     return (
       <div className="page_content">
-        {tabRow}
         <Alert variant="danger">{error}</Alert>
       </div>
     );
@@ -797,7 +766,6 @@ function Dashboard() {
       {pageHead}
 
       <div className="page_body">
-        {tabRow}
         {/* Dashboard Counts */}
         <div className="dashboard_counts">
           <div className="row gx-2 gx-lg-4">
@@ -922,6 +890,10 @@ function Dashboard() {
           endDate={dateRange.endDate}
           rangeText={cardRangeText()}
         />
+
+        {reportsAllowed === true && (
+          <ReportSections dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />
+        )}
 
         {/* Full Calendar - inserted after second row 
         <div className="row gx-2 gx-xl-3">
@@ -1173,7 +1145,6 @@ function Dashboard() {
   );
 }
 
-// useSearchParams needs a Suspense boundary for the production build.
 export default function DashboardPage() {
   return <Suspense fallback={null}><Dashboard /></Suspense>;
 }

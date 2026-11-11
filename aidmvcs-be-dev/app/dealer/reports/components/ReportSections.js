@@ -1,0 +1,262 @@
+"use client";
+// The reports on the Dashboard (SOW 8 Deliverable F), under the Dashboard's headline cards and its date picker: one
+// filter bar, then one section per question a manager asks (11 Nov 2026: one page in sections, not tabs; Bibi:
+// clickable charts). Every SOW dashboard is in one section:
+//   Where leads come from = Lead source / ROI; What happened to them = Executive + Appointments;
+//   Who did the work = AI operations + BDC productivity; Sales & profit = Sales / Desk Log;
+//   Service = Service retention; Data health = Data quality / compliance.
+// A section loads its reports only while it is open. Every bar or slice opens the Leads list with exactly those leads
+// (/dealer/leads?report_kpi=<id>, same dates and filters; app/api/leads/route.js), whose Export CSV is the list.
+// "Show all numbers" in each section has every number with its definition, its tables and what is not available yet.
+// Numbers come from GET /api/reports/kpis (app/lib/reporting/registry.js); a 404 hides the whole thing.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Button, Spinner } from "react-bootstrap";
+import moment from "moment-timezone";
+import FilterBar from "./FilterBar";
+import { Breakdown, GroupTable, KpiGrid } from "./KpiCards";
+import Definitions from "./Definitions";
+import { SectionCharts } from "./Charts";
+import { reportQuery, reportsGet } from "../reportsApi";
+
+const ALL_TIME_FROM = "2015-01-01";
+const NO_FILTERS = { source: "", lead_source: "", assigned_to: "", actor: "", appointment_type: "" };
+const OPEN_KEY = "dashboard_report_sections";
+
+// own: the reports whose numbers the section lists under "Show all numbers". uses: also read for its charts.
+export const SECTIONS = Object.freeze([
+  { key: "sources", title: "Where leads come from", own: ["lead_source"], uses: [], open: true },
+  { key: "outcomes", title: "What happened to them", own: ["executive", "appointments"], uses: [], open: true },
+  { key: "work", title: "Who did the work: AI and staff", own: ["ai", "bdc"], uses: ["appointments"], open: true },
+  { key: "sales", title: "Sales & profit", own: ["sales"], uses: ["executive"], open: true },
+  { key: "service", title: "Service", own: ["service"], uses: [], open: false },
+  { key: "health", title: "Data health", own: ["data_quality"], uses: [], open: false },
+]);
+
+// Cards left out of "Show all numbers" because the headline cards above already show the same number (the reports
+// leave duplicate bookings - same lead, day and time - out). They still feed the charts and tables, which split them.
+export const OVERVIEW_DUPLICATES = new Set([
+  "exec.leads_received", "exec.appointments_set", "exec.appointments_scheduled", "exec.shown",
+  "appointments.set", "appointments.scheduled", "appointments.shown",
+  "source.leads", "source.replied_leads", "source.appointments", "source.shown",
+]);
+
+function readOpen() {
+  const fallback = Object.fromEntries(SECTIONS.map((s) => [s.key, s.open]));
+  try {
+    return { ...fallback, ...JSON.parse(sessionStorage.getItem(OPEN_KEY) || "{}") };
+  } catch {
+    return fallback;
+  }
+}
+
+// Every number of a section with its definition, the section's tables and what is not available yet.
+function AllNumbers({ section, kpis, k, linkFor }) {
+  const [open, setOpen] = useState(false);
+  const live = kpis.filter((x) => (x.state === "live" || x.state === "error") && !OVERVIEW_DUPLICATES.has(x.id));
+  const notYet = kpis.filter((x) => x.state !== "live" && x.state !== "error");
+  if (!live.length && !notYet.length) return null;
+  return (
+    <>
+      <div className="mb-3">
+        <Button size="sm" variant="outline-dark" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Hide all numbers" : `Show all numbers (${live.length + notYet.length})`}
+        </Button>
+      </div>
+      {open && (
+        <>
+          {section === "sources" && (
+            <GroupTable title="Funnel by lead source" firstColumn="Lead source" by="lead_source" linkFor={linkFor}
+              kpis={["source.leads", "source.replied_leads", "source.appointments", "source.shown",
+                "source.crm_sold"].map(k)} />
+          )}
+          {section === "work" && (
+            <GroupTable title="By staff member (current lead owner)" firstColumn="Staff" by="staff" linkFor={linkFor}
+              kpis={["bdc.assigned_leads", "bdc.speed_to_lead", "bdc.staff_texts", "bdc.staff_emails",
+                "bdc.call_tasks_completed", "bdc.meaningful_contacts", "bdc.call_tasks_missed",
+                "bdc.call_tasks_overdue", "bdc.appointments_by_owner"].map(k)} />
+          )}
+          <KpiGrid kpis={live} linkFor={linkFor} />
+          {section === "outcomes" && (
+            <div className="row">
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="creator" title="Set, by who made it" linkFor={linkFor} /></div>
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="department" title="Set, sales / service" linkFor={linkFor} /></div>
+              <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" linkFor={linkFor} /></div>
+            </div>
+          )}
+          {section === "work" && (
+            <div className="row">
+              <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" linkFor={linkFor} /></div>
+              <div className="col-md-6"><Breakdown kpi={k("ai.messages_sent")} by="channel" title="AI messages by channel" linkFor={linkFor} /></div>
+            </div>
+          )}
+          {notYet.length > 0 && (
+            <div className="w_card mb-3">
+              <h3 className="w_card_title">Not available yet</h3>
+              <ul className="mb-0">
+                {notYet.map((x) => (
+                  <li key={x.id}>
+                    <strong>{x.label}</strong>{" "}
+                    <small className="text-muted">({x.state === "blocked" ? "blocked" : "needs data"}: {x.reason})</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function Section({ def, open, onToggle, reports, linkFor, tz }) {
+  const all = [...def.own, ...def.uses];
+  const loaded = all.map((d) => reports[d]).filter(Boolean);
+  const byId = new Map(loaded.flatMap((r) => r.kpis.map((x) => [x.id, x])));
+  const k = (id) => byId.get(id);
+  const kpisOf = (d) => reports[d]?.kpis || [];
+  const ownKpis = def.own.flatMap(kpisOf);
+  const loading = open && loaded.length < all.length;
+  const first = loaded[0];
+  return (
+    <div className="mb-3">
+      <button type="button" className="w_card w-100 d-flex align-items-center text-start border-0 mb-2"
+        onClick={onToggle} aria-expanded={open}>
+        <h3 className="w_card_title mb-0 me-auto">{def.title}</h3>
+        {open && first && (
+          <small className="text-muted me-3">
+            Updated {moment(first.last_updated).tz(tz).format("MMM D, h:mm A")}
+          </small>
+        )}
+        <i className={`fa-solid fa-chevron-${open ? "up" : "down"}`}></i>
+      </button>
+      {open && (loading ? (
+        <div className="text-center py-4"><Spinner animation="border" variant="dark" size="sm" /></div>
+      ) : (
+        <>
+          {def.key === "sales" && (
+            <Alert variant="info" className="py-2">
+              Showroom visits and the Desk Log numbers come with the Desk Log (Priority 3); until then these are CRM
+              status changes (marked proxy). Gross profit by source from DealerVault is being added.
+            </Alert>
+          )}
+          {loaded.flatMap((r) => r.unsupported || []).length > 0 && (
+            <Alert variant="warning" className="py-2">
+              Not applied: {[...new Set(loaded.flatMap((r) => (r.unsupported || []).map((u) => `${u.key} (${u.reason})`)))]
+                .join("; ")}
+            </Alert>
+          )}
+          <SectionCharts section={def.key} k={k} kpisOf={kpisOf} range={first?.range} linkFor={linkFor} />
+          <AllNumbers section={def.key} kpis={ownKpis} k={k} linkFor={linkFor} />
+        </>
+      ))}
+    </div>
+  );
+}
+
+// range: the Dashboard's picked range ({startDate, endDate}, null dates = All time).
+export default function ReportSections({ dealerId, tz, range }) {
+  const [filters, setFilters] = useState(NO_FILTERS);
+  const [options, setOptions] = useState({});
+  const [open, setOpen] = useState(readOpen);
+  // dashboard id -> { key, report }; key is the query it answers, so a changed range or filter refetches.
+  const [store, setStore] = useState({});
+  const [definitions, setDefinitions] = useState(null);
+  const [showDefinitions, setShowDefinitions] = useState(false);
+  const [error, setError] = useState(null);
+  const [hidden, setHidden] = useState(false);
+
+  const startKey = range?.startDate ? new Date(range.startDate).toISOString() : "";
+  const endKey = range?.endDate ? new Date(range.endDate).toISOString() : "";
+  const dates = useMemo(() => {
+    const today = moment.tz(tz).format("YYYY-MM-DD");
+    return {
+      start_date: startKey ? moment.utc(startKey).tz(tz).format("YYYY-MM-DD") : ALL_TIME_FROM,
+      end_date: endKey ? moment.utc(endKey).tz(tz).format("YYYY-MM-DD") : today,
+    };
+  }, [startKey, endKey, tz]);
+  const params = useMemo(() => (dealerId ? { dealer_id: dealerId, ...dates, ...filters } : null),
+    [dates, dealerId, filters]);
+  const queryKey = params ? JSON.stringify(params) : "";
+
+  // The Leads list for one number (or one breakdown group, or a rate's "out of" part): the picked dates as the
+  // dealer-local days' instants (as the headline cards' links send them) and the filters.
+  const linkFor = useCallback((kpi, { by, group, part, from, to } = {}) => {
+    if (!kpi?.leads_link) return null;
+    const q = new URLSearchParams({ report_kpi: kpi.id });
+    q.set("startDate", moment.tz(from || dates.start_date, "YYYY-MM-DD", tz).startOf("day").toISOString());
+    q.set("endDate", moment.tz(to || dates.end_date, "YYYY-MM-DD", tz).endOf("day").toISOString());
+    if (part === "denominator") q.set("report_part", "denominator");
+    if (by) {
+      q.set("report_by", by);
+      q.set("report_group", group);
+    }
+    const f = reportQuery(filters);
+    if (f) q.set("report_filters", f);
+    return `/dealer/leads?${q.toString()}`;
+  }, [dates, tz, filters]);
+
+  const fail = useCallback((e) => {
+    if (e.status === 404) setHidden(true);
+    else setError(e.message);
+  }, []);
+
+  useEffect(() => {
+    if (!dealerId) return;
+    reportsGet({ dealer_id: dealerId, options: 1 }).then(setOptions).catch(fail);
+  }, [dealerId, fail]);
+
+  // The reports the open sections need, each fetched once per query.
+  const wanted = useMemo(() => [...new Set(SECTIONS.filter((s) => open[s.key]).flatMap((s) => [...s.own, ...s.uses]))],
+    [open]);
+  useEffect(() => {
+    if (!params) return undefined;
+    let live = true;
+    setError(null);
+    for (const dashboard of wanted) {
+      if (store[dashboard]?.key === queryKey) continue;
+      reportsGet({ ...params, dashboard })
+        .then((report) => { if (live) setStore((s) => ({ ...s, [dashboard]: { key: queryKey, report } })); })
+        .catch(fail);
+    }
+    return () => { live = false; };
+    // store is left out on purpose: a finished fetch must not start the others again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey, wanted, fail]);
+
+  useEffect(() => {
+    if (!showDefinitions || definitions || !dealerId) return;
+    reportsGet({ dealer_id: dealerId, definitions: 1 }).then(setDefinitions).catch(fail);
+  }, [showDefinitions, definitions, dealerId, fail]);
+
+  const toggle = (key) => setOpen((o) => {
+    const next = { ...o, [key]: !o[key] };
+    try { sessionStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* not kept; fine */ }
+    return next;
+  });
+
+  if (hidden) return null;
+  // Only answers to the current query are shown; older ones wait behind the spinner.
+  const reports = Object.fromEntries(Object.entries(store).filter(([, v]) => v.key === queryKey)
+    .map(([d, v]) => [d, v.report]));
+
+  return (
+    <div className="mt-2">
+      <h3 className="page_title mb-2">Reports</h3>
+      <FilterBar filters={filters} onFilters={setFilters} options={options} />
+      {error && <Alert variant="danger">{error}</Alert>}
+      {SECTIONS.map((def) => (
+        <Section key={def.key} def={def} open={Boolean(open[def.key])} onToggle={() => toggle(def.key)}
+          reports={reports} linkFor={linkFor} tz={tz} />
+      ))}
+      <div className="mb-3">
+        <button type="button" className="w_card w-100 d-flex align-items-center text-start border-0 mb-2"
+          onClick={() => setShowDefinitions(!showDefinitions)} aria-expanded={showDefinitions}>
+          <h3 className="w_card_title mb-0 me-auto">How each number is counted</h3>
+          <i className={`fa-solid fa-chevron-${showDefinitions ? "up" : "down"}`}></i>
+        </button>
+        {showDefinitions && (definitions ? <Definitions data={definitions} />
+          : <div className="text-center py-4"><Spinner animation="border" variant="dark" size="sm" /></div>)}
+      </div>
+    </div>
+  );
+}
