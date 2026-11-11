@@ -2,8 +2,8 @@
 // Rows: All Types -> each lead type (Up Type) -> each source -> each sub-source, with Leads, Appts Set, Appts Shown,
 // Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
 // source.appointments, source.shown, source.crm_sold in kpis/leadSource.js), so the "All Types" row always equals
-// the numbers on screen. Visits come with the Desk Log (Priority 3); gross with the DealerVault deal matching -
-// both columns are there and empty until then.
+// the numbers on screen. Visits are Desk Log check-ins (sales.showroom_visits); gross comes with the DealerVault deal
+// matching - that column is empty until then.
 //
 // Two ways to count (Betsy's email):
 //   timeframe - every appointment / show / sale in the range, whenever its lead came in (a CarGurus lead from
@@ -21,7 +21,8 @@ export const ALL_SUBS = 'All Sub-Sources';
 export const NO_SUB = 'No Sub-Source';
 
 const MEASURES = Object.freeze([
-  ['leads', 'source.leads'], ['appts_set', 'source.appointments'], ['appts_shown', 'source.shown'],
+  ['leads', 'source.leads'], ['visits', 'sales.showroom_visits'], ['appts_set', 'source.appointments'],
+  ['appts_shown', 'source.shown'],
   ['sold', 'source.crm_sold'],
 ]);
 const UP_TYPES = Object.freeze({ internet: 'Internet', phone: 'Phone', walk_in: 'Walk-in', campaign: 'Campaign' });
@@ -49,12 +50,12 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
 
   // type -> source -> sub -> counts
   const tree = new Map();
-  const total = { leads: 0, appts_set: 0, appts_shown: 0, sold: 0 };
+  const total = { leads: 0, visits: 0, appts_set: 0, appts_shown: 0, sold: 0 };
   const node = (map, key, make) => {
     if (!map.has(key)) map.set(key, make());
     return map.get(key);
   };
-  const counts = () => ({ leads: 0, appts_set: 0, appts_shown: 0, sold: 0 });
+  const counts = () => ({ leads: 0, visits: 0, appts_set: 0, appts_shown: 0, sold: 0 });
   for (const [measure, rows] of sets) {
     for (const r of rows) {
       const lead = r.lead_id ? leads.get(String(r.lead_id)) || null : null;
@@ -68,7 +69,7 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
   }
 
   const row = (level, up_type, source, sub_source, c) => ({
-    level, up_type, source, sub_source, leads: c.leads, visits: null, appts_set: c.appts_set,
+    level, up_type, source, sub_source, leads: c.leads, visits: c.visits, appts_set: c.appts_set,
     appts_shown: c.appts_shown, sold: c.sold, closing_ratio: ratio(c.sold, c.leads),
     front_gross: null, back_gross: null, total_gross: null,
   });
@@ -120,7 +121,7 @@ export function sourceTableLines(report, company) {
       return r[key];
     })),
     [],
-    ['Visits: available when the Desk Log is built (showroom visits are not recorded yet).'],
+    ['Visits: customers checked in on the Desk Log.'],
     ['Front / Back / Total Gross: being added from DealerVault (sold deals matched to leads).'],
   ];
 }

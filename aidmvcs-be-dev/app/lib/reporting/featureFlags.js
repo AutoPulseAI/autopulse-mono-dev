@@ -19,6 +19,7 @@ export const FEATURES = Object.freeze({
   kpi_definitions: 'admin',
   reports_page: 'admin',
   daily_performance_email: 'admin',
+  desk_log: 'admin', // Desk Log (Priority 3), app/dealer/desk-log
 });
 
 export function testDealerIds(env = process.env) {

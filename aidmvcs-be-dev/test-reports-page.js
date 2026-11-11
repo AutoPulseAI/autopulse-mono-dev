@@ -151,9 +151,12 @@ test('registry: every Reports KPI has a definition; blocked / needs-data ones ha
     if (k.kind === 'rate') assert.ok(k.denominator, `${k.id} denominator`);
   }
   for (const d of listDashboards()) assert.ok(kpisForDashboard(d.id).length > 0, d.id);
+  // Desk Log (Priority 3) is built: its visit KPIs are live; stage aging and follow-up compliance still wait.
   for (const k of kpisForDashboard('sales').filter((x) => !x.proxy)) {
-    assert.equal(k.state, 'blocked');
-    assert.equal(k.reason, 'Desk Log (Priority 3)');
+    if (['sales.stage_aging', 'sales.followup_compliance'].includes(k.id)) {
+      assert.equal(k.state, 'blocked');
+      assert.equal(k.reason, 'Desk Log (Priority 3)');
+    } else assert.equal(k.state, 'live', k.id);
   }
   assert.ok(kpisForDashboard('sales').some((k) => k.proxy && k.state === 'live'));
   for (const id of ['source.roi', 'source.cost_per_lead']) assert.match(getKpi(id).reason, /needs spend data/i);
@@ -414,7 +417,7 @@ test('Leads list ?report_kpi=: only for admins; ignored for the dealer and its s
     assert.equal(p1.pagination.totalItems, 3);
     assert.deepEqual([...p1.data, ...p2.data].map((l) => String(l._id)), [L.a, L.c, L.b].map(String));
     // Unknown or not-lead KPIs: the plain list.
-    for (const kpi of ['nope', 'dq.dms_import_errors', 'sales.showroom_visits']) {
+    for (const kpi of ['nope', 'dq.dms_import_errors', 'sales.stage_aging']) {
       const list = await leadList(reportLink(kpi));
       assert.equal(list.drill, undefined, kpi);
     }
@@ -600,15 +603,15 @@ test('route: 401 / 403 / 404 / 200', async (t) => {
 test('blocked and needs-data KPIs return a state, not a number', async (t) => {
   if (needDb(t)) return;
   const body = await (await call(base('&dashboard=sales'), auth(ADMIN))).json();
-  const visits = body.kpis.find((k) => k.id === 'sales.showroom_visits');
-  assert.equal(visits.state, 'blocked');
-  assert.equal(visits.reason, 'Desk Log (Priority 3)');
-  assert.equal(visits.value, null);
-  assert.equal(visits.count, null);
+  const aging = body.kpis.find((k) => k.id === 'sales.stage_aging');
+  assert.equal(aging.state, 'blocked');
+  assert.equal(aging.reason, 'Desk Log (Priority 3)');
+  assert.equal(aging.value, null);
+  assert.equal(aging.count, null);
   const proxy = body.kpis.find((k) => k.id === 'sales.proxy_visits');
   assert.equal(proxy.state, 'live');
   assert.equal(proxy.count, 1);
-  for (const kpi of ['sales.showroom_visits', 'source.roi', 'appointments.moved']) {
+  for (const kpi of ['sales.stage_aging', 'source.roi', 'appointments.moved']) {
     const list = await leadList(reportLink(kpi));
     assert.equal(list.drill, undefined, `${kpi}: not clickable, the list ignores it`);
   }

@@ -1,12 +1,10 @@
-// Sales / Desk Log report (SOW 8 Deliverable F, gap G-036; KPI dictionary A-F 3.3). The Desk Log (Deliverable C / J,
-// Priority 3) is not built, so its KPIs are registered as blocked with their frozen definitions, and the interim CRM
-// proxies the dictionary lists are live (labelled "proxy").
-//
-// Reporting contract the Desk Log must write (so these KPIs work from day one): visit_id, dealer_id, lead_id,
-// customer_id, salesperson_id, manager_id, arrived_at, stage, stage_history[{stage, at, by}], to_manager (T.O.) + at,
-// outcome (sold / unsold / pending / delivered), unsold_reason, next_followup_at, followup_completed_at, new_used.
+// Sales / Desk Log report (SOW 8 Deliverable F, gap G-036; KPI dictionary A-F 3.3). Counted from the Desk Log
+// (app/models/DeskLogEntry.js, Priority 3): one row per showroom visit, dated by its check-in. Stage aging and
+// follow-up compliance are still blocked (the follow-up window is not decided). The CRM status proxies stay until
+// the Desk Log is in daily use.
 import { statusRegexFor } from '../normalize.js';
-import { KIND, LEAD_COLUMNS, LEAD_FILTERS, STATE, firstStatusChangeLeads, notYet } from './common.js';
+import { KIND, LEAD_COLUMNS, LEAD_FILTERS, STATE, collection, dealerForms, firstStatusChangeLeads, leadRows,
+  leadsByIds, localDateTime, memo, notYet, passingLeads, windowFor } from './common.js';
 
 const D = 'sales';
 const DESK = 'Desk Log (Priority 3)';
@@ -27,12 +25,75 @@ const proxy = (id, label, groups, what) => ({
   evaluate: async (args, ctx) => ({ rows: await firstStatusChangeLeads(args, ctx, `sales:${id}`, statusRegexFor(groups)) }),
 });
 
+// Desk Log visits checked in during the range (lead filters apply to the visit's lead), one row per visit: id = the
+// visit, lead_id = its lead (the Leads drill-down lists the leads).
+export async function deskVisits(args, ctx) {
+  return memo(ctx, 'desk_visits', async () => {
+    const w = await windowFor(args);
+    const visits = await collection('desklogentries').find({ dealer_id: { $in: dealerForms(args.dealerId) },
+      checked_in_at: { $gte: w.start, $lte: w.end } }).sort({ checked_in_at: 1, _id: 1 }).toArray();
+    const pass = await passingLeads(args, visits.map((v) => String(v.lead_id)));
+    const kept = visits.filter((v) => !pass || pass.has(String(v.lead_id)));
+    const leads = await leadsByIds(kept.map((v) => String(v.lead_id)), ctx);
+    const withLead = kept.filter((v) => leads.get(String(v.lead_id)));
+    const rows = await leadRows(withLead.map((v) => leads.get(String(v.lead_id))), args, ctx);
+    return rows.map((r, i) => {
+      const v = withLead[i];
+      return { ...r, id: String(v._id), checked_in: localDateTime(v.checked_in_at, w.tz), stage: v.stage || '',
+        outcome: v.outcome || '', unsold_reason: v.unsold_reason || '',
+        _reached: Object.fromEntries([...stageTimes(v)].map(([stage, d]) => [stage, d.getTime()])),
+        _g: { ...r._g, outcome: v.outcome || 'Open', reason: v.unsold_reason || 'None', stage: v.stage || 'No stage' } };
+    });
+  });
+}
+
+// When a visit first reached each stage: its stage changes, else its current stage.
+export function stageTimes(v) {
+  const at = new Map();
+  for (const h of v.history || []) {
+    if (h.field === 'stage' && h.to && !at.has(h.to)) at.set(h.to, new Date(h.at));
+  }
+  if (v.stage && !at.has(v.stage)) at.set(v.stage, new Date(v.stage_at || v.checked_in_at));
+  return at;
+}
+
+const VISIT_COLUMNS = Object.freeze([...LEAD_COLUMNS, ['checked_in', 'Checked in'], ['stage', 'Stage'],
+  ['outcome', 'Outcome'], ['unsold_reason', 'Unsold reason']]);
+const visitKpi = (id, label, numerator, extra) => ({
+  id, label, dashboard: D, grain: 'desk_visit', kind: KIND.COUNT, dateBasis: 'DeskLogEntry.checked_in_at',
+  numerator, denominator: null, inclusions: 'Every Desk Log visit.', exclusions: 'Visits of deleted leads.',
+  source: ['desklogentries', 'leads'], filters: LEAD_FILTERS, breakdowns: ['lead_source', 'staff'],
+  columns: VISIT_COLUMNS, ...extra,
+});
+
 export const SALES_KPIS = [
-  blocked('sales.showroom_visits', 'Showroom visits', 'Desk Log visits that arrived in the range.'),
+  visitKpi('sales.showroom_visits', 'Showroom visits', 'Desk Log visits checked in during the range.', {
+    breakdowns: ['lead_source', 'staff', 'stage', 'outcome'],
+    evaluate: async (args, ctx) => ({ rows: await deskVisits(args, ctx) }) }),
+  visitKpi('sales.to_rate', 'T.O. rate', 'Visits (checked in during the range) that reached T.O.', {
+    kind: KIND.RATE, unit: '%', denominator: 'Visits checked in during the range.',
+    evaluate: async (args, ctx) => {
+      const all = await deskVisits(args, ctx);
+      return { rows: all.filter((r) => 'T.O.' in r._reached), denominatorRows: all };
+    } }),
+  visitKpi('sales.appraisals', 'Appraisals', 'Visits (checked in during the range) that reached APPRAISAL.', {
+    evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx))
+      .filter((r) => 'APPRAISAL' in r._reached) }) }),
+  visitKpi('sales.appraisal_to_proposal', 'Appraisal to proposal', 'Visits that reached PROPOSAL after APPRAISAL.', {
+    kind: KIND.RATE, unit: '%', denominator: 'Visits (checked in during the range) that reached APPRAISAL.',
+    evaluate: async (args, ctx) => {
+      const appraised = (await deskVisits(args, ctx)).filter((r) => 'APPRAISAL' in r._reached);
+      const rows = appraised.filter((r) => 'PROPOSAL' in r._reached && r._reached.PROPOSAL >= r._reached.APPRAISAL);
+      return { rows, denominatorRows: appraised };
+    } }),
+  visitKpi('sales.unsold_reasons', 'Unsold', 'Visits (checked in during the range) whose outcome is UNSOLD, by '
+    + 'reason.', { breakdowns: ['reason', 'lead_source', 'staff'],
+    evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx)).filter((r) => r.outcome === 'UNSOLD') }) }),
+  visitKpi('sales.pending_delivered', 'Sold pending / delivered', 'Visits (checked in during the range) whose '
+    + 'outcome is SOLD PENDING or SOLD DELIVERED.', { breakdowns: ['outcome', 'lead_source', 'staff'],
+    evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx))
+      .filter((r) => ['SOLD PENDING', 'SOLD DELIVERED'].includes(r.outcome)) }) }),
   blocked('sales.stage_aging', 'Stage aging', 'Open visits by time since their last stage change.'),
-  blocked('sales.unsold_reasons', 'Unsold reasons', 'Unsold visits by reason.'),
-  blocked('sales.to_rate', 'T.O. rate', 'Visits turned over to a manager.', 'Visits.'),
-  blocked('sales.pending_delivered', 'Pending / delivered', 'Visits with outcome sold pending or delivered.'),
   blocked('sales.followup_compliance', 'Follow-up compliance', 'Unsold visits followed up within N hours.',
     'Unsold visits.'),
   proxy('sales.proxy_visits', 'CRM Sales Visit (proxy)', ['VISITED'], 'Visited (Sales Visit)'),
