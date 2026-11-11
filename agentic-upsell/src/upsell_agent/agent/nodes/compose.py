@@ -407,8 +407,20 @@ def no_promise_after_not_interested(draft: dict[str, Any], decision: dict[str, A
         return
     for key in ("sms_text", "email_body"):
         if text := draft.get(key):
-            kept = _WILL_REACH_OUT.sub("", str(text)).strip()
+            kept = _tidy_spaces(_WILL_REACH_OUT.sub(_keep_break, str(text))).strip()
             draft[key] = kept or "Thanks for letting me know."
+
+
+def _keep_break(m: re.Match) -> str:
+    """A removed sentence leaves the gap it was in: a paragraph break stays one (Naty Coria, Emily Chandler, Sawyer
+    Buffum, 8-9 Nov 2026: "...new car!Thank you" - the email's sign-off was glued on, the grammar check rightly
+    rejected the reply twice and the customer got the "What day this week works best..." template instead)."""
+    tail = re.search(r"\s*$", m.group(0)).group(0)
+    return "\n\n" if "\n" in tail else " "
+
+
+def _tidy_spaces(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+(?=\n)|(?<=\n)[ \t]+", "", re.sub(r"[ \t]{2,}", " ", text)))
 
 
 def one_fee_note(draft: dict[str, Any]) -> None:
