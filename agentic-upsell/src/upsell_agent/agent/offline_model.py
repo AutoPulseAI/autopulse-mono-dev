@@ -358,6 +358,11 @@ def _next_contact(text: str) -> tuple[str, int, int] | None:
     return None
 
 
+_FOUND_ELSEWHERE = re.compile(
+    r"\b(?:already\s+)?(?:found|bought|purchased|got)\s+(?:a|another|one|my|the)\s+(?:car|vehicle|truck|suv)\b"
+    r"|\bfound\s+(?:a\s+)?better\s+(?:deal|price|offer)s?\b", re.IGNORECASE)
+
+
 def _not_interested(text: str, payload: dict[str, Any]) -> dict[str, Any]:
     """MASTER_PLAN_3 C3, client scope Q10. When our last message asked why
     they're no longer interested, whatever they answer is the reason."""
@@ -365,6 +370,10 @@ def _not_interested(text: str, payload: dict[str, Any]) -> dict[str, Any]:
     said = bool(_NOT_INTERESTED.search(text) or _IM_GOOD.match(text))
     reason_match = _NOT_INTERESTED_REASON.search(text)
     reason = next((g for g in reason_match.groups() if g), None) if reason_match else None
+    if not said and (found := _FOUND_ELSEWHERE.search(text)):
+        # "I already bought a car", "nvm i found a better deal" (Betsy, 10 Nov 2026): the real model reads these as
+        # not interested with that reason; the offline stand-in does the same.
+        said, reason = True, reason or found.group(0)
     if awaiting and text.strip() and not reason and "?" not in text:
         # A question back ("is the RAV4 still there?") is the conversation carrying on, not a reason.
         reason = text.strip()

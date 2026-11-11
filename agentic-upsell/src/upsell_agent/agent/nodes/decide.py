@@ -922,14 +922,59 @@ def real_not_interested_reason(reason: Any) -> str | None:
     return str(reason).strip()
 
 
-def not_interested_mode(extraction: dict[str, Any], conversation: ConversationState) -> tuple[str | None, str | None]:
+# Betsy, 10 Nov 2026 ("if a customer says I found a better deal somewhere else ... ask the customer Did you already take
+# delivery of the vehicle?"; Naty Coria "I already bought a car", Emily Chandler "we have found a car", Sawyer Buffum
+# "nvm i found a better deal"). Only picks WHICH not-interested step runs once the AI has read the message as not
+# interested - it never decides that on its own.
+_FOUND_ELSEWHERE = re.compile(
+    r"\b(?:found|bought|purchased|got|picked\s+up|went\s+with|going\s+with|signed\s+for|leased)\b[^.?!]{0,40}"
+    r"\b(?:car|vehicle|truck|suv|van|one|deal|elsewhere|somewhere|another|dealer\w*)\b"
+    r"|\bbetter\s+(?:deal|price|offer|option)s?\b|\b(?:cheaper|lower\s+price)\b[^.?!]{0,30}\b(?:elsewhere|somewhere|"
+    r"another|dealer\w*)\b", re.IGNORECASE)
+# Their answer to "Did you already take delivery?": not yet -> still a live deal, the AI carries on.
+_NOT_YET = re.compile(r"^\W*(?:no|nope|nah|not\s+yet|haven'?t|have\s+not|didn'?t|did\s+not|not\s+really|not\s+"
+                      r"exactly|still\s+deciding|still\s+looking|still\s+shopping)\b", re.IGNORECASE)
+_TOOK_DELIVERY = re.compile(r"\b(?:already|took|taken|picked\s+(?:it\s+)?up|drove\s+(?:it\s+)?home|have\s+it|got\s+it|"
+                            r"delivered|signed|done\s+deal)\b", re.IGNORECASE)
+
+
+FOUND_ELSEWHERE_QUESTION = "Did you already take delivery of the vehicle?"
+
+
+def found_elsewhere_question() -> str:
+    """Betsy's question, or her own wording from AI Studio (Messages > "Found a car elsewhere")."""
+    edited = ai_studio.fixed_text(ai_studio.message("messages", "found_elsewhere_delivery"))
+    return edited or FOUND_ELSEWHERE_QUESTION
+
+
+def found_elsewhere(reason: str | None, text: str | None) -> bool:
+    return bool(_FOUND_ELSEWHERE.search(str(reason or "")) or _FOUND_ELSEWHERE.search(str(text or "")))
+
+
+def not_interested_mode(extraction: dict[str, Any], conversation: ConversationState,
+                        text: str | None = None) -> tuple[str | None, str | None]:
     """(mode, reason) for "not interested / no longer in the market / I'm
     good" (MASTER_PLAN_3 C3, client scope Q10): the AI asks why, once; with a
     reason (or the same answer again after we asked), it notes it and hands
-    the lead to a person, who alone may close it."""
+    the lead to a person, who alone may close it.
+
+    Found or bought a car elsewhere (Betsy, 10 Nov 2026): first "Did you already take delivery of the vehicle?"
+    ("ask_delivery"), once. Taken delivery -> the handoff above; not yet -> the conversation carries on (None)."""
+    ni = conversation.not_interested
+    if ni and ni.delivery_asked_turn and ni.delivery_asked_turn == conversation.turn and conversation.turn > 0:
+        said_text = str(text or "").strip()
+        if _NOT_YET.search(said_text):
+            return None, None
+        if is_yes(said_text) or _TOOK_DELIVERY.search(said_text):
+            return "handoff", ni.reason or real_not_interested_reason(extraction.get("not_interested_reason"))
     reason = real_not_interested_reason(extraction.get("not_interested_reason"))
     said = bool(extraction.get("not_interested")) and float(
         extraction.get("not_interested_confidence") or 0.0) >= NOT_INTERESTED_CONFIDENCE
+    # Not as the answer to our "what changed?" (that answer already hands the lead to a person, scope Q10): only when
+    # the customer brings it up themselves, so they never get two questions in a row.
+    if (said or reason) and not (ni and ni.delivery_asked_turn) and not conversation.awaiting_not_interested_reason \
+            and found_elsewhere(reason, text):
+        return "ask_delivery", reason or str(text or "").strip()[:200]
     if conversation.awaiting_not_interested_reason and (said or reason):
         return "handoff", reason
     if not said:
@@ -1506,7 +1551,8 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
         if after_hours.mode == "offer":
             after_hours.mode, after_hours.record = None, None
             after_hours.why = "No after-hours choice: the customer asked us to get back to them on a date."
-    not_interested, not_interested_reason = (None, None) if sold_hold else not_interested_mode(extraction, conversation)
+    not_interested, not_interested_reason = (None, None) if sold_hold else not_interested_mode(
+        extraction, conversation, text if state.trigger == "inbound_message" else None)
     after_hours_blocking = after_hours.mode in ("offer", "later") or state.trigger == "resume_at_opening"
     # Only a needed_by Validate accepted THIS turn (never an older stored value, architecture
     # decision 26's wording is about "an urgent message"): a stale needed_by left over from an
@@ -1614,7 +1660,7 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             visit_offer=plan.as_dict() if plan.fire else None,
             visit_handoff=plan.handoff,
             visit_pending=plan.fire or conversation.awaiting_visit_pick,
-            not_interested=not_interested,
+            not_interested="ask_why" if not_interested == "ask_delivery" else not_interested,
             not_interested_reason=not_interested_reason,
             loop=loop,
         ))
@@ -1750,7 +1796,13 @@ async def decide(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[st
             decision["vehicle_check"] = None
     decision["cannot_supply"] = (cannot.as_dict() if cannot and decision["action"] not in
                                  ("stop", "handoff", "offer_human") else None)
-    if not_interested == "ask_why" and state.trigger == "inbound_message":
+    if not_interested == "ask_delivery" and decision["action"] not in ("stop", "handoff", "offer_human"):
+        # Betsy, 10 Nov 2026: her question, word for word (AI Studio > Messages), placed like her other fixed answers.
+        decision["cannot_supply"] = {"topic": "found_elsewhere_delivery", "text": found_elsewhere_question(),
+                                     "offers_times": False, "escalates": False}
+        decision["manager_check"] = {"why": "Customer says they found or bought a car elsewhere: we asked whether "
+                                            "they took delivery; a person decides whether to close the lead"}
+    elif not_interested == "ask_why" and state.trigger == "inbound_message":
         # David Garcia, 30 Oct 2026: he never answered "what changed?", so the lead was never escalated. The manager is
         # told at once; a person decides whether to close it (the AI never closes a lead).
         decision["manager_check"] = {"why": "Customer says they're not interested any more: a person decides whether "

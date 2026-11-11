@@ -122,6 +122,9 @@ class NotInterestedState(BaseModel):
     # The reply (ConversationState.turn) that asked why.
     asked_turn: int = 0
     reason: str | None = None
+    # Betsy, 10 Nov 2026: the reply that asked "Did you already take delivery of the vehicle?" (they said they found
+    # or bought a car elsewhere). Asked once; the answer decides between the handoff and carrying on.
+    delivery_asked_turn: int = 0
 
 
 class HumanContactState(BaseModel):
@@ -273,6 +276,7 @@ def after_turn(
     shown_details: dict[str, dict] | None = None,
     focus_vin: str | None = None,
     asked_when_free: bool = False,
+    asked_delivery: bool = False,
 ) -> ConversationState:
     """The state after one turn. `asked_slots`: what the reply that went out
     asked for (Decide's slots, or the template's own question). `answered`:
@@ -332,7 +336,10 @@ def after_turn(
             updated.confirms[confirmed_fact] = updated.confirms.get(confirmed_fact, 0) + 1
         if asked_when_free and not used_template:
             updated.asked_when_free_turn = updated.turn
-        if action == "ask_why" and not used_template:
+        if asked_delivery and not used_template:
+            updated.not_interested = (updated.not_interested or NotInterestedState()).model_copy(
+                update={"delivery_asked_turn": updated.turn})
+        elif action == "ask_why" and not used_template:
             updated.not_interested = NotInterestedState(asked_turn=updated.turn)
     if not_interested_reason:
         updated.not_interested = (updated.not_interested or NotInterestedState()).model_copy(

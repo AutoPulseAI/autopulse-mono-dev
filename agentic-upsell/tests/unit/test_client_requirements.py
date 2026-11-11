@@ -135,6 +135,9 @@ async def test_replies_never_promise_the_team(mongo):
     ("What would my monthly payment be?", "Our goal is to get you the lowest possible payment"),
     ("What's my credit score?", "We need to meet with you in person to discuss your credit"),
     ("What's the out the door price?", "Our list price is accurate"),
+    # Mustafa Abusaab, 9 Nov 2026 (Betsy: "stumped the ai"): a cash-price question gets her price answer.
+    ("Is this the price for cash?", "Our list price is accurate"),
+    ("I am paying cash. Is this the price?", "Our list price is accurate"),
     ("Can you send me a video of it?", "I will make sure you get some photos as soon as possible"),
     ("I live out of state", "That is no problem at all; we work with customers who are out of state"),
 ])

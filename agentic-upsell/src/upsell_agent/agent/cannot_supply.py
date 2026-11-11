@@ -39,7 +39,13 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
           # Client, 18 Oct 2026 (Freder: "put the full out-the-door in writing with the doc fee, tax and DMV listed" -
           # the AI promised to write it up): itemized fees are the same answer - appointment first.
           r"\bitemi[sz]\w*|\bdoc(?:umentation)?\s+fees?\b|\bbreak\s*down\b[^.?!]{0,30}\b(?:fees?|price|costs?)\b|"
-          r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b")),
+          r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b|"
+          # Mustafa Abusaab, 9 Nov 2026 ("I am paying cash. Is this the price?", "Is this the price for cash?"): the
+          # AI repeated the listed price three times and went to a manager (Betsy: "stumped the ai"). Whether the
+          # price is the cash price is her out-the-door answer: the list price is the total cost to purchase.
+          r"\bcash\s+price\b|\b(?:price|cost)\b[^.?!]{0,20}\b(?:for|if|when|with|paying)\s+(?:i\s+)?(?:pay\w*\s+)?"
+          r"(?:in\s+)?cash\b|\bcash\b[^?]{0,40}\b(?:is|that'?s|it'?s)\s+(?:this|that|it)?\s*(?:the\s+)?"
+          r"(?:price|cost)\b")),
     (NEGOTIATE, (r"\bnegotia\w*|\b(?:work|deal)\s+(?:with|on)\s+(?:the\s+|your\s+)?price\b|\b(?:come|go)\s+down\s+on\b|"
                 r"\blower\s+(?:the\s+|your\s+)?price\b|\bbest\s+price\b|\bwiggle\s+room\b|\bflexible\s+on\b")),
     # Betsy, 22 Oct 2026: "more photos" of the car is answered with its photos by MMS (agent/vehicle_media.py) - a

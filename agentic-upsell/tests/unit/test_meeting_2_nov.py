@@ -350,3 +350,22 @@ def test_a_texted_name_keeps_its_own_capitals():
     assert name_as_written("Darren McIntosh") == "Darren McIntosh"
     assert name_as_written("SEAN  BURROWES") == "Sean Burrowes"
     assert name_as_written("maria lopez") == "Maria Lopez"
+
+
+@pytest.mark.parametrize(("body", "want"), [
+    ("Hi Naty,\n\nCongratulations on your new car! Our sales manager will reach out shortly.\n\nThank you",
+     "Hi Naty,\n\nCongratulations on your new car!\n\nThank you"),
+    ("Hi Emily,\n\nI'm glad you found a car! A manager will follow up with you.\n\nThank you",
+     "Hi Emily,\n\nI'm glad you found a car!\n\nThank you"),
+    ("Thanks for letting me know. Someone will reach out shortly. Congratulations!",
+     "Thanks for letting me know. Congratulations!"),
+])
+def test_removing_the_promise_keeps_the_emails_paragraphs(body, want):
+    """Naty Coria / Emily Chandler / Sawyer Buffum, 8-9 Nov 2026: "...new car!Thank you" was rejected by the grammar
+    check twice and the customer got "What day this week works best for you to come in?" instead."""
+    from upsell_agent.agent.nodes.compose import no_promise_after_not_interested
+    from upsell_agent.guardrails.grammar import check_draft_grammar
+    draft = {"email_body": body, "sms_text": "Thanks for letting me know."}
+    no_promise_after_not_interested(draft, {"not_interested": {"mode": "handoff"}})
+    assert draft["email_body"] == want
+    assert not check_draft_grammar(draft)

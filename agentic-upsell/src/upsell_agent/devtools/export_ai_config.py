@@ -240,6 +240,9 @@ def messages() -> list[dict[str, Any]]:
             "Thanks, {first_name}! I'll pick this up when we open at {opens_at}.")}},
         {"key": "after_hours_resume", "name": "Morning message (we're open)", "content": {"message": fixed(
             "Good morning, {first_name}! We're open now. What day this week works best for you to come in?")}},
+        # Betsy, 10 Nov 2026: a customer who found or bought a car elsewhere is asked this once (agent/nodes/decide.py).
+        {"key": "found_elsewhere_delivery", "name": "Customer found a car elsewhere", "content": {"message": fixed(
+            "Did you already take delivery of the vehicle?")}},
         {"key": "repeat_lead", "name": "Repeat lead within 30 days", "content": {"message": fixed(
             mv["sms_text"], email=mv["email_body"], subject=mv["email_subject"])}},
         {"key": "no_phone_email", "name": "First email when there's no phone number", "content": {"message": fixed(
@@ -583,7 +586,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 37
+DEFAULTS_REVISION = 38
 
 
 def export() -> dict[str, Any]:
