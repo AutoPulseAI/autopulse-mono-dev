@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-03T17:40:58.462858+00:00",
- "revision": 37,
+ "exported_at": "2026-11-11T21:08:42.867858+00:00",
+ "revision": 38,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1250,6 +1250,22 @@
   },
   {
    "type": "messages",
+   "key": "found_elsewhere_delivery",
+   "name": "Customer found a car elsewhere",
+   "content": {
+    "message": {
+     "mode": "fixed",
+     "text": "Did you already take delivery of the vehicle?",
+     "email_text": null,
+     "email_subject": null,
+     "instruction": null,
+     "fallback": null
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "messages",
    "key": "repeat_lead",
    "name": "Repeat lead within 30 days",
    "content": {
@@ -1659,7 +1675,7 @@
    "content": {
     "trigger": {
      "type": "customer_says",
-     "pattern": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b|\\bitemi[sz]\\w*|\\bdoc(?:umentation)?\\s+fees?\\b|\\bbreak\\s*down\\b[^.?!]{0,30}\\b(?:fees?|price|costs?)\\b|\\bfees?\\b[^.?!]{0,30}\\bin\\s+writing\\b"
+     "pattern": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b|\\bitemi[sz]\\w*|\\bdoc(?:umentation)?\\s+fees?\\b|\\bbreak\\s*down\\b[^.?!]{0,30}\\b(?:fees?|price|costs?)\\b|\\bfees?\\b[^.?!]{0,30}\\bin\\s+writing\\b|\\bcash\\s+price\\b|\\b(?:price|cost)\\b[^.?!]{0,20}\\b(?:for|if|when|with|paying)\\s+(?:i\\s+)?(?:pay\\w*\\s+)?(?:in\\s+)?cash\\b|\\bcash\\b[^?]{0,40}\\b(?:is|that'?s|it'?s)\\s+(?:this|that|it)?\\s*(?:the\\s+)?(?:price|cost)\\b"
     },
     "tree": {
      "id": "answer",
