@@ -1,3 +1,8 @@
+"use client";
+// A Dashboard number. Its link opens in this tab (client, 11 Nov 2026), with a way back (../../components/backLink.js).
+import Link from "next/link";
+import { rememberBack } from "../../components/backLink";
+
 export default function DashboardCard({iconClass, count, label, link, description}) {
     const CardContent = (
         <div className="w_card d_counts_card">
@@ -22,14 +27,9 @@ export default function DashboardCard({iconClass, count, label, link, descriptio
     return (
         <div className="col col-lg-3 col-md-6 col-6">
             {link ? (
-                <a
-                    href={link}
-                    className="d-block"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
+                <Link href={link} className="d-block" onClick={() => rememberBack(link)}>
                     {CardContent}
-                </a>
+                </Link>
             ) : (
                 CardContent
             )}

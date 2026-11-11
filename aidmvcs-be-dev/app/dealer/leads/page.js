@@ -5,6 +5,7 @@ import LeadList from "./components/LeadList";
 import LeadForm from "./components/LeadForm";
 import ViewConversations from "./components/viewConversations";
 import { Button } from "react-bootstrap";
+import { BackButton } from "../components/backLink";
 
 // Content component that uses useSearchParams
 function LeadManagementContent() {
@@ -126,6 +127,7 @@ function LeadManagementContent() {
                   <i className="fa-solid fa-arrow-left"></i>
                 </Button>
               )}
+              {!selectedLead && <BackButton />}
               <h3 className="page_title mb-0">Leads</h3>
               {isMobile && (
               <Button
