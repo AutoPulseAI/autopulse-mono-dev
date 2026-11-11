@@ -167,7 +167,8 @@ const SEPARATORS = /^[\s/:|,\-\u2013\u2014]+|[\s/:|,\-\u2013\u2014]+$/g;
 function withoutProvider(value, name) {
   for (const [re] of PROVIDER_ALIASES) {
     const front = new RegExp(`^\\s*(?:${re.source})`, "i");
-    if (front.test(value)) return value.replace(front, "").replace(SEPARATORS, "");
+    // "CARFAX.com" is the provider's own name, not a sub-source: a leftover domain ending goes too.
+    if (front.test(value)) return value.replace(front, "").replace(/^\.(com|net|org|ca)\b/i, "").replace(SEPARATORS, "");
   }
   if (name && value.toLowerCase().startsWith(name.toLowerCase())) {
     return value.slice(name.length).replace(SEPARATORS, "");

@@ -39,9 +39,8 @@ const ratio = (sold, leads) => (leads ? Math.round((sold / leads) * 10000) / 100
  * @param {{basis?: 'timeframe'|'current'}} opts
  * @returns {Promise<{basis: string, rows: object[]}>}  rows in report order; level = total | type | source | sub
  */
-export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME } = {}) {
+export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {} } = {}) {
   if (!Object.values(BASIS).includes(basis)) throw new RangeError(`basis must be ${Object.values(BASIS).join(' or ')}`);
-  const ctx = {};
   const w = await windowFor(args);
   const sets = [];
   for (const [measure, id] of MEASURES) sets.push([measure, (await evaluateKpi(id, args, ctx)).rows]);
@@ -93,7 +92,7 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME } = {}) 
 }
 
 // A spreadsheet cell: quoted, and never read as a formula (a sub-source comes from a provider's email).
-function cell(value) {
+export function csvCell(value) {
   if (value == null) return '';
   let s = String(value);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
@@ -107,17 +106,13 @@ export const CSV_COLUMNS = Object.freeze([
   ['total_gross', 'Total Gross'],
 ]);
 
-/** The report as CSV, laid out like Betsy's eLead PDF (a few header lines, then the table). */
-export function sourcePerformanceCsv(report, { company, from, to, generated, filters = '' }) {
-  const lines = [
-    ['Source and Sub Source Performance'],
-    [company],
-    [`Generated: ${generated}`],
-    [`Report Period: ${from} - ${to}`],
-    [`Counted: ${report.basis === BASIS.CURRENT ? 'From current leads (leads received in the period only)'
-      : 'Within timeframe (everything in the period, whenever the lead came in)'}`],
-    ...(filters ? [[`Filters: ${filters}`]] : []),
-    [],
+export const countedText = (basis) => (basis === BASIS.CURRENT
+  ? 'From current leads (leads received in the period only)'
+  : 'Within timeframe (everything in the period, whenever the lead came in)');
+
+// The table's lines (column labels, rows, the notes on visits and gross), as arrays of cells.
+export function sourceTableLines(report, company) {
+  return [
     CSV_COLUMNS.map(([, label]) => label),
     ...report.rows.map((r, i) => CSV_COLUMNS.map(([key]) => {
       if (key === 'company') return i === 0 ? company : '';
@@ -128,5 +123,20 @@ export function sourcePerformanceCsv(report, { company, from, to, generated, fil
     ['Visits: available when the Desk Log is built (showroom visits are not recorded yet).'],
     ['Front / Back / Total Gross: being added from DealerVault (sold deals matched to leads).'],
   ];
-  return `${lines.map((l) => l.map(cell).join(',')).join('\r\n')}\r\n`;
+}
+
+export const toCsv = (lines) => `${lines.map((l) => l.map(csvCell).join(',')).join('\r\n')}\r\n`;
+
+/** The report as CSV, laid out like Betsy's eLead PDF (a few header lines, then the table). */
+export function sourcePerformanceCsv(report, { company, from, to, generated, filters = '' }) {
+  return toCsv([
+    ['Source and Sub Source Performance'],
+    [company],
+    [`Generated: ${generated}`],
+    [`Report Period: ${from} - ${to}`],
+    [`Counted: ${countedText(report.basis)}`],
+    ...(filters ? [[`Filters: ${filters}`]] : []),
+    [],
+    ...sourceTableLines(report, company),
+  ]);
 }

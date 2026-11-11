@@ -23,6 +23,7 @@ import LeadSourceDataPie from "./components/LeadSourceDataPie";
 import LeadSourceDistributionPie from "./components/LeadSourceDistributionPie";
 import ReplyCohortsSection from "./components/ReplyCohortsSection";
 import ReportSections from "../reports/components/ReportSections";
+import DownloadReport from "../reports/components/DownloadReport";
 import { reportsVisible } from "../reports/reportsAccess";
 //import ReportAnalytics from "./components/ReportAnalytics";
 
@@ -295,6 +296,9 @@ function Dashboard() {
                 onChange={handleDateRangeChange}
                 timezone={dealerTimezone}
               />
+              {reportsAllowed === true && (
+                <DownloadReport dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />
+              )}
               <small className="text-muted" style={{fontSize: '0.75rem'}} title={`All dates are interpreted in your business timezone: ${dealerTimezone}`}>
                 <i className="fa-solid fa-clock me-1"></i>
                 {dealerTimezone.split('/').pop()}
