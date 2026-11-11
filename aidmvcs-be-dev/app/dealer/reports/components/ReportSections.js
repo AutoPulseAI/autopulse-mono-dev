@@ -1,14 +1,15 @@
 "use client";
-// The reports on the Dashboard (SOW 8 Deliverable F), under the Dashboard's headline cards and its date picker: one
-// filter bar, then one section per question a manager asks (11 Nov 2026: one page in sections, not tabs; Bibi:
-// clickable charts). Every SOW dashboard is in one section:
-//   Where leads come from = Lead source / ROI; What happened to them = Executive + Appointments;
-//   Who did the work = AI operations + BDC productivity; Sales & profit = Sales / Desk Log;
+// The reports on the Dashboard (SOW 8 Deliverable F): one row of tags under the Dashboard's headline cards. Nothing
+// is shown or loaded until a tag is picked (11 Nov 2026: keep the Dashboard as clean as before, no extra server load);
+// a tag shows that one report with its filter bar and clickable charts (Bibi), and loads only that report. Every SOW
+// dashboard is behind one tag:
+//   Lead sources = Lead source / ROI; Leads & appointments = Executive + Appointments;
+//   AI & staff = AI operations + BDC productivity; Sales & profit = Sales / Desk Log;
 //   Service = Service retention; Data health = Data quality / compliance.
-// A section loads its reports only while it is open. Every bar or slice opens the Leads list with exactly those leads
-// (/dealer/leads?report_kpi=<id>, same dates and filters; app/api/leads/route.js), whose Export CSV is the list.
-// "Show all numbers" in each section has every number with its definition, its tables and what is not available yet.
-// Numbers come from GET /api/reports/kpis (app/lib/reporting/registry.js); a 404 hides the whole thing.
+// Every bar or slice opens the Leads list with exactly those leads (/dealer/leads?report_kpi=<id>, same dates and
+// filters; app/api/leads/route.js), whose Export CSV is the list. "Show all numbers" has every number with its
+// definition, the tables and what is not available yet. Numbers come from GET /api/reports/kpis
+// (app/lib/reporting/registry.js); a 404 hides the whole thing.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -20,17 +21,19 @@ import { reportQuery, reportsGet } from "../reportsApi";
 
 const ALL_TIME_FROM = "2015-01-01";
 const NO_FILTERS = { source: "", lead_source: "", assigned_to: "", actor: "", appointment_type: "" };
-const OPEN_KEY = "dashboard_report_sections";
+const ACTIVE_KEY = "dashboard_report_tag";
 
 // own: the reports whose numbers the section lists under "Show all numbers". uses: also read for its charts.
 export const SECTIONS = Object.freeze([
-  { key: "sources", title: "Where leads come from", own: ["lead_source"], uses: [], open: true },
-  { key: "outcomes", title: "What happened to them", own: ["executive", "appointments"], uses: [], open: true },
-  { key: "work", title: "Who did the work: AI and staff", own: ["ai", "bdc"], uses: ["appointments"], open: true },
-  { key: "sales", title: "Sales & profit", own: ["sales"], uses: ["executive"], open: true },
-  { key: "service", title: "Service", own: ["service"], uses: [], open: false },
-  { key: "health", title: "Data health", own: ["data_quality"], uses: [], open: false },
+  { key: "sources", tag: "Lead sources", title: "Where leads come from", own: ["lead_source"], uses: [] },
+  { key: "outcomes", tag: "Leads & appointments", title: "What happened to the leads", own: ["executive", "appointments"],
+    uses: [] },
+  { key: "work", tag: "AI & staff", title: "Who did the work: AI and staff", own: ["ai", "bdc"], uses: ["appointments"] },
+  { key: "sales", tag: "Sales & profit", title: "Sales & profit", own: ["sales"], uses: ["executive"] },
+  { key: "service", tag: "Service", title: "Service", own: ["service"], uses: [] },
+  { key: "health", tag: "Data health", title: "Data health", own: ["data_quality"], uses: [] },
 ]);
+const DEFINITIONS = "definitions";
 
 // Cards left out of "Show all numbers" because the headline cards above already show the same number (the reports
 // leave duplicate bookings - same lead, day and time - out). They still feed the charts and tables, which split them.
@@ -40,12 +43,13 @@ export const OVERVIEW_DUPLICATES = new Set([
   "source.leads", "source.replied_leads", "source.appointments", "source.shown",
 ]);
 
-function readOpen() {
-  const fallback = Object.fromEntries(SECTIONS.map((s) => [s.key, s.open]));
+// The picked tag, kept for this browser tab so Back from a Leads list returns to the same report. None = nothing shown.
+function readActive() {
   try {
-    return { ...fallback, ...JSON.parse(sessionStorage.getItem(OPEN_KEY) || "{}") };
+    const v = sessionStorage.getItem(ACTIVE_KEY);
+    return SECTIONS.some((s) => s.key === v) || v === DEFINITIONS ? v : null;
   } catch {
-    return fallback;
+    return null;
   }
 }
 
@@ -108,28 +112,24 @@ function AllNumbers({ section, kpis, k, linkFor }) {
   );
 }
 
-function Section({ def, open, onToggle, reports, linkFor, tz }) {
+function Section({ def, reports, linkFor, tz }) {
   const all = [...def.own, ...def.uses];
   const loaded = all.map((d) => reports[d]).filter(Boolean);
   const byId = new Map(loaded.flatMap((r) => r.kpis.map((x) => [x.id, x])));
   const k = (id) => byId.get(id);
   const kpisOf = (d) => reports[d]?.kpis || [];
   const ownKpis = def.own.flatMap(kpisOf);
-  const loading = open && loaded.length < all.length;
+  const loading = loaded.length < all.length;
   const first = loaded[0];
   return (
     <div className="mb-3">
-      <button type="button" className="w_card w-100 d-flex align-items-center text-start border-0 mb-2"
-        onClick={onToggle} aria-expanded={open}>
+      <div className="d-flex align-items-center mb-2">
         <h3 className="w_card_title mb-0 me-auto">{def.title}</h3>
-        {open && first && (
-          <small className="text-muted me-3">
-            Updated {moment(first.last_updated).tz(tz).format("MMM D, h:mm A")}
-          </small>
+        {first && (
+          <small className="text-muted">Updated {moment(first.last_updated).tz(tz).format("MMM D, h:mm A")}</small>
         )}
-        <i className={`fa-solid fa-chevron-${open ? "up" : "down"}`}></i>
-      </button>
-      {open && (loading ? (
+      </div>
+      {loading ? (
         <div className="text-center py-4"><Spinner animation="border" variant="dark" size="sm" /></div>
       ) : (
         <>
@@ -148,7 +148,7 @@ function Section({ def, open, onToggle, reports, linkFor, tz }) {
           <SectionCharts section={def.key} k={k} kpisOf={kpisOf} range={first?.range} linkFor={linkFor} />
           <AllNumbers section={def.key} kpis={ownKpis} k={k} linkFor={linkFor} />
         </>
-      ))}
+      )}
     </div>
   );
 }
@@ -157,11 +157,10 @@ function Section({ def, open, onToggle, reports, linkFor, tz }) {
 export default function ReportSections({ dealerId, tz, range }) {
   const [filters, setFilters] = useState(NO_FILTERS);
   const [options, setOptions] = useState({});
-  const [open, setOpen] = useState(readOpen);
+  const [active, setActive] = useState(readActive);
   // dashboard id -> { key, report }; key is the query it answers, so a changed range or filter refetches.
   const [store, setStore] = useState({});
   const [definitions, setDefinitions] = useState(null);
-  const [showDefinitions, setShowDefinitions] = useState(false);
   const [error, setError] = useState(null);
   const [hidden, setHidden] = useState(false);
 
@@ -200,14 +199,16 @@ export default function ReportSections({ dealerId, tz, range }) {
     else setError(e.message);
   }, []);
 
+  const section = SECTIONS.find((s) => s.key === active) || null;
+  // The filter bar's choices, once, only after a report is picked.
+  const needOptions = Boolean(section) && !options.loaded;
   useEffect(() => {
-    if (!dealerId) return;
-    reportsGet({ dealer_id: dealerId, options: 1 }).then(setOptions).catch(fail);
-  }, [dealerId, fail]);
+    if (!dealerId || !needOptions) return;
+    reportsGet({ dealer_id: dealerId, options: 1 }).then((o) => setOptions({ ...o, loaded: true })).catch(fail);
+  }, [dealerId, needOptions, fail]);
 
-  // The reports the open sections need, each fetched once per query.
-  const wanted = useMemo(() => [...new Set(SECTIONS.filter((s) => open[s.key]).flatMap((s) => [...s.own, ...s.uses]))],
-    [open]);
+  // Only the picked report's data, each fetched once per query (and cached by the server for five minutes).
+  const wanted = useMemo(() => (section ? [...section.own, ...section.uses] : []), [section]);
   useEffect(() => {
     if (!params) return undefined;
     let live = true;
@@ -224,15 +225,20 @@ export default function ReportSections({ dealerId, tz, range }) {
   }, [queryKey, wanted, fail]);
 
   useEffect(() => {
-    if (!showDefinitions || definitions || !dealerId) return;
+    if (active !== DEFINITIONS || definitions || !dealerId) return;
     reportsGet({ dealer_id: dealerId, definitions: 1 }).then(setDefinitions).catch(fail);
-  }, [showDefinitions, definitions, dealerId, fail]);
+  }, [active, definitions, dealerId, fail]);
 
-  const toggle = (key) => setOpen((o) => {
-    const next = { ...o, [key]: !o[key] };
-    try { sessionStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* not kept; fine */ }
-    return next;
-  });
+  // Click a tag to show its report; click it again to hide it.
+  const pick = (key) => {
+    const next = active === key ? null : key;
+    setActive(next);
+    try {
+      if (next) sessionStorage.setItem(ACTIVE_KEY, next);
+      else sessionStorage.removeItem(ACTIVE_KEY);
+    } catch { /* not kept; fine */ }
+  };
+  const tags = [...SECTIONS.map((s) => [s.key, s.tag]), [DEFINITIONS, "How numbers are counted"]];
 
   if (hidden) return null;
   // Only answers to the current query are shown; older ones wait behind the spinner.
@@ -240,23 +246,26 @@ export default function ReportSections({ dealerId, tz, range }) {
     .map(([d, v]) => [d, v.report]));
 
   return (
-    <div className="mt-2">
-      <h3 className="page_title mb-2">Reports</h3>
-      <FilterBar filters={filters} onFilters={setFilters} options={options} />
-      {error && <Alert variant="danger">{error}</Alert>}
-      {SECTIONS.map((def) => (
-        <Section key={def.key} def={def} open={Boolean(open[def.key])} onToggle={() => toggle(def.key)}
-          reports={reports} linkFor={linkFor} tz={tz} />
-      ))}
-      <div className="mb-3">
-        <button type="button" className="w_card w-100 d-flex align-items-center text-start border-0 mb-2"
-          onClick={() => setShowDefinitions(!showDefinitions)} aria-expanded={showDefinitions}>
-          <h3 className="w_card_title mb-0 me-auto">How each number is counted</h3>
-          <i className={`fa-solid fa-chevron-${showDefinitions ? "up" : "down"}`}></i>
-        </button>
-        {showDefinitions && (definitions ? <Definitions data={definitions} />
-          : <div className="text-center py-4"><Spinner animation="border" variant="dark" size="sm" /></div>)}
+    <div className="mt-2 mb-3">
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span className="text-muted small me-1">Reports:</span>
+        {tags.map(([key, label]) => (
+          <Button key={key} size="sm" className="rounded-pill" variant={active === key ? "dark" : "outline-dark"}
+            onClick={() => pick(key)} aria-pressed={active === key}>{label}</Button>
+        ))}
+        {active && (
+          <Button size="sm" variant="link" className="text-muted" onClick={() => pick(active)}>Hide</Button>
+        )}
       </div>
+      {error && <Alert variant="danger">{error}</Alert>}
+      {section && (
+        <>
+          <FilterBar filters={filters} onFilters={setFilters} options={options} />
+          <Section def={section} reports={reports} linkFor={linkFor} tz={tz} />
+        </>
+      )}
+      {active === DEFINITIONS && (definitions ? <Definitions data={definitions} />
+        : <div className="text-center py-4"><Spinner animation="border" variant="dark" size="sm" /></div>)}
     </div>
   );
 }
