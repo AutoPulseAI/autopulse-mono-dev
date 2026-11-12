@@ -36,12 +36,26 @@ const tradeInSchema = new mongoose.Schema(
 
     status: { type: String, enum: TRADE_IN_STATUSES, required: true, default: 'open' },
 
+    // SOW Deliverable I (G-062 / G-063). Payoff and lienholder are typed by staff (none of our sources carries a
+    // lienholder; DealerVault has the payoff only for sold deals, on the Deal). Shown to managers only.
+    payoff_amount: { type: Number, min: 0, default: undefined },
+    lienholder: { type: String, trim: true, default: undefined },
+    // Appraisal history: every change to a value (offer, ACV, payoff, miles, condition) - who, when, from, to.
+    value_history: {
+      type: [new mongoose.Schema({
+        at: { type: Date }, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, by_name: { type: String },
+        field: { type: String }, from: { type: mongoose.Schema.Types.Mixed }, to: { type: mongoose.Schema.Types.Mixed },
+      }, { _id: false })],
+      default: undefined,
+    },
+
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );
 
 tradeInSchema.index({ dealer_id: 1, customer_id: 1 });
+tradeInSchema.index({ dealer_id: 1, vin: 1 });
 
 tradeInSchema.pre('validate', function () {
   if (!this.vin && !this.raw_adf_payload_id) this.invalidate('vin', 'VIN is required for manual trades');

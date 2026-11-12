@@ -123,6 +123,8 @@ async function pushIfMissing(customerId, arrayField, matchValue, entry) {
     {
       _id: customerId,
       [`${arrayField}.value`]: { $ne: matchValue },
+      // G-061: a contact staff removed from this customer is never added back by a later lead or import.
+      removed_contacts: { $not: { $elemMatch: { kind: arrayField === "emails" ? "email" : "phone", value: matchValue } } },
     },
     { $push: { [arrayField]: entry } }
   );

@@ -35,8 +35,11 @@ export function messageEntry(m) {
   const actor = inbound ? "customer" : m.ai_generated ? "ai" : m.message_by ? "staff" : "system";
   const verb = inbound ? `${channel} from the customer` : `${channel} sent${m.status && !["sent", "delivered"].includes(m.status) ? ` (${m.status})` : ""}`;
   const subject = m.communication_type === "email" && m.subject ? `${m.subject} — ` : "";
+  const text = `${verb}: ${subject}${short(m.mail_content)}`;
+  const full = `${verb}: ${subject}${short(m.mail_content, 4000)}`;
+  // G-026: the whole message is one click away ("more") when the line is cut short.
   return { type: "activity", kind: inbound ? "message_in" : "message_out", actor, at: m.timestamp || m.date,
-    lead_id: m.lead_id, text: `${verb}: ${subject}${short(m.mail_content)}` };
+    lead_id: m.lead_id, text, ...(full !== text ? { full } : {}) };
 }
 
 export function stageEntries(state) {
@@ -60,6 +63,11 @@ export function staffEntry(a) {
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action === "customer_merged" ? `merged the customer ${a.from || ""} into this one${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
+    : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
+    : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`
+    : a.action === "contact_set_primary" ? `made ${a.to} the main ${a.from}`
+    : a.action === "contact_label" ? `relabelled the ${a.from} ${a.to}`
     : a.action === "customer_merge_undone" ? `undid the merge of ${a.to || "a customer"} into this one`
     : a.action === "customer_merged_away" ? `merged this customer into ${a.to || "another customer"}`
     : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"
@@ -71,10 +79,35 @@ export function staffEntry(a) {
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };
 }
 
+// Sales appointments on the timeline (SOW D, G-026): each booking's own history (booked, moved, status changes,
+// cancelled, showed / no-show; bookingService.js), or "booked" alone for a booking from before the history existed.
+const APPT_WHO = { ai: "ai", staff: "staff", customer: "customer", system: "system" };
+const slotText = (v) => (v && (v.date || v.time) ? `${v.date || ""} ${v.time || ""}`.trim() : "");
+export function bookingEntries(b) {
+  const kind = b.appointment_type === "service" ? "service" : "sales";
+  const base = { type: "activity", lead_id: b.lead_id };
+  const history = Array.isArray(b.history) ? b.history : [];
+  if (!history.length) {
+    return [{ ...base, kind: "appointment_created", actor: APPT_WHO[b.created_by] || "system", at: b.createdAt,
+      text: `Appointment booked (${kind})${b.bookingTime ? ` for ${b.bookingTime}` : ""}` }];
+  }
+  return history.filter((h) => h?.at).map((h) => {
+    const who = h.actor_name ? `${h.actor_name}: ` : "";
+    const text = h.action === "created" ? `Appointment booked (${kind})${slotText(h.to) ? ` for ${slotText(h.to)}` : ""}`
+      : h.action === "rescheduled" ? `Appointment moved${slotText(h.from) ? ` from ${slotText(h.from)}` : ""}${slotText(h.to) ? ` to ${slotText(h.to)}` : ""}`
+      : h.action === "cancelled" ? "Appointment cancelled"
+      : h.action === "showed" ? "Customer showed for the appointment"
+      : h.action === "no_show" ? "Customer didn't show for the appointment"
+      : h.action === "status_changed" ? `Appointment ${h.to?.booking_status || "updated"}`
+      : `Appointment ${String(h.action || "updated").replace(/_/g, " ")}`;
+    return { ...base, kind: `appointment_${h.action}`, actor: APPT_WHO[h.actor_type] || "system", at: h.at, text: `${who}${text}` };
+  });
+}
+
 export async function buildActivity({ dealerId, customerId, customerIds = null, leadIds }, { db = mongoose.connection.db, ActivityLog } = {}) {
   const ids = leadIds.map((id) => new mongoose.Types.ObjectId(String(id)));
   const strIds = leadIds.map(String);
-  const [staff, messages, states, consents] = await Promise.all([
+  const [staff, messages, states, consents, bookings] = await Promise.all([
     ActivityLog.find({ dealer_id: String(dealerId), $or: [{ customer_id: { $in: customerIds || [customerId] } }, { lead_id: { $in: ids } }] })
       .sort({ at: -1 }).limit(MAX).lean(),
     ids.length ? db.collection("emails").find({ lead_id: { $in: ids } })
@@ -83,12 +116,15 @@ export async function buildActivity({ dealerId, customerId, customerIds = null, 
       .sort({ timestamp: -1, _id: -1 }).limit(MAX).toArray() : [],
     strIds.length ? db.collection("ai_lead_state").find({ lead_id: { $in: strIds } }).project({ lead_id: 1, stage_history: 1 }).toArray() : [],
     db.collection("ai_consent").find({ customer_id: { $in: (customerIds || [customerId]).map(String) }, consent_type: "opt_out" }).sort({ recorded_at: -1 }).limit(50).toArray(),
+    strIds.length ? db.collection("bookings").find({ lead_id: { $in: strIds } })
+      .project({ lead_id: 1, history: 1, createdAt: 1, created_by: 1, bookingTime: 1, appointment_type: 1 }).limit(MAX).toArray() : [],
   ]);
   const entries = [
     ...staff.map(staffEntry),
     ...messages.filter((m) => !isRawLeadFile(m.mail_content)).map(messageEntry),
     ...states.flatMap(stageEntries),
     ...consents.map(consentEntry),
+    ...bookings.flatMap(bookingEntries),
   ].filter((e) => e.at);
   return entries.map((e) => ({ ...e, at: new Date(e.at) })).sort((a, b) => b.at - a.at).slice(0, MAX);
 }

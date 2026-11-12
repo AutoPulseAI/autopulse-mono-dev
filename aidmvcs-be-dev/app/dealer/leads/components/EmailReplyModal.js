@@ -30,6 +30,27 @@ export default function EmailReplyModal({
     const [vehiclePage, setVehiclePage] = useState(1);
     const [vehicleTotalPages, setVehicleTotalPages] = useState(1);
     const { fetchData, loading } = useFetch();
+    // SOW D, G-027: the dealership's approved templates (Message Template / campaign templates) for this channel.
+    // Picking one fills the message; it is still checked like any staff message (opt-outs, the customer's language).
+    const [templates, setTemplates] = useState([]);
+    useEffect(() => {
+        if (!dealer_id) return;
+        const token = localStorage.getItem("dealertoken");
+        fetch(`/api/campaign-templates?dealer_id=${dealer_id}&message_type=${communicationType === "sms" ? "sms" : "email"}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }).then((r) => (r.ok ? r.json() : null)).then((d) => setTemplates(d?.data || [])).catch(() => setTemplates([]));
+    }, [dealer_id, communicationType]);
+    const applyTemplate = (id) => {
+        const t = templates.find((x) => String(x._id) === String(id));
+        if (!t) return;
+        const fullName = String(lead?.name || "").trim();
+        const fill = (text) => String(text || "")
+            .replace(/\{\{\s*(first_name|firstname)\s*\}\}/gi, fullName.split(/\s+/)[0] || "")
+            .replace(/\{\{\s*(name|customer_name)\s*\}\}/gi, fullName);
+        const body = communicationType === "email" ? fill(t.body) : fill(t.body).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        setContent(body);
+        if (communicationType === "email" && t.subject) setSubject(fill(t.subject));
+    };
 
     useEffect(() => {
         if (selectedConversation && communicationType === "email") {
@@ -241,6 +262,16 @@ export default function EmailReplyModal({
                 </div>
 
                 <Form onSubmit={handleSubmit}>
+                    {templates.length > 0 && (
+                        <Form.Group className="mb-3">
+                            <Form.Label>Template</Form.Label>
+                            <Form.Select size="sm" defaultValue="" onChange={(e) => applyTemplate(e.target.value)}
+                                aria-label="Fill the message from a template">
+                                <option value="" disabled>Pick a template (optional)</option>
+                                {templates.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
+                            </Form.Select>
+                        </Form.Group>
+                    )}
                     {communicationType === "email" && (
                         <Form.Group className="mb-3">
                             <Form.Label>Subject</Form.Label>

@@ -10,12 +10,13 @@ import { STAGES, STALLED_MINUTES } from "../../../lib/deskLog/constants";
 import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
+import CallButton from "../../components/CallButton";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, ROW_COLOR, STAGE_STYLE, TYPE_CLASS, TYPE_LABEL, ageText,
   choiceOf, vehicleText } from "./deskLogUi";
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
 
-export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty }) {
+export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(null); // { row, choice }
@@ -99,8 +100,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty })
                     )}
                   </td>
                   <td className="dl_actions">
-                    {row.phone && <a href={`tel:${row.phone}`} title={`Call ${row.phone}`} aria-label="Call">
-                      <i className="fa-solid fa-phone"></i></a>}
+                    {row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
+                      variant="link" size="sm" className="p-0" iconOnly />}
                     <Link href={leadLink(row.lead_id)} title="Text / email (opens the conversation)" aria-label="Message"
                       onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
                       <i className="fa-regular fa-comment-dots"></i></Link>
