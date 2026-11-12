@@ -1,6 +1,6 @@
 "use client";
 // "Download report" beside the Dashboard's date picker (client, 11 Nov 2026): every report for the dates picked there
-// in one CSV - Executive, Betsy's source / sub-source table, Appointments, AI, BDC, Service, Data quality, Sales
+// in one PDF (or CSV) - Executive, Betsy's source / sub-source table, Appointments, AI, BDC, Service, Data quality, Sales
 // (GET /api/reports/full, app/lib/reporting/fullReport.js). Shown only where the reports are visible.
 import { useState } from "react";
 import { Button } from "react-bootstrap";
@@ -19,24 +19,28 @@ export function reportDates(range, tz) {
 }
 
 export default function DownloadReport({ dealerId, tz, range }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // "pdf" | "csv" while that file is being prepared
   const [error, setError] = useState(null);
-  const download = async () => {
-    setBusy(true);
+  const download = async (format) => {
+    setBusy(format);
     setError(null);
     try {
-      await downloadFullReport({ dealer_id: dealerId, ...reportDates(range, tz) });
+      await downloadFullReport({ dealer_id: dealerId, ...reportDates(range, tz) }, format);
     } catch (e) {
       setError(e.message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
   return (
     <>
-      <Button size="sm" variant="outline-dark" onClick={download} disabled={busy || !dealerId}
-        title="Every report for the dates picked here, in one file (opens in Excel)">
-        <i className="fa-regular fa-download me-1"></i>{busy ? "Preparing report..." : "Download report"}
+      <Button size="sm" variant="outline-dark" onClick={() => download("pdf")} disabled={Boolean(busy) || !dealerId}
+        title="Every report for the dates picked here, in one PDF">
+        <i className="fa-regular fa-file-pdf me-1"></i>{busy === "pdf" ? "Preparing report..." : "Download report"}
+      </Button>
+      <Button size="sm" variant="link" className="px-1" onClick={() => download("csv")} disabled={Boolean(busy) || !dealerId}
+        title="The same report as a CSV (opens in Excel)">
+        {busy === "csv" ? "Preparing..." : "CSV"}
       </Button>
       {error && <small className="text-danger">{error}</small>}
     </>

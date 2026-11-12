@@ -1,5 +1,5 @@
-// GET /api/reports/full - the Dashboard's "Download report": every report for the picked dates in one CSV
-// (app/lib/reporting/fullReport.js).
+// GET /api/reports/full - the Dashboard's "Download report": every report for the picked dates in one PDF (default) or,
+// with &format=csv, one CSV (app/lib/reporting/fullReport.js).
 //
 //   ?dealer_id &start_date &end_date (dealer-local YYYY-MM-DD) [&source &lead_source &assigned_to &actor
 //   &appointment_type]
@@ -8,12 +8,14 @@
 // to the caller (super admins, also through "login as"); otherwise 404.
 import moment from 'moment-timezone';
 import { dealershipName, filtersText, reportRequest } from '../../../lib/reporting/reportAccess.js';
-import { fullReport, fullReportCsv } from '../../../lib/reporting/fullReport.js';
+import { fullReport, fullReportCsv, fullReportPdf } from '../../../lib/reporting/fullReport.js';
+
+export const runtime = 'nodejs';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
-  const r = await reportRequest(req);
+  const r = await reportRequest(req, { own: ['format'] });
   if (r.response) return r.response;
   const { dealerId, tz, spec, filters } = r;
   const to = spec.to ?? spec.from;
@@ -26,8 +28,22 @@ export async function GET(req) {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
   const fmt = (d) => moment(d, 'YYYY-MM-DD').format('M/D/YYYY');
-  const csv = fullReportCsv(report, { company: await dealershipName(dealerId), from: fmt(spec.from), to: fmt(to),
-    generated: `${moment().tz(tz).format('M/D/YYYY h:mm:ss A')} (${tz})`, filters: filtersText(filters) });
+  const opts = { company: await dealershipName(dealerId), from: fmt(spec.from), to: fmt(to),
+    generated: `${moment().tz(tz).format('M/D/YYYY h:mm:ss A')} (${tz})`, filters: filtersText(filters) };
+  if (r.params.get('format') !== 'csv') {
+    let pdf;
+    try {
+      pdf = await fullReportPdf(report, opts);
+    } catch (error) {
+      console.error('[reports] full report pdf failed:', error);
+      return new Response(JSON.stringify({ message: 'The PDF could not be built.' }), { status: 500,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    }
+    return new Response(pdf, { status: 200, headers: { 'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="dealership-report_${spec.from}_${to}.pdf"`,
+      'Cache-Control': 'no-store' } });
+  }
+  const csv = fullReportCsv(report, opts);
   return new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="dealership-report_${spec.from}_${to}.csv"`,
     'Cache-Control': 'no-store' } });
