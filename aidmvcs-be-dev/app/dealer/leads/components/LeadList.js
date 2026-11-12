@@ -1664,8 +1664,9 @@ useImperativeHandle(ref, () => ({
         </div> */}
 
         <div className="w_card_list mt-3">
-          {canAssignLeads && !compact && (
+          {(canAssignLeads || canManageLeads) && !compact && (
             <BulkAssign dealerId={dealerParent?.id || activeEntity?.id} selectedIds={selectedIds} staffList={staffList}
+              canAssign={canAssignLeads} canChangeStatus={canManageLeads}
               onClear={() => setSelectedIds([])} onDone={() => { setSelectedIds([]); fetchLeads(); }} />
           )}
           <ListGroup as="ul" variant="flush">
@@ -1676,7 +1677,7 @@ useImperativeHandle(ref, () => ({
                   <Row className="align-items-center gx-2">
                     <Col xl={2} lg={2} sm={2} xs={12}>
                       <p className="label d-flex align-items-center gap-1">
-                        {canAssignLeads && leads.length > 0 && (
+                        {(canAssignLeads || canManageLeads) && leads.length > 0 && (
                           <Form.Check type="checkbox" aria-label="Select every lead on this page"
                             checked={leads.every((l) => selectedIds.includes(l._id))}
                             onChange={(e) => setSelectedIds(e.target.checked ? leads.map((l) => l._id) : [])} />
@@ -1784,7 +1785,7 @@ useImperativeHandle(ref, () => ({
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <p className="p_bold d-flex align-items-center gap-1">
-                            {canAssignLeads && (
+                            {(canAssignLeads || canManageLeads) && (
                               <Form.Check type="checkbox" aria-label={`Select ${lead.name || "lead"}`}
                                 checked={selectedIds.includes(lead._id)}
                                 onClick={(e) => e.stopPropagation()} onChange={() => toggleSelected(lead._id)} />
