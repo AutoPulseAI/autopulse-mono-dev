@@ -310,6 +310,7 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
     && reachedAt(v, 'PROPOSAL') >= reachedAt(v, 'APPRAISAL')).length, den: appraised.length };
   R['sales.unsold_reasons'] = visits.filter((v) => v.outcome === 'UNSOLD').length;
   R['sales.pending_delivered'] = visits.filter((v) => ['SOLD PENDING', 'SOLD DELIVERED'].includes(v.outcome)).length;
+  R['sales.stage_aging'] = visits.filter((v) => !v.outcome).length; // open visits (no outcome yet)
 
   const soldEver = new Set(logs.filter((l) => SOLD_RE.test(str(l.to))).map((l) => str(l.lead_id)));
   R['exec.lead_to_sold'] = { num: cohort.filter((l) => soldEver.has(String(l._id)) || SOLD_RE.test(str(l.fe_lead_status)))
