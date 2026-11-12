@@ -59,6 +59,7 @@ export function staffEntry(a) {
     : a.action === "ai_turned_off" ? "turned the AI off for this lead" : a.action === "ai_turned_on" ? "turned the AI back on for this lead" : a.action === "ai_turn_on_blocked" ? "tried to turn the AI back on (blocked: the customer opted out)"
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"
     : a.action === "lead_reassigned"
       ? (a.to ? `reassigned the lead${a.from ? ` from ${a.from}` : ""} to ${a.to}` : `unassigned the lead${a.from ? ` from ${a.from}` : ""}`)
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
