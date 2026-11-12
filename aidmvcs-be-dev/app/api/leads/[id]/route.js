@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import { validContactType } from '@lib/leadContactType';
 import mongoose from 'mongoose';
 import { requireDealerAccess } from '@lib/apiGuard';
+import { logActivity } from '@lib/activityLog';
 
 export async function GET(request, { params }) {
   try {
@@ -46,6 +47,7 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  let currentUser = null;
   try {
     await dbConnect();
     
@@ -54,7 +56,7 @@ export async function PUT(request, { params }) {
         const token = authHeader.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        const currentUser = await User.findById(decoded.userId);
+        currentUser = await User.findById(decoded.userId);
         if (currentUser) {
          
         }else{
@@ -68,7 +70,7 @@ export async function PUT(request, { params }) {
    
     const { id } = await params;
     // Staff edit only their own dealership's leads (super admin: any; agency: its dealers'), else "not found".
-    const target = mongoose.isValidObjectId(id) ? await Lead.findById(id).select('dealer_id').lean() : null;
+    const target = mongoose.isValidObjectId(id) ? await Lead.findById(id).select('dealer_id assigned_to customer_id').lean() : null;
     if (!target) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     const access = await requireDealerAccess(request, target.dealer_id);
     if (access.response) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
@@ -108,6 +110,22 @@ export async function PUT(request, { params }) {
       );
     }
     
+    // Reassignment history (SOW Deliverable B, gap G-007): who moved the lead, from whom, to whom, when. Shown on the
+    // customer's timeline. Customer-level reassignments keep their own history on the Customer (api/customers/[id]).
+    const before = target.assigned_to ? String(target.assigned_to) : null;
+    const after = updatedLead.assigned_to ? String(updatedLead.assigned_to) : null;
+    if (body.assigned_to !== undefined && before !== after) {
+      const ids = [before, after].filter((x) => x && mongoose.isValidObjectId(x));
+      const names = new Map((await User.find({ _id: { $in: ids } }).select('name').lean())
+        .map((u) => [String(u._id), u.name]));
+      await logActivity({
+        dealer_id: target.dealer_id, lead_id: updatedLead._id, customer_id: target.customer_id || null,
+        actor_type: 'staff', actor_id: currentUser._id, actor_name: currentUser.name || null,
+        action: 'lead_reassigned', from: before ? (names.get(before) || 'a removed user') : null,
+        to: after ? (names.get(after) || 'a removed user') : null,
+      });
+    }
+
     console.log('Lead updated successfully:', updatedLead);
     
     return NextResponse.json(

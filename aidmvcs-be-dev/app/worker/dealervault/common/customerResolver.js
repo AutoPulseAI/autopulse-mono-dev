@@ -36,10 +36,9 @@ function mappingDuplicate(error) {
   return (error.message || '').includes(`index: ${CUSTOMER_MAPPING_INDEX.options.name} dup key:`);
 }
 
+// A merged customer's DealerVault records go to the customer it was merged into (G-008, app/lib/customerFamily.js).
 function relationship(customer) {
-  return customer.merged_into
-    ? { id: null, warning: 'CUSTOMER_MERGED' }
-    : { id: customer._id };
+  return customer.merged_into ? { id: customer.merged_into } : { id: customer._id };
 }
 
 export async function resolveCustomers(entries, context, Model = Customer) {
@@ -98,7 +97,7 @@ export async function resolveCustomers(entries, context, Model = Customer) {
       if (matches.length > 1 || (!matches.length && contactCandidates.length > 1)) {
         result = { id: null, warning: 'CUSTOMER_AMBIGUOUS' };
       }
-      else if (matches[0]?.merged_into) result = { id: null, warning: 'CUSTOMER_MERGED' };
+      else if (matches[0]?.merged_into) result = relationship(matches[0]);
       else if (!group.number) result = matches.length
         ? await markDealerVaultOrigin(matches[0], { markInbound: !hasDealerVaultOrigin(matches[0]) })
         : { id: null, warning: 'CUSTOMER_UNRESOLVED' };

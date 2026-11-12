@@ -60,11 +60,16 @@ export async function bookingDetailsForLeads(leadIds) {
     else if (!lastIn.has(id) && !m.is_lead_email && !LEAD_EMAIL.test(m.mail_content || '')) lastIn.set(id, m.mail_content || '');
   }
   const confirmation = await confirmationForLeads(ids);
+  // Sales or service (SOW Deliverable E): the lead's latest booking's type; older bookings without one are sales.
+  const kind = new Map();
+  for (const b of await Booking.find({ lead_id: { $in: ids } }).sort({ createdAt: -1 }).select('lead_id appointment_type').lean()) {
+    if (!kind.has(String(b.lead_id))) kind.set(String(b.lead_id), b.appointment_type === 'service' ? 'service' : 'sales');
+  }
   for (const id of ids) {
     const who = by.get(id);
     const agreed = who === 'ai' || called.has(id) || (lastIn.has(id) && !CANCEL_ASK.test(lastIn.get(id)));
     out.set(id, { booked_by: who, booked_by_name: who === 'staff' ? staffName.get(id) || null : null,
-      customer_agreed: agreed, confirmation: confirmation.get(id) || 'not_confirmed' });
+      customer_agreed: agreed, confirmation: confirmation.get(id) || 'not_confirmed', appointment_type: kind.get(id) || 'sales' });
   }
   return out;
 }

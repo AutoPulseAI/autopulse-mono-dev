@@ -59,24 +59,30 @@ export function staffEntry(a) {
     : a.action === "ai_turned_off" ? "turned the AI off for this lead" : a.action === "ai_turned_on" ? "turned the AI back on for this lead" : a.action === "ai_turn_on_blocked" ? "tried to turn the AI back on (blocked: the customer opted out)"
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "customer_merged" ? `merged the customer ${a.from || ""} into this one${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "customer_merge_undone" ? `undid the merge of ${a.to || "a customer"} into this one`
+    : a.action === "customer_merged_away" ? `merged this customer into ${a.to || "another customer"}`
+    : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"
+    : a.action === "lead_reassigned"
+      ? (a.to ? `reassigned the lead${a.from ? ` from ${a.from}` : ""} to ${a.to}` : `unassigned the lead${a.from ? ` from ${a.from}` : ""}`)
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };
 }
 
-export async function buildActivity({ dealerId, customerId, leadIds }, { db = mongoose.connection.db, ActivityLog } = {}) {
+export async function buildActivity({ dealerId, customerId, customerIds = null, leadIds }, { db = mongoose.connection.db, ActivityLog } = {}) {
   const ids = leadIds.map((id) => new mongoose.Types.ObjectId(String(id)));
   const strIds = leadIds.map(String);
   const [staff, messages, states, consents] = await Promise.all([
-    ActivityLog.find({ dealer_id: String(dealerId), $or: [{ customer_id: customerId }, { lead_id: { $in: ids } }] })
+    ActivityLog.find({ dealer_id: String(dealerId), $or: [{ customer_id: { $in: customerIds || [customerId] } }, { lead_id: { $in: ids } }] })
       .sort({ at: -1 }).limit(MAX).lean(),
     ids.length ? db.collection("emails").find({ lead_id: { $in: ids } })
       .project({ mail_content: 1, subject: 1, status: 1, communication_type: 1, ai_generated: 1, message_by: 1,
         is_note: 1, timestamp: 1, date: 1, lead_id: 1 })
       .sort({ timestamp: -1, _id: -1 }).limit(MAX).toArray() : [],
     strIds.length ? db.collection("ai_lead_state").find({ lead_id: { $in: strIds } }).project({ lead_id: 1, stage_history: 1 }).toArray() : [],
-    db.collection("ai_consent").find({ customer_id: String(customerId), consent_type: "opt_out" }).sort({ recorded_at: -1 }).limit(50).toArray(),
+    db.collection("ai_consent").find({ customer_id: { $in: (customerIds || [customerId]).map(String) }, consent_type: "opt_out" }).sort({ recorded_at: -1 }).limit(50).toArray(),
   ]);
   const entries = [
     ...staff.map(staffEntry),

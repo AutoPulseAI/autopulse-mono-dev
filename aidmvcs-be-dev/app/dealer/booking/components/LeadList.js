@@ -7,6 +7,7 @@ import { useCan } from "../../../hooks/PermissionsContext";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import { useRouter, useSearchParams } from "next/navigation";
 import StatusModal from "./StatusModal";
+import AppointmentHistoryModal from "./AppointmentHistoryModal";
 import LeadDetailsSidebar from "../../leads/components/LeadDetailsSidebar";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import moment from "moment-timezone";
@@ -18,6 +19,18 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   // Betsy, 27 Oct 2026 meeting: label each appointment Confirmed / Tentative / Not confirmed, and filter by it.
   const [confirmFilter, setConfirmFilter] = useState('');
   const shownLeads = confirmFilter ? leads.filter((l) => (l.confirmation || 'not_confirmed') === confirmFilter) : leads;
+  // SOW Deliverable E: sales / service appointments (server-side filter, kept in the URL) and each one's history.
+  const [historyLead, setHistoryLead] = useState(null);
+  const [typeFilter, setTypeFilter] = useState(['sales', 'service'].includes(urlSearchParams.get('type')) ? urlSearchParams.get('type') : 'all');
+  const setTypeAndSync = (value) => {
+    setTypeFilter(value);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (value !== 'all') params.set('type', value); else params.delete('type');
+      params.set('page', '1');
+      router.replace(`/dealer/booking?${params.toString()}`);
+    } catch (e) { /* no window */ }
+  };
   const [selectedLead, setSelectedLead] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -173,6 +186,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (assignmentFilter && assignmentFilter !== 'all') {
         queryParams += `&assignment=${assignmentFilter}`;
       }
+      if (typeFilter !== 'all') queryParams += `&appointment_type=${typeFilter}`;
 
       // Add filters to query
       if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
@@ -214,7 +228,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     } finally {
       setLoading(false);
     }
-  }, [activeEntity?.id, assignmentFilter, pagination.itemsPerPage, filters, cardFilter]);
+  }, [activeEntity?.id, assignmentFilter, typeFilter, pagination.itemsPerPage, filters, cardFilter]);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -243,7 +257,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     }
     
     fetchLeads();
-  }, [activeEntity?.id, filters, assignmentFilter, fetchLeads]);
+  }, [activeEntity?.id, filters, assignmentFilter, typeFilter, fetchLeads]);
 
   // Handle lead selection when leads update - ONLY when selectedLead=true in URL
   // SINGLE PLACE for all selection logic - no duplicates
@@ -477,6 +491,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       if (assignmentFilter && assignmentFilter !== 'all') {
         queryParams += `&assignment=${assignmentFilter}`;
       }
+      if (typeFilter !== 'all') queryParams += `&appointment_type=${typeFilter}`;
       
       // Add filters to query
       if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
@@ -950,6 +965,12 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
               <span className="text-nowrap">Unassigned</span>
             </Button>
           )}
+          <select className="form-select form-select-sm w-auto" value={typeFilter}
+            onChange={(e) => setTypeAndSync(e.target.value)} aria-label="Sales or service appointments">
+            <option value="all">Sales and service</option>
+            <option value="sales">Sales</option>
+            <option value="service">Service</option>
+          </select>
         </div>
         
         {compact ? (
@@ -1246,6 +1267,11 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                                   : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
                               </span>
                             )}
+                            {lead.appointment_type && (
+                              <span className="badge bg-light text-dark ms-1">
+                                {lead.appointment_type === 'service' ? 'Service' : 'Sales'}
+                              </span>
+                            )}
                             {lead.confirmation && (
                               <span className={`badge ms-1 ${lead.confirmation === 'confirmed' ? 'bg-success'
                                 : lead.confirmation === 'tentative' ? 'bg-warning text-dark' : 'bg-danger'}`}
@@ -1327,6 +1353,10 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                           handleShowDetails(lead);
                         }}>
                           <i className="fa-regular fa-eye"></i>
+                        </Button>
+                        <Button variant="custom" size="sm" title="Appointment history" aria-label="Appointment history"
+                          onClick={(e) => { e.stopPropagation(); setHistoryLead(lead); }}>
+                          <i className="fa-regular fa-clock-rotate-left"></i>
                         </Button>
                         <Button variant="custom" size="sm" onClick={(e) => {
                           e.stopPropagation();
@@ -1424,6 +1454,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       )}
 
       {/* Delete Confirmation Modal */}
+      <AppointmentHistoryModal lead={historyLead} onHide={() => setHistoryLead(null)} />
       <DeleteConfirmModal
         show={showDeleteModal}
         onHide={handleCloseDeleteModal}

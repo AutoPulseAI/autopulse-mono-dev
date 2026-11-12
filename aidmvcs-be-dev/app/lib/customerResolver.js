@@ -1,4 +1,5 @@
 import Customer from "../models/Customer.js";
+import { survivorOf } from "./customerFamily.js";
 
 // The AI extraction pipeline (Ollama/n8n) emits these literal strings when a
 // field couldn't be found in the source email/SMS text, instead of omitting
@@ -68,8 +69,14 @@ function sameCustomer(first, second) {
   return first && second && String(first._id) === String(second._id);
 }
 
+// A merged customer (G-008, app/lib/customerFamily.js) hands its new leads to the customer it was merged into.
+async function keptCustomer(customer, dealerId) {
+  if (!customer?.merged_into) return customer;
+  return Customer.findOne({ _id: await survivorOf(customer._id, dealerId), dealer_id: String(dealerId) });
+}
+
 async function findContactMatches(dealerId, email, phone) {
-  const [emailCustomer, phoneCustomer] = await Promise.all([
+  const [emailFound, phoneFound] = await Promise.all([
     email
       ? Customer.findOne({ dealer_id: String(dealerId), "emails.value": email })
       : null,
@@ -77,6 +84,8 @@ async function findContactMatches(dealerId, email, phone) {
       ? Customer.findOne({ dealer_id: String(dealerId), "phones.value": phone })
       : null,
   ]);
+  const [emailCustomer, phoneCustomer] = await Promise.all([
+    keptCustomer(emailFound, dealerId), keptCustomer(phoneFound, dealerId)]);
   return { emailCustomer, phoneCustomer };
 }
 

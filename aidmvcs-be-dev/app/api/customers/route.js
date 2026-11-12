@@ -63,7 +63,8 @@ export async function GET(req) {
       return jsonError("page must be at least 1 and limit must be between 1 and 100", 400);
     }
 
-    const query = { dealer_id: dealerId };
+    // Merged customers (G-008) are part of the customer they were merged into, not listed on their own.
+    const query = { dealer_id: dealerId, merged_into: { $in: [null] } };
     const name = url.searchParams.get("name")?.trim();
     const email = url.searchParams.get("email");
     const phone = url.searchParams.get("phone");

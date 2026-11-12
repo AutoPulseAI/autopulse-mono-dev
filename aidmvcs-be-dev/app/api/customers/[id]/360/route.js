@@ -10,6 +10,7 @@ import Vehicle from "@models/Vehicle";
 import TradeIn from "@models/TradeIn";
 import ActivityLog from "@models/ActivityLog";
 import { buildActivity } from "./activity";
+import { customerFamily, survivorOf } from "@lib/customerFamily";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import { resolveRequestAuthorization } from "@lib/apiAuth";
 import {
@@ -95,21 +96,27 @@ export async function GET(req, { params }) {
       return jsonError("Forbidden", 403);
     }
 
-    const customer = await Customer.findOne({ _id: id, dealer_id: dealerId }).lean();
+    const requested = await Customer.findOne({ _id: id, dealer_id: dealerId }).select("_id merged_into").lean();
+    if (!requested) return jsonError("Customer not found", 404);
+    // A merged customer opens as the customer it was merged into (G-008); its records are part of that one.
+    const keptId = requested.merged_into ? await survivorOf(requested._id, dealerId) : String(requested._id);
+    const customer = await Customer.findOne({ _id: keptId, dealer_id: dealerId }).lean();
     if (!customer) return jsonError("Customer not found", 404);
+    const family = await customerFamily(customer._id, dealerId);
+    const inFamily = { $in: family };
 
     const [leads, deals, repairOrdersRaw, appointmentsRaw, tradeIns] = await Promise.all([
-      Lead.find({ customer_id: customer._id, dealer_id: dealerId })
+      Lead.find({ customer_id: inFamily, dealer_id: dealerId })
         .sort({ createdAt: -1 })
         .limit(RECORD_LIMIT)
         .lean(),
-      Deal.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
-      RepairOrder.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
-      ServiceAppointment.find({ dealer_id: dealerId, customer_id: customer._id }).limit(RECORD_LIMIT).lean(),
+      Deal.find({ dealer_id: dealerId, customer_id: inFamily }).limit(RECORD_LIMIT).lean(),
+      RepairOrder.find({ dealer_id: dealerId, customer_id: inFamily }).limit(RECORD_LIMIT).lean(),
+      ServiceAppointment.find({ dealer_id: dealerId, customer_id: inFamily }).limit(RECORD_LIMIT).lean(),
       // Trade-ins the customer has brought to this dealer (manual or from ADF
       // leads). Added for the AI service's slot pre-fill (agentic-upsell
       // MASTER_PLAN_1 Stage 6); newest first, like leads.
-      TradeIn.find({ dealer_id: dealerId, customer_id: customer._id })
+      TradeIn.find({ dealer_id: dealerId, customer_id: inFamily })
         .sort({ createdAt: -1 })
         .limit(RECORD_LIMIT)
         .lean(),
@@ -133,7 +140,7 @@ export async function GET(req, { params }) {
     const vehicles = vins.map((vin) => ({
       ...hydrateVehicle(vin, vehicleDocByVin.get(vin), fallbackByVin.get(vin)),
       current_owner_customer_id: ownerByVin.get(vin)?.customer_id ?? null,
-      is_current_owner: String(ownerByVin.get(vin)?.customer_id ?? "") === String(customer._id),
+      is_current_owner: family.some((f) => String(f) === String(ownerByVin.get(vin)?.customer_id ?? "")),
     }));
 
     const overviewFeed = buildOverviewFeed({
@@ -148,7 +155,7 @@ export async function GET(req, { params }) {
     // service also reads, so its contract doesn't change; the customer page shows both together.
     let activity = [];
     try {
-      activity = await buildActivity({ dealerId, customerId: customer._id, leadIds: leads.map((l) => l._id) }, { ActivityLog });
+      activity = await buildActivity({ dealerId, customerId: customer._id, customerIds: family, leadIds: leads.map((l) => l._id) }, { ActivityLog });
     } catch (error) {
       console.error("[activity] timeline build failed", { customer_id: String(customer._id), error: error?.message });
     }
