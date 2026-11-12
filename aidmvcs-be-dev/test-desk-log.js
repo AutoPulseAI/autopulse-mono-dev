@@ -42,6 +42,7 @@ const { STAGES, UNSOLD_REASONS, leadStatusForOutcome, planChanges } = await impo
 const { deskLogList } = await import('./app/lib/deskLog/list.js');
 const { deskLogCards } = await import('./app/lib/deskLog/cards.js');
 const { evaluateKpi } = await import('./app/lib/reporting/registry.js');
+const { agingBucket } = await import('./app/lib/reporting/kpis/sales.js');
 const { sourcePerformance } = await import('./app/lib/reporting/sourcePerformance.js');
 const listRoute = await import('./app/api/desk-log/route.js');
 const oneRoute = await import('./app/api/desk-log/[id]/route.js');
@@ -290,6 +291,12 @@ test('reports: visits fill Betsy\'s Visits column; T.O. rate and appraisal to pr
   assert.equal(ap.denominator.count, 1);
   const unsold = await evaluateKpi('sales.unsold_reasons', args, {});
   assert.equal(unsold.count, 1);
+  // Stage aging: the open visits (no outcome yet), by time in their current stage.
+  const aging = await evaluateKpi('sales.stage_aging', args, {});
+  assert.equal(aging.state, 'live');
+  assert.equal(aging.count, visits.rows.filter((r) => !r.outcome).length);
+  assert.ok(aging.breakdowns.aging);
+  assert.ok(aging.rows.every((r) => !r.outcome && r.in_stage !== undefined));
 
   const timeframe = await sourcePerformance(args, { basis: 'timeframe' });
   assert.equal(timeframe.rows[0].visits, 3);
@@ -307,4 +314,10 @@ test('cards: today and month to date, by lead type', async (t) => {
   assert.deepEqual([card('internet').today, card('walk_in').today, card('phone').today], [1, 1, 0]);
   assert.equal(card('phone').mtd, 0); // its lead came in on 20 Oct
   assert.equal(cards.length, 9);
+});
+
+test('stage aging buckets', () => {
+  assert.deepEqual([null, 0, 29, 30, 59, 60, 119, 120, 1439, 1440, 5000].map(agingBucket), ['Unknown',
+    'Under 30 min', 'Under 30 min', '30-60 min', '30-60 min', '1-2 hours', '1-2 hours', '2-24 hours', '2-24 hours',
+    '1 day or more', '1 day or more']);
 });
