@@ -125,11 +125,17 @@ export default function LeadForm({ setEditLead, editLead }) {
                 headers: { "Content-Type": "application/json" ,'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`},
                 body: JSON.stringify({
                     ...formData,
-                    dealer_id: dealerParent.id // Ensure we're using the latest dealer_id
+                    dealer_id: dealerParent.id, // Ensure we're using the latest dealer_id
+                    ...(leadId && editLead?.updatedAt ? { if_updated_at: editLead.updatedAt } : {}),
                 })
             });
 
-            if (!response.ok) throw new Error(await response.text());
+            if (!response.ok) {
+                const text = await response.text();
+                let message = text;
+                try { message = JSON.parse(text).error || text; } catch { /* plain text */ }
+                throw new Error(message);
+            }
             setEditLead(null); // Close form on success
         } catch (err) {
             setErrors(prev => ({ ...prev, form: err.message || "Submission failed" }));

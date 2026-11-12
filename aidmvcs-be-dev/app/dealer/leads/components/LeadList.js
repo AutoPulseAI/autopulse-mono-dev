@@ -16,6 +16,7 @@ import BulkAssign from "./BulkAssign";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
+import useLiveRefresh from "../../../hooks/useLiveRefresh";
 
 // The dashboard's admin "Customer replies by lead age" / "Appointments made" links and the Reports page's numbers
 // (report_kpi, with its part / breakdown group / filters) (app/api/leads/route.js drillFilter): carried on every list
@@ -219,9 +220,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   }, [activeEntity?.id]);
 
   // Helper function to fetch leads for a specific page
-  const fetchLeadsForPage = useCallback(async (page) => {
+  const fetchLeadsForPage = useCallback(async (page, { silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       // Build query parameters including page
       let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}`;
@@ -276,12 +277,18 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       
       return { leads: newLeads, pagination: data.pagination, currentPage: newCurrentPage };
     } catch (err) {
-      showAlert("Failed to load leads", "danger");
+      if (!silent) showAlert("Failed to load leads", "danger");
       throw err;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeEntity?.id, assignmentFilter, pagination.itemsPerPage, filters, showAlert]);
+
+  // G-083: what other users change shows up without a manual refresh (same page, filters and scroll); paused while
+  // a lead, a modal or a selection is open.
+  useLiveRefresh(() => (activeEntity?.id ? fetchLeadsForPage(filters.page, { silent: true }) : null), {
+    paused: loading || showDetails || showStatusModal || showDeleteModal || showImportModal || selectedIds.length > 0,
+  });
 
   const fetchLeads = useCallback(async () => {
     try {
