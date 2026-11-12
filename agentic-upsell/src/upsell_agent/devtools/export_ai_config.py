@@ -202,10 +202,19 @@ def cadences() -> list[dict[str, Any]]:
                                   "words (\"Rocco, are you still with me? What time on Friday is best for you?\"). No new "
                                   "questions.")}]}},
         {"key": "unsold", "name": "Unsold (visited, didn't buy)", "content": {
-            "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold - then the Short-Term "
-                                                    "follow-up runs again (Days 1-7, weekly, monthly)",
+            "steps": [{"id": "first_touch", "when": "The day the manager marks the visit Unsold with no reason - then the "
+                                                    "Short-Term follow-up runs again (Days 1-7, weekly, monthly)",
                        "label": "First message after the visit", "channels": ["sms", "email"],
-                       "message": ai(decide.UNSOLD_INSTRUCTION)}]}},
+                       "message": ai(decide.UNSOLD_INSTRUCTION)}]
+            # G-017-023: the Desk Log's unsold reason picks its own first message (the follow-ups after it are the same
+            # Short-Term cadence, written knowing the reason). Hot also opens a call task for the salesperson; Future
+            # Follow-Up goes out on the date the manager set.
+            + [{"id": decide.unsold_step_id(reason),
+                "when": ("On the follow-up date the manager set on the Desk Log" if reason == "Future Follow-Up"
+                         else "The day the manager marks the visit Unsold") + f" - reason: {reason}"
+                        + (" (a call task opens for the salesperson too)" if reason == "Hot" else ""),
+                "label": f"First message - {reason}", "channels": ["sms", "email"],
+                "message": ai(instruction)} for reason, instruction in decide.UNSOLD_REASON_INSTRUCTIONS.items()]}},
         {"key": "appointment", "name": "Appointment: details, confirmation, no-show", "content": {
             "steps": [{"id": s, "when": w, "label": s.replace("_", " ").title(), "channels": ["sms", "email"],
                        **({"wait": {appointment.STEP_DETAILS: _wait(15, "minutes", "start"),
@@ -586,7 +595,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 39
+DEFAULTS_REVISION = 40
 
 
 def export() -> dict[str, Any]:

@@ -6,7 +6,7 @@ import Lead from "@models/Lead.js";
 import { statusLabel } from "@lib/statusLabels";
 import User from "@models/User.js";
 import { onLeadStatusChange, clearPendingJobs, aiOwnsFollowUps } from '@lib/followupService.js';
-import { cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
+import { UNSOLD_REASONS_FOR_AI, cancelBookingsForStatusChange, notifyAiOfStaffStatus, validateManagerOutcome } from '@lib/ai/aiStaff';
 import { READ_ONLY_STATUSES, statusChangeError } from '@lib/ai/aiDnd';
 import { createAppointmentReminders, createManagerialReviewMessages, cancelAllRemindersForLead } from '@lib/appointmentReminderService.js';
 import { appointmentBookingTemplate } from '@lib/templates/appointmentBookingTemplate.js';
@@ -209,7 +209,8 @@ export async function PUT(request) {
   messageBy = signedIn.user._id;
   actorName = signedIn.user.name || signedIn.user.email || null;
   try {
-    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type, contact_note } = await request.json();
+    const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type, contact_note,
+      unsold_reason, follow_up_at, visit_note } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
@@ -292,6 +293,9 @@ export async function PUT(request) {
       updateDoc.fe_lead_status = manager_outcome;
       updateDoc.manager_outcome = manager_outcome;
       updateDoc.manager_outcome_at = new Date();
+      // G-017-023: the Desk Log's unsold reason, kept on the lead (null when there is none or it isn't Unsold).
+      updateDoc.unsold_reason = manager_outcome === 'Unsold' && UNSOLD_REASONS_FOR_AI.includes(unsold_reason)
+        ? unsold_reason : null;
     }
 
     // When appointment booked, persist booking fields if provided.
@@ -351,7 +355,7 @@ export async function PUT(request) {
         sender: actorName || 'Staff', recipient: 'staff', subject: 'Lead Note',
         mail_content: `Status changed${originalLead?.fe_lead_status ? ` from ${statusLabel(originalLead.fe_lead_status)}` : ''}`
           + ` to ${statusLabel(updated.fe_lead_status)} by ${actorName || 'staff'}`
-          + (manager_outcome ? ` (visit outcome: ${statusLabel(manager_outcome)})` : ''),
+          + (manager_outcome ? ` (visit outcome: ${statusLabel(manager_outcome)}${updateDoc.unsold_reason ? ` - ${updateDoc.unsold_reason}` : ''})` : ''),
         dealer_id: String(updated.dealer_id), lead_id: updated._id, status: 'sent', communication_type: 'note',
         is_note: true, internal_use: true, message_by: messageBy || undefined,
         message_id: `note_staff_status_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
@@ -367,6 +371,20 @@ export async function PUT(request) {
           message_id: `note_staff_contact_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
         }).catch((error) => console.error('[status] could not add the contact note', error?.message));
       }
+    }
+
+    if (updated && updateDoc.unsold_reason) {
+      // G-017-023: why the visit didn't end in a sale, from the Desk Log (reason, what they want, trade, next step) - a
+      // note the AI reads (not internal), so its follow-ups are about that reason. Also when only the reason changed.
+      const at = new Date();
+      const extra = String(visit_note || '').trim().slice(0, 600);
+      await Email.create({
+        sender: actorName || 'Staff', recipient: 'staff', subject: 'Lead Note',
+        mail_content: `Showroom visit ended unsold - reason: ${updateDoc.unsold_reason}.${extra ? ` ${extra}` : ''}`,
+        dealer_id: String(updated.dealer_id), lead_id: updated._id, status: 'sent', communication_type: 'note',
+        is_note: true, internal_use: false, message_by: messageBy || undefined,
+        message_id: `note_staff_unsold_${updated._id}_${at.getTime()}`, timestamp: at, date: at,
+      }).catch((error) => console.error('[status] could not add the unsold note', error?.message));
     }
 
     if (!updated) {
@@ -885,7 +903,8 @@ export async function PUT(request) {
 
     // Booked / visited / sold / DND / managerial review: staff own this lead
     // now, so the AI stops replying to it (MASTER_PLAN_1 Stage 11). Never throws.
-    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status, managerOutcome: manager_outcome });
+    await notifyAiOfStaffStatus({ leadId: id, dealerId: updated.dealer_id, status, managerOutcome: manager_outcome,
+      unsoldReason: unsold_reason, followUpAt: follow_up_at });
 
     return NextResponse.json({ lead: updated }, { status: 200 });
   } catch (err) {

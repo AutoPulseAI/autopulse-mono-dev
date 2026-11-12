@@ -93,15 +93,26 @@ export async function notifyAiOfStaffReply({
 // Staff moved the lead to a status where they own it (booked, sold, DND, ...).
 // "Visited" carries the manager's outcome in the same event, so the AI applies
 // the visit and its outcome in order (agentic-upsell lifecycle.manager_outcome_from_reason).
+// The Desk Log's unsold reasons the AI follows up on (G-017-023; DND is its own status, never sent as a reason).
+export const UNSOLD_REASONS_FOR_AI = Object.freeze(['Negative Equity', 'Price/Payment', 'Credit', 'Hot',
+  'Future Follow-Up', 'Car Finder']);
+
 export async function notifyAiOfStaffStatus({
-  leadId, dealerId, status, managerOutcome, mode, send = sendAiEvent, logger = console, now = Date.now,
+  leadId, dealerId, status, managerOutcome, unsoldReason = null, followUpAt = null, mode, send = sendAiEvent,
+  logger = console, now = Date.now,
 }) {
   if (!STAFF_OWNED_STATUSES.includes(status)) return { status: 'not_needed' };
   const outcome = status === 'Visited' && MANAGER_OUTCOMES.includes(managerOutcome) ? managerOutcome : null;
+  // G-017-023: why the visit ended unsold, and for Future Follow-Up when to follow up, so the AI's follow-up is about
+  // that reason (AI Studio > Cadences > Unsold has a first message per reason). Without a reason: as before.
+  const reason = outcome === 'Unsold' && UNSOLD_REASONS_FOR_AI.includes(unsoldReason) ? unsoldReason : null;
+  const at = reason === 'Future Follow-Up' && followUpAt && !Number.isNaN(Date.parse(followUpAt))
+    ? new Date(followUpAt).toISOString() : null;
   const event = buildLeadPausedEvent({
     leadId, dealerId,
-    eventId: `status-${leadId}-${safeId(status)}${outcome ? `-${safeId(outcome)}` : ''}-${now()}`,
-    reason: `Staff moved the lead to "${status}"${outcome ? ` (manager outcome: "${outcome}")` : ''}`,
+    eventId: `status-${leadId}-${safeId(status)}${outcome ? `-${safeId(outcome)}` : ''}${reason ? `-${safeId(reason)}` : ''}-${now()}`,
+    reason: `Staff moved the lead to "${status}"${outcome ? ` (manager outcome: "${outcome}")` : ''}`
+      + `${reason ? ` (unsold reason: "${reason}")` : ''}${at ? ` (follow up at: "${at}")` : ''}`,
   });
   return sendIfAiActive('lead-paused', event, { dealerId, mode, send, logger });
 }

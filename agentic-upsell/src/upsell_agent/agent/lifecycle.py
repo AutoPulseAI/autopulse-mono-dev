@@ -265,6 +265,29 @@ def manager_outcome_from_reason(reason: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+# G-017-023: the Desk Log's unsold reason and, for Future Follow-Up, its date, sent with the Unsold outcome
+# ('... (manager outcome: "Unsold") (unsold reason: "Credit") (follow up at: "2026-11-20T15:00:00.000Z")').
+UNSOLD_REASONS = ("Negative Equity", "Price/Payment", "Credit", "Hot", "Future Follow-Up", "Car Finder")
+_UNSOLD_REASON = re.compile(r'unsold reason: "([^"]+)"')
+_FOLLOW_UP_AT = re.compile(r'follow up at: "([^"]+)"')
+
+
+def unsold_reason_from_reason(reason: str | None) -> str | None:
+    m = _UNSOLD_REASON.search(reason or "")
+    return m.group(1) if m and m.group(1) in UNSOLD_REASONS else None
+
+
+def follow_up_at_from_reason(reason: str | None) -> datetime | None:
+    m = _FOLLOW_UP_AT.search(reason or "")
+    if not m:
+        return None
+    try:
+        at = datetime.fromisoformat(m.group(1))
+    except ValueError:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=UTC)
+
+
 def staff_status_from_reason(reason: str | None) -> str | None:
     """The platform status a lead-paused event was sent for, from its reason
     ('Staff moved the lead to "Visited"'). None for other pauses (a staff

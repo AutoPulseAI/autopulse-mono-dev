@@ -20,7 +20,8 @@ export function leadStatusForOutcome(outcome, unsoldReason) {
   if (outcome === 'SOLD PENDING') return { status: 'Visited', manager_outcome: 'Sold Pending' };
   if (outcome === 'SOLD DELIVERED') return { status: 'Visited', manager_outcome: 'Sold Delivered' };
   if (outcome === 'UNSOLD' && unsoldReason === UNSOLD_REASONS.DND) return { status: 'DND' };
-  if (outcome === 'UNSOLD') return { status: 'Visited', manager_outcome: 'Unsold' };
+  // G-017-023: the reason goes to the lead and the AI, so a Price/Payment -> Credit change is a new follow-up too.
+  if (outcome === 'UNSOLD') return { status: 'Visited', manager_outcome: 'Unsold', unsold_reason: unsoldReason || null };
   return null;
 }
 

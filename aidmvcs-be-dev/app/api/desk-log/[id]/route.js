@@ -56,8 +56,18 @@ export async function PATCH(req, { params }) {
   if (plan.outcomeChanged) {
     const before = leadStatusForOutcome(entry.outcome, entry.unsold_reason);
     const change = leadStatusForOutcome(plan.set.outcome ?? entry.outcome, plan.set.unsold_reason ?? null);
-    // Price/Payment -> Credit is the same lead status: don't run its follow-ups and AI notice a second time.
+    // The same outcome and reason again changes nothing. A new unsold reason (Price/Payment -> Credit) is a new
+    // follow-up (G-017-023): the AI is told the reason, the Future Follow-Up date and what the visit was about.
     const same = JSON.stringify(before) === JSON.stringify(change);
+    if (change?.unsold_reason) {
+      const v = { ...(entry.vehicle || {}), ...(plan.set.vehicle || {}) };
+      const t = { ...(entry.trade || {}), ...(plan.set.trade || {}) };
+      const car = (x) => [x.year, x.make, x.model, x.trim].filter(Boolean).join(' ');
+      const next = 'next_step_at' in plan.set ? plan.set.next_step_at : entry.next_step_at;
+      change.follow_up_at = next ? new Date(next).toISOString() : null;
+      change.visit_note = [car(v) && `Vehicle they looked at: ${car(v)}${entry.stock_number ? ` (stock #${entry.stock_number})` : ''}.`,
+        car(t) && `Trade: ${car(t)}.`, plan.note && `Manager's note: ${plan.note}`].filter(Boolean).join(' ');
+    }
     const refused = change && !same && await setLeadStatus(req, entry.lead_id, change);
     if (refused) return json({ message: refused.message }, refused.status >= 500 ? 502 : 409);
   }

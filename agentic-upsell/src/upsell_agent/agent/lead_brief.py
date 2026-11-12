@@ -117,6 +117,9 @@ def build(*, decision: dict[str, Any], pack: dict[str, Any], lead: dict[str, Any
             "stage": lead_state.get("stage_label") or lead_state.get("stage"),
             "opportunity_day": f"Day {day} of 91" if day else None,
             "appointment": visit.get("display") if visit.get("status") in ("pending", "confirmed") else None,
+            # G-017-023: why their showroom visit ended without a sale (the manager's Desk Log reason), so every
+            # follow-up after it is about that - never stated back to them as a label.
+            "why_their_visit_ended_unsold": (lead_state.get("unsold_reason") or {}).get("reason"),
             "offers_declined": (visit.get("attempts") if visit.get("declined") else None),
             "this_message_is": ("our first message to them" if trigger == "lead_created" and not ours
                                 else f"a scheduled follow-up: {touch.get('label')}" if touch

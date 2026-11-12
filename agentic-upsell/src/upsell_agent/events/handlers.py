@@ -1299,6 +1299,13 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
             stage_change = await lifecycle.apply(db, event.lead_id, [lifecycle.Event(
                 outcome_event, source="manager_outcome", reason=f'Manager outcome: "{outcome_status}"')],
                 lead=lead, customer_id=customer_id)
+            # G-017-023: why the visit ended unsold (the Desk Log's reason) is kept on the lead for the follow-ups;
+            # any other outcome (or Unsold with no reason) clears an old one.
+            unsold_reason = lifecycle.unsold_reason_from_reason(event.reason) if outcome_event == "unsold" else None
+            await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": event.lead_id}, (
+                {"$set": {"unsold_reason": {"reason": unsold_reason, "at": clock.now(),
+                                            "follow_up_at": lifecycle.follow_up_at_from_reason(event.reason)}}}
+                if unsold_reason else {"$unset": {"unsold_reason": ""}}))
     if final_event == "staff_closed_lost" and (stage_change or {}).get("stage") == lifecycle.Stage.SOLD_DELIVERED.value:
         # PLAN_4 stream X2 (SOLD-DELIVERED PDF §1-§2): a delivered sale isn't "lost" - it closes as No Longer Owns. The
         # CRM refuses this too (aiDnd.statusChangeError); an older CRM's event changes nothing and pauses nothing.
@@ -1348,12 +1355,22 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                     channel=((lead or {}).get("data") or {}).get("channel") or "sms",
                     turn_id=f"unsold-{event.event_id}", lead=lead, first_contact_done=True)
                 if final_event == "unsold" and (extra["cadence_touch"] or {}).get("followup_id"):
-                    # Client, 21 Oct 2026: AI Studio -> Cadences -> "Unsold" sets this first message.
-                    from upsell_agent.agent.nodes.decide import UNSOLD_INSTRUCTION, UNSOLD_THEME
+                    # Client, 21 Oct 2026: AI Studio -> Cadences -> "Unsold" sets this first message. G-017-023: with
+                    # the Desk Log's reason, that reason's own first message (decide.unsold_step_id); Future
+                    # Follow-Up waits for the date the manager set instead of going out today.
+                    from upsell_agent.agent.nodes.decide import UNSOLD_THEME, unsold_instruction
+                    reason = lifecycle.unsold_reason_from_reason(event.reason)
+                    follow_up_at = lifecycle.follow_up_at_from_reason(event.reason)
+                    touch_set: dict[str, Any] = {"touch.theme": UNSOLD_THEME, "touch.unsold_reason": reason,
+                                                 "touch.theme_label": f"After an Unsold visit ({reason})" if reason
+                                                 else "After an Unsold visit",
+                                                 "touch.instruction": unsold_instruction(reason)}
+                    if reason == "Future Follow-Up" and follow_up_at and follow_up_at > clock.now():
+                        touch_set["due_at"] = follow_up_at
                     await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_one(
-                        {"_id": as_object_id(extra["cadence_touch"]["followup_id"])},
-                        {"$set": {"touch.theme": UNSOLD_THEME, "touch.theme_label": "After an Unsold visit",
-                                  "touch.instruction": UNSOLD_INSTRUCTION}})
+                        {"_id": as_object_id(extra["cadence_touch"]["followup_id"])}, {"$set": touch_set})
+                    if reason == "Hot":
+                        extra["hot_call_task"] = await _hot_call_task(db, lead, event.lead_id, customer_id, event.event_id)
         return {"status": "resumed_unsold", "stage_change": stage_change, **extra}
     await db.collection(AI_LEAD_STATE_COLLECTION).update_one(
         {"lead_id": event.lead_id},
@@ -1367,6 +1384,22 @@ async def handle_lead_paused(event: LeadPausedEvent, deps: TurnDeps | None = Non
                            keep_requested=True)
     return {"status": "paused", "followups_cancelled": cancelled,
             **({"stage_change": stage_change} if stage_change else {}), **extra}
+
+
+async def _hot_call_task(db: DealerScopedDatabase, lead: dict | None, lead_id: str, customer_id: str,
+                         event_id: str) -> dict[str, Any]:
+    """G-021 (UNSOLD / Hot: "urgent owner task and manager visibility"): a Hot unsold visit opens a call task for the
+    lead's salesperson at once, shown on Call Tasks and on the lead - one open task per lead, as always."""
+    from upsell_agent.agent import call_tasks
+    phone = str((lead or {}).get("phone") or "").strip()
+    if not phone:
+        return {"created": False, "reason": "no phone number on the lead"}
+    name = (lead or {}).get("name")
+    task = await call_tasks.open_task(
+        db, lead_id=lead_id, customer_id=customer_id, phone=phone, customer_name=name,
+        reason="hot_unsold_visit", source_turn_id=f"unsold-{event_id}", followup_id=None, created_at=clock.now(),
+        notice=f"Hot: {name or 'the customer'} visited and is close to buying - please call them today at {phone}.")
+    return {"created": True, "task_id": str(task.get("_id"))}
 
 
 async def handle_booking_changed(event: BookingChangedEvent, deps: TurnDeps | None = None) -> dict[str, Any]:

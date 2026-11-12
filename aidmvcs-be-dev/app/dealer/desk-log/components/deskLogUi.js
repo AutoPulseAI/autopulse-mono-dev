@@ -38,6 +38,12 @@ export function outcomeEffect(choice) {
     return 'The lead becomes "Opt-Out": the AI and the automatic follow-ups stop messaging this customer.';
   }
   const status = { "SOLD PENDING": "Sold Pending", "SOLD DELIVERED": "Sold - Delivered", UNSOLD: "Unsold" }[choice.outcome];
+  if (choice.outcome === "UNSOLD" && choice.reason) {
+    // G-017-023: the reason's own first follow-up (AI Studio > Cadences > Unsold), then the usual follow-ups.
+    const when = choice.reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP ? "on the next step date" : "today";
+    return `The lead becomes "Unsold". The AI follows up ${when} about ${choice.reason}, then keeps following up`
+      + (choice.reason === UNSOLD_REASONS.HOT ? "; a call task opens for the salesperson now." : ".");
+  }
   return `The lead becomes "${status}" and what is set up for ${status} runs, the same as changing the status on the `
     + "Leads page.";
 }
