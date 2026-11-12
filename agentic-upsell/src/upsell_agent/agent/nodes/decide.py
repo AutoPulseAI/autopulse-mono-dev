@@ -926,16 +926,28 @@ def real_not_interested_reason(reason: Any) -> str | None:
 # delivery of the vehicle?"; Naty Coria "I already bought a car", Emily Chandler "we have found a car", Sawyer Buffum
 # "nvm i found a better deal"). Only picks WHICH not-interested step runs once the AI has read the message as not
 # interested - it never decides that on its own.
+_MAKES = (r"toyota|honda|ford|chevy|chevrolet|nissan|hyundai|kia|jeep|ram|dodge|gmc|subaru|mazda|bmw|mercedes|benz|"
+          r"audi|lexus|acura|infiniti|tesla|volkswagen|vw|volvo|cadillac|buick|lincoln|chrysler|mitsubishi|genesis|"
+          r"porsche|land\s+rover|range\s+rover|jaguar|mini|fiat|alfa|maserati|carmax|carvana|vroom")
 _FOUND_ELSEWHERE = re.compile(
-    r"\b(?:found|bought|purchased|got|picked\s+up|went\s+with|going\s+with|signed\s+for|leased)\b[^.?!]{0,40}"
-    r"\b(?:car|vehicle|truck|suv|van|one|deal|elsewhere|somewhere|another|dealer\w*)\b"
-    r"|\bbetter\s+(?:deal|price|offer|option)s?\b|\b(?:cheaper|lower\s+price)\b[^.?!]{0,30}\b(?:elsewhere|somewhere|"
-    r"another|dealer\w*)\b", re.IGNORECASE)
-# Their answer to "Did you already take delivery?": not yet -> still a live deal, the AI carries on.
-_NOT_YET = re.compile(r"^\W*(?:no|nope|nah|not\s+yet|haven'?t|have\s+not|didn'?t|did\s+not|not\s+really|not\s+"
-                      r"exactly|still\s+deciding|still\s+looking|still\s+shopping)\b", re.IGNORECASE)
+    r"\b(?:found|bought|buy|purchased|got|picked\s+(?:\w+\s+){0,2}up|went\s+with|going\s+with|went\s+for|signed\s+for|"
+    r"leased|decided\s+on|settled\s+on|ended\s+up\s+with|traded\s+for)\b[^.?!]{0,40}"
+    rf"\b(?:car|vehicle|truck|suv|van|one|deal|elsewhere|somewhere|another|dealer\w*|lot|{_MAKES})\b"
+    r"|\bpicked\s+(?:one|another|a\s+\w+)\s+up\b|\b(?:made|closed|did|signed)\s+(?:a|the)\s+deal\b|\bbetter\s+(?:deal|price|offer|option)s?\b"
+    r"|\b(?:cheaper|lower\s+price)\b[^.?!]{0,30}\b(?:elsewhere|somewhere|another|dealer\w*)\b"
+    # Spanish: "ya compré un carro", "encontré una mejor oferta"
+    r"|\bya\s+compr[eé]\b|\bcompr[eé]\s+(?:un|una|otro|otra)\b|\bencontr[eé]\s+(?:un|una|otro|otra|mejor)\b"
+    r"|\bmejor\s+(?:oferta|precio|trato)\b", re.IGNORECASE)
+# Their answer to "Did you already take delivery?". Not yet (or picking it up later) -> still a live deal, the AI
+# carries on; taken delivery -> the existing handoff. A "no" that goes on to say they took it ("No, I already took
+# it") is a yes; a "took" that is negated ("haven't taken it") is a no.
+_NOT_YET = re.compile(r"\b(?:not\s+yet|haven'?t|have\s+not|hasn'?t|didn'?t|did\s+not|not\s+(?:taken|picked|delivered|"
+                      r"signed)|still\s+(?:deciding|looking|shopping|waiting|thinking)|todav[ií]a\s+no|a[uú]n\s+no)\b|"
+                      r"\b(?:picking\s+(?:it\s+)?up|pick\s+(?:it\s+)?up\s+(?:on|this|next|tomorrow|later|soon)|"
+                      r"(?:will|gonna|going\s+to|i'?ll)\s+(?:pick|get|take)\b)", re.IGNORECASE)
+_PLAIN_NO = re.compile(r"^\W*(?:no|nope|nah|not\s+really|not\s+exactly)\b", re.IGNORECASE)
 _TOOK_DELIVERY = re.compile(r"\b(?:already|took|taken|picked\s+(?:it\s+)?up|drove\s+(?:it\s+)?home|have\s+it|got\s+it|"
-                            r"delivered|signed|done\s+deal)\b", re.IGNORECASE)
+                            r"delivered|signed|done\s+deal|ya\s+lo\s+tengo|ya\s+me\s+lo\s+entregaron)\b", re.IGNORECASE)
 
 
 FOUND_ELSEWHERE_QUESTION = "Did you already take delivery of the vehicle?"
@@ -967,6 +979,8 @@ def not_interested_mode(extraction: dict[str, Any], conversation: ConversationSt
             return None, None
         if is_yes(said_text) or _TOOK_DELIVERY.search(said_text):
             return "handoff", ni.reason or real_not_interested_reason(extraction.get("not_interested_reason"))
+        if _PLAIN_NO.search(said_text):
+            return None, None
     reason = real_not_interested_reason(extraction.get("not_interested_reason"))
     said = bool(extraction.get("not_interested")) and float(
         extraction.get("not_interested_confidence") or 0.0) >= NOT_INTERESTED_CONFIDENCE

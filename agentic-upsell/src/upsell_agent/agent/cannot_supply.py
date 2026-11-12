@@ -19,6 +19,11 @@ from dataclasses import dataclass
 
 CREDIT_SCORE, APR, PAYMENT, OTD, CUSTOM_MEDIA, OUT_OF_STATE = (
     "credit_score", "apr", "payment", "out_the_door", "custom_media", "out_of_state")
+# Mustafa Abusaab, 9 Nov 2026 ("I am paying cash. Is this the price?", "Is this the price for cash?"): the AI repeated
+# the listed price three times and went to a manager (Betsy, 10 Nov: "stumped the ai"). Betsy, 12 Nov 2026: "Is the
+# listed price the same whether the customer pays cash or finances?" - "yes". So a cash / finance price question gets
+# that yes, with her fee wording from the out-the-door answer.
+CASH_OR_FINANCE = "cash_or_finance"
 # Client, 12-13 Oct 2026 (Betsy: "as an initial response, autopulse should invite the customer in for a buyer's order
 # ... always APPOINTMENT FIRST"; confirmed "Correct!"): a buyer's order request is first answered with the visit; her
 # question sequence (agent/buyers_order.py) runs only if the customer insists.
@@ -34,18 +39,26 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
               r"\blease\s+(?:payment|price|deal|it|for)\b|\bwhat\s+would\s+my\s+payments?\b|\bfinance\s+payment\b")),
     (APR, (r"\bapr\b|\binterest\s+rates?\b|\bwhat\s+(?:rate|rates)\b|\bfinance\s+rate\b|\brates?\s+(?:would|will|do|can)"
           r"\s+(?:i|you)\b")),
+    # Before the out-the-door and negotiation answers: "is the cash price the total?", "best price for cash?" are this.
+    (CASH_OR_FINANCE, (
+        r"\bcash\s+(?:price|deal|discount|number|offer)s?\b|\b(?:price|cost|number|deal)\b[^.?!]{0,25}\b(?:for|if|when|"
+        r"with|paying|by|in)\s+(?:i\s+|we\s+)?(?:pay\w*\s+)?(?:in\s+|with\s+)?(?:cash|full|financ\w*)\b|"
+        r"\b(?:cash|financ\w*)\b[^?]{0,40}\b(?:is|that'?s|it'?s)\s+(?:this|that|it)?\s*(?:the\s+)?(?:price|cost)\b|"
+        r"\b(?:discount|better\s+price|lower\s+price|cheaper|less|break)\b[^.?!]{0,25}\b(?:for|with|if|paying|pay)\s+"
+        r"(?:in\s+)?(?:cash|full)\b|\b(?:same|different)\s+(?:price|cost|number)\b[^.?!]{0,30}\b(?:cash|financ\w*)\b|"
+        r"\b(?:cash|financ\w*)\b[^.?!]{0,30}\b(?:same|different)\s+(?:price|cost)\b|\bsame\b[^.?!]{0,15}\b(?:if|when|"
+        r"whether)\s+(?:i\s+|we\s+)?(?:pay\s+(?:in\s+)?)?(?:cash|financ\w*)|"
+        r"\b(?:price|cost)\b[^.?!]{0,25}\b(?:only|just)\s+(?:with|if|when|for)\s+(?:you\s+|i\s+|we\s+)?financ\w*|"
+        r"\b(?:price|cost)\b[^.?!]{0,25}\bwithout\s+financ\w*|\bpa(?:y|ying)\s+(?:it\s+)?(?:off\s+)?in\s+full\b"
+        r"[^.?!]{0,30}\b(?:price|cost|same|discount|less)\b|"
+        # Spanish: "precio de contado", "¿ese precio es en efectivo / con financiamiento?"
+        r"\b(?:de|al)\s+contado\b|\bprecio\b[^.?!]{0,30}\b(?:efectivo|financ\w*)\b|\befectivo\b[^.?!]{0,30}\bprecio\b")),
     (OTD, (r"\bout[\s-]the[\s-]door\b|\botd\b|\btotal\s+(?:price|cost)\b|\ball[\s-]in\s+(?:price|cost)\b|"
           r"\bwith\s+(?:tax|taxes)\s+and\s+fees\b|"
           # Client, 18 Oct 2026 (Freder: "put the full out-the-door in writing with the doc fee, tax and DMV listed" -
           # the AI promised to write it up): itemized fees are the same answer - appointment first.
           r"\bitemi[sz]\w*|\bdoc(?:umentation)?\s+fees?\b|\bbreak\s*down\b[^.?!]{0,30}\b(?:fees?|price|costs?)\b|"
-          r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b|"
-          # Mustafa Abusaab, 9 Nov 2026 ("I am paying cash. Is this the price?", "Is this the price for cash?"): the
-          # AI repeated the listed price three times and went to a manager (Betsy: "stumped the ai"). Whether the
-          # price is the cash price is her out-the-door answer: the list price is the total cost to purchase.
-          r"\bcash\s+price\b|\b(?:price|cost)\b[^.?!]{0,20}\b(?:for|if|when|with|paying)\s+(?:i\s+)?(?:pay\w*\s+)?"
-          r"(?:in\s+)?cash\b|\bcash\b[^?]{0,40}\b(?:is|that'?s|it'?s)\s+(?:this|that|it)?\s*(?:the\s+)?"
-          r"(?:price|cost)\b")),
+          r"\bfees?\b[^.?!]{0,30}\bin\s+writing\b")),
     (NEGOTIATE, (r"\bnegotia\w*|\b(?:work|deal)\s+(?:with|on)\s+(?:the\s+|your\s+)?price\b|\b(?:come|go)\s+down\s+on\b|"
                 r"\blower\s+(?:the\s+|your\s+)?price\b|\bbest\s+price\b|\bwiggle\s+room\b|\bflexible\s+on\b")),
     # Betsy, 22 Oct 2026: "more photos" of the car is answered with its photos by MMS (agent/vehicle_media.py) - a
@@ -80,6 +93,9 @@ _REPLIES: dict[str, str] = {
               "this for you. " + _ASK_DAY),
     CUSTOM_MEDIA: ("I will make sure you get some photos as soon as possible. In the meantime, if everything looks "
                    "good, when do you anticipate visiting us for a test drive? I have {times} available."),
+    CASH_OR_FINANCE: ("Yes, our list price is the same whether you pay cash or finance. It includes the total cost to "
+                      "purchase the vehicle, exclusive of tax, documentation, and DMV. The next step would be to "
+                      "schedule a test drive. What day this week works best for you? I have {times} available."),
     OTD: ("Our list price is accurate and includes the total cost to purchase the vehicle, exclusive of tax, "
           "documentation, and DMV. Is there something that concerns you that you want to ensure is included in the "
           "price? Otherwise, the next step would be to schedule a test drive. What day this week works best for you? "
@@ -111,7 +127,7 @@ class CannotSupply:
 
 # Her payment / APR / credit-score / out-the-door answers are for a customer ASKING (client, 16 Oct 2026: "Around 500 a
 # month" is George telling us his budget, not asking what his payment would be - it got her payment script).
-ASKED_ONLY = frozenset({CREDIT_SCORE, APR, PAYMENT, OTD})
+ASKED_ONLY = frozenset({CREDIT_SCORE, APR, PAYMENT, OTD, CASH_OR_FINANCE})
 _ASKING = re.compile(r"\?|^\W*(?:what|what's|whats|how|can|could|would|will|is|are|do|does|did|any|give me|tell me|"
                      r"send me|i (?:want|need|would like) to know)\b|\b(?:what(?:'s| is| would| will)?|how much|"
                      r"how many|wondering|curious|let me know|tell me|quote|(?:want|need|like) to know|put|send|write|"
