@@ -5,6 +5,8 @@
 // dates); a number that can't be counted yet says why instead of showing a zero.
 import { evaluateKpi, kpisForDashboard, listDashboards } from './registry.js';
 import { BASIS, countedText, sourcePerformance, sourceTableLines, toCsv } from './sourcePerformance.js';
+import { HEAD, LINE, MUTED, SOURCE_NOTE, TABLE_LAYOUT, renderPdf, reportPage, sourceTableNode }
+  from './sourcePerformancePdf.js';
 
 // Executive first; the source table goes right after it.
 const ORDER = ['executive', 'appointments', 'ai', 'lead_source', 'bdc', 'service', 'data_quality', 'sales'];
@@ -77,3 +79,75 @@ export function fullReportCsv(report, { company, from, to, generated, filters = 
   }
   return toCsv(lines);
 }
+
+// The same report as a PDF (Betsy, 12 Nov 2026: "Dealers need pretty reports to present"; the user: the whole report
+// pretty, not a CSV). Same numbers as the CSV, in the source report's style (sourcePerformancePdf.js). Only numbers that
+// can be counted are shown - a "not available yet" line is left out, and a section with none is skipped.
+const fmtValue = (v) => (typeof v === 'number' ? v.toLocaleString('en-US') : String(v ?? ''));
+
+function highlights(section) {
+  const picks = (section?.rows || []).filter((r) => r.value !== '' && !r.outOf).slice(0, 6);
+  if (!picks.length) return [];
+  return [{
+    columns: picks.map((r) => ({ stack: [
+      { text: fmtValue(r.value), fontSize: 20, bold: true, color: HEAD },
+      { text: r.label, color: MUTED, fontSize: 8, margin: [0, 2, 0, 0] },
+    ] })),
+    columnGap: 14,
+    margin: [0, 0, 0, 14],
+  }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 736, y2: 0, lineWidth: 0.5, lineColor: LINE }],
+    margin: [0, 0, 0, 10] }];
+}
+
+// A section's title as its table's first header row: it goes to the next page with the column headings and at least
+// one row (keepWithHeaderRows), never alone at the bottom of a page, and a long table repeats it on the next page.
+function titled(node, title, sub = '') {
+  const cols = node.table.widths.length;
+  const titleRow = [{ text: [{ text: title, fontSize: 12, bold: true, color: HEAD },
+    ...(sub ? [{ text: `\n${sub}`, color: MUTED, fontSize: 8 }] : [])], colSpan: cols, border: [false, false, false, false],
+  margin: [-5, 0, 0, 6] }, ...Array(cols - 1).fill({})];
+  return { ...node, table: { ...node.table, headerRows: node.table.headerRows + 1, keepWithHeaderRows: 1,
+    body: [titleRow, ...node.table.body] }, layout: { ...node.layout, hLineWidth: (i) => (i <= 1 ? 0 : 0.5) },
+  margin: [0, 14, 0, 0] };
+}
+
+function measuresTable(rows) {
+  return {
+    table: {
+      headerRows: 1,
+      widths: ['*', 80, 110, 230],
+      body: [
+        ['Measure', 'Value', 'Out of', 'Note'].map((t, i) => ({ text: t, bold: true, color: '#ffffff', fillColor: HEAD,
+          alignment: i === 1 ? 'right' : 'left', margin: [0, 4, 0, 4] })),
+        ...rows.map((r, i) => [
+          { text: r.label, margin: [0, 3, 0, 3] },
+          { text: fmtValue(r.value), bold: true, alignment: 'right', margin: [0, 3, 0, 3] },
+          { text: r.outOf || '', color: MUTED, margin: [0, 3, 0, 3] },
+          { text: r.note || '', color: MUTED, fontSize: 7.5, margin: [0, 3, 0, 3] },
+        ].map((c) => ({ ...c, fillColor: i % 2 ? '#f7f8fa' : null }))),
+      ],
+    },
+    layout: TABLE_LAYOUT,
+  };
+}
+
+export function fullReportDoc(report, { company, from, to, generated, filters = '' }) {
+  const content = [];
+  const exec = report.sections.find((s) => s.id === 'executive');
+  content.push(...highlights(exec));
+  for (const s of report.sections) {
+    const rows = s.rows.filter((r) => r.value !== '');
+    if (rows.length) content.push(titled(measuresTable(rows), s.label));
+    if (s.id === 'executive') {
+      for (const basis of [BASIS.TIMEFRAME, BASIS.CURRENT]) {
+        content.push(titled(sourceTableNode(report.sources[basis]), 'Source and Sub Source Performance',
+          countedText(basis)));
+      }
+      content.push({ text: SOURCE_NOTE, color: MUTED, fontSize: 7.5, margin: [0, 6, 0, 0] });
+    }
+  }
+  return reportPage({ title: 'Dealership Performance Report', company, from, to, content,
+    meta: [['Generated', generated], ['Report Period', `${from} - ${to}`], ...(filters ? [['Filters', filters]] : [])] });
+}
+
+export const fullReportPdf = (report, opts) => renderPdf(fullReportDoc(report, opts));

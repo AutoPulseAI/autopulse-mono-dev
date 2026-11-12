@@ -8,10 +8,10 @@ import { countedText } from './sourcePerformance.js';
 
 const FONTS = { Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique',
   bolditalics: 'Helvetica-BoldOblique' } };
-const INK = '#16181d';
-const MUTED = '#5b6270';
-const HEAD = '#1f3b63';
-const LINE = '#e3e6eb';
+export const INK = '#16181d';
+export const MUTED = '#5b6270';
+export const HEAD = '#1f3b63';
+export const LINE = '#e3e6eb';
 const FILL = { total: '#e8eef8', type: '#f3f6fb' };
 
 const COLUMNS = [
@@ -45,21 +45,45 @@ function cells(r) {
   });
 }
 
-/** The PDF document definition (exported for tests). */
-export function sourcePerformanceDoc(report, { company, from, to, generated, filters = '' }) {
-  const meta = [
-    ['Generated', generated], ['Report Period', `${from} - ${to}`], ['Counted', countedText(report.basis)],
-    ...(filters ? [['Filters', filters]] : []),
-  ];
+// The table lines both reports use: thin grey rules between rows, none at the sides.
+export const TABLE_LAYOUT = {
+  hLineWidth: (i) => (i === 0 ? 0 : 0.5),
+  vLineWidth: () => 0,
+  hLineColor: () => LINE,
+  paddingLeft: () => 5,
+  paddingRight: () => 5,
+};
+
+/** Betsy's source / sub-source table (pdfmake node). */
+export function sourceTableNode(report) {
+  return {
+    table: {
+      headerRows: 1,
+      widths: COLUMNS.map(([, , w]) => w),
+      body: [
+        COLUMNS.map(([, label, , align]) => ({ text: label, bold: true, color: '#ffffff', fillColor: HEAD,
+          alignment: align, margin: [0, 4, 0, 4] })),
+        ...report.rows.map(cells),
+      ],
+    },
+    layout: TABLE_LAYOUT,
+  };
+}
+
+export const SOURCE_NOTE = 'Visits: customers checked in on the Desk Log. Front / Back / Total Gross: being added from '
+  + 'DealerVault (sold deals matched to leads).';
+
+/** A report's page setup: title block with the dealership and period, footer with page numbers. */
+export function reportPage({ title, company, from, to, meta, content, orientation = 'landscape' }) {
   return {
     pageSize: 'LETTER',
-    pageOrientation: 'landscape',
+    pageOrientation: orientation,
     pageMargins: [28, 28, 28, 36],
-    info: { title: `Source and Sub Source Performance - ${company}`, creator: 'AutoPulse' },
+    info: { title: `${title} - ${company}`, creator: 'AutoPulse' },
     defaultStyle: { font: 'Helvetica', fontSize: 8.5, color: INK },
     footer: (page, pages) => ({
       columns: [
-        { text: `${company} · Source and Sub Source Performance · ${from} - ${to}`, color: MUTED, fontSize: 7.5 },
+        { text: `${company} · ${title} · ${from} - ${to}`, color: MUTED, fontSize: 7.5 },
         { text: `Page ${page} of ${pages}`, alignment: 'right', color: MUTED, fontSize: 7.5 },
       ],
       margin: [28, 10, 28, 0],
@@ -68,7 +92,7 @@ export function sourcePerformanceDoc(report, { company, from, to, generated, fil
       {
         columns: [
           { width: '*', stack: [
-            { text: 'Source and Sub Source Performance', fontSize: 16, bold: true, color: HEAD },
+            { text: title, fontSize: 16, bold: true, color: HEAD },
             { text: company, fontSize: 11, margin: [0, 3, 0, 0] },
           ] },
           { width: 'auto', table: { body: meta.map(([k, v]) => [
@@ -77,33 +101,24 @@ export function sourcePerformanceDoc(report, { company, from, to, generated, fil
         ],
         margin: [0, 0, 0, 12],
       },
-      {
-        table: {
-          headerRows: 1,
-          widths: COLUMNS.map(([, , w]) => w),
-          body: [
-            COLUMNS.map(([, label, , align]) => ({ text: label, bold: true, color: '#ffffff', fillColor: HEAD,
-              alignment: align, margin: [0, 4, 0, 4] })),
-            ...report.rows.map(cells),
-          ],
-        },
-        layout: {
-          hLineWidth: (i) => (i === 0 ? 0 : 0.5),
-          vLineWidth: () => 0,
-          hLineColor: () => LINE,
-          paddingLeft: () => 5,
-          paddingRight: () => 5,
-        },
-      },
-      { text: 'Visits: customers checked in on the Desk Log. Front / Back / Total Gross: being added from DealerVault '
-        + '(sold deals matched to leads).', color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] },
+      ...content,
     ],
   };
 }
 
-/** The report as a PDF (a Buffer). */
-export function sourcePerformancePdf(report, opts) {
-  const doc = new PdfPrinter(FONTS).createPdfKitDocument(sourcePerformanceDoc(report, opts));
+/** The PDF document definition (exported for tests). */
+export function sourcePerformanceDoc(report, { company, from, to, generated, filters = '' }) {
+  return reportPage({
+    title: 'Source and Sub Source Performance', company, from, to,
+    meta: [['Generated', generated], ['Report Period', `${from} - ${to}`], ['Counted', countedText(report.basis)],
+      ...(filters ? [['Filters', filters]] : [])],
+    content: [sourceTableNode(report), { text: SOURCE_NOTE, color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] }],
+  });
+}
+
+/** A pdfmake document definition as a PDF (a Buffer). */
+export function renderPdf(definition) {
+  const doc = new PdfPrinter(FONTS).createPdfKitDocument(definition);
   return new Promise((resolve, reject) => {
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
@@ -111,4 +126,9 @@ export function sourcePerformancePdf(report, opts) {
     doc.on('error', reject);
     doc.end();
   });
+}
+
+/** The report as a PDF (a Buffer). */
+export function sourcePerformancePdf(report, opts) {
+  return renderPdf(sourcePerformanceDoc(report, opts));
 }

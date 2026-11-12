@@ -34,8 +34,8 @@ export const downloadSourceReport = (params, format = "csv") => downloadFile(
   `/api/reports/source-performance?${reportQuery({ ...params, format })}`, `source-report.${format}`);
 
 // The Dashboard's full report for the picked dates (GET /api/reports/full).
-export const downloadFullReport = (params) => downloadFile(`/api/reports/full?${reportQuery(params)}`,
-  "dealership-report.csv");
+export const downloadFullReport = (params, format = "pdf") => downloadFile(
+  `/api/reports/full?${reportQuery({ ...params, format })}`, `dealership-report.${format}`);
 
 export async function reportsGet(params) {
   const res = await fetch(`/api/reports/kpis?${reportQuery(params)}`, { headers: headers(), cache: "no-store" });
