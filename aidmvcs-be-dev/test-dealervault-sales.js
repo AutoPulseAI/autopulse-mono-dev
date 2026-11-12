@@ -150,7 +150,8 @@ test('missing customer number requires both contacts for a cross-source link and
   assert.equal(Model.rows.length, 1);
 });
 
-test('merged mapped and confirmed contact Customers are warnings and remain untouched', async () => {
+// G-008 (customer merge): a merged Customer's records go to the Customer it was merged into; the merged one is untouched.
+test('merged mapped and confirmed contact Customers resolve to the kept Customer and remain untouched', async () => {
   for (const { customer, row } of [
     { customer: { extra: { dealervault: { customer_numbers: ['007'] } } }, row: { 'Email 1': 'buyer@example.invalid' } },
     { customer: { extra: {}, phones: [{ value: '4155551212' }] },
@@ -160,8 +161,8 @@ test('merged mapped and confirmed contact Customers are warnings and remain unto
       emails: [{ value: 'buyer@example.invalid' }], ...customer }]);
     const item = entry({ 'Customer Number': '007', ...row });
     await resolveCustomers([item], context(), Model);
-    assert.equal(item.document.customer_id, null);
-    assert.deepEqual(item.warnings, ['CUSTOMER_MERGED']);
+    assert.equal(item.document.customer_id, 'canonical');
+    assert.deepEqual(item.warnings || [], []);
     assert.equal(Model.calls.some(([action]) => ['create', 'updateOne'].includes(action)), false);
   }
 });

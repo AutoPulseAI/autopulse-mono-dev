@@ -97,7 +97,7 @@ export async function resolveCustomers(entries, context, Model = Customer) {
       if (matches.length > 1 || (!matches.length && contactCandidates.length > 1)) {
         result = { id: null, warning: 'CUSTOMER_AMBIGUOUS' };
       }
-      else if (matches[0]?.merged_into) result = { id: null, warning: 'CUSTOMER_MERGED' };
+      else if (matches[0]?.merged_into) result = relationship(matches[0]);
       else if (!group.number) result = matches.length
         ? await markDealerVaultOrigin(matches[0], { markInbound: !hasDealerVaultOrigin(matches[0]) })
         : { id: null, warning: 'CUSTOMER_UNRESOLVED' };
