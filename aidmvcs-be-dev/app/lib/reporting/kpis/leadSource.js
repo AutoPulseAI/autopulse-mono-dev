@@ -6,6 +6,7 @@ import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, REPLY_FILTERS, STATE, collection, dealerForms,
   leadRowsForIds, leadsReceived, localDateTime, localDay, notYet, replies, windowFor,
 } from './common.js';
+import { matchedDealGross } from '../dealGross.js';
 import { SHOWN_BASIS, SHOWN_TEXT, shared } from './executive.js';
 
 const D = 'lead_source';
@@ -99,10 +100,22 @@ export const LEAD_SOURCE_KPIS = [
   spend('source.cost_per_appointment', 'Cost per appointment', 'Spend per source.', 'Appointments per source.'),
   spend('source.cost_per_sale', 'Cost per sale', 'Spend per source.', 'Sales per source.'),
   spend('source.roi', 'ROI', 'Gross from sales per source minus spend.', 'Spend per source.'),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'source.dms_sales', label: 'DMS sales by source', dashboard: D, grain: 'deal', dateBasis: 'Deal "Contract Date"',
-    numerator: 'DMS deals matched to a lead, by the lead\'s provider.', denominator: null, exclusions: 'n/a',
-    source: ['deals', 'leads'], reason: 'DMS deal dates are text and no deal-to-lead matching rule is agreed '
-      + '(client question 5).',
-  }),
+  {
+    // DealerVault deals matched to their lead (dealGross.js: same VIN, phone or email; the latest lead before the deal).
+    id: 'source.dms_sales', label: 'DMS sales by source', dashboard: D, grain: 'deal', kind: KIND.COUNT,
+    dateBasis: 'Deal "Contract Date" (else "Delivery Date")',
+    numerator: 'DMS deals dated in the range and matched to a lead (same VIN, phone or email), by the lead\'s provider.',
+    denominator: null, exclusions: 'Deals with no matching lead (no source to give them).', source: ['deals', 'leads'],
+    filters: [], breakdowns: ['lead_source'],
+    columns: [...LEAD_COLUMNS, ['deal_number', 'Deal #'], ['sold_on', 'Sold'], ['total_gross', 'Total gross']],
+    evaluate: async (args, ctx) => {
+      const w = await windowFor(args);
+      const { matched } = await matchedDealGross(args.dealerId, w);
+      const byLead = new Map(matched.map((m) => [m.lead_id, m]));
+      const leadRowsById = new Map((await leadRowsForIds(matched.map((m) => m.lead_id), args, ctx)).map((r) => [r.id, r]));
+      return { rows: matched.filter((m) => leadRowsById.has(m.lead_id)).map((m) => ({ ...leadRowsById.get(m.lead_id),
+        id: `${m.lead_id}:${m.deal_number}`, deal_number: m.deal_number || '', sold_on: localDay(m.date, w.tz),
+        total_gross: m.total, _day: localDay(m.date, w.tz) })) };
+    },
+  },
 ];

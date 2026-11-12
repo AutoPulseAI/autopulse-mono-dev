@@ -4,8 +4,9 @@ import { normalizeProvider, statusRegexFor, upType } from '../normalize.js';
 import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, REPLY_FILTERS, STATE, attribution, bookingRows,
   collection, dealerForms, firstStatusChangeLeads, isOid, leadRows, leadsReceived, localDateTime, localDay, memo, notYet,
-  oid, replies,
+  oid, replies, windowFor,
 } from './common.js';
+import { dmsRecordsInRange } from '../dealGross.js';
 
 const D = 'executive';
 const SOLD_GROUPS = ['SOLD_PENDING', 'SOLD_DELIVERED', 'SOLD_UNSPECIFIED'];
@@ -294,20 +295,38 @@ export const EXECUTIVE_KPIS = [
       return { rows: cohort.filter((r) => set.has(r.id) || SOLD_REGEX.test(r.status || '')), denominatorRows: cohort };
     },
   },
-  notYet(STATE.NEEDS_DATA, {
-    id: 'exec.dms_delivered', label: 'Delivered (DMS)', dashboard: D, grain: 'deal',
-    dateBasis: 'Deal "Delivery Date"', numerator: 'DMS deals delivered in the range.', denominator: null,
-    exclusions: 'Void / unwound deals (client to confirm which "Deal Status" values).', source: ['deals'],
-    reason: 'DMS dates are stored as M/D/YYYY text ("Delivery Date"); a parsed date field must be written at import '
-      + 'before they can be counted by range.',
-  }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'exec.service_visits', label: 'Service visits (ROs)', dashboard: D, grain: 'repair_order',
-    dateBasis: 'RepairOrder "Close Date"', numerator: 'Repair orders closed in the range.', denominator: null,
-    exclusions: 'RO types to exclude: client to confirm (customer-pay / warranty / internal).',
-    source: ['repairorders'],
-    reason: 'RO dates are stored as text ("Open Date" / "Close Date"); a parsed date field is needed.',
-  }),
+  {
+    // DealerVault deals; their dates are text (dealGross.js dealDate reads YYYYMMDD, M/D/YYYY and ISO).
+    id: 'exec.dms_delivered', label: 'Delivered (DMS)', dashboard: D, grain: 'deal', kind: KIND.COUNT,
+    dateBasis: 'Deal "Delivery Date" (else "Contract Date")', numerator: 'DMS deals delivered in the range.',
+    denominator: null, exclusions: 'None yet: every "Deal Status" counts until the client says which (void / unwound) '
+      + 'to leave out.', source: ['deals'], filters: [], breakdowns: [],
+    columns: [['deal_number', 'Deal #'], ['customer', 'Customer'], ['delivered', 'Delivered'], ['vehicle', 'Vehicle'],
+      ['new_used', 'New / used'], ['deal_status', 'Deal status']],
+    evaluate: async (args) => {
+      const w = await windowFor(args);
+      const deals = await dmsRecordsInRange('deals', args.dealerId, w, ['Delivery Date', 'Contract Date'],
+        { deal_number: 1, 'Full Name': 1, Year: 1, Make: 1, Model: 1, 'New/Used': 1, 'Deal Status': 1 });
+      return { rows: deals.map((d) => ({ id: String(d._id), deal_number: d.deal_number || '', customer: d['Full Name'] || '',
+        delivered: localDay(d._at, w.tz), vehicle: [d.Year, d.Make, d.Model].filter(Boolean).join(' '),
+        new_used: d['New/Used'] || '', deal_status: d['Deal Status'] || '', _day: localDay(d._at, w.tz), _g: {} })) };
+    },
+  },
+  {
+    id: 'exec.service_visits', label: 'Service visits (ROs)', dashboard: D, grain: 'repair_order', kind: KIND.COUNT,
+    dateBasis: 'RepairOrder "Close Date" (else "Open Date")', numerator: 'Repair orders closed in the range.',
+    denominator: null, exclusions: 'None yet: every RO type counts until the client says which (customer-pay / '
+      + 'warranty / internal) to leave out.', source: ['repairorders'], filters: [], breakdowns: [],
+    columns: [['ro_number', 'RO #'], ['customer', 'Customer'], ['closed', 'Closed'], ['vehicle', 'Vehicle']],
+    evaluate: async (args) => {
+      const w = await windowFor(args);
+      const ros = await dmsRecordsInRange('repairorders', args.dealerId, w, ['Close Date', 'Open Date'],
+        { ro_number: 1, 'RO Number': 1, 'Full Name': 1, Year: 1, Make: 1, Model: 1 });
+      return { rows: ros.map((r) => ({ id: String(r._id), ro_number: r.ro_number || r['RO Number'] || '',
+        customer: r['Full Name'] || '', closed: localDay(r._at, w.tz), vehicle: [r.Year, r.Make, r.Model].filter(Boolean).join(' '),
+        _day: localDay(r._at, w.tz), _g: {} })) };
+    },
+  },
   notYet(STATE.BLOCKED, {
     id: 'exec.by_rooftop', label: 'By-rooftop comparison', dashboard: D, grain: 'dealer',
     dateBasis: 'per KPI', numerator: 'The executive KPIs per rooftop.', denominator: null,
