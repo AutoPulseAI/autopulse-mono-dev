@@ -629,6 +629,21 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['exec.dms_delivered'] = await dmsCount('deals', ['Delivery Date', 'Contract Date']);
   R['exec.service_visits'] = await dmsCount('repairorders', ['Close Date', 'Open Date']);
   R['appointments.dms_service'] = await dmsCount('serviceappointments', ['Appointment Date']);
+  // No service visit in 12 months: per VIN the latest deal / RO date, older than 12 months before the range end.
+  const lastByVin = new Map();
+  const seen = async (name, fields) => {
+    for (const r of await col(name).find({ dealer_id: { $in: forms } },
+      { projection: { VIN: 1, vin: 1, ...Object.fromEntries(fields.map((f) => [f, 1])) } }).toArray()) {
+      const vin = String(r.VIN || r.vin || '').trim().toUpperCase();
+      const at = fields.map((f) => dmsDay(r[f])).find(Boolean);
+      if (vin.length < 11 || !at || at > end) continue;
+      if (!lastByVin.has(vin) || at > lastByVin.get(vin)) lastByVin.set(vin, at);
+    }
+  };
+  await seen('deals', ['Delivery Date', 'Contract Date']);
+  await seen('repairorders', ['Close Date', 'Open Date']);
+  const riskCut = new Date(end.getTime() - 365 * 864e5);
+  R['service.at_risk'] = [...lastByVin.values()].filter((at) => at < riskCut).length;
 
   return { R, WHY };
 }

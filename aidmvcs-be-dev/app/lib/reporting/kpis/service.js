@@ -7,6 +7,7 @@ import {
   notYet, oid, windowFor,
 } from './common.js';
 import { shared } from './executive.js';
+import { dealDate } from '../dealGross.js';
 
 const D = 'service';
 const CURRENT = 'Current state (the date range does not apply)';
@@ -113,24 +114,62 @@ export const SERVICE_KPIS = [
     id: 'service.booked_after_reminder', label: 'Booked after a reminder', dashboard: D, grain: 'service_event',
     dateBasis: 'ai_service_events.created_at', numerator: 'Reminders followed by a service booking for the same '
       + 'customer / VIN within N days.', denominator: 'Reminders raised.', exclusions: 'n/a',
-    source: ['ai_service_events', 'bookings'], reason: 'The window N is not decided (client question 9), and DMS '
-      + 'service appointments have no parsed date yet.',
+    source: ['ai_service_events', 'bookings'], reason: 'No service reminder has been sent yet (13 Nov 2026: 0 service '
+      + 'events, 0 owner-lifecycle touches on live). Counted against the AI Studio cadence once reminders go out.',
   }),
   notYet(STATE.NEEDS_DATA, {
     id: 'service.visited_after_reminder', label: 'Visited after a reminder', dashboard: D, grain: 'repair_order',
     dateBasis: 'RepairOrder "Open Date"', numerator: 'Repair orders for a reminded VIN within N days.',
     denominator: 'Reminders raised.', exclusions: 'n/a', source: ['repairorders'],
-    reason: 'RO dates are stored as text; a parsed date field is needed (and the window N).',
+    reason: 'No service reminder has been sent yet (13 Nov 2026: 0 service '
+      + 'events, 0 owner-lifecycle touches on live). RO dates are read; counted once reminders go out.',
   }),
   notYet(STATE.NEEDS_DATA, {
     id: 'service.due', label: 'Vehicles due for service', dashboard: D, grain: 'vehicle', dateBasis: 'next due date',
     numerator: 'Vehicles whose next service is due in the range.', denominator: null, exclusions: 'n/a',
-    source: ['ai_service_vehicles'], reason: 'No stored next-due date per vehicle (ai_service_events holds raised '
-      + 'events, not a due list).',
+    source: ['ai_service_vehicles'], reason: 'Needs the Vehicle Databases maintenance schedule (G-088-092); '
+      + 'no next-due date per vehicle is stored today.',
   }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'service.at_risk', label: 'At-risk customers', dashboard: D, grain: 'customer', dateBasis: CURRENT,
-    numerator: 'Customers matching the at-risk rule.', denominator: null, exclusions: 'n/a', source: [],
-    reason: 'No at-risk rule exists yet (client question 9, e.g. no RO in 12 months and still owns).',
-  }),
+  {
+    // "No service visit in 12 months" (user, 13 Nov 2026), from the DealerVault files the dealer already sends: every
+    // VIN the dealer sold (deals) or serviced (repair orders), with its last visit. A VIN is at risk when its last
+    // purchase or repair order is more than 12 months before the range's last day. The AI's ownership records
+    // (ai_vehicle_ownership) are not filled yet, so a car the customer has since sold still shows.
+    id: 'service.at_risk', label: 'No service visit in 12 months', dashboard: D, grain: 'vehicle', kind: KIND.COUNT,
+    dateBasis: 'As of the range\'s last day: latest RO "Close Date" / "Open Date" or deal "Delivery Date" / '
+      + '"Contract Date" per VIN', numerator: 'VINs sold or serviced by the dealer whose last purchase or repair '
+      + 'order is more than 12 months old.', denominator: null,
+    inclusions: 'DealerVault deals and repair orders with a VIN.',
+    exclusions: 'VINs with no readable date. Not yet excluded: cars the customer no longer owns (no ownership data '
+      + 'yet).', source: ['deals', 'repairorders'], filters: [], breakdowns: ['last_visit_kind'],
+    columns: [['vin', 'VIN'], ['customer', 'Customer'], ['phone', 'Phone'], ['email', 'Email'], ['vehicle', 'Vehicle'],
+      ['last_visit', 'Last visit'], ['last_visit_kind', 'Last visit was']],
+    evaluate: async (args) => {
+      const w = await windowFor(args);
+      const cutoff = new Date(w.end.getTime() - 365 * 864e5);
+      const forms = dealerForms(args.dealerId);
+      const fields = { VIN: 1, vin: 1, 'Full Name': 1, 'Cell Phone': 1, 'Home Phone': 1, 'Email 1': 1, Year: 1, Make: 1,
+        Model: 1 };
+      const last = new Map();
+      const take = (r, at, kind) => {
+        const vin = String(r.VIN || r.vin || '').trim().toUpperCase();
+        if (vin.length < 11 || !at || at > w.end) return;
+        const prev = last.get(vin);
+        if (!prev || at > prev.at) last.set(vin, { r, at, kind });
+      };
+      const deals = await collection('deals').find({ dealer_id: { $in: forms } },
+        { projection: { ...fields, 'Delivery Date': 1, 'Contract Date': 1 } }).toArray();
+      for (const d of deals) take(d, dealDate(d['Delivery Date'], w.tz) || dealDate(d['Contract Date'], w.tz), 'Purchase');
+      const ros = await collection('repairorders').find({ dealer_id: { $in: forms } },
+        { projection: { ...fields, 'Close Date': 1, 'Open Date': 1 } }).toArray();
+      for (const r of ros) take(r, dealDate(r['Close Date'], w.tz) || dealDate(r['Open Date'], w.tz), 'Service');
+      const rows = [...last.entries()].filter(([, v]) => v.at < cutoff).sort((a, b) => b[1].at - a[1].at)
+        .map(([vin, { r, at, kind }]) => ({
+          id: vin, vin, customer: r['Full Name'] || '', phone: r['Cell Phone'] || r['Home Phone'] || '',
+          email: r['Email 1'] || '', vehicle: [r.Year, r.Make, r.Model].filter(Boolean).join(' '),
+          last_visit: localDay(at, w.tz), last_visit_kind: kind, _g: { last_visit_kind: kind },
+        }));
+      return { rows };
+    },
+  },
 ];
