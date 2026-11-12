@@ -20,6 +20,8 @@ const Sidebar = ({ isOpen, onClose }) => {
   const canSupport = useCan("Manage Support Ticket");
   const canManageDealer = useCan("manage_dealer");
   const canEmailAccounts = useCan("Manage Email Accounts");
+  // SOW Deliverable K: the dealership's Forms Library, managed by its administrators.
+  const canForms = useCan("Manage Account Information");
 
   const pathname = usePathname(); // Use pathname from usePathname hook
   const sidebarRef = useRef();
@@ -280,7 +282,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </Link>
         </li>
 
-        {(manage_role || manage_staff) && (
+        {(manage_role || manage_staff || canForms) && (
           <li className="submenu">
             <button
               className={`nav-link submenu-toggle ${adminOpen ? "open" : ""}`}
@@ -322,6 +324,13 @@ const Sidebar = ({ isOpen, onClose }) => {
                         dealers, edited by AutoPulse super admins. */}
                     <Link href="/dealer/settings" className={getLinkClass("/dealer/settings")}>
                       <i className="fa-regular fa-gear"></i>Settings
+                    </Link>
+                  </li>
+                )}
+                {canForms && (
+                  <li>
+                    <Link href="/dealer/forms" className={getLinkClass("/dealer/forms")}>
+                      <i className="fa-regular fa-file-pdf"></i>Forms Library
                     </Link>
                   </li>
                 )}
