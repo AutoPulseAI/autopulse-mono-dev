@@ -603,6 +603,23 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
     at: range });
   R['dq.campaign_blocked'] = await col('campaignleads').countDocuments({ dealer_id: { $in: forms }, status: 'blocked',
     updatedAt: range });
+  // 13 Nov 2026 additions, counted straight from the collections.
+  const notesIn = (re) => col('emails').find({ dealer_id: { $in: forms }, is_note: true, mail_content: re,
+    timestamp: range }, { projection: { lead_id: 1 } }).toArray();
+  const handoffNotes = await notesIn(/^\s*Set to Managerial Review by the AI/i);
+  await loadLeads(handoffNotes.map((n) => n.lead_id));
+  R['ai.handoff_history'] = handoffNotes.filter((n) => ownLead(n.lead_id)).length;
+  const callNotes = await notesIn(/^\s*(Called the customer|Call outcome:)/i);
+  await loadLeads(callNotes.map((n) => n.lead_id));
+  R['bdc.dial_attempts'] = callNotes.filter((n) => ownLead(n.lead_id)).length;
+  R['bdc.assigned_as_of'] = cohort.length;
+  const cutoff = now < end ? now : end;
+  const overdue = await col('desklogentries').find({ dealer_id: d, next_step_at: { $ne: null, $lt: cutoff },
+    outcome: { $nin: ['SOLD PENDING', 'SOLD DELIVERED'] }, unsold_reason: { $ne: 'DND' } },
+  { projection: { lead_id: 1 } }).toArray();
+  await loadLeads(overdue.map((e) => e.lead_id));
+  R['bdc.overdue_followups'] = new Set(overdue.filter((e) => ownLead(e.lead_id)).map((e) => str(e.lead_id))).size;
+
   return { R, WHY };
 }
 

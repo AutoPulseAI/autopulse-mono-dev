@@ -7,7 +7,7 @@
 import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, MESSAGE_COLUMNS, STATE, collection, dealerForms,
   isOid, leadsByIds, localDateTime, localDay, memo, messageRows, messagesInWindow, notYet, outboundMatch, oid,
-  passingLeads, staffLabel, staffNames, windowFor,
+  leadRowsForIds, passingLeads, staffLabel, staffNames, windowFor,
 } from './common.js';
 import { shared } from './executive.js';
 import { normalizeProvider } from '../normalize.js';
@@ -200,21 +200,79 @@ export const BDC_KPIS = [
     columns: BOOKING_COLUMNS,
     evaluate: async (args, ctx) => ({ rows: (await shared.shownRows(args, ctx)).filter((r) => r.set_by) }),
   },
-  notYet(STATE.NEEDS_DATA, {
-    id: 'bdc.assigned_as_of', label: 'Assigned leads (owner at the time)', dashboard: D, grain: 'lead',
-    dateBasis: 'Lead.createdAt', numerator: 'Leads credited to the owner they had when the event happened.',
-    denominator: null, exclusions: 'n/a', source: ['leads'],
-    reason: 'Lead assignment changes are not logged yet (api/leads/[id] and lib/customerResolver.js).',
-  }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'bdc.overdue_followups', label: 'Overdue follow-ups', dashboard: D, grain: 'lead',
-    dateBasis: 'the dated next step', numerator: 'Leads in "Contacted - Specific Follow-up" past their dated next '
-      + 'step.', denominator: null, exclusions: 'n/a', source: ['ai_lead_state', 'scheduled_followups'],
-    reason: 'Where the dated next step is stored (ai_lead_state or scheduled_followups) is not confirmed yet.',
-  }),
-  notYet(STATE.BLOCKED, {
-    id: 'bdc.dial_attempts', label: 'Dial attempts', dashboard: D, grain: 'call', dateBasis: 'call time',
-    numerator: 'Phone calls dialled by each staff member.', denominator: null, exclusions: 'n/a', source: [],
-    reason: 'No phone system / call log integration; call tasks are the only call record.',
-  }),
+  {
+    // Reassignments are logged from 13 Nov 2026 (ActivityLog 'lead_reassigned', api/leads/[id] and bulk reassign). A
+    // lead reassigned after it came in is credited to the owner it had first ("from" of its first reassignment);
+    // otherwise to its owner now.
+    id: 'bdc.assigned_as_of', label: 'Assigned leads (owner at the time)', dashboard: D, grain: 'lead', kind: KIND.COUNT,
+    dateBasis: 'Lead.createdAt', numerator: 'Leads received in the range, credited to the owner they had when they '
+      + 'came in.', denominator: null, inclusions: 'Leads received in the range.',
+    exclusions: 'Reassignments before 13 Nov 2026 were not logged: those leads count under their owner now.',
+    source: ['leads', 'activitylogs'], filters: LEAD_FILTERS, breakdowns: ['staff', 'lead_source'],
+    columns: [...LEAD_COLUMNS, ['owner_then', 'Owner when it came in']],
+    evaluate: async (args, ctx) => {
+      const cohort = await shared.leadsReceivedRows(args, ctx);
+      if (!cohort.length) return { rows: [] };
+      const logs = await collection('activitylogs').find({ lead_id: { $in: cohort.map((r) => oid(r.id)) },
+        action: 'lead_reassigned' }, { projection: { lead_id: 1, from: 1, at: 1 } }).sort({ at: 1 }).toArray();
+      const first = new Map();
+      for (const l of logs) if (!first.has(String(l.lead_id))) first.set(String(l.lead_id), l);
+      return { rows: cohort.map((r) => {
+        const log = first.get(r.id);
+        const owner = log ? (log.from || 'Unassigned') : r.assigned_to;
+        return { ...r, owner_then: owner, _g: { ...r._g, staff: owner } };
+      }) };
+    },
+  },
+  {
+    // The dated next step is the Desk Log's "next step" (DeskLogEntry.next_step_at), the only dated follow-up the CRM
+    // stores for a lead; the AI's own dated follow-ups are the AI's (it sends them itself).
+    id: 'bdc.overdue_followups', label: 'Overdue follow-ups', dashboard: D, grain: 'lead', kind: KIND.COUNT,
+    dateBasis: 'the next step date (DeskLogEntry.next_step_at), up to the end of the range',
+    numerator: 'Showroom visits whose next step date has passed while the visit is still open or unsold.',
+    denominator: null, inclusions: 'Desk Log visits with a next step date.',
+    exclusions: 'Sold visits; DND; next steps not reached yet.', source: ['desklogentries', 'leads'], filters: [],
+    breakdowns: ['staff'], columns: [...LEAD_COLUMNS, ['next_step', 'Next step was'], ['days_overdue', 'Days overdue']],
+    evaluate: async (args, ctx) => {
+      const w = await windowFor(args);
+      const cutoff = new Date(Math.min(w.end.getTime(), Date.now()));
+      const entries = await collection('desklogentries').find({ dealer_id: String(args.dealerId),
+        next_step_at: { $ne: null, $lt: cutoff }, outcome: { $nin: ['SOLD PENDING', 'SOLD DELIVERED'] },
+        unsold_reason: { $ne: 'DND' } }, { projection: { lead_id: 1, next_step_at: 1 } }).toArray();
+      const at = new Map(entries.map((e) => [String(e.lead_id), e.next_step_at]));
+      const rows = await leadRowsForIds(entries.map((e) => String(e.lead_id)), args, ctx, (l) => {
+        const due = at.get(String(l._id));
+        return { next_step: localDateTime(due, w.tz), days_overdue: Math.floor((cutoff - new Date(due)) / 864e5),
+          _day: localDay(due, w.tz) };
+      });
+      return { rows };
+    },
+  },
+  {
+    // Calls staff logged: the Call button on the customer, lead and Desk Log ("Called the customer (...)" note, G-059)
+    // and the Call Tasks outcome ("Call outcome: ..." note). There is no phone system, so a call nobody logged is not
+    // counted.
+    id: 'bdc.dial_attempts', label: 'Dial attempts (logged calls)', dashboard: D, grain: 'call', kind: KIND.COUNT,
+    dateBasis: 'the call note\'s time (emails.timestamp)',
+    numerator: 'Calls staff logged in the range, by who logged them.', denominator: null,
+    inclusions: 'Call notes from the Call button and from Call Tasks outcomes.',
+    exclusions: 'Calls nobody logged (no phone-system integration).', source: ['emails', 'leads'], filters: [],
+    breakdowns: ['staff'], columns: [['lead_id', 'Lead ID'], ['customer', 'Customer'], ['called_at', 'Called'],
+      ['called_by', 'Called by'], ['result', 'Result']],
+    evaluate: async (args, ctx) => {
+      const w = await windowFor(args);
+      const notes = await collection('emails').find({ dealer_id: { $in: dealerForms(args.dealerId) }, is_note: true,
+        mail_content: /^\s*(Called the customer|Call outcome:)/i, timestamp: { $gte: w.start, $lte: w.end } },
+      { projection: { lead_id: 1, timestamp: 1, mail_content: 1, message_by: 1 } }).toArray();
+      const names = await staffNames(notes.map((n) => n.message_by).filter(Boolean), ctx);
+      const leads = new Map((await leadRowsForIds(notes.map((n) => String(n.lead_id)), args, ctx)).map((r) => [r.id, r]));
+      return { rows: notes.filter((n) => leads.has(String(n.lead_id))).map((n) => {
+        const r = leads.get(String(n.lead_id));
+        const by = n.message_by ? staffLabel(names, n.message_by) : 'Unknown';
+        return { ...r, id: String(n._id), called_at: localDateTime(n.timestamp, w.tz), called_by: by,
+          result: String(n.mail_content || '').replace(/^\s*(Called the customer \([^)]*\):|Call outcome:)\s*/i, '').slice(0, 200),
+          _day: localDay(n.timestamp, w.tz), _g: { ...r._g, staff: by } };
+      }) };
+    },
+  },
 ];

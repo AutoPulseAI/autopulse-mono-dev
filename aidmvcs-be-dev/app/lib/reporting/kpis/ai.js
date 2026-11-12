@@ -256,10 +256,31 @@ export const AI_KPIS = [
     reason: 'Kept by the AI service (GET /v1/metrics, UTC days, 90-day turn log) for AutoPulse admins; not read by '
       + 'the CRM yet.',
   }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'ai.handoff_history', label: 'Handoffs (full history)', dashboard: D, grain: 'handoff_event',
-    dateBasis: 'handoff time', numerator: 'Every handoff, including leads handed back later.', denominator: null,
-    exclusions: 'n/a', source: ['ai_turn_log'],
-    reason: 'Only the current AI state is stored; a handoff event log (or nightly snapshot) is needed.',
-  }),
+  {
+    // Each time the AI hands a lead to a manager it writes a note on the lead ("Set to Managerial Review by the AI:
+    // <why>", agentic-upsell agent/crm_status.py) - so the full history, also of leads handed back later, is those notes.
+    id: 'ai.handoff_history', label: 'Handoffs (full history)', dashboard: D, grain: 'handoff_event', kind: KIND.COUNT,
+    dateBasis: 'the note\'s time (emails.timestamp)',
+    numerator: 'Every time the AI handed a lead to a manager in the range ("Set to Managerial Review by the AI" note), '
+      + 'including leads handed back later and leads handed over more than once.',
+    denominator: null, inclusions: 'AI notes on the dealer\'s leads.', exclusions: 'Staff setting Managerial Review '
+      + 'themselves (that is a staff status change).', source: ['emails', 'leads'], filters: [],
+    breakdowns: ['staff', 'lead_source'],
+    columns: [['lead_id', 'Lead ID'], ['customer', 'Customer'], ['handoff_at', 'Handed over'], ['why', 'Why'],
+      ['status', 'Status now'], ['assigned_to', 'Assigned to']],
+    evaluate: async (args) => {
+      const w = await windowFor(args);
+      const notes = await collection('emails').find({ dealer_id: { $in: dealerForms(args.dealerId) }, is_note: true,
+        mail_content: /^\s*Set to Managerial Review by the AI/i, timestamp: { $gte: w.start, $lte: w.end } },
+      { projection: { lead_id: 1, timestamp: 1, mail_content: 1 } }).sort({ timestamp: 1 }).toArray();
+      const ctx = {};
+      const byLead = new Map((await leadRowsForIds(notes.map((n) => String(n.lead_id)), args, ctx)).map((r) => [r.id, r]));
+      return { rows: notes.filter((n) => byLead.has(String(n.lead_id))).map((n) => {
+        const r = byLead.get(String(n.lead_id));
+        return { ...r, id: String(n._id), handoff_at: localDateTime(n.timestamp, w.tz),
+          why: String(n.mail_content || '').replace(/^\s*Set to Managerial Review by the AI:?\s*/i, '').slice(0, 300),
+          _day: localDay(n.timestamp, w.tz) };
+      }) };
+    },
+  },
 ];
