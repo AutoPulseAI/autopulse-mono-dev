@@ -68,9 +68,10 @@ async function seed() {
     appointment_type: 'sales', ...extra });
   await db.collection('bookings').insertMany([
     booking(L[0], '2026-11-02 09:30', '2026-11-03', '10:00', { created_by: 'ai', showed: true }),
-    booking(L[1], '2026-11-02 10:30', '2026-11-02', '16:00', { created_by: 'staff' }), // shown: lead is Visited
+    booking(L[1], '2026-11-02 10:30', '2026-11-02', '16:00', { created_by: 'staff', created_by_name: 'Sam Staff' }), // shown: lead is Visited
     booking(L[3], '2026-10-20 09:30', '2026-11-03', '15:00', { created_by: 'staff' }), // scheduled, no-show
-    booking(L[2], '2026-11-03 23:40', '2026-11-05', '11:00', { created_by: 'staff', booking_status: 'cancelled' }),
+    booking(L[2], '2026-11-03 23:40', '2026-11-05', '11:00', { created_by: 'staff', booking_status: 'cancelled',
+      cancelled_at: at('2026-11-03 23:50'), cancelled_by: 'staff' }),
   ]);
   await db.collection('emails').insertMany([
     { dealer_id, lead_id: L[0], status: 'received', communication_type: 'sms', mail_content: 'yes',
@@ -219,13 +220,16 @@ async function seedRich() {
   const b = (lead, o) => ({ dealer_id: d, lead_id: String(lead), customerName: 'x', booking_status: 'confirmed',
     appointment_type: 'sales', bookingTime: '10:00', ...o });
   await db.collection('bookings').insertMany([
-    b(id(1), { created_by: 'staff', createdAt: at('2026-11-03 10:30'), bookingDate: day('2026-11-03'), showed: false }),
-    b(id(2), { created_by: 'customer', createdAt: at('2026-11-02 10:30'), bookingDate: day('2026-11-03') }), // lead 'visited' (lower case): not a show
+    b(id(1), { created_by: 'staff', createdAt: at('2026-11-03 10:30'), bookingDate: day('2026-11-03'), showed: false,
+      created_by_user_id: STAFF, created_by_name: 'Pat Staff' }),
+    b(id(2), { created_by: 'customer', createdAt: at('2026-11-02 10:30'), bookingDate: day('2026-11-03'),
+      history: [{ action: 'rescheduled', at: at('2026-11-05 09:00'), actor_type: 'customer' }] }), // moved after the range // lead 'visited' (lower case): not a show
     b(id(3), { created_by: 'staff', appointment_type: 'service', createdAt: at('2026-11-02 13:00'),
       bookingDate: day('2026-11-04'), bookingTime: '9am' }),
     b(id(3), { created_by: 'staff', appointment_type: 'service', createdAt: at('2026-11-02 13:05'),
       bookingDate: day('2026-11-04'), bookingTime: '9am' }), // duplicate
-    b(id(4), { created_by: 'ai', createdAt: at('2026-11-03 09:00'), bookingDate: day('2026-11-02'), booking_status: 'completed' }),
+    b(id(4), { created_by: 'ai', createdAt: at('2026-11-03 09:00'), bookingDate: day('2026-11-02'), booking_status: 'completed',
+      history: [{ action: 'rescheduled', at: at('2026-11-03 09:30'), actor_type: 'ai' }] }),
   ]);
   await db.collection('activitylogs').insertMany([
     { dealer_id: d, lead_id: id(3), action: 'status_changed', to: 'Sold', at: at('2026-11-02 15:00') },
@@ -305,6 +309,9 @@ test('reconcile: every live KPI has an independent raw count equal to Reports; i
   assert.equal(r.get('appointments.not_recorded').raw, 2);
   assert.equal(r.get('bdc.call_tasks_missed').raw, 2);
   assert.equal(r.get('dq.duplicate_bookings').raw, 1);
+  // Booking history: one move in the range (the AI), one cancel (staff); set by a staff member: Sam (shown), Pat.
+  assert.deepEqual(['appointments.moved', 'appointments.cancelled_by', 'bdc.appointments_by_rep', 'bdc.shows_by_rep']
+    .map((k) => [r.get(k).raw, r.get(k).status]), [[1, 'OK'], [1, 'OK'], [2, 'OK'], [1, 'OK']]);
   // Ninety's 10:00 reply is followed by another reply (10:05) before the AI answer: only the 10:05 one is AI-answered
   // (4 min); the base seed's 09:20 reply 5 min. Median 4.5.
   assert.equal(r.get('ai.response_time').raw, '4.5 (n=2)');

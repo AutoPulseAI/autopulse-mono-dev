@@ -611,7 +611,7 @@ test('blocked and needs-data KPIs return a state, not a number', async (t) => {
   const proxy = body.kpis.find((k) => k.id === 'sales.proxy_visits');
   assert.equal(proxy.state, 'live');
   assert.equal(proxy.count, 1);
-  for (const kpi of ['sales.followup_compliance', 'source.roi', 'appointments.moved']) {
+  for (const kpi of ['sales.followup_compliance', 'source.roi', 'bdc.assigned_as_of']) {
     const list = await leadList(reportLink(kpi));
     assert.equal(list.drill, undefined, `${kpi}: not clickable, the list ignores it`);
   }

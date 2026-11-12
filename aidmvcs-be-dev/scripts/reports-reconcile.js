@@ -269,6 +269,15 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['appointments.upcoming'] = out('upcoming');
   R['exec.show_rate'] = R['appointments.show_rate'] = { num: out('shown'),
     den: out('shown') + out('no_show') + out('not_recorded') };
+  // Booking history (from 10 Nov 2026): moves and cancels dated by when they happened, one per booking; who set it.
+  const changed = await col('bookings').find({ dealer_id: { $in: forms } }).toArray();
+  R['appointments.moved'] = changed.filter((b) => (b.history || []).some((h) => h?.action === 'rescheduled'
+    && inRange(h.at))).length;
+  R['appointments.cancelled_by'] = changed.filter((b) => (b.history || []).some((h) => ['cancelled', 'deduplicated']
+    .includes(h?.action) && inRange(h.at)) || (b.booking_status === 'cancelled' && inRange(b.cancelled_at))).length;
+  const setByStaff = (b) => Boolean(b.created_by_user_id || b.created_by_name);
+  R['bdc.appointments_by_rep'] = made.filter(setByStaff).length;
+  R['bdc.shows_by_rep'] = sched.filter((b) => setByStaff(b) && outcome(b) === 'shown').length;
   const bookedLeads = new Set((cohortIds.length ? await col('bookings').distinct('lead_id', { dealer_id: { $in: forms },
     lead_id: { $in: cohortIds }, booking_status: { $ne: 'cancelled' } }) : []).map(str));
   R['exec.lead_to_appt'] = { num: cohortIds.filter((id) => bookedLeads.has(id)).length, den: cohort.length };

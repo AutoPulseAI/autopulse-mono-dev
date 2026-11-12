@@ -130,26 +130,35 @@ const CANCEL_ACTIONS = new Set(['cancelled', 'deduplicated']);
 
 // Pure. Rescheduled / cancelled bookings in [start, end] from their history, by actor (see the header).
 export function historyChanges(bookings, { start, end }) {
-  const empty = () => ({ total: 0, by_actor: Object.fromEntries(CHANGE_ACTORS.map((a) => [a, 0])), booking_ids: [] });
+  const empty = () => ({ total: 0, by_actor: Object.fromEntries(CHANGE_ACTORS.map((a) => [a, 0])), booking_ids: [],
+    events: [] });
   const out = { rescheduled: empty(), cancelled: empty() };
   const inRange = (at) => at && new Date(at) >= start && new Date(at) <= end;
   const actorOf = (t) => (CHANGE_ACTORS.includes(t) ? t : 'unknown');
-  const add = (bucket, id, actor) => {
+  // events: one per booking, its latest change of that kind in the range (who, when) - the report rows.
+  const add = (bucket, id, actor, entry = null) => {
     bucket.total += 1;
     bucket.by_actor[actorOf(actor)] += 1;
     bucket.booking_ids.push(id);
+    bucket.events.push({ booking_id: id, actor: actorOf(actor), actor_name: entry?.actor_name || null,
+      at: entry?.at || null });
   };
   for (const b of bookings) {
     const history = Array.isArray(b.history) ? b.history : [];
     const latest = (pred) => history.filter((h) => h && pred(h.action) && inRange(h.at))
       .sort((x, y) => new Date(y.at) - new Date(x.at))[0];
     const moved = latest((a) => a === 'rescheduled');
-    if (moved) add(out.rescheduled, String(b._id), moved.actor_type);
+    if (moved) add(out.rescheduled, String(b._id), moved.actor_type, moved);
     const cancel = latest((a) => CANCEL_ACTIONS.has(a));
-    if (cancel) add(out.cancelled, String(b._id), cancel.actor_type);
-    else if (b.booking_status === 'cancelled' && inRange(b.cancelled_at)) add(out.cancelled, String(b._id), b.cancelled_by);
+    if (cancel) add(out.cancelled, String(b._id), cancel.actor_type, cancel);
+    else if (b.booking_status === 'cancelled' && inRange(b.cancelled_at)) {
+      add(out.cancelled, String(b._id), b.cancelled_by, { at: b.cancelled_at });
+    }
   }
-  for (const bucket of Object.values(out)) bucket.booking_ids.sort();
+  for (const bucket of Object.values(out)) {
+    bucket.booking_ids.sort();
+    bucket.events.sort((x, y) => x.booking_id.localeCompare(y.booking_id));
+  }
   return out;
 }
 
@@ -234,6 +243,8 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
       created_by: b.created_by ?? null, created_at: b.createdAt || null, booking_date: b.bookingDate || null,
       booking_time: b.bookingTime || null, appointment_type: b.appointment_type === 'service' ? 'service' : 'sales',
       booking_status: b.booking_status || null, showed: b.showed ?? null,
+      created_by_user_id: b.created_by_user_id ? String(b.created_by_user_id) : null,
+      created_by_name: b.created_by_name || null,
     };
   }).sort((a, b) => a.booking_id.localeCompare(b.booking_id));
 

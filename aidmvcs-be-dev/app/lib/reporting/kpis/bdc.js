@@ -177,23 +177,29 @@ export const BDC_KPIS = [
   {
     id: 'bdc.appointments_by_owner', label: 'Appointments set (by lead owner)', dashboard: D, grain: 'booking',
     kind: KIND.COUNT, dateBasis: 'Booking.createdAt',
-    numerator: 'Bookings set in the range, credited to the lead\'s current owner (not to the person who booked: '
-      + 'bookings do not record that yet).', denominator: null, inclusions: 'As appointments.set.',
+    numerator: 'Bookings set in the range, credited to the lead\'s current owner (who set each one: '
+      + 'bdc.appointments_by_rep).', denominator: null, inclusions: 'As appointments.set.',
     exclusions: 'Duplicate bookings.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS,
     breakdowns: ['staff', 'creator'], columns: BOOKING_COLUMNS,
     evaluate: async (args, ctx) => ({ rows: await shared.apptSetRows(args, ctx) }),
   },
-  notYet(STATE.NEEDS_DATA, {
-    id: 'bdc.appointments_by_rep', label: 'Appointments set by rep', dashboard: D, grain: 'booking',
-    dateBasis: 'Booking.createdAt', numerator: 'Bookings set by each staff member.', denominator: null,
-    exclusions: 'n/a', source: ['bookings'],
-    reason: 'Bookings do not record which staff member created them (created_by_user_id, P1 item 3).',
-  }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'bdc.shows_by_rep', label: 'Shows by rep', dashboard: D, grain: 'booking', dateBasis: 'Booking.bookingDate',
-    numerator: 'Shows of the bookings each staff member set.', denominator: null, exclusions: 'n/a',
-    source: ['bookings'], reason: 'Needs created_by_user_id on bookings (P1 item 3).',
-  }),
+  {
+    id: 'bdc.appointments_by_rep', label: 'Appointments set by rep', dashboard: D, grain: 'booking', kind: KIND.COUNT,
+    dateBasis: 'Booking.createdAt', numerator: 'Bookings set in the range by a signed-in staff member, by who set them.',
+    denominator: null, inclusions: 'Bookings with the staff member who created them (Booking.created_by_user_id).',
+    exclusions: 'Bookings by the AI or the customer; bookings before 10 Nov 2026 (not recorded). Duplicate bookings.',
+    source: ['bookings'], filters: BOOKING_FILTERS, breakdowns: ['rep', 'lead_source'], columns: BOOKING_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: (await shared.apptSetRows(args, ctx)).filter((r) => r.set_by) }),
+  },
+  {
+    id: 'bdc.shows_by_rep', label: 'Shows by rep', dashboard: D, grain: 'booking', kind: KIND.COUNT,
+    dateBasis: 'Booking.bookingDate (the appointment day)', numerator: 'Recorded shows of appointments a staff member '
+      + 'set, by who set them.', denominator: null, inclusions: 'As appointments.shown, set by a signed-in staff member.',
+    exclusions: 'Appointments set by the AI or the customer, or before 10 Nov 2026. Cancelled.',
+    source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: ['rep', 'lead_source'],
+    columns: BOOKING_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: (await shared.shownRows(args, ctx)).filter((r) => r.set_by) }),
+  },
   notYet(STATE.NEEDS_DATA, {
     id: 'bdc.assigned_as_of', label: 'Assigned leads (owner at the time)', dashboard: D, grain: 'lead',
     dateBasis: 'Lead.createdAt', numerator: 'Leads credited to the owner they had when the event happened.',
