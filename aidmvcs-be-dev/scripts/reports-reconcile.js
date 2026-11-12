@@ -319,6 +319,11 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['sales.appraisals'] = appraised.length;
   R['sales.appraisal_to_proposal'] = { num: appraised.filter((v) => reachedAt(v, 'PROPOSAL') != null
     && reachedAt(v, 'PROPOSAL') >= reachedAt(v, 'APPRAISAL')).length, den: appraised.length };
+  R['sales.appraisal_opportunities'] = new Set(appraised.map((v) => str(v.lead_id))).size;
+  R['sales.appraisal_log'] = visits.reduce((n, v) => {
+    const into = (v.history || []).filter((h) => h.field === 'stage' && h.to === 'APPRAISAL').length;
+    return n + (into || (v.stage === 'APPRAISAL' ? 1 : 0));
+  }, 0);
   R['sales.unsold_reasons'] = visits.filter((v) => v.outcome === 'UNSOLD').length;
   R['sales.pending_delivered'] = visits.filter((v) => ['SOLD PENDING', 'SOLD DELIVERED'].includes(v.outcome)).length;
   R['sales.stage_aging'] = visits.filter((v) => !v.outcome).length; // open visits (no outcome yet)
