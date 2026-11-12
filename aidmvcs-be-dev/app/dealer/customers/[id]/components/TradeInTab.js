@@ -22,6 +22,11 @@ function vehicleSummary(tradeIn) {
   return parts.length > 0 ? parts.join(" ") : "Unspecified vehicle";
 }
 
+const HISTORY_LABELS = { trade_offer_amount: "Trade offer", trade_acv_amount: "Trade ACV", payoff_amount: "Payoff",
+  miles: "Miles", condition: "Condition" };
+const showValue = (field, v) => (v == null || v === "" ? "empty"
+  : ["trade_offer_amount", "trade_acv_amount", "payoff_amount"].includes(field) ? formatCurrency(v) : String(v));
+
 // Self-contained tab, mirroring LeadsTab.js: fetches/paginates its own data
 // and owns its own create/edit form + modal, since trade-ins aren't part of
 // the /360 payload shared across the other tabs.
@@ -36,6 +41,10 @@ export default function TradeInTab({ customerId }) {
   const [activeTradeInId, setActiveTradeInId] = useState(null);
   const [editTradeIn, setEditTradeIn] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
+  // G-062 / G-063: managers see payoff + lienholder; a duplicate VIN is warned about after saving.
+  const [canSeeFinance, setCanSeeFinance] = useState(false);
+  const [warnings, setWarnings] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(null);
   const hasAutoOpenedRef = useRef(false);
   const requestIdRef = useRef(0);
 
@@ -71,6 +80,7 @@ export default function TradeInTab({ customerId }) {
       if (requestIdRef.current !== requestId) return;
       if (!response.ok) throw new Error(data.message || "Failed to load trade-ins");
       setTradeIns(data.data || []);
+      setCanSeeFinance(!!data.can_see_finance);
       setTradeInsPagination(data.pagination || { ...defaultTradeInsPagination, currentPage: page });
     } catch (fetchError) {
       if (requestIdRef.current !== requestId) return;
@@ -100,6 +110,7 @@ export default function TradeInTab({ customerId }) {
 
   const handleTradeInFormChange = (value, meta = {}) => {
     setEditTradeIn(value);
+    if (!value) setWarnings(meta.warnings || []);
     if (!value) {
       // A newly created trade-in sorts to the top (newest-first) and would
       // be invisible if we simply refetched whatever page the dealer was
@@ -118,6 +129,11 @@ export default function TradeInTab({ customerId }) {
         </Button>
       </div>
 
+      {warnings.length > 0 && (
+        <Alert variant="warning" dismissible onClose={() => setWarnings([])} className="small">
+          {warnings.map((w) => <div key={w}>{w}</div>)}
+        </Alert>
+      )}
       {tradeInsError && (
         <Alert variant="danger" dismissible onClose={() => setTradeInsError(null)}>{tradeInsError}</Alert>
       )}
@@ -133,7 +149,10 @@ export default function TradeInTab({ customerId }) {
               <Accordion.Header>
                 <Row className="align-items-center w-100 me-2 small">
                   <Col md={3} className="p_bold">{vehicleSummary(tradeIn)}</Col>
-                  <Col md={3}>{tradeIn.vin || "VIN not provided"}</Col>
+                  <Col md={3}>
+                    {tradeIn.vin || "VIN not provided"}
+                    {tradeIn.duplicate_vin && <Badge bg="warning" text="dark" className="ms-1" title="This VIN is on another trade-in at this dealership">Same VIN elsewhere</Badge>}
+                  </Col>
                   <Col md={2}><Badge bg="secondary">{tradeIn.status}</Badge></Col>
                   <Col md={2}>{formatCurrency(tradeIn.trade_offer_amount)}</Col>
                   <Col md={2} className="text-md-end text-muted">
@@ -149,12 +168,35 @@ export default function TradeInTab({ customerId }) {
                   <Col md={3}><strong>Interior Color:</strong> {tradeIn.interior_color || "N/A"}</Col>
                   <Col md={3}><strong>Trade Offer:</strong> {formatCurrency(tradeIn.trade_offer_amount)}</Col>
                   <Col md={3}><strong>Trade ACV:</strong> {formatCurrency(tradeIn.trade_acv_amount)}</Col>
+                  {canSeeFinance && <Col md={3}><strong>Payoff:</strong> {tradeIn.payoff_amount != null ? formatCurrency(tradeIn.payoff_amount) : "N/A"}</Col>}
+                  {canSeeFinance && <Col md={3}><strong>Lienholder:</strong> {tradeIn.lienholder || "N/A"}</Col>}
                   <Col md={3}><strong>Stock #:</strong> {tradeIn.trade_stock_number || "N/A"}</Col>
                   <Col md={3}><strong>Status:</strong> {tradeIn.status}</Col>
                   {tradeIn.condition && <Col md={3}><strong>Condition:</strong> {tradeIn.condition}</Col>}
                   {tradeIn.notes && <Col md={12}><strong>Trade Notes:</strong> {tradeIn.notes}</Col>}
                 </Row>
+                {historyOpen === tradeIn._id && (
+                  <div className="small mb-3">
+                    <strong>Value history</strong>
+                    {(tradeIn.value_history || []).length === 0 ? (
+                      <div className="text-muted">No changes recorded yet (recorded from 13 Nov 2026 on).</div>
+                    ) : (
+                      <ul className="mb-0 ps-3">
+                        {[...tradeIn.value_history].reverse().map((h, i) => (
+                          <li key={i}>
+                            {formatTimestamp(h.at)} · {h.by_name || "Staff"} · {HISTORY_LABELS[h.field] || h.field}:{" "}
+                            {showValue(h.field, h.from)} → {showValue(h.field, h.to)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <div className="d-flex justify-content-end gap-2">
+                  <Button variant="outline-custom" size="sm"
+                    onClick={() => setHistoryOpen(historyOpen === tradeIn._id ? null : tradeIn._id)}>
+                    <i className="fa-regular fa-clock-rotate-left me-1" />History
+                  </Button>
                   {tradeIn.raw_adf_payload_id && (
                     <Button variant="outline-custom" size="sm" onClick={() => setAdfModalLeadId(tradeIn.lead_id)}>
                       <i className="fa-solid fa-file-code me-1" />View ADF
@@ -192,6 +234,7 @@ export default function TradeInTab({ customerId }) {
               dealerId={activeEntity?.id}
               editTradeIn={editTradeIn}
               setEditTradeIn={handleTradeInFormChange}
+              canSeeFinance={canSeeFinance}
             />
           )}
         </Modal.Body>

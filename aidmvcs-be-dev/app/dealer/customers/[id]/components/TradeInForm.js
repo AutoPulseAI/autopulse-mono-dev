@@ -32,7 +32,7 @@ function validateField(name, value, allowMissingVin = false) {
   }
 }
 
-export default function TradeInForm({ customerId, dealerId, editTradeIn, setEditTradeIn }) {
+export default function TradeInForm({ customerId, dealerId, editTradeIn, setEditTradeIn, canSeeFinance = false }) {
   const isEditMode = !!editTradeIn?._id;
 
   const [formData, setFormData] = useState({
@@ -48,6 +48,10 @@ export default function TradeInForm({ customerId, dealerId, editTradeIn, setEdit
     trade_acv_amount: editTradeIn?.trade_acv_amount ?? "",
     trade_stock_number: editTradeIn?.trade_stock_number || "",
     status: editTradeIn?.status || "open",
+    condition: editTradeIn?.condition || "",
+    notes: editTradeIn?.notes || "",
+    // Managers only (G-063); the server refuses them from anyone else.
+    ...(canSeeFinance ? { payoff_amount: editTradeIn?.payoff_amount ?? "", lienholder: editTradeIn?.lienholder || "" } : {}),
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,8 +91,8 @@ export default function TradeInForm({ customerId, dealerId, editTradeIn, setEdit
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.message || "Failed to save trade-in");
-      setEditTradeIn(null, { created: !isEditMode });
+      if (!response.ok) throw new Error(body.message || body.error || "Failed to save trade-in");
+      setEditTradeIn(null, { created: !isEditMode, warnings: body.warnings || [] });
     } catch (submitError) {
       setErrors((prev) => ({ ...prev, form: submitError.message || "Failed to save trade-in" }));
     } finally {
@@ -172,6 +176,24 @@ export default function TradeInForm({ customerId, dealerId, editTradeIn, setEdit
             <Form.Control name="trade_acv_amount" type="number" value={formData.trade_acv_amount} onChange={handleChange} />
           </Form.Group>
 
+          {canSeeFinance && (
+            <>
+              <Form.Group as={Col} lg={4} md={6} className="mb-3">
+                <Form.Label>Payoff ($)</Form.Label>
+                <Form.Control name="payoff_amount" type="number" min="0" value={formData.payoff_amount} onChange={handleChange} />
+              </Form.Group>
+              <Form.Group as={Col} lg={4} md={6} className="mb-3">
+                <Form.Label>Lienholder</Form.Label>
+                <Form.Control name="lienholder" value={formData.lienholder} onChange={handleChange} />
+              </Form.Group>
+            </>
+          )}
+
+          <Form.Group as={Col} lg={4} md={6} className="mb-3">
+            <Form.Label>Condition</Form.Label>
+            <Form.Control name="condition" value={formData.condition} onChange={handleChange} />
+          </Form.Group>
+
           <Form.Group as={Col} lg={4} md={6} className="mb-3">
             <Form.Label>Trade Stock Number</Form.Label>
             <Form.Control name="trade_stock_number" value={formData.trade_stock_number} onChange={handleChange} />
@@ -185,6 +207,11 @@ export default function TradeInForm({ customerId, dealerId, editTradeIn, setEdit
               ))}
             </Form.Select>
             <Form.Control.Feedback type="invalid">{errors.status}</Form.Control.Feedback>
+          </Form.Group>
+
+          <Form.Group as={Col} lg={12} className="mb-3">
+            <Form.Label>Notes</Form.Label>
+            <Form.Control as="textarea" rows={2} name="notes" value={formData.notes} onChange={handleChange} />
           </Form.Group>
 
           <Col lg={12} className="text-center mt-0 mt-md-3">
