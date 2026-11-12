@@ -399,6 +399,20 @@ export async function GET(req) {
         };
     }
     
+    // Appointments list: sales or service only (SOW Deliverable E, G-030) - leads whose latest booking is that type.
+    const apptType = url.searchParams.get("appointment_type");
+    if (bookingStatus && (apptType === "sales" || apptType === "service")) {
+        const latest = await Booking.aggregate([
+            { $match: { dealer_id: String(dealerId) } },
+            { $sort: { createdAt: -1 } },
+            { $group: { _id: "$lead_id", type: { $first: "$appointment_type" } } },
+            { $match: apptType === "service" ? { type: "service" } : { type: { $ne: "service" } } },
+        ]);
+        const typed = latest.map((b) => String(b._id)).filter((id) => mongoose.isValidObjectId(id))
+            .map((id) => new mongoose.Types.ObjectId(id));
+        (query.$and = query.$and || []).push({ _id: { $in: typed } });
+    }
+
     if (madeStartDate && madeEndDate) {
         // Whole dealer-local days, as the card counts them (app/api/leads/stats: start/end of each day).
         const madeFrom = moment.tz(moment.utc(madeStartDate).tz(dealerTimezone).format('YYYY-MM-DD'), 'YYYY-MM-DD',
