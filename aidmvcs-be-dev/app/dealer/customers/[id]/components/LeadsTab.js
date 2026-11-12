@@ -30,6 +30,26 @@ function getVehicleInterest(lead) {
 // accordion, unchanged from today". Fetches and paginates independently of
 // the 360 endpoint (which only carries a lightweight, unpaginated lead list
 // for the Overview feed).
+// Each lead's funnel times (SOW B b4, G-009), from /api/leads/milestones. A step not reached yet shows "-".
+const MILESTONES = [
+  ["received", "Received"], ["first_response", "First response"], ["first_reply", "Customer replied"],
+  ["appointment", "Appointment set"], ["visit", "Showroom visit"], ["sold", "Sold"], ["lost", "Closed - lost"],
+];
+
+function Milestones({ times }) {
+  if (!times) return null;
+  return (
+    <div className="d-flex flex-wrap gap-3 small mb-2" aria-label="Lead milestones">
+      {MILESTONES.filter(([key]) => key !== "lost" || times.lost).map(([key, label]) => (
+        <div key={key} className={times[key] ? "" : "text-muted"}>
+          <div className="text-muted" style={{ fontSize: "0.75rem" }}>{label}</div>
+          <div>{times[key] ? formatTimestamp(times[key]) : "-"}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function LeadsTab({ customerId }) {
   const { dealerParent, user, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
@@ -40,6 +60,7 @@ export default function LeadsTab({ customerId }) {
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
+  const [milestones, setMilestones] = useState({});
   const hasAutoOpenedRef = useRef(false);
 
   const fetchLeads = useCallback(async (page = 1) => {
@@ -59,6 +80,13 @@ export default function LeadsTab({ customerId }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to load leads");
       setLeads(data.data || []);
+      const ids = (data.data || []).map((l) => l._id).join(",");
+      if (ids) {
+        // Not fatal: the leads still show without their milestones.
+        fetch(`/api/leads/milestones?lead_ids=${ids}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        }).then((r) => (r.ok ? r.json() : null)).then((b) => b && setMilestones(b.milestones || {})).catch(() => {});
+      }
       setLeadsPagination(data.pagination || { ...defaultLeadsPagination, currentPage: page });
     } catch (fetchError) {
       setLeadsError(fetchError.message || "Failed to load leads");
@@ -116,6 +144,7 @@ export default function LeadsTab({ customerId }) {
                   </Row>
                 </Accordion.Header>
                 <Accordion.Body>
+                  <Milestones times={milestones[lead._id]} />
                   {(vehicleInterest || lead.vin) && (
                     <div className="small text-muted mb-2">
                       <i className="fa-solid fa-car me-1" />
