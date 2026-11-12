@@ -5,6 +5,7 @@ import { funnelLeadIds } from "@lib/appointmentFunnel";
 import { stoppedLeadIds } from "@lib/ai/stopLabels";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { customerFamily } from "@lib/customerFamily";
 import dbConnect from "@lib/mongodb";
 import Lead from "@models/Lead";
 import Booking from "@models/Booking";
@@ -159,7 +160,7 @@ export async function GET(req) {
 
     // Build query object
     let query = { dealer_id: dealerId };
-    if (customerFilter) query.customer_id = customerFilter._id;
+    if (customerFilter) query.customer_id = { $in: await customerFamily(customerFilter._id, dealerId) }; // with merged-in customers (G-008)
     let unassignedFilter = null;
     let orConditions = []; // Collect all $or conditions to combine later
     

@@ -36,10 +36,9 @@ function mappingDuplicate(error) {
   return (error.message || '').includes(`index: ${CUSTOMER_MAPPING_INDEX.options.name} dup key:`);
 }
 
+// A merged customer's DealerVault records go to the customer it was merged into (G-008, app/lib/customerFamily.js).
 function relationship(customer) {
-  return customer.merged_into
-    ? { id: null, warning: 'CUSTOMER_MERGED' }
-    : { id: customer._id };
+  return customer.merged_into ? { id: customer.merged_into } : { id: customer._id };
 }
 
 export async function resolveCustomers(entries, context, Model = Customer) {

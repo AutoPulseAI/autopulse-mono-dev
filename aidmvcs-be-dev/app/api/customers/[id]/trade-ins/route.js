@@ -6,6 +6,7 @@ import Customer from "@models/Customer";
 import TradeIn, { TRADE_IN_STATUS_VALUES } from "@models/TradeIn";
 import User from "@models/User";
 import { isAuthorizedForDealer } from "@lib/customerListing";
+import { customerFamily } from "@lib/customerFamily";
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
@@ -114,7 +115,8 @@ export async function GET(req, { params }) {
     const page = parseInt(url.searchParams.get("page")) || 1;
     const limit = parseInt(url.searchParams.get("limit")) || 5;
 
-    const filter = { dealer_id: dealerId, customer_id: id };
+    // With the trade-ins of customers merged into this one (G-008).
+    const filter = { dealer_id: dealerId, customer_id: { $in: await customerFamily(id, dealerId) } };
     const [tradeIns, totalItems] = await Promise.all([
       TradeIn.find(filter)
         .sort({ createdAt: -1 })

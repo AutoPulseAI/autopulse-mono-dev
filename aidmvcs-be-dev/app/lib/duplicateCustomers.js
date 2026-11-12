@@ -74,5 +74,17 @@ export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
     const latest = Math.max(...customers.map((c) => new Date(c.last_lead_at || c.created_at || 0).getTime()));
     return { customers, pairs, latest };
   }).sort((a, b) => b.latest - a.latest);
-  return { total: groups.length, groups: groups.slice(0, limit) };
+  // Merges done by managers, newest first, so one can be undone (app/api/customers/merge).
+  const kept = await Customer.find({ dealer_id: String(dealerId), 'merge_history.0': { $exists: true } })
+    .select('name merge_history').lean();
+  const mergedIds = kept.flatMap((k) => k.merge_history.map((h) => h.merged_customer_id));
+  const mergedNames = new Map((await Customer.find({ _id: { $in: mergedIds } }).select('name merged_into').lean())
+    .map((c) => [String(c._id), c]));
+  const recentMerges = kept.flatMap((k) => k.merge_history.filter((h) => !h.reversed_at
+    && String(mergedNames.get(String(h.merged_customer_id))?.merged_into || '') === String(k._id))
+    .map((h) => ({ kept_id: String(k._id), kept_name: k.name || null, merged_id: String(h.merged_customer_id),
+      merged_name: mergedNames.get(String(h.merged_customer_id))?.name || null, merged_at: h.merged_at || null,
+      reason: h.reason || null })))
+    .sort((a, b) => new Date(b.merged_at || 0) - new Date(a.merged_at || 0)).slice(0, 50);
+  return { total: groups.length, groups: groups.slice(0, limit), recent_merges: recentMerges };
 }
