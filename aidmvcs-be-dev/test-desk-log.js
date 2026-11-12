@@ -316,6 +316,23 @@ test('cards: today and month to date, by lead type', async (t) => {
   assert.equal(cards.length, 9);
 });
 
+test('cards: every number opens its leads on the Leads page, and the list has exactly that many', async (t) => {
+  if (needDb(t)) return;
+  const { GET } = await import('./app/api/leads/route.js');
+  const { cards } = await deskLogCards(String(DEALER), NY, DAY);
+  for (const c of cards) {
+    for (const [n, link] of [[c.today, c.today_link], [c.mtd, c.mtd_link]]) {
+      assert.match(link, /^\/dealer\/leads\?report_kpi=/, c.key);
+      const qs = link.split('?')[1];
+      const res = await GET(req(`/api/leads?dealer_id=${DEALER}&limit=100&${qs}`, ADMIN_IN_DEALER()));
+      assert.equal(res.status, 200, `${c.key} ${qs}`);
+      const body = await res.json();
+      assert.ok(body.drill, `${c.key}: the list is filtered to the card's leads`);
+      assert.equal(body.data.length, n, `${c.key}: card ${n}, list ${body.data.length}`);
+    }
+  }
+});
+
 test('stage aging buckets', () => {
   assert.deepEqual([null, 0, 29, 30, 59, 60, 119, 120, 1439, 1440, 5000].map(agingBucket), ['Unknown',
     'Under 30 min', 'Under 30 min', '30-60 min', '30-60 min', '1-2 hours', '1-2 hours', '2-24 hours', '2-24 hours',

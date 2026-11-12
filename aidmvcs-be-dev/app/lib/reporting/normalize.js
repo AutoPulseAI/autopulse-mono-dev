@@ -249,3 +249,10 @@ export function normalizeChannel(lead = {}) {
 export function isUnmappedSource(leadSource) {
   return leadSource == null || String(leadSource).trim() === '' || /^unknown$/i.test(String(leadSource).trim());
 }
+
+const UP_TYPES = Object.freeze({ internet: 'Internet', phone: 'Phone', walk_in: 'Walk-in', campaign: 'Campaign' });
+
+/** The lead type ("Up Type") of a lead: Internet, Phone, Walk-in, Campaign, else Other. */
+export function upType(lead) {
+  return UP_TYPES[normalizeChannel(lead || {})] || 'Other';
+}

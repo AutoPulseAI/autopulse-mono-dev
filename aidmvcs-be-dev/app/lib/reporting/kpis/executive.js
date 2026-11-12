@@ -1,6 +1,6 @@
 // Executive / store report (SOW 8 Deliverable F, gap G-034; KPI dictionary A-F 3.1).
 import Customer from '../../../models/Customer.js';
-import { normalizeProvider, statusRegexFor } from '../normalize.js';
+import { normalizeProvider, statusRegexFor, upType } from '../normalize.js';
 import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, REPLY_FILTERS, STATE, attribution, bookingRows,
   collection, dealerForms, firstStatusChangeLeads, isOid, leadRows, leadsReceived, localDateTime, localDay, memo, notYet,
@@ -14,7 +14,10 @@ export const SOLD_REGEX = statusRegexFor(SOLD_GROUPS);
 // Shared building blocks (other tabs reuse them, so the same number means the same thing everywhere).
 export const shared = {
   async leadsReceivedRows(args, ctx) {
-    return memo(ctx, 'rows:leads_received', async () => leadRows(await leadsReceived(args, ctx), args, ctx));
+    return memo(ctx, 'rows:leads_received', async () => {
+      const leads = await leadsReceived(args, ctx);
+      return (await leadRows(leads, args, ctx)).map((r, i) => ({ ...r, _g: { ...r._g, up_type: upType(leads[i]) } }));
+    });
   },
   async apptSetRows(args, ctx) {
     return memo(ctx, 'rows:appt_set', async () => bookingRows((await attribution(args, ctx, 'created')).rows, args, ctx));
@@ -145,7 +148,7 @@ export const EXECUTIVE_KPIS = [
     dateBasis: 'Lead.createdAt (the CRM "Lead Date"; CSV imports write the original lead date there)',
     numerator: 'Leads of the dealer whose Lead Date is in the range.', denominator: null,
     inclusions: 'Every status, every source.', exclusions: 'None (no test-lead flag exists yet).',
-    source: ['leads'], filters: LEAD_FILTERS, breakdowns: ['lead_source', 'staff'], trend: true,
+    source: ['leads'], filters: LEAD_FILTERS, breakdowns: ['lead_source', 'staff', 'up_type'], trend: true,
     columns: LEAD_COLUMNS,
     evaluate: async (args, ctx) => ({ rows: await shared.leadsReceivedRows(args, ctx) }),
   },

@@ -31,6 +31,7 @@ import { getDealerTimezone } from '@lib/reporting/time';
 import { APPT_ATTRIBUTION, REPLY_COHORTS, apptAttributionLeads, apptDrillNote, replyCohortLeads, replyDrillNote,
   reportDrillNote, reportKpiLeads } from '@lib/reporting/drillLeads';
 import { evaluateKpi, getKpi, isLeadLinked } from '@lib/reporting/registry';
+import { CARD_KPIS } from '@lib/deskLog/cards';
 import { REPORTS, parseFilterSpec } from '@lib/reporting/filters';
 import { callerSeesFeature, localRange } from '../reports/reply-cohorts/reportAccess.js';
 
@@ -639,7 +640,9 @@ async function drillFilter({ req, url, currentUser, dealerId, startDate, endDate
   if (!dealerId || (!wantCohort && !wantAppt && !wantReport)) return null;
   const seeCohort = wantCohort && await callerSeesFeature(req, currentUser, dealerId, "reply_cohorts");
   const seeAppt = wantAppt && await callerSeesFeature(req, currentUser, dealerId, "appointment_attribution");
-  const seeReport = wantReport && await callerSeesFeature(req, currentUser, dealerId, "reports_page");
+  // The Desk Log's cards open their Reports numbers too: whoever sees the Desk Log may open those lists.
+  const seeReport = wantReport && (await callerSeesFeature(req, currentUser, dealerId, "reports_page")
+    || (CARD_KPIS.has(reportDef.id) && await callerSeesFeature(req, currentUser, dealerId, "desk_log")));
   if (!seeCohort && !seeAppt && !seeReport) return null;
   if (seeReport && !seeCohort && !seeAppt) return reportDrill({ url, dealerId, def: reportDef, startDate, endDate });
 
