@@ -1,17 +1,73 @@
 "use client";
-// A customer's dealership forms (SOW v6 Deliverable K, gaps G-065 / G-066): pick the lead (the opportunity), the form
-// and the trade-ins -> check every value that goes in (missing ones flagged, required ones block saving) -> preview
-// the PDF -> save the copy, which is stored on the customer and the lead exactly as generated -> download / print.
-// The forms are the dealership's own (Admin > Forms Library).
+// A customer's dealership forms (SOW v6 Deliverable K, gaps G-065 / G-066). Start a form: pick the lead (the
+// opportunity), the form and the trade-ins -> the on-screen form opens with what the CRM knows already in -> staff
+// complete the rest -> Save draft (come back later) or Complete (locked for good; required fields first) -> the PDF
+// downloads or prints. The forms are the dealership's own (Admin > Forms Library).
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import { formsGet, formsSend, openPdf } from "../../../forms/formsApi";
+import FormView from "../../../forms/components/FormView";
 
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 const leadLabel = (l) => [[l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(" ") || "No vehicle",
   l.fe_lead_status, l.createdAt ? new Date(l.createdAt).toLocaleDateString() : null].filter(Boolean).join(" · ");
 const tradeLabel = (t) => [[t.year, t.make, t.model].filter(Boolean).join(" ") || "Trade-in", t.vin].filter(Boolean).join(" · ");
+
+function FillModal({ dealerId, id, onHide, onChanged }) {
+  const [doc, setDoc] = useState(null);
+  const [data, setData] = useState({});
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    formsGet(`/api/forms/documents/${id}?dealer_id=${dealerId}`).then((d) => { setDoc(d.document); setData(d.document.data); })
+      .catch((e) => setError(e.message));
+  }, [id, dealerId]);
+  const save = async (complete) => {
+    setBusy(true); setError(null);
+    try {
+      const d = await formsSend(`/api/forms/documents/${id}`, "PATCH", { dealer_id: dealerId, data, complete });
+      setDoc(d.document); setData(d.document.data); setDirty(false); onChanged();
+      return true;
+    } catch (e) { setError(e.message); return false; } finally { setBusy(false); }
+  };
+  const pdf = async (print) => {
+    if (dirty && !(await save(false))) return;
+    setBusy(true);
+    try { await openPdf(`/api/forms/documents/${id}/pdf?dealer_id=${dealerId}${print ? "&print=1" : ""}`, print ? {} : { download: `${doc.name}.pdf` }); onChanged(); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const close = () => { if (!dirty || window.confirm("Close without saving your changes?")) onHide(); };
+  const done = doc?.status === "completed";
+  return (
+    <Modal show onHide={close} size="xl" centered scrollable backdrop="static">
+      <Modal.Header closeButton>
+        <Modal.Title as="h6">{doc?.name || "Form"} {doc && (done ? <Badge bg="success">Completed</Badge> : <Badge bg="secondary">Draft</Badge>)}</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        {error && <Alert variant="danger" className="py-2">{error}</Alert>}
+        {!doc ? <Spinner animation="border" /> : (
+          <>
+            {done ? <Alert variant="light" className="border py-2 small">Completed by {doc.completed_by || "staff"} on{" "}
+              {new Date(doc.completed_at).toLocaleString()}. It can no longer be changed.</Alert>
+              : doc.missing_required.length > 0 && <Alert variant="warning" className="py-2 small">Still required:{" "}
+                <strong>{doc.missing_required.join(", ")}</strong></Alert>}
+            <FormView schema={doc.schema} data={data} trades={doc.trades} hidden={doc.hidden} prefilled={doc.prefilled}
+              mode={done ? "view" : "fill"} onChange={(k, v) => { setData((x) => ({ ...x, [k]: v })); setDirty(true); }} />
+          </>
+        )}
+      </Modal.Body>
+      <Modal.Footer>
+        <Button size="sm" variant="outline-custom" disabled={busy || !doc} onClick={() => pdf(false)}>Download PDF</Button>
+        <Button size="sm" variant="outline-custom" disabled={busy || !doc} onClick={() => pdf(true)}>Print</Button>
+        {!done && <Button size="sm" variant="outline-custom" disabled={busy || !dirty} onClick={() => save(false)}>Save draft</Button>}
+        {!done && <Button size="sm" variant="custom" disabled={busy || !doc}
+          onClick={() => { if (window.confirm("Complete this form? It can't be changed afterwards.")) save(true); }}>Complete</Button>}
+      </Modal.Footer>
+    </Modal>
+  );
+}
 
 export default function DocumentsTab({ customerId }) {
   const { dealerParent } = useUser();
@@ -21,10 +77,9 @@ export default function DocumentsTab({ customerId }) {
   const [docs, setDocs] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [pick, setPick] = useState({ lead_id: "", template_id: "", trade_in_ids: [] });
-  const [review, setReview] = useState(null);
+  const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
 
   const loadDocs = useCallback(async () => {
     if (!dealerId) return;
@@ -47,7 +102,6 @@ export default function DocumentsTab({ customerId }) {
 
   useEffect(() => {
     if (!dealerId) return;
-    setReview(null);
     formsGet(`/api/forms/templates?dealer_id=${dealerId}&usable=1${pick.lead_id ? `&lead_id=${pick.lead_id}` : ""}`)
       .then((d) => {
         setTemplates(d.templates);
@@ -55,106 +109,61 @@ export default function DocumentsTab({ customerId }) {
       }).catch((e) => setError(e.message));
   }, [dealerId, pick.lead_id]);
 
-  const body = (action) => ({ dealer_id: dealerId, customer_id: customerId, ...pick, lead_id: pick.lead_id || null, action });
-  const run = async (fn) => {
-    setBusy(true); setError(null); setNotice(null);
-    try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  const start = async () => {
+    setBusy(true); setError(null);
+    try {
+      const { document } = await formsSend("/api/forms/documents", "POST", { dealer_id: dealerId, customer_id: customerId,
+        ...pick, lead_id: pick.lead_id || null });
+      await loadDocs(); setOpen(document.id);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
-  const doReview = () => run(async () => setReview(await formsSend("/api/forms/documents", "POST", body("review"))));
-  const doPreview = () => run(() => openPdf("/api/forms/documents", { method: "POST", body: body("preview") }));
-  const doSave = () => run(async () => {
-    await formsSend("/api/forms/documents", "POST", body("save"));
-    setReview(null); setNotice("Saved on the customer. Download or print it below."); await loadDocs();
-  });
-  const fileOf = (d, print) => run(() => openPdf(`/api/forms/documents/${d.id}?dealer_id=${dealerId}${print ? "&print=1" : ""}`,
-    print ? {} : { download: `${d.name}.pdf` }).then(loadDocs));
-  const changePick = (patch) => { setPick((p) => ({ ...p, ...patch })); setReview(null); };
 
   return (
     <div className="w_card">
       <h3 className="w_card_title mb-3">Documents</h3>
       {error && <Alert variant="danger" className="py-2">{error}</Alert>}
-      {notice && <Alert variant="success" className="py-2">{notice}</Alert>}
-
       <Row className="g-2 small mb-2">
         <Col md={4}><Form.Label className="mb-0">Lead (opportunity)</Form.Label>
-          <Form.Select size="sm" value={pick.lead_id} onChange={(e) => changePick({ lead_id: e.target.value })}>
+          <Form.Select size="sm" value={pick.lead_id} onChange={(e) => setPick({ ...pick, lead_id: e.target.value })}>
             <option value="">No lead</option>
             {leads.map((l) => <option key={l._id} value={l._id}>{leadLabel(l)}</option>)}
           </Form.Select></Col>
         <Col md={4}><Form.Label className="mb-0">Form</Form.Label>
-          <Form.Select size="sm" value={pick.template_id} onChange={(e) => changePick({ template_id: e.target.value })}>
+          <Form.Select size="sm" value={pick.template_id} onChange={(e) => setPick({ ...pick, template_id: e.target.value })}>
             <option value="">{templates.length ? "Choose a form..." : "No forms available for this lead"}</option>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.category})</option>)}
           </Form.Select></Col>
         <Col md={4}><Form.Label className="mb-0">Trade-ins</Form.Label>
           {trades.length ? trades.map((t) => (
             <Form.Check key={t._id} id={`trade-${t._id}`} label={tradeLabel(t)} checked={pick.trade_in_ids.includes(t._id)}
-              onChange={(e) => changePick({ trade_in_ids: e.target.checked ? [...pick.trade_in_ids, t._id]
+              onChange={(e) => setPick({ ...pick, trade_in_ids: e.target.checked ? [...pick.trade_in_ids, t._id]
                 : pick.trade_in_ids.filter((x) => x !== t._id) })} />
           )) : <div className="text-muted">None on file</div>}</Col>
       </Row>
-      <div className="d-flex gap-2 mb-3">
-        <Button size="sm" variant="custom" disabled={busy || !pick.template_id} onClick={doReview}>
-          {busy ? <Spinner size="sm" /> : "Fill in and check"}</Button>
-      </div>
+      <Button size="sm" variant="custom" className="mb-3" disabled={busy || !pick.template_id} onClick={start}>
+        {busy ? <Spinner size="sm" /> : "Start the form"}</Button>
 
-      {review && (
-        <div className="border rounded p-2 mb-3">
-          <div className="d-flex align-items-center mb-2">
-            <strong className="me-auto">{review.template.name} (v{review.template.version})</strong>
-            {review.trade_ins > 0 && <small className="text-muted me-2">{review.trade_ins} trade-in(s)</small>}
-          </div>
-          {review.missing_required.length > 0 && (
-            <Alert variant="warning" className="py-2 small">
-              Required and empty: <strong>{review.missing_required.join(", ")}</strong>. Fill them on the customer, the
-              lead or the trade-in first - nothing is made up.
-            </Alert>
-          )}
-          <Table size="sm" className="small mb-2">
-            <thead><tr><th>Where on the form</th><th>Filled with</th><th>Value</th></tr></thead>
-            <tbody>
-              {review.rows.map((r, i) => (
-                <tr key={i} className={r.missing && r.required ? "table-warning" : ""}>
-                  <td>{r.where}</td><td>{r.label}{r.required && <Badge bg="secondary" className="ms-1">required</Badge>}</td>
-                  <td>{r.hidden ? <span className="text-muted">managers only</span>
-                    : r.missing ? <span className="text-danger">missing - left blank</span> : r.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-          <div className="d-flex gap-2 justify-content-end">
-            <Button size="sm" variant="outline-custom" disabled={busy} onClick={doPreview}>Preview PDF</Button>
-            <Button size="sm" variant="custom" disabled={busy || review.missing_required.length > 0} onClick={doSave}>
-              Save copy on the customer</Button>
-          </div>
-        </div>
-      )}
-
-      <h6>Saved copies</h6>
+      <h6>Forms for this customer</h6>
       {!docs ? <Spinner size="sm" /> : !docs.length ? <p className="small text-muted">None yet.</p> : (
-        <Table size="sm" className="small">
-          <thead><tr><th>Form</th><th>Lead</th><th>Made by</th><th>Missing when made</th><th /></tr></thead>
+        <Table size="sm" hover className="small">
+          <thead><tr><th>Form</th><th>Lead</th><th>Started</th><th>Status</th></tr></thead>
           <tbody>
-            {docs.map((d) => (
-              <tr key={d.id}>
-                <td>{d.name} <small className="text-muted">v{d.version}</small></td>
-                <td>{d.lead_id && leads.find((l) => l._id === d.lead_id) ? leadLabel(leads.find((l) => l._id === d.lead_id)) : "-"}</td>
-                <td>{d.created_by || "Staff"}, {new Date(d.created_at).toLocaleString()}</td>
-                <td>{d.missing.length ? d.missing.join(", ") : "-"}</td>
-                <td className="text-end text-nowrap">
-                  {d.removed ? <span className="text-muted">removed (retention)</span> : (
-                    <>
-                      <Button size="sm" variant="link" className="p-0 me-2" onClick={() => fileOf(d, false)}>Download</Button>
-                      <Button size="sm" variant="link" className="p-0" onClick={() => fileOf(d, true)}>Print</Button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {docs.map((d) => {
+              const lead = d.lead_id && leads.find((l) => l._id === d.lead_id);
+              return (
+                <tr key={d.id} role={d.removed ? undefined : "button"} onClick={() => !d.removed && setOpen(d.id)}>
+                  <td>{d.name} <small className="text-muted">v{d.version}</small></td>
+                  <td>{lead ? leadLabel(lead) : "-"}</td>
+                  <td>{d.created_by || "Staff"}, {new Date(d.created_at).toLocaleString()}</td>
+                  <td>{d.removed ? <span className="text-muted">removed (retention)</span> : d.status === "completed"
+                    ? <Badge bg="success">Completed</Badge> : <Badge bg="secondary">Draft</Badge>}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       )}
+      {open && <FillModal dealerId={dealerId} id={open} onHide={() => setOpen(null)} onChanged={loadDocs} />}
     </div>
   );
 }
