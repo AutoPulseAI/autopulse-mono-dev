@@ -4,7 +4,7 @@
 // dealership, period and how it was counted, then one table - All Types, each lead type, its sources and sub-sources.
 // pdfmake with the PDF standard fonts (Helvetica), so no font files ship with the app.
 import PdfPrinter from 'pdfmake';
-import { countedText } from './sourcePerformance.js';
+import { countedText, grossNote } from './sourcePerformance.js';
 
 const FONTS = { Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique',
   bolditalics: 'Helvetica-BoldOblique' } };
@@ -70,8 +70,8 @@ export function sourceTableNode(report) {
   };
 }
 
-export const SOURCE_NOTE = 'Visits: customers checked in on the Desk Log. Front / Back / Total Gross: being added from '
-  + 'DealerVault (sold deals matched to leads).';
+// The footnote under the table: visits, and what the gross columns hold (DealerVault matching, ./sourcePerformance.js).
+export const sourceNote = (report) => `Visits: customers checked in on the Desk Log. ${grossNote(report)}`;
 
 /** A report's page setup: title block with the dealership and period, footer with page numbers. */
 export function reportPage({ title, company, from, to, meta, content, orientation = 'landscape' }) {
@@ -112,7 +112,7 @@ export function sourcePerformanceDoc(report, { company, from, to, generated, fil
     title: 'Source and Sub Source Performance', company, from, to,
     meta: [['Generated', generated], ['Report Period', `${from} - ${to}`], ['Counted', countedText(report.basis)],
       ...(filters ? [['Filters', filters]] : [])],
-    content: [sourceTableNode(report), { text: SOURCE_NOTE, color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] }],
+    content: [sourceTableNode(report), { text: sourceNote(report), color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] }],
   });
 }
 

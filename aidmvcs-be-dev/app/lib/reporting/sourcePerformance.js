@@ -2,8 +2,9 @@
 // Rows: All Types -> each lead type (Up Type) -> each source -> each sub-source, with Leads, Appts Set, Appts Shown,
 // Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
 // source.appointments, source.shown, source.crm_sold in kpis/leadSource.js), so the "All Types" row always equals
-// the numbers on screen. Visits are Desk Log check-ins (sales.showroom_visits); gross comes with the DealerVault deal
-// matching - that column is empty until then.
+// the numbers on screen. Visits are Desk Log check-ins (sales.showroom_visits). Front / Back / Total Gross: DealerVault
+// deals dated in the range, matched to their leads (./dealGross.js: same VIN, phone or email); "–" when the dealer has no
+// DealerVault deals at all.
 //
 // Two ways to count (Betsy's email):
 //   timeframe - every appointment / show / sale in the range, whenever its lead came in (a CarGurus lead from
@@ -13,6 +14,7 @@
 import { evaluateKpi } from './registry.js';
 import { leadsByIds, windowFor } from './kpis/common.js';
 import { normalizeProvider } from './normalize.js';
+import { matchedDealGross } from './dealGross.js';
 
 export const BASIS = Object.freeze({ TIMEFRAME: 'timeframe', CURRENT: 'current' });
 export const ALL_TYPES = 'All Types';
@@ -65,11 +67,37 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
     }
   }
 
-  const row = (level, up_type, source, sub_source, c) => ({
-    level, up_type, source, sub_source, leads: c.leads, visits: c.visits, appts_set: c.appts_set,
-    appts_shown: c.appts_shown, sold: c.sold, closing_ratio: ratio(c.sold, c.leads),
-    front_gross: null, back_gross: null, total_gross: null,
-  });
+  // Gross from DealerVault: each matched deal under its lead's type / source / sub-source.
+  const deals = await matchedDealGross(args.dealerId, w, ctx.dealGrossDeps || {});
+  const dealLeads = await leadsByIds(deals.matched.map((m) => m.lead_id), ctx);
+  const gross = new Map(); // node counts object -> {front, back, total}
+  const addGross = (c, m) => {
+    const g = gross.get(c) || { front: 0, back: 0, total: 0 };
+    g.front += m.front || 0; g.back += m.back || 0; g.total += m.total || 0;
+    gross.set(c, g);
+  };
+  let matchedInReport = 0;
+  for (const m of deals.matched) {
+    const lead = dealLeads.get(String(m.lead_id)) || null;
+    if (basis === BASIS.CURRENT && !inRange(lead)) continue;
+    matchedInReport += 1;
+    const type = node(tree, upType(lead), () => ({ counts: counts(), sources: new Map() }));
+    const source = node(type.sources, lead ? normalizeProvider(lead.lead_source, lead.source) : 'Unknown',
+      () => ({ counts: counts(), subs: new Map() }));
+    const sub = node(source.subs, (lead?.sub_source && String(lead.sub_source).trim()) || NO_SUB, counts);
+    for (const c of [total, type.counts, source.counts, sub]) addGross(c, m);
+  }
+  const round = (n) => Math.round(n * 100) / 100;
+
+  const row = (level, up_type, source, sub_source, c) => {
+    const g = gross.get(c) || { front: 0, back: 0, total: 0 };
+    return {
+      level, up_type, source, sub_source, leads: c.leads, visits: c.visits, appts_set: c.appts_set,
+      appts_shown: c.appts_shown, sold: c.sold, closing_ratio: ratio(c.sold, c.leads),
+      front_gross: deals.available ? round(g.front) : null, back_gross: deals.available ? round(g.back) : null,
+      total_gross: deals.available ? round(g.total) : null,
+    };
+  };
   const rows = [row('total', ALL_TYPES, ALL_SOURCES, ALL_SUBS, total)];
   for (const typeName of [...tree.keys()].sort(byName)) {
     const type = tree.get(typeName);
@@ -86,7 +114,8 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
       for (const subName of subs) rows.push(row('sub', typeName, sourceName, subName, source.subs.get(subName)));
     }
   }
-  return { basis, rows };
+  return { basis, rows, gross: { available: deals.available, deals: deals.deals, matched: matchedInReport,
+    unmatched: deals.unmatched } };
 }
 
 // A spreadsheet cell: quoted, and never read as a formula (a sub-source comes from a provider's email).
@@ -119,8 +148,16 @@ export function sourceTableLines(report, company) {
     })),
     [],
     ['Visits: customers checked in on the Desk Log.'],
-    ['Front / Back / Total Gross: being added from DealerVault (sold deals matched to leads).'],
+    [grossNote(report)],
   ];
+}
+
+/** What the gross columns hold, for the report's footnote. */
+export function grossNote(report) {
+  const g = report?.gross;
+  if (!g?.available) return 'Front / Back / Total Gross: no DealerVault sales for this dealership yet.';
+  return `Front / Back / Total Gross: DealerVault deals dated in the period, matched to their lead by VIN, phone or email `
+    + `(${g.matched} matched${g.unmatched ? `; ${g.unmatched} not matched to a lead, not shown` : ''}). Total = Front + Back.`;
 }
 
 export const toCsv = (lines) => `${lines.map((l) => l.map(csvCell).join(',')).join('\r\n')}\r\n`;

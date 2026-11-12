@@ -5,7 +5,7 @@
 // dates); a number that can't be counted yet says why instead of showing a zero.
 import { evaluateKpi, kpisForDashboard, listDashboards } from './registry.js';
 import { BASIS, countedText, sourcePerformance, sourceTableLines, toCsv } from './sourcePerformance.js';
-import { HEAD, LINE, MUTED, SOURCE_NOTE, TABLE_LAYOUT, renderPdf, reportPage, sourceTableNode }
+import { HEAD, LINE, MUTED, sourceNote, TABLE_LAYOUT, renderPdf, reportPage, sourceTableNode }
   from './sourcePerformancePdf.js';
 
 // Executive first; the source table goes right after it.
@@ -143,7 +143,7 @@ export function fullReportDoc(report, { company, from, to, generated, filters = 
         content.push(titled(sourceTableNode(report.sources[basis]), 'Source and Sub Source Performance',
           countedText(basis)));
       }
-      content.push({ text: SOURCE_NOTE, color: MUTED, fontSize: 7.5, margin: [0, 6, 0, 0] });
+      content.push({ text: sourceNote(report.sources[BASIS.TIMEFRAME]), color: MUTED, fontSize: 7.5, margin: [0, 6, 0, 0] });
     }
   }
   return reportPage({ title: 'Dealership Performance Report', company, from, to, content,
