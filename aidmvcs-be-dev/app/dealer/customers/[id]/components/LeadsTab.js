@@ -6,6 +6,8 @@ import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
+import { Modal } from "react-bootstrap";
+import LeadForm from "../../../leads/components/LeadForm";
 
 const defaultLeadsPagination = {
   currentPage: 1,
@@ -64,6 +66,8 @@ export default function LeadsTab({ customerId }) {
   const [activeLeadId, setActiveLeadId] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
   const [milestones, setMilestones] = useState({});
+  const [details, setDetails] = useState({});
+  const [newLead, setNewLead] = useState(null); // prefilled LeadForm for a new opportunity (G-005)
   const hasAutoOpenedRef = useRef(false);
 
   const fetchLeads = useCallback(async (page = 1) => {
@@ -88,7 +92,7 @@ export default function LeadsTab({ customerId }) {
         // Not fatal: the leads still show without their milestones.
         fetch(`/api/leads/milestones?lead_ids=${ids}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
-        }).then((r) => (r.ok ? r.json() : null)).then((b) => b && setMilestones(b.milestones || {})).catch(() => {});
+        }).then((r) => (r.ok ? r.json() : null)).then((b) => { if (b) { setMilestones(b.milestones || {}); setDetails(b.details || {}); } }).catch(() => {});
       }
       setLeadsPagination(data.pagination || { ...defaultLeadsPagination, currentPage: page });
     } catch (fetchError) {
@@ -119,7 +123,15 @@ export default function LeadsTab({ customerId }) {
 
   return (
     <div className="w_card">
-      <h3 className="w_card_title mb-3">Leads</h3>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3 className="w_card_title mb-0">Leads</h3>
+        {leads.length > 0 && (
+          <Button size="sm" variant="outline-custom" onClick={() => setNewLead({ name: leads[0].name || "",
+            email: leads[0].email || "", phone: leads[0].phone || "" })}>
+            <i className="fa-solid fa-plus me-1" />New lead for this customer
+          </Button>
+        )}
+      </div>
 
       {leadsError && (
         <Alert variant="danger" dismissible onClose={() => setLeadsError(null)}>{leadsError}</Alert>
@@ -139,7 +151,8 @@ export default function LeadsTab({ customerId }) {
                   <Row className="align-items-center w-100 me-2 small">
                     <Col md={3} className="p_bold">{lead.name || "Unnamed lead"}</Col>
                     <Col md={2}>{getLeadSource(lead)}</Col>
-                    <Col md={2}>{lead.fe_lead_status || "N/A"}</Col>
+                    <Col md={2}>{lead.fe_lead_status || "N/A"}
+                      {details[lead._id] && <div className="text-muted">{details[lead._id].owner}</div>}</Col>
                     <Col md={3}>{lead.email || lead.phone || "No contact"}</Col>
                     <Col md={2} className="text-md-end text-muted">
                       {lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}
@@ -148,6 +161,15 @@ export default function LeadsTab({ customerId }) {
                 </Accordion.Header>
                 <Accordion.Body>
                   <Milestones times={milestones[lead._id]} />
+                  {details[lead._id]?.ai === "linked" && (
+                    <Alert variant="light" className="border py-2 small mb-2">
+                      <i className="fa-solid fa-link me-1" />
+                      Its own lead (status, owner, source, appointments). The AI talks to this customer in one
+                      conversation, on their lead for {details[lead._id].ai_lead_label?.[0] || "an earlier vehicle"}
+                      {details[lead._id].ai_lead_label?.[1] ? ` from ${formatTimestamp(details[lead._id].ai_lead_label[1])}` : ""}
+                      ; it is shown below too.
+                    </Alert>
+                  )}
                   {(vehicleInterest || lead.vin) && (
                     <div className="small text-muted mb-2">
                       <i className="fa-solid fa-car me-1" />
@@ -189,6 +211,13 @@ export default function LeadsTab({ customerId }) {
           />
         </Pagination>
       )}
+
+      <Modal show={!!newLead} onHide={() => setNewLead(null)} size="lg" centered>
+        <Modal.Header closeButton><Modal.Title as="h6">New lead for this customer</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {newLead && <LeadForm editLead={newLead} setEditLead={() => { setNewLead(null); setTimeout(() => fetchLeads(1), 3000); }} />}
+        </Modal.Body>
+      </Modal>
 
       <ViewAdfModal
         show={!!adfModalLeadId}
