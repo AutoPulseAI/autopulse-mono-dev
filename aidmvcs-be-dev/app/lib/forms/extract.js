@@ -21,8 +21,8 @@ const CHECKBOX = /(?:\[\s?\]|☐|□|❑)\s*([^[☐□❑]{1,80})/g;
 
 const TYPE_RULES = [
   [/sign(ature)?\b/i, 'signature'], [/\b(date|dob|birth|delivered on)\b/i, 'date'],
-  [/(price|amount|fee|tax|total|balance|payment|payoff|down|rebate|cost|\$|acv|allowance|value)/i, 'money'],
-  [/e-?mail/i, 'email'], [/(phone|cell|mobile|tel\b|fax)/i, 'phone'],
+  [/(price|amount|fee|tax|total|balance|payment|payoff|down|rebate|cost|\$|acv|allowance|value|offer|registration)/i, 'money'],
+  [/e-?mail/i, 'email'], [/\b(phone|cell|mobile|tel|fax)\b/i, 'phone'],
   [/\b(miles|mileage|odometer|year|zip|postal|term|months)\b/i, 'number'],
 ];
 const SOURCE_RULES = [
@@ -30,7 +30,7 @@ const SOURCE_RULES = [
   [/first\s*name/i, 'customer.first_name'], [/last\s*name|surname/i, 'customer.last_name'],
   [/(street|^address|home address|buyer'?s? address)/i, 'customer.address_line'], [/^city/i, 'customer.city'],
   [/^state/i, 'customer.state'], [/^(zip|postal)/i, 'customer.zip'], [/e-?mail/i, 'customer.email'],
-  [/(phone|cell|mobile)/i, 'customer.phone'], [/^(vehicle\s*)?vin|serial/i, 'vehicle.vin'],
+  [/\b(phone|cell|mobile)\b/i, 'customer.phone'], [/^(vehicle\s*)?vin|serial/i, 'vehicle.vin'],
   [/^(vehicle\s*)?year$/i, 'vehicle.year'], [/^(vehicle\s*)?make$/i, 'vehicle.make'], [/^(vehicle\s*)?model$/i, 'vehicle.model'],
   [/stock/i, 'vehicle.stock_number'], [/sales\s*(person|consultant|rep)/i, 'staff.salesperson'],
   [/sales\s*manager/i, 'staff.sales_manager'], [/dealer(ship)?\s*name/i, 'dealer.name'],
@@ -45,7 +45,7 @@ const humanize = (name) => tidy(String(name).replace(/[\[\].]+\d*/g, ' ').replac
 function field(label, type = null, extra = {}) {
   const l = tidy(label).slice(0, 200);
   const t = type || typeFor(l);
-  const source = t === 'signature' ? null : sourceFor(l);
+  const source = t === 'signature' || t === 'checkbox' ? null : sourceFor(l);
   return { id: newId(), type: t, label: l, required: false, width: 'full', options: [], source, help: null, text: null,
     ...extra };
 }
@@ -68,6 +68,14 @@ function toLines(items) {
       const gap = p.x - (prev.x + prev.w);
       return acc + (gap > 12 ? '   ' : gap > 1 ? ' ' : '') + p.str;
     }, '').replace(/\s+$/, '');
+    // Phrases: the words of a line that sit together (a gap under 8 points), each with where it starts and ends.
+    l.phrases = [];
+    for (const p of l.parts) {
+      const last = l.phrases[l.phrases.length - 1];
+      if (last && p.x - last.xEnd < 8) { last.text += (p.x - last.xEnd > 1 ? ' ' : '') + p.str; last.xEnd = p.x + p.w; }
+      else l.phrases.push({ text: p.str, x: p.x, xEnd: p.x + p.w, line: l });
+    }
+    l.phrases = l.phrases.filter((ph) => ph.text.trim());
   }
   return lines.sort((a, b) => a.page - b.page || b.y - a.y || a.x - b.x);
 }
@@ -133,25 +141,33 @@ export async function extractForm(buffer, { fallbackTitle = 'Form' } = {}) {
   const first = lines.filter((l) => l.page === 1).sort((a, b) => b.size - a.size || b.y - a.y)[0];
   const title = first && first.size > body * 1.2 ? tidy(first.text) : fallbackTitle;
 
-  // Each AcroForm field's label: text on its row just to the left, else the line just above it.
+  // Each AcroForm field's label: the words just to its left on the same row (a checkbox: just to its right), else the
+  // words just above it. Words used as a label are not repeated as wording.
   const used = new Set();
+  const phrases = lines.flatMap((l) => l.phrases.map((ph) => ({ ...ph, page: l.page, y: l.y })));
+  const free = (ph) => !used.has(`${ph.page}:${ph.y}:${ph.x}`) && !BLANK.test(ph.text) && tidy(ph.text).length <= 80;
+  const take = (ph) => { used.add(`${ph.page}:${ph.y}:${ph.x}`); return tidy(ph.text); };
   const acroEntries = acro.map((a) => {
-    const row = lines.filter((l) => l.page === a.page && Math.abs(l.y - (a.y + a.h / 3)) <= Math.max(6, a.h)
-      && l.x < a.x).sort((p, q) => q.x - p.x)[0];
-    const above = lines.filter((l) => l.page === a.page && l.y > a.y + a.h - 2 && l.y - (a.y + a.h) < 16
-      && Math.abs(l.x - a.x) < 120).sort((p, q) => p.y - q.y)[0];
-    const near = row || above;
-    let label = humanize(a.name);
-    if (near && tidy(near.text).length <= 80 && !BLANK.test(near.text)) { label = tidy(near.text); used.add(near); }
-    return { page: a.page, y: a.y + a.h, x: a.x, field: field(label, a.type, a.options.length ? { options: a.options } : {}) };
+    const onRow = phrases.filter((ph) => ph.page === a.page && ph.y >= a.y - 3 && ph.y <= a.y + a.h + 2 && free(ph));
+    const near = a.type === 'checkbox'
+      ? onRow.filter((ph) => ph.x >= a.x + a.w - 2 && ph.x - (a.x + a.w) < 40).sort((p, q) => p.x - q.x)[0]
+      : onRow.filter((ph) => ph.xEnd <= a.x + 4 && a.x - ph.xEnd < 160).sort((p, q) => q.xEnd - p.xEnd)[0]
+        || phrases.filter((ph) => ph.page === a.page && ph.y > a.y + a.h - 2 && ph.y - (a.y + a.h) < 16
+          && Math.abs(ph.x - a.x) < 60 && free(ph)).sort((p, q) => p.y - q.y)[0];
+    const label = near ? take(near) : humanize(a.name);
+    const width = a.w >= 300 ? 'full' : a.w >= 150 ? 'half' : 'third';
+    const type = a.type || (a.h >= 40 ? 'textarea' : null);
+    return { page: a.page, y: a.y + a.h, x: a.x, field: { ...field(label, type, a.options.length ? { options: a.options } : {}), width } };
   });
 
   // Text lines -> headings, blanks, checkboxes, wording.
   const textEntries = [];
   for (const l of lines) {
     if (l === first && title !== fallbackTitle) continue;
-    if (used.has(l)) continue;
-    const t = l.text.trim();
+    // A line whose words were all taken as field labels has nothing left; otherwise only what is left is read.
+    const rest = l.phrases.filter((ph) => !used.has(`${l.page}:${l.y}:${ph.x}`));
+    if (!rest.length) continue;
+    const t = (rest.length === l.phrases.length ? l.text : rest.map((ph) => ph.text).join('   ')).trim();
     const isHeading = !BLANK.test(t) && t.length <= 70 && (l.size > body * 1.15 || (t === t.toUpperCase() && /[A-Z]{3}/.test(t)
       && t.split(' ').length <= 8 && !t.endsWith(':')));
     if (isHeading) { textEntries.push({ page: l.page, y: l.y, x: l.x, heading: tidy(t) }); continue; }
