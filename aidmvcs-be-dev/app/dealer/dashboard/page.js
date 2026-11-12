@@ -14,7 +14,7 @@ import {
   BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-import DashboardDatePicker, { presetRange } from "./components/DashboardDatePicker";
+import DashboardDatePicker, { presetRange, previousPeriod } from "./components/DashboardDatePicker";
 import CountCard from "./components/CountCard";
 import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
@@ -248,10 +248,24 @@ function Dashboard() {
   useEffect(() => {
     if (!dealerParent?.id || !dealerTimezone || hasSyncedToday.current) return;
     hasSyncedToday.current = true;
-    // Back from a Leads list opened here: the range the user had, not Today.
+    // Back from a Leads list opened here: the range the user had, not Today. A named range (Today, Last 7 days...) is
+    // worked out again for today - kept as dates, yesterday's "Today" came back as "Today: Nov 11" on Nov 12 (the
+    // user, 12 Nov 2026). Only a custom range keeps its dates.
     const kept = takeBackRange();
     if (kept) {
-      setDateRange(kept);
+      if (!kept.preset || kept.preset === 'custom') {
+        setDateRange(kept);
+        return;
+      }
+      const days = kept.startDate && kept.endDate
+        ? moment.utc(kept.endDate).tz(dealerTimezone).startOf('day')
+          .diff(moment.utc(kept.startDate).tz(dealerTimezone).startOf('day'), 'days') + 1
+        : undefined;
+      const r = presetRange(kept.preset, dealerTimezone, days);
+      const startDate = r ? r[0].clone().startOf('day').utc().toDate() : null;
+      const endDate = r ? r[1].clone().endOf('day').utc().toDate() : null;
+      setDateRange({ startDate, endDate, preset: kept.preset,
+        compare: kept.compare && startDate && endDate ? previousPeriod(startDate, endDate, dealerTimezone) : null });
       return;
     }
     const [start, end] = presetRange('today', dealerTimezone);
