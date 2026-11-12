@@ -121,6 +121,15 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       {!choice && <option value="">Pick outcome</option>}
                       {OUTCOME_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </Form.Select>
+                    {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}
+                    {row.dms?.flag === "not_in_dms" && <small className="d-block text-danger">Not in the DMS yet</small>}
+                    {row.dms?.flag === "dms_delivered" && (
+                      <small className="d-block text-danger">DMS shows delivered {moment(row.dms.date).tz(tz).format("MMM D")}</small>
+                    )}
+                    {row.dms?.found && !row.dms.flag && (
+                      <small className="d-block text-muted">DMS: {row.dms.delivered ? "delivered" : "contract"}{" "}
+                        {moment(row.dms.date).tz(tz).format("MMM D")}{row.dms.deal_number ? ` · deal ${row.dms.deal_number}` : ""}</small>
+                    )}
                   </td>
                   <td className="dl_actions">
                     {!dnd && row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
