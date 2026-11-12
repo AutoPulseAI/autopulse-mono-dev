@@ -2,6 +2,9 @@ import path from "path";
 import { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // pdfmake (the source report PDF) reads the PDF standard fonts from its own folder at runtime: kept out of the bundle.
+  serverExternalPackages: ["pdfmake", "pdfkit"],
+
   // Allow HMR when opening dev server via LAN IP (e.g. http://192.168.1.7:3001)
   allowedDevOrigins: ["192.168.1.7", "localhost", "127.0.0.1", "*.trycloudflare.com", "*.ngrok-free.dev"],
 

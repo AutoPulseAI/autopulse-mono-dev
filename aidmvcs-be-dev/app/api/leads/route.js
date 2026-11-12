@@ -429,11 +429,23 @@ export async function GET(req) {
     // leads behind the number, for the picked dealer-local days (startDate/endDate are then the reply / booking
     // dates, not the lead's). Ignored unless the caller may see those features (same gate as the section).
     const drill = await drillFilter({ req, url, currentUser, dealerId, startDate, endDate });
+    let replyDrillOrder = null;
     if (drill) {
+        const replyWindow = query.createdAt; // the picked dealer-local days
         delete query.createdAt;
         const allowed = query._id?.$in ? new Set(query._id.$in.map(String)) : null;
         const ids = drill.lead_ids.filter((id) => mongoose.isValidObjectId(id) && (!allowed || allowed.has(String(id))));
         query._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+        if (url.searchParams.get("reply_cohort") && replyWindow) {
+          // Betsy, 12 Nov 2026: "all replies TODAY regardless of lead created date, in the order in which they
+          // replied" - the reply-age lists are ordered like the Customer Replied list: newest reply in the picked
+          // days first, each row with its reply time (they were sorted by lead created date, so a re-engaged older
+          // lead looked like an all-time reply).
+          const order = await repliedLeadIds(query._id.$in, replyWindow.$gte, replyWindow.$lte);
+          const seen = new Set(order.map((r) => String(r._id)));
+          replyDrillOrder = [...order, ...query._id.$in.filter((id) => !seen.has(String(id)))
+            .map((id) => ({ _id: id, last_reply_at: null }))];
+        }
     }
 
     // Apply unassigned filter if needed
@@ -477,7 +489,7 @@ export async function GET(req) {
       query._id = { $in: ids };
     }
 
-    let repliedOrder = null;
+    let repliedOrder = replyDrillOrder;
     const messagesSent = url.searchParams.get("messages") === "sent";
     if ((status === 'Contacted' && query.createdAt) || messagesSent) {
       // Customer Replied for a date range: who replied in it, whenever the lead came in, latest reply first. The

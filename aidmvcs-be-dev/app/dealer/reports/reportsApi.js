@@ -30,8 +30,8 @@ async function downloadFile(url, fallbackName) {
 }
 
 // Betsy's source / sub-source report (GET /api/reports/source-performance?format=csv).
-export const downloadSourceReport = (params) => downloadFile(
-  `/api/reports/source-performance?${reportQuery({ ...params, format: "csv" })}`, "source-report.csv");
+export const downloadSourceReport = (params, format = "csv") => downloadFile(
+  `/api/reports/source-performance?${reportQuery({ ...params, format })}`, `source-report.${format}`);
 
 // The Dashboard's full report for the picked dates (GET /api/reports/full).
 export const downloadFullReport = (params) => downloadFile(`/api/reports/full?${reportQuery(params)}`,
