@@ -1,22 +1,22 @@
 "use client";
-// Forms & Documents Library (SOW v6 Deliverable K, gap G-064): the dealership's own PDFs - buyer's order, trade-in
-// appraisal, test drive, credit application, We Owe, delivery checklist, privacy... Upload, name, categorize, switch
-// on / off, replace with a new version, say who can use each one and when, and map what fills each field
-// (components/TemplateEditor.js). Staff fill the forms from a customer's Documents tab.
+// Forms Library (SOW v6 Deliverable K, gap G-064; the user, 13 Nov 2026): the dealership's forms as on-screen forms -
+// buyer's order, trade-in appraisal, test drive, credit application, We Owe, delivery checklist, privacy... A new form
+// is read from the dealer's PDF (or started blank) and opens in the form builder ([id]/page.js) to check and edit.
+// Staff fill the forms from a customer's Documents tab.
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../context/UserContext";
 import { formsGet, formsSend } from "./formsApi";
-import TemplateEditor from "./components/TemplateEditor";
 
 export default function FormsLibraryPage() {
   const { dealerParent, loadingParent } = useUser();
+  const router = useRouter();
   const dealerId = dealerParent?.id;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [upload, setUpload] = useState(null); // { name, category, file }
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(null); // template id
 
   const load = useCallback(async () => {
     if (!dealerId) return;
@@ -30,9 +30,9 @@ export default function FormsLibraryPage() {
     try {
       const fd = new FormData();
       fd.set("dealer_id", dealerId); fd.set("name", upload.name); fd.set("category", upload.category);
-      fd.set("file", upload.file);
+      if (upload.file) fd.set("file", upload.file); else fd.set("blank", "true");
       const { template } = await formsSend("/api/forms/templates", "POST", fd);
-      setUpload(null); await load(); setOpen(template.id);
+      router.push(`/dealer/forms/${template.id}`);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -46,32 +46,32 @@ export default function FormsLibraryPage() {
         <h3 className="page_title mb-0 me-auto">Forms Library</h3>
         {data?.can_manage && (
           <Button variant="custom" size="sm" onClick={() => setUpload({ name: "", category: "Other", file: null })}>
-            <i className="fa-solid fa-upload me-1" />Upload a form
+            <i className="fa-solid fa-plus me-1" />New form
           </Button>
         )}
       </div>
       <div className="page_body">
         {error && <Alert variant="danger" className="py-2">{error}</Alert>}
         <p className="small text-muted">
-          Your dealership&apos;s own PDF forms. AutoPulse fills them in from the customer, the lead, the vehicle and
-          the trade-ins - it never makes up a value - and keeps every filled copy on the customer. The forms&apos;
-          legal wording is yours. Fill a form from a customer&apos;s <strong>Documents</strong> tab.
+          Your dealership&apos;s forms. Upload a form&apos;s PDF and it is turned into an on-screen form you can edit -
+          every label, field and section. Staff fill it from a customer&apos;s <strong>Documents</strong> tab: what the
+          CRM knows is already in, they complete the rest, and it downloads or prints as a PDF. The legal wording is
+          yours.
         </p>
         {data && !data.templates.length ? (
-          <Alert variant="light" className="border">No forms yet.{data.can_manage ? " Upload your first PDF." : ""}</Alert>
+          <Alert variant="light" className="border">No forms yet.{data.can_manage ? " Click New form." : ""}</Alert>
         ) : data && (
           <div className="w_card p-0">
             <Table hover responsive className="mb-0 small align-middle">
-              <thead><tr><th>Form</th><th>Category</th><th>Type</th><th>Version</th><th>Fields mapped</th>
+              <thead><tr><th>Form</th><th>Category</th><th>Fields</th><th>Version</th>
                 <th>Who / when</th><th>Status</th></tr></thead>
               <tbody>
                 {data.templates.map((t) => (
-                  <tr key={t.id} role="button" onClick={() => setOpen(t.id)}>
+                  <tr key={t.id} role="button" onClick={() => router.push(`/dealer/forms/${t.id}`)}>
                     <td className="fw-semibold">{t.name}</td>
                     <td>{t.category}</td>
-                    <td>{t.fillable ? "Fillable PDF" : "Flat PDF"}</td>
-                    <td>v{t.current_version}{t.versions > 1 ? ` (${t.versions} uploads)` : ""}</td>
-                    <td>{t.mapped ? `${t.mapped}${t.required ? ` (${t.required} required)` : ""}` : <span className="text-danger">Not mapped yet</span>}</td>
+                    <td>{t.ready ? t.fields : <span className="text-danger">Old upload - open and read the PDF again</span>}</td>
+                    <td>v{t.current_version}</td>
                     <td className="text-muted">
                       {t.departments.length ? t.departments.join(", ") : "Sales & service"} ·{" "}
                       {t.role_ids.length ? `${t.role_ids.length} role(s)` : "all roles"} ·{" "}
@@ -87,7 +87,7 @@ export default function FormsLibraryPage() {
       </div>
 
       <Modal show={!!upload} onHide={() => setUpload(null)} centered>
-        <Modal.Header closeButton><Modal.Title as="h6">Upload a form</Modal.Title></Modal.Header>
+        <Modal.Header closeButton><Modal.Title as="h6">New form</Modal.Title></Modal.Header>
         <Modal.Body>
           {upload && (
             <>
@@ -98,7 +98,7 @@ export default function FormsLibraryPage() {
                 <Form.Select size="sm" value={upload.category} onChange={(e) => setUpload({ ...upload, category: e.target.value })}>
                   {(data?.categories || []).map((c) => <option key={c}>{c}</option>)}
                 </Form.Select></Form.Group>
-              <Form.Group><Form.Label className="small mb-0">PDF (fillable or not, up to 15 MB)</Form.Label>
+              <Form.Group><Form.Label className="small mb-0">The form&apos;s PDF (up to 15 MB) - leave empty to start a blank form</Form.Label>
                 <Form.Control size="sm" type="file" accept="application/pdf"
                   onChange={(e) => setUpload({ ...upload, file: e.target.files?.[0] || null })} /></Form.Group>
             </>
@@ -106,16 +106,12 @@ export default function FormsLibraryPage() {
         </Modal.Body>
         <Modal.Footer>
           <Button size="sm" variant="outline-custom" onClick={() => setUpload(null)}>Cancel</Button>
-          <Button size="sm" variant="custom" disabled={busy || !upload?.name.trim() || !upload?.file} onClick={save}>
-            {busy ? <Spinner size="sm" /> : "Upload"}
+          <Button size="sm" variant="custom" disabled={busy || !upload?.name.trim()} onClick={save}>
+            {busy ? <Spinner size="sm" /> : upload?.file ? "Read the PDF" : "Start blank"}
           </Button>
         </Modal.Footer>
       </Modal>
 
-      {open && (
-        <TemplateEditor dealerId={dealerId} id={open} canManage={data?.can_manage}
-          categories={data?.categories || []} onHide={() => { setOpen(null); load(); }} />
-      )}
     </div>
   );
 }

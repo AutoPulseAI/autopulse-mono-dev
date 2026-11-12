@@ -1,5 +1,6 @@
-// What a form can be filled with (SOW v6 Deliverable K, gap G-065): the customer, the opportunity picked (lead), its
-// vehicle, up to MAX_TRADES trade-ins (more go on an added "Trade-in schedule" page), dates, staff and the dealership.
+// What a form field can be filled with (SOW v6 Deliverable K, gap G-065): the customer, the opportunity picked (lead),
+// its vehicle, the trade-ins picked (a section set to repeat per trade-in gets one copy each; outside one, the first
+// trade-in), dates, staff and the dealership. Staff can change or complete any value on the form before saving.
 // Only values the CRM already has: an empty value stays empty and is flagged missing - nothing is ever made up.
 // Sensitive values (trade payoff, lienholder) only for staff with "Manage Leads", as on the Trade In tab; the CRM
 // collects no SSN, date of birth, credit or bank data, so no form can be filled with them.
@@ -11,7 +12,6 @@ import TradeIn from '../../models/TradeIn.js';
 import User from '../../models/User.js';
 import DeskLogEntry from '../../models/DeskLogEntry.js';
 
-export const MAX_TRADES = 3;
 const TRADE_FIELDS = [['year', 'Year'], ['make', 'Make'], ['model', 'Model'], ['trim', 'Trim'], ['vin', 'VIN'],
   ['miles', 'Mileage'], ['color', 'Color'], ['description', 'Year make model'], ['offer', 'Trade offer'],
   ['acv', 'ACV'], ['payoff', 'Payoff', true], ['lienholder', 'Lienholder', true]];
@@ -25,8 +25,7 @@ export const SOURCES = Object.freeze([
   ['vehicle.year', 'Vehicle', 'Year'], ['vehicle.make', 'Vehicle', 'Make'], ['vehicle.model', 'Vehicle', 'Model'],
   ['vehicle.trim', 'Vehicle', 'Trim'], ['vehicle.vin', 'Vehicle', 'VIN'], ['vehicle.stock_number', 'Vehicle', 'Stock #'],
   ['vehicle.description', 'Vehicle', 'Year make model trim'],
-  ...Array.from({ length: MAX_TRADES }, (_, i) => TRADE_FIELDS.map(([k, label, sensitive]) => [
-    `trade${i + 1}.${k}`, `Trade-in ${i + 1}`, label, sensitive])).flat(),
+  ...TRADE_FIELDS.map(([k, label, sensitive]) => [`trade.${k}`, 'Trade-in', label, sensitive]),
   ['date.today', 'Dates', "Today's date"], ['date.appointment', 'Dates', 'Appointment date'],
   ['date.visit', 'Dates', 'Showroom visit date'], ['date.lead', 'Dates', 'Lead received'],
   ['staff.salesperson', 'Staff', 'Salesperson'], ['staff.sales_manager', 'Staff', 'Sales manager'],
@@ -59,7 +58,7 @@ function splitName(full) {
 
 /**
  * Every source's value for one customer + opportunity + trade-ins, as it would print.
- * @returns {Promise<{values: Record<string,string>, trades: object[], extraTrades: object[], lead: object|null}>}
+ * @returns {Promise<{values: Record<string,string>, trades: Record<string,string>[], lead: object|null}>}
  */
 export async function collectValues({ dealerId, customerId, leadId, tradeInIds = [], user, canSeeFinance, tz }) {
   const customer = await Customer.findOne({ _id: customerId, dealer_id: dealerId }).lean();
@@ -114,9 +113,8 @@ export async function collectValues({ dealerId, customerId, leadId, tradeInIds =
     offer: money(t.trade_offer_amount), acv: money(t.trade_acv_amount),
     payoff: canSeeFinance ? money(t.payoff_amount) : '', lienholder: canSeeFinance ? text(t.lienholder) : '',
   });
-  trades.slice(0, MAX_TRADES).forEach((t, i) => {
-    for (const [k, val] of Object.entries(tradeValues(t))) values[`trade${i + 1}.${k}`] = val;
-  });
-  for (let i = trades.length; i < MAX_TRADES; i += 1) for (const [k] of TRADE_FIELDS) values[`trade${i + 1}.${k}`] = '';
-  return { values, lead, extraTrades: trades.slice(MAX_TRADES).map(tradeValues), allTrades: trades.map(tradeValues) };
+  // One map per trade-in picked: 'trade.year' -> value. Outside a repeated section a trade field takes the first one.
+  const tradeMaps = trades.map((t) => Object.fromEntries(Object.entries(tradeValues(t)).map(([k, val]) => [`trade.${k}`, val])));
+  for (const [k] of TRADE_FIELDS) values[`trade.${k}`] = tradeMaps[0]?.[`trade.${k}`] || '';
+  return { values, lead, trades: tradeMaps };
 }

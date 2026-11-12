@@ -1,20 +1,22 @@
 import mongoose from 'mongoose';
 
-// A form filled in for one customer and one opportunity (SOW v6 Deliverable K, gap G-066): an immutable snapshot - the
-// PDF as generated, the template version it came from, the values that went in, what was missing, who made it and
-// when. A later change to the customer never rewrites it; every download / print is logged.
+// A form filled for one customer and one opportunity (SOW v6 Deliverable K, gap G-066): the form exactly as it was
+// (schema of the template version) with what was entered (`data`). A draft can still be changed; a completed one never
+// changes again - later changes to the customer or to the form don't touch it. The PDF is made from it on request.
 const formDocumentSchema = new mongoose.Schema({
   dealer_id: { type: String, required: true },
   template_id: { type: mongoose.Schema.Types.ObjectId, ref: 'FormTemplate', required: true },
   template_name: { type: String, default: null },
   template_version: { type: Number, required: true },
+  schema: { type: Object, required: true },
+  data: { type: Object, default: {} }, // field id (or id#n in a section repeated per trade-in) -> value
+  prefilled: { type: [String], default: [] }, // data keys that came from the CRM
   customer_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   lead_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null },
   trade_in_ids: { type: [mongoose.Schema.Types.ObjectId], default: [] },
-  values: { type: Object, default: {} }, // source key -> the value printed (sensitive values are not kept here)
-  missing: { type: [String], default: [] },
-  file_id: { type: mongoose.Schema.Types.ObjectId, default: null }, // null once removed at the end of retention
-  size: { type: Number, default: 0 },
+  status: { type: String, enum: ['draft', 'completed'], default: 'draft' },
+  completed_at: { type: Date, default: null },
+  completed_by_name: { type: String, default: null },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   created_by_name: { type: String, default: null },
   retain_until: { type: Date, default: null },
@@ -24,7 +26,7 @@ const formDocumentSchema = new mongoose.Schema({
       { _id: false })],
     default: [],
   },
-}, { timestamps: { createdAt: 'created_at', updatedAt: false } });
+}, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 formDocumentSchema.index({ dealer_id: 1, customer_id: 1, created_at: -1 });
 
