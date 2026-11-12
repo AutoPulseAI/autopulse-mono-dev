@@ -1,6 +1,7 @@
 // Appointments report (SOW 8 Deliverable F, gap G-037; KPI dictionary A-F 3.4). Every number here counts bookings
 // and lists bookings (app/lib/reporting/appointmentAttribution.js decides which bookings count and who made them).
-import { BOOKING_COLUMNS, BOOKING_FILTERS, KIND, STATE, notYet } from './common.js';
+import { BOOKING_COLUMNS, BOOKING_FILTERS, KIND, STATE, localDay, notYet, windowFor } from './common.js';
+import { dmsRecordsInRange } from '../dealGross.js';
 import {
   NOT_RECORDED_TEXT, NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, SHOW_RATE_DENOMINATOR, shared,
 } from './executive.js';
@@ -84,10 +85,19 @@ export const APPOINTMENT_KPIS = [
     + 'the range (one per booking), by who moved it.'),
   changeKpi('appointments.cancelled_by', 'Cancelled, by who', 'cancelled', 'Bookings cancelled in the range (one per '
     + 'booking), by who cancelled them.'),
-  notYet(STATE.NEEDS_DATA, {
+  {
     id: 'appointments.dms_service', label: 'DMS service appointments', dashboard: D, grain: 'service_appointment',
-    dateBasis: 'ServiceAppointment "Appointment Date"', numerator: 'Service appointments imported from the DMS.',
-    denominator: null, exclusions: 'n/a', source: ['serviceappointments'],
-    reason: 'DMS appointment dates are stored as text; a parsed date field is needed.',
-  }),
+    kind: KIND.COUNT, dateBasis: 'ServiceAppointment "Appointment Date"',
+    numerator: 'Service appointments imported from the DMS, dated in the range.', denominator: null, exclusions: 'n/a',
+    source: ['serviceappointments'], filters: [], breakdowns: [],
+    columns: [['customer', 'Customer'], ['appointment', 'Appointment'], ['time', 'Time'], ['vehicle', 'Vehicle']],
+    evaluate: async (args) => {
+      const w = await windowFor(args);
+      const appts = await dmsRecordsInRange('serviceappointments', args.dealerId, w, ['Appointment Date'],
+        { 'Full Name': 1, 'Appointment Time': 1, Year: 1, Make: 1, Model: 1 });
+      return { rows: appts.map((a) => ({ id: String(a._id), customer: a['Full Name'] || '', appointment: localDay(a._at, w.tz),
+        time: a['Appointment Time'] || '', vehicle: [a.Year, a.Make, a.Model].filter(Boolean).join(' '),
+        _day: localDay(a._at, w.tz), _g: {} })) };
+    },
+  },
 ];

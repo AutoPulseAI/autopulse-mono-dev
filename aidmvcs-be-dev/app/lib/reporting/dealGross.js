@@ -85,3 +85,16 @@ export async function matchedDealGross(dealerId, w, { Deals = collection('deals'
   }
   return { available, deals: deals.length, matched, unmatched };
 }
+
+/** DealerVault records of one dealer whose text date (first of `dateFields` that parses) falls in [w.start, w.end]. */
+export async function dmsRecordsInRange(name, dealerId, w, dateFields, projection = {}, { db = null } = {}) {
+  const coll = db ? db.collection(name) : collection(name);
+  const fields = { ...projection, ...Object.fromEntries(dateFields.map((f) => [f, 1])) };
+  const all = await coll.find({ dealer_id: { $in: dealerForms(dealerId) } }, { projection: fields }).toArray();
+  const out = [];
+  for (const r of all) {
+    const at = dateFields.map((f) => dealDate(r[f], w.tz)).find(Boolean);
+    if (at && at >= w.start && at <= w.end) out.push({ ...r, _at: at });
+  }
+  return out;
+}

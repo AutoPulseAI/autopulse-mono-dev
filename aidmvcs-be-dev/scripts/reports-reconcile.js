@@ -620,6 +620,16 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   await loadLeads(overdue.map((e) => e.lead_id));
   R['bdc.overdue_followups'] = new Set(overdue.filter((e) => ownLead(e.lead_id)).map((e) => str(e.lead_id))).size;
 
+  // DealerVault (text dates), counted by reading each date as written.
+  const dmsDay = (v) => { const m = moment.tz(String(v || '').trim(), ['YYYYMMDD', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'], true, tz);
+    return m.isValid() ? m.toDate() : null; };
+  const dmsCount = async (name, fields) => (await col(name).find({ dealer_id: { $in: forms } },
+    { projection: Object.fromEntries(fields.map((f) => [f, 1])) }).toArray())
+    .filter((r) => inRange(fields.map((f) => dmsDay(r[f])).find(Boolean))).length;
+  R['exec.dms_delivered'] = await dmsCount('deals', ['Delivery Date', 'Contract Date']);
+  R['exec.service_visits'] = await dmsCount('repairorders', ['Close Date', 'Open Date']);
+  R['appointments.dms_service'] = await dmsCount('serviceappointments', ['Appointment Date']);
+
   return { R, WHY };
 }
 
