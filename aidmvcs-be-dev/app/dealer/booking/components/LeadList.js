@@ -934,7 +934,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
 
       <div className="w_card">
         {/* Assignment Filter Tabs */}
-        <div className="d-flex gap-2 mb-3 lead_fltr">
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-3 lead_fltr">
           {useCan("Manage Leads") && (
             <Button
               size="sm"
@@ -965,12 +965,22 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
               <span className="text-nowrap">Unassigned</span>
             </Button>
           )}
-          <select className="form-select form-select-sm w-auto" value={typeFilter}
-            onChange={(e) => setTypeAndSync(e.target.value)} aria-label="Sales or service appointments">
-            <option value="all">Sales and service</option>
-            <option value="sales">Sales</option>
-            <option value="service">Service</option>
-          </select>
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            <select className="form-select form-select-sm w-auto" value={typeFilter}
+              onChange={(e) => setTypeAndSync(e.target.value)} aria-label="Sales or service appointments">
+              <option value="all">Sales and service</option>
+              <option value="sales">Sales</option>
+              <option value="service">Service</option>
+            </select>
+            <select className="form-select form-select-sm w-auto" value={confirmFilter}
+              onChange={(e) => setConfirmFilter(e.target.value)} aria-label="Filter appointments by confirmation">
+              <option value="">Confirmed or not</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="tentative">Tentative</option>
+              <option value="not_confirmed">Not confirmed</option>
+            </select>
+            {confirmFilter && <small className="text-muted text-nowrap">{shownLeads.length} of {leads.length} on this page</small>}
+          </div>
         </div>
         
         {compact ? (
@@ -1159,19 +1169,6 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
             </ListGroup.Item>
             )}
 
-            {leads.some((l) => l.confirmation) && (
-              <ListGroup.Item as="li" className="d-flex align-items-center gap-2">
-                <small className="text-muted">Show</small>
-                <select className="form-select form-select-sm w-auto" value={confirmFilter}
-                  onChange={(e) => setConfirmFilter(e.target.value)} aria-label="Filter appointments by confirmation">
-                  <option value="">All appointments</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="tentative">Tentative</option>
-                  <option value="not_confirmed">Not confirmed</option>
-                </select>
-                {confirmFilter && <small className="text-muted">{shownLeads.length} of {leads.length} on this page</small>}
-              </ListGroup.Item>
-            )}
 
             {shownLeads.length > 0 ? (
               shownLeads.map(lead => (
@@ -1267,11 +1264,6 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                                   : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
                               </span>
                             )}
-                            {lead.appointment_type && (
-                              <span className="badge bg-light text-dark ms-1">
-                                {lead.appointment_type === 'service' ? 'Service' : 'Sales'}
-                              </span>
-                            )}
                             {lead.confirmation && (
                               <span className={`badge ms-1 ${lead.confirmation === 'confirmed' ? 'bg-success'
                                 : lead.confirmation === 'tentative' ? 'bg-warning text-dark' : 'bg-danger'}`}
@@ -1305,6 +1297,9 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                                 return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                               })()}
                             </p>
+                            {lead.appointment_type && (
+                              <small className="text-muted">{lead.appointment_type === 'service' ? 'Service' : 'Sales'}</small>
+                            )}
                           </div>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12}>
