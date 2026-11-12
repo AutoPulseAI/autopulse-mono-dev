@@ -4,6 +4,8 @@ const customerEmailSchema = new mongoose.Schema(
   {
     value: { type: String, required: true, trim: true, lowercase: true },
     is_primary: { type: Boolean, default: false },
+    // SOW H (G-061): mobile / home / work / other, set by staff.
+    label: { type: String, enum: ["mobile", "home", "work", "other"], default: undefined },
     source: { type: String },
     first_seen_lead_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -18,6 +20,8 @@ const customerPhoneSchema = new mongoose.Schema(
   {
     value: { type: String, required: true, trim: true },
     is_primary: { type: Boolean, default: false },
+    // SOW H (G-061): mobile / home / work / other, set by staff.
+    label: { type: String, enum: ["mobile", "home", "work", "other"], default: undefined },
     source: { type: String },
     sms_opt_in: { type: Boolean },
     first_seen_lead_id: {
@@ -92,6 +96,30 @@ const customerSchema = new mongoose.Schema(
       ref: "Customer",
     },
     merge_history: { type: [mergeHistorySchema], default: [] },
+
+    // SOW Deliverable H (G-061): contact details staff edit. Postal addresses; contacts staff removed (a later lead
+    // or import never adds them back - "a stale import cannot undo a confirmed correction"); and the history of every
+    // contact change (who, when, what). See app/api/customers/[id]/contacts.
+    addresses: {
+      type: [new mongoose.Schema({
+        label: { type: String, enum: ["home", "work", "billing", "other"], default: "home" },
+        line1: { type: String, trim: true }, line2: { type: String, trim: true }, city: { type: String, trim: true },
+        state: { type: String, trim: true }, zip: { type: String, trim: true },
+        is_primary: { type: Boolean, default: false }, added_at: { type: Date, default: Date.now },
+      })],
+      default: undefined,
+    },
+    removed_contacts: {
+      type: [new mongoose.Schema({ kind: { type: String, enum: ["email", "phone"] }, value: { type: String },
+        at: { type: Date }, by: { type: mongoose.Schema.Types.ObjectId, ref: "User" } }, { _id: false })],
+      default: undefined,
+    },
+    contact_history: {
+      type: [new mongoose.Schema({ at: { type: Date }, by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        by_name: { type: String }, field: { type: String }, action: { type: String },
+        from: { type: mongoose.Schema.Types.Mixed }, to: { type: mongoose.Schema.Types.Mixed } }, { _id: false })],
+      default: undefined,
+    },
 
     // Catch-all for fields from external sources (e.g. DealerTrack DMS
     // imports) that aren't modeled here yet, so unmapped data is preserved

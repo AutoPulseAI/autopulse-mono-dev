@@ -63,6 +63,11 @@ export function staffEntry(a) {
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action === "customer_merged" ? `merged the customer ${a.from || ""} into this one${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
+    : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
+    : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`
+    : a.action === "contact_set_primary" ? `made ${a.to} the main ${a.from}`
+    : a.action === "contact_label" ? `relabelled the ${a.from} ${a.to}`
     : a.action === "customer_merge_undone" ? `undid the merge of ${a.to || "a customer"} into this one`
     : a.action === "customer_merged_away" ? `merged this customer into ${a.to || "another customer"}`
     : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"

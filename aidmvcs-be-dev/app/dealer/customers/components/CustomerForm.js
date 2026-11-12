@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Form, Button, Row, Col, Alert, Badge } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import ContactEditor from "./ContactEditor";
 
 export default function CustomerForm({ setEditCustomer, editCustomer }) {
     const { dealerParent } = useUser();
@@ -138,35 +139,8 @@ export default function CustomerForm({ setEditCustomer, editCustomer }) {
                     {isEditMode ? (
                         <>
                             <Col lg={8} md={6} className="mb-3">
-                                <Form.Label>Emails</Form.Label>
-                                {editCustomer.emails?.length ? (
-                                    <ul className="list-unstyled mb-0 mt-1">
-                                        {editCustomer.emails.map((entry) => (
-                                            <li key={entry.value}>
-                                                {entry.value}
-                                                {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <div className="text-muted">No emails on file</div>
-                                )}
-                                <Form.Label className="mt-2">Phones</Form.Label>
-                                {editCustomer.phones?.length ? (
-                                    <ul className="list-unstyled mb-0 mt-1">
-                                        {editCustomer.phones.map((entry) => (
-                                            <li key={entry.value}>
-                                                {entry.value}
-                                                {entry.is_primary && <Badge bg="custom" className="ms-2">Primary</Badge>}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <div className="text-muted">No phones on file</div>
-                                )}
-                                <div className="text-muted small">
-                                    Email and phone can&apos;t be edited here because leads are linked to them.
-                                </div>
+                                <Form.Label>Phones, emails and addresses</Form.Label>
+                                <ContactEditor customer={editCustomer} dealerId={dealerParent?.id} />
                             </Col>
                         </>
                     ) : (
