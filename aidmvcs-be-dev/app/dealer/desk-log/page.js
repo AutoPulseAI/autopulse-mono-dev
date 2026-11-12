@@ -17,8 +17,11 @@ import CheckInModal from "./components/CheckInModal";
 import VisitModal from "./components/VisitModal";
 import "./deskLog.css";
 
-const EMPTY_FILTERS = { department: "", lead_type: "", source: "", salesperson_id: "", sales_manager_id: "",
-  bdc_agent_id: "" };
+const EMPTY_FILTERS = { department: "", lead_type: "", source: "", stage: "", outcome: "", salesperson_id: "",
+  sales_manager_id: "", bdc_agent_id: "" };
+const STAGE_OPTIONS = ["QUALIFY", "TEST DRIVE", "APPRAISAL", "PROPOSAL", "T.O.", "VERBAL AGREEMENT"];
+const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "Sold pending"],
+  ["SOLD DELIVERED", "Sold delivered"], ["UNSOLD", "Unsold"]];
 const LEAD_TYPES = [["Internet", "Internet"], ["Phone", "Phone Up"], ["Walk-in", "Walk-In"], ["Campaign", "Campaign"],
   ["Other", "Other"]];
 
@@ -98,10 +101,8 @@ export default function DeskLogPage() {
             <small className="text-muted">Every customer in the showroom: who is working the deal, how far it got
               and how it ended.</small>
           </div>
-          <Form.Control size="sm" style={{ width: 260 }} placeholder="Search by name, phone, VIN, stock #..."
-            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the Desk Log" />
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
-          <Button size="sm" variant="primary" onClick={() => setCheckIn(true)}>
+          <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
             <i className="fa-solid fa-plus me-1"></i>Check in customer
           </Button>
         </div>
@@ -116,39 +117,59 @@ export default function DeskLogPage() {
           </div>
         )}
 
-        <div className="dl_filters my-3">
-          <Form.Select size="sm" value={filters.department} onChange={setFilter("department")} aria-label="Department">
-            <option value="">All Departments</option><option value="sales">Sales</option>
-            <option value="service">Service</option>
-          </Form.Select>
-          <Form.Select size="sm" value={filters.lead_type} onChange={setFilter("lead_type")} aria-label="Lead type">
-            <option value="">All Lead Types</option>
-            {LEAD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </Form.Select>
-          <Form.Select size="sm" value={filters.source} onChange={setFilter("source")} aria-label="Lead source">
-            <option value="">All Lead Sources</option>
-            {[...new Set([...(data?.sources || []), filters.source].filter(Boolean))]
-              .map((s) => <option key={s} value={s}>{s}</option>)}
-          </Form.Select>
-          <Form.Select size="sm" value={filters.salesperson_id} onChange={setFilter("salesperson_id")}
-            aria-label="Salesperson"><option value="">All Salespeople</option>{staffOptions}</Form.Select>
-          <Form.Select size="sm" value={filters.sales_manager_id} onChange={setFilter("sales_manager_id")}
-            aria-label="Sales manager"><option value="">All Sales Managers</option>{staffOptions}</Form.Select>
-          <Form.Select size="sm" value={filters.bdc_agent_id} onChange={setFilter("bdc_agent_id")}
-            aria-label="BDC agent"><option value="">All BDC Agents</option>{staffOptions}</Form.Select>
-          {filtered && (
-            <Button size="sm" variant="link" onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>
-              Clear filters
-            </Button>
-          )}
-        </div>
-
-        <div className="dl_views mb-2">
-          {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => (
-            <Button key={key} size="sm" variant={view === key ? "dark" : "outline-secondary"}
-              onClick={() => setView(key)}>{label}</Button>
-          ))}
-          {loading && <Spinner animation="border" size="sm" className="ms-2 align-self-center" />}
+        <div className="w_card my-3">
+          <div className="dl_filters">
+            <div className="dl_filter_search">
+              <label htmlFor="dl-search">Search</label>
+              <Form.Control id="dl-search" size="sm" placeholder="Name, phone, VIN, stock #" value={search}
+                onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <div><label>Department</label>
+              <Form.Select size="sm" value={filters.department} onChange={setFilter("department")} aria-label="Department">
+                <option value="">All</option><option value="sales">Sales</option><option value="service">Service</option>
+              </Form.Select></div>
+            <div><label>Stage</label>
+              <Form.Select size="sm" value={filters.stage} onChange={setFilter("stage")} aria-label="Stage">
+                <option value="">All stages</option><option value="none">No stage yet</option>
+                {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Form.Select></div>
+            <div><label>Outcome</label>
+              <Form.Select size="sm" value={filters.outcome} onChange={setFilter("outcome")} aria-label="Outcome">
+                <option value="">All outcomes</option>
+                {OUTCOME_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </Form.Select></div>
+            <div><label>Lead type</label>
+              <Form.Select size="sm" value={filters.lead_type} onChange={setFilter("lead_type")} aria-label="Lead type">
+                <option value="">All</option>
+                {LEAD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </Form.Select></div>
+            <div><label>Lead source</label>
+              <Form.Select size="sm" value={filters.source} onChange={setFilter("source")} aria-label="Lead source">
+                <option value="">All</option>
+                {[...new Set([...(data?.sources || []), filters.source].filter(Boolean))]
+                  .map((s) => <option key={s} value={s}>{s}</option>)}
+              </Form.Select></div>
+            <div><label>Salesperson</label>
+              <Form.Select size="sm" value={filters.salesperson_id} onChange={setFilter("salesperson_id")}
+                aria-label="Salesperson"><option value="">All</option>{staffOptions}</Form.Select></div>
+            <div><label>Sales manager</label>
+              <Form.Select size="sm" value={filters.sales_manager_id} onChange={setFilter("sales_manager_id")}
+                aria-label="Sales manager"><option value="">All</option>{staffOptions}</Form.Select></div>
+            <div><label>BDC agent</label>
+              <Form.Select size="sm" value={filters.bdc_agent_id} onChange={setFilter("bdc_agent_id")}
+                aria-label="BDC agent"><option value="">All</option>{staffOptions}</Form.Select></div>
+          </div>
+          <div className="dl_views mt-3">
+            {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => (
+              <Button key={key} size="sm" variant={view === key ? "custom" : "outline-custom"}
+                onClick={() => setView(key)}>{label}</Button>
+            ))}
+            {filtered && (
+              <Button size="sm" variant="link" className="ms-auto"
+                onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear filters</Button>
+            )}
+            {loading && <Spinner animation="border" size="sm" className="ms-2" />}
+          </div>
         </div>
 
         {error && <Alert variant="danger">{error}</Alert>}

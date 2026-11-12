@@ -121,8 +121,8 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone }) {
         {error && <Alert variant="danger" className="mt-3 mb-0">{error}</Alert>}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="outline-secondary" onClick={onHide} disabled={busy}>Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={busy || !lead}>{busy ? "Checking in..." : "Check in"}</Button>
+        <Button variant="outline-custom" onClick={onHide} disabled={busy}>Cancel</Button>
+        <Button variant="custom" onClick={save} disabled={busy || !lead}>{busy ? "Checking in..." : "Check in"}</Button>
       </Modal.Footer>
     </Modal>
   );

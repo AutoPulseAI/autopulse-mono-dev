@@ -1,46 +1,52 @@
-/* Desk Log (Betsy's design, SOW v6 Appendix B1). Scoped under .desk_log. */
-.desk_log { --dl-line: #e3e7ee; --dl-muted: #6b7280; }
-.desk_log .dl_cards { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; }
-@media (max-width: 1400px) { .desk_log .dl_cards { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-@media (max-width: 768px) { .desk_log .dl_cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.desk_log .dl_card { background: #fff; border: 1px solid var(--dl-line); border-radius: 8px; padding: 8px 10px;
-  border-top: 4px solid var(--dl-accent, #2563eb); }
-.desk_log .dl_card_title { font-size: 0.74rem; font-weight: 600; color: #1f2937; display: flex; gap: 6px;
-  align-items: center; min-height: 2.2em; line-height: 1.1; }
-.desk_log .dl_card_nums { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px; }
-.desk_log .dl_card_today { font-size: 1.7rem; font-weight: 700; color: var(--dl-accent, #2563eb); line-height: 1; }
-.desk_log .dl_card_mtd { font-size: 1.05rem; font-weight: 600; color: #374151; text-align: right; line-height: 1; }
+/* Desk Log. Scoped under .desk_log. Platform colours (app/styles.css: --primary, --dark, --border, --gray) - user,
+   13 Nov 2026: the screen didn't follow the platform. */
+.desk_log { --dl-line: var(--border, #e8e8e8); --dl-muted: #6c757d; }
+
+/* Headline cards: one look, the platform's white card with a blue icon. */
+.desk_log .dl_cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.desk_log .dl_card { background: var(--white, #fff); border: 1px solid var(--dl-line); border-radius: 8px; padding: 10px 12px; }
+.desk_log .dl_card_title { font-size: 0.78rem; font-weight: 600; color: var(--dark, #212529); display: flex; gap: 6px;
+  align-items: center; min-height: 2.2em; line-height: 1.15; }
+.desk_log .dl_card_title i { color: var(--primary, #0272b4); }
+.desk_log .dl_card_nums { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; }
+.desk_log .dl_card_today { font-size: 1.6rem; font-weight: 700; color: var(--dark, #212529); line-height: 1; }
+.desk_log .dl_card_mtd { font-size: 1rem; font-weight: 600; color: var(--secondary, #565e5e); text-align: right; line-height: 1; }
 .desk_log .dl_card_nums small { display: block; font-size: 0.65rem; color: var(--dl-muted); font-weight: 600;
   letter-spacing: 0.04em; margin-top: 3px; }
-.desk_log .dl_filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.desk_log .dl_filters .form-select { width: auto; min-width: 150px; font-size: 0.85rem; }
-.desk_log .dl_views { display: flex; flex-wrap: wrap; gap: 6px; }
-.desk_log .dl_table_wrap { overflow-x: auto; border: 1px solid var(--dl-line); border-radius: 8px; background: #fff; }
-.desk_log table.dl_table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 1240px; }
-.desk_log .dl_table thead th { background: #1f2a44; color: #fff; font-weight: 600; padding: 8px 6px; white-space: normal;
-  line-height: 1.15; vertical-align: bottom;
-  position: sticky; top: 0; z-index: 1; }
-.desk_log .dl_table td { padding: 6px; border-top: 1px solid var(--dl-line); vertical-align: middle; }
-.desk_log .dl_table tr td:first-child { border-left: 4px solid var(--dl-row, #cbd5e1); white-space: nowrap; }
-.desk_log .dl_type { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;
-  white-space: nowrap; }
-.desk_log .dl_type.internet { background: #dbeafe; color: #1e3a8a; }
-.desk_log .dl_type.phone { background: #ede9fe; color: #5b21b6; }
-.desk_log .dl_type.walk_in { background: #dcfce7; color: #166534; }
-.desk_log .dl_type.other { background: #f3f4f6; color: #374151; }
+.dl_card_link { display: block; color: inherit; text-decoration: none; }
+.dl_card_link:hover { color: var(--primary, #0272b4); text-decoration: underline; }
+
+/* Filters: one card, labelled, wrapping. */
+.desk_log .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 10px;
+  align-items: end; }
+.desk_log .dl_filters label { font-size: 0.72rem; color: var(--dl-muted); margin-bottom: 2px; display: block; }
+.desk_log .dl_filters .form-select, .desk_log .dl_filters .form-control { font-size: 0.85rem; }
+.desk_log .dl_views { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* Table */
+.desk_log .dl_table_wrap { overflow-x: auto; border: 1px solid var(--dl-line); border-radius: 8px; background: var(--white, #fff); }
+.desk_log table.dl_table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 1000px; }
+.desk_log .dl_table thead th { background: var(--gray, #f9f9fc); color: var(--dark, #212529); font-weight: 600;
+  padding: 9px 8px; border-bottom: 1px solid var(--dl-line); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+.desk_log .dl_table td { padding: 8px; border-top: 1px solid var(--dl-line); vertical-align: top; }
+.desk_log .dl_table tbody tr:hover { background: #f6fafd; }
+.desk_log .dl_customer { min-width: 180px; max-width: 240px; }
+.desk_log .dl_vehicle { min-width: 150px; max-width: 210px; }
+.desk_log .dl_type { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;
+  white-space: nowrap; background: #f1f3f5; color: #343a40; }
 .desk_log .dl_pill.form-select { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; border: 0;
-  padding: 5px 24px 5px 7px; min-width: 112px; border-radius: 4px; cursor: pointer; }
-.desk_log .dl_staff.form-select { font-size: 0.8rem; padding: 3px 22px 3px 4px; min-width: 96px; border-color: transparent;
+  padding: 5px 24px 5px 8px; min-width: 120px; border-radius: 4px; cursor: pointer; }
+.desk_log .dl_outcome.form-select { min-width: 165px; }
+.desk_log .dl_people { min-width: 190px; }
+.desk_log .dl_person { display: flex; align-items: center; gap: 4px; }
+.desk_log .dl_person span { width: 58px; flex: none; font-size: 0.7rem; color: var(--dl-muted); }
+.desk_log .dl_staff.form-select { font-size: 0.8rem; padding: 2px 22px 2px 4px; border-color: transparent;
   background-color: transparent; }
 .desk_log .dl_staff.form-select:hover, .desk_log .dl_staff.form-select:focus { border-color: var(--dl-line); }
-.desk_log .dl_note { min-width: 150px; max-width: 220px; white-space: normal; color: #374151; }
-.desk_log .dl_actions { white-space: nowrap; }
-.desk_log .dl_actions a, .desk_log .dl_actions button { color: #2563eb; background: none; border: 0; padding: 2px 5px;
-  font-size: 1rem; }
-.desk_log .dl_age { font-size: 0.7rem; color: var(--dl-muted); display: block; margin-top: 2px; }
-.desk_log .dl_age.stalled { color: #b91c1c; font-weight: 600; }
+.desk_log .dl_note { min-width: 160px; max-width: 240px; white-space: normal; color: var(--secondary, #565e5e); }
+.desk_log .dl_actions { white-space: nowrap; text-align: right; }
+.desk_log .dl_actions a, .desk_log .dl_actions button { color: var(--primary, #0272b4); background: none; border: 0;
+  padding: 2px 6px; font-size: 1rem; }
+.desk_log .dl_age { font-size: 0.7rem; color: var(--dl-muted); display: block; margin-top: 3px; }
+.desk_log .dl_age.stalled { color: #b02a37; font-weight: 600; }
 .desk_log .dl_history li { border-bottom: 1px solid var(--dl-line); padding: 4px 0; font-size: 0.82rem; }
-.desk_log .dl_vehicle { min-width: 115px; }
-.desk_log .dl_outcome.form-select { min-width: 165px; }
-.dl_card_link { display: block; color: inherit; text-decoration: none; }
-.dl_card_link:hover { text-decoration: underline; }
