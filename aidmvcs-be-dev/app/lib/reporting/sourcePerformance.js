@@ -12,7 +12,7 @@
 // Leads are the leads received in the range either way.
 import { evaluateKpi } from './registry.js';
 import { leadsByIds, windowFor } from './kpis/common.js';
-import { normalizeChannel, normalizeProvider } from './normalize.js';
+import { normalizeProvider } from './normalize.js';
 
 export const BASIS = Object.freeze({ TIMEFRAME: 'timeframe', CURRENT: 'current' });
 export const ALL_TYPES = 'All Types';
@@ -25,12 +25,9 @@ const MEASURES = Object.freeze([
   ['appts_shown', 'source.shown'],
   ['sold', 'source.crm_sold'],
 ]);
-const UP_TYPES = Object.freeze({ internet: 'Internet', phone: 'Phone', walk_in: 'Walk-in', campaign: 'Campaign' });
-
-/** The lead type ("Up Type") of a lead: Internet, Phone, Walk-in, Campaign, else Other. */
-export function upType(lead) {
-  return UP_TYPES[normalizeChannel(lead || {})] || 'Other';
-}
+// The lead type ("Up Type"): app/lib/reporting/normalize.js, so the KPIs can use it too.
+export { upType } from './normalize.js';
+import { upType } from './normalize.js';
 
 const byName = (a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' });
 const ratio = (sold, leads) => (leads ? Math.round((sold / leads) * 10000) / 100 : 0);

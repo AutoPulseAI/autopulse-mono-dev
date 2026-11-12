@@ -300,6 +300,8 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['sales.proxy_unsold'] = firstInto(statusRegexFor(['UNSOLD']));
   R['sales.proxy_sold_pending'] = firstInto(statusRegexFor(['SOLD_PENDING']));
   R['sales.proxy_sold_delivered'] = firstInto(statusRegexFor(['SOLD_DELIVERED']));
+  R['sales.proxy_action_required'] = firstInto(statusRegexFor(['ESCALATED']));
+  R['sales.proxy_closed_lost'] = firstInto(statusRegexFor(['CLOSED_LOST']));
   // Desk Log visits: checked in during the range, on a lead that still exists. "Reached" a stage = it is the current
   // stage or a stage change went to it.
   const desk = await col('desklogentries').find({ dealer_id: { $in: forms }, checked_in_at: { $gte: start, $lte: end } })

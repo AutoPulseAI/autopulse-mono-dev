@@ -1,46 +1,47 @@
 // The Desk Log's headline cards (Betsy's Desk Log design): Internet Leads, Phone Ups, Walk-Ins, Appointments Set,
 // Appointments Showed, Sold Pending, Sold Delivered, Dealership Action Required, Closed Lost - each for today and
-// month to date, in the dealer's time. Counted with the same KPIs as the Dashboard reports
-// (app/lib/reporting), so a number here always equals the same number there.
+// month to date, in the dealer's time. Each card IS a Reports number (app/lib/reporting), counted by it and opening
+// its leads on the Leads page (/dealer/leads?report_kpi=..., like every Dashboard and Reports number), so the card
+// and the list it opens always agree.
 import moment from 'moment-timezone';
 import { evaluateKpi } from '../reporting/registry.js';
-import { firstStatusChangeLeads, leadsByIds } from '../reporting/kpis/common.js';
-import { statusRegexFor } from '../reporting/normalize.js';
-import { upType } from '../reporting/sourcePerformance.js';
 
+// key -> the Reports number it is, and for the lead types the group of "Leads received" by lead type.
 export const CARDS = Object.freeze([
-  { key: 'internet', label: 'Internet Leads' },
-  { key: 'phone', label: 'Phone Ups' },
-  { key: 'walk_in', label: 'Walk-Ins' },
-  { key: 'appts_set', label: 'Appointments Set' },
-  { key: 'appts_showed', label: 'Appointments Showed' },
-  { key: 'sold_pending', label: 'Sold Pending' },
-  { key: 'sold_delivered', label: 'Sold Delivered' },
-  { key: 'action_required', label: 'Dealership Action Required' },
-  { key: 'closed_lost', label: 'Closed Lost' },
+  { key: 'internet', label: 'Internet Leads', kpi: 'exec.leads_received', by: 'up_type', group: 'Internet' },
+  { key: 'phone', label: 'Phone Ups', kpi: 'exec.leads_received', by: 'up_type', group: 'Phone' },
+  { key: 'walk_in', label: 'Walk-Ins', kpi: 'exec.leads_received', by: 'up_type', group: 'Walk-in' },
+  { key: 'appts_set', label: 'Appointments Set', kpi: 'exec.appointments_set' },
+  { key: 'appts_showed', label: 'Appointments Showed', kpi: 'exec.shown' },
+  { key: 'sold_pending', label: 'Sold Pending', kpi: 'sales.proxy_sold_pending' },
+  { key: 'sold_delivered', label: 'Sold Delivered', kpi: 'sales.proxy_sold_delivered' },
+  { key: 'action_required', label: 'Dealership Action Required', kpi: 'sales.proxy_action_required' },
+  { key: 'closed_lost', label: 'Closed Lost', kpi: 'sales.proxy_closed_lost' },
 ]);
-
-const STATUS_CARDS = Object.freeze({
-  sold_pending: ['SOLD_PENDING'], sold_delivered: ['SOLD_DELIVERED'], action_required: ['ESCALATED'],
-  closed_lost: ['CLOSED_LOST'],
-});
-const TYPE_OF = Object.freeze({ Internet: 'internet', Phone: 'phone', 'Walk-in': 'walk_in' });
+// The Reports numbers the cards open (the Leads page lets a Desk Log user open these).
+export const CARD_KPIS = Object.freeze(new Set(CARDS.map((c) => c.kpi)));
 
 async function countsFor(args) {
   const ctx = {};
-  const out = Object.fromEntries(CARDS.map((c) => [c.key, 0]));
-  const received = await evaluateKpi('exec.leads_received', args, ctx);
-  const leads = await leadsByIds(received.rows.map((r) => String(r.lead_id)).filter(Boolean), ctx);
-  for (const r of received.rows) {
-    const key = TYPE_OF[upType(leads.get(String(r.lead_id)))];
-    if (key) out[key] += 1;
+  const results = new Map();
+  for (const id of CARD_KPIS) results.set(id, await evaluateKpi(id, args, ctx));
+  return Object.fromEntries(CARDS.map((c) => {
+    const r = results.get(c.kpi);
+    const n = c.by ? (r.breakdowns?.[c.by] || []).find((g) => g.key === c.group)?.count : r.count;
+    return [c.key, n ?? 0];
+  }));
+}
+
+/** The Leads page list behind a card: the dealer-local days from..to as instants, as the Reports links send them. */
+export function cardLink(card, { from, to, tz }) {
+  const q = new URLSearchParams({ report_kpi: card.kpi });
+  q.set('startDate', moment.tz(from, 'YYYY-MM-DD', tz).startOf('day').toISOString());
+  q.set('endDate', moment.tz(to, 'YYYY-MM-DD', tz).endOf('day').toISOString());
+  if (card.by) {
+    q.set('report_by', card.by);
+    q.set('report_group', card.group);
   }
-  out.appts_set = (await evaluateKpi('exec.appointments_set', args, ctx)).count ?? 0;
-  out.appts_showed = (await evaluateKpi('exec.shown', args, ctx)).count ?? 0;
-  for (const [key, groups] of Object.entries(STATUS_CARDS)) {
-    out[key] = (await firstStatusChangeLeads(args, ctx, `desk:${key}`, statusRegexFor(groups))).length;
-  }
-  return out;
+  return `/dealer/leads?${q.toString()}`;
 }
 
 /** { today, mtd, day } for the day `day` (dealer-local YYYY-MM-DD, default today) and its month up to that day. */
@@ -51,5 +52,6 @@ export async function deskLogCards(dealerId, tz, day = null) {
     countsFor({ dealerId, tz, from: d, to: d }),
     countsFor({ dealerId, tz, from: monthStart, to: d }),
   ]);
-  return { day: d, cards: CARDS.map((c) => ({ ...c, today: today[c.key], mtd: mtd[c.key] })) };
+  return { day: d, cards: CARDS.map(({ key, label, ...card }) => ({ key, label, today: today[key], mtd: mtd[key],
+    today_link: cardLink(card, { from: d, to: d, tz }), mtd_link: cardLink(card, { from: monthStart, to: d, tz }) })) };
 }

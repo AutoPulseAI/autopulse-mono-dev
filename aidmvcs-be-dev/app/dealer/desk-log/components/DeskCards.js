@@ -1,5 +1,15 @@
 "use client";
-// The Desk Log's headline cards: the picked day's number big, month to date small (Betsy's design).
+// The Desk Log's headline cards: the picked day's number big, month to date small (Betsy's design). Each number opens
+// its leads on the Leads page in this tab (with Export CSV there), with a way back to the Desk Log.
+import { rememberBack } from "../../components/backLink";
+
+function Num({ link, className, children }) {
+  if (!link) return <div className={className}>{children}</div>;
+  return (
+    <a href={link} className={`${className} dl_card_link`} title="Open these leads"
+      onClick={() => rememberBack(link, "/dealer/desk-log", "Desk Log")}>{children}</a>
+  );
+}
 const LOOK = {
   internet: ["fa-solid fa-globe", "#2563eb"],
   phone: ["fa-solid fa-phone-volume", "#7c3aed"],
@@ -21,8 +31,8 @@ export default function DeskCards({ cards, dayWord = "TODAY" }) {
           <div key={c.key} className="dl_card" style={{ "--dl-accent": color }}>
             <div className="dl_card_title"><i className={icon} style={{ color }}></i>{c.label}</div>
             <div className="dl_card_nums">
-              <div><div className="dl_card_today">{c.today}</div><small>{dayWord}</small></div>
-              <div><div className="dl_card_mtd">{c.mtd}</div><small>MTD</small></div>
+              <div><Num link={c.today_link} className="dl_card_today">{c.today}</Num><small>{dayWord}</small></div>
+              <div><Num link={c.mtd_link} className="dl_card_mtd">{c.mtd}</Num><small>MTD</small></div>
             </div>
           </div>
         );

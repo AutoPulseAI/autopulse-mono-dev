@@ -118,4 +118,7 @@ export const SALES_KPIS = [
   proxy('sales.proxy_unsold', 'Unsold (proxy, no reason)', ['UNSOLD'], 'Unsold'),
   proxy('sales.proxy_sold_pending', 'Sold pending (proxy)', ['SOLD_PENDING'], 'Sold Pending'),
   proxy('sales.proxy_sold_delivered', 'Sold delivered (proxy)', ['SOLD_DELIVERED'], 'Sold Delivered'),
+  proxy('sales.proxy_action_required', 'Dealership Action Required (proxy)', ['ESCALATED'],
+    'Dealership Action Required'),
+  proxy('sales.proxy_closed_lost', 'Closed lost (proxy)', ['CLOSED_LOST'], 'Closed - Lost'),
 ];
