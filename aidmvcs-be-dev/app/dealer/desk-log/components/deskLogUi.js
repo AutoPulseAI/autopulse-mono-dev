@@ -1,34 +1,32 @@
 // Colours and labels for the Desk Log screen (Betsy's design).
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 
+// Platform colours (user, 13 Nov 2026: the Desk Log didn't follow the platform). Stages are one blue, lighter to darker
+// as the deal moves on; outcomes use the platform's green (sold) and red (unsold) only.
 export const STAGE_STYLE = {
-  QUALIFY: { background: "#2563eb", color: "#fff" },
-  "TEST DRIVE": { background: "#22c55e", color: "#fff" },
-  APPRAISAL: { background: "#0d9488", color: "#fff" },
-  PROPOSAL: { background: "#facc15", color: "#1f2937" },
-  "T.O.": { background: "#f97316", color: "#fff" },
-  "VERBAL AGREEMENT": { background: "#7c3aed", color: "#fff" },
+  QUALIFY: { background: "#e8f2f9", color: "#015688" },
+  "TEST DRIVE": { background: "#d0e5f3", color: "#015688" },
+  APPRAISAL: { background: "#a8cfe9", color: "#013f63" },
+  PROPOSAL: { background: "#6db0dd", color: "#012b44" },
+  "T.O.": { background: "#0272b4", color: "#fff" },
+  "VERBAL AGREEMENT": { background: "#015688", color: "#fff" },
 };
-export const NO_STAGE_STYLE = { background: "#f3f4f6", color: "#6b7280" };
+export const NO_STAGE_STYLE = { background: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
 
 // One menu for the outcome, as the design shows it: SOLD PENDING, SOLD DELIVERED, UNSOLD <reason>.
+const SOLD = { background: "#198754", color: "#fff" };
+const UNSOLD = { background: "#fff", color: "#b02a37", border: "1px solid #f1aeb5" };
 export const OUTCOME_CHOICES = [
   { value: "SOLD PENDING", outcome: "SOLD PENDING", reason: null, label: "SOLD PENDING",
-    style: { background: "#bbf7d0", color: "#14532d" } },
-  { value: "SOLD DELIVERED", outcome: "SOLD DELIVERED", reason: null, label: "SOLD DELIVERED",
-    style: { background: "#22c55e", color: "#fff" } },
-  ...[
-    [UNSOLD_REASONS.NEGATIVE_EQUITY, { background: "#fca5a5", color: "#7f1d1d" }],
-    [UNSOLD_REASONS.DND, { background: "#d1d5db", color: "#111827" }],
-    [UNSOLD_REASONS.PRICE_PAYMENT, { background: "#fca5a5", color: "#7f1d1d" }],
-    [UNSOLD_REASONS.CREDIT, { background: "#fca5a5", color: "#7f1d1d" }],
-    [UNSOLD_REASONS.HOT, { background: "#dc2626", color: "#fff" }],
-    [UNSOLD_REASONS.FUTURE_FOLLOW_UP, { background: "#c4b5fd", color: "#3b0764" }],
-    [UNSOLD_REASONS.CAR_FINDER, { background: "#c4b5fd", color: "#3b0764" }],
-  ].map(([reason, style]) => ({ value: `UNSOLD|${reason}`, outcome: "UNSOLD", reason,
-    label: `UNSOLD ${reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP ? "FUTURE F/U" : reason.toUpperCase()}`, style })),
+    style: { background: "#e8f5ee", color: "#146c43", border: "1px solid #a3cfbb" } },
+  { value: "SOLD DELIVERED", outcome: "SOLD DELIVERED", reason: null, label: "SOLD DELIVERED", style: SOLD },
+  ...[UNSOLD_REASONS.NEGATIVE_EQUITY, UNSOLD_REASONS.DND, UNSOLD_REASONS.PRICE_PAYMENT, UNSOLD_REASONS.CREDIT,
+    UNSOLD_REASONS.HOT, UNSOLD_REASONS.FUTURE_FOLLOW_UP, UNSOLD_REASONS.CAR_FINDER,
+  ].map((reason) => ({ value: `UNSOLD|${reason}`, outcome: "UNSOLD", reason,
+    label: `UNSOLD ${reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP ? "FUTURE F/U" : reason.toUpperCase()}`,
+    style: reason === UNSOLD_REASONS.DND ? { background: "#f1f3f5", color: "#495057", border: "1px solid #dee2e6" } : UNSOLD })),
 ];
-export const NO_OUTCOME_STYLE = { background: "#fff", color: "#374151", border: "1px dashed #9ca3af" };
+export const NO_OUTCOME_STYLE = { background: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
 
 export const choiceOf = (row) => OUTCOME_CHOICES.find((c) => c.outcome === row.outcome
   && (c.reason || null) === (row.unsold_reason || null)) || null;
@@ -47,7 +45,6 @@ export function outcomeEffect(choice) {
 export const TYPE_CLASS = { Internet: "internet", Phone: "phone", "Walk-in": "walk_in" };
 export const TYPE_LABEL = { Internet: "Internet", Phone: "Phone Up", "Walk-in": "Walk-In", Campaign: "Campaign",
   Other: "Other" };
-export const ROW_COLOR = { Internet: "#facc15", Phone: "#a855f7", "Walk-in": "#22c55e" };
 
 export const vehicleText = (v) => [v?.year, v?.make, v?.model, v?.trim].filter(Boolean).join(" ");
 

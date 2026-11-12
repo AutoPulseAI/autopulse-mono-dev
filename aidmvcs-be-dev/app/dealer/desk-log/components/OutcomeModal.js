@@ -46,8 +46,8 @@ export default function OutcomeModal({ row, choice, tz, onHide, onSave }) {
         {error && <Alert variant="danger" className="mt-3 mb-0">{error}</Alert>}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="outline-secondary" onClick={onHide} disabled={busy}>Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={busy}>{busy ? "Saving..." : "Save outcome"}</Button>
+        <Button variant="outline-custom" onClick={onHide} disabled={busy}>Cancel</Button>
+        <Button variant="custom" onClick={save} disabled={busy}>{busy ? "Saving..." : "Save outcome"}</Button>
       </Modal.Footer>
     </Modal>
   );

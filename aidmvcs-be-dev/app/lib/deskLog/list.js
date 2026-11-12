@@ -41,7 +41,8 @@ function inView(row, view, now) {
 
 /**
  * @param {{dealerId: string, tz: string, from: string, to: string, view?: string, q?: string, filters?: object,
- *   now?: Date}} args  filters: { department, lead_type, source, salesperson_id, sales_manager_id, bdc_agent_id }
+ *   now?: Date}} args  filters: { department, lead_type, source, salesperson_id, sales_manager_id, bdc_agent_id,
+ *   stage, outcome }
  */
 export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = '', filters = {}, now = new Date() }) {
   const { start, end } = localDayRange(from, to, tz);
@@ -84,6 +85,9 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     row.minutes_in_stage = isOpen(row) ? minutesInStage(row, now) : null;
     if (filters.lead_type && row.lead_type !== filters.lead_type) continue;
     if (filters.source && row.source !== filters.source) continue;
+    // Stage and outcome filters (user, 13 Nov 2026). stage 'none' = no stage yet; outcome 'none' = still open.
+    if (filters.stage && (filters.stage === 'none' ? row.stage : row.stage !== filters.stage)) continue;
+    if (filters.outcome && (filters.outcome === 'none' ? row.outcome : row.outcome !== filters.outcome)) continue;
     if (!inView(row, view, now) || !matchesSearch(row, q)) continue;
     rows.push(row);
     if (rows.length >= MAX_ROWS) break;

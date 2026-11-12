@@ -38,12 +38,15 @@ const MILESTONES = [
 
 function Milestones({ times }) {
   if (!times) return null;
+  // Its own block above the conversation; a grid whose cells wrap their text, so long dates never push into the
+  // next cell or out of the card (user, 13 Nov 2026).
   return (
-    <div className="d-flex flex-wrap gap-3 small mb-2" aria-label="Lead milestones">
+    <div className="border rounded p-2 mb-3 small" aria-label="Lead milestones"
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "8px 12px" }}>
       {MILESTONES.filter(([key]) => key !== "lost" || times.lost).map(([key, label]) => (
-        <div key={key} className={times[key] ? "" : "text-muted"}>
-          <div className="text-muted" style={{ fontSize: "0.75rem" }}>{label}</div>
-          <div>{times[key] ? formatTimestamp(times[key]) : "-"}</div>
+        <div key={key} style={{ minWidth: 0 }}>
+          <div className="text-muted text-truncate" style={{ fontSize: "0.75rem" }} title={label}>{label}</div>
+          <div className={`text-break ${times[key] ? "" : "text-muted"}`}>{times[key] ? formatTimestamp(times[key]) : "-"}</div>
         </div>
       ))}
     </div>

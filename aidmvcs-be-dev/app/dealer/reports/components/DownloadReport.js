@@ -3,7 +3,7 @@
 // in one PDF (or CSV) - Executive, Betsy's source / sub-source table, Appointments, AI, BDC, Service, Data quality, Sales
 // (GET /api/reports/full, app/lib/reporting/fullReport.js). Shown only where the reports are visible.
 import { useState } from "react";
-import { Button } from "react-bootstrap";
+import { Dropdown } from "react-bootstrap";
 import moment from "moment-timezone";
 import { downloadFullReport } from "../reportsApi";
 
@@ -32,16 +32,18 @@ export default function DownloadReport({ dealerId, tz, range }) {
       setBusy(null);
     }
   };
+  // One button; the format is picked from its menu (user, 13 Nov 2026).
   return (
     <>
-      <Button size="sm" variant="outline-dark" onClick={() => download("pdf")} disabled={Boolean(busy) || !dealerId}
-        title="Every report for the dates picked here, in one PDF">
-        <i className="fa-regular fa-file-pdf me-1"></i>{busy === "pdf" ? "Preparing report..." : "Download report"}
-      </Button>
-      <Button size="sm" variant="link" className="px-1" onClick={() => download("csv")} disabled={Boolean(busy) || !dealerId}
-        title="The same report as a CSV (opens in Excel)">
-        {busy === "csv" ? "Preparing..." : "CSV"}
-      </Button>
+      <Dropdown align="end">
+        <Dropdown.Toggle size="sm" variant="outline-dark" disabled={Boolean(busy) || !dealerId}>
+          <i className="fa-regular fa-download me-1"></i>{busy ? `Preparing ${busy.toUpperCase()}...` : "Download report"}
+        </Dropdown.Toggle>
+        <Dropdown.Menu>
+          <Dropdown.Item onClick={() => download("pdf")}><i className="fa-regular fa-file-pdf me-2"></i>PDF</Dropdown.Item>
+          <Dropdown.Item onClick={() => download("csv")}><i className="fa-regular fa-file-csv me-2"></i>CSV (Excel)</Dropdown.Item>
+        </Dropdown.Menu>
+      </Dropdown>
       {error && <small className="text-danger">{error}</small>}
     </>
   );

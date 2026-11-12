@@ -11,7 +11,7 @@
 // definition, the tables and what is not available yet. Numbers come from GET /api/reports/kpis
 // (app/lib/reporting/registry.js); a 404 hides the whole thing.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Spinner } from "react-bootstrap";
+import { Alert, Button, Dropdown, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import FilterBar from "./FilterBar";
 import { Breakdown, GroupTable, KpiGrid } from "./KpiCards";
@@ -143,13 +143,16 @@ function SourceReportDownload({ params }) {
             aria-pressed={basis === key}>{label}</Button>
         ))}
       </div>
-      {/* Betsy, 12 Nov 2026: "Dealers need pretty reports to present" - the same report as a PDF. */}
-      <Button size="sm" variant="outline-dark" onClick={() => download("pdf")} disabled={Boolean(busy) || !params}>
-        <i className="fa-regular fa-file-pdf me-1"></i>{busy === "pdf" ? "Preparing..." : "Download PDF"}
-      </Button>
-      <Button size="sm" variant="outline-dark" onClick={() => download("csv")} disabled={Boolean(busy) || !params}>
-        <i className="fa-regular fa-download me-1"></i>{busy === "csv" ? "Preparing..." : "Download CSV"}
-      </Button>
+      {/* Betsy, 12 Nov 2026: "Dealers need pretty reports to present" - PDF or CSV from one button (user, 13 Nov). */}
+      <Dropdown>
+        <Dropdown.Toggle size="sm" variant="outline-dark" disabled={Boolean(busy) || !params}>
+          <i className="fa-regular fa-download me-1"></i>{busy ? `Preparing ${busy.toUpperCase()}...` : "Download"}
+        </Dropdown.Toggle>
+        <Dropdown.Menu>
+          <Dropdown.Item onClick={() => download("pdf")}><i className="fa-regular fa-file-pdf me-2"></i>PDF</Dropdown.Item>
+          <Dropdown.Item onClick={() => download("csv")}><i className="fa-regular fa-file-csv me-2"></i>CSV (Excel)</Dropdown.Item>
+        </Dropdown.Menu>
+      </Dropdown>
       {error && <small className="text-danger">{error}</small>}
     </div>
   );
