@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-11T21:08:42.867858+00:00",
- "revision": 38,
+ "exported_at": "2026-11-12T00:32:29.136358+00:00",
+ "revision": 39,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1670,12 +1670,57 @@
   },
   {
    "type": "workflows",
+   "key": "cannot_supply_cash_or_finance",
+   "name": "Can't supply: cash or finance",
+   "content": {
+    "trigger": {
+     "type": "customer_says",
+     "pattern": "\\bcash\\s+(?:price|deal|discount|number|offer)s?\\b|\\b(?:price|cost|number|deal)\\b[^.?!]{0,25}\\b(?:for|if|when|with|paying|by|in)\\s+(?:i\\s+|we\\s+)?(?:pay\\w*\\s+)?(?:in\\s+|with\\s+)?(?:cash|full|financ\\w*)\\b|\\b(?:cash|financ\\w*)\\b[^?]{0,40}\\b(?:is|that'?s|it'?s)\\s+(?:this|that|it)?\\s*(?:the\\s+)?(?:price|cost)\\b|\\b(?:discount|better\\s+price|lower\\s+price|cheaper|less|break)\\b[^.?!]{0,25}\\b(?:for|with|if|paying|pay)\\s+(?:in\\s+)?(?:cash|full)\\b|\\b(?:same|different)\\s+(?:price|cost|number)\\b[^.?!]{0,30}\\b(?:cash|financ\\w*)\\b|\\b(?:cash|financ\\w*)\\b[^.?!]{0,30}\\b(?:same|different)\\s+(?:price|cost)\\b|\\bsame\\b[^.?!]{0,15}\\b(?:if|when|whether)\\s+(?:i\\s+|we\\s+)?(?:pay\\s+(?:in\\s+)?)?(?:cash|financ\\w*)|\\b(?:price|cost)\\b[^.?!]{0,25}\\b(?:only|just)\\s+(?:with|if|when|for)\\s+(?:you\\s+|i\\s+|we\\s+)?financ\\w*|\\b(?:price|cost)\\b[^.?!]{0,25}\\bwithout\\s+financ\\w*|\\bpa(?:y|ying)\\s+(?:it\\s+)?(?:off\\s+)?in\\s+full\\b[^.?!]{0,30}\\b(?:price|cost|same|discount|less)\\b|\\b(?:de|al)\\s+contado\\b|\\bprecio\\b[^.?!]{0,30}\\b(?:efectivo|financ\\w*)\\b|\\befectivo\\b[^.?!]{0,30}\\bprecio\\b"
+    },
+    "tree": {
+     "id": "answer",
+     "label": "Answer",
+     "also": [],
+     "message": {
+      "mode": "fixed",
+      "text": "Yes, our list price is the same whether you pay cash or finance. It includes the total cost to purchase the vehicle, exclusive of tax, documentation, and DMV. The next step would be to schedule a test drive. What day this week works best for you? I have {times} available.",
+      "email_text": null,
+      "email_subject": null,
+      "instruction": null,
+      "fallback": null
+     },
+     "branches": [
+      {
+       "when": {
+        "type": "reply",
+        "value": "picks_a_time"
+       },
+       "then": {
+        "action": "book"
+       }
+      },
+      {
+       "when": {
+        "type": "reply",
+        "value": "anything_else"
+       },
+       "then": {
+        "action": "ai"
+       }
+      }
+     ]
+    }
+   },
+   "locked": false
+  },
+  {
+   "type": "workflows",
    "key": "cannot_supply_out_the_door",
    "name": "Can't supply: out the door",
    "content": {
     "trigger": {
      "type": "customer_says",
-     "pattern": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b|\\bitemi[sz]\\w*|\\bdoc(?:umentation)?\\s+fees?\\b|\\bbreak\\s*down\\b[^.?!]{0,30}\\b(?:fees?|price|costs?)\\b|\\bfees?\\b[^.?!]{0,30}\\bin\\s+writing\\b|\\bcash\\s+price\\b|\\b(?:price|cost)\\b[^.?!]{0,20}\\b(?:for|if|when|with|paying)\\s+(?:i\\s+)?(?:pay\\w*\\s+)?(?:in\\s+)?cash\\b|\\bcash\\b[^?]{0,40}\\b(?:is|that'?s|it'?s)\\s+(?:this|that|it)?\\s*(?:the\\s+)?(?:price|cost)\\b"
+     "pattern": "\\bout[\\s-]the[\\s-]door\\b|\\botd\\b|\\btotal\\s+(?:price|cost)\\b|\\ball[\\s-]in\\s+(?:price|cost)\\b|\\bwith\\s+(?:tax|taxes)\\s+and\\s+fees\\b|\\bitemi[sz]\\w*|\\bdoc(?:umentation)?\\s+fees?\\b|\\bbreak\\s*down\\b[^.?!]{0,30}\\b(?:fees?|price|costs?)\\b|\\bfees?\\b[^.?!]{0,30}\\bin\\s+writing\\b"
     },
     "tree": {
      "id": "answer",
