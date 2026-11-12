@@ -146,14 +146,6 @@ const Sidebar = ({ isOpen, onClose }) => {
           </li>
         )}
 
-        {(hasManageLeads || hasViewAssigned) && (
-          <li>
-            <Link href="/dealer/tasks" className={getLinkClass("/dealer/tasks")}>
-              <i className="fa-regular fa-list-check"></i>Tasks
-            </Link>
-          </li>
-        )}
-
         {canSeeAi && (
           <li className="submenu">
             <button
