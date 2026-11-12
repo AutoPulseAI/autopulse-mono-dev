@@ -21,16 +21,6 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   const shownLeads = confirmFilter ? leads.filter((l) => (l.confirmation || 'not_confirmed') === confirmFilter) : leads;
   // SOW Deliverable E: sales / service appointments (server-side filter, kept in the URL) and each one's history.
   const [historyLead, setHistoryLead] = useState(null);
-  const [typeFilter, setTypeFilter] = useState(['sales', 'service'].includes(urlSearchParams.get('type')) ? urlSearchParams.get('type') : 'all');
-  const setTypeAndSync = (value) => {
-    setTypeFilter(value);
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (value !== 'all') params.set('type', value); else params.delete('type');
-      params.set('page', '1');
-      router.replace(`/dealer/booking?${params.toString()}`);
-    } catch (e) { /* no window */ }
-  };
   const [selectedLead, setSelectedLead] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -43,6 +33,16 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   const orignalDealer = user;
   const router = useRouter();
   const urlSearchParams = useSearchParams();
+  const [typeFilter, setTypeFilter] = useState(['sales', 'service'].includes(urlSearchParams.get('type')) ? urlSearchParams.get('type') : 'all');
+  const setTypeAndSync = (value) => {
+    setTypeFilter(value);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (value !== 'all') params.set('type', value); else params.delete('type');
+      params.set('page', '1');
+      router.replace(`/dealer/booking?${params.toString()}`);
+    } catch (e) { /* no window */ }
+  };
   // Get dealer timezone
   const dealerTimezone = activeEntity?.dealer_account_information?.time_zone || "America/New_York";
   const [staffList, setStaffList] = useState([]);
