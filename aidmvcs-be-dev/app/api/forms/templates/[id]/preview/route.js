@@ -18,7 +18,7 @@ export async function POST(req, { params }) {
   const access = await formsAccess(req, body?.dealer_id);
   if (access.response) return access.response;
   const { id } = await params;
-  if (!mongoose.isValidObjectId(id) || !(await FormTemplate.exists({ _id: id, dealer_id: access.dealerId }))) {
+  if (!mongoose.isValidObjectId(id) || !(await FormTemplate.exists({ _id: id, dealer_id: access.dealerId, deleted_at: null }))) {
     return fail('Form not found', 404);
   }
   let schema;

@@ -46,7 +46,7 @@ export async function POST(req) {
   const access = await formsAccess(req, body?.dealer_id);
   if (access.response) return access.response;
   const { user, dealerId } = access;
-  const t = oid(body.template_id) ? await FormTemplate.findOne({ _id: oid(body.template_id), dealer_id: dealerId }).lean() : null;
+  const t = oid(body.template_id) ? await FormTemplate.findOne({ _id: oid(body.template_id), dealer_id: dealerId, deleted_at: null }).lean() : null;
   if (!t) return fail('Form not found', 404);
   if (!t.active) return fail('This form is switched off in the Forms Library', 409);
   if (!canUseTemplate(user, t)) return fail('Your role cannot use this form', 403);

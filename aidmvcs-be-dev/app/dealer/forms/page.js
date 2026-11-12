@@ -25,6 +25,14 @@ export default function FormsLibraryPage() {
   }, [dealerId]);
   useEffect(() => { load(); }, [load]);
 
+  const remove = async (t) => {
+    if (!window.confirm(`Delete "${t.name}" from the Forms Library? Staff won't be able to start it any more. Forms `
+      + "already filled for customers are kept as they are.")) return;
+    setError(null);
+    try { await formsSend(`/api/forms/templates/${t.id}?dealer_id=${dealerId}`, "DELETE"); await load(); }
+    catch (e) { setError(e.message); }
+  };
+
   const save = async () => {
     setBusy(true); setError(null);
     try {
@@ -64,7 +72,7 @@ export default function FormsLibraryPage() {
           <div className="w_card p-0">
             <Table hover responsive className="mb-0 small align-middle">
               <thead><tr><th>Form</th><th>Category</th><th>Fields</th><th>Version</th>
-                <th>Who / when</th><th>Status</th></tr></thead>
+                <th>Who / when</th><th>Status</th>{data.can_manage && <th aria-label="Delete" />}</tr></thead>
               <tbody>
                 {data.templates.map((t) => (
                   <tr key={t.id} role="button" onClick={() => router.push(`/dealer/forms/${t.id}`)}>
@@ -78,6 +86,12 @@ export default function FormsLibraryPage() {
                       {t.statuses.length ? `${t.statuses.length} status(es)` : "any status"}
                     </td>
                     <td>{t.active ? <Badge bg="success">On</Badge> : <Badge bg="secondary">Off</Badge>}</td>
+                    {data.can_manage && (
+                      <td className="text-end">
+                        <Button size="sm" variant="link" className="text-danger p-0" title="Delete form" aria-label="Delete form"
+                          onClick={(e) => { e.stopPropagation(); remove(t); }}><i className="fa-regular fa-trash-can" /></Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -4,6 +4,8 @@
 //         schema = the edited form (lib/forms/schema.js). Saved over the current version while no customer form uses
 //         it; once one does, it is saved as a new version (that customer's copy keeps the version it was made with).
 //   POST  multipart: dealer_id, file -> the new PDF is read into a new version of the form (the dealer then edits it)
+//   DELETE ?dealer_id -> the form leaves the library (and the Documents tab). Customers' forms already made with it are
+//          kept as they are: each carries its own copy of the form.
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import FormTemplate, { FORM_CATEGORIES } from '@models/FormTemplate';
@@ -22,7 +24,7 @@ async function load(req, params, dealerId) {
   const access = await formsAccess(req, dealerId);
   if (access.response) return access;
   const { id } = await params;
-  const t = mongoose.isValidObjectId(id) ? await FormTemplate.findOne({ _id: id, dealer_id: access.dealerId }) : null;
+  const t = mongoose.isValidObjectId(id) ? await FormTemplate.findOne({ _id: id, dealer_id: access.dealerId, deleted_at: null }) : null;
   if (!t) return { response: fail('Form not found', 404) };
   return { ...access, t };
 }
@@ -135,4 +137,20 @@ export async function POST(req, { params }) {
     + `${read.found.sections} sections, ${read.found.fields} fields` });
   await t.save();
   return json({ template: detail(t), found: read.found });
+}
+
+export async function DELETE(req, { params }) {
+  await dbConnect();
+  const found = await load(req, params, new URL(req.url).searchParams.get('dealer_id'));
+  if (found.response) return found.response;
+  if (!(await canManageForms(found.user))) return fail('You do not have permission to manage forms', 403);
+  const { t } = found;
+  const actor = actorOf(found.user);
+  const used = await FormDocument.countDocuments({ template_id: t._id });
+  t.deleted_at = new Date();
+  t.deleted_by_name = actor.by_name;
+  t.active = false;
+  t.history.push({ ...actor, action: 'deleted', detail: used ? `${used} customer form(s) made with it are kept` : null });
+  await t.save();
+  return json({ deleted: true, kept_customer_forms: used });
 }

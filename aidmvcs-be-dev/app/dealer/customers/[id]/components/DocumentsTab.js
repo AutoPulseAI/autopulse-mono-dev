@@ -39,6 +39,12 @@ function FillModal({ dealerId, id, onHide, onChanged }) {
     catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const close = () => { if (!dirty || window.confirm("Close without saving your changes?")) onHide(); };
+  const removeDraft = async () => {
+    if (!window.confirm("Delete this draft? What was entered on it is lost.")) return;
+    setBusy(true); setError(null);
+    try { await formsSend(`/api/forms/documents/${id}?dealer_id=${dealerId}`, "DELETE"); onChanged(); onHide(); }
+    catch (e) { setError(e.message); setBusy(false); }
+  };
   const done = doc?.status === "completed";
   return (
     <Modal show onHide={close} size="xl" centered scrollable backdrop="static">
@@ -59,6 +65,8 @@ function FillModal({ dealerId, id, onHide, onChanged }) {
         )}
       </Modal.Body>
       <Modal.Footer>
+        {doc && !done && <Button size="sm" variant="outline-danger" className="me-auto" disabled={busy} onClick={removeDraft}>
+          Delete draft</Button>}
         <Button size="sm" variant="outline-custom" disabled={busy || !doc} onClick={() => pdf(false)}>Download PDF</Button>
         <Button size="sm" variant="outline-custom" disabled={busy || !doc} onClick={() => pdf(true)}>Print</Button>
         {!done && <Button size="sm" variant="outline-custom" disabled={busy || !dirty} onClick={() => save(false)}>Save draft</Button>}
