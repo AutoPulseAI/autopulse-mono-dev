@@ -68,6 +68,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
               const stalled = row.minutes_in_stage != null && row.minutes_in_stage >= STALLED_MINUTES;
               const vehicle = vehicleText(row.vehicle);
               const trade = vehicleText(row.trade);
+              // G-024: a DND customer is not contacted - no Call / Message from here, and the row says so.
+              const dnd = row.lead_status === "DND";
               return (
                 <tr key={row.id}>
                   <td className="text-nowrap">{at.format("h:mm A")}<small className="d-block text-muted">{at.format("MMM D")}</small></td>
@@ -75,6 +77,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log",
                       "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
                     {row.phone && <small className="d-block text-muted">{row.phone}</small>}
+                    {dnd && <small className="d-block fw-semibold text-danger">Do not contact (DND)</small>}
+                    {row.lead_status === "Opted Out" && <small className="d-block text-muted">Opted out (see the lead for which channel)</small>}
                     <small className="d-block">
                       <span className="dl_type">{TYPE_LABEL[row.lead_type] || row.lead_type}</span>
                       <span className="text-muted ms-1">{row.source}{row.sub_source ? ` · ${row.sub_source}` : ""}</span>
@@ -119,11 +123,13 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     </Form.Select>
                   </td>
                   <td className="dl_actions">
-                    {row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
+                    {!dnd && row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
                       variant="link" size="sm" className="p-0" iconOnly />}
-                    <Link href={leadLink(row.lead_id)} title="Text / email (opens the conversation)" aria-label="Message"
-                      onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
-                      <i className="fa-regular fa-comment-dots"></i></Link>
+                    {!dnd && (
+                      <Link href={leadLink(row.lead_id)} title="Text / email (opens the conversation)" aria-label="Message"
+                        onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
+                        <i className="fa-regular fa-comment-dots"></i></Link>
+                    )}
                     <button type="button" title="Details, notes and history" aria-label="Details"
                       onClick={() => onOpen({ id: row.id, name: row.customer })}><i className="fa-solid fa-ellipsis-vertical"></i></button>
                   </td>
