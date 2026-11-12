@@ -12,6 +12,7 @@ import ServiceTab from "./ServiceTab";
 import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import TradeInTab from "./TradeInTab";
+import DocumentsTab from "./DocumentsTab";
 import LeadForm from "../../../leads/components/LeadForm";
 import CustomerForm from "../../components/CustomerForm";
 
@@ -182,6 +183,10 @@ export default function CustomerDetail({ customerId }) {
         </Tab>
         <Tab eventKey="tradeins" title="Trade In">
           <TradeInTab customerId={customerId} />
+        </Tab>
+        {/* SOW Deliverable K: the dealership's forms filled for this customer, and the saved copies. */}
+        <Tab eventKey="documents" title="Documents">
+          <DocumentsTab customerId={customerId} />
         </Tab>
       </Tabs>
 
