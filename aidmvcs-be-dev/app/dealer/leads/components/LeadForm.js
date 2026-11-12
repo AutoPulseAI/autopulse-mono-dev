@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Form, Button, Row, Col, Alert, Spinner } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import LeadSourcePicker from "./LeadSourcePicker";
 
 export default function LeadForm({ setEditLead, editLead }) {
     const { user, dealerParent } = useUser();
@@ -13,6 +14,7 @@ export default function LeadForm({ setEditLead, editLead }) {
         phone: "",
         followup_preference: "email",
         contact_type: "",
+        lead_source: "",
         vehicle_make: "",
         vehicle_model: "",
         vehicle_year: "",
@@ -239,6 +241,14 @@ export default function LeadForm({ setEditLead, editLead }) {
                             <option value="internet">Internet</option>
                         </Form.Select>
                         <Form.Control.Feedback type="invalid">{errors.contact_type}</Form.Control.Feedback>
+                    </Form.Group>
+
+                    <Form.Group as={Col} lg={4} md={6} className="mb-3">
+                        {/* Gap G-009: the dealer's own source list (Referral, Radio, ...). */}
+                        <Form.Label>Lead Source</Form.Label>
+                        <LeadSourcePicker dealerId={dealerParent?.id} value={formData.lead_source || ""}
+                            disabled={!isFieldEditable('lead_source', editLead?.lead_source)}
+                            onChange={(v) => setFormData((prev) => ({ ...prev, lead_source: v }))} />
                     </Form.Group>
 
                     {/* Vehicle Information */}
