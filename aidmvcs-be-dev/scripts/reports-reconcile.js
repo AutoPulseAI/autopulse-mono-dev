@@ -269,6 +269,15 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['appointments.upcoming'] = out('upcoming');
   R['exec.show_rate'] = R['appointments.show_rate'] = { num: out('shown'),
     den: out('shown') + out('no_show') + out('not_recorded') };
+  // Booking history (from 10 Nov 2026): moves and cancels dated by when they happened, one per booking; who set it.
+  const changed = await col('bookings').find({ dealer_id: { $in: forms } }).toArray();
+  R['appointments.moved'] = changed.filter((b) => (b.history || []).some((h) => h?.action === 'rescheduled'
+    && inRange(h.at))).length;
+  R['appointments.cancelled_by'] = changed.filter((b) => (b.history || []).some((h) => ['cancelled', 'deduplicated']
+    .includes(h?.action) && inRange(h.at)) || (b.booking_status === 'cancelled' && inRange(b.cancelled_at))).length;
+  const setByStaff = (b) => Boolean(b.created_by_user_id || b.created_by_name);
+  R['bdc.appointments_by_rep'] = made.filter(setByStaff).length;
+  R['bdc.shows_by_rep'] = sched.filter((b) => setByStaff(b) && outcome(b) === 'shown').length;
   const bookedLeads = new Set((cohortIds.length ? await col('bookings').distinct('lead_id', { dealer_id: { $in: forms },
     lead_id: { $in: cohortIds }, booking_status: { $ne: 'cancelled' } }) : []).map(str));
   R['exec.lead_to_appt'] = { num: cohortIds.filter((id) => bookedLeads.has(id)).length, den: cohort.length };
@@ -291,6 +300,27 @@ async function rawCounts(db, { dealerId, start, end, tz, now }) {
   R['sales.proxy_unsold'] = firstInto(statusRegexFor(['UNSOLD']));
   R['sales.proxy_sold_pending'] = firstInto(statusRegexFor(['SOLD_PENDING']));
   R['sales.proxy_sold_delivered'] = firstInto(statusRegexFor(['SOLD_DELIVERED']));
+  // Desk Log visits: checked in during the range, on a lead that still exists. "Reached" a stage = it is the current
+  // stage or a stage change went to it.
+  const desk = await col('desklogentries').find({ dealer_id: { $in: forms }, checked_in_at: { $gte: start, $lte: end } })
+    .toArray();
+  await loadLeads(desk.map((v) => v.lead_id));
+  const visits = desk.filter((v) => leadById.get(str(v.lead_id)));
+  const reachedAt = (v, stage) => {
+    const times = (v.history || []).filter((h) => h.field === 'stage' && h.to === stage).map((h) => new Date(h.at));
+    if (v.stage === stage) times.push(new Date(v.stage_at || v.checked_in_at));
+    return times.length ? Math.min(...times) : null;
+  };
+  R['sales.showroom_visits'] = visits.length;
+  R['sales.to_rate'] = { num: visits.filter((v) => reachedAt(v, 'T.O.') != null).length, den: visits.length };
+  const appraised = visits.filter((v) => reachedAt(v, 'APPRAISAL') != null);
+  R['sales.appraisals'] = appraised.length;
+  R['sales.appraisal_to_proposal'] = { num: appraised.filter((v) => reachedAt(v, 'PROPOSAL') != null
+    && reachedAt(v, 'PROPOSAL') >= reachedAt(v, 'APPRAISAL')).length, den: appraised.length };
+  R['sales.unsold_reasons'] = visits.filter((v) => v.outcome === 'UNSOLD').length;
+  R['sales.pending_delivered'] = visits.filter((v) => ['SOLD PENDING', 'SOLD DELIVERED'].includes(v.outcome)).length;
+  R['sales.stage_aging'] = visits.filter((v) => !v.outcome).length; // open visits (no outcome yet)
+
   const soldEver = new Set(logs.filter((l) => SOLD_RE.test(str(l.to))).map((l) => str(l.lead_id)));
   R['exec.lead_to_sold'] = { num: cohort.filter((l) => soldEver.has(String(l._id)) || SOLD_RE.test(str(l.fe_lead_status)))
     .length, den: cohort.length };

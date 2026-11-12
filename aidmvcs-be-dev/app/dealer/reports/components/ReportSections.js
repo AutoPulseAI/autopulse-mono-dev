@@ -87,6 +87,12 @@ function AllNumbers({ section, kpis, k, linkFor }) {
               <div className="col-md-4"><Breakdown kpi={k("appointments.set")} by="lead_source" title="Set, by lead source" linkFor={linkFor} /></div>
             </div>
           )}
+          {section === "sales" && (
+            <div className="row">
+              <div className="col-md-6"><Breakdown kpi={k("sales.unsold_reasons")} by="reason" title="Unsold, by reason" linkFor={linkFor} /></div>
+              <div className="col-md-6"><Breakdown kpi={k("sales.stage_aging")} by="aging" title="Open visits, time in stage" linkFor={linkFor} /></div>
+            </div>
+          )}
           {section === "work" && (
             <div className="row">
               <div className="col-md-6"><Breakdown kpi={k("ai.handoffs")} by="reason" title="Handoffs by reason" linkFor={linkFor} /></div>
@@ -168,8 +174,8 @@ function Section({ def, reports, linkFor, tz, params }) {
         <>
           {def.key === "sales" && (
             <Alert variant="info" className="py-2">
-              Showroom visits and the Desk Log numbers come with the Desk Log (Priority 3); until then these are CRM
-              status changes (marked proxy). Gross profit by source from DealerVault is being added.
+              Showroom visits, stages and unsold reasons come from the Desk Log. Numbers marked proxy are CRM status
+              changes, kept until the Desk Log is in daily use. Gross profit by source from DealerVault is being added.
             </Alert>
           )}
           {loaded.flatMap((r) => r.unsupported || []).length > 0 && (

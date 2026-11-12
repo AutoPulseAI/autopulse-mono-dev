@@ -3,7 +3,8 @@ import Customer from '../../../models/Customer.js';
 import { normalizeProvider, statusRegexFor } from '../normalize.js';
 import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, REPLY_FILTERS, STATE, attribution, bookingRows,
-  collection, dealerForms, firstStatusChangeLeads, isOid, leadRows, leadsReceived, memo, notYet, oid, replies,
+  collection, dealerForms, firstStatusChangeLeads, isOid, leadRows, leadsReceived, localDateTime, localDay, memo, notYet,
+  oid, replies,
 } from './common.js';
 
 const D = 'executive';
@@ -17,6 +18,39 @@ export const shared = {
   },
   async apptSetRows(args, ctx) {
     return memo(ctx, 'rows:appt_set', async () => bookingRows((await attribution(args, ctx, 'created')).rows, args, ctx));
+  },
+  // Bookings moved / cancelled in the range (the booking history, recorded from 10 Nov 2026), one row per booking:
+  // its latest change of that kind in the range, with who made it. kind: 'rescheduled' | 'cancelled'.
+  async apptChangeRows(args, ctx, kind) {
+    return memo(ctx, `rows:appt_${kind}`, async () => {
+      const att = await attribution(args, ctx, 'created');
+      const events = att.changes?.[kind]?.events || [];
+      if (!events.length) return [];
+      const docs = await collection('bookings').find({ _id: { $in: events.map((e) => e.booking_id).filter(isOid)
+        .map(oid) } }).toArray();
+      const byId = new Map(docs.map((d) => [String(d._id), d]));
+      const known = new Map(att.rows.map((r) => [r.booking_id, r]));
+      const MADE = { ai: 'ai', staff: 'Staff', customer: 'Customer' };
+      const attrRows = events.filter((e) => byId.has(e.booking_id)).map((e) => {
+        const b = byId.get(e.booking_id);
+        return known.get(e.booking_id) || { booking_id: e.booking_id, lead_id: String(b.lead_id),
+          category: MADE[b.created_by] || 'unknown', created_at: b.createdAt || null, booking_date: b.bookingDate,
+          booking_time: b.bookingTime, appointment_type: b.appointment_type === 'service' ? 'service' : 'sales',
+          booking_status: b.booking_status || null, showed: b.showed ?? null,
+          created_by_user_id: b.created_by_user_id ? String(b.created_by_user_id) : null,
+          created_by_name: b.created_by_name || null };
+      });
+      const rows = await bookingRows(attrRows, args, ctx);
+      const ACTOR = { ai: 'AI', staff: 'Staff', customer: 'Customer', system: 'System', unknown: 'Unknown' };
+      const w = att.tz;
+      return rows.map((r, i) => {
+        const e = events.find((x) => x.booking_id === attrRows[i].booking_id);
+        const who = ACTOR[e.actor] || 'Unknown';
+        return { ...r, changed_by: e.actor_name ? `${who} (${e.actor_name})` : who,
+          changed_at: e.at ? localDateTime(e.at, w) : '', _day: e.at ? localDay(e.at, w) : r._day,
+          _g: { ...r._g, actor: who } };
+      });
+    });
   },
   async apptScheduledRows(args, ctx) {
     return memo(ctx, 'rows:appt_scheduled', async () => bookingRows((await attribution(args, ctx, 'scheduled')).rows,

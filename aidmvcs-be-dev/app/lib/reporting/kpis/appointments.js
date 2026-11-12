@@ -26,14 +26,24 @@ const schedKpi = (id, label, numerator, rowsFn, extra = {}) => ({
   columns: BOOKING_COLUMNS, evaluate: async (args, ctx) => ({ rows: await rowsFn(args, ctx) }), ...extra,
 });
 
+// Booking history (recorded from 10 Nov 2026, P1 item 3): a move or cancel dated by when it happened.
+const CHANGE_COLUMNS = Object.freeze([...BOOKING_COLUMNS, ['changed_by', 'Changed by'], ['changed_at', 'Changed on']]);
+const changeKpi = (id, label, kind, numerator) => ({
+  id, label, dashboard: D, grain: 'booking', kind: KIND.COUNT, dateBasis: 'the change time (Booking.history[].at)',
+  numerator, denominator: null, inclusions: 'Any booking of the dealer, whenever it was set.',
+  exclusions: 'Changes before 10 Nov 2026 (not recorded). A booking changed twice in the range counts once.',
+  source: ['bookings'], filters: BOOKING_FILTERS, breakdowns: ['actor', 'department', 'lead_source'],
+  columns: CHANGE_COLUMNS, evaluate: async (args, ctx) => ({ rows: await shared.apptChangeRows(args, ctx, kind) }),
+});
+
 export const APPOINTMENT_KPIS = [
   setKpi('appointments.set', 'Set', 'Every booking set in the range.', () => true, { trend: true }),
   setKpi('appointments.confirmed', 'Confirmed', 'Bookings set in the range whose status is now confirmed.',
     (r) => r.booking_status === 'confirmed', { inclusions: 'Booking.booking_status = confirmed. The AI\'s own '
       + 'per-lead confirmation (ai_lead_state.appointment.confirmed) is not used: it is per lead, not per booking.' }),
   setKpi('appointments.cancelled', 'Cancelled', 'Bookings set in the range whose status is now cancelled.',
-    (r) => r.booking_status === 'cancelled', { inclusions: 'Booking.booking_status = cancelled (who cancelled is not '
-      + 'recorded).' }),
+    (r) => r.booking_status === 'cancelled', { inclusions: 'Booking.booking_status = cancelled (who cancelled: '
+      + 'appointments.cancelled_by).' }),
   schedKpi('appointments.scheduled', 'Scheduled for these dates', 'Bookings on a day in the range, not cancelled.',
     (a, c) => shared.apptScheduledRows(a, c)),
   schedKpi('appointments.shown', 'Shown (recorded)', SHOWN_TEXT, (a, c) => shared.shownRows(a, c),
@@ -70,17 +80,10 @@ export const APPOINTMENT_KPIS = [
     + 'or none: older bookings count as sales).', (r) => r.appointment_type !== 'service'),
   setKpi('appointments.service', 'Service appointments', 'Bookings set in the range for service '
     + '(appointment_type service).', (r) => r.appointment_type === 'service'),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'appointments.moved', label: 'Moved / rescheduled', dashboard: D, grain: 'booking', dateBasis: 'move time',
-    numerator: 'Bookings whose day or time was changed after they were set.', denominator: null,
-    exclusions: 'n/a', source: ['bookings'],
-    reason: 'A move overwrites Booking.bookingDate in place; there is no booking history yet (P1 item 3 adds it).',
-  }),
-  notYet(STATE.NEEDS_DATA, {
-    id: 'appointments.cancelled_by', label: 'Who cancelled', dashboard: D, grain: 'booking',
-    dateBasis: 'cancel time', numerator: 'Cancelled bookings by who cancelled them.', denominator: null,
-    exclusions: 'n/a', source: ['bookings'], reason: 'Bookings do not record who cancelled them yet (cancelled_by).',
-  }),
+  changeKpi('appointments.moved', 'Moved / rescheduled', 'rescheduled', 'Bookings whose day or time was changed in '
+    + 'the range (one per booking), by who moved it.'),
+  changeKpi('appointments.cancelled_by', 'Cancelled, by who', 'cancelled', 'Bookings cancelled in the range (one per '
+    + 'booking), by who cancelled them.'),
   notYet(STATE.NEEDS_DATA, {
     id: 'appointments.dms_service', label: 'DMS service appointments', dashboard: D, grain: 'service_appointment',
     dateBasis: 'ServiceAppointment "Appointment Date"', numerator: 'Service appointments imported from the DMS.',

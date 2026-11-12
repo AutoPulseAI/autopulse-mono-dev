@@ -4,6 +4,7 @@ import { useCan } from "../../hooks/PermissionsContext";
 import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
+import { deskLogMenuVisible } from "../desk-log/deskLogAccess";
 
 const AI_ALERT_COUNT_REFRESH_MS = 120_000;
 
@@ -50,6 +51,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     };
   }, [canSeeAi]);
 
+  // Desk Log (Priority 3): shown only where the 'desk_log' feature is visible (app/dealer/desk-log/deskLogAccess.js).
+  const [showDeskLog, setShowDeskLog] = useState(false);
+  useEffect(() => { setShowDeskLog(deskLogMenuVisible()); }, []);
+
   // Helper function to add 'active' class
   const getLinkClass = (href) => {
     return pathname === href ? "nav-link active" : "nav-link";
@@ -88,6 +93,14 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-chart-column"></i>Dashboard
           </Link>
         </li>
+
+        {showDeskLog && (
+          <li>
+            <Link href="/dealer/desk-log" className={getLinkClass("/dealer/desk-log")}>
+              <i className="fa-regular fa-clipboard-list"></i>Desk Log
+            </Link>
+          </li>
+        )}
 
         {(hasManageLeads || hasViewAssigned) && (
           <li>

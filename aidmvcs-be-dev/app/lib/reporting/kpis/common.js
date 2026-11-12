@@ -192,7 +192,7 @@ export const BOOKING_COLUMNS = Object.freeze([
   ['booking_id', 'Appointment ID'], ['lead_id', 'Lead ID'], ['customer', 'Customer'],
   ['appointment_date', 'Appointment date'], ['appointment_time', 'Time'], ['created_at', 'Set on'],
   ['booking_status', 'Status'], ['showed', 'Showed'], ['made_by', 'Made by'], ['appointment_type', 'Sales / service'],
-  ['lead_source', 'Lead source'], ['assigned_to', 'Assigned to'],
+  ['lead_source', 'Lead source'], ['assigned_to', 'Assigned to'], ['set_by', 'Set by (staff)'],
 ]);
 
 export const CATEGORY_LABELS = Object.freeze({ ai: 'AI', ai_assisted: 'AI-assisted', human_only: 'Human only',
@@ -206,7 +206,8 @@ export async function bookingRows(attrRows, args, ctx) {
   const w = await windowFor(args);
   const now = args.now ? new Date(args.now) : new Date();
   const leads = await leadsByIds(attrRows.map((r) => r.lead_id), ctx);
-  const names = await staffNames([...leads.values()].filter(Boolean).map((l) => l.assigned_to), ctx);
+  const names = await staffNames([...[...leads.values()].filter(Boolean).map((l) => l.assigned_to),
+    ...attrRows.map((r) => r.created_by_user_id).filter(Boolean)], ctx);
   const ids = attrRows.map((r) => r.booking_id).filter(isOid);
   const customers = new Map();
   if (ids.length) {
@@ -218,6 +219,10 @@ export async function bookingRows(attrRows, args, ctx) {
     const lead = leads.get(String(r.lead_id)) || null;
     const provider = lead ? normalizeProvider(lead.lead_source, lead.source) : 'Unknown';
     const staff = lead?.assigned_to ? staffLabel(names, lead.assigned_to) : 'Unassigned';
+    // The staff member who set it (recorded on bookings from 10 Nov 2026, P1 item 3; empty for the AI, the
+    // customer, and older bookings).
+    const setBy = (r.created_by_user_id && names.get(String(r.created_by_user_id))) || r.created_by_name
+      || (r.created_by_user_id ? staffLabel(names, r.created_by_user_id) : '');
     // Booking.bookingDate is stored as the appointment's day; show it as the dealer-local day.
     return {
       id: r.booking_id,
@@ -233,12 +238,13 @@ export async function bookingRows(attrRows, args, ctx) {
       appointment_type: r.appointment_type,
       lead_source: provider,
       assigned_to: staff,
+      set_by: setBy,
       _day: localDay(r.created_at, w.tz),
       _shown: r.booking_status !== 'cancelled' && bookingShowed(r, lead?.fe_lead_status),
       _noshow: r.booking_status !== 'cancelled' && r.showed === false,
       _past: appointmentPassed({ bookingDate: r.booking_date, bookingTime: r.booking_time }, { now, tz: w.tz }),
       _g: { lead_source: provider, staff, creator: CATEGORY_LABELS[r.category] || r.category,
-        department: r.appointment_type === 'service' ? 'Service' : 'Sales' },
+        department: r.appointment_type === 'service' ? 'Service' : 'Sales', rep: setBy || 'Not set by staff' },
     };
   });
 }

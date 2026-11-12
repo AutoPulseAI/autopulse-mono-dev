@@ -179,7 +179,7 @@ test('report: "All Types" equals the Lead sources numbers; type -> source -> sub
   }
   assert.deepEqual([total.leads, total.appts_set, total.sold], [4, 2, 2]);
   assert.equal(total.closing_ratio, 50);
-  assert.equal(total.visits, null);
+  assert.equal(total.visits, 0); // no Desk Log check-ins in this data
   assert.equal(total.total_gross, null);
   // Types in name order, with their own totals.
   assert.deepEqual(rows.filter((r) => r.level === 'type').map((r) => [r.up_type, r.leads]),
@@ -221,7 +221,7 @@ test('download: admins (also through "login as") get the CSV; the dealer gets 40
   assert.match(csv, /^Source and Sub Source Performance\r\nVictory Cars Central\r\n/);
   assert.match(csv, /Report Period: 11\/5\/2026 - 11\/5\/2026/);
   assert.match(csv, /Counted: From current leads/);
-  assert.match(csv, /\r\nVictory Cars Central,All Types,All Sources,All Sub-Sources,4,,1,1,1,25\.00%,,,\r\n/);
+  assert.match(csv, /\r\nVictory Cars Central,All Types,All Sources,All Sub-Sources,4,0,1,1,1,25\.00%,,,\r\n/);
   assert.equal((await call(`${qs}&basis=nope`, loginAs)).status, 400);
   const body = await (await call(qs, sign({ userId: String(ADMIN), type: 'admin' }))).json();
   assert.equal(body.basis, 'timeframe');
@@ -294,5 +294,5 @@ test('full report download: follows the dates; admins only', async (t) => {
   assert.match(res.headers.get('Content-Disposition'), /filename="dealership-report_2026-11-01_2026-11-30\.csv"/);
   const csv = await res.text();
   assert.match(csv, /Report Period: 11\/1\/2026 - 11\/30\/2026/);
-  assert.match(csv, /\r\nVictory Cars Central,All Types,All Sources,All Sub-Sources,4,,2,/);
+  assert.match(csv, /\r\nVictory Cars Central,All Types,All Sources,All Sub-Sources,4,0,2,/);
 });
