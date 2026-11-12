@@ -153,7 +153,7 @@ export default function DeskLogPage() {
 
         {error && <Alert variant="danger">{error}</Alert>}
         {data && (
-          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened}
+          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
         )}
         {data?.truncated && <small className="text-muted">Showing the latest 500 visits. Pick fewer days to see the

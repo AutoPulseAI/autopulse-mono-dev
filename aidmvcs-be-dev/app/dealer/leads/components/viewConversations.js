@@ -8,6 +8,7 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
+import CallButton from "../../components/CallButton";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
 import { useUser } from "../../context/UserContext";
@@ -815,7 +816,9 @@ export default function ViewConversations({
                 <div className="w_card leadinfo_card mb-2 row gx-1">
                   <p className="col col-xxl-12 col-lg-6 col-12"><strong>Name:</strong> {lead?.name  || "N/A"}</p>
                   <p className="col col-xxl-12 col-lg-6 col-12 text-break"><strong>Email:</strong> {lead?.email  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-12"><strong>Phone:</strong> {lead?.phone  || "N/A"}</p>
+                  <p className="col col-xxl-12 col-lg-6 col-12"><strong>Phone:</strong> {lead?.phone  || "N/A"}
+                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id}
+                      className="ms-2 py-0" iconOnly />}</p>
                   <p className="col col-xxl-12 col-lg-6 col-6"><strong>Source Type:</strong> {lead?.source  || "N/A"}</p>
 
                   <p className="col col-xxl-12 col-lg-6 col-6">

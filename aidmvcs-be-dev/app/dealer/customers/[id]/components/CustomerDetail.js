@@ -156,6 +156,9 @@ export default function CustomerDetail({ customerId }) {
         onEdit={() => setEditCustomer(customer)}
         staffList={staffList}
         onAssignmentChange={handleAssignmentChange}
+        // G-059: a call from the profile is logged on the customer's newest lead.
+        callLeadId={leads?.[0]?._id}
+        dealerId={customer.dealer_id}
       />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>

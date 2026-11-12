@@ -4,6 +4,7 @@ import { Badge, Button, Col, Form, Row } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
+import CallButton from "../../../components/CallButton";
 
 export function primaryContact(entries) {
   if (!entries?.length) return null;
@@ -18,7 +19,7 @@ const BADGE_COLOR = {
   "Unknown": "#fc9009",
 };
 
-export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, onEdit, staffList, onAssignmentChange }) {
+export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, onEdit, staffList, onAssignmentChange, callLeadId, dealerId }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
@@ -56,6 +57,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <i className="fa-solid fa-pen me-2" />
             Edit
           </Button>
+          {primaryPhone && (
+            <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} />
+          )}
           {sendLabel && (
             <Button variant="custom" size="sm" onClick={onSendMessage}>
               <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
