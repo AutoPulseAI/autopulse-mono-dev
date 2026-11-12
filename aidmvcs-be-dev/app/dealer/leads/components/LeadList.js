@@ -12,6 +12,7 @@ import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
+import BulkAssign from "./BulkAssign";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
@@ -40,6 +41,9 @@ const drillRangeText = (range) => {
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
+  // SOW B b5 (G-010): leads picked on this page for a bulk reassignment.
+  const [selectedIds, setSelectedIds] = useState([]);
+  const toggleSelected = (id) => setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const canManageLeads = useCan("Manage Leads");
   const canViewAssignedLeads = useCan("View Assigned Leads");
   const [leads, setLeads] = useState([]);
@@ -1660,6 +1664,10 @@ useImperativeHandle(ref, () => ({
         </div> */}
 
         <div className="w_card_list mt-3">
+          {canAssignLeads && !compact && (
+            <BulkAssign dealerId={dealerParent?.id || activeEntity?.id} selectedIds={selectedIds} staffList={staffList}
+              onClear={() => setSelectedIds([])} onDone={() => { setSelectedIds([]); fetchLeads(); }} />
+          )}
           <ListGroup as="ul" variant="flush">
             {!compact && (
             <ListGroup.Item as="li" className="w_card_list_head border-bottom-0">
@@ -1667,7 +1675,14 @@ useImperativeHandle(ref, () => ({
                 <Col xl={10} lg={9} sm={9} xs={12}>
                   <Row className="align-items-center gx-2">
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Name</small></p>
+                      <p className="label d-flex align-items-center gap-1">
+                        {canAssignLeads && leads.length > 0 && (
+                          <Form.Check type="checkbox" aria-label="Select every lead on this page"
+                            checked={leads.every((l) => selectedIds.includes(l._id))}
+                            onChange={(e) => setSelectedIds(e.target.checked ? leads.map((l) => l._id) : [])} />
+                        )}
+                        <small>Name</small>
+                      </p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
                       <p className="label"><small>Email</small></p>
@@ -1768,7 +1783,14 @@ useImperativeHandle(ref, () => ({
                     <Col xl={10} lg={9} sm={9} xs={12}>
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <p className="p_bold">{lead.name || "N/A"}</p>
+                          <p className="p_bold d-flex align-items-center gap-1">
+                            {canAssignLeads && (
+                              <Form.Check type="checkbox" aria-label={`Select ${lead.name || "lead"}`}
+                                checked={selectedIds.includes(lead._id)}
+                                onClick={(e) => e.stopPropagation()} onChange={() => toggleSelected(lead._id)} />
+                            )}
+                            {lead.name || "N/A"}
+                          </p>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
