@@ -76,14 +76,12 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     routerRef.current = router;
     onLeadSelectedRef.current = onLeadSelected;
   }, [router, onLeadSelected]);
-  // Use window.location.search when available (always up-to-date) instead of
-  // useSearchParams() which can be stale when URL was updated via replaceState
-  const getUrlParams = () => typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search)
-    : urlSearchParams;
-
+  // The starting filters come from useSearchParams(), the URL of the page being opened. Not window.location: on a
+  // same-tab link (the dashboard cards, 11 Nov 2026) the address bar still holds the previous page's URL while this
+  // first renders, so every card opened the full unfiltered list (the user, 12 Nov 2026). Next.js keeps
+  // useSearchParams() in step with the replaceState calls below.
   const [staffList, setStaffList] = useState([]);
-  const [assignmentFilter, setAssignmentFilter] = useState(() => getUrlParams().get('assignment') || 'all');
+  const [assignmentFilter, setAssignmentFilter] = useState(() => urlSearchParams.get('assignment') || 'all');
   const setAssignmentAndSync = (value) => {
     setAssignmentFilter(value);
     try {
@@ -102,9 +100,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     }
   };
 
-  // Initialize filters and pagination from the actual browser URL
+  // Initialize filters and pagination from the URL of the page being opened
   const [filters, setFilters] = useState(() => {
-    const params = getUrlParams();
+    const params = urlSearchParams;
     return {
       name: params.get('name') || '',
       email: params.get('email') || '',
