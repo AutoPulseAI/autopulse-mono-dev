@@ -118,21 +118,21 @@ function AllNumbers({ section, kpis, k, linkFor }) {
   );
 }
 
-// Betsy's source / sub-source report as a CSV (app/lib/reporting/sourcePerformance.js): same dates and filters as the
+// Betsy's source / sub-source report as a PDF or CSV (app/lib/reporting/sourcePerformance.js): same dates and filters as the
 // screen; "In timeframe" counts everything in the range, "From current leads" only what belongs to leads received in it.
 function SourceReportDownload({ params }) {
   const [basis, setBasis] = useState("timeframe");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // "csv" | "pdf" while that file is being prepared
   const [error, setError] = useState(null);
-  const download = async () => {
-    setBusy(true);
+  const download = async (format) => {
+    setBusy(format);
     setError(null);
     try {
-      await downloadSourceReport({ ...params, basis });
+      await downloadSourceReport({ ...params, basis }, format);
     } catch (e) {
       setError(e.message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
   return (
@@ -143,8 +143,12 @@ function SourceReportDownload({ params }) {
             aria-pressed={basis === key}>{label}</Button>
         ))}
       </div>
-      <Button size="sm" variant="outline-dark" onClick={download} disabled={busy || !params}>
-        <i className="fa-regular fa-download me-1"></i>{busy ? "Preparing..." : "Download source / sub-source report (CSV)"}
+      {/* Betsy, 12 Nov 2026: "Dealers need pretty reports to present" - the same report as a PDF. */}
+      <Button size="sm" variant="outline-dark" onClick={() => download("pdf")} disabled={Boolean(busy) || !params}>
+        <i className="fa-regular fa-file-pdf me-1"></i>{busy === "pdf" ? "Preparing..." : "Download PDF"}
+      </Button>
+      <Button size="sm" variant="outline-dark" onClick={() => download("csv")} disabled={Boolean(busy) || !params}>
+        <i className="fa-regular fa-download me-1"></i>{busy === "csv" ? "Preparing..." : "Download CSV"}
       </Button>
       {error && <small className="text-danger">{error}</small>}
     </div>
