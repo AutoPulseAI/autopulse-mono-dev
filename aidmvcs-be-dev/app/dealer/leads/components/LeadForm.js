@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Form, Button, Row, Col, Alert, Spinner } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import LeadSourcePicker from "./LeadSourcePicker";
 
 export default function LeadForm({ setEditLead, editLead }) {
     const { user, dealerParent } = useUser();
@@ -13,6 +14,7 @@ export default function LeadForm({ setEditLead, editLead }) {
         phone: "",
         followup_preference: "email",
         contact_type: "",
+        lead_source: "",
         vehicle_make: "",
         vehicle_model: "",
         vehicle_year: "",
@@ -123,11 +125,17 @@ export default function LeadForm({ setEditLead, editLead }) {
                 headers: { "Content-Type": "application/json" ,'Authorization': `Bearer ${localStorage.getItem('dealertoken')}`},
                 body: JSON.stringify({
                     ...formData,
-                    dealer_id: dealerParent.id // Ensure we're using the latest dealer_id
+                    dealer_id: dealerParent.id, // Ensure we're using the latest dealer_id
+                    ...(leadId && editLead?.updatedAt ? { if_updated_at: editLead.updatedAt } : {}),
                 })
             });
 
-            if (!response.ok) throw new Error(await response.text());
+            if (!response.ok) {
+                const text = await response.text();
+                let message = text;
+                try { message = JSON.parse(text).error || text; } catch { /* plain text */ }
+                throw new Error(message);
+            }
             setEditLead(null); // Close form on success
         } catch (err) {
             setErrors(prev => ({ ...prev, form: err.message || "Submission failed" }));
@@ -239,6 +247,14 @@ export default function LeadForm({ setEditLead, editLead }) {
                             <option value="internet">Internet</option>
                         </Form.Select>
                         <Form.Control.Feedback type="invalid">{errors.contact_type}</Form.Control.Feedback>
+                    </Form.Group>
+
+                    <Form.Group as={Col} lg={4} md={6} className="mb-3">
+                        {/* Gap G-009: the dealer's own source list (Referral, Radio, ...). */}
+                        <Form.Label>Lead Source</Form.Label>
+                        <LeadSourcePicker dealerId={dealerParent?.id} value={formData.lead_source || ""}
+                            disabled={!isFieldEditable('lead_source', editLead?.lead_source)}
+                            onChange={(v) => setFormData((prev) => ({ ...prev, lead_source: v }))} />
                     </Form.Group>
 
                     {/* Vehicle Information */}

@@ -15,6 +15,7 @@ import DeskCards from "./components/DeskCards";
 import DeskTable from "./components/DeskTable";
 import CheckInModal from "./components/CheckInModal";
 import VisitModal from "./components/VisitModal";
+import useLiveRefresh from "../../hooks/useLiveRefresh";
 import "./deskLog.css";
 
 const EMPTY_FILTERS = { department: "", lead_type: "", source: "", stage: "", outcome: "", salesperson_id: "",
@@ -62,20 +63,23 @@ export default function DeskLogPage() {
 
   const dates = useMemo(() => (range ? reportDates(range, tz) : null), [range, tz]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!dealerId || !dates) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       setData(await deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters }));
       setError(null);
     } catch (e) {
-      setError(e.status === 404 ? "not_available" : e.message);
+      if (!silent) setError(e.status === 404 ? "not_available" : e.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [dealerId, dates, view, q, filters]);
 
   useEffect(() => { load(); }, [load]);
+  // G-083: check-ins, stages and outcomes other people enter show up without a refresh (paused while a visit or the
+  // check-in form is open).
+  useLiveRefresh(() => load({ silent: true }), { paused: loading || checkIn || !!opened });
 
   if (loadingParent || !dealerParent || !range) {
     return <div className="page_content d-flex justify-content-center p-5"><Spinner animation="border" /></div>;

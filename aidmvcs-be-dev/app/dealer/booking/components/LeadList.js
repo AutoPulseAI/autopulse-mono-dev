@@ -12,6 +12,7 @@ import LeadDetailsSidebar from "../../leads/components/LeadDetailsSidebar";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import moment from "moment-timezone";
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
+import useLiveRefresh from "../../../hooks/useLiveRefresh";
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
 const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, compact = false, ...props }, ref) => {
@@ -175,9 +176,9 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   }, [activeEntity?.id, fetchStaffList]);
 
   // Helper function to fetch leads for a specific page
-  const fetchLeadsForPage = useCallback(async (page) => {
+  const fetchLeadsForPage = useCallback(async (page, { silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       // Build query parameters including page
       let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}&booking_status=1`;
@@ -223,12 +224,17 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       
       return { leads: newLeads, pagination: data.pagination, currentPage: newCurrentPage };
     } catch (err) {
-      showAlert("Failed to load leads", "danger");
+      if (!silent) showAlert("Failed to load leads", "danger");
       throw err;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeEntity?.id, assignmentFilter, typeFilter, pagination.itemsPerPage, filters, cardFilter]);
+
+  // G-083: appointments other people book, move or mark show up without a refresh (paused while one is open).
+  useLiveRefresh(() => (activeEntity?.id ? fetchLeadsForPage(filters.page, { silent: true }) : null), {
+    paused: loading || showDetails || showStatusModal || showDeleteModal || !!historyLead,
+  });
 
   const fetchLeads = useCallback(async () => {
     try {

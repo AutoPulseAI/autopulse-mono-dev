@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-12T00:32:29.136358+00:00",
- "revision": 39,
+ "exported_at": "2026-11-12T22:57:12.385654+00:00",
+ "revision": 40,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -1055,7 +1055,7 @@
     "steps": [
      {
       "id": "first_touch",
-      "when": "The day the manager marks the visit Unsold - then the Short-Term follow-up runs again (Days 1-7, weekly, monthly)",
+      "when": "The day the manager marks the visit Unsold with no reason - then the Short-Term follow-up runs again (Days 1-7, weekly, monthly)",
       "label": "First message after the visit",
       "channels": [
        "sms",
@@ -1067,6 +1067,108 @@
        "email_text": null,
        "email_subject": null,
        "instruction": "They visited the dealership and didn't buy. Thank them for coming in, ask one gentle question about what held them back (the vehicle, the price or payment, their trade, timing) so you can help, and offer a time to come back in.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_negative_equity",
+      "when": "The day the manager marks the visit Unsold - reason: Negative Equity",
+      "label": "First message - Negative Equity",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited and didn't buy because they owe more on their trade than it's worth. Thank them for coming in, say we understand, and that our finance team looks at options for situations like theirs. Don't name numbers, payoffs, rates or approvals. Offer a time to sit down with the finance manager.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_price_payment",
+      "when": "The day the manager marks the visit Unsold - reason: Price/Payment",
+      "label": "First message - Price/Payment",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited and didn't buy because of the price or the monthly payment. Thank them for coming in and ask what price or payment would work for them, so we can see what we can do (another vehicle, term or down payment). Don't promise a price or a payment. Offer a time to come back.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_credit",
+      "when": "The day the manager marks the visit Unsold - reason: Credit",
+      "label": "First message - Credit",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited and didn't buy because of credit. Thank them for coming in and say our finance team works with many credit situations and can talk through the options. Never promise or suggest an approval, a rate or a payment. Offer a time to talk with the finance manager.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_hot",
+      "when": "The day the manager marks the visit Unsold - reason: Hot (a call task opens for the salesperson too)",
+      "label": "First message - Hot",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited, are close to buying and didn't finish today. Thank them for coming in, keep it warm and short, and offer a time today or tomorrow to wrap things up. A salesperson is calling them too.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_future_follow_up",
+      "when": "On the follow-up date the manager set on the Desk Log - reason: Future Follow-Up",
+      "label": "First message - Future Follow-Up",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited and asked us to follow up later; this is that follow-up, on the date they agreed. Remind them warmly of their visit and the vehicle they looked at, and ask if now is a good time to come back in.",
+       "fallback": null
+      }
+     },
+     {
+      "id": "first_touch_car_finder",
+      "when": "The day the manager marks the visit Unsold - reason: Car Finder",
+      "label": "First message - Car Finder",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": null,
+       "instruction": "They visited and didn't buy because we didn't have the vehicle they want. Tell them we're looking for it. If the inventory you have shows a match for what they described, mention it; otherwise ask one question about what matters most (model, year, color, budget) so we can find it.",
        "fallback": null
       }
      }

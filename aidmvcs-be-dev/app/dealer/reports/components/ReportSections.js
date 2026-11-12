@@ -182,7 +182,8 @@ function Section({ def, reports, linkFor, tz, params }) {
           {def.key === "sales" && (
             <Alert variant="info" className="py-2">
               Showroom visits, stages and unsold reasons come from the Desk Log. Numbers marked proxy are CRM status
-              changes, kept until the Desk Log is in daily use. Gross profit by source from DealerVault is being added.
+              changes, kept until the Desk Log is in daily use. Gross profit by source (DealerVault) is in the Lead sources
+              report.
             </Alert>
           )}
           {loaded.flatMap((r) => r.unsupported || []).length > 0 && (

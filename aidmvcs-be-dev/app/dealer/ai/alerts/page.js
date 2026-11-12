@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, ButtonGroup, Form, Pagination, Spinner } from "react-bootstrap";
 import LeadAiDrawer from "../components/LeadAiDrawer";
+import useLiveRefresh from "../../../hooks/useLiveRefresh";
 import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, formatDateTime, fromNow, leadHref, stageVariant } from "../components/aiShared";
 
 // Extra fields an alert can carry, shown under its text when present.
@@ -39,22 +40,23 @@ function AlertsContent() {
   const [perPage, setPerPage] = useState(25);
   const [view, setView] = useState("list");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) { setLoading(true); setError(""); }
     try {
       const data = await aiFetch(`/api/dealer-ai/alerts${showHandled ? "?include_handled=1" : ""}`);
       setAlerts(data.alerts || []);
     } catch (err) {
-      setError(err.message);
+      if (!silent) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [showHandled]);
 
   useEffect(() => {
     load();
   }, [load]);
+  // G-083: an alert another manager handles leaves this list without a refresh (paused while a lead is open).
+  useLiveRefresh(() => load({ silent: true }), { paused: loading || !!drawer || !!busy });
 
   const kinds = useMemo(() => [...new Set(alerts.map((a) => a.kind))], [alerts]);
   const needle = query.trim().toLowerCase();

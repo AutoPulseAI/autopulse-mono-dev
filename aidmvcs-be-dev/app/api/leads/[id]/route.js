@@ -70,13 +70,20 @@ export async function PUT(request, { params }) {
    
     const { id } = await params;
     // Staff edit only their own dealership's leads (super admin: any; agency: its dealers'), else "not found".
-    const target = mongoose.isValidObjectId(id) ? await Lead.findById(id).select('dealer_id assigned_to customer_id').lean() : null;
+    const target = mongoose.isValidObjectId(id) ? await Lead.findById(id).select('dealer_id assigned_to customer_id updatedAt').lean() : null;
     if (!target) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     const access = await requireDealerAccess(request, target.dealer_id);
     if (access.response) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     const body = await request.json();
     
     console.log('Updating lead:', id, 'with data:', body);
+    // G-083: an edit made on an out-of-date copy (someone else saved the lead after this screen read it) is refused,
+    // never silently overwriting their change. Screens that send if_updated_at get 409 and reload.
+    if (body.if_updated_at && target.updatedAt
+      && new Date(body.if_updated_at).getTime() !== new Date(target.updatedAt).getTime()) {
+      return NextResponse.json({ error: 'Someone else changed this lead after you opened it. Reload it and make your change again.',
+        conflict: true }, { status: 409 });
+    }
     
     // Extract the fields we want to update
     const updateData = {};

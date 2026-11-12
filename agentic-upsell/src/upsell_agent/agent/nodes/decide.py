@@ -95,6 +95,41 @@ UNSOLD_THEME = "unsold_followup"
 UNSOLD_INSTRUCTION = ("They visited the dealership and didn't buy. Thank them for coming in, ask one gentle question "
                       "about what held them back (the vehicle, the price or payment, their trade, timing) so you can "
                       "help, and offer a time to come back in.")
+# G-017-023 (SOW 9C unsold dispositions): the manager's reason from the Desk Log gives the first message after the
+# visit its angle. Each is a default in AI Studio -> Cadences -> "Unsold" (step first_touch_<reason>), edited there.
+# Without a reason the general first message above is used, as before. Nothing here promises an approval, a rate, a
+# payment or a price: those come only from the dealership.
+UNSOLD_REASON_INSTRUCTIONS = {
+    "Negative Equity": "They visited and didn't buy because they owe more on their trade than it's worth. Thank them "
+                       "for coming in, say we understand, and that our finance team looks at options for situations "
+                       "like theirs. Don't name numbers, payoffs, rates or approvals. Offer a time to sit down with "
+                       "the finance manager.",
+    "Price/Payment": "They visited and didn't buy because of the price or the monthly payment. Thank them for coming "
+                     "in and ask what price or payment would work for them, so we can see what we can do (another "
+                     "vehicle, term or down payment). Don't promise a price or a payment. Offer a time to come back.",
+    "Credit": "They visited and didn't buy because of credit. Thank them for coming in and say our finance team works "
+              "with many credit situations and can talk through the options. Never promise or suggest an approval, a "
+              "rate or a payment. Offer a time to talk with the finance manager.",
+    "Hot": "They visited, are close to buying and didn't finish today. Thank them for coming in, keep it warm and "
+           "short, and offer a time today or tomorrow to wrap things up. A salesperson is calling them too.",
+    "Future Follow-Up": "They visited and asked us to follow up later; this is that follow-up, on the date they "
+                        "agreed. Remind them warmly of their visit and the vehicle they looked at, and ask if now is a "
+                        "good time to come back in.",
+    "Car Finder": "They visited and didn't buy because we didn't have the vehicle they want. Tell them we're looking "
+                  "for it. If the inventory you have shows a match for what they described, mention it; otherwise "
+                  "ask one question about what matters most (model, year, color, budget) so we can find it.",
+}
+
+
+def unsold_step_id(reason: str | None) -> str:
+    """The AI Studio step for the first message after an Unsold visit: the reason's own, else the general one."""
+    if reason in UNSOLD_REASON_INSTRUCTIONS:
+        return "first_touch_" + re.sub(r"[^a-z]+", "_", reason.lower()).strip("_")
+    return "first_touch"
+
+
+def unsold_instruction(reason: str | None) -> str:
+    return UNSOLD_REASON_INSTRUCTIONS.get(reason or "", UNSOLD_INSTRUCTION)
 
 
 def _visit_is_over(booking: dict[str, Any], dealer: DealerProfile, now: datetime) -> bool:
@@ -1331,7 +1366,9 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
         instruction = cadence.BY_ID[theme_id].instruction or instruction
     elif theme_id == UNSOLD_THEME:
         # Client, 21 Oct 2026: the first message after an Unsold visit, as set in AI Studio -> Cadences -> "Unsold".
-        step = ai_studio.step_message("cadences", "unsold", "first_touch")
+        # G-017-023: with the Desk Log's unsold reason, that reason's step as edited in AI Studio (unedited: its
+        # default, already the touch's instruction); without a reason, the general first message as before.
+        step = ai_studio.step_message("cadences", "unsold", unsold_step_id(pending.get("unsold_reason")))
         if (text := ai_studio.fixed_text(step)) and (step or {}).get("mode") == "fixed":
             from upsell_agent.agent.templates import known_first_name
             fixed = ai_studio.fill(text, {"first_name": first_name(customer_first_name)

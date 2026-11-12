@@ -44,6 +44,7 @@ export async function deskVisits(args, ctx) {
         outcome: v.outcome || '', unsold_reason: v.unsold_reason || '', _open_minutes: v.outcome ? null
           : minutesInStage(v, ctx.now || new Date()),
         _reached: Object.fromEntries([...stageTimes(v)].map(([stage, d]) => [stage, d.getTime()])),
+        _appraisal: appraisalVisits(v, w.tz),
         _g: { ...r._g, outcome: v.outcome || 'Open', reason: v.unsold_reason || 'None', stage: v.stage || 'No stage' } };
     });
   });
@@ -57,6 +58,25 @@ export function stageTimes(v) {
   }
   if (v.stage && !at.has(v.stage)) at.set(v.stage, new Date(v.stage_at || v.checked_in_at));
   return at;
+}
+
+// Each time a visit went into APPRAISAL and when / where it went next (gap G-081 appraisal audit: "entry / exit,
+// actor, prior / new stage"). From the stage changes; a visit created already in APPRAISAL counts from its stage
+// time. Nothing here sets or assumes an appraisal value: the trade is shown as the Desk Log recorded it.
+export function appraisalVisits(v, tz) {
+  const changes = (v.history || []).filter((h) => h.field === 'stage').sort((a, b) => new Date(a.at) - new Date(b.at));
+  const out = [];
+  changes.forEach((h, i) => {
+    if (h.to !== 'APPRAISAL') return;
+    const next = changes.slice(i + 1).find((c) => c.from === 'APPRAISAL' || c.to !== 'APPRAISAL');
+    out.push({ entered_at: localDateTime(h.at, tz), entered_by: h.by_name || '', from_stage: h.from || 'No stage',
+      left_at: next ? localDateTime(next.at, tz) : '', to_stage: next ? next.to || 'No stage' : '(still there)' });
+  });
+  if (!out.length && v.stage === 'APPRAISAL') {
+    out.push({ entered_at: localDateTime(v.stage_at || v.checked_in_at, tz), entered_by: '', from_stage: 'No stage',
+      left_at: '', to_stage: '(still there)' });
+  }
+  return out;
 }
 
 // Stage aging buckets. 60 minutes is the Desk Log's "stalled" line (app/lib/deskLog/constants.js STALLED_MINUTES).
@@ -98,6 +118,21 @@ export const SALES_KPIS = [
       const rows = appraised.filter((r) => 'PROPOSAL' in r._reached && r._reached.PROPOSAL >= r._reached.APPRAISAL);
       return { rows, denominatorRows: appraised };
     } }),
+  visitKpi('sales.appraisal_opportunities', 'Appraised opportunities', 'Distinct leads with a visit (checked in '
+    + 'during the range) that reached APPRAISAL.', { grain: 'lead', columns: LEAD_COLUMNS,
+    evaluate: async (args, ctx) => {
+      const seen = new Set();
+      return { rows: (await deskVisits(args, ctx)).filter((r) => 'APPRAISAL' in r._reached && !seen.has(r.lead_id)
+        && seen.add(r.lead_id)).map((r) => ({ ...r, id: r.lead_id })) };
+    } }),
+  visitKpi('sales.appraisal_log', 'Appraisal log', 'Each time a visit (checked in during the range) went into '
+    + 'APPRAISAL: when, by whom, from which stage, and when it left and to which stage.', {
+    grain: 'appraisal', breakdowns: ['staff', 'to_stage'],
+    exclusions: 'Visits of deleted leads. No appraisal value is assumed: the trade is as recorded on the visit.',
+    columns: [...LEAD_COLUMNS, ['checked_in', 'Checked in'], ['entered_at', 'Into appraisal'], ['entered_by', 'By'],
+      ['from_stage', 'From stage'], ['left_at', 'Left appraisal'], ['to_stage', 'To stage'], ['outcome', 'Outcome']],
+    evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx)).flatMap((r) => r._appraisal.map((a, i) => ({
+      ...r, ...a, id: `${r.id}:${i}`, _g: { ...r._g, to_stage: a.to_stage } }))) }) }),
   visitKpi('sales.unsold_reasons', 'Unsold', 'Visits (checked in during the range) whose outcome is UNSOLD, by '
     + 'reason.', { breakdowns: ['reason', 'lead_source', 'staff'],
     evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx)).filter((r) => r.outcome === 'UNSOLD') }) }),

@@ -847,6 +847,8 @@ export async function POST(req) {
         dealer_id: data.dealer_id,
         source: data.source || data.followup_preference || 'email',
         contact_type: validContactType(data.contact_type),
+        // Gap G-009: the source staff picked from the dealer's list (app/api/lead-sources).
+        ...(String(data.lead_source || '').trim() ? { lead_source: String(data.lead_source).trim().slice(0, 60) } : {}),
       };
       
       const jobData = {

@@ -1,6 +1,9 @@
 "use client";
 // One visit's details: stock #, vehicle, trade, next step, notes, and the full change history (who, when, from, to).
+// G-082: the fields save by themselves (1.5 s after typing stops, or when a field loses focus / the dialog closes),
+// with "Saving… / All changes saved / Not saved: why" beside them. A note is saved with its own "Add note" button.
 import { useEffect, useState } from "react";
+import useAutosave, { SaveStatus } from "../../../hooks/useAutosave";
 import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import { deskLogEntry, deskLogUpdate } from "../deskLogApi";
@@ -39,15 +42,29 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
     return String(v);
   };
 
-  const save = async () => {
+  const auto = useAutosave(async (f) => {
+    await deskLogUpdate(id, { stock_number: f.stock_number, vehicle: f.vehicle, trade: f.trade,
+      next_step_at: f.next_step_at ? moment.tz(f.next_step_at, "YYYY-MM-DDTHH:mm", tz).toISOString() : null });
+    const d = await deskLogEntry(id);
+    setData(d); // history and notes; the form keeps what the user is typing
+    await onChanged();
+  });
+  const edit = (fn) => setForm((f) => { const next = fn(f); auto.change(next); return next; });
+  const close = async () => {
+    await auto.flush();
+    if (auto.unsaved() && !window.confirm("Your last changes could not be saved. Close anyway and lose them?")) return;
+    onHide();
+  };
+
+  const addNote = async () => {
+    if (!note.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await deskLogUpdate(id, { stock_number: form.stock_number, vehicle: form.vehicle, trade: form.trade,
-        next_step_at: form.next_step_at ? moment.tz(form.next_step_at, "YYYY-MM-DDTHH:mm", tz).toISOString() : null,
-        ...(note.trim() ? { note: note.trim() } : {}) });
+      await auto.flush();
+      await deskLogUpdate(id, { note: note.trim() });
       setNote("");
-      await load();
+      setData(await deskLogEntry(id));
       await onChanged();
     } catch (e) {
       setError(e.message);
@@ -61,15 +78,15 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
       {VEHICLE.map(([k, label]) => (
         <Form.Group key={k} className={k === "vin" ? "col-md-4" : "col-md-2"}>
           <Form.Label className="small mb-0">{label}</Form.Label>
-          <Form.Control size="sm" value={form[key][k] ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, [key]: { ...f[key], [k]: e.target.value } }))} />
+          <Form.Control size="sm" value={form[key][k] ?? ""} onBlur={auto.flush}
+            onChange={(e) => edit((f) => ({ ...f, [key]: { ...f[key], [k]: e.target.value } }))} />
         </Form.Group>
       ))}
     </div>
   );
 
   return (
-    <Modal show onHide={onHide} size="lg" centered scrollable>
+    <Modal show onHide={close} size="lg" centered scrollable>
       <Modal.Header closeButton><Modal.Title as="h5">{name ? `${name}: visit details` : "Visit details"}</Modal.Title></Modal.Header>
       <Modal.Body className="desk_log">
         {!data && !error && <Spinner animation="border" />}
@@ -77,11 +94,14 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
           <>
             <div className="row g-2 mb-3">
               <Form.Group className="col-md-4"><Form.Label className="small mb-0">Stock #</Form.Label>
-                <Form.Control size="sm" value={form.stock_number} maxLength={40}
-                  onChange={(e) => setForm((f) => ({ ...f, stock_number: e.target.value }))} /></Form.Group>
+                <Form.Control size="sm" value={form.stock_number} maxLength={40} onBlur={auto.flush}
+                  onChange={(e) => edit((f) => ({ ...f, stock_number: e.target.value }))} /></Form.Group>
               <Form.Group className="col-md-5"><Form.Label className="small mb-0">Next step (dealership time)</Form.Label>
-                <Form.Control size="sm" type="datetime-local" value={form.next_step_at}
-                  onChange={(e) => setForm((f) => ({ ...f, next_step_at: e.target.value }))} /></Form.Group>
+                <Form.Control size="sm" type="datetime-local" value={form.next_step_at} onBlur={auto.flush}
+                  onChange={(e) => edit((f) => ({ ...f, next_step_at: e.target.value }))} /></Form.Group>
+              <div className="col-md-3 d-flex align-items-end justify-content-end">
+                <SaveStatus status={auto.status} error={auto.error} onRetry={auto.flush} />
+              </div>
             </div>
             <h6 className="mb-1">Vehicle of interest</h6>
             {vehicleFields("vehicle")}
@@ -91,7 +111,7 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
               <Form.Control as="textarea" rows={2} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
             </Form.Group>
             <div className="text-end mb-3">
-              <Button size="sm" onClick={save} disabled={busy}>{busy ? "Saving..." : "Save changes"}</Button>
+              <Button size="sm" onClick={addNote} disabled={busy || !note.trim()}>{busy ? "Saving..." : "Add note"}</Button>
             </div>
             {data.notes.length > 0 && (
               <>
