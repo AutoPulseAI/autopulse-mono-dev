@@ -8,6 +8,17 @@ import User from "@models/User";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import { customerFamily } from "@lib/customerFamily";
 import { hasPermission } from "@lib/staffPermission";
+import Lead from "@models/Lead";
+
+// G-062 (Betsy, 6 Nov 2026): "Proposed trade-ins belong to the specific lead/opportunity", several per lead. The lead
+// picked must be one of this customer's (merged customers included) at this dealership; null = not tied to a lead.
+async function leadError(updates, dealerId, customerId) {
+  if (!updates.lead_id) return null;
+  const family = (await customerFamily(customerId, dealerId)).map(String);
+  const lead = await Lead.findOne({ _id: updates.lead_id, dealer_id: dealerId }).select("customer_id").lean();
+  if (!lead || !family.includes(String(lead.customer_id))) return jsonError("That lead is not this customer's", 400);
+  return null;
+}
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
@@ -103,6 +114,10 @@ function buildTradeInFields(body, { requireVin, requireStatus }) {
 
   if (body.vin !== undefined) updates.vin = body.vin?.toString().trim() || null;
   if (requireVin && !updates.vin) return { error: jsonError("vin is required", 400) };
+  if (body.lead_id !== undefined) {
+    if (body.lead_id && !mongoose.isValidObjectId(String(body.lead_id))) return { error: jsonError("Invalid lead id", 400) };
+    updates.lead_id = body.lead_id ? new mongoose.Types.ObjectId(String(body.lead_id)) : null;
+  }
 
   if (body.status !== undefined) updates.status = body.status?.toString().trim();
   if (requireStatus && !updates.status) updates.status = "open";
@@ -139,6 +154,10 @@ export async function GET(req, { params }) {
 
     // With the trade-ins of customers merged into this one (G-008).
     const filter = { dealer_id: dealerId, customer_id: { $in: await customerFamily(id, dealerId) } };
+    // G-062: one lead's trade-ins (?lead_id=..., or "none" for those not tied to a lead).
+    const leadParam = url.searchParams.get("lead_id");
+    if (leadParam === "none") filter.lead_id = null;
+    else if (leadParam && mongoose.isValidObjectId(leadParam)) filter.lead_id = new mongoose.Types.ObjectId(leadParam);
     const [tradeIns, totalItems] = await Promise.all([
       TradeIn.find(filter)
         .sort({ createdAt: -1 })
@@ -183,6 +202,8 @@ export async function POST(req, { params }) {
 
     const { updates, error } = buildTradeInFields(body, { requireVin: true, requireStatus: true });
     if (error) return error;
+    const badLead = await leadError(updates, dealerId, id);
+    if (badLead) return badLead;
     const finance = await hasPermission(authResult.currentUser, "Manage Leads");
     if (!finance && FINANCE_FIELDS.some((k) => updates[k] != null)) {
       return jsonError("Only managers can enter the payoff and lienholder", 403);
@@ -225,6 +246,8 @@ export async function PUT(req, { params }) {
 
     const { updates, error } = buildTradeInFields(body, { requireVin: false, requireStatus: false });
     if (error) return error;
+    const badLead = await leadError(updates, dealerId, id);
+    if (badLead) return badLead;
 
     const finance = await hasPermission(authResult.currentUser, "Manage Leads");
     if (!finance && FINANCE_FIELDS.some((k) => updates[k] !== undefined)) {
