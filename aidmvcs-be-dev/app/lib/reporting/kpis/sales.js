@@ -45,7 +45,9 @@ export async function deskVisits(args, ctx) {
           : minutesInStage(v, ctx.now || new Date()),
         _reached: Object.fromEntries([...stageTimes(v)].map(([stage, d]) => [stage, d.getTime()])),
         _appraisal: appraisalVisits(v, w.tz),
-        _g: { ...r._g, outcome: v.outcome || 'Open', reason: v.unsold_reason || 'None', stage: v.stage || 'No stage' } };
+        _g: { ...r._g, outcome: v.outcome || 'Open', reason: v.unsold_reason || 'None', stage: v.stage || 'No stage',
+          // The dealer's report group for the outcome (Desk Log > Follow-up rules), else the reason / outcome itself.
+          report_group: v.report_group || v.unsold_reason || v.outcome || 'Open' } };
     });
   });
 }
@@ -134,7 +136,7 @@ export const SALES_KPIS = [
     evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx)).flatMap((r) => r._appraisal.map((a, i) => ({
       ...r, ...a, id: `${r.id}:${i}`, _g: { ...r._g, to_stage: a.to_stage } }))) }) }),
   visitKpi('sales.unsold_reasons', 'Unsold', 'Visits (checked in during the range) whose outcome is UNSOLD, by '
-    + 'reason.', { breakdowns: ['reason', 'lead_source', 'staff'],
+    + 'reason.', { breakdowns: ['reason', 'report_group', 'lead_source', 'staff'],
     evaluate: async (args, ctx) => ({ rows: (await deskVisits(args, ctx)).filter((r) => r.outcome === 'UNSOLD') }) }),
   visitKpi('sales.pending_delivered', 'Sold pending / delivered', 'Visits (checked in during the range) whose '
     + 'outcome is SOLD PENDING or SOLD DELIVERED.', { breakdowns: ['outcome', 'lead_source', 'staff'],

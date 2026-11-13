@@ -57,6 +57,14 @@ const deskLogEntrySchema = new mongoose.Schema(
     unsold_reason: { type: String, default: null }, // UNSOLD_REASONS, only with UNSOLD
     outcome_at: { type: Date, default: null },
     next_step_at: { type: Date, default: null }, // required for Future Follow-Up
+    // Deliverable J rules (lib/deskLog/rules.js): whose next step it is, the report group, the Sold Pending delivery
+    // checklist, and Car Finder matches found in new inventory (lib/deskLog/carFinder.js).
+    next_step_owner: { type: String, default: null }, // salesperson | sales_manager | bdc_agent
+    report_group: { type: String, default: null },
+    checklist: { type: [new mongoose.Schema({ item: String, done: { type: Boolean, default: false }, at: Date,
+      by_name: String }, { _id: false })], default: [] },
+    car_finder_matches: { type: [new mongoose.Schema({ vin: String, stock_number: String, vehicle: String, price: Number,
+      found_at: Date }, { _id: false })], default: [] },
     notes: { type: [noteSchema], default: [] },
     history: { type: [historySchema], default: [] },
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

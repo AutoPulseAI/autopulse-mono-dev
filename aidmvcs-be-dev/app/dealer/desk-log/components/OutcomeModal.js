@@ -7,7 +7,25 @@ import moment from "moment-timezone";
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 import { outcomeEffect } from "./deskLogUi";
 
-export default function OutcomeModal({ row, choice, tz, onHide, onSave }) {
+const WHO = { ai_and_staff: "The AI and staff follow up", staff: "Staff follow up - the AI is turned off for this lead",
+  ai: "The AI follows up", nobody: "Nobody follows up - the AI is turned off for this lead" };
+const OWNER = { salesperson: "salesperson", sales_manager: "sales manager", bdc_agent: "BDC agent" };
+
+// The dealership's rule for this outcome (Desk Log > Follow-up rules), said before saving.
+function ruleText(rule, checklistItems) {
+  if (!rule) return null;
+  const parts = [WHO[rule.who]];
+  if ((rule.who === "ai_and_staff" || rule.who === "staff") && rule.next_step_hours) {
+    parts.push(`the ${OWNER[rule.owner]}'s next step is due in ${rule.next_step_hours} h (unless one is set)`);
+  }
+  if (rule.alert_managers) parts.push("managers get an alert");
+  if (checklistItems) parts.push(`a delivery checklist (${checklistItems} items) is added`);
+  return parts.join("; ") + ".";
+}
+
+export default function OutcomeModal({ row, choice, tz, onHide, onSave, rules }) {
+  const ruleKey = choice.outcome === "UNSOLD" ? `UNSOLD|${choice.reason}` : choice.outcome;
+  const rule = rules?.rules?.[ruleKey];
   const needsDate = choice.reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP;
   const [when, setWhen] = useState(row.next_step_at ? moment(row.next_step_at).tz(tz).format("YYYY-MM-DDTHH:mm") : "");
   const [note, setNote] = useState("");
@@ -32,7 +50,9 @@ export default function OutcomeModal({ row, choice, tz, onHide, onSave }) {
     <Modal show onHide={onHide} centered>
       <Modal.Header closeButton><Modal.Title as="h5">{row.customer || "Visit"}: {choice.label}</Modal.Title></Modal.Header>
       <Modal.Body>
-        <p className="mb-3">{outcomeEffect(choice)}</p>
+        <p className="mb-2">{outcomeEffect(choice)}</p>
+        {rule && <p className="mb-3 small text-muted">Your rule: {ruleText(rule, choice.outcome === "SOLD PENDING"
+          ? (rules.checklist || []).length : 0)}</p>}
         {needsDate && (
           <Form.Group className="mb-3">
             <Form.Label>Follow-up date and time (dealership time)</Form.Label>

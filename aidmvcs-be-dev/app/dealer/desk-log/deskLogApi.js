@@ -28,3 +28,6 @@ export const deskLogUpdate = (id, body) => call(`/api/desk-log/${id}`, { method:
   headers: { "Content-Type": "application/json" } });
 export const staffList = (dealerId) => call(`/api/staff/list?${query({ dealer_id: dealerId })}`)
   .then((d) => d.staff || []);
+export const deskLogRules = (dealerId) => call(`/api/desk-log/rules?${query({ dealer_id: dealerId })}`);
+export const saveDeskLogRules = (body) => call("/api/desk-log/rules", { method: "PUT", body: JSON.stringify(body),
+  headers: { "Content-Type": "application/json" } });

@@ -530,5 +530,13 @@ export const processDealerCSVFiles = async () => {
     }
   }
   const gone = files.length ? await svc.markGone(runStart) : {};
-  return { filesProcessed: files.length, rowsImported: total, markedGone: gone };
+  // Desk Log Car Finder watch (lib/deskLog/carFinder.js): unsold Car Finder visits checked against the new stock.
+  let carFinder = null;
+  try {
+    const { checkCarFinder } = await import('./deskLog/carFinder.js');
+    carFinder = await checkCarFinder();
+  } catch (error) {
+    console.error('[import] Car Finder check failed:', error?.message);
+  }
+  return { filesProcessed: files.length, rowsImported: total, markedGone: gone, carFinder };
 };
