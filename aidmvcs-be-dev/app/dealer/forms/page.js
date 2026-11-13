@@ -61,10 +61,10 @@ export default function FormsLibraryPage() {
       <div className="page_body">
         {error && <Alert variant="danger" className="py-2">{error}</Alert>}
         <p className="small text-muted">
-          Your dealership&apos;s forms. Upload a form&apos;s PDF and it is turned into an on-screen form you can edit -
-          every label, field and section. Staff fill it from a customer&apos;s <strong>Documents</strong> tab: what the
-          CRM knows is already in, they complete the rest, and it downloads or prints as a PDF. The legal wording is
-          yours.
+          Your dealership&apos;s forms. Build one from scratch with titles, text, blanks, fields, checkboxes and
+          choices - or upload the PDF you use today and the AI turns it into an editable first draft for you to check.
+          Staff fill forms from a customer&apos;s <strong>Documents</strong> tab: what the CRM knows is already in, they
+          complete the rest, and it downloads or prints as a PDF. The legal wording is yours.
         </p>
         {data && !data.templates.length ? (
           <Alert variant="light" className="border">No forms yet.{data.can_manage ? " Click New form." : ""}</Alert>
@@ -112,7 +112,7 @@ export default function FormsLibraryPage() {
                 <Form.Select size="sm" value={upload.category} onChange={(e) => setUpload({ ...upload, category: e.target.value })}>
                   {(data?.categories || []).map((c) => <option key={c}>{c}</option>)}
                 </Form.Select></Form.Group>
-              <Form.Group><Form.Label className="small mb-0">The form&apos;s PDF (up to 15 MB) - leave empty to start a blank form</Form.Label>
+              <Form.Group><Form.Label className="small mb-0">Your PDF of the form (up to 15 MB) - the AI drafts it for you. Leave empty to build it from scratch</Form.Label>
                 <Form.Control size="sm" type="file" accept="application/pdf"
                   onChange={(e) => setUpload({ ...upload, file: e.target.files?.[0] || null })} /></Form.Group>
             </>
@@ -121,7 +121,7 @@ export default function FormsLibraryPage() {
         <Modal.Footer>
           <Button size="sm" variant="outline-custom" onClick={() => setUpload(null)}>Cancel</Button>
           <Button size="sm" variant="custom" disabled={busy || !upload?.name.trim()} onClick={save}>
-            {busy ? <Spinner size="sm" /> : upload?.file ? "Read the PDF" : "Start blank"}
+            {busy ? <><Spinner size="sm" /> {upload?.file ? "Reading the PDF (up to a minute)..." : ""}</> : upload?.file ? "Draft it from the PDF" : "Start building"}
           </Button>
         </Modal.Footer>
       </Modal>

@@ -1,17 +1,22 @@
 "use client";
 // The on-screen form (SOW v6 Deliverable K): one renderer for filling a form for a customer, for viewing a completed
-// one, and for the builder's canvas (mode "design": fields can be picked, not typed in). A section set to repeat per
-// trade-in shows once for each trade-in picked. Values: data[fieldId] or data[`${fieldId}#n`] in a repeated section.
+// one, and for the builder's canvas (mode "design": items can be picked, not typed in). Titles, wording with blanks
+// inside its sentences (each blank a small input in the line), fields in a grid (full / half / third / quarter),
+// boxes, checkboxes, choices, signatures, lines and spaces. A section set to repeat per trade-in shows once for each
+// trade-in picked. Values: data[id] (a blank: `${elementId}.${key}`), with `#n` in a repeated section.
 import { Badge, Form } from "react-bootstrap";
+import { BLANK_TOKEN, blankId } from "../../../lib/forms/schema";
 
-const COL = { full: 12, half: 6, third: 4 };
-export const key = (fieldId, n) => (n == null ? fieldId : `${fieldId}#${n}`);
+const COL = { full: 12, half: 6, third: 4, quarter: 3 };
+const BLANK_W = { short: 90, medium: 180, long: 300 };
+const TEXT_SIZE = { small: "0.78rem", normal: "0.92rem", large: "1.1rem" };
+export const key = (id, n) => (n == null ? id : `${id}#${n}`);
 
 function Input({ field, value, onChange, readOnly, hidden }) {
   if (hidden) return <Form.Control size="sm" value="Managers only" disabled />;
   const common = { size: "sm", disabled: readOnly, value: value ?? "", onChange: (e) => onChange(e.target.value) };
   switch (field.type) {
-    case "textarea": return <Form.Control as="textarea" rows={3} {...common} />;
+    case "textarea": return <Form.Control as="textarea" rows={field.rows || 3} {...common} />;
     case "number": return <Form.Control type="number" {...common} />;
     case "money": return <div className="input-group input-group-sm"><span className="input-group-text">$</span>
       <Form.Control {...common} inputMode="decimal" /></div>;
@@ -22,7 +27,7 @@ function Input({ field, value, onChange, readOnly, hidden }) {
       <Form.Select {...common}><option value="">Choose...</option>
         {field.options.map((o) => <option key={o}>{o}</option>)}</Form.Select>);
     case "radio": return (
-      <div>{field.options.map((o) => <Form.Check key={o} inline type="radio" label={o} disabled={readOnly}
+      <div>{field.options.map((o) => <Form.Check key={o} type="radio" label={o} disabled={readOnly}
         checked={value === o} onChange={() => onChange(o)} />)}</div>);
     case "signature": return <Form.Control {...common} placeholder="Signed on paper, or type the name"
       style={{ borderTop: 0, borderLeft: 0, borderRight: 0, borderRadius: 0, fontStyle: "italic" }} />;
@@ -30,14 +35,43 @@ function Input({ field, value, onChange, readOnly, hidden }) {
   }
 }
 
+// Wording with its blanks as inputs inside the sentence.
+function Wording({ f, valueOf, onChange, readOnly, hidden, design }) {
+  const parts = [];
+  let last = 0;
+  for (const m of f.text.matchAll(BLANK_TOKEN)) {
+    if (m.index > last) parts.push(f.text.slice(last, m.index));
+    const b = (f.blanks || []).find((x) => x.key === m[1]) || { key: m[1], label: m[1], size: "medium" };
+    const k = valueOf(blankId(f.id, b.key));
+    parts.push(design ? (
+      <span key={`${m.index}`} className="d-inline-block border-bottom border-primary text-primary px-1 mx-1 small"
+        style={{ minWidth: BLANK_W[b.size] / 1.5 }}>{b.label}{b.source ? " (CRM)" : ""}</span>
+    ) : (
+      <input key={`${m.index}`} aria-label={b.label} title={b.label} placeholder={b.label} disabled={readOnly}
+        className="form-control form-control-sm d-inline-block mx-1 my-1 align-baseline"
+        style={{ width: BLANK_W[b.size] || 180, borderTop: 0, borderLeft: 0, borderRight: 0, borderRadius: 0,
+          background: hidden.includes(k.key) ? "#f1f3f5" : undefined }}
+        value={hidden.includes(k.key) ? "" : k.value ?? ""} onChange={(e) => onChange(k.key, e.target.value)} />
+    ));
+    last = m.index + m[0].length;
+  }
+  if (last < f.text.length) parts.push(f.text.slice(last));
+  return (
+    <div style={{ whiteSpace: "pre-wrap", textAlign: f.align || "left", fontWeight: f.bold ? 600 : undefined,
+      fontStyle: f.italic ? "italic" : undefined, fontSize: TEXT_SIZE[f.size] || TEXT_SIZE.normal, lineHeight: 1.9 }}>
+      {parts}
+    </div>
+  );
+}
+
 export default function FormView({ schema, data = {}, onChange = () => {}, mode = "fill", trades = 0, hidden = [],
-  prefilled = [], selected = null, onSelect = () => {} }) {
+  prefilled = [], selected = null, onSelect = () => {}, showTitle = true }) {
   const design = mode === "design";
   const readOnly = mode === "view" || design;
   return (
     <div className="form_view">
-      <h4 className="mb-1">{schema.title}</h4>
-      {schema.description && <p className="small text-muted">{schema.description}</p>}
+      {showTitle && <h4 className="mb-1 text-center">{schema.title}</h4>}
+      {showTitle && schema.description && <p className="small text-muted text-center">{schema.description}</p>}
       {schema.sections.map((s) => {
         const copies = s.repeat === "trade_in" ? Math.max(1, design ? 1 : trades) : 1;
         return Array.from({ length: copies }, (_, n) => (
@@ -51,11 +85,20 @@ export default function FormView({ schema, data = {}, onChange = () => {}, mode 
             <div className="row g-2">
               {s.fields.map((f) => {
                 const k = key(f.id, s.repeat === "trade_in" ? n : null);
+                const valueOf = (id) => { const kk = key(id, s.repeat === "trade_in" ? n : null); return { key: kk, value: data[kk] }; };
                 const pick = design ? { role: "button", onClick: () => onSelect(f.id),
                   style: { outline: selected === f.id ? "2px solid #2f6fdf" : "1px dashed #d5dbe5", outlineOffset: 2,
                     borderRadius: 4, cursor: "pointer" } } : {};
-                if (f.type === "heading") return <div key={f.id} className="col-12" {...pick}><h6 className="mb-0 mt-1">{f.text}</h6></div>;
-                if (f.type === "paragraph") return <div key={f.id} className="col-12 small text-body" {...pick} style={{ whiteSpace: "pre-wrap", ...pick.style }}>{f.text}</div>;
+                if (f.type === "heading") {
+                  const Tag = `h${Math.min(6, (f.level || 2) + 3)}`;
+                  return <div key={f.id} className="col-12" {...pick}><Tag className="mb-0 mt-1" style={{ textAlign: f.align || "left" }}>{f.text}</Tag></div>;
+                }
+                if (f.type === "paragraph") {
+                  return <div key={f.id} className="col-12" {...pick}><Wording f={f} valueOf={valueOf} onChange={onChange}
+                    readOnly={readOnly} hidden={hidden} design={design} /></div>;
+                }
+                if (f.type === "divider") return <div key={f.id} className="col-12" {...pick}><hr className="my-1" /></div>;
+                if (f.type === "spacer") return <div key={f.id} className="col-12" {...pick} ><div style={{ height: 16 }} /></div>;
                 if (f.type === "checkbox") {
                   return (
                     <div key={f.id} className={`col-md-${COL[f.width] || 12}`} {...pick}>
@@ -77,7 +120,7 @@ export default function FormView({ schema, data = {}, onChange = () => {}, mode 
                   </div>
                 );
               })}
-              {design && !s.fields.length && <div className="col-12 small text-muted">No fields in this section yet.</div>}
+              {design && !s.fields.length && <div className="col-12 small text-muted">Nothing in this section yet - add an item below.</div>}
             </div>
           </div>
         ));

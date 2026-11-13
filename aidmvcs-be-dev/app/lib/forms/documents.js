@@ -1,18 +1,15 @@
 // Filled forms (SOW v6 Deliverable K, gap G-066): which data keys a form has, the CRM values that start it, what is
 // missing, and what a person without finance rights may see. Server side.
-import { INPUT_TYPES, dataKey } from './schema.js';
+import { dataKey, fillables } from './schema.js';
 import { isSensitive } from './sources.js';
 
-// Every input of the form with its data key; a section repeated per trade-in has one copy per trade-in (at least 1).
+// Every field and blank of the form with its data key; a section repeated per trade-in has one copy per trade-in.
 export function slots(schema, trades) {
   const out = [];
-  for (const s of schema.sections) {
-    const copies = s.repeat === 'trade_in' ? Math.max(1, trades) : 1;
+  for (const f of fillables(schema)) {
+    const copies = f.section.repeat === 'trade_in' ? Math.max(1, trades) : 1;
     for (let n = 0; n < copies; n += 1) {
-      for (const f of s.fields) {
-        if (!INPUT_TYPES.includes(f.type)) continue;
-        out.push({ key: dataKey(f.id, s.repeat === 'trade_in' ? n : null), field: f, section: s, copy: n });
-      }
+      out.push({ key: dataKey(f.id, f.section.repeat === 'trade_in' ? n : null), field: f, section: f.section, copy: n });
     }
   }
   return out;
