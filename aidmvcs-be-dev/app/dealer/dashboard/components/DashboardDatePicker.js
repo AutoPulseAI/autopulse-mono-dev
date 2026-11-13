@@ -41,6 +41,15 @@ export default function DashboardDatePicker({ value, onChange, timezone }) {
   const [compare, setCompare] = useState(Boolean(value?.compare));
   const [selection, setSelection] = useState(null);
   const wrapperRef = useRef(null);
+  // Opens toward the side with room (the user, 13 Nov 2026: on the left of a page it opened leftwards, over the
+  // sidebar). Left-aligned when the panel fits to the right of the button, else right-aligned.
+  const [alignLeft, setAlignLeft] = useState(false);
+  const toggle = () => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    // Phones (600 px and under) use the full-width panel from the stylesheet.
+    if (rect) setAlignLeft(window.innerWidth > 600 && rect.left + 560 <= window.innerWidth - 16);
+    setOpen((o) => !o);
+  };
 
   const rangeFor = (key, n) => {
     const r = presetRange(key, tz, n);
@@ -91,12 +100,12 @@ export default function DashboardDatePicker({ value, onChange, timezone }) {
 
   return (
     <div ref={wrapperRef} className="position-relative">
-      <Button variant="light" size="sm" className="border p-2 rounded bg-white text-nowrap" onClick={() => setOpen((o) => !o)}>
+      <Button variant="light" size="sm" className="border p-2 rounded bg-white text-nowrap" onClick={toggle}>
         <i className="fa-regular fa-calendar me-1"></i>{label()}
       </Button>
 
       {open && (
-        <div className="dash_datepicker">
+        <div className="dash_datepicker" style={alignLeft ? { left: 0, right: "auto" } : undefined}>
           <div className="dash_datepicker_body">
             <div className="dash_datepicker_presets">
               <button type="button" className={`dash_preset ${preset === "custom" ? "active" : ""}`} onClick={() => setPreset("custom")}>
