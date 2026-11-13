@@ -17,15 +17,11 @@ import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LA
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
 
-const OWNER_LABEL = { salesperson: "salesperson", sales_manager: "sales manager", bdc_agent: "BDC agent" };
-
 // What a saved outcome's rule did, in one line for the screen.
-function appliedText(a, tz) {
+function appliedText(a) {
   if (!a) return null;
   const parts = [];
-  if (a.next_step_at) parts.push(`next step set for ${moment(a.next_step_at).tz(tz).format("MMM D, h:mm A")}`);
   if (a.checklist) parts.push(`delivery checklist added (${a.checklist} items)`);
-  if (a.ai_paused) parts.push("the AI is off for this lead - staff follow up");
   if (a.managers_alerted) parts.push("managers alerted");
   return parts.length ? `Saved: ${parts.join(", ")}.` : null;
 }
@@ -43,7 +39,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
     setError(null); setNotice(null);
     try {
       const res = await deskLogUpdate(row.id, { ...body, if_updated_at: row.updated_at });
-      setNotice(appliedText(res.applied, tz));
+      setNotice(appliedText(res.applied));
       await onChanged();
     } catch (e) {
       setError(`${row.customer || "Visit"}: ${e.message}`);
@@ -131,8 +127,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   </td>
                   <td className="dl_note">{row.latest_note?.text || <span className="text-muted">-</span>}
                     {row.next_step_at && (
-                      <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}
-                        {row.next_step_owner ? ` (${OWNER_LABEL[row.next_step_owner]})` : ""}</small>
+                      <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}</small>
                     )}
                   </td>
                   <td>
@@ -180,7 +175,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
         <OutcomeModal row={pending.row} choice={pending.choice} tz={tz} rules={rules} onHide={() => setPending(null)}
           onSave={async (body) => {
             const res = await deskLogUpdate(pending.row.id, { ...body, if_updated_at: pending.row.updated_at });
-            setPending(null); setNotice(appliedText(res.applied, tz)); await onChanged();
+            setPending(null); setNotice(appliedText(res.applied)); await onChanged();
           }} />
       )}
     </>
