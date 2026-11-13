@@ -1,10 +1,11 @@
-// The dealership's Desk Log follow-up rules (SOW v6 Deliverable J matrix; lib/deskLog/rules.js).
-//   GET ?dealer_id                      -> { rules, checklist, version, history, outcomes, who, owners, can_edit }
+// The dealership's Desk Log settings (lib/deskLog/rules.js): which outcomes alert the managers, and the Sold Pending
+// delivery checklist. Who follows up and how is the AI's, set in AI Studio.
+//   GET ?dealer_id                      -> { rules, checklist, version, history, outcomes, can_edit }
 //   PUT { dealer_id, rules, checklist } -> saves a new version (dealer account / "Manage Account Information")
 import DeskLogRules from '@models/DeskLogRules';
 import { deskLogAccess, json } from '@lib/deskLog/access';
 import { hasPermission } from '@lib/staffPermission';
-import { OUTCOME_KEYS, OWNERS, WHO, isLocked, normalizeChecklist, normalizeRules, rulesFor } from '@lib/deskLog/rules';
+import { OUTCOME_KEYS, normalizeChecklist, normalizeRules, rulesFor } from '@lib/deskLog/rules';
 
 const canEdit = (user) => hasPermission(user, 'Manage Account Information');
 
@@ -12,8 +13,7 @@ async function view(dealerId, user) {
   const r = await rulesFor(dealerId);
   return { rules: r.rules, checklist: r.checklist, version: r.version,
     history: r.history.slice(-10).reverse().map((h) => ({ version: h.version, at: h.at, by_name: h.by_name })),
-    outcomes: OUTCOME_KEYS.map(([key, label]) => ({ key, label, locked: isLocked(key) })), who: WHO, owners: OWNERS,
-    can_edit: await canEdit(user) };
+    outcomes: OUTCOME_KEYS.map(([key, label]) => ({ key, label })), can_edit: await canEdit(user) };
 }
 
 export async function GET(req) {

@@ -111,7 +111,7 @@ export default function DeskLogPage() {
           </div>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
           <Button size="sm" variant="outline-custom" onClick={() => setRulesOpen(true)}>
-            <i className="fa-solid fa-sliders me-1"></i>Follow-up rules
+            <i className="fa-solid fa-sliders me-1"></i>Desk Log settings
           </Button>
           <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
             <i className="fa-solid fa-plus me-1"></i>Check in customer

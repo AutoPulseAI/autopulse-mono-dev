@@ -1,9 +1,7 @@
 import mongoose from 'mongoose';
 
-// A dealership's Desk Log follow-up rules (SOW v6 Deliverable J: "the dealer-admin-configurable disposition-to-workflow
-// matrix ... versioned and audited"): for each outcome / unsold reason, who follows up, who owns it, when the next step
-// is due, whether managers are alerted, the report group; and the Sold Pending delivery checklist. One per dealer;
-// every save is a new version in `history`. The AI's wording for each reason stays in AI Studio (Cadences > Unsold).
+// A dealership's Desk Log settings (lib/deskLog/rules.js): which outcomes alert the managers, and the Sold Pending
+// delivery checklist. One per dealer; every save is a new version in `history`. Follow-ups are the AI's (AI Studio).
 const deskLogRulesSchema = new mongoose.Schema({
   dealer_id: { type: String, required: true, unique: true },
   version: { type: Number, default: 1 },

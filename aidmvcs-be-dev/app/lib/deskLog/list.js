@@ -90,7 +90,6 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
       latest_note: latest ? { text: latest.text, at: latest.at, by: latest.by_name || name(latest.by) } : null,
       notes_count: (e.notes || []).length,
       updated_at: e.updatedAt || null,
-      next_step_owner: e.next_step_owner || null, report_group: e.report_group || null,
       checklist: (e.checklist || []).length ? { done: e.checklist.filter((c) => c.done).length, total: e.checklist.length } : null,
       car_finder_matches: (e.car_finder_matches || []).length,
       handoff: lead.fe_lead_status === 'Managerial Review' || handed.has(String(e.lead_id))

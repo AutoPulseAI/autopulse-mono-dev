@@ -7,20 +7,12 @@ import moment from "moment-timezone";
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 import { outcomeEffect } from "./deskLogUi";
 
-const WHO = { ai_and_staff: "The AI and staff follow up", staff: "Staff follow up - the AI is turned off for this lead",
-  ai: "The AI follows up", nobody: "Nobody follows up - the AI is turned off for this lead" };
-const OWNER = { salesperson: "salesperson", sales_manager: "sales manager", bdc_agent: "BDC agent" };
-
-// The dealership's rule for this outcome (Desk Log > Follow-up rules), said before saving.
+// The dealership's Desk Log settings for this outcome, said before saving.
 function ruleText(rule, checklistItems) {
-  if (!rule) return null;
-  const parts = [WHO[rule.who]];
-  if ((rule.who === "ai_and_staff" || rule.who === "staff") && rule.next_step_hours) {
-    parts.push(`the ${OWNER[rule.owner]}'s next step is due in ${rule.next_step_hours} h (unless one is set)`);
-  }
-  if (rule.alert_managers) parts.push("managers get an alert");
+  const parts = [];
+  if (rule?.alert_managers) parts.push("your managers get an alert");
   if (checklistItems) parts.push(`a delivery checklist (${checklistItems} items) is added`);
-  return parts.join("; ") + ".";
+  return parts.length ? parts.join("; ") + "." : null;
 }
 
 export default function OutcomeModal({ row, choice, tz, onHide, onSave, rules }) {
@@ -51,8 +43,10 @@ export default function OutcomeModal({ row, choice, tz, onHide, onSave, rules })
       <Modal.Header closeButton><Modal.Title as="h5">{row.customer || "Visit"}: {choice.label}</Modal.Title></Modal.Header>
       <Modal.Body>
         <p className="mb-2">{outcomeEffect(choice)}</p>
-        {rule && <p className="mb-3 small text-muted">Your rule: {ruleText(rule, choice.outcome === "SOLD PENDING"
-          ? (rules.checklist || []).length : 0)}</p>}
+        {ruleText(rule, choice.outcome === "SOLD PENDING" ? (rules?.checklist || []).length : 0) && (
+          <p className="mb-3 small text-muted">Also: {ruleText(rule, choice.outcome === "SOLD PENDING"
+            ? (rules?.checklist || []).length : 0)}</p>
+        )}
         {needsDate && (
           <Form.Group className="mb-3">
             <Form.Label>Follow-up date and time (dealership time)</Form.Label>

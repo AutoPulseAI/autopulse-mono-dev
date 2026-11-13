@@ -4,9 +4,8 @@
 //          stock_number?, department?, vehicle?, trade?, note?, checklist_item?: { index, done }, if_updated_at? }
 //   if_updated_at: the visit as the screen last read it - a change made on an out-of-date copy is refused (409) so
 //   two people never overwrite each other (SOW Global UX 4B).
-// An outcome change also applies the dealer's follow-up rules (lib/deskLog/rules.js, Deliverable J): who follows up
-// (staff only / nobody turn the AI off for the lead), the owner's next step, managers alerted, the report group, and
-// the Sold Pending delivery checklist.
+// An outcome change also applies the dealer's Desk Log settings (lib/deskLog/rules.js): managers alerted if set, and
+// the Sold Pending delivery checklist. Follow-ups themselves are the AI's (AI Studio).
 // An outcome change first changes the lead's status through the existing status route (PUT
 // /api/conversations/lead/status, with the caller's own sign-in), so the same follow-ups, booking updates and AI
 // notice run as from the Leads page (Betsy: "no new workflow engine"). If that is refused, nothing is saved.
@@ -16,7 +15,6 @@ import { deskLogAccess, json } from '@lib/deskLog/access';
 import { leadStatusForOutcome, planChanges } from '@lib/deskLog/deskLog';
 import { deskLogDetail } from '@lib/deskLog/list';
 import { outcomeKey, rulesFor } from '@lib/deskLog/rules';
-import { pauseAiForLead } from '@lib/ai/aiStaff';
 import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from '@lib/mongodb';
 import { PUT as changeLeadStatus } from '../../conversations/lead/status/route.js';
@@ -98,7 +96,7 @@ export async function PATCH(req, { params }) {
     if (refused) return json({ message: refused.message }, refused.status >= 500 ? 502 : 409);
     const outcome = plan.set.outcome ?? entry.outcome;
     const reason = 'unsold_reason' in plan.set ? plan.set.unsold_reason : entry.unsold_reason;
-    applied = await applyRules({ entry, plan, outcome, reason, now, byName });
+    applied = await applyRules({ entry, plan, outcome, reason, byName });
   }
 
   const update = { $set: plan.set };
@@ -111,36 +109,18 @@ export async function PATCH(req, { params }) {
   return json({ entry: { id: String(entry._id) }, changed: true, applied });
 }
 
-// The dealer's follow-up rule for the new outcome (Deliverable J). Adds to `plan` (saved with the outcome) and does
-// what it says: AI off for the lead, managers alerted. Returns what was done, for the screen.
-async function applyRules({ entry, plan, outcome, reason, now, byName }) {
+// The dealer's Desk Log settings for the new outcome: managers alerted if set, and the Sold Pending delivery checklist.
+// Who follows up and how is the AI's (AI Studio) - nothing here changes the AI. Returns what was done, for the screen.
+async function applyRules({ entry, plan, outcome, reason, byName }) {
   if (!outcome) return null;
   const { rules, checklist } = await rulesFor(entry.dealer_id);
-  const key = outcomeKey(outcome, reason);
-  const rule = rules[key];
-  if (!rule) return null;
-  const done = { rule: key };
-  plan.set.report_group = rule.report_group || null;
-  plan.set.next_step_owner = rule.who === 'ai_and_staff' || rule.who === 'staff' ? rule.owner : null;
-  const hasNext = 'next_step_at' in plan.set ? Boolean(plan.set.next_step_at) : entry.next_step_at && new Date(entry.next_step_at) > now;
-  if (rule.next_step_hours && plan.set.next_step_owner && !hasNext) {
-    const at = new Date(now.getTime() + rule.next_step_hours * 3600e3);
-    plan.history.push({ field: 'next_step_at', from: entry.next_step_at ?? null, to: at });
-    plan.set.next_step_at = at;
-    done.next_step_at = at;
-  }
+  const rule = rules[outcomeKey(outcome, reason)];
+  const done = {};
   if (outcome === 'SOLD PENDING' && checklist.length && !(entry.checklist || []).length) {
     plan.set.checklist = checklist.map((item) => ({ item, done: false }));
     done.checklist = checklist.length;
   }
-  if ((rule.who === 'staff' || rule.who === 'nobody') && key !== 'UNSOLD|DND') {
-    // Staff follow up themselves: the AI stops on this lead, the same as an admin take-over.
-    await pauseAiForLead({ leadId: String(entry.lead_id), dealerId: String(entry.dealer_id),
-      reason: `Taken over by staff (Desk Log rule: ${rule.who === 'staff' ? 'staff follow up' : 'no follow-up'})`, by: byName })
-      .catch((e) => console.error('[desk-log] AI pause failed', e?.message));
-    done.ai_paused = true;
-  }
-  if (rule.alert_managers) {
+  if (rule?.alert_managers) {
     const label = outcome === 'UNSOLD' ? `Unsold - ${reason}` : outcome;
     await notifyManagers({ dealerId: String(entry.dealer_id), leadId: String(entry.lead_id),
       title: `Desk Log: ${label}`, detail: `Set by ${byName || 'staff'}.` })
