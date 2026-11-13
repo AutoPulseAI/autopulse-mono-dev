@@ -234,5 +234,10 @@ async def main() -> None:
     print("Seeded:", ", ".join(f"{v} {k}" for k, v in counts.items()))
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Console entry point: `upsell-seed` (pyproject [project.scripts])."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()

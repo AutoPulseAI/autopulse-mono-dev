@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "worker": "node workers/startWorker.js",
+    "seed": "node --env-file=.env.local scripts/seed-local-crm.js",
     "seed:pages": "node scripts/seed-pages.js",
     "seed:pages-permission": "node scripts/seed/permissions.js",
     "seed:vvveb-pages": "node scripts/seed/vvveb-pages.js",

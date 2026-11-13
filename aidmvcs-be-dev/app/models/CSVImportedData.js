@@ -58,7 +58,8 @@ const csvImportedDataSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-csvImportedDataSchema.index({ csv_import_id: 1 });
+// Removed { csv_import_id:1 } — redundant, covered as a prefix of { csv_import_id:1, record_index:1 }
+// below. DB-scaling indexing pass 2026-11-13.
 csvImportedDataSchema.index({ import_status: 1 });
 csvImportedDataSchema.index({ record_index: 1 });
 csvImportedDataSchema.index({ processed_at: -1 });

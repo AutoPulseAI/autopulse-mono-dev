@@ -76,14 +76,35 @@ export const EMAIL_SMS_PAIR_INDEX = {
   },
 };
 
-// One Email per AI send. Partial, so every non-AI record (no key) is unaffected.
+// One Email per AI send. Partial so every non-AI record (no key) is unaffected.
+// Uses $exists:true, NOT $type:'string': a bare findOne({ai_idempotency_key:X}) equality lookup does
+// NOT use a $type partial index (→ 767k-doc COLLSCAN, ~1.2s on the clone), but DOES use an $exists:true
+// partial index (→ 1 doc, ~0ms). Verified on the clone 2026-11-13; explicitNulls=0, so unique stays safe.
+// MIGRATION: changing partialFilterExpression on the existing index needs drop+recreate (same name, new
+// options) — dropIndex('ai_idempotency_key_unique') then run scripts/ensure-email-indexes.js --apply.
 export const EMAIL_AI_IDEMPOTENCY_INDEX = {
   key: { ai_idempotency_key: 1 },
   options: {
     name: 'ai_idempotency_key_unique',
     unique: true,
-    partialFilterExpression: { ai_idempotency_key: { $type: 'string' } },
+    partialFilterExpression: { ai_idempotency_key: { $exists: true } },
   },
+};
+
+// Twilio delivery webhook (api/webhooks/twilio) + SMS threading (worker/processSms) look up by message_id.
+// Without it the query falls back to communication_type_1 and scans ~575k docs (~2.6s on the clone); with it: 1 doc, ~1ms.
+// Non-unique: some message_ids are generated/reused (leadworker `lead-<id>` / `msg-<ts>`). DB-scaling indexing pass, 2026-11-13.
+export const EMAIL_MESSAGE_ID_INDEX = {
+  key: { message_id: 1 },
+  options: { name: 'message_id_1' },
+};
+
+// Dashboard metrics aggregate emails by { dealer_id, createdAt:{range} }. Indexes were on `date`, not
+// `createdAt`, so it scanned all the dealer's emails (~300k, ~3.1s). With this: seeks the range, ~2ms.
+// DB-scaling indexing pass, 2026-11-13.
+export const EMAIL_DEALER_CREATEDAT_INDEX = {
+  key: { dealer_id: 1, createdAt: -1 },
+  options: { name: 'dealer_id_1_createdAt_-1' },
 };
 
 emailSchema.index(EMAIL_CONVERSATION_INDEX.key, EMAIL_CONVERSATION_INDEX.options);
@@ -92,6 +113,9 @@ emailSchema.index(EMAIL_AI_IDEMPOTENCY_INDEX.key, { ...EMAIL_AI_IDEMPOTENCY_INDE
 // Deploy explicitly with scripts/ensure-email-indexes.js before releasing the
 // synchronous webhook query that depends on it.
 emailSchema.index(EMAIL_SMS_PAIR_INDEX.key, { ...EMAIL_SMS_PAIR_INDEX.options, _autoIndex: false });
+// Deploy explicitly with scripts/ensure-email-indexes.js.
+emailSchema.index(EMAIL_MESSAGE_ID_INDEX.key, { ...EMAIL_MESSAGE_ID_INDEX.options, _autoIndex: false });
+emailSchema.index(EMAIL_DEALER_CREATEDAT_INDEX.key, { ...EMAIL_DEALER_CREATEDAT_INDEX.options, _autoIndex: false });
 
 const Email = mongoose.models.Email || mongoose.model('Email', emailSchema);
 

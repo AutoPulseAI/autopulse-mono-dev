@@ -249,12 +249,20 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     ],
     AI_MESSAGES_COLLECTION: [
         ([("dealer_id", 1), ("lead_id", 1), ("created_at", 1)], {}),
+        # Lookup by the platform's message id (CRM status sync). Without it,
+        # {dealer_id, platform_message_id} used the dealer_id prefix and scanned ~43k rows
+        # (~92ms -> ~1ms). DB-scaling indexing pass, 2026-11-13.
+        ([("dealer_id", 1), ("platform_message_id", 1)], {}),
         # One row per (turn, channel) send - a retried job hits DuplicateKeyError
         # instead of sending twice (architecture §9). Partial so inbound rows,
-        # which have no key, don't collide on null.
+        # which have no key, don't collide on null. Uses $exists:true, NOT $type:'string':
+        # a bare {idempotency_key:X} equality lookup does NOT use a $type partial index but DOES use
+        # $exists:true (clone 2026-11-13: 43k-scan/115ms -> 1 doc/1ms; explicitNulls=0, so unique stays safe).
+        # MIGRATION: drop the old idempotency_key_1 index before ensure_indexes() recreates it, or the
+        # create_index call conflicts (same name, new options).
         (
             [("idempotency_key", 1)],
-            {"unique": True, "partialFilterExpression": {"idempotency_key": {"$type": "string"}}},
+            {"unique": True, "partialFilterExpression": {"idempotency_key": {"$exists": True}}},
         ),
         ([("provider_id", 1)], {"sparse": True}),
     ],

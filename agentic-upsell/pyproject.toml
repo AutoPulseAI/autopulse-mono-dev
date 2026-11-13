@@ -55,6 +55,10 @@ dependencies = [
     "phonenumbers>=8.13",
 ]
 
+[project.scripts]
+# Local demo data (refuses unless ENVIRONMENT=DEV and MONGODB_URI is a local host).
+upsell-seed = "upsell_agent.devtools.seed:run"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",

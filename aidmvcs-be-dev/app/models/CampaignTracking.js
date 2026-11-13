@@ -84,7 +84,8 @@ const CampaignTrackingSchema = new mongoose.Schema(
 CampaignTrackingSchema.index({ campaign_id: 1, event_type: 1 });
 CampaignTrackingSchema.index({ campaign_id: 1, email: 1 });
 CampaignTrackingSchema.index({ campaign_id: 1, phone: 1 });
-CampaignTrackingSchema.index({ campaign_lead_id: 1, event_type: 1 });
+// Removed { campaign_lead_id:1, event_type:1 } — redundant, covered as a prefix of the 3-field index
+// below. DB-scaling indexing pass 2026-11-13.
 CampaignTrackingSchema.index({ dealer_id: 1, event_timestamp: -1 });
 
 // Unique constraint to prevent duplicate tracking of same event
