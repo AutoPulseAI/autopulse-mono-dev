@@ -109,6 +109,12 @@ export default function FormBuilderPage() {
       retention_days: settings.retention_days === "" ? null : Number(settings.retention_days) });
     setMeta((m) => ({ ...m, template: d.template }));
   }, "Settings saved.");
+  const remove = () => run(async () => {
+    if (!window.confirm(`Delete "${t.name}" from the Forms Library? Staff won't be able to start it any more. Forms `
+      + "already filled for customers are kept as they are.")) return;
+    await formsSend(`${base}?dealer_id=${dealerId}`, "DELETE");
+    router.push("/dealer/forms");
+  });
   const reread = (file) => run(async () => {
     if (dirty && !window.confirm("Reading a new PDF replaces the unsaved changes here. Go on?")) return;
     const fd = new FormData(); fd.set("dealer_id", dealerId); fd.set("file", file);
@@ -136,6 +142,8 @@ export default function FormBuilderPage() {
         <Button size="sm" variant="outline-custom" disabled={busy}
           onClick={() => run(() => openPdf(`${base}/preview`, { method: "POST", body: { dealer_id: dealerId, schema } }))}>
           Preview PDF</Button>
+        {can && <Button size="sm" variant="outline-danger" disabled={busy} onClick={remove}>
+          <i className="fa-regular fa-trash-can me-1" />Delete form</Button>}
         {can && <Button size="sm" variant="custom" disabled={busy || !dirty} onClick={save}>{busy ? <Spinner size="sm" /> : "Save form"}</Button>}
       </div>
       <div className="page_body">

@@ -3,6 +3,7 @@
 //                       hidden from staff without "Manage Leads")
 //   PATCH { dealer_id, data, complete? } -> saves what was entered; complete: true locks it for good (refused while a
 //         required field is empty). A completed form never changes again.
+//   DELETE ?dealer_id -> deletes a draft (a completed form is never deleted - it is the record of what was done).
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import FormDocument from '@models/FormDocument';
@@ -57,4 +58,14 @@ export async function PATCH(req, { params }) {
   const res = await FormDocument.updateOne({ _id: d._id, status: 'draft' }, { $set: set, $push: { audit: { $each: audit } } });
   if (!res.modifiedCount) return fail('Someone completed this form just now - reload it', 409);
   return json({ document: await view(await FormDocument.findById(d._id), user) });
+}
+
+export async function DELETE(req, { params }) {
+  await dbConnect();
+  const found = await load(req, params, new URL(req.url).searchParams.get('dealer_id'));
+  if (found.response) return found.response;
+  if (found.d.status === 'completed') return fail('A completed form can\'t be deleted', 409);
+  const res = await FormDocument.deleteOne({ _id: found.d._id, status: 'draft' });
+  if (!res.deletedCount) return fail('Someone completed this form just now', 409);
+  return json({ deleted: true });
 }

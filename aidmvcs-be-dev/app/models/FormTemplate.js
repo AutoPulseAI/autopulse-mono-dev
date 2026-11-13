@@ -37,6 +37,9 @@ const formTemplateSchema = new mongoose.Schema({
   current_version: { type: Number, default: 1 },
   versions: { type: [versionSchema], default: [] },
   history: { type: [historySchema], default: [] },
+  // Deleted from the library: gone from every list; the customers' forms made with it keep their own copy of it.
+  deleted_at: { type: Date, default: null },
+  deleted_by_name: { type: String, default: null },
 }, { timestamps: true });
 
 export default mongoose.models.FormTemplate || mongoose.model('FormTemplate', formTemplateSchema);

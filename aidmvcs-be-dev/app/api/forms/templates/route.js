@@ -22,7 +22,7 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const access = await formsAccess(req, params.get('dealer_id'));
   if (access.response) return access.response;
-  const templates = await FormTemplate.find({ dealer_id: access.dealerId }).select('-history').sort({ name: 1 }).lean();
+  const templates = await FormTemplate.find({ dealer_id: access.dealerId, deleted_at: null }).select('-history').sort({ name: 1 }).lean();
   if (params.get('usable') !== '1') {
     return json({ templates: templates.map(templateSummary), can_manage: await canManageForms(access.user),
       categories: FORM_CATEGORIES });
