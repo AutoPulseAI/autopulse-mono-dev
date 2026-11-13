@@ -43,8 +43,14 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
   };
 
   const auto = useAutosave(async (f) => {
-    await deskLogUpdate(id, { stock_number: f.stock_number, vehicle: f.vehicle, trade: f.trade,
-      next_step_at: f.next_step_at ? moment.tz(f.next_step_at, "YYYY-MM-DDTHH:mm", tz).toISOString() : null });
+    try {
+      await deskLogUpdate(id, { stock_number: f.stock_number, vehicle: f.vehicle, trade: f.trade,
+        next_step_at: f.next_step_at ? moment.tz(f.next_step_at, "YYYY-MM-DDTHH:mm", tz).toISOString() : null,
+        if_updated_at: data?.entry?.updatedAt });
+    } catch (e) {
+      if (e.status === 409) await load(); // someone else's newer change: shown, the user makes theirs again
+      throw e;
+    }
     const d = await deskLogEntry(id);
     setData(d); // history and notes; the form keeps what the user is typing
     await onChanged();
@@ -113,6 +119,36 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
             <div className="text-end mb-3">
               <Button size="sm" onClick={addNote} disabled={busy || !note.trim()}>{busy ? "Saving..." : "Add note"}</Button>
             </div>
+            {(data.entry.checklist || []).length > 0 && (
+              <>
+                <h6>Delivery checklist</h6>
+                <div className="mb-3">
+                  {data.entry.checklist.map((c, i) => (
+                    <Form.Check key={i} id={`chk-${i}`} label={<>{c.item}{c.done && c.by_name
+                      ? <small className="text-muted"> ({c.by_name}, {moment(c.at).tz(tz).format("MMM D, h:mm A")})</small> : null}</>}
+                      checked={Boolean(c.done)} disabled={busy}
+                      onChange={async (e) => {
+                        setBusy(true); setError(null);
+                        try { await deskLogUpdate(id, { checklist_item: { index: i, done: e.target.checked } });
+                          setData(await deskLogEntry(id)); await onChanged(); }
+                        catch (err) { setError(err.message); } finally { setBusy(false); }
+                      }} />
+                  ))}
+                </div>
+              </>
+            )}
+            {(data.entry.car_finder_matches || []).length > 0 && (
+              <>
+                <h6>Car Finder: matching cars that came in</h6>
+                <ul className="small mb-3">
+                  {data.entry.car_finder_matches.map((m) => (
+                    <li key={m.vin}>{m.vehicle}{m.stock_number ? ` · stock #${m.stock_number}` : ""} · VIN {m.vin}
+                      {m.price ? ` · $${Number(m.price).toLocaleString("en-US")}` : ""}
+                      <small className="text-muted"> ({moment(m.found_at).tz(tz).format("MMM D")})</small></li>
+                  ))}
+                </ul>
+              </>
+            )}
             {data.notes.length > 0 && (
               <>
                 <h6>Notes</h6>

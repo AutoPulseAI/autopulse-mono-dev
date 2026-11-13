@@ -10,11 +10,12 @@ import moment from "moment-timezone";
 import { useUser } from "../context/UserContext";
 import DashboardDatePicker, { presetRange } from "../dashboard/components/DashboardDatePicker";
 import { reportDates } from "../reports/components/DownloadReport";
-import { deskLogGet, staffList } from "./deskLogApi";
+import { deskLogGet, deskLogRules, staffList } from "./deskLogApi";
 import DeskCards from "./components/DeskCards";
 import DeskTable from "./components/DeskTable";
 import CheckInModal from "./components/CheckInModal";
 import VisitModal from "./components/VisitModal";
+import RulesModal from "./components/RulesModal";
 import useLiveRefresh from "../../hooks/useLiveRefresh";
 import "./deskLog.css";
 
@@ -41,6 +42,8 @@ export default function DeskLogPage() {
   const [loading, setLoading] = useState(false);
   const [checkIn, setCheckIn] = useState(false);
   const [opened, setOpened] = useState(null); // { id, name }
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rules, setRules] = useState(null);
 
   // Today in the dealership's time zone (only once the dealer, and so its time zone, is loaded).
   useEffect(() => {
@@ -59,6 +62,7 @@ export default function DeskLogPage() {
   useEffect(() => {
     if (!dealerId) return;
     staffList(dealerId).then(setStaff).catch(() => setStaff([]));
+    deskLogRules(dealerId).then(setRules).catch(() => setRules(null));
   }, [dealerId]);
 
   const dates = useMemo(() => (range ? reportDates(range, tz) : null), [range, tz]);
@@ -106,6 +110,9 @@ export default function DeskLogPage() {
               and how it ended.</small>
           </div>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
+          <Button size="sm" variant="outline-custom" onClick={() => setRulesOpen(true)}>
+            <i className="fa-solid fa-sliders me-1"></i>Follow-up rules
+          </Button>
           <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
             <i className="fa-solid fa-plus me-1"></i>Check in customer
           </Button>
@@ -178,7 +185,7 @@ export default function DeskLogPage() {
 
         {error && <Alert variant="danger">{error}</Alert>}
         {data && (
-          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId}
+          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId} rules={rules}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
         )}
         {data?.truncated && <small className="text-muted">Showing the latest 500 visits. Pick fewer days to see the
@@ -189,6 +196,8 @@ export default function DeskLogPage() {
         onDone={() => { setCheckIn(false); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}
+      {rulesOpen && <RulesModal dealerId={dealerId} onHide={() => setRulesOpen(false)}
+        onSaved={() => deskLogRules(dealerId).then(setRules).catch(() => {})} />}
     </div>
   );
 }

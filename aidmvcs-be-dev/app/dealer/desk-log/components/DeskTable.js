@@ -17,19 +17,37 @@ import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LA
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
 
-export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId }) {
+const OWNER_LABEL = { salesperson: "salesperson", sales_manager: "sales manager", bdc_agent: "BDC agent" };
+
+// What a saved outcome's rule did, in one line for the screen.
+function appliedText(a, tz) {
+  if (!a) return null;
+  const parts = [];
+  if (a.next_step_at) parts.push(`next step set for ${moment(a.next_step_at).tz(tz).format("MMM D, h:mm A")}`);
+  if (a.checklist) parts.push(`delivery checklist added (${a.checklist} items)`);
+  if (a.ai_paused) parts.push("the AI is off for this lead - staff follow up");
+  if (a.managers_alerted) parts.push("managers alerted");
+  return parts.length ? `Saved: ${parts.join(", ")}.` : null;
+}
+
+export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId, rules }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [pending, setPending] = useState(null); // { row, choice }
 
+  // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
+  // reloaded, made again).
   const save = async (row, body) => {
     setBusy(row.id);
-    setError(null);
+    setError(null); setNotice(null);
     try {
-      await deskLogUpdate(row.id, body);
+      const res = await deskLogUpdate(row.id, { ...body, if_updated_at: row.updated_at });
+      setNotice(appliedText(res.applied, tz));
       await onChanged();
     } catch (e) {
       setError(`${row.customer || "Visit"}: ${e.message}`);
+      if (e.status === 409) await onChanged();
     } finally {
       setBusy(null);
     }
@@ -53,6 +71,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   return (
     <>
       {error && <div className="alert alert-danger py-2">{error}</div>}
+      {notice && <div className="alert alert-success py-2">{notice}</div>}
       <div className="dl_table_wrap">
         <table className="dl_table">
           <thead>
@@ -78,6 +97,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
                     {row.phone && <small className="d-block text-muted">{row.phone}</small>}
                     {dnd && <small className="d-block fw-semibold text-danger">Do not contact (DND)</small>}
+                    {row.handoff && <small className="d-block fw-semibold text-warning" title={row.handoff.reason}>
+                      <i className="fa-solid fa-hand me-1" />Handed to a manager</small>}
+                    {row.car_finder_matches > 0 && <small className="d-block fw-semibold text-success">
+                      <i className="fa-solid fa-car me-1" />Car found ({row.car_finder_matches}) - see details</small>}
                     {row.lead_status === "Opted Out" && <small className="d-block text-muted">Opted out (see the lead for which channel)</small>}
                     <small className="d-block">
                       <span className="dl_type">{TYPE_LABEL[row.lead_type] || row.lead_type}</span>
@@ -108,7 +131,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   </td>
                   <td className="dl_note">{row.latest_note?.text || <span className="text-muted">-</span>}
                     {row.next_step_at && (
-                      <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}</small>
+                      <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}
+                        {row.next_step_owner ? ` (${OWNER_LABEL[row.next_step_owner]})` : ""}</small>
                     )}
                   </td>
                   <td>
@@ -125,6 +149,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     {row.dms?.flag === "not_in_dms" && <small className="d-block text-danger">Not in the DMS yet</small>}
                     {row.dms?.flag === "dms_delivered" && (
                       <small className="d-block text-danger">DMS shows delivered {moment(row.dms.date).tz(tz).format("MMM D")}</small>
+                    )}
+                    {row.checklist && (
+                      <small className={`d-block ${row.checklist.done === row.checklist.total ? "text-success" : "text-muted"}`}>
+                        Delivery checklist {row.checklist.done}/{row.checklist.total}</small>
                     )}
                     {row.dms?.found && !row.dms.flag && (
                       <small className="d-block text-muted">DMS: {row.dms.delivered ? "delivered" : "contract"}{" "}
@@ -149,8 +177,11 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
         </table>
       </div>
       {pending && (
-        <OutcomeModal row={pending.row} choice={pending.choice} tz={tz} onHide={() => setPending(null)}
-          onSave={async (body) => { await deskLogUpdate(pending.row.id, body); setPending(null); await onChanged(); }} />
+        <OutcomeModal row={pending.row} choice={pending.choice} tz={tz} rules={rules} onHide={() => setPending(null)}
+          onSave={async (body) => {
+            const res = await deskLogUpdate(pending.row.id, { ...body, if_updated_at: pending.row.updated_at });
+            setPending(null); setNotice(appliedText(res.applied, tz)); await onChanged();
+          }} />
       )}
     </>
   );

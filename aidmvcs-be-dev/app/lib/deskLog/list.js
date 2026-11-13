@@ -17,6 +17,7 @@ export const VIEWS = Object.freeze({
   stalled: `Stalled (same stage for ${STALLED_MINUTES} minutes or more)`,
   no_next_step: 'No next step set',
   unsold_follow_up: 'Unsold - to follow up',
+  handoff: 'Handed to a manager',
 });
 
 export const MAX_ROWS = 500;
@@ -37,6 +38,7 @@ function inView(row, view, now) {
   if (view === 'stalled') return isOpen(row) && minutesInStage(row, now) >= STALLED_MINUTES;
   if (view === 'no_next_step') return (isOpen(row) || row.outcome === 'UNSOLD') && !row.next_step_at;
   if (view === 'unsold_follow_up') return row.outcome === 'UNSOLD' && row.unsold_reason !== UNSOLD_REASONS.DND;
+  if (view === 'handoff') return Boolean(row.handoff);
   return true;
 }
 
@@ -57,6 +59,11 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     dealer_id: { $in: dealerForms(dealerId) } })
     .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin')
     .lean()).map((l) => [String(l._id), l]));
+  // Handoffs (SOW Deliverable C manager view): the lead is waiting for a manager - Managerial Review, or the AI handed
+  // it over and nobody has picked it up yet (ai_lead_state, the same as AI Assistant > Dealer Action Required).
+  const handed = new Map((await mongoose.connection.db.collection('ai_lead_state').find(
+    { lead_id: { $in: entries.map((e) => String(e.lead_id)) }, status: 'handoff' },
+    { projection: { lead_id: 1, status_reason: 1, status_at: 1 } }).toArray()).map((s) => [String(s.lead_id), s]));
   const names = await staffNames(entries.flatMap((e) => [e.salesperson_id, e.sales_manager_id, e.bdc_agent_id,
     ...(e.notes || []).map((n) => n.by)]).filter(Boolean).map(String), {});
   const name = (id) => (id ? names.get(String(id)) || null : null);
@@ -82,6 +89,13 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
       unsold_reason: e.unsold_reason || null, next_step_at: e.next_step_at || null,
       latest_note: latest ? { text: latest.text, at: latest.at, by: latest.by_name || name(latest.by) } : null,
       notes_count: (e.notes || []).length,
+      updated_at: e.updatedAt || null,
+      next_step_owner: e.next_step_owner || null, report_group: e.report_group || null,
+      checklist: (e.checklist || []).length ? { done: e.checklist.filter((c) => c.done).length, total: e.checklist.length } : null,
+      car_finder_matches: (e.car_finder_matches || []).length,
+      handoff: lead.fe_lead_status === 'Managerial Review' || handed.has(String(e.lead_id))
+        ? { reason: handed.get(String(e.lead_id))?.status_reason || 'Managerial Review',
+          at: handed.get(String(e.lead_id))?.status_at || null } : null,
     };
     row.minutes_in_stage = isOpen(row) ? minutesInStage(row, now) : null;
     if (filters.lead_type && row.lead_type !== filters.lead_type) continue;
