@@ -3,7 +3,7 @@
 //   PATCH { dealer_id, name?, category?, active?, departments?, role_ids?, statuses?, retention_days?, schema? }
 //         schema = the edited form (lib/forms/schema.js). Saved over the current version while no customer form uses
 //         it; once one does, it is saved as a new version (that customer's copy keeps the version it was made with).
-//   POST  multipart: dealer_id, file -> the new PDF is read into a new version of the form (the dealer then edits it)
+//   POST  multipart: dealer_id, file -> the AI reads the new PDF into a new version of the form (the dealer then edits it)
 //   DELETE ?dealer_id -> the form leaves the library (and the Documents tab). Customers' forms already made with it are
 //          kept as they are: each carries its own copy of the form.
 import mongoose from 'mongoose';
@@ -13,7 +13,7 @@ import FormDocument from '@models/FormDocument';
 import { actorOf, canManageForms, dealerRoles, fail, formsAccess, json, templateSummary } from '@lib/forms/access';
 import { SOURCES, isSource } from '@lib/forms/sources';
 import { normalizeSchema } from '@lib/forms/schema';
-import { extractForm } from '@lib/forms/extract';
+import { parseFormWithAi } from '@lib/forms/aiParse';
 import { saveFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
@@ -124,19 +124,18 @@ export async function POST(req, { params }) {
   const file = form.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') return fail('Choose the new PDF', 400);
   const buffer = Buffer.from(await file.arrayBuffer());
-  let read;
-  try { read = await extractForm(buffer, { fallbackTitle: found.t.name }); } catch (e) { return fail(e.message, e.status || 400); }
+  let schema;
+  try { schema = await parseFormWithAi(buffer, { filename: file.name }); } catch (e) { return fail(e.message, e.status || 400); }
   const { t } = found;
   const actor = actorOf(found.user);
   const sourceId = await saveFile(buffer, { filename: file.name, dealerId: found.dealerId, kind: 'template_source' });
   const version = Math.max(0, ...t.versions.map((x) => x.version)) + 1;
-  t.versions.push({ version, schema: read.schema, source_file_id: sourceId, source_filename: file.name || null,
+  t.versions.push({ version, schema, source_file_id: sourceId, source_filename: file.name || null,
     created_by: actor.by, created_by_name: actor.by_name });
   t.current_version = version;
-  t.history.push({ ...actor, action: 'new_version', detail: `version ${version} read from ${file.name || 'a PDF'}: `
-    + `${read.found.sections} sections, ${read.found.fields} fields` });
+  t.history.push({ ...actor, action: 'new_version', detail: `version ${version} drafted by the AI from ${file.name || 'a PDF'}` });
   await t.save();
-  return json({ template: detail(t), found: read.found });
+  return json({ template: detail(t) });
 }
 
 export async function DELETE(req, { params }) {

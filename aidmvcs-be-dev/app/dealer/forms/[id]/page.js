@@ -1,8 +1,9 @@
 "use client";
-// The form builder (SOW v6 Deliverable K; the user, 13 Nov 2026: "an editable form ... they will be able to change
-// everything, like the applications that let you create your own forms"). The form read from the dealer's PDF opens
-// here as an on-screen form: click any field to change it (label, type, width, required, choices, the CRM value that
-// fills it), move / copy / delete it, add fields and sections, rename the form. "Preview PDF" shows how it will print.
+// The form builder (SOW v6 Deliverable K; the user, 13 Nov 2026: "give them the opportunity to create their forms -
+// dynamic fields, checkboxes, bigger titles, editing and styling options"). A form built from scratch, or drafted by
+// the AI from the dealer's PDF, is edited here: click any item to change it in the side panel (components/ItemPanel.js
+// - fields, titles, wording with blanks inside its sentences, lines, spaces; CRM values; sizes and alignment), move /
+// copy / delete it, add items and sections, rename the form. "Preview PDF" shows how it will print.
 // Saving a form already used for customers makes a new version (their copies keep the one they were made with).
 // The "Settings" tab: category, on / off, department, roles, lead statuses, how long filled copies are kept.
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,32 +12,20 @@ import { Alert, Badge, Button, ButtonGroup, Col, Dropdown, Form, Nav, Row, Spinn
 import { useUser } from "../../context/UserContext";
 import { formsGet, formsSend, openPdf } from "../formsApi";
 import FormView from "../components/FormView";
-import { FIELD_TYPES, INPUT_TYPES, REPEATS, WIDTHS, newId } from "../../../lib/forms/schema";
+import ItemPanel from "../components/ItemPanel";
+import { FIELD_TYPES, REPEATS, newId } from "../../../lib/forms/schema";
 
-const blankField = (type) => ({ id: newId(), type, label: type === "heading" || type === "paragraph" ? "" : FIELD_TYPES[type],
-  required: false, width: "full", options: type === "select" || type === "radio" ? ["Option 1", "Option 2"] : [],
-  source: null, help: null, text: type === "heading" ? "Heading" : type === "paragraph" ? "Text" : null });
-
-function SourceSelect({ sources, value, onChange, repeat }) {
-  const groups = useMemo(() => {
-    const out = new Map();
-    for (const s of sources) {
-      if (!out.has(s.group)) out.set(s.group, []);
-      out.get(s.group).push(s);
-    }
-    return [...out.entries()];
-  }, [sources]);
-  return (
-    <Form.Select size="sm" value={value || ""} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">Typed in by staff</option>
-      {groups.map(([group, items]) => (
-        <optgroup key={group} label={group === "Trade-in" && !repeat ? "Trade-in (the first one picked)" : group}>
-          {items.map((s) => <option key={s.key} value={s.key}>{s.label}{s.sensitive ? " (managers only)" : ""}</option>)}
-        </optgroup>
-      ))}
-    </Form.Select>
-  );
-}
+// A new item of each kind, as the "+ Add" menu puts it on the form.
+const blankField = (type) => {
+  const id = newId();
+  if (type === "heading") return { id, type, text: "Title", level: 2, align: "left" };
+  if (type === "paragraph") return { id, type, text: "Type the wording here. Use + Insert blank for a blank inside a sentence.",
+    align: "left", bold: false, italic: false, size: "normal", blanks: [] };
+  if (type === "divider" || type === "spacer") return { id, type };
+  return { id, type, label: FIELD_TYPES[type], required: false, width: "full",
+    options: type === "select" || type === "radio" ? ["Option 1", "Option 2"] : [], source: null, help: null,
+    rows: type === "textarea" ? 3 : null };
+};
 
 export default function FormBuilderPage() {
   const { id } = useParams();
@@ -83,6 +72,7 @@ export default function FormBuilderPage() {
     return null;
   }, [schema, selected]);
   const setField = (patch) => edit((s) => { const [sec, i] = where(s, selected); if (sec) Object.assign(sec.fields[i], patch); return s; });
+  const replaceField = (item) => edit((s) => { const [sec, i] = where(s, selected); if (sec) sec.fields[i] = item; return s; });
   const moveField = (d) => edit((s) => {
     const [sec, i] = where(s, selected);
     if (!sec) return s;
@@ -185,10 +175,10 @@ export default function FormBuilderPage() {
                         </ButtonGroup>
                       </div>
                     )}
-                    <FormView schema={{ title: "", sections: [sec] }} mode="design" selected={selected} onSelect={setSelected} />
+                    <FormView schema={{ title: "", sections: [sec] }} mode="design" selected={selected} onSelect={setSelected} showTitle={false} />
                     {can && (
                       <Dropdown className="mt-2">
-                        <Dropdown.Toggle size="sm" variant="outline-custom">+ Add field</Dropdown.Toggle>
+                        <Dropdown.Toggle size="sm" variant="outline-custom">+ Add item</Dropdown.Toggle>
                         <Dropdown.Menu>
                           {Object.entries(FIELD_TYPES).map(([k, label]) => <Dropdown.Item key={k} onClick={() => addField(sec.id, k)}>{label}</Dropdown.Item>)}
                         </Dropdown.Menu>
@@ -215,40 +205,8 @@ export default function FormBuilderPage() {
                       )}
                     </div>
                     <fieldset disabled={!can}>
-                      <Form.Group className="mb-2"><Form.Label className="mb-0">Type</Form.Label>
-                        <Form.Select size="sm" value={field.f.type} onChange={(e) => {
-                          const type = e.target.value;
-                          setField({ type, ...(type === "heading" || type === "paragraph" ? { text: field.f.text || field.f.label, source: null, required: false } : {}),
-                            ...((type === "select" || type === "radio") && !field.f.options.length ? { options: ["Option 1", "Option 2"] } : {}) });
-                        }}>{Object.entries(FIELD_TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Form.Select></Form.Group>
-                      {field.f.type === "heading" || field.f.type === "paragraph" ? (
-                        <Form.Group className="mb-2"><Form.Label className="mb-0">Wording</Form.Label>
-                          <Form.Control as="textarea" rows={field.f.type === "paragraph" ? 6 : 2} value={field.f.text || ""}
-                            onChange={(e) => setField({ text: e.target.value })} /></Form.Group>
-                      ) : (
-                        <>
-                          <Form.Group className="mb-2"><Form.Label className="mb-0">Label</Form.Label>
-                            <Form.Control size="sm" value={field.f.label} onChange={(e) => setField({ label: e.target.value })} /></Form.Group>
-                          <Form.Group className="mb-2"><Form.Label className="mb-0">Filled from the CRM</Form.Label>
-                            <SourceSelect sources={meta.sources} value={field.f.source} repeat={field.sec.repeat === "trade_in"}
-                              onChange={(source) => setField({ source })} />
-                            <Form.Text>Staff can still change it on the form.</Form.Text></Form.Group>
-                          {(field.f.type === "select" || field.f.type === "radio") && (
-                            <Form.Group className="mb-2"><Form.Label className="mb-0">Choices (one per line)</Form.Label>
-                              <Form.Control as="textarea" rows={4} value={field.f.options.join("\n")}
-                                onChange={(e) => setField({ options: e.target.value.split("\n") })} /></Form.Group>
-                          )}
-                          <Form.Group className="mb-2"><Form.Label className="mb-0">Help text (optional)</Form.Label>
-                            <Form.Control size="sm" value={field.f.help || ""} onChange={(e) => setField({ help: e.target.value })} /></Form.Group>
-                          <Form.Check id="f-req" className="mb-2" label="Required (the form can't be completed without it)"
-                            checked={field.f.required} disabled={field.f.type === "checkbox"} onChange={(e) => setField({ required: e.target.checked })} />
-                        </>
-                      )}
-                      {INPUT_TYPES.includes(field.f.type) && (
-                        <Form.Group><Form.Label className="mb-0">Width</Form.Label>
-                          <Form.Select size="sm" value={field.f.width} onChange={(e) => setField({ width: e.target.value })}>
-                            {Object.entries(WIDTHS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Form.Select></Form.Group>
-                      )}
+                      <ItemPanel item={field.f} section={field.sec} sources={meta.sources}
+                        onChange={(patch, replace) => (replace ? replaceField(patch) : setField(patch))} />
                     </fieldset>
                   </>
                 )}

@@ -2,17 +2,19 @@
 //   GET  ?dealer_id                      -> { templates, can_manage, categories }
 //   GET  ?dealer_id&usable=1&lead_id=... -> { templates } the caller may fill for that lead: switched on, their role,
 //                                           the lead's department (service if it has a service booking) and status
-//   POST multipart: dealer_id, name, category, file (PDF) -> the PDF is read into an on-screen form (lib/forms/
-//        extract.js), saved switched off for the dealer to check and edit in the builder
+//   POST multipart: dealer_id, name, category, file (PDF) -> the AI reads the PDF into a first draft of the form
+//        (lib/forms/aiParse.js), saved switched off for the dealer to check and edit in the builder
 //   POST JSON { dealer_id, name, category, blank: true }  -> an empty form to build from scratch
-// Errors: 400 bad input / not a PDF / locked · 422 a scanned PDF (no text) · 401 · 403 (not allowed to manage forms).
+// Errors: 400 bad input / not a PDF · 422 unreadable · 502 the AI failed · 503 no AI key · 401 · 403.
 import dbConnect from '@lib/mongodb';
 import FormTemplate, { FORM_CATEGORIES } from '@models/FormTemplate';
 import Lead from '@models/Lead';
 import Booking from '@models/Booking';
 import { actorOf, canManageForms, canUseTemplate, fail, formsAccess, json, templateSummary } from '@lib/forms/access';
-import { extractForm } from '@lib/forms/extract';
-import { newId } from '@lib/forms/schema';
+import { parseFormWithAi } from '@lib/forms/aiParse';
+import { fillables, newId } from '@lib/forms/schema';
+
+const countFields = (schema) => fillables(schema).length;
 import { saveFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
@@ -53,13 +55,11 @@ export async function POST(req) {
   let schema; let sourceId = null; let detail; let found = null;
   if (file && typeof file.arrayBuffer === 'function') {
     const buffer = Buffer.from(await file.arrayBuffer());
-    let read;
-    try { read = await extractForm(buffer, { fallbackTitle: String(input.name || '').trim() || 'Form' }); }
+    try { schema = await parseFormWithAi(buffer, { filename: file.name }); }
     catch (e) { return fail(e.message, e.status || 400); }
-    schema = read.schema;
-    found = read.found;
+    found = { sections: schema.sections.length, fields: countFields(schema) };
     sourceId = await saveFile(buffer, { filename: file.name, dealerId: access.dealerId, kind: 'template_source' });
-    detail = `read from ${file.name || 'a PDF'}: ${read.found.sections} sections, ${read.found.fields} fields`;
+    detail = `drafted by the AI from ${file.name || 'a PDF'}: ${found.sections} sections, ${found.fields} fields`;
   } else if (String(input.blank) === 'true') {
     schema = { title: String(input.name || 'New form').trim(), description: null,
       sections: [{ id: newId('s'), title: '', repeat: null, fields: [] }] };
