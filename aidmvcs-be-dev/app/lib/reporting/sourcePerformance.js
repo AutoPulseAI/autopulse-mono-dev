@@ -1,6 +1,6 @@
 // Source and sub-source performance (Betsy, 10 Nov 2026: like eLead's "Source and Sub Source Performance" report).
 // Rows: All Types -> each lead type (Up Type) -> each source -> each sub-source, with Leads, Appts Set, Appts Shown,
-// Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
+// Appts Missed (the no-shows), Upcoming Appts (13 Nov 2026 meeting), Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
 // source.appointments, source.shown, source.crm_sold in kpis/leadSource.js), so the "All Types" row always equals
 // the numbers on screen. Visits are Desk Log check-ins (sales.showroom_visits). Front / Back / Total Gross: DealerVault
 // deals dated in the range, matched to their leads (./dealGross.js: same VIN, phone or email); "–" when the dealer has no
@@ -24,7 +24,7 @@ export const NO_SUB = 'No Sub-Source';
 
 const MEASURES = Object.freeze([
   ['leads', 'source.leads'], ['visits', 'sales.showroom_visits'], ['appts_set', 'source.appointments'],
-  ['appts_shown', 'source.shown'],
+  ['appts_shown', 'source.shown'], ['appts_missed', 'source.missed'], ['appts_upcoming', 'source.upcoming'],
   ['sold', 'source.crm_sold'],
 ]);
 // The lead type ("Up Type"): app/lib/reporting/normalize.js, so the KPIs can use it too.
@@ -49,12 +49,12 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
 
   // type -> source -> sub -> counts
   const tree = new Map();
-  const total = { leads: 0, visits: 0, appts_set: 0, appts_shown: 0, sold: 0 };
+  const counts = () => ({ leads: 0, visits: 0, appts_set: 0, appts_shown: 0, appts_missed: 0, appts_upcoming: 0, sold: 0 });
+  const total = counts();
   const node = (map, key, make) => {
     if (!map.has(key)) map.set(key, make());
     return map.get(key);
   };
-  const counts = () => ({ leads: 0, visits: 0, appts_set: 0, appts_shown: 0, sold: 0 });
   for (const [measure, rows] of sets) {
     for (const r of rows) {
       const lead = r.lead_id ? leads.get(String(r.lead_id)) || null : null;
@@ -93,7 +93,7 @@ export async function sourcePerformance(args, { basis = BASIS.TIMEFRAME, ctx = {
     const g = gross.get(c) || { front: 0, back: 0, total: 0 };
     return {
       level, up_type, source, sub_source, leads: c.leads, visits: c.visits, appts_set: c.appts_set,
-      appts_shown: c.appts_shown, sold: c.sold, closing_ratio: ratio(c.sold, c.leads),
+      appts_shown: c.appts_shown, appts_missed: c.appts_missed, appts_upcoming: c.appts_upcoming, sold: c.sold, closing_ratio: ratio(c.sold, c.leads),
       front_gross: deals.available ? round(g.front) : null, back_gross: deals.available ? round(g.back) : null,
       total_gross: deals.available ? round(g.total) : null,
     };
@@ -129,7 +129,7 @@ export function csvCell(value) {
 export const CSV_COLUMNS = Object.freeze([
   ['company', 'Company'], ['up_type', 'Up Type'], ['source', 'Source'], ['sub_source', 'Sub-Source'],
   ['leads', 'Leads'], ['visits', 'Visits'], ['appts_set', 'Appts Set'], ['appts_shown', 'Appts Shown'],
-  ['sold', 'Sold'], ['closing_ratio', 'Closing Ratio'], ['front_gross', 'Front Gross'], ['back_gross', 'Back Gross'],
+  ['appts_missed', 'Appts Missed'], ['appts_upcoming', 'Upcoming Appts'], ['sold', 'Sold'], ['closing_ratio', 'Closing Ratio'], ['front_gross', 'Front Gross'], ['back_gross', 'Back Gross'],
   ['total_gross', 'Total Gross'],
 ]);
 
@@ -148,9 +148,14 @@ export function sourceTableLines(report, company) {
     })),
     [],
     ['Visits: customers checked in on the Desk Log.'],
+    [APPTS_NOTE],
     [grossNote(report)],
   ];
 }
+
+// What the appointment columns count (13 Nov 2026 meeting).
+export const APPTS_NOTE = 'Appts Set: appointments made in the period. Appts Shown / Missed / Upcoming: appointments '
+  + 'scheduled in the period that the customer showed for / that were no-shows / that are still to come.';
 
 /** What the gross columns hold, for the report's footnote. */
 export function grossNote(report) {

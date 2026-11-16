@@ -4,7 +4,7 @@
 // dealership, period and how it was counted, then one table - All Types, each lead type, its sources and sub-sources.
 // pdfmake with the PDF standard fonts (Helvetica), so no font files ship with the app.
 import PdfPrinter from 'pdfmake';
-import { countedText, grossNote } from './sourcePerformance.js';
+import { APPTS_NOTE, countedText, grossNote } from './sourcePerformance.js';
 
 const FONTS = { Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique',
   bolditalics: 'Helvetica-BoldOblique' } };
@@ -14,12 +14,16 @@ export const HEAD = '#1f3b63';
 export const LINE = '#e3e6eb';
 const FILL = { total: '#e8eef8', type: '#f3f6fb' };
 
+// Laid out as eLead's: Company (on the first row), Up Type, Source, Sub-Source, then the numbers. Appts Missed and
+// Upcoming Appts added (13 Nov 2026 meeting); no Appts Due / show rate ("they can calculate their own").
 const COLUMNS = [
-  ['up_type', 'Up Type', 70, 'left'], ['source', 'Source', '*', 'left'], ['sub_source', 'Sub-Source', '*', 'left'],
-  ['leads', 'Leads', 36, 'right'], ['visits', 'Visits', 36, 'right'], ['appts_set', 'Appts Set', 38, 'right'],
-  ['appts_shown', 'Appts Shown', 40, 'right'], ['sold', 'Sold', 30, 'right'],
-  ['closing_ratio', 'Closing Ratio', 44, 'right'], ['front_gross', 'Front Gross', 52, 'right'],
-  ['back_gross', 'Back Gross', 52, 'right'], ['total_gross', 'Total Gross', 54, 'right'],
+  ['company', 'Company', 50, 'left'], ['up_type', 'Up Type', 44, 'left'], ['source', 'Source', '*', 'left'],
+  ['sub_source', 'Sub-Source', '*', 'left'],
+  ['leads', 'Leads', 26, 'right'], ['visits', 'Visits', 26, 'right'], ['appts_set', 'Appts Set', 28, 'right'],
+  ['appts_shown', 'Appts Shown', 30, 'right'], ['appts_missed', 'Appts Missed', 32, 'right'],
+  ['appts_upcoming', 'Upcoming Appts', 44, 'right'], ['sold', 'Sold', 22, 'right'],
+  ['closing_ratio', 'Closing Ratio', 34, 'right'], ['front_gross', 'Front Gross', 44, 'right'],
+  ['back_gross', 'Back Gross', 44, 'right'], ['total_gross', 'Total Gross', 44, 'right'],
 ];
 
 const count = (n) => Number(n || 0).toLocaleString('en-US');
@@ -27,8 +31,9 @@ const money = (n) => (n == null ? '–' : `${n < 0 ? '(' : ''}$${Math.abs(n).toL
   { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${n < 0 ? ')' : ''}`);
 
 /** One table row's cells. Like eLead, a lead type is named on its own row only, a source on its own row only. */
-function cells(r) {
+function cells(r, company = '') {
   const label = {
+    company: r.level === 'total' ? company : '',
     up_type: r.level === 'total' || r.level === 'type' ? r.up_type : '',
     source: r.level === 'sub' ? '' : r.source,
     sub_source: r.sub_source,
@@ -55,7 +60,7 @@ export const TABLE_LAYOUT = {
 };
 
 /** Betsy's source / sub-source table (pdfmake node). */
-export function sourceTableNode(report) {
+export function sourceTableNode(report, company = '') {
   return {
     table: {
       headerRows: 1,
@@ -63,15 +68,16 @@ export function sourceTableNode(report) {
       body: [
         COLUMNS.map(([, label, , align]) => ({ text: label, bold: true, color: '#ffffff', fillColor: HEAD,
           alignment: align, margin: [0, 4, 0, 4] })),
-        ...report.rows.map(cells),
+        ...report.rows.map((r) => cells(r, company)),
       ],
     },
-    layout: TABLE_LAYOUT,
+    // 15 columns on a landscape page: narrower padding than the other tables so Source / Sub-Source keep room.
+    layout: { ...TABLE_LAYOUT, paddingLeft: () => 3, paddingRight: () => 3 },
   };
 }
 
 // The footnote under the table: visits, and what the gross columns hold (DealerVault matching, ./sourcePerformance.js).
-export const sourceNote = (report) => `Visits: customers checked in on the Desk Log. ${grossNote(report)}`;
+export const sourceNote = (report) => `Visits: customers checked in on the Desk Log. ${APPTS_NOTE} ${grossNote(report)}`;
 
 /** A report's page setup: title block with the dealership and period, footer with page numbers. */
 export function reportPage({ title, company, from, to, meta, content, orientation = 'landscape' }) {
@@ -112,7 +118,7 @@ export function sourcePerformanceDoc(report, { company, from, to, generated, fil
     title: 'Source and Sub Source Performance', company, from, to,
     meta: [['Generated', generated], ['Report Period', `${from} - ${to}`], ['Counted', countedText(report.basis)],
       ...(filters ? [['Filters', filters]] : [])],
-    content: [sourceTableNode(report), { text: sourceNote(report), color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] }],
+    content: [sourceTableNode(report, company), { text: sourceNote(report), color: MUTED, fontSize: 7.5, margin: [0, 8, 0, 0] }],
   });
 }
 

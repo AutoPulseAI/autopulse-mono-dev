@@ -32,7 +32,9 @@ const PRESETS = [
 
 export const PRESET_LABELS = Object.fromEntries([...PRESETS, ["custom", "Custom"]]);
 
-export default function DashboardDatePicker({ value, onChange, timezone }) {
+// allowFuture: the end date may be after today (the Dashboard, 13 Nov 2026 meeting: "run the report from November 1st
+// to December 31st" to see the upcoming appointments in it). Other pages stop at today.
+export default function DashboardDatePicker({ value, onChange, timezone, allowFuture = false }) {
   const tz = timezone || "America/New_York";
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState(value?.preset || "today");
@@ -150,7 +152,7 @@ export default function DashboardDatePicker({ value, onChange, timezone }) {
                 scroll={{ enabled: true, monthHeight: 260, longMonthHeight: 300, calendarHeight: 330 }}
                 showDateDisplay={false}
                 showMonthAndYearPickers={true}
-                maxDate={toLocal(moment.tz(tz))}
+                maxDate={allowFuture ? undefined : toLocal(moment.tz(tz))}
               />
             </div>
           </div>

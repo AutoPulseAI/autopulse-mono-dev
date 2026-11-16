@@ -309,6 +309,7 @@ function Dashboard() {
                 value={dateRange}
                 onChange={handleDateRangeChange}
                 timezone={dealerTimezone}
+                allowFuture
               />
               {reportsAllowed === true && (
                 <DownloadReport dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />

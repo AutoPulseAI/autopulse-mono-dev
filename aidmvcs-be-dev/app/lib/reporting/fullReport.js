@@ -140,7 +140,7 @@ export function fullReportDoc(report, { company, from, to, generated, filters = 
     if (rows.length) content.push(titled(measuresTable(rows), s.label));
     if (s.id === 'executive') {
       for (const basis of [BASIS.TIMEFRAME, BASIS.CURRENT]) {
-        content.push(titled(sourceTableNode(report.sources[basis]), 'Source and Sub Source Performance',
+        content.push(titled(sourceTableNode(report.sources[basis], company), 'Source and Sub Source Performance',
           countedText(basis)));
       }
       content.push({ text: sourceNote(report.sources[BASIS.TIMEFRAME]), color: MUTED, fontSize: 7.5, margin: [0, 6, 0, 0] });
