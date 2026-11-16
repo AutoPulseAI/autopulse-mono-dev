@@ -1127,7 +1127,7 @@ hr {
 }
 
 @media (min-width: 992px) and (max-width: 1300px) {
-  .lead_fltr button i {
+  .lead_fltr .btn i {
     display: none;
   }
 }
@@ -1546,6 +1546,7 @@ background-color: var(--white);
   .lead_center_col {
     max-height: calc(100vh - var(--header-height) - 80px);
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
   }
 }
@@ -1568,17 +1569,34 @@ background-color: var(--white);
   font-weight: 600;
 }
 
-/* The lead's status at the top of the lead card (17 Nov 2026): always in view, click to change it. */
-.lead_status_bar {
-  display: flex;
+/* The lead's status pill on the lead card (17 Nov 2026): tinted in the status colour, click to change it. */
+.lead_status_pill {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  border: 0;
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: #fff;
-  text-align: left;
+  gap: 5px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
 }
-.lead_status_bar:disabled {
+.lead_status_pill:disabled {
   cursor: default;
+}
+.lead_status_dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.lead_fltr .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead_view .min-w-0 {
+  min-width: 0;
 }

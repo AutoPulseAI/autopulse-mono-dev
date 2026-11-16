@@ -6,8 +6,8 @@
 //   - Edit turns the card into a form; Save sends only what changed (PATCH /api/leads/[id]/details), and the customer
 //     record follows (name, phone, email); a field someone else changed meanwhile is refused, not overwritten;
 //   - the lead date shows once, with a lock;
-//   - the lead's status is a coloured bar at the top, in view and edit mode alike; clicking it opens Update Status
-//     (17 Nov 2026: "the status is hidden among all of these things");
+//   - the lead's status is a pill beside its type and source, in view and edit mode alike; clicking it opens Update
+//     Status (17 Nov 2026: "the status is hidden among all of these things");
 //   - VIN: typing a VIN or stock # searches the dealer's inventory (api/inventory/lookup); picking a car fills the VIN,
 //     year, make and model. Any VIN can still be typed by hand.
 import { useEffect, useState } from "react";
@@ -42,15 +42,15 @@ export function leadTypeName(lead) {
 const str = (v) => (v == null ? "" : String(v));
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 
-function StatusBar({ lead, onStatusClick }) {
+// The lead's status as a pill next to its type and source: tinted in its colour, click to change it.
+function StatusPill({ lead, onStatusClick }) {
   const label = leadStatusLabel(lead) || "No status";
   const color = statusColor(label);
   return (
-    <button type="button" className="lead_status_bar mb-2" style={{ background: color }} onClick={onStatusClick}
-      disabled={!onStatusClick} title={onStatusClick ? "Update the status" : undefined}>
-      <span className="small text-uppercase opacity-75 me-2">Status</span>
-      <strong className="me-auto">{label}</strong>
-      {onStatusClick && <span className="small"><i className="fa-solid fa-pen me-1" />Change</span>}
+    <button type="button" className="lead_status_pill" onClick={onStatusClick} disabled={!onStatusClick}
+      style={{ color, borderColor: `${color}55`, background: `${color}14` }} title={onStatusClick ? "Change the status" : label}>
+      <span className="lead_status_dot" style={{ background: color }} />{label}
+      {onStatusClick && <i className="fa-solid fa-chevron-down ms-1" style={{ fontSize: "0.65em" }} />}
     </button>
   );
 }
@@ -125,7 +125,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
   if (form) {
     return (
       <div className="lead_edit mb-2">
-        <StatusBar lead={lead} onStatusClick={onStatusClick} />
+        <div className="mb-2"><StatusPill lead={lead} onStatusClick={onStatusClick} /></div>
         <div className="row g-2 small">
           <Form.Group className="col-12"><Form.Label className="mb-0">Name</Form.Label>
             <Form.Control size="sm" autoFocus value={form.name} maxLength={120} onChange={set("name")} /></Form.Group>
@@ -165,14 +165,16 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
 
   return (
     <div className="lead_view mb-1">
-      <StatusBar lead={lead} onStatusClick={onStatusClick} />
-      <div className="d-flex align-items-start mb-1">
-        <div className="me-auto">
-          <div className="fw-semibold fs-6">{lead?.name || "No name"}</div>
-          <span className="badge me-1" style={{ background: TYPE_COLOR[type] || "#6c757d" }}>{type}</span>
-          <span className="small">{lead?.lead_source || lead?.source || "Unknown source"}</span>
+      <div className="d-flex align-items-start gap-2 mb-2">
+        <div className="me-auto min-w-0">
+          <div className="fw-semibold fs-6 text-truncate">{lead?.name || "No name"}</div>
+          <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
+            <span className="badge" style={{ background: TYPE_COLOR[type] || "#6c757d" }}>{type}</span>
+            <span className="small text-muted me-1">{lead?.lead_source || lead?.source || "Unknown source"}</span>
+            <StatusPill lead={lead} onStatusClick={onStatusClick} />
+          </div>
         </div>
-        <Button size="sm" variant="outline-custom" onClick={startEdit} title="Edit the lead's details">
+        <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
           <i className="fa-solid fa-pen me-1" />Edit</Button>
       </div>
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
