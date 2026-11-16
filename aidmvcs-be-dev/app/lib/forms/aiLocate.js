@@ -8,7 +8,8 @@
 import { clean, matchSource, readPages } from './detect.js';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
-const MODEL = process.env.OPENAI_FORMS_MODEL || 'gpt-4.1';
+// First read of a scan: OPENAI_FORMS_MODEL (gpt-4.1). "Retry" on a form: the bigger OPENAI_FORMS_MODEL_RETRY (gpt-5).
+export const MODELS = { standard: process.env.OPENAI_FORMS_MODEL || 'gpt-4.1', retry: process.env.OPENAI_FORMS_MODEL_RETRY || 'gpt-5' };
 const key = () => process.env.OPENAI_API_KEY || process.env.OPENAPI_KEY || '';
 export const aiAvailable = () => Boolean(key());
 
@@ -34,13 +35,13 @@ printed. For each one give:
   For a write-in line, y1 is the line itself and y0 is about one line of text above it.
 title: the form's title.`;
 
-async function ask(buffer, filename) {
+async function ask(buffer, filename, model) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 120000);
+  const timer = setTimeout(() => ctrl.abort(), 240000);
   try {
     const res = await fetch(API_URL, { method: 'POST', signal: ctrl.signal,
       headers: { Authorization: `Bearer ${key()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, temperature: 0, response_format: { type: 'json_schema', json_schema: SCHEMA },
+      body: JSON.stringify({ model, ...(/^gpt-4/.test(model) ? { temperature: 0 } : {}), response_format: { type: 'json_schema', json_schema: SCHEMA },
         messages: [{ role: 'user', content: [
           { type: 'file', file: { filename: filename || 'form.pdf', file_data: `data:application/pdf;base64,${buffer.toString('base64')}` } },
           { type: 'text', text: PROMPT }] }] }) });
@@ -54,11 +55,11 @@ async function ask(buffer, filename) {
  * @returns {Promise<{ pages: number, fields: Array }>} the blanks, in the same shape as detectFields' (kind 'blank',
  *   found_by: 'ai'). Throws { status: 422 } with a plain message when the AI is not set up or finds nothing.
  */
-export async function aiLocate(buffer, { filename } = {}) {
+export async function aiLocate(buffer, { filename, retry = false } = {}) {
   if (!aiAvailable()) throw Object.assign(new Error('The AI that reads scanned forms is not set up on this server.'), { status: 422 });
   const pages = await readPages(buffer);
   let answer;
-  try { answer = await ask(buffer, filename); } catch (e) {
+  try { answer = await ask(buffer, filename, retry ? MODELS.retry : MODELS.standard); } catch (e) {
     console.error('[forms] AI locate failed:', e?.message);
     throw Object.assign(new Error('The AI could not read this form just now. Try again in a minute.'), { status: 502 });
   }

@@ -1,8 +1,7 @@
 // Reading an uploaded form, whatever its format (the user, 16 Nov 2026: "it can be an image that has been converted to
 // the PDF ... the forms can be in different format ... handle all of the edge cases"):
 //   - a fillable PDF, a digital PDF with underscores or drawn lines / boxes: read from the PDF (lib/forms/detect.js)
-//   - a scanned PDF, or nothing found to fill: the AI finds the blanks (lib/forms/aiLocate.js); the form then waits
-//     for a check of its Preview before staff can use it
+//   - a scanned PDF, or nothing found to fill: the AI finds the blanks (lib/forms/aiLocate.js)
 //   - a JPG / PNG of the form (a photo or a scan saved as a picture): made into a one-page PDF first, then as a scan
 //   - Word, HEIC and other files: refused with what to upload instead
 // Locked, password-protected, damaged and LiveCycle (XFA-only) PDFs are refused by detectFields with what to do.

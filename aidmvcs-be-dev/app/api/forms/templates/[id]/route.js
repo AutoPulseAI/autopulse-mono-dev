@@ -1,8 +1,7 @@
 // One form of the library. Library managers only, except GET.
 //   GET    ?dealer_id                -> { template, fields (each blank: label, what fills it), history }
 //   PATCH  { dealer_id, name?, active? }  -> rename / switch on or off
-//   POST   multipart: dealer_id, file -> a new version of the same form (its blanks found again; older kept). Found by
-//          the AI (a scan): the form is switched off until checked with Preview.
+//   POST   multipart: dealer_id, file -> a new version of the same form (its blanks found again; older kept).
 //   DELETE ?dealer_id                -> leaves the library (exports already made stay in the export log)
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
@@ -26,8 +25,8 @@ async function load(req, params, dealerId) {
 const detail = (t) => {
   const v = t.versions.find((x) => x.version === t.current_version) || {};
   return { template: templateSummary(t.toObject()),
-    fields: (v.fields || []).map((f) => ({ label: f.label, page: f.page, fills_with: f.source ? sourceLabel(f.source) : null,
-      found_by_ai: f.found_by === 'ai' })),
+    fields: (v.fields || []).map((f, i) => ({ n: i + 1, label: f.label, page: f.page, fills_with: f.source ? sourceLabel(f.source) : null,
+      kind: f.found_by === 'ai' ? 'AI' : f.kind === 'pdf_field' ? 'Fillable field' : 'Blank line' })),
     history: t.history.slice(-20).reverse() };
 };
 
@@ -79,8 +78,7 @@ export async function POST(req, { params }) {
     pages: found2.pages, fields: found2.fields, found_by_ai: found2.found_by_ai, created_by: actor.by, created_by_name: actor.by_name });
   t.current_version = version;
   t.history.push({ ...actor, action: 'new version', detail: `v${version}: ${found2.filename || 'PDF'}, ${found2.fields.length} blanks`
-    + `${found2.found_by_ai ? ' (found by the AI; switched off until checked)' : ''}` });
-  if (found2.found_by_ai) t.active = false;
+    + `${found2.found_by_ai ? ' (found by the AI)' : ''}` });
   await t.save();
   return json(detail(t));
 }

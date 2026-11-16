@@ -2,9 +2,8 @@
 //   GET  ?dealer_id[&usable=1]  -> { templates, can_manage }  (usable: switched on and allowed for the caller - the
 //                                  list behind the customer profile's "Export to form")
 //   POST multipart: dealer_id, name, file (PDF, or a JPG / PNG of the form) -> the form is stored as uploaded and its
-//        blanks found and matched to customer data (lib/forms/read.js). A form whose blanks the AI had to find (a scan)
-//        starts switched off, to be checked with Preview first. Library managers only ("Manage Account Information" /
-//        dealer account).
+//        blanks found and matched to customer data (lib/forms/read.js; a scan's blanks by the AI). Library managers only
+//        ("Manage Account Information" / dealer account).
 // Errors: 400 not a PDF / picture, locked, damaged · 422 nothing to fill / XFA / scan with no AI set up · 502 AI down
 // · 401 · 403.
 import dbConnect from '@lib/mongodb';
@@ -43,11 +42,11 @@ export async function POST(req) {
   try { found = await readForm(Buffer.from(await file.arrayBuffer()), file.name); } catch (e) { return fail(e.message, e.status || 400); }
   const fileId = await saveFile(found.buffer, { filename: found.filename, dealerId: access.dealerId, kind: 'form' });
   const actor = actorOf(access.user);
-  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, active: !found.found_by_ai, current_version: 1,
+  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, active: true, current_version: 1,
     versions: [{ version: 1, source_file_id: fileId, source_filename: found.filename || null, fillable: found.fillable,
       pages: found.pages, fields: found.fields, found_by_ai: found.found_by_ai, created_by: actor.by, created_by_name: actor.by_name }],
     history: [{ ...actor, action: 'uploaded', detail: `${found.filename || 'PDF'}: ${found.fields.length} blanks`
-      + `${found.found_by_ai ? ' (found by the AI; switched off until checked)' : ''}, `
+      + `${found.found_by_ai ? ' (found by the AI)' : ''}, `
       + `${found.fields.filter((f) => f.source).length} filled from the customer's data` }] });
   return json({ template: templateSummary(t.toObject()) }, 201);
 }

@@ -1,7 +1,8 @@
-// "Find blanks with AI" on one form: for a form whose blanks were missed or misplaced when it was read (an unusual
-// layout). The AI's blanks replace the form's read blanks (a fillable PDF's own fields are kept); the form is switched
-// off until checked with Preview. Undo puts the earlier blanks back. Library managers only.
-//   POST { dealer_id, undo? } -> the form's detail (as GET /api/forms/templates/[id])
+// "Retry" on one form (Forms Library > the form's panel): its blanks are found again by the bigger AI model
+// (lib/forms/aiLocate.js MODELS.retry), for a form whose blanks were missed, misplaced or mislabelled. The AI's blanks
+// replace the form's other blanks (a fillable PDF's own fields are kept). Undo puts the earlier blanks back.
+// Library managers only.
+//   POST { dealer_id, undo? } -> { template }
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import FormTemplate from '@models/FormTemplate';
@@ -32,15 +33,14 @@ export async function POST(req, { params }) {
     t.history.push({ ...actor, action: 'AI blanks undone', detail: `back to ${v.fields.length} blanks` });
   } else {
     let ai;
-    try { ai = await aiLocate(await readFile(v.source_file_id), { filename: v.source_filename }); } catch (e) { return fail(e.message, e.status || 500); }
+    try { ai = await aiLocate(await readFile(v.source_file_id), { filename: v.source_filename, retry: true }); } catch (e) { return fail(e.message, e.status || 500); }
     const kept = plain(v.fields).filter((f) => f.kind === 'pdf_field');
     if (!Array.isArray(v.fields_before_ai)) v.fields_before_ai = plain(v.fields);
     // A blank the AI found on top of one of the PDF's own fields is that field.
     const onField = (a) => kept.some((k) => k.page === a.page && a.y >= k.y - 4 && a.y <= k.y + (k.h || 12) + 4
       && Math.min(a.x + a.w, k.x + k.w) - Math.max(a.x, k.x) > 0.3 * Math.min(a.w, k.w));
     v.fields = [...kept, ...ai.fields.filter((a) => !onField(a))]; v.found_by_ai = true;
-    t.active = false;
-    t.history.push({ ...actor, action: 'blanks found by AI', detail: `${ai.fields.length} blanks; switched off until checked` });
+    t.history.push({ ...actor, action: 'blanks found by AI', detail: `${ai.fields.length} blanks (retry)` });
   }
   t.markModified('versions');
   await t.save();

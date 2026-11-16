@@ -47,12 +47,12 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
   // A LiveCycle (XFA) copy of the form would be shown instead of the filled fields in Adobe Reader.
   try { if (form.hasXFA()) form.deleteXFA(); } catch { /* none */ }
   let filled = 0; const empty = []; const unprintable = [];
-  for (const f of fields) {
+  for (const [i, f] of fields.entries()) {
     const page = pages[f.page - 1];
     const rot = Number(f.rot) || 0;
     if (preview) {
       if (!page) continue;
-      const tag = printable(font, f.source ? describe(f.source) : 'left blank');
+      const tag = printable(font, `${i + 1}. ${f.source ? describe(f.source) : 'left blank'}`);
       const w = Math.max(20, f.w || 60); const h = Math.max(8, (f.kind === 'pdf_field' ? f.h : f.size + 3) || 10);
       const [bx, by] = f.kind === 'pdf_field' ? [f.x, f.y] : shift(f.x, f.y, rot, -1, -2);
       const color = f.source ? rgb(0.1, 0.35, 0.85) : rgb(0.9, 0.5, 0.1);
