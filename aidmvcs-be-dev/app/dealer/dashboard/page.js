@@ -923,9 +923,10 @@ function Dashboard() {
 
         {/* CUSTOMER REPLIES BY LEAD AGE (13 Nov 2026 meeting, 77:00-82:00): a thick line and a capital heading set it apart
             from the boxes above; light orange because it breaks down the orange Customer Replied box. The boxes never
-            overlap and add up: today's + past = Customer Replied; the lead-age boxes = past (app/lib/contactedLeads.js
-            repliedSplit). Each opens exactly the leads it counted. */}
-        {contactedSplit?.older_by_age && (
+            overlap and add up: today's + past = Customer Replied, and the lead-day boxes = Customer Replied too (the day a
+            lead came in is Day 1, so today's leads are in "1-7 days"; app/lib/contactedLeads.js repliedSplit). Each opens
+            exactly the leads it counted. */}
+        {contactedSplit?.by_lead_day && (
           <div className="dashboard_counts reply_breakdown">
             <h3 className="reply_breakdown_title">CUSTOMER REPLIES BY LEAD AGE
               <small className="ms-2">{contactedSplit.new_leads} + {contactedSplit.older_leads} = {contactedCount} customer replied</small>
@@ -938,13 +939,16 @@ function Dashboard() {
               <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-clock-rotate-left"
                 count={contactedSplit.older_leads} label="Replied from Past Leads"
                 link={withRange('/dealer/leads?status=Contacted&reply_age=older')}
-                description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'} · broken down by age below`} />
+                description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'}`} />
             </div>
+            <small className="text-muted d-block mb-2">
+              All {contactedCount} by how old the lead was when the customer replied - the day it came in is day 1.
+            </small>
             <div className="row gx-2 gx-lg-4">
               {[['d1_7', '1-7 days old'], ['d8_15', '8-15 days old'], ['d16_30', '16-30 days old'], ['d31_60', '31-60 days old'],
                 ['d61_plus', 'Over 60 days old']].map(([key, age]) => (
                 <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" iconClass="fa-light fa-hourglass-half"
-                  count={contactedSplit.older_by_age[key] ?? 0} label={`Past lead, ${age}`}
+                  count={contactedSplit.by_lead_day[key] ?? 0} label={`Lead ${age}`}
                   link={withRange(`/dealer/leads?status=Contacted&reply_age=${key}`)} />
               ))}
             </div>
