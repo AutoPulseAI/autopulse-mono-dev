@@ -1,8 +1,11 @@
 "use client";
-// Add Customer / check in (Betsy's Desk Log; 13 Nov 2026 meeting): find the customer (name, phone, email) - or, if
+// Customer Check-in (Betsy's Desk Log; 13 Nov 2026 meeting): find the customer (name, phone, email) - or, if
 // they're not in the CRM, add them right here (name, phone, email, lead type, lead source, vehicle): their lead and
 // customer are created in the same step as the check-in (app/lib/deskLog/newCustomer.js). Then who works the deal.
 // For an existing customer the vehicle, the BDC agent and an open trade-in are filled from the lead.
+// A customer with several leads (17 Nov 2026): the search shows the customer once, with all their leads; the check-in
+// goes on the lead with today's appointment, else the newest open lead (api/desk-log/customers), and staff can pick
+// another of their leads before checking in.
 // Stock #: typing it searches the dealer's inventory (stock # or VIN); picking a car fills the stock #, the year /
 // make / model and VIN of the visit (and of a new customer's vehicle of interest).
 import { useEffect, useState } from "react";
@@ -18,6 +21,12 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
   const [found, setFound] = useState([]);
   const [searching, setSearching] = useState(false);
   const [lead, setLead] = useState(null);
+  const [customer, setCustomer] = useState(null); // the picked customer, with all their leads
+  const pickCustomer = (c, leadId = null) => {
+    setCustomer(c);
+    setLead(c.leads.find((l) => l.id === (leadId || c.default_lead_id)) || c.leads[0]);
+  };
+  const clearCustomer = () => { setCustomer(null); setLead(null); };
   const [form, setForm] = useState({ department: "sales", salesperson_id: "", sales_manager_id: "", stage: "",
     stock_number: "", note: "", at: moment.tz(tz).format("YYYY-MM-DDTHH:mm") });
   const [busy, setBusy] = useState(false);
@@ -36,7 +45,9 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
   // From a customer's profile: that lead is already picked.
   useEffect(() => {
     if (!initialLeadId) return;
-    deskLogSearch(dealerId, initialLeadId).then((res) => { if (res.leads?.[0]) setLead(res.leads[0]); }).catch(() => {});
+    deskLogSearch(dealerId, initialLeadId).then((res) => {
+      if (res.customers?.[0]) pickCustomer(res.customers[0], initialLeadId);
+    }).catch(() => {});
   }, [initialLeadId, dealerId]);
 
   useEffect(() => {
@@ -46,7 +57,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
       setSearching(true);
       try {
         const res = await deskLogSearch(dealerId, q.trim());
-        if (live) setFound(res.leads || []);
+        if (live) setFound(res.customers || []);
       } catch (e) {
         if (live) setError(e.message);
       } finally {
@@ -106,7 +117,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
 
   return (
     <Modal show onHide={onHide} centered size="lg">
-      <Modal.Header closeButton><Modal.Title as="h5">{fresh ? "New customer" : "Add Customer / check in"}</Modal.Title></Modal.Header>
+      <Modal.Header closeButton><Modal.Title as="h5">{fresh ? "New customer" : "Customer Check-in"}</Modal.Title></Modal.Header>
       <Modal.Body>
         {fresh && (
           <div className="row g-2 mb-3">
@@ -141,13 +152,19 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
             {searching && <Spinner animation="border" size="sm" className="mt-2" />}
             {found.length > 0 && (
               <ListGroup className="mt-2">
-                {found.map((l) => (
-                  <ListGroup.Item key={l.id} action onClick={() => setLead(l)}>
-                    <strong>{l.name || "No name"}</strong> <span className="text-muted">{l.phone} {l.email}</span>
-                    <small className="d-block text-muted">{TYPE_LABEL[l.lead_type] || l.lead_type} - {l.source}
-                      {l.vehicle ? ` - ${l.vehicle}` : ""} - lead from {moment(l.created_at).tz(tz).format("MMM D, YYYY")}</small>
-                  </ListGroup.Item>
-                ))}
+                {found.map((c) => {
+                  const d = c.leads.find((l) => l.id === c.default_lead_id) || c.leads[0];
+                  const open = c.leads.filter((l) => l.open).length;
+                  return (
+                    <ListGroup.Item key={c.customer_id || d.id} action onClick={() => pickCustomer(c)}>
+                      <strong>{c.name || "No name"}</strong> <span className="text-muted">{c.phone} {c.email}</span>
+                      {c.leads.length > 1 && <span className="badge bg-secondary ms-2">{c.leads.length} leads{open !== c.leads.length ? `, ${open} open` : ""}</span>}
+                      {d.appointment_today && <span className="badge bg-success ms-2">Appointment today {d.appointment_today !== "today" ? d.appointment_today : ""}</span>}
+                      <small className="d-block text-muted">{TYPE_LABEL[d.lead_type] || d.lead_type} - {d.source}
+                        {d.vehicle ? ` - ${d.vehicle}` : ""} - {d.status_label} - lead from {moment(d.created_at).tz(tz).format("MMM D, YYYY")}</small>
+                    </ListGroup.Item>
+                  );
+                })}
               </ListGroup>
             )}
             {q.trim().length >= 2 && !searching && !found.length && (
@@ -160,10 +177,30 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
         ) : null}
         {(lead || fresh) && (
           <>
-            {lead && !fresh && <div className="d-flex align-items-start mb-3">
-              <div className="me-auto"><strong>{lead.name || "No name"}</strong>
-                <small className="d-block text-muted">{lead.phone} {lead.email}</small></div>
-              <Button size="sm" variant="link" onClick={() => setLead(null)}>Change</Button>
+            {lead && !fresh && <div className="mb-3">
+              <div className="d-flex align-items-start">
+                <div className="me-auto"><strong>{customer?.name || lead.name || "No name"}</strong>
+                  <small className="d-block text-muted">{customer?.phone || lead.phone} {customer?.email || lead.email}</small></div>
+                <Button size="sm" variant="link" onClick={clearCustomer}>Change customer</Button>
+              </div>
+              {customer?.leads?.length > 1 && (
+                <div className="border rounded p-2 mt-2">
+                  <small className="fw-semibold d-block mb-1">This customer has {customer.leads.length} leads. Check in on:</small>
+                  {customer.leads.map((l) => (
+                    <Form.Check key={l.id} type="radio" id={`ci-lead-${l.id}`} name="ci-lead" className="small"
+                      checked={lead.id === l.id} onChange={() => setLead(l)}
+                      label={<>
+                        {TYPE_LABEL[l.lead_type] || l.lead_type} - {l.source}{l.vehicle ? ` - ${l.vehicle}` : ""}
+                        {" "}- <span className={l.open ? "" : "text-muted"}>{l.status_label}</span>
+                        {" "}- from {moment(l.created_at).tz(tz).format("MMM D, YYYY")}
+                        {l.appointment_today && <span className="badge bg-success ms-1">Appointment today {l.appointment_today !== "today" ? l.appointment_today : ""}</span>}
+                        {l.id === customer.default_lead_id && <span className="text-muted"> (suggested)</span>}
+                      </>} />
+                  ))}
+                  <small className="text-muted d-block mt-1">Suggested: the lead with today&apos;s appointment, else the newest
+                    open lead. Its appointment is marked Showed and its status changes; the other leads are not touched.</small>
+                </div>
+              )}
             </div>}
             <div className="row g-2">
               <Form.Group className="col-md-6"><Form.Label>Checked in at (dealership time)</Form.Label>
