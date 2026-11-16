@@ -110,7 +110,7 @@ test('CSV: never a spreadsheet formula, commas and quotes kept', () => {
       appts_set: 0, appts_shown: 0, sold: 0, closing_ratio: 0, front_gross: null, back_gross: null, total_gross: null },
   ] }, { company: 'Victory, Inc.', from: '11/1/2026', to: '11/9/2026', generated: 'now' });
   assert.match(csv, /^Source and Sub Source Performance\r\n"Victory, Inc\."\r\n/);
-  assert.match(csv, /Company,Up Type,Source,Sub-Source,Leads,Visits,Appts Set,Appts Shown,Sold,Closing Ratio,Front Gross,Back Gross,Total Gross/);
+  assert.match(csv, /Company,Up Type,Source,Sub-Source,Leads,Visits,Appts Set,Appts Shown,Appts Missed,Upcoming Appts,Sold,Closing Ratio,Front Gross,Back Gross,Total Gross/);
   assert.match(csv, /"'=HYPERLINK\(""x""\)"/);
   assert.ok(!/(^|,)=HYPERLINK/m.test(csv));
 });
