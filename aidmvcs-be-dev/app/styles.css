@@ -1567,3 +1567,18 @@ background-color: var(--white);
 .lead_view .badge {
   font-weight: 600;
 }
+
+/* The lead's status at the top of the lead card (17 Nov 2026): always in view, click to change it. */
+.lead_status_bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #fff;
+  text-align: left;
+}
+.lead_status_bar:disabled {
+  cursor: default;
+}
