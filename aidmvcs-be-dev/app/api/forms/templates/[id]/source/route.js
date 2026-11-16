@@ -13,7 +13,7 @@ export async function GET(req, { params }) {
   const access = await formsAccess(req, q.get('dealer_id'));
   if (access.response) return access.response;
   const { id } = await params;
-  const t = mongoose.isValidObjectId(id) ? await FormTemplate.findOne({ _id: id, dealer_id: access.dealerId }).lean() : null;
+  const t = mongoose.isValidObjectId(id) ? await FormTemplate.findOne({ _id: id, dealer_id: access.dealerId, deleted_at: null }).lean() : null;
   const v = t?.versions.find((x) => x.version === Number(q.get('version') || t.current_version));
   if (!v?.source_file_id) return fail('No uploaded PDF for this form', 404);
   return new Response(await readFile(v.source_file_id), { headers: { 'Content-Type': 'application/pdf',

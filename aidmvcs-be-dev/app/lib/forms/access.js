@@ -37,10 +37,9 @@ export const actorOf = (user) => ({ by: user?._id || null, by_name: user?.name |
 // One form as the library lists it.
 export function templateSummary(t) {
   const v = (t.versions || []).find((x) => x.version === t.current_version) || {};
-  const fields = (v.schema?.sections || []).reduce((n, sec) => n + sec.fields.filter((f) => !['heading', 'paragraph']
-    .includes(f.type)).length, 0);
-  return { id: String(t._id), name: t.name, category: t.category, active: t.active, departments: t.departments || [],
-    role_ids: (t.role_ids || []).map(String), statuses: t.statuses || [], retention_days: t.retention_days ?? null,
-    current_version: t.current_version, versions: (t.versions || []).length, fields, ready: Boolean(v.schema),
-    from_pdf: Boolean(v.source_file_id), updated_at: t.updatedAt };
+  const fields = v.fields || [];
+  return { id: String(t._id), name: t.name, category: t.category || 'Other', active: t.active !== false,
+    current_version: t.current_version, ready: Boolean(v.source_file_id && Array.isArray(v.fields)),
+    fillable: Boolean(v.fillable), pages: v.pages || 0, blanks: fields.length,
+    auto_filled: fields.filter((f) => f.source).length, filename: v.source_filename || null, updated_at: t.updatedAt };
 }
