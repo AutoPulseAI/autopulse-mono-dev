@@ -9,6 +9,7 @@ import Email from '../models/Email.js';
 import Lead from '../models/Lead.js';
 import { AiConfigItem, AiConfigVersion } from '../models/AiConfig.js';
 import { BLAST_MIN_LEADS } from './blasts.js';
+import { calendarDayDiff } from './reporting/time.js';
 
 const INBOUND = ['received', 'incoming'];
 const ADF = /<\?adf|<adf[\s>]/i;
@@ -98,7 +99,25 @@ const CHANNEL_MATCH = {
 // Customer Replied split by channel (Betsy, 2 Nov 2026 meeting): leads whose customer texted / emailed in [from, to]
 // (a lead that did both is in both), and how many of the replied leads came in within [from, to] (today's leads vs
 // older ones). `leads`: [{ _id, createdAt }].
-export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadModel = Lead } = {}) {
+// The breakdown of the Dashboard's Customer Replied card (13 Nov 2026 meeting, 77:00-82:00, Betsy): the replied leads
+// split into the range's own leads ("Replied from today's leads") and older leads ("Replied from past leads"), and the
+// older ones by the lead's age when the customer replied - groups that never overlap, so
+//   new + older = Customer Replied   and   d1_7 + d8_15 + d16_30 + d31_60 + d61_plus = older.
+// Lead age = calendar days (dealer time) from the lead coming in to the customer's first reply in the range. A lead
+// from before the range is at least 1 day old at a reply inside it (the range starts at the dealer's midnight).
+export const REPLY_AGE_GROUPS = Object.freeze([
+  ['d1_7', 1, 7], ['d8_15', 8, 15], ['d16_30', 16, 30], ['d31_60', 31, 60], ['d61_plus', 61, Infinity],
+]);
+
+/** 'new' (the lead came in during the range) or the older lead's age group. */
+export function replyAgeGroup(createdAt, firstReplyAt, from, to, tz = 'America/New_York') {
+  const created = createdAt ? new Date(createdAt) : null;
+  if (created && (!from || created >= new Date(from)) && (!to || created <= new Date(to))) return 'new';
+  const age = created && firstReplyAt ? calendarDayDiff(created, firstReplyAt, tz) : 1;
+  return (REPLY_AGE_GROUPS.find(([, lo, hi]) => age >= lo && age <= hi) || REPLY_AGE_GROUPS[0])[0];
+}
+
+export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadModel = Lead, tz } = {}) {
   const ids = leads.map((l) => l._id);
   const [all, texts, emails] = await Promise.all([
     repliedLeadIds(ids, from, to, { EmailModel, LeadModel }),
@@ -108,10 +127,15 @@ export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadMo
   const created = new Map(leads.map((l) => [String(l._id), l.createdAt ? new Date(l.createdAt) : null]));
   const inRange = (at) => at && (!from || at >= new Date(from)) && (!to || at <= new Date(to));
   const fresh = all.filter((r) => inRange(created.get(String(r._id)))).length;
+  const older_by_age = Object.fromEntries(REPLY_AGE_GROUPS.map(([k]) => [k, 0]));
+  for (const r of all) {
+    const group = replyAgeGroup(created.get(String(r._id)), r.first_reply_at, from, to, tz);
+    if (group !== 'new') older_by_age[group] += 1;
+  }
   // The user, 3 Nov 2026: "5 leads came in today, 2 of them replied, 40 older leads replied" - in_range_leads is the 5.
   const inRangeLeads = leads.filter((l) => inRange(l.createdAt ? new Date(l.createdAt) : null)).length;
   return { sms: texts.length, email: emails.length, new_leads: fresh, older_leads: all.length - fresh,
-    in_range_leads: inRangeLeads };
+    in_range_leads: inRangeLeads, older_by_age };
 }
 
 export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, LeadModel = Lead, direction = 'received',
@@ -135,7 +159,7 @@ export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, Le
         regex: ADF.source, options: 'i' } },
       lead_msg: { $regexMatch: { input: { $ifNull: ['$message_id', ''] }, regex: '^lead-' } } } },
     { $match: { adf: false, lead_msg: false } },
-    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' } } },
+    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' }, first_reply_at: { $min: '$timestamp' } } },
     { $sort: { last_reply_at: -1 } },
   ]);
   return rows;
