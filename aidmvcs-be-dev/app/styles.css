@@ -147,12 +147,17 @@ input[type=number] {
 }
 
 /* Button */
+/* A button never lets its text spill past its border (the user, 17 Nov 2026): heights are minimums, so a label that
+   wraps grows the button instead of overflowing it, and a button is never wider than the space it sits in. */
 .btn {
   line-height: 1.2;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .btn-sm {
   min-width: 31px;
-  height: 31px;
+  min-height: 31px;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +191,8 @@ input[type=number] {
 }
 .btn:not(.btn-sm) {
   font-size: var(--f15);
-  height: 34px;
+  min-height: 34px;
+  height: auto;
 }
 .btn.btn-lg {
   font-size: var(--f16) !important;

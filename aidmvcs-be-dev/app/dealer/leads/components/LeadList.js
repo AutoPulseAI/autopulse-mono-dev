@@ -1284,13 +1284,13 @@ useImperativeHandle(ref, () => ({
             (17 Nov 2026: the four buttons overlapped in the narrow list). */}
         <div className="d-flex gap-2 mb-2 align-items-center">
           <span className="small text-muted">Sort:</span>
-          <Form.Select size="sm" className="flex-grow-1" style={{ minWidth: 0, maxWidth: 240 }} value={filters.sort || ''}
+          <Form.Select size="sm" style={{ flex: '1 1 0', minWidth: 0, maxWidth: 240 }} value={filters.sort || ''}
             onChange={(e) => setFilters((prev) => ({ ...prev, sort: e.target.value, page: 1 }))}>
             <option value="">{filters.status === 'Contacted' ? 'Latest reply first' : 'Newest lead first'}</option>
             <option value="created_desc">Created: newest first</option>
             <option value="created_asc">Created: oldest first</option>
           </Form.Select>
-          <Button size="sm" className="text-nowrap ms-auto" variant={filters.stopped ? 'danger' : 'outline-secondary'}
+          <Button size="sm" className="text-nowrap ms-auto flex-shrink-0" variant={filters.stopped ? 'danger' : 'outline-secondary'}
             aria-pressed={Boolean(filters.stopped)} title="Leads the AI has stopped messaging"
             onClick={() => setFilters((prev) => ({ ...prev, stopped: prev.stopped ? '' : '1', page: 1 }))}>
             <i className="fa-regular fa-ban me-1"></i>Stopped
