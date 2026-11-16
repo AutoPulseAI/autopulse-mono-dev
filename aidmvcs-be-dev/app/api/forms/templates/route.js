@@ -7,8 +7,8 @@
 import dbConnect from '@lib/mongodb';
 import FormTemplate from '@models/FormTemplate';
 import { actorOf, canManageForms, canUseTemplate, fail, formsAccess, json, templateSummary } from '@lib/forms/access';
-import { detectFields } from '@lib/forms/detect';
-import { saveFile } from '@lib/forms/storage';
+import { detectFields, redetectEmpty } from '@lib/forms/detect';
+import { readFile, saveFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +18,7 @@ export async function GET(req) {
   const access = await formsAccess(req, params.get('dealer_id'));
   if (access.response) return access.response;
   const all = await FormTemplate.find({ dealer_id: access.dealerId, deleted_at: null }).select('-history').sort({ name: 1 }).lean();
+  await redetectEmpty(all, { readFile, Model: FormTemplate });
   const list = params.get('usable') === '1'
     ? all.filter((t) => t.active !== false && canUseTemplate(access.user, t)).map(templateSummary).filter((t) => t.ready)
     : all.map(templateSummary);

@@ -10,7 +10,7 @@
 // Each blank is matched to a customer-data key by its label (and the section it is in: a "Trade-in" heading makes
 // Year / Make / VIN the trade-in's). A blank nothing matches stays empty on export - nothing is made up. A scanned
 // PDF (a picture, no text and no fields) has nothing to read: it is refused with a plain message.
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFTextField } from 'pdf-lib';
 import { getDocumentProxy } from 'unpdf';
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -116,8 +116,8 @@ export async function detectFields(buffer) {
     if (!widget) continue;
     const r = widget.getRectangle();
     const page = Math.max(1, pages.findIndex((p) => p.ref === widget.P()) + 1);
-    const kind = f.constructor.name;
-    if (kind !== 'PDFTextField') continue; // checkboxes, choices, signatures: left for the person
+    // instanceof, not the class name: the live build shortens class names, so a name check matched nothing.
+    if (!(f instanceof PDFTextField)) continue; // checkboxes, choices, signatures: left for the person
     // Its label: the nearest words to its left on the same row, else just above it.
     const row = lines.filter((l) => l.page === page && l.y >= r.y - 3 && l.y <= r.y + r.height + 2)
       .flatMap((l) => l.items).filter((it) => it.x + it.w <= r.x + 4 && r.x - (it.x + it.w) < 160 && clean(it.str))
@@ -179,4 +179,25 @@ export async function detectFields(buffer) {
       + 'digital version of the form (from Word, Acrobat or your DMS).'), { status: 422 });
   }
   return { fillable: acro.length > 0, pages: pages.length, fields };
+}
+
+/**
+ * Forms uploaded while the live build couldn't see fillable fields (16 Nov 2026: class names are shortened in the
+ * build, so every fillable field was skipped and the form showed "0 of 0") are read again from their stored PDF the
+ * next time the library lists them. Returns how many forms were fixed.
+ */
+export async function redetectEmpty(templates, { readFile, Model }) {
+  let fixed = 0;
+  for (const t of templates) {
+    const v = (t.versions || []).find((x) => x.version === t.current_version);
+    if (!v?.source_file_id || !Array.isArray(v.fields) || v.fields.length || v.redetected) continue;
+    try {
+      const found = await detectFields(await readFile(v.source_file_id));
+      await Model.updateOne({ _id: t._id, 'versions.version': v.version }, { $set: { 'versions.$.fields': found.fields,
+        'versions.$.fillable': found.fillable, 'versions.$.redetected': true } });
+      v.fields = found.fields; v.fillable = found.fillable;
+      fixed += 1;
+    } catch { /* stays as it is */ }
+  }
+  return fixed;
 }
