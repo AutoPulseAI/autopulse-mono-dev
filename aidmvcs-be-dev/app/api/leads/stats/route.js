@@ -137,7 +137,7 @@ export async function GET(request) {
         const leads = await Lead.find(dealerLeads).select('_id createdAt').lean();
         status_count = (await repliedLeadIds(leads.map((l) => l._id), range.$gte, range.$lte)).length;
         // Betsy, 2 Nov 2026 meeting: by text and by email, and today's leads vs older ones.
-        replied_by = await repliedSplit(leads, range.$gte, range.$lte);
+        replied_by = await repliedSplit(leads, range.$gte, range.$lte, { tz: dealerTimezone });
       } else if (fe_lead_status === 'Contacted') {
         const { fe_lead_status: _ignored, ...inRange } = statusQuery;
         const ids = (await Lead.find(inRange).select('_id').lean()).map((l) => l._id);

@@ -896,8 +896,7 @@ export default function ViewConversations({
                   </div>
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id}
-                  leadStatus={lead.fe_lead_status || lead.lead_status || lead.status || null} />}
+                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}
                 {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button

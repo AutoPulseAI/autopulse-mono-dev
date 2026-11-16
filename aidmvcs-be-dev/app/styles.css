@@ -1127,7 +1127,7 @@ hr {
 }
 
 @media (min-width: 992px) and (max-width: 1300px) {
-  .lead_fltr button i {
+  .lead_fltr .btn i {
     display: none;
   }
 }
@@ -1546,6 +1546,7 @@ background-color: var(--white);
   .lead_center_col {
     max-height: calc(100vh - var(--header-height) - 80px);
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
   }
 }
@@ -1568,17 +1569,48 @@ background-color: var(--white);
   font-weight: 600;
 }
 
-/* The lead's status at the top of the lead card (17 Nov 2026): always in view, click to change it. */
-.lead_status_bar {
-  display: flex;
+/* The lead's status pill on the lead card (17 Nov 2026): tinted in the status colour, click to change it. */
+.lead_status_pill {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  border: 0;
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: #fff;
-  text-align: left;
+  gap: 5px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
 }
-.lead_status_bar:disabled {
+.lead_status_pill:disabled {
   cursor: default;
 }
+.lead_status_dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.lead_fltr .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead_view .min-w-0 {
+  min-width: 0;
+}
+
+/* Dashboard colours (13 Nov 2026 meeting, Betsy: "they can just glance and know"). */
+.d_counts_card.tone_orange { background: #fff1e0; border-left: 4px solid #f7931e; }
+.d_counts_card.tone_orange .d_counts_icon { background-color: #f7931e; }
+.d_counts_card.tone_light_orange { background: #fff8ef; border-left: 4px solid #ffc98a; }
+.d_counts_card.tone_light_orange .d_counts_icon { background-color: #ffb45c; }
+.d_counts_card.tone_red { background: #fdecec; border-left: 4px solid #e5383b; }
+.d_counts_card.tone_red .d_counts_icon { background-color: #e5383b; }
+.d_counts_card.tone_green { background: #ecf8ee; border-left: 4px solid #6cc77a; }
+.d_counts_card.tone_green .d_counts_icon { background-color: #2fb344; }
+/* "CUSTOMER REPLIES BY LEAD AGE": a thick line and a capital heading set it apart from the cards above. */
+.reply_breakdown { border-top: 4px solid #f7931e; padding-top: 12px; margin-top: 4px; }
+.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #b45f06; margin-bottom: 10px; }
+.reply_breakdown_title small { font-weight: 500; letter-spacing: 0; color: var(--dark); font-size: 0.8rem; }

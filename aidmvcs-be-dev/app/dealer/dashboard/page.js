@@ -840,12 +840,10 @@ function Dashboard() {
               iconClass="fa-light fa-hand"
               count={contactedCount}
               label="Customer Replied"
+              tone="orange"
               link={withRange('/dealer/leads?status=Contacted')}
-              // The user, 3 Nov 2026: "5 leads came in today, 2 of them replied, 40 older leads replied" - the range's
-              // own leads first, then older leads, then the channel they replied by.
-              description={`${contactedSplit ? `${isTodayRange ? "Today's" : "These dates'"} leads: `
-                + `${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} replied · Older leads: `
-                + `${contactedSplit.older_leads} · SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · ` : ''}`
+              // Today's / older leads are the boxes under "Customer replies by lead age" (13 Nov 2026 meeting).
+              description={`${contactedSplit ? `SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · ` : ''}`
                 + `${cardRangeText()}${compareText('contacted')}`}
             />
 
@@ -865,6 +863,7 @@ function Dashboard() {
               iconClass="fa-light fa-bell"
               count={aiAlertCount}
               label="Dealer Action Required"
+              tone="red"
               link="/dealer/ai/alerts"
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
@@ -880,8 +879,12 @@ function Dashboard() {
               description="Current read count"
             /> */}
             
+          </div>
+          {/* The appointment row (13 Nov 2026 meeting, Betsy: "that whole appointment row ... light green"). */}
+          <div className="row gx-2 gx-lg-4">
             {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
+              tone="green"
               iconClass="fa-solid fa-calendar-days"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
@@ -890,6 +893,7 @@ function Dashboard() {
             />
 
             <CountCard
+              tone="green"
               iconClass="fa-regular fa-calendar-check"
               count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
@@ -898,6 +902,7 @@ function Dashboard() {
             />
 
             <CountCard
+              tone="green"
               iconClass="fa-solid fa-person-walking"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
@@ -906,6 +911,7 @@ function Dashboard() {
             />
 
             <CountCard
+              tone="green"
               iconClass="fa-solid fa-handshake"
               count={step('sold')?.total || 0}
               label="Appointments Sold"
@@ -914,6 +920,36 @@ function Dashboard() {
             />
           </div>
         </div>
+
+        {/* CUSTOMER REPLIES BY LEAD AGE (13 Nov 2026 meeting, 77:00-82:00): a thick line and a capital heading set it apart
+            from the boxes above; light orange because it breaks down the orange Customer Replied box. The boxes never
+            overlap and add up: today's + past = Customer Replied; the lead-age boxes = past (app/lib/contactedLeads.js
+            repliedSplit). Each opens exactly the leads it counted. */}
+        {contactedSplit?.older_by_age && (
+          <div className="dashboard_counts reply_breakdown">
+            <h3 className="reply_breakdown_title">CUSTOMER REPLIES BY LEAD AGE
+              <small className="ms-2">{contactedSplit.new_leads} + {contactedSplit.older_leads} = {contactedCount} customer replied</small>
+            </h3>
+            <div className="row gx-2 gx-lg-4">
+              <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-calendar-day"
+                count={contactedSplit.new_leads} label={isTodayRange ? "Replied from Today's Leads" : "Replied from These Dates' Leads"}
+                link={withRange('/dealer/leads?status=Contacted&reply_age=new')}
+                description={`${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} leads that came in ${isTodayRange ? 'today' : 'in these dates'}`} />
+              <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-clock-rotate-left"
+                count={contactedSplit.older_leads} label="Replied from Past Leads"
+                link={withRange('/dealer/leads?status=Contacted&reply_age=older')}
+                description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'} · broken down by age below`} />
+            </div>
+            <div className="row gx-2 gx-lg-4">
+              {[['d1_7', '1-7 days old'], ['d8_15', '8-15 days old'], ['d16_30', '16-30 days old'], ['d31_60', '31-60 days old'],
+                ['d61_plus', 'Over 60 days old']].map(([key, age]) => (
+                <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" iconClass="fa-light fa-hourglass-half"
+                  count={contactedSplit.older_by_age[key] ?? 0} label={`Past lead, ${age}`}
+                  link={withRange(`/dealer/leads?status=Contacted&reply_age=${key}`)} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Customer replies by lead age (P1 plan items 2-3): renders nothing unless the report is visible to this
             caller (admins first); the cards above are unchanged. */}

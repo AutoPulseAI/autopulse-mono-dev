@@ -1,4 +1,4 @@
-import { contactedLeadIds, repliedLeadIds } from '@lib/contactedLeads';
+import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup } from '@lib/contactedLeads';
 import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { funnelLeadIds } from "@lib/appointmentFunnel";
@@ -517,6 +517,17 @@ export async function GET(req) {
       const repliedBy = { sms: 'text', email: 'email' }[url.searchParams.get("replied_by")] || null;
       repliedOrder = await repliedLeadIds(candidates, from, to, { direction: messagesSent ? 'sent' : 'received',
         channel: messagesSent ? url.searchParams.get("channel") : repliedBy });
+      // The Dashboard's reply breakdown boxes (reply_age=new | d1_7 | d8_15 | d16_30 | d31_60 | d61_plus | older):
+      // exactly the leads each box counted (app/lib/contactedLeads.js replyAgeGroup).
+      const replyAge = messagesSent ? null : url.searchParams.get("reply_age");
+      if (replyAge && (replyAge === 'new' || replyAge === 'older' || REPLY_AGE_GROUPS.some(([k]) => k === replyAge))) {
+        const created = new Map((await Lead.find({ _id: { $in: repliedOrder.map((r) => r._id) } }).select('createdAt').lean())
+          .map((l) => [String(l._id), l.createdAt]));
+        repliedOrder = repliedOrder.filter((r) => {
+          const group = replyAgeGroup(created.get(String(r._id)), r.first_reply_at, from, to, dealerTimezone);
+          return replyAge === 'older' ? group !== 'new' : group === replyAge;
+        });
+      }
       query._id = { $in: repliedOrder.map((r) => r._id) };
     } else if (status === 'Contacted') {
       const candidates = (await Lead.find(query).select('_id').lean()).map((l) => l._id);

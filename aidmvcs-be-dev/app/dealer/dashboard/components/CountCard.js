@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { rememberBack } from "../../components/backLink";
 
-export default function DashboardCard({iconClass, count, label, link, description}) {
+// tone (13 Nov 2026 meeting, Betsy): orange = Customer Replied, light_orange = its breakdown, red = Dealer Action
+// Required, green = the appointment row. colClass: the card's column width (default four to a row on large screens).
+export default function DashboardCard({iconClass, count, label, link, description, tone, colClass = "col col-lg-3 col-md-6 col-6"}) {
     const CardContent = (
-        <div className="w_card d_counts_card">
+        <div className={`w_card d_counts_card${tone ? ` tone_${tone}` : ""}`}>
             <div className="d_counts_icon">
                 <i className={iconClass}></i>
             </div>
@@ -25,7 +27,7 @@ export default function DashboardCard({iconClass, count, label, link, descriptio
     );
 
     return (
-        <div className="col col-lg-3 col-md-6 col-6">
+        <div className={colClass}>
             {link ? (
                 <Link href={link} className="d-block" onClick={() => rememberBack(link)}>
                     {CardContent}
