@@ -1,32 +1,60 @@
 // Colours and labels for the Desk Log screen (Betsy's design).
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 
-// Platform colours (user, 13 Nov 2026: the Desk Log didn't follow the platform). Stages are one blue, lighter to darker
-// as the deal moves on; outcomes use the platform's green (sold) and red (unsold) only.
+// Betsy's colour coding (her Desk Log design, SOW v6 Appendix B1; 13 Nov 2026 meeting: "the colour coding is
+// functional ... they can just glance and know what's going on"). Each stage, outcome, lead type and headline card
+// keeps its own colour everywhere on the Desk Log.
 export const STAGE_STYLE = {
-  QUALIFY: { background: "#e8f2f9", color: "#015688" },
-  "TEST DRIVE": { background: "#d0e5f3", color: "#015688" },
-  APPRAISAL: { background: "#a8cfe9", color: "#013f63" },
-  PROPOSAL: { background: "#6db0dd", color: "#012b44" },
-  "T.O.": { background: "#0272b4", color: "#fff" },
-  "VERBAL AGREEMENT": { background: "#015688", color: "#fff" },
+  QUALIFY: { background: "#1d6fe0", color: "#fff" },
+  "TEST DRIVE": { background: "#2fb344", color: "#fff" },
+  APPRAISAL: { background: "#0ea5a5", color: "#fff" },
+  PROPOSAL: { background: "#f6d33c", color: "#3d3200" },
+  "T.O.": { background: "#f7931e", color: "#fff" },
+  "VERBAL AGREEMENT": { background: "#7c3aed", color: "#fff" },
 };
 export const NO_STAGE_STYLE = { background: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
 
 // One menu for the outcome, as the design shows it: SOLD PENDING, SOLD DELIVERED, UNSOLD <reason>.
-const SOLD = { background: "#198754", color: "#fff" };
-const UNSOLD = { background: "#fff", color: "#b02a37", border: "1px solid #f1aeb5" };
+const PINK = { background: "#f8a9ad", color: "#5c1015" };
+const PURPLE = { background: "#c4a7f5", color: "#2e1065" };
+const REASON_STYLE = {
+  [UNSOLD_REASONS.NEGATIVE_EQUITY]: PINK, [UNSOLD_REASONS.PRICE_PAYMENT]: PINK, [UNSOLD_REASONS.CREDIT]: PINK,
+  [UNSOLD_REASONS.HOT]: { background: "#e5383b", color: "#fff" },
+  [UNSOLD_REASONS.FUTURE_FOLLOW_UP]: PURPLE, [UNSOLD_REASONS.CAR_FINDER]: PURPLE,
+  [UNSOLD_REASONS.DND]: { background: "#ced4da", color: "#343a40" },
+};
 export const OUTCOME_CHOICES = [
   { value: "SOLD PENDING", outcome: "SOLD PENDING", reason: null, label: "SOLD PENDING",
-    style: { background: "#e8f5ee", color: "#146c43", border: "1px solid #a3cfbb" } },
-  { value: "SOLD DELIVERED", outcome: "SOLD DELIVERED", reason: null, label: "SOLD DELIVERED", style: SOLD },
+    style: { background: "#b7ebb0", color: "#14532d" } },
+  { value: "SOLD DELIVERED", outcome: "SOLD DELIVERED", reason: null, label: "SOLD DELIVERED",
+    style: { background: "#34c759", color: "#fff" } },
   ...[UNSOLD_REASONS.NEGATIVE_EQUITY, UNSOLD_REASONS.DND, UNSOLD_REASONS.PRICE_PAYMENT, UNSOLD_REASONS.CREDIT,
     UNSOLD_REASONS.HOT, UNSOLD_REASONS.FUTURE_FOLLOW_UP, UNSOLD_REASONS.CAR_FINDER,
   ].map((reason) => ({ value: `UNSOLD|${reason}`, outcome: "UNSOLD", reason,
     label: `UNSOLD ${reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP ? "FUTURE F/U" : reason.toUpperCase()}`,
-    style: reason === UNSOLD_REASONS.DND ? { background: "#f1f3f5", color: "#495057", border: "1px solid #dee2e6" } : UNSOLD })),
+    style: REASON_STYLE[reason] })),
 ];
 export const NO_OUTCOME_STYLE = { background: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
+
+// Lead type badges (Internet blue, Phone Up purple, Walk-In green).
+export const TYPE_STYLE = {
+  Internet: { background: "#d6e9fb", color: "#0b4f8a" }, Phone: { background: "#e7dafc", color: "#5b21b6" },
+  "Walk-in": { background: "#d3f2da", color: "#166534" },
+};
+// The coloured strip on each row's left edge: the outcome's colour once there is one, else the stage's.
+export const rowStripColor = (row, choice) => (choice?.style.background || (row.stage && STAGE_STYLE[row.stage]?.background)
+  || "#dee2e6");
+
+// Headline cards: each its own colour (icon, top bar, today's number).
+export const CARD_COLOR = {
+  internet: "#1d6fe0", phone: "#7c3aed", walk_in: "#2fb344", appts_set: "#f7931e", appts_showed: "#1e3a8a",
+  sold_pending: "#2fb344", sold_delivered: "#e5383b", action_required: "#e0a800", closed_lost: "#6c757d",
+};
+
+// Initials for the people avatars.
+export const initials = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+const AVATAR_COLORS = ["#1d6fe0", "#7c3aed", "#2fb344", "#f7931e", "#0ea5a5", "#e5383b", "#1e3a8a", "#b45309"];
+export const avatarColor = (id) => AVATAR_COLORS[[...String(id || "")].reduce((n, c) => n + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
 
 export const choiceOf = (row) => OUTCOME_CHOICES.find((c) => c.outcome === row.outcome
   && (c.reason || null) === (row.unsold_reason || null)) || null;

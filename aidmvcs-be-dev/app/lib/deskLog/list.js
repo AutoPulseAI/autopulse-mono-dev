@@ -29,7 +29,8 @@ function matchesSearch(row, q) {
   if (!q) return true;
   const text = q.toLowerCase();
   const d = digits(q);
-  const hay = [row.customer, row.email, row.stock_number, row.vehicle?.vin, row.trade?.vin]
+  const hay = [row.customer, row.email, row.stock_number, row.vehicle?.vin, row.trade?.vin, row.lead_id,
+    [row.vehicle?.year, row.vehicle?.make, row.vehicle?.model].filter(Boolean).join(' ')]
     .filter(Boolean).map((s) => String(s).toLowerCase());
   return hay.some((s) => s.includes(text)) || (d.length >= 4 && digits(row.phone).includes(d));
 }
@@ -103,7 +104,14 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     if (filters.source && row.source !== filters.source) continue;
     // Stage and outcome filters (user, 13 Nov 2026). stage 'none' = no stage yet; outcome 'none' = still open.
     if (filters.stage && (filters.stage === 'none' ? row.stage : row.stage !== filters.stage)) continue;
-    if (filters.outcome && (filters.outcome === 'none' ? row.outcome : row.outcome !== filters.outcome)) continue;
+    if (filters.outcome) {
+      const [outcome, reason] = filters.outcome.split('|');
+      if (outcome === 'none' ? row.outcome : (row.outcome !== outcome || (reason && row.unsold_reason !== reason))) continue;
+    }
+    // DND customers only / hidden (Betsy's filter row, 13 Nov 2026 meeting).
+    const isDnd = row.lead_status === 'DND' || row.unsold_reason === UNSOLD_REASONS.DND;
+    if (filters.dnd === 'only' && !isDnd) continue;
+    if (filters.dnd === 'exclude' && isDnd) continue;
     if (!inView(row, view, now) || !matchesSearch(row, q)) continue;
     rows.push(row);
     if (rows.length >= MAX_ROWS) break;

@@ -1,39 +1,52 @@
-/* Desk Log. Scoped under .desk_log. Platform colours (app/styles.css: --primary, --dark, --border, --gray) - user,
-   13 Nov 2026: the screen didn't follow the platform. */
+/* Desk Log. Scoped under .desk_log. Betsy's colour coding (her Desk Log design, SOW v6 Appendix B1; 13 Nov 2026
+   meeting): each card, stage, lead type and outcome has its own colour (components/deskLogUi.js). */
 .desk_log { --dl-line: var(--border, #e8e8e8); --dl-muted: #6c757d; }
 
-/* Headline cards: one look, the platform's white card with a blue icon. */
+/* Headline cards: each in its own colour - the bar on its left, its icon and today's number. */
 .desk_log .dl_cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.desk_log .dl_card { background: var(--white, #fff); border: 1px solid var(--dl-line); border-radius: 8px; padding: 10px 12px; }
+.desk_log .dl_card { background: var(--white, #fff); border: 1px solid var(--dl-line); border-left: 5px solid var(--card);
+  border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.desk_log .dl_card_action_required { background: #fffbea; }
 .desk_log .dl_card_title { font-size: 0.78rem; font-weight: 600; color: var(--dark, #212529); display: flex; gap: 6px;
   align-items: center; min-height: 2.2em; line-height: 1.15; }
-.desk_log .dl_card_title i { color: var(--primary, #0272b4); }
+.desk_log .dl_card_title i { color: var(--card); font-size: 1rem; }
 .desk_log .dl_card_nums { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; }
-.desk_log .dl_card_today { font-size: 1.6rem; font-weight: 700; color: var(--dark, #212529); line-height: 1; }
+.desk_log .dl_card_today { font-size: 1.6rem; font-weight: 700; color: var(--card); line-height: 1; }
 .desk_log .dl_card_mtd { font-size: 1rem; font-weight: 600; color: var(--secondary, #565e5e); text-align: right; line-height: 1; }
 .desk_log .dl_card_nums small { display: block; font-size: 0.65rem; color: var(--dl-muted); font-weight: 600;
   letter-spacing: 0.04em; margin-top: 3px; }
 .dl_card_link { display: block; color: inherit; text-decoration: none; }
 .dl_card_link:hover { color: var(--primary, #0272b4); text-decoration: underline; }
 
-/* Filters: one card, labelled, wrapping. */
-.desk_log .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 10px;
+/* Filters: one row of "All ..." menus as in the design, wrapping on smaller screens. */
+.desk_log .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px;
   align-items: end; }
+.desk_log .dl_filters .form-select.active_filter { border-color: var(--primary, #0272b4); background-color: #eef6fc; font-weight: 600; }
 .desk_log .dl_filters label { font-size: 0.72rem; color: var(--dl-muted); margin-bottom: 2px; display: block; }
 .desk_log .dl_filters .form-select, .desk_log .dl_filters .form-control { font-size: 0.85rem; }
 .desk_log .dl_views { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* Table */
 .desk_log .dl_table_wrap { overflow-x: auto; border: 1px solid var(--dl-line); border-radius: 8px; background: var(--white, #fff); }
-.desk_log table.dl_table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 1000px; }
+.desk_log table.dl_table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 1650px; }
 .desk_log .dl_table thead th { background: var(--gray, #f9f9fc); color: var(--dark, #212529); font-weight: 600;
   padding: 9px 8px; border-bottom: 1px solid var(--dl-line); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
 .desk_log .dl_table td { padding: 8px; border-top: 1px solid var(--dl-line); vertical-align: top; }
 .desk_log .dl_table tbody tr:hover { background: #f6fafd; }
-.desk_log .dl_customer { min-width: 180px; max-width: 240px; }
-.desk_log .dl_vehicle { min-width: 150px; max-width: 210px; }
-.desk_log .dl_type { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;
+.desk_log .dl_customer { min-width: 150px; max-width: 220px; }
+.desk_log .dl_table th.dl_strip { padding: 0; width: 5px; }
+.desk_log .dl_vehicle { min-width: 120px; max-width: 180px; }
+.desk_log .dl_type { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;
   white-space: nowrap; background: #f1f3f5; color: #343a40; }
+.desk_log .dl_table td.dl_strip { padding: 0; width: 5px; min-width: 5px; }
+.desk_log .dl_source { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.desk_log .dl_source_logo { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 0.7rem; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.desk_log .dl_avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 0.65rem; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.desk_log .dl_staff_cell { display: flex; align-items: center; gap: 4px; min-width: 130px; }
+.desk_log .dl_bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #eef6fc;
+  border: 1px solid #b6d4ea; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; font-size: 0.85rem; }
 .desk_log .dl_pill.form-select { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; border: 0;
   padding: 5px 24px 5px 8px; min-width: 120px; border-radius: 4px; cursor: pointer; }
 .desk_log .dl_outcome.form-select { min-width: 165px; }

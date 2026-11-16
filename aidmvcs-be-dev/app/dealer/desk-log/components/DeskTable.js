@@ -1,8 +1,10 @@
 "use client";
-// The Desk Log table: checked in, customer (phone, lead type, source), vehicle (stock #, trade), stage, people
-// (salesperson, sales manager, BDC agent), latest note, outcome, actions - Betsy's fields in 8 columns instead of 14
-// (user, 13 Nov 2026: too wide and messy). Stage and people change in place; an
-// outcome is confirmed first, because it changes the lead's status (OutcomeModal).
+// The Desk Log table, column for column as Betsy's design (SOW v6 Appendix B1; 13 Nov 2026 meeting: "I don't see the
+// source or the type"): select | Date / Time | Customer | Stock # | Year / Make / Model | Trade | Lead Type | Lead
+// Source | Current Stage | Salesperson | Sales Manager | BDC Agent | Notes | Actions | Outcome, with her colour coding
+// (deskLogUi.js) and a coloured strip on each row. Stage and people change in place; selected rows can be given a
+// salesperson / manager / BDC agent at once; an outcome is confirmed first, because it changes the lead's status
+// (OutcomeModal). The table scrolls sideways on smaller screens.
 import { useState } from "react";
 import Link from "next/link";
 import { Form } from "react-bootstrap";
@@ -12,8 +14,8 @@ import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
 import CallButton from "../../components/CallButton";
-import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, ageText,
-  choiceOf, vehicleText } from "./deskLogUi";
+import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
+  avatarColor, choiceOf, initials, rowStripColor, vehicleText } from "./deskLogUi";
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
 
@@ -31,6 +33,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [pending, setPending] = useState(null); // { row, choice }
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulk, setBulk] = useState({ field: "salesperson_id", value: "" });
 
   // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
   // reloaded, made again).
@@ -49,18 +53,39 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
     }
   };
 
-  const PERSON_LABEL = { salesperson_id: "Sales", sales_manager_id: "Manager", bdc_agent_id: "BDC" };
-  const person = (row, field) => (
-    <div className="dl_person"><span>{PERSON_LABEL[field]}</span>
-    <Form.Select size="sm" className="dl_staff" value={row[field] || ""} disabled={busy === row.id}
-      onChange={(e) => save(row, { [field]: e.target.value || null })} aria-label={PERSON_LABEL[field]}>
-      <option value="">-</option>
-      {staff.map((s) => <option key={s._id} value={s._id}>{s.name || s.email}</option>)}
-      {row[field] && !staff.some((s) => String(s._id) === row[field]) && (
-        <option value={row[field]}>{row[field.replace("_id", "")] || "Former staff"}</option>
-      )}
-    </Form.Select></div>
-  );
+  const PERSON_LABEL = { salesperson_id: "Salesperson", sales_manager_id: "Sales manager", bdc_agent_id: "BDC agent" };
+  const person = (row, field) => {
+    const id = row[field];
+    const name = id ? (staff.find((x) => String(x._id) === id)?.name || row[field.replace("_id", "")] || "") : "";
+    return (
+      <div className="dl_staff_cell">
+        {id ? <span className="dl_avatar" style={{ background: avatarColor(id) }} title={name}>{initials(name)}</span> : null}
+        <Form.Select size="sm" className="dl_staff" value={id || ""} disabled={busy === row.id}
+          onChange={(e) => save(row, { [field]: e.target.value || null })} aria-label={PERSON_LABEL[field]}>
+          <option value="">-</option>
+          {staff.map((x) => <option key={x._id} value={x._id}>{x.name || x.email}</option>)}
+          {id && !staff.some((x) => String(x._id) === id) && <option value={id}>{name || "Former staff"}</option>}
+        </Form.Select>
+      </div>
+    );
+  };
+
+  const allOn = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggle = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Selected rows get the same salesperson / manager / BDC agent, one visit at a time (each keeps its own history).
+  const applyBulk = async () => {
+    const chosen = rows.filter((r) => selected.has(r.id));
+    setBusy("bulk"); setError(null); setNotice(null);
+    let done = 0; const failed = [];
+    for (const r of chosen) {
+      try { await deskLogUpdate(r.id, { [bulk.field]: bulk.value || null, if_updated_at: r.updated_at }); done += 1; }
+      catch (e) { failed.push(`${r.customer || "Visit"}: ${e.message}`); }
+    }
+    setBusy(null); setSelected(new Set());
+    setNotice(`${PERSON_LABEL[bulk.field]} set on ${done} visit${done === 1 ? "" : "s"}.`);
+    if (failed.length) setError(failed.join(" · "));
+    await onChanged();
+  };
 
   if (!rows.length) return <div className="dl_table_wrap p-4 text-center text-muted">{empty}</div>;
 
@@ -68,12 +93,32 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
     <>
       {error && <div className="alert alert-danger py-2">{error}</div>}
       {notice && <div className="alert alert-success py-2">{notice}</div>}
+      {selected.size > 0 && (
+        <div className="dl_bulk">
+          <strong>{selected.size} selected</strong>
+          <Form.Select size="sm" style={{ width: 160 }} value={bulk.field} onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
+            aria-label="Set">
+            {Object.entries(PERSON_LABEL).map(([k, l]) => <option key={k} value={k}>Set {l.toLowerCase()}</option>)}
+          </Form.Select>
+          <Form.Select size="sm" style={{ width: 200 }} value={bulk.value} onChange={(e) => setBulk({ ...bulk, value: e.target.value })}
+            aria-label="To">
+            <option value="">- nobody -</option>
+            {staff.map((x) => <option key={x._id} value={x._id}>{x.name || x.email}</option>)}
+          </Form.Select>
+          <button type="button" className="btn btn-custom btn-sm" disabled={busy === "bulk"} onClick={applyBulk}>Apply</button>
+          <button type="button" className="btn btn-link btn-sm" onClick={() => setSelected(new Set())}>Clear selection</button>
+        </div>
+      )}
       <div className="dl_table_wrap">
         <table className="dl_table">
           <thead>
             <tr>
-              <th>Checked in</th><th>Customer</th><th>Vehicle</th><th>Stage</th><th>People</th><th>Latest note</th>
-              <th>Outcome</th><th aria-label="Actions" />
+              <th className="dl_strip" aria-hidden="true" />
+              <th><Form.Check aria-label="Select all" checked={allOn}
+                onChange={() => setSelected(allOn ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
+              <th>Date / Time</th><th>Customer</th><th>Stock #</th><th>Year / Make / Model</th><th>Trade<br />Year / Make / Model</th>
+              <th>Lead Type</th><th>Lead Source</th><th>Current Stage</th><th>Salesperson</th><th>Sales Manager</th>
+              <th>BDC Agent</th><th>Notes (Latest)</th><th>Actions</th><th>Outcome</th>
             </tr>
           </thead>
           <tbody>
@@ -85,50 +130,72 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
               const trade = vehicleText(row.trade);
               // G-024: a DND customer is not contacted - no Call / Message from here, and the row says so.
               const dnd = row.lead_status === "DND";
+              const typeStyle = TYPE_STYLE[row.lead_type];
               return (
                 <tr key={row.id}>
-                  <td className="text-nowrap">{at.format("h:mm A")}<small className="d-block text-muted">{at.format("MMM D")}</small></td>
+                  <td className="dl_strip" style={{ background: rowStripColor(row, choice) }} aria-hidden="true" />
+                  <td><Form.Check aria-label={`Select ${row.customer || "visit"}`} checked={selected.has(row.id)}
+                    onChange={() => toggle(row.id)} /></td>
+                  <td className="text-nowrap">{at.format("MM/DD")}<small className="d-block text-muted">{at.format("h:mm A")}</small></td>
                   <td className="dl_customer">
                     <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log",
                       "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
                     {row.phone && <small className="d-block text-muted">{row.phone}</small>}
+                    {row.lead_status_label === "Appointment Showed" && <small className="d-block text-success">Appointment showed</small>}
                     {dnd && <small className="d-block fw-semibold text-danger">Do not contact (DND)</small>}
                     {row.handoff && <small className="d-block fw-semibold text-warning" title={row.handoff.reason}>
                       <i className="fa-solid fa-hand me-1" />Handed to a manager</small>}
                     {row.car_finder_matches > 0 && <small className="d-block fw-semibold text-success">
                       <i className="fa-solid fa-car me-1" />Car found ({row.car_finder_matches}) - see details</small>}
                     {row.lead_status === "Opted Out" && <small className="d-block text-muted">Opted out (see the lead for which channel)</small>}
-                    <small className="d-block">
-                      <span className="dl_type">{TYPE_LABEL[row.lead_type] || row.lead_type}</span>
-                      <span className="text-muted ms-1">{row.source}{row.sub_source ? ` · ${row.sub_source}` : ""}</span>
-                      {row.department === "service" && <span className="dl_type ms-1">Service</span>}
-                    </small>
+                    {row.department === "service" && <span className="dl_type mt-1">Service</span>}
                   </td>
-                  <td className="dl_vehicle">
-                    {vehicle || <span className="text-muted">-</span>}
-                    {row.stock_number && <small className="d-block text-muted">Stock #{row.stock_number}</small>}
-                    {trade && <small className="d-block text-muted">Trade: {trade}</small>}
+                  <td className="text-nowrap">{row.stock_number || <span className="text-muted">-</span>}</td>
+                  <td className="dl_vehicle">{vehicle || <span className="text-muted">-</span>}</td>
+                  <td className="dl_vehicle">{trade || <span className="text-muted">-</span>}</td>
+                  <td><span className="dl_type" style={typeStyle}>{TYPE_LABEL[row.lead_type] || row.lead_type || "-"}</span></td>
+                  <td>
+                    {row.source ? (
+                      <div className="dl_source" title={row.sub_source ? `${row.source} · ${row.sub_source}` : row.source}>
+                        <span className="dl_source_logo" style={{ background: avatarColor(row.source) }}>{initials(row.source).slice(0, 1)}</span>
+                        <span>{row.source}{row.sub_source ? <small className="d-block text-muted">{row.sub_source}</small> : null}</span>
+                      </div>
+                    ) : <span className="text-muted">-</span>}
                   </td>
                   <td>
                     <Form.Select size="sm" className="dl_pill" value={row.stage || ""} disabled={busy === row.id}
                       style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} aria-label="Current stage"
                       onChange={(e) => save(row, { stage: e.target.value || null })}>
                       <option value="">No stage</option>
-                      {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      {STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
                     </Form.Select>
                     {row.minutes_in_stage != null && (
                       <span className={`dl_age${stalled ? " stalled" : ""}`}>{ageText(row.minutes_in_stage)}</span>
                     )}
                   </td>
-                  <td className="dl_people">
-                    {person(row, "salesperson_id")}
-                    {person(row, "sales_manager_id")}
-                    {person(row, "bdc_agent_id")}
-                  </td>
+                  <td>{person(row, "salesperson_id")}</td>
+                  <td>{person(row, "sales_manager_id")}</td>
+                  <td>{person(row, "bdc_agent_id")}</td>
                   <td className="dl_note">{row.latest_note?.text || <span className="text-muted">-</span>}
                     {row.next_step_at && (
                       <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}</small>
                     )}
+                  </td>
+                  <td className="dl_actions">
+                    {!dnd && row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
+                      variant="link" size="sm" className="p-0" iconOnly />}
+                    {!dnd && (
+                      <Link href={leadLink(row.lead_id)} title="Text / email (opens the conversation)" aria-label="Message"
+                        onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
+                        <i className="fa-regular fa-comment-dots"></i></Link>
+                    )}
+                    {!dnd && (
+                      <Link href={leadLink(row.lead_id)} title="Book an appointment (opens the lead, set its status to Appointment Set)"
+                        aria-label="Appointment" onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
+                        <i className="fa-regular fa-calendar-plus"></i></Link>
+                    )}
+                    <button type="button" title="Details, notes and history" aria-label="Details"
+                      onClick={() => onOpen({ id: row.id, name: row.customer })}><i className="fa-solid fa-ellipsis-vertical"></i></button>
                   </td>
                   <td>
                     <Form.Select size="sm" className="dl_pill dl_outcome" value={choice?.value || ""} disabled={busy === row.id}
@@ -153,17 +220,6 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       <small className="d-block text-muted">DMS: {row.dms.delivered ? "delivered" : "contract"}{" "}
                         {moment(row.dms.date).tz(tz).format("MMM D")}{row.dms.deal_number ? ` · deal ${row.dms.deal_number}` : ""}</small>
                     )}
-                  </td>
-                  <td className="dl_actions">
-                    {!dnd && row.phone && <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
-                      variant="link" size="sm" className="p-0" iconOnly />}
-                    {!dnd && (
-                      <Link href={leadLink(row.lead_id)} title="Text / email (opens the conversation)" aria-label="Message"
-                        onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
-                        <i className="fa-regular fa-comment-dots"></i></Link>
-                    )}
-                    <button type="button" title="Details, notes and history" aria-label="Details"
-                      onClick={() => onOpen({ id: row.id, name: row.customer })}><i className="fa-solid fa-ellipsis-vertical"></i></button>
                   </td>
                 </tr>
               );

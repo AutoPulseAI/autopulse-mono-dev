@@ -20,10 +20,12 @@ import useLiveRefresh from "../../hooks/useLiveRefresh";
 import "./deskLog.css";
 
 const EMPTY_FILTERS = { department: "", lead_type: "", source: "", stage: "", outcome: "", salesperson_id: "",
-  sales_manager_id: "", bdc_agent_id: "" };
+  sales_manager_id: "", bdc_agent_id: "", dnd: "" };
 const STAGE_OPTIONS = ["QUALIFY", "TEST DRIVE", "APPRAISAL", "PROPOSAL", "T.O.", "VERBAL AGREEMENT"];
-const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "Sold pending"],
-  ["SOLD DELIVERED", "Sold delivered"], ["UNSOLD", "Unsold"]];
+const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "Sold Pending"],
+  ["SOLD DELIVERED", "Sold Delivered"], ["UNSOLD", "Unsold (any reason)"],
+  ...["Negative Equity", "Price/Payment", "Credit", "Hot", "Future Follow-Up", "Car Finder", "DND"]
+    .map((r) => [`UNSOLD|${r}`, `Unsold - ${r}`])];
 const LEAD_TYPES = [["Internet", "Internet"], ["Phone", "Phone Up"], ["Walk-in", "Walk-In"], ["Campaign", "Campaign"],
   ["Other", "Other"]];
 
@@ -95,7 +97,7 @@ export default function DeskLogPage() {
   }
 
   const setFilter = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
-  const staffOptions = staff.map((s) => <option key={s._id} value={s._id}>{s.name || s.email}</option>);
+  const staffPairs = staff.map((x) => [x._id, x.name || x.email]);
   const filtered = Object.values(filters).some(Boolean) || q || view !== "all";
   const isToday = data?.cards?.day === moment.tz(tz).format("YYYY-MM-DD");
   const dayWord = isToday ? "TODAY" : (data?.cards?.day ? moment.tz(data.cards.day, "YYYY-MM-DD", tz).format("MMM D")
@@ -130,56 +132,41 @@ export default function DeskLogPage() {
         )}
 
         <div className="w_card my-3">
+          {/* Betsy's filter row: "All ..." menus, then Stage, Outcome and DND (13 Nov 2026 meeting). */}
           <div className="dl_filters">
             <div className="dl_filter_search">
-              <label htmlFor="dl-search">Search</label>
-              <Form.Control id="dl-search" size="sm" placeholder="Name, phone, VIN, stock #" value={search}
-                onChange={(e) => setSearch(e.target.value)} />
+              <Form.Control id="dl-search" size="sm" placeholder="Search name, phone, email, VIN, stock #" value={search}
+                aria-label="Search" onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <div><label>Department</label>
-              <Form.Select size="sm" value={filters.department} onChange={setFilter("department")} aria-label="Department">
-                <option value="">All</option><option value="sales">Sales</option><option value="service">Service</option>
-              </Form.Select></div>
-            <div><label>Stage</label>
-              <Form.Select size="sm" value={filters.stage} onChange={setFilter("stage")} aria-label="Stage">
-                <option value="">All stages</option><option value="none">No stage yet</option>
-                {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Form.Select></div>
-            <div><label>Outcome</label>
-              <Form.Select size="sm" value={filters.outcome} onChange={setFilter("outcome")} aria-label="Outcome">
-                <option value="">All outcomes</option>
-                {OUTCOME_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Form.Select></div>
-            <div><label>Lead type</label>
-              <Form.Select size="sm" value={filters.lead_type} onChange={setFilter("lead_type")} aria-label="Lead type">
-                <option value="">All</option>
-                {LEAD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Form.Select></div>
-            <div><label>Lead source</label>
-              <Form.Select size="sm" value={filters.source} onChange={setFilter("source")} aria-label="Lead source">
-                <option value="">All</option>
-                {[...new Set([...(data?.sources || []), filters.source].filter(Boolean))]
-                  .map((s) => <option key={s} value={s}>{s}</option>)}
-              </Form.Select></div>
-            <div><label>Salesperson</label>
-              <Form.Select size="sm" value={filters.salesperson_id} onChange={setFilter("salesperson_id")}
-                aria-label="Salesperson"><option value="">All</option>{staffOptions}</Form.Select></div>
-            <div><label>Sales manager</label>
-              <Form.Select size="sm" value={filters.sales_manager_id} onChange={setFilter("sales_manager_id")}
-                aria-label="Sales manager"><option value="">All</option>{staffOptions}</Form.Select></div>
-            <div><label>BDC agent</label>
-              <Form.Select size="sm" value={filters.bdc_agent_id} onChange={setFilter("bdc_agent_id")}
-                aria-label="BDC agent"><option value="">All</option>{staffOptions}</Form.Select></div>
+            {[
+              ["department", "All Departments", [["sales", "Sales"], ["service", "Service"]]],
+              ["lead_type", "All Lead Types", LEAD_TYPES],
+              ["source", "All Lead Sources", [...new Set([...(data?.sources || []), filters.source].filter(Boolean))].map((x) => [x, x])],
+              ["salesperson_id", "All Salespeople", staffPairs],
+              ["sales_manager_id", "All Sales Managers", staffPairs],
+              ["bdc_agent_id", "All BDC Agents", staffPairs],
+              ["stage", "All Stages", [["none", "No stage yet"], ...STAGE_OPTIONS.map((x) => [x, x])]],
+              ["outcome", "All Outcomes", OUTCOME_OPTIONS],
+              ["dnd", "DND: all customers", [["only", "DND only"], ["exclude", "Hide DND"]]],
+            ].map(([key, all, options]) => (
+              <div key={key}>
+                <Form.Select size="sm" value={filters[key]} onChange={setFilter(key)} aria-label={all}
+                  className={filters[key] ? "active_filter" : ""}>
+                  <option value="">{all}</option>
+                  {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </Form.Select>
+              </div>
+            ))}
+            <div>
+              <Button size="sm" variant="link" className="p-0 fw-semibold" disabled={!filtered}
+                onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear Filters</Button>
+            </div>
           </div>
           <div className="dl_views mt-3">
             {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => (
               <Button key={key} size="sm" variant={view === key ? "custom" : "outline-custom"}
                 onClick={() => setView(key)}>{label}</Button>
             ))}
-            {filtered && (
-              <Button size="sm" variant="link" className="ms-auto"
-                onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear filters</Button>
-            )}
             {loading && <Spinner animation="border" size="sm" className="ms-2" />}
           </div>
         </div>

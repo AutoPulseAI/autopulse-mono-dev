@@ -19,7 +19,7 @@ import { dealerForms } from '@lib/reporting/kpis/common';
 import { getDealerTimezone, isValidLocalDate } from '@lib/reporting/time';
 
 const FILTERS = ['department', 'lead_type', 'source', 'salesperson_id', 'sales_manager_id', 'bdc_agent_id', 'stage',
-  'outcome'];
+  'outcome', 'dnd'];
 
 export async function GET(req) {
   const params = new URL(req.url).searchParams;

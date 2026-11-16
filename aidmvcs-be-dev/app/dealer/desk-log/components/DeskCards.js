@@ -2,6 +2,7 @@
 // The Desk Log's headline cards: the picked day's number big, month to date small (Betsy's design). Each number opens
 // its leads on the Leads page in this tab (with Export CSV there), with a way back to the Desk Log.
 import { rememberBack } from "../../components/backLink";
+import { CARD_COLOR } from "./deskLogUi";
 
 function Num({ link, className, children }) {
   if (!link) return <div className={className}>{children}</div>;
@@ -23,7 +24,7 @@ export default function DeskCards({ cards, dayWord = "TODAY" }) {
       {cards.map((c) => {
         const icon = ICON[c.key] || "fa-solid fa-circle";
         return (
-          <div key={c.key} className="dl_card">
+          <div key={c.key} className={`dl_card dl_card_${c.key}`} style={{ "--card": CARD_COLOR[c.key] || "#0272b4" }}>
             <div className="dl_card_title"><i className={icon}></i>{c.label}</div>
             <div className="dl_card_nums">
               <div><Num link={c.today_link} className="dl_card_today">{c.today}</Num><small>{dayWord}</small></div>
