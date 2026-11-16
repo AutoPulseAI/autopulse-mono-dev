@@ -73,6 +73,7 @@ export function staffEntry(a) {
     : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"
     : a.action === "lead_reassigned"
       ? (a.to ? `reassigned the lead${a.from ? ` from ${a.from}` : ""} to ${a.to}` : `unassigned the lead${a.from ? ` from ${a.from}` : ""}`)
+    : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,

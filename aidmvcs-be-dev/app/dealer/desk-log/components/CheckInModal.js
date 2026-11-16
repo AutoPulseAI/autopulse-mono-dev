@@ -43,14 +43,14 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone }) {
     setBusy(true);
     setError(null);
     try {
-      await deskLogCheckIn({ dealer_id: dealerId, lead_id: lead.id, department: form.department,
+      const res = await deskLogCheckIn({ dealer_id: dealerId, lead_id: lead.id, department: form.department,
         checked_in_at: moment.tz(form.at, "YYYY-MM-DDTHH:mm", tz).toISOString(),
         ...(form.salesperson_id ? { salesperson_id: form.salesperson_id } : {}),
         ...(form.sales_manager_id ? { sales_manager_id: form.sales_manager_id } : {}),
         ...(form.stage ? { stage: form.stage } : {}),
         ...(form.stock_number.trim() ? { stock_number: form.stock_number.trim() } : {}),
         ...(form.note.trim() ? { note: form.note.trim() } : {}) });
-      onDone();
+      onDone(res?.appointment ? `${lead.name || "The customer"} checked in - today's appointment is marked Showed.` : null);
     } catch (e) {
       setError(e.message);
       setBusy(false);
