@@ -3,12 +3,14 @@
 // they're not in the CRM, add them right here (name, phone, email, lead type, lead source, vehicle): their lead and
 // customer are created in the same step as the check-in (app/lib/deskLog/newCustomer.js). Then who works the deal.
 // For an existing customer the vehicle, the BDC agent and an open trade-in are filled from the lead.
+// Stock #: typing it searches the dealer's inventory (stock # or VIN); picking a car fills the stock #, the year /
+// make / model and VIN of the visit (and of a new customer's vehicle of interest).
 import { useEffect, useState } from "react";
 import { Alert, Button, Form, ListGroup, Modal, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import { STAGES } from "../../../lib/deskLog/constants";
 import LeadSourcePicker from "../../leads/components/LeadSourcePicker";
-import { deskLogCheckIn, deskLogSearch } from "../deskLogApi";
+import { deskLogCheckIn, deskLogSearch, deskLogStock } from "../deskLogApi";
 import { TYPE_LABEL } from "./deskLogUi";
 
 export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, initialLeadId = null }) {
@@ -54,6 +56,30 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
     return () => { live = false; clearTimeout(t); };
   }, [q, lead, dealerId]);
 
+  // Stock # lookup: cars in stock matching what is typed; `car` is the one picked (sent as the visit's vehicle).
+  const [cars, setCars] = useState([]);
+  const [car, setCar] = useState(null);
+  const [stockLooking, setStockLooking] = useState(false);
+  useEffect(() => {
+    const s = form.stock_number.trim();
+    if (car || s.length < 2) { setCars([]); return undefined; }
+    let live = true;
+    const t = setTimeout(async () => {
+      setStockLooking(true);
+      try { const res = await deskLogStock(dealerId, s); if (live) setCars(res.cars || []); }
+      catch { if (live) setCars([]); }
+      finally { if (live) setStockLooking(false); }
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [form.stock_number, car, dealerId]);
+  const carName = (c) => [c.year, c.make, c.model, c.trim].filter(Boolean).join(" ");
+  const pickCar = (c) => {
+    setCar(c); setCars([]);
+    setForm((f) => ({ ...f, stock_number: c.stock_number || f.stock_number }));
+    if (fresh) setFresh((f) => ({ ...f, vehicle_year: c.year ? String(c.year) : "", vehicle_make: c.make || "",
+      vehicle_model: c.model || "", vin: c.vin || "" }));
+  };
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const save = async () => {
     setBusy(true);
@@ -66,6 +92,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
         ...(form.sales_manager_id ? { sales_manager_id: form.sales_manager_id } : {}),
         ...(form.stage ? { stage: form.stage } : {}),
         ...(form.stock_number.trim() ? { stock_number: form.stock_number.trim() } : {}),
+        ...(car ? { vehicle: { year: car.year, make: car.make, model: car.model, trim: car.trim, vin: car.vin } } : {}),
         ...(form.note.trim() ? { note: form.note.trim() } : {}) });
       const name = fresh ? fresh.name : lead.name || "The customer";
       onDone(fresh ? `${name} added as a new customer and checked in.`
@@ -154,8 +181,27 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
                 <Form.Select value={form.stage} onChange={set("stage")}>
                   <option value="">No stage yet</option>{STAGES.map((s) => <option key={s}>{s}</option>)}</Form.Select>
               </Form.Group>
-              <Form.Group className="col-md-6"><Form.Label>Stock #</Form.Label>
-                <Form.Control value={form.stock_number} maxLength={40} onChange={set("stock_number")} /></Form.Group>
+              <Form.Group className="col-md-6 position-relative"><Form.Label>Stock #</Form.Label>
+                <Form.Control value={form.stock_number} maxLength={40} placeholder="Stock # or VIN, e.g. 2788C"
+                  onChange={(e) => { setCar(null); set("stock_number")(e); }} autoComplete="off" />
+                {stockLooking && <Spinner animation="border" size="sm" className="mt-1" />}
+                {car && <small className="d-block text-success mt-1"><i className="fa-solid fa-car me-1"></i>
+                  {carName(car)}{car.vin ? ` - VIN ${car.vin}` : ""}</small>}
+                {!car && cars.length > 0 && (
+                  <ListGroup className="position-absolute w-100 shadow-sm" style={{ zIndex: 5 }}>
+                    {cars.map((c) => (
+                      <ListGroup.Item key={c.vin || c.stock_number} action onClick={() => pickCar(c)} className="py-1">
+                        <strong>{c.stock_number || "No stock #"}</strong> {carName(c)}
+                        <small className="d-block text-muted">{[c.condition, c.color, c.mileage ? `${c.mileage.toLocaleString()} mi` : null,
+                          c.price ? `$${c.price.toLocaleString()}` : null, c.vin].filter(Boolean).join(" - ")}</small>
+                      </ListGroup.Item>
+                    ))}
+                  </ListGroup>
+                )}
+                {!car && !stockLooking && form.stock_number.trim().length >= 2 && !cars.length && (
+                  <small className="d-block text-muted mt-1">Not in this dealership&apos;s inventory - saved as typed.</small>
+                )}
+              </Form.Group>
               <Form.Group className="col-12"><Form.Label>Note</Form.Label>
                 <Form.Control as="textarea" rows={2} maxLength={2000} value={form.note} onChange={set("note")} />
               </Form.Group>
