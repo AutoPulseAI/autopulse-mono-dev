@@ -63,6 +63,7 @@ export function staffEntry(a) {
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action === "customer_merged" ? `merged the customer ${a.from || ""} into this one${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "lead_edited" ? `changed the lead's ${a.detail || "details"} from ${a.from} to ${a.to}`
     : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
     : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
     : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`

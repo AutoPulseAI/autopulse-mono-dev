@@ -1539,3 +1539,31 @@ background-color: var(--white);
   border-radius: 999px;
   transition: width 0.4s ease;
 }
+
+/* Lead page (BB, 17 Nov 2026): the lead list on the left and the lead's details in the middle stay in view while the
+   conversation scrolls; each scrolls on its own when it is taller than the screen. Actions sit together. */
+@media (min-width: 768px) {
+  .lead_center_col {
+    max-height: calc(100vh - var(--header-height) - 80px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+@media (min-width: 993px) {
+  .dealer-sidebar > .dealer_info {
+    max-height: calc(100vh - var(--header-height) - 80px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+.lead_actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.lead_actions .btn {
+  width: 100%;
+}
+.lead_view .badge {
+  font-weight: 600;
+}
