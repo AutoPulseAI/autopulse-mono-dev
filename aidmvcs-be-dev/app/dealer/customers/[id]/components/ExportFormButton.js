@@ -40,8 +40,10 @@ export default function ExportFormButton({ customerId, dealerId }) {
       const a = document.createElement("a"); a.href = url; a.download = name; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
       const empty = decodeURIComponent(res.headers.get("X-Empty") || "");
+      const unprintable = decodeURIComponent(res.headers.get("X-Unprintable") || "");
       setMessage({ variant: "success", text: `${form.name} downloaded (${res.headers.get("X-Filled") || 0} blanks filled).`
-        + (empty ? ` No data on file for: ${empty}.` : "") });
+        + (empty ? ` No data on file for: ${empty}.` : "")
+        + (unprintable ? ` Write these by hand (letters the form can't print): ${unprintable}.` : "") });
       setPicking(null);
     } catch (e) { setMessage({ variant: "danger", text: e.message }); } finally { setBusy(false); }
   };
