@@ -63,7 +63,7 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
       page.drawText(text, { x: tx, y: ty, size, font, color, rotate: degrees(f.kind === 'pdf_field' ? 0 : rot) });
       continue;
     }
-    if (!f.source) continue;
+    if (!f.source || f.fill_policy === 'person') continue;
     const raw = String(values[f.source] ?? '').trim();
     if (!raw) { empty.push(f.label); continue; }
     let value = printable(font, raw);

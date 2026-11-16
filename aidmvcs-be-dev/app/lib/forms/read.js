@@ -1,13 +1,12 @@
 // Reading an uploaded form, whatever its format (the user, 16 Nov 2026: "it can be an image that has been converted to
 // the PDF ... the forms can be in different format ... handle all of the edge cases"):
 //   - a fillable PDF, a digital PDF with underscores or drawn lines / boxes: read from the PDF (lib/forms/detect.js)
-//   - a scanned PDF, or nothing found to fill: the AI finds the blanks (lib/forms/aiLocate.js)
+//   - a scanned PDF / photo: not read yet (no AI; the on-server OCR step is to come) - refused with a plain message
 //   - a JPG / PNG of the form (a photo or a scan saved as a picture): made into a one-page PDF first, then as a scan
 //   - Word, HEIC and other files: refused with what to upload instead
 // Locked, password-protected, damaged and LiveCycle (XFA-only) PDFs are refused by detectFields with what to do.
 import { PDFDocument } from 'pdf-lib';
 import { MAX_BYTES, detectFields, fail } from './detect.js';
-import { aiAvailable, aiLocate } from './aiLocate.js';
 
 const isJpg = (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 const isPng = (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -37,11 +36,6 @@ export async function readForm(rawBuffer, rawFilename) {
   const { buffer, filename } = await asPdf(rawBuffer, rawFilename);
   const found = await detectFields(buffer);
   if (found.fields.length) return { buffer, filename, ...found, found_by_ai: false };
-  if (!aiAvailable()) {
-    throw fail(found.scan ? 'This form is a scan (a picture of the page), and the AI that reads scans is not set up on '
-      + 'this server. Upload the digital version of the form (from Word, Acrobat or your DMS).'
-      : 'No blanks to fill were found on this form.', 422);
-  }
-  const ai = await aiLocate(buffer, { filename });
-  return { buffer, filename, fillable: found.fillable, pages: ai.pages, fields: ai.fields, found_by_ai: true };
+  throw fail(found.scan ? 'This form is a scan (a picture of the page). Scans can\'t be read yet: upload the digital '
+    + 'version of the form (from Word, Acrobat or your DMS).' : 'No blanks to fill were found on this form.', 422);
 }
