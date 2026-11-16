@@ -1,4 +1,4 @@
-import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup } from '@lib/contactedLeads';
+import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup, replySplitGroup } from '@lib/contactedLeads';
 import { validContactType } from '@lib/leadContactType';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { funnelLeadIds } from "@lib/appointmentFunnel";
@@ -524,8 +524,9 @@ export async function GET(req) {
         const created = new Map((await Lead.find({ _id: { $in: repliedOrder.map((r) => r._id) } }).select('createdAt').lean())
           .map((l) => [String(l._id), l.createdAt]));
         repliedOrder = repliedOrder.filter((r) => {
-          const group = replyAgeGroup(created.get(String(r._id)), r.first_reply_at, from, to, dealerTimezone);
-          return replyAge === 'older' ? group !== 'new' : group === replyAge;
+          const at = created.get(String(r._id));
+          if (replyAge === 'new' || replyAge === 'older') return replySplitGroup(at, from, to) === replyAge;
+          return replyAgeGroup(at, r.first_reply_at, dealerTimezone) === replyAge;
         });
       }
       query._id = { $in: repliedOrder.map((r) => r._id) };
