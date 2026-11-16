@@ -22,6 +22,7 @@ async function call(url, opts = {}) {
 export const deskLogGet = (params) => call(`/api/desk-log?${query(params)}`);
 export const deskLogEntry = (id) => call(`/api/desk-log/${id}`);
 export const deskLogSearch = (dealerId, q) => call(`/api/desk-log/customers?${query({ dealer_id: dealerId, q })}`);
+export const deskLogStock = (dealerId, q) => call(`/api/desk-log/stock?${query({ dealer_id: dealerId, q })}`);
 export const deskLogCheckIn = (body) => call("/api/desk-log", { method: "POST", body: JSON.stringify(body),
   headers: { "Content-Type": "application/json" } });
 export const deskLogUpdate = (id, body) => call(`/api/desk-log/${id}`, { method: "PATCH", body: JSON.stringify(body),
