@@ -6,6 +6,7 @@ import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-b
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
+import { leadTypeName } from "../../../leads/components/LeadInfoCard";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
 import LeadForm from "../../../leads/components/LeadForm";
@@ -19,13 +20,9 @@ const defaultLeadsPagination = {
   hasPreviousPage: false,
 };
 
+// The lead's type and source, as on the lead card (LeadInfoCard): "Internet · CarGurus".
 function getLeadSource(lead) {
-  return lead.source || lead.lead_source || "Unknown";
-}
-
-function getVehicleInterest(lead) {
-  const parts = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : null;
+  return `${leadTypeName(lead)} · ${lead.lead_source || lead.source || "Unknown"}`;
 }
 
 // Unchanged from the pre-360 CustomerDetail.js, per
@@ -145,7 +142,6 @@ export default function LeadsTab({ customerId }) {
       ) : (
         <Accordion activeKey={activeLeadId} onSelect={(key) => setActiveLeadId(key)}>
           {leads.map((lead) => {
-            const vehicleInterest = getVehicleInterest(lead);
             return (
               <Accordion.Item eventKey={lead._id} key={lead._id}>
                 <Accordion.Header>
@@ -166,8 +162,6 @@ export default function LeadsTab({ customerId }) {
                   <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">
                     <strong className="me-1"><i className="fa-solid fa-store me-1" />Showroom visits</strong>
                     {(details[lead._id]?.visits || []).length === 0 && <span className="text-muted">none yet</span>}
-                    <a className="btn btn-outline-custom btn-sm ms-auto" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                      <i className="fa-solid fa-right-to-bracket me-1" />Check in to the showroom</a>
                   </div>
                   {(details[lead._id]?.visits || []).length > 0 && (
                     <ul className="small list-unstyled mb-2 ps-3">
@@ -190,13 +184,6 @@ export default function LeadsTab({ customerId }) {
                       {details[lead._id].ai_lead_label?.[1] ? ` from ${formatTimestamp(details[lead._id].ai_lead_label[1])}` : ""}
                       ; it is shown below too.
                     </Alert>
-                  )}
-                  {(vehicleInterest || lead.vin) && (
-                    <div className="small text-muted mb-2">
-                      <i className="fa-solid fa-car me-1" />
-                      {vehicleInterest || "Vehicle interest unknown"}
-                      {lead.vin && <span> &middot; VIN: {lead.vin}</span>}
-                    </div>
                   )}
                   {/* Only mount the (self-fetching, self-polling) conversation panel while
                       this accordion item is actually open. */}

@@ -72,10 +72,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
         </div>
       </div>
       <Row className="gy-3">
-        <Col md={3}><strong>Email:</strong> {primaryEmail?.value || "N/A"}</Col>
-        <Col md={3}><strong>Phone:</strong> {primaryPhone?.value || "N/A"}</Col>
-        <Col md={3}><strong>Preferred contact:</strong> {customer.preferred_communication_mode || "N/A"}</Col>
-        <Col md={3}><strong>Last activity:</strong> {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</Col>
+        {/* Phones and emails are listed once, below (BB, 17 Nov 2026: "too many duplication"). */}
+        <Col md={6}><strong>Preferred contact:</strong> {customer.preferred_communication_mode || "N/A"}</Col>
+        <Col md={6}><strong>Last activity:</strong> {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</Col>
         <Col md={4}><strong>Total sales:</strong> {formatCurrency(valueSnapshot.total_deal_price)}</Col>
         <Col md={4}>
           <strong>Total service (all-pay):</strong> {formatCurrency(valueSnapshot.total_repair_order_sale)}
