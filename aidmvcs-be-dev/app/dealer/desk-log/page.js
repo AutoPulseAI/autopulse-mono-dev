@@ -5,7 +5,7 @@
 // with stage, people and outcome changed in place. While the 'desk_log' feature is at level 'admin', only a super
 // admin (also through "login as") can open it.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Form, Spinner } from "react-bootstrap";
+import { Alert, Button, Dropdown, Form, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import { useUser } from "../context/UserContext";
 import DashboardDatePicker, { presetRange } from "../dashboard/components/DashboardDatePicker";
@@ -56,6 +56,13 @@ export default function DeskLogPage() {
         preset: "today" });
     }
   }, [range, tz, dealerParent]);
+
+  // Opened from a customer's profile: "Check in to the showroom" (?check_in=<lead>) or a visit (?visit=<visit>).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (/^[0-9a-f]{24}$/i.test(p.get("check_in") || "")) setCheckIn({ leadId: p.get("check_in") });
+    if (/^[0-9a-f]{24}$/i.test(p.get("visit") || "")) setOpened({ id: p.get("visit"), name: "" });
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 350);
@@ -109,16 +116,25 @@ export default function DeskLogPage() {
         <div className="d-flex align-items-center flex-wrap gap-2">
           <div className="me-auto">
             <h3 className="page_title mb-0">Desk Log</h3>
-            <small className="text-muted">Every customer in the showroom: who is working the deal, how far it got
-              and how it ended.</small>
+            <small className="text-muted">Manage, follow up, and convert your sales and service opportunities.</small>
+          </div>
+          {/* Betsy's top bar: search, date, Add Customer (with its menu). */}
+          <div className="dl_top_search">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <Form.Control id="dl-search" size="sm" placeholder="Search by name, phone, email, VIN, stock #..." value={search}
+              aria-label="Search" onChange={(e) => setSearch(e.target.value)} />
           </div>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
-          <Button size="sm" variant="outline-custom" onClick={() => setRulesOpen(true)}>
-            <i className="fa-solid fa-sliders me-1"></i>Desk Log settings
-          </Button>
-          <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
-            <i className="fa-solid fa-plus me-1"></i>Check in customer
-          </Button>
+          <Dropdown as="div" className="btn-group">
+            <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
+              <i className="fa-solid fa-plus me-1"></i>Add Customer
+            </Button>
+            <Dropdown.Toggle split size="sm" variant="custom" aria-label="More" />
+            <Dropdown.Menu align="end">
+              <Dropdown.Item onClick={() => setCheckIn(true)}>Check in a customer</Dropdown.Item>
+              <Dropdown.Item onClick={() => setRulesOpen(true)}>Desk Log settings</Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown>
         </div>
       </div>
 
@@ -134,10 +150,6 @@ export default function DeskLogPage() {
         <div className="w_card my-3">
           {/* Betsy's filter row: "All ..." menus, then Stage, Outcome and DND (13 Nov 2026 meeting). */}
           <div className="dl_filters">
-            <div className="dl_filter_search">
-              <Form.Control id="dl-search" size="sm" placeholder="Search name, phone, email, VIN, stock #" value={search}
-                aria-label="Search" onChange={(e) => setSearch(e.target.value)} />
-            </div>
             {[
               ["department", "All Departments", [["sales", "Sales"], ["service", "Service"]]],
               ["lead_type", "All Lead Types", LEAD_TYPES],
@@ -157,7 +169,7 @@ export default function DeskLogPage() {
                 </Form.Select>
               </div>
             ))}
-            <div>
+            <div className="text-end">
               <Button size="sm" variant="link" className="p-0 fw-semibold" disabled={!filtered}
                 onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear Filters</Button>
             </div>
@@ -181,7 +193,8 @@ export default function DeskLogPage() {
           rest.</small>}
       </div>
 
-      {checkIn && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} onHide={() => setCheckIn(false)}
+      {checkIn && dealerId && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} initialLeadId={checkIn.leadId || null}
+        onHide={() => setCheckIn(false)}
         onDone={(msg) => { setCheckIn(false); setNotice(msg || null); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}

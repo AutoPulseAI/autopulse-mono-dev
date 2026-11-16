@@ -16,7 +16,7 @@ export async function GET(req) {
   const q = (params.get('q') || '').trim().slice(0, 80);
   if (q.length < 2) return json({ leads: [] });
   const digits = q.replace(/\D/g, '');
-  const or = [{ name: new RegExp(escape(q), 'i') }, { email: new RegExp(escape(q), 'i') }];
+  const or = [...(/^[0-9a-f]{24}$/i.test(q) ? [{ _id: q }] : []), { name: new RegExp(escape(q), 'i') }, { email: new RegExp(escape(q), 'i') }];
   if (digits.length >= 4) or.push({ phone: new RegExp(digits.split('').map(escape).join('\\D*')) });
   const leads = await Lead.find({ dealer_id: { $in: dealerForms(dealerId) }, $or: or })
     .select('name phone email createdAt lead_source source contact_type fe_lead_status vehicle_year vehicle_make '

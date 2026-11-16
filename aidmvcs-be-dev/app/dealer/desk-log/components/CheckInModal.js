@@ -11,7 +11,7 @@ import { rememberBack } from "../../components/backLink";
 import { deskLogCheckIn, deskLogSearch } from "../deskLogApi";
 import { TYPE_LABEL } from "./deskLogUi";
 
-export default function CheckInModal({ dealerId, staff, tz, onHide, onDone }) {
+export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, initialLeadId = null }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -20,6 +20,12 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone }) {
     stock_number: "", note: "", at: moment.tz(tz).format("YYYY-MM-DDTHH:mm") });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // From a customer's profile: that lead is already picked.
+  useEffect(() => {
+    if (!initialLeadId) return;
+    deskLogSearch(dealerId, initialLeadId).then((res) => { if (res.leads?.[0]) setLead(res.leads[0]); }).catch(() => {});
+  }, [initialLeadId, dealerId]);
 
   useEffect(() => {
     if (lead || q.trim().length < 2) { setFound([]); return undefined; }
