@@ -15,7 +15,7 @@ import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
 import CallButton from "../../components/CallButton";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
-  avatarColor, choiceOf, initials, rowStripColor, vehicleText } from "./deskLogUi";
+  avatarColor, choiceOf, initials, rowStripColor, sourceLogo, vehicleText } from "./deskLogUi";
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
 
@@ -35,6 +35,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   const [pending, setPending] = useState(null); // { row, choice }
   const [selected, setSelected] = useState(() => new Set());
   const [bulk, setBulk] = useState({ field: "salesperson_id", value: "" });
+  const [sort, setSort] = useState({ key: null, dir: 1 }); // the sortable columns of the design (click again = reverse)
 
   // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
   // reloaded, made again).
@@ -69,6 +70,22 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
       </div>
     );
   };
+
+  const SORTS = {
+    at: (r) => new Date(r.checked_in_at).getTime(), customer: (r) => (r.customer || "").toLowerCase(),
+    stock: (r) => (r.stock_number || "").toLowerCase(), vehicle: (r) => vehicleText(r.vehicle).toLowerCase(),
+    stage: (r) => (r.stage ? STAGES.indexOf(r.stage) : 99), salesperson: (r) => (r.salesperson || "").toLowerCase(),
+    bdc: (r) => (r.bdc_agent || "").toLowerCase(),
+  };
+  const shown = sort.key ? [...rows].sort((a, b) => {
+    const x = SORTS[sort.key](a); const y = SORTS[sort.key](b);
+    return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
+  }) : rows;
+  const th = (key, label) => (
+    <th className={`dl_sort${sort.key === key ? " on" : ""}`} onClick={() => setSort((cur) => ({ key, dir: cur.key === key ? -cur.dir : 1 }))}
+      aria-sort={sort.key === key ? (sort.dir > 0 ? "ascending" : "descending") : "none"}>
+      {label}<i className={`fa-solid ${sort.key !== key ? "fa-sort" : sort.dir > 0 ? "fa-sort-up" : "fa-sort-down"}`}></i></th>
+  );
 
   const allOn = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const toggle = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -116,13 +133,14 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
               <th className="dl_strip" aria-hidden="true" />
               <th><Form.Check aria-label="Select all" checked={allOn}
                 onChange={() => setSelected(allOn ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Date / Time</th><th>Customer</th><th>Stock #</th><th>Year / Make / Model</th><th>Trade<br />Year / Make / Model</th>
-              <th>Lead Type</th><th>Lead Source</th><th>Current Stage</th><th>Salesperson</th><th>Sales Manager</th>
-              <th>BDC Agent</th><th>Notes (Latest)</th><th>Actions</th><th>Outcome</th>
+              {th("at", "Date / Time")}{th("customer", "Customer")}{th("stock", "Stock #")}{th("vehicle", "Year / Make / Model")}
+              <th>Trade<br />Year / Make / Model</th>
+              <th>Lead Type</th><th>Lead Source</th>{th("stage", "Current Stage")}{th("salesperson", "Salesperson")}
+              <th>Sales Manager</th>{th("bdc", "BDC Agent")}<th>Notes (Latest)</th><th>Actions</th><th>Outcome</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {shown.map((row) => {
               const at = moment(row.checked_in_at).tz(tz);
               const choice = choiceOf(row);
               const stalled = row.minutes_in_stage != null && row.minutes_in_stage >= STALLED_MINUTES;
@@ -157,7 +175,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   <td>
                     {row.source ? (
                       <div className="dl_source" title={row.sub_source ? `${row.source} · ${row.sub_source}` : row.source}>
-                        <span className="dl_source_logo" style={{ background: avatarColor(row.source) }}>{initials(row.source).slice(0, 1)}</span>
+                        {(() => { const logo = sourceLogo(row.source); return (
+                          <span className="dl_source_logo" style={{ background: logo.bg }} aria-hidden="true">
+                            {logo.icon ? <i className={logo.icon}></i> : logo.letter}</span>); })()}
                         <span>{row.source}{row.sub_source ? <small className="d-block text-muted">{row.sub_source}</small> : null}</span>
                       </div>
                     ) : <span className="text-muted">-</span>}

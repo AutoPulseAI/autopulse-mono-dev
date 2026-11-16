@@ -88,3 +88,26 @@ export function ageText(minutes) {
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ${minutes % 60} min in stage`;
   return `${Math.floor(minutes / 1440)} days in stage`;
 }
+
+// Lead source logos (Betsy's design shows each source's logo). Known sources get their mark / colour; any other source
+// a letter in a colour of its own.
+const SOURCE_LOGOS = [
+  [/facebook|\bfb\b|meta/i, { icon: "fa-brands fa-facebook-f", bg: "#1877f2" }],
+  [/google/i, { icon: "fa-brands fa-google", bg: "#4285f4" }],
+  [/instagram/i, { icon: "fa-brands fa-instagram", bg: "#c13584" }],
+  [/autotrader|auto trader/i, { letter: "A", bg: "#e8412c" }],
+  [/cars\.?com/i, { letter: "C", bg: "#6c2bd9" }],
+  [/cargurus/i, { letter: "CG", bg: "#00a0dd" }],
+  [/kbb|kelley/i, { icon: "fa-solid fa-book", bg: "#1d3f72" }],
+  [/truecar/i, { letter: "T", bg: "#00a0dd" }],
+  [/capital ?one/i, { letter: "C1", bg: "#d03027" }],
+  [/edmunds/i, { letter: "E", bg: "#0062b1" }],
+  [/carfax/i, { letter: "CF", bg: "#000" }],
+  [/website|dealer site|web/i, { icon: "fa-solid fa-globe", bg: "#212529" }],
+  [/phone|call/i, { icon: "fa-solid fa-phone", bg: "#7c3aed" }],
+  [/walk/i, { icon: "fa-solid fa-person-walking", bg: "#2fb344" }],
+];
+export function sourceLogo(source) {
+  const hit = SOURCE_LOGOS.find(([re]) => re.test(String(source || "")));
+  return hit ? hit[1] : { letter: String(source || "?").trim().charAt(0).toUpperCase() || "?", bg: avatarColor(source) };
+}
