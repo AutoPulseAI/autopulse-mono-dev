@@ -41,5 +41,6 @@ export function templateSummary(t) {
   return { id: String(t._id), name: t.name, category: t.category || 'Other', active: t.active !== false,
     current_version: t.current_version, ready: Boolean(v.source_file_id && Array.isArray(v.fields)),
     fillable: Boolean(v.fillable), pages: v.pages || 0, blanks: fields.length,
-    auto_filled: fields.filter((f) => f.source).length, filename: v.source_filename || null, updated_at: t.updatedAt };
+    auto_filled: fields.filter((f) => f.source).length, filename: v.source_filename || null, updated_at: t.updatedAt,
+    found_by_ai: Boolean(v.found_by_ai), can_undo_ai: Array.isArray(v.fields_before_ai) };
 }

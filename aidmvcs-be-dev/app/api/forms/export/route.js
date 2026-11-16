@@ -1,7 +1,7 @@
 // "Export to form" from a customer's profile (the user, 16 Nov 2026): the dealer's own PDF with this customer's data
 // written into its blanks, downloaded. The lead (deal) picked gives the vehicle, its trade-ins and the salesperson.
-//   POST { dealer_id, template_id, customer_id, lead_id? } -> application/pdf (X-Filled / X-Empty headers: how many
-//        blanks were filled, which had no data)
+//   POST { dealer_id, template_id, customer_id, lead_id? } -> application/pdf (X-Filled / X-Empty / X-Unprintable
+//        headers: how many blanks were filled, which had no data, which had letters the form's font can't print)
 // The customer and lead must be this dealership's (merged customers included); the form switched on and allowed for
 // the caller. Payoff / lienholder only for "Manage Leads". Every export is logged (FormExport).
 import mongoose from 'mongoose';
@@ -47,12 +47,13 @@ export async function POST(req) {
       user, canSeeFinance: await canSeeFinance(user), tz: await getDealerTimezone(dealerId) }));
   } catch (e) { return fail(e.message, e.status || 500); }
 
-  const { pdf, filled, empty } = await fillForm(await readFile(v.source_file_id), v.fields, values);
+  const { pdf, filled, empty, unprintable } = await fillForm(await readFile(v.source_file_id), v.fields, values);
   const actor = actorOf(user);
   await FormExport.create({ dealer_id: dealerId, template_id: t._id, template_name: t.name, template_version: v.version,
     customer_id: customerId, lead_id: lead?._id || null, filled, by: actor.by, by_name: actor.by_name });
   const name = `${t.name} - ${String(values['customer.full_name'] || 'customer').replace(/[^\w .-]+/g, '')}.pdf`;
   return new Response(pdf, { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
     'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`, 'X-Filled': String(filled),
-    'X-Empty': encodeURIComponent([...new Set(empty)].join(', ')) } });
+    'X-Empty': encodeURIComponent([...new Set(empty)].join(', ')),
+    'X-Unprintable': encodeURIComponent([...new Set(unprintable)].join(', ')) } });
 }

@@ -7,6 +7,8 @@ import mongoose from 'mongoose';
 const fieldSchema = new mongoose.Schema({
   id: String, kind: String, pdf_field: String, label: String, source: { type: String, default: null },
   page: Number, x: Number, y: Number, w: Number, h: Number, size: Number,
+  rot: { type: Number, default: 0 }, // the page is turned (/Rotate): the text is written turned with it, so it reads upright
+  found_by: { type: String, default: null }, // 'ai': placed by the AI (a scanned form, lib/forms/aiLocate.js)
 }, { _id: false });
 
 const versionSchema = new mongoose.Schema({
@@ -16,6 +18,8 @@ const versionSchema = new mongoose.Schema({
   fillable: { type: Boolean, default: false },
   pages: { type: Number, default: 0 },
   fields: { type: [fieldSchema], default: [] },
+  found_by_ai: { type: Boolean, default: false }, // the AI found the blanks (a scan): checked with Preview before use
+  fields_before_ai: { type: [fieldSchema], default: undefined }, // kept by "Find blanks with AI", for Undo
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   created_by_name: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
