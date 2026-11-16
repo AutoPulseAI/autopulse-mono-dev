@@ -4,6 +4,9 @@
 //   POST { dealer_id, lead_id, checked_in_at?, department?, stock_number?, vehicle?, trade?, salesperson_id?,
 //        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit); their
 //        appointment that day is marked showed and the AI told they came in (app/lib/deskLog/checkIn.js)
+//        new_customer: { name, phone?, email?, contact_type, lead_source?, vehicle_year/make/model?, vin? } in place of
+//        lead_id: a customer not in the CRM yet - their lead (and customer) is created in the same step
+//        (app/lib/deskLog/newCustomer.js)
 // Visible while the 'desk_log' feature allows it (app/lib/deskLog/access.js).
 import mongoose from 'mongoose';
 import moment from 'moment-timezone';
@@ -15,6 +18,7 @@ import { deskLogCards } from '@lib/deskLog/cards';
 import { deskLogList, VIEWS } from '@lib/deskLog/list';
 import { planChanges } from '@lib/deskLog/deskLog';
 import { recordShowroomVisit } from '@lib/deskLog/checkIn';
+import { checkNewCustomer, createLeadAtCheckIn } from '@lib/deskLog/newCustomer';
 import { dealerForms } from '@lib/reporting/kpis/common';
 import { getDealerTimezone, isValidLocalDate } from '@lib/reporting/time';
 
@@ -56,13 +60,24 @@ export async function POST(req) {
   const access = await deskLogAccess(req, dealerId);
   if (access.response) return access.response;
   try {
-    if (!mongoose.isValidObjectId(String(body.lead_id || ''))) return json({ message: 'Pick the customer' }, 400);
-    const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: { $in: dealerForms(dealerId) } })
-      .select('dealer_id customer_id fe_lead_status assigned_to vehicle_year vehicle_make vehicle_model vin').lean();
-    if (!lead) return json({ message: 'Customer not found' }, 404);
     const checkedIn = body.checked_in_at ? new Date(body.checked_in_at) : new Date();
     if (Number.isNaN(checkedIn.getTime()) || checkedIn.getTime() > Date.now() + 5 * 60000) {
       return json({ message: 'checked_in_at must be a time, not in the future' }, 400);
+    }
+    // The visit's own fields are checked before anything is created (a new customer's lead included).
+    const early = planChanges({}, Object.fromEntries(['department', 'stock_number', 'vehicle', 'trade', 'salesperson_id',
+      'sales_manager_id', 'bdc_agent_id', 'stage', 'note'].filter((k) => body[k] !== undefined).map((k) => [k, body[k]])));
+    if (early.errors) return json({ message: early.errors.join('; '), errors: early.errors }, 400);
+    let lead;
+    if (body.new_customer) {
+      const checked = checkNewCustomer(body.new_customer);
+      if (checked.errors) return json({ message: checked.errors.join('; '), errors: checked.errors }, 400);
+      lead = await createLeadAtCheckIn(String(dealerId), checked.value, { user: access.user });
+    } else {
+      if (!mongoose.isValidObjectId(String(body.lead_id || ''))) return json({ message: 'Pick the customer' }, 400);
+      lead = await Lead.findOne({ _id: body.lead_id, dealer_id: { $in: dealerForms(dealerId) } })
+        .select('dealer_id customer_id fe_lead_status assigned_to vehicle_year vehicle_make vehicle_model vin').lean();
+      if (!lead) return json({ message: 'Customer not found' }, 404);
     }
     // Filled from the lead (vehicle of interest, its BDC owner) and its latest open trade-in, unless sent.
     const trade = await TradeIn.findOne({ dealer_id: String(dealerId), status: 'open',
@@ -96,7 +111,8 @@ export async function POST(req) {
     // Connected to the CRM: the day's appointment marked showed, the lead and timeline updated, the AI told.
     const visit = await recordShowroomVisit({ lead, dealerId: String(dealerId), user: access.user, checkedIn,
       department: entry.department || 'sales' });
-    return json({ entry: { id: String(entry._id) }, appointment: visit.appointment }, 201);
+    return json({ entry: { id: String(entry._id) }, appointment: visit.appointment, lead_id: String(lead._id),
+      created: Boolean(body.new_customer) }, 201);
   } catch (error) {
     console.error('desk-log POST failed:', error?.message);
     return json({ message: 'Could not check the customer in' }, 500);
