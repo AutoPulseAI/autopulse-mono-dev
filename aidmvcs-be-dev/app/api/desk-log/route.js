@@ -2,7 +2,8 @@
 //   GET  ?dealer_id &start_date &end_date (dealer-local YYYY-MM-DD) [&view &q &department &lead_type &source
 //        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1]  -> { rows, sources, truncated, cards? }
 //   POST { dealer_id, lead_id, checked_in_at?, department?, stock_number?, vehicle?, trade?, salesperson_id?,
-//        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit)
+//        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit); their
+//        appointment that day is marked showed and the AI told they came in (app/lib/deskLog/checkIn.js)
 // Visible while the 'desk_log' feature allows it (app/lib/deskLog/access.js).
 import mongoose from 'mongoose';
 import moment from 'moment-timezone';
@@ -13,6 +14,7 @@ import { deskLogAccess, json } from '@lib/deskLog/access';
 import { deskLogCards } from '@lib/deskLog/cards';
 import { deskLogList, VIEWS } from '@lib/deskLog/list';
 import { planChanges } from '@lib/deskLog/deskLog';
+import { recordShowroomVisit } from '@lib/deskLog/checkIn';
 import { dealerForms } from '@lib/reporting/kpis/common';
 import { getDealerTimezone, isValidLocalDate } from '@lib/reporting/time';
 
@@ -56,7 +58,7 @@ export async function POST(req) {
   try {
     if (!mongoose.isValidObjectId(String(body.lead_id || ''))) return json({ message: 'Pick the customer' }, 400);
     const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: { $in: dealerForms(dealerId) } })
-      .select('customer_id assigned_to vehicle_year vehicle_make vehicle_model vin').lean();
+      .select('dealer_id customer_id fe_lead_status assigned_to vehicle_year vehicle_make vehicle_model vin').lean();
     if (!lead) return json({ message: 'Customer not found' }, 404);
     const checkedIn = body.checked_in_at ? new Date(body.checked_in_at) : new Date();
     if (Number.isNaN(checkedIn.getTime()) || checkedIn.getTime() > Date.now() + 5 * 60000) {
@@ -91,7 +93,10 @@ export async function POST(req) {
       ...plan.history.filter((h) => h.field === 'stage').map((h) => ({ ...h, at: now, by, by_name: actorName(access.user) }))];
     if (plan.note) doc.notes = [{ text: plan.note, at: now, by, by_name: actorName(access.user) }];
     const entry = await DeskLogEntry.create(doc);
-    return json({ entry: { id: String(entry._id) } }, 201);
+    // Connected to the CRM: the day's appointment marked showed, the lead and timeline updated, the AI told.
+    const visit = await recordShowroomVisit({ lead, dealerId: String(dealerId), user: access.user, checkedIn,
+      department: entry.department || 'sales' });
+    return json({ entry: { id: String(entry._id) }, appointment: visit.appointment }, 201);
   } catch (error) {
     console.error('desk-log POST failed:', error?.message);
     return json({ message: 'Could not check the customer in' }, 500);

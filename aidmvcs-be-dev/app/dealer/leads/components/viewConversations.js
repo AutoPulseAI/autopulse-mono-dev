@@ -1,4 +1,5 @@
 "use client";
+import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
@@ -822,7 +823,7 @@ export default function ViewConversations({
                   <p className="col col-xxl-12 col-lg-6 col-6"><strong>Source Type:</strong> {lead?.source  || "N/A"}</p>
 
                   <p className="col col-xxl-12 col-lg-6 col-6">
-                    <strong>Lead Status:</strong> {lead?.fe_lead_status  || "N/A"}
+                    <strong>Lead Status:</strong> {leadStatusLabel(lead) || "N/A"}
                   </p>
                   <p className="col col-xxl-12 col-lg-6 col-12"><strong>Lead Source:</strong> {lead?.lead_source  || "N/A"}</p>
                   <p className="col col-xxl-12 col-lg-6 col-6"><strong>Vin:</strong> {lead?.vin  || "N/A"}</p>

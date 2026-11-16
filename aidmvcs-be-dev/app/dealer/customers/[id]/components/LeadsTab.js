@@ -1,5 +1,6 @@
 "use client";
 
+import { leadStatusLabel } from "@lib/statusLabels";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
@@ -151,7 +152,7 @@ export default function LeadsTab({ customerId }) {
                   <Row className="align-items-center w-100 me-2 small">
                     <Col md={3} className="p_bold">{lead.name || "Unnamed lead"}</Col>
                     <Col md={2}>{getLeadSource(lead)}</Col>
-                    <Col md={2}>{lead.fe_lead_status || "N/A"}
+                    <Col md={2}>{leadStatusLabel(lead) || "N/A"}
                       {details[lead._id] && <div className="text-muted">{details[lead._id].owner}</div>}</Col>
                     <Col md={3}>{lead.email || lead.phone || "No contact"}</Col>
                     <Col md={2} className="text-md-end text-muted">

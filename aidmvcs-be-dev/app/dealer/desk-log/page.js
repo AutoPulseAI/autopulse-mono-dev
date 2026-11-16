@@ -34,6 +34,7 @@ export default function DeskLogPage() {
   const [range, setRange] = useState(null);
   const [view, setView] = useState("all");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [notice, setNotice] = useState(null);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
@@ -184,6 +185,7 @@ export default function DeskLogPage() {
         </div>
 
         {error && <Alert variant="danger">{error}</Alert>}
+        {notice && <Alert variant="success" dismissible onClose={() => setNotice(null)} className="py-2">{notice}</Alert>}
         {data && (
           <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId} rules={rules}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
@@ -193,7 +195,7 @@ export default function DeskLogPage() {
       </div>
 
       {checkIn && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} onHide={() => setCheckIn(false)}
-        onDone={() => { setCheckIn(false); load(); }} />}
+        onDone={(msg) => { setCheckIn(false); setNotice(msg || null); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}
       {rulesOpen && <RulesModal dealerId={dealerId} onHide={() => setRulesOpen(false)}

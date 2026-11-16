@@ -24,3 +24,16 @@ export const STATUS_LABELS = Object.freeze({
 export function statusLabel(status) {
   return STATUS_LABELS[status] || status;
 }
+
+// A customer checked in on the Desk Log for their appointment (13 Nov 2026 meeting, Betsy: "it would need to show as
+// shown"): the lead reads "Appointment Showed" until a manager outcome (Sold / Unsold) replaces its status. A newer
+// appointment booked after that visit reads "Appointment Set" again. Display only, like the labels above.
+export function leadStatusLabel(lead) {
+  const status = lead?.fe_lead_status || lead?.lead_status || lead?.status || null;
+  const showed = lead?.appointment_showed_at ? new Date(lead.appointment_showed_at).getTime() : null;
+  const bookedFor = lead?.booking?.booking_at ? new Date(lead.booking.booking_at).getTime() : null;
+  if (showed && ['Appointment Booked', 'No Show'].includes(status) && (!bookedFor || bookedFor <= showed + 12 * 3600000)) {
+    return 'Appointment Showed';
+  }
+  return statusLabel(status);
+}

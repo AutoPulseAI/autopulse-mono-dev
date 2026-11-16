@@ -10,6 +10,7 @@ import { localDayRange } from '../reporting/time.js';
 import { staffNames, dealerForms } from '../reporting/kpis/common.js';
 import { STALLED_MINUTES, UNSOLD_REASONS, isOpen, minutesInStage } from './deskLog.js';
 import { dealDate } from '../reporting/dealGross.js';
+import { leadStatusLabel } from '../statusLabels.js';
 
 export const VIEWS = Object.freeze({
   all: 'All visits',
@@ -57,7 +58,7 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
   const entries = await DeskLogEntry.find(match).sort({ checked_in_at: -1, _id: -1 }).limit(MAX_ROWS * 2).lean();
   const leads = new Map((await Lead.find({ _id: { $in: entries.map((e) => e.lead_id) },
     dealer_id: { $in: dealerForms(dealerId) } })
-    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin')
+    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin appointment_showed_at booking.booking_at')
     .lean()).map((l) => [String(l._id), l]));
   // Handoffs (SOW Deliverable C manager view): the lead is waiting for a manager - Managerial Review, or the AI handed
   // it over and nobody has picked it up yet (ai_lead_state, the same as AI Assistant > Dealer Action Required).
@@ -80,6 +81,7 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
       id: String(e._id), lead_id: String(e.lead_id), customer_id: lead.customer_id ? String(lead.customer_id) : null,
       customer: lead.name || '', phone: lead.phone || '', email: lead.email || '',
       lead_type: upType(lead), source, sub_source: lead.sub_source || null, lead_status: lead.fe_lead_status || null,
+      lead_status_label: leadStatusLabel(lead) || null,
       department: e.department, checked_in_at: e.checked_in_at, stock_number: e.stock_number || null,
       vehicle: e.vehicle || {}, trade: e.trade || {},
       salesperson_id: e.salesperson_id ? String(e.salesperson_id) : null, salesperson: name(e.salesperson_id),

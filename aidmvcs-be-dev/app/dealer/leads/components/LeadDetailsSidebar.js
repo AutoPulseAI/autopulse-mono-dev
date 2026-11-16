@@ -1,4 +1,5 @@
 "use client";
+import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect } from "react";
 import { Offcanvas, Form, Button, Alert, Spinner, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
@@ -317,7 +318,7 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
           <h6 className="mb-3">Lead Information</h6>
           <Row>
             <Col md={6}>
-              <p><strong>Status:</strong> {lead.fe_lead_status || "N/A"}</p>
+              <p><strong>Status:</strong> {leadStatusLabel(lead) || "N/A"}</p>
               <p><strong>Source:</strong> {lead.source || "N/A"}</p>
             </Col>
             <Col md={6}>
