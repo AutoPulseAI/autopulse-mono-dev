@@ -7,7 +7,7 @@ import {
   leadRowsForIds, leadsReceived, localDateTime, localDay, notYet, replies, windowFor,
 } from './common.js';
 import { matchedDealGross } from '../dealGross.js';
-import { NOT_RECORDED_TEXT, NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, shared } from './executive.js';
+import { NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, shared } from './executive.js';
 
 const D = 'lead_source';
 const BY = ['lead_source'];
@@ -69,19 +69,17 @@ export const LEAD_SOURCE_KPIS = [
     exclusions: 'Cancelled; duplicates.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: BY,
     columns: BOOKING_COLUMNS, evaluate: async (args, ctx) => ({ rows: await shared.shownRows(args, ctx) }),
   },
-  // Appointments missed / upcoming (13 Nov 2026 meeting, Betsy, 11:00-13:00): "missed mean the customer didn't show -
-  // the time passed and the customer is not in"; upcoming = "active appointments that are scheduled for the future but
-  // within the time frame selected" (an appointment on 1 Dec is not upcoming in a 1-13 Nov report; run 1 Nov - 31 Dec
-  // to see December's). Set + these use the same scheduled appointments as Shown, so Shown + Missed + Upcoming = every
-  // appointment scheduled in the range (not cancelled).
+  // Appointments missed / upcoming (13 Nov 2026 meeting). Missed = the no-shows: appointments in the range marked a
+  // no-show (the user, 17 Nov 2026: "appointments missed are basically those appointments that are no-show"). A past
+  // appointment nobody recorded an outcome for is not missed (owner, 10 Nov 2026: not a no-show). Upcoming = "active
+  // appointments that are scheduled for the future but within the time frame selected" (Betsy): an appointment on
+  // 1 Dec is not upcoming in a 1-13 Nov report; run 1 Nov - 31 Dec to see December's.
   {
-    id: 'source.missed', label: 'Appointments missed', dashboard: D, grain: 'booking', kind: KIND.COUNT,
-    dateBasis: 'Booking.bookingDate', numerator: `Appointments scheduled in the range that were missed: marked a no-show, `
-      + `or their date and time have passed with no show recorded. (${NO_SHOW_TEXT} ${NOT_RECORDED_TEXT}) By the lead's `
-      + 'provider.', denominator: null, inclusions: 'No-shows + past with no outcome recorded.',
-    exclusions: 'Cancelled; shown; not passed yet; duplicates.', source: ['bookings', 'leads'], filters: BOOKING_FILTERS,
-    breakdowns: BY, columns: BOOKING_COLUMNS,
-    evaluate: async (args, ctx) => ({ rows: [...await shared.noShowRows(args, ctx), ...await shared.notRecordedRows(args, ctx)] }),
+    id: 'source.missed', label: 'Appointments missed (no-show)', dashboard: D, grain: 'booking', kind: KIND.COUNT,
+    dateBasis: 'Booking.bookingDate', numerator: `${NO_SHOW_TEXT} By the lead's provider.`, denominator: null,
+    inclusions: 'As appointments.no_show.', exclusions: 'Cancelled; shown; past with no outcome recorded; duplicates.',
+    source: ['bookings', 'leads'], filters: BOOKING_FILTERS, breakdowns: BY, columns: BOOKING_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: await shared.noShowRows(args, ctx) }),
   },
   {
     id: 'source.upcoming', label: 'Upcoming appointments', dashboard: D, grain: 'booking', kind: KIND.COUNT,

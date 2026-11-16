@@ -1,6 +1,6 @@
 // Source and sub-source performance (Betsy, 10 Nov 2026: like eLead's "Source and Sub Source Performance" report).
 // Rows: All Types -> each lead type (Up Type) -> each source -> each sub-source, with Leads, Appts Set, Appts Shown,
-// Appts Missed, Upcoming Appts (13 Nov 2026 meeting), Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
+// Appts Missed (the no-shows), Upcoming Appts (13 Nov 2026 meeting), Sold and Closing Ratio (Sold / Leads). Built from the same KPIs as the Lead sources tag (source.leads,
 // source.appointments, source.shown, source.crm_sold in kpis/leadSource.js), so the "All Types" row always equals
 // the numbers on screen. Visits are Desk Log check-ins (sales.showroom_visits). Front / Back / Total Gross: DealerVault
 // deals dated in the range, matched to their leads (./dealGross.js: same VIN, phone or email); "–" when the dealer has no
@@ -155,8 +155,7 @@ export function sourceTableLines(report, company) {
 
 // What the appointment columns count (13 Nov 2026 meeting).
 export const APPTS_NOTE = 'Appts Set: appointments made in the period. Appts Shown / Missed / Upcoming: appointments '
-  + 'scheduled in the period that the customer showed for / missed (no-show, or the time passed with no show recorded) '
-  + '/ that are still to come.';
+  + 'scheduled in the period that the customer showed for / that were no-shows / that are still to come.';
 
 /** What the gross columns hold, for the report's footnote. */
 export function grossNote(report) {
