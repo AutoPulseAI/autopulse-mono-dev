@@ -118,7 +118,7 @@ export default function DeskLogPage() {
             <h3 className="page_title mb-0">Desk Log</h3>
             <small className="text-muted">Manage, follow up, and convert your sales and service opportunities.</small>
           </div>
-          {/* Betsy's top bar: search, date, Add Customer (with its menu). */}
+          {/* Betsy's top bar: search, date, Customer Check-in (with its menu). */}
           <div className="dl_top_search">
             <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
             <Form.Control id="dl-search" size="sm" placeholder="Search by name, phone, email, VIN, stock #..." value={search}
@@ -127,7 +127,7 @@ export default function DeskLogPage() {
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
           <Dropdown as="div" className="btn-group">
             <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
-              <i className="fa-solid fa-plus me-1"></i>Add Customer
+              <i className="fa-solid fa-right-to-bracket me-1"></i>Customer Check-in
             </Button>
             <Dropdown.Toggle split size="sm" variant="custom" aria-label="More" />
             <Dropdown.Menu align="end">
