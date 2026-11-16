@@ -9,6 +9,7 @@ import Lead from '@models/Lead';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { leadMilestones } from '@lib/leadMilestones';
 import User from '@models/User';
+import DeskLogEntry from '@models/DeskLogEntry';
 
 export const runtime = 'nodejs';
 const MAX = 50;
@@ -33,6 +34,16 @@ export async function GET(req) {
   const primaries = [...new Set(states.map((s) => s.duplicate_of && String(s.duplicate_of)).filter((x) => x && mongoose.isValidObjectId(x)))];
   const primaryDocs = new Map((await Lead.find({ _id: { $in: primaries } }).select('createdAt vehicle_year vehicle_make vehicle_model').lean())
     .map((l) => [String(l._id), l]));
+  // The lead's showroom visits on the Desk Log (the Desk Log is part of the customer's record, not a separate list).
+  const visitDocs = await DeskLogEntry.find({ lead_id: { $in: ids.map((x) => new mongoose.Types.ObjectId(x)) } })
+    .select('lead_id checked_in_at stage outcome unsold_reason salesperson_id department notes').sort({ checked_in_at: -1 }).lean();
+  const sp = [...new Set(visitDocs.map((v) => v.salesperson_id && String(v.salesperson_id)).filter(Boolean))];
+  const spNames = new Map((await User.find({ _id: { $in: sp } }).select('name').lean()).map((u) => [String(u._id), u.name]));
+  const visitsOf = (id) => visitDocs.filter((v) => String(v.lead_id) === id).slice(0, 10).map((v) => ({
+    id: String(v._id), at: v.checked_in_at, stage: v.stage || null, department: v.department || 'sales',
+    outcome: v.outcome ? `${v.outcome}${v.unsold_reason ? ` - ${v.unsold_reason}` : ''}` : null,
+    salesperson: v.salesperson_id ? spNames.get(String(v.salesperson_id)) || null : null,
+    note: (v.notes || []).at(-1)?.text || null }));
   const details = Object.fromEntries(leads.map((l) => {
     const st = stateOf.get(String(l._id));
     const on = st?.duplicate_of ? String(st.duplicate_of) : null;
@@ -41,6 +52,7 @@ export async function GET(req) {
       owner: l.assigned_to ? owners.get(String(l.assigned_to)) || 'a removed user' : 'Unassigned',
       ai: !st ? 'none' : on ? 'linked' : 'own',
       ai_lead_id: on,
+      visits: visitsOf(String(l._id)),
       ai_lead_label: p ? [[p.vehicle_year, p.vehicle_make, p.vehicle_model].filter(Boolean).join(' ') || 'the earlier lead',
         p.createdAt ? new Date(p.createdAt).toISOString() : null] : null,
     }];

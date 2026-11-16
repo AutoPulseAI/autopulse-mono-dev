@@ -162,6 +162,26 @@ export default function LeadsTab({ customerId }) {
                 </Accordion.Header>
                 <Accordion.Body>
                   <Milestones times={milestones[lead._id]} />
+                  {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
+                  <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">
+                    <strong className="me-1"><i className="fa-solid fa-store me-1" />Showroom visits</strong>
+                    {(details[lead._id]?.visits || []).length === 0 && <span className="text-muted">none yet</span>}
+                    <a className="btn btn-outline-custom btn-sm ms-auto" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                      <i className="fa-solid fa-right-to-bracket me-1" />Check in to the showroom</a>
+                  </div>
+                  {(details[lead._id]?.visits || []).length > 0 && (
+                    <ul className="small list-unstyled mb-2 ps-3">
+                      {details[lead._id].visits.map((v) => (
+                        <li key={v.id} className="mb-1">
+                          {formatTimestamp(v.at)} · {v.department === "service" ? "Service" : "Sales"}
+                          {v.stage ? ` · ${v.stage}` : ""}{v.salesperson ? ` · ${v.salesperson}` : ""}
+                          {" · "}<strong>{v.outcome || "still open"}</strong>
+                          {v.note && <span className="text-muted"> · {v.note}</span>}
+                          {" "}<a href={`/dealer/desk-log?visit=${v.id}`}>open in Desk Log</a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {details[lead._id]?.ai === "linked" && (
                     <Alert variant="light" className="border py-2 small mb-2">
                       <i className="fa-solid fa-link me-1" />

@@ -57,6 +57,13 @@ export default function DeskLogPage() {
     }
   }, [range, tz, dealerParent]);
 
+  // Opened from a customer's profile: "Check in to the showroom" (?check_in=<lead>) or a visit (?visit=<visit>).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (/^[0-9a-f]{24}$/i.test(p.get("check_in") || "")) setCheckIn({ leadId: p.get("check_in") });
+    if (/^[0-9a-f]{24}$/i.test(p.get("visit") || "")) setOpened({ id: p.get("visit"), name: "" });
+  }, []);
+
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 350);
     return () => clearTimeout(t);
@@ -186,7 +193,8 @@ export default function DeskLogPage() {
           rest.</small>}
       </div>
 
-      {checkIn && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} onHide={() => setCheckIn(false)}
+      {checkIn && dealerId && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} initialLeadId={checkIn.leadId || null}
+        onHide={() => setCheckIn(false)}
         onDone={(msg) => { setCheckIn(false); setNotice(msg || null); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}

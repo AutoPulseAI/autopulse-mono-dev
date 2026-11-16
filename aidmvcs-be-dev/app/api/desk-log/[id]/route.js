@@ -17,7 +17,15 @@ import { deskLogDetail } from '@lib/deskLog/list';
 import { outcomeKey, rulesFor } from '@lib/deskLog/rules';
 import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from '@lib/mongodb';
+import { logActivity } from '@lib/activityLog';
 import { PUT as changeLeadStatus } from '../../conversations/lead/status/route.js';
+
+async function staffName(id) {
+  if (!id || !mongoose.isValidObjectId(String(id))) return null;
+  const u = await mongoose.connection.db.collection('users').findOne({ _id: new mongoose.Types.ObjectId(String(id)) },
+    { projection: { name: 1, email: 1 } });
+  return u?.name || u?.email || null;
+}
 
 async function load(req, params) {
   const { id } = await params;
@@ -106,6 +114,20 @@ export async function PATCH(req, { params }) {
   if (Object.keys(push).length) update.$push = push;
   if (!Object.keys(plan.set).length) delete update.$set;
   await DeskLogEntry.updateOne({ _id: entry._id }, update);
+  // The customer's timeline shows what was done on the Desk Log (stage, who works the deal, notes); an outcome is
+  // already there as the lead's status change.
+  const people = { salesperson_id: 'salesperson', sales_manager_id: 'sales manager', bdc_agent_id: 'BDC agent' };
+  const base = { dealer_id: entry.dealer_id, customer_id: entry.customer_id || null, lead_id: entry.lead_id,
+    actor_type: 'staff', actor_id: by, actor_name: byName };
+  for (const h of plan.history) {
+    if (h.field === 'stage') {
+      await logActivity({ ...base, action: 'desk_log_stage', from: h.from || null, to: h.to || 'No stage' });
+    } else if (people[h.field]) {
+      await logActivity({ ...base, action: 'desk_log_person', detail: people[h.field],
+        to: (await staffName(h.to)) || 'nobody' });
+    }
+  }
+  if (plan.note) await logActivity({ ...base, action: 'desk_log_note', detail: plan.note.slice(0, 500) });
   return json({ entry: { id: String(entry._id) }, changed: true, applied });
 }
 

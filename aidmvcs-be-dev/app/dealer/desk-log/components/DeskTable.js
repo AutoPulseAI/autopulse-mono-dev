@@ -159,7 +159,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log",
                       "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
                     {row.phone && <small className="d-block text-muted">{row.phone}</small>}
-                    {row.lead_status_label === "Appointment Showed" && <small className="d-block text-success">Appointment showed</small>}
+                    {/* The lead's own status, as everywhere else in the CRM (changes made on the Leads page show here too). */}
+                    {row.lead_status_label && <small className={`d-block ${row.lead_status_label === "Appointment Showed" ? "text-success" : "text-muted"}`}>
+                      Lead: {row.lead_status_label}</small>}
                     {dnd && <small className="d-block fw-semibold text-danger">Do not contact (DND)</small>}
                     {row.handoff && <small className="d-block fw-semibold text-warning" title={row.handoff.reason}>
                       <i className="fa-solid fa-hand me-1" />Handed to a manager</small>}
