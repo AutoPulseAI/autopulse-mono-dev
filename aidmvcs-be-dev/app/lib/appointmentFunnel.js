@@ -72,36 +72,41 @@ function latestPerLead(bookings) {
 
 // The leads behind the "showed" and "sold" steps, for the cards' lists (Betsy, 28 Oct 2026 meeting: a card's number
 // and the list it opens must be the same appointments - "they shouldn't just disappear").
-export async function funnelLeadIds({ dealerId, start, end, step }) {
+// leadIds (optional): only these leads' appointments count (the dashboard for one department).
+const keep = (leadIds) => (leadIds ? ((set) => (b) => set.has(String(b.lead_id)))(new Set(leadIds.map(String))) : () => true);
+
+export async function funnelLeadIds({ dealerId, start, end, step, leadIds = null }) {
   const dealer_id = String(dealerId);
+  const ok = keep(leadIds);
   const range = start && end ? { $gte: start, $lte: end } : null;
   if (step === 'sold') {
     const logs = await ActivityLog.find({ dealer_id, action: 'status_changed', to: { $in: SOLD },
       ...(range ? { at: range } : {}) }).select('lead_id').lean();
-    const ids = [...new Set(logs.map((r) => String(r.lead_id)))];
+    const ids = [...new Set(logs.filter(ok).map((r) => String(r.lead_id)))];
     const booked = ids.length ? await Booking.distinct('lead_id', { dealer_id, lead_id: { $in: ids } }) : [];
     return booked.map(String);
   }
   const scheduled = await Booking.find({ dealer_id, booking_status: { $ne: 'cancelled' },
-    ...(range ? { bookingDate: range } : {}) }).select('lead_id showed booking_status').lean();
+    ...(range ? { bookingDate: range } : {}) }).select('lead_id showed booking_status').lean().then((r) => r.filter(ok));
   const status = await leadStatuses(scheduled.map((b) => b.lead_id));
   return [...new Set(scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id))))
     .map((b) => String(b.lead_id)))];
 }
 
-export async function appointmentFunnel({ dealerId, start, end }) {
+export async function appointmentFunnel({ dealerId, start, end, leadIds = null }) {
   const dealer_id = String(dealerId);
+  const ok = keep(leadIds);
   const range = start && end ? { $gte: start, $lte: end } : null;
-  const made = await Booking.find({ dealer_id, ...(range ? { createdAt: range } : {}) })
-    .select('lead_id created_by').lean();
+  const made = (await Booking.find({ dealer_id, ...(range ? { createdAt: range } : {}) })
+    .select('lead_id created_by').lean()).filter(ok);
   const scheduled = await Booking.find({ dealer_id, booking_status: { $ne: 'cancelled' },
-    ...(range ? { bookingDate: range } : {}) }).select('lead_id created_by showed booking_status').lean();
+    ...(range ? { bookingDate: range } : {}) }).select('lead_id created_by showed booking_status').lean().then((r) => r.filter(ok));
   const status = await leadStatuses(scheduled.map((b) => b.lead_id));
   const showed = scheduled.filter((b) => bookingShowed(b, status.get(String(b.lead_id))));
 
   const soldLogs = await ActivityLog.find({ dealer_id, action: 'status_changed', to: { $in: SOLD },
     ...(range ? { at: range } : {}) }).select('lead_id').lean();
-  const soldLeadIds = [...new Set(soldLogs.map((r) => String(r.lead_id)))];
+  const soldLeadIds = [...new Set(soldLogs.filter(ok).map((r) => String(r.lead_id)))];
   const soldBookings = soldLeadIds.length
     ? latestPerLead(await Booking.find({ dealer_id, lead_id: { $in: soldLeadIds } })
       .select('lead_id created_by').lean())

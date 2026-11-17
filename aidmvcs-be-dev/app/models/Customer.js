@@ -125,6 +125,15 @@ const customerSchema = new mongoose.Schema(
     // imports) that aren't modeled here yet, so unmapped data is preserved
     // instead of silently dropped by strict-mode schema validation.
     extra: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Details staff type in on the profile (13 Nov 2026 meeting 10.14, BB's VinSolutions "Edit customer"): title,
+    // nickname, gender, married, birthday, anniversary, spouse, a customer note. The DMS's own values are shown
+    // beside them (app/lib/dmsProfile.js); nothing here is filled into forms automatically.
+    details: {
+      title: { type: String, default: undefined }, nickname: { type: String, default: undefined },
+      gender: { type: String, default: undefined }, marital_status: { type: String, default: undefined },
+      birthday: { type: String, default: undefined }, anniversary: { type: String, default: undefined },
+      spouse_name: { type: String, default: undefined }, note: { type: String, default: undefined },
+    },
   },
   { timestamps: true }
 );

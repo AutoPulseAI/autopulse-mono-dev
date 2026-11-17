@@ -7,6 +7,7 @@ import { useUser } from "../../../context/UserContext";
 import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
 import DmsDetails, { LeaseBar } from "./DmsDetails";
+import OpenTasks from "./OpenTasks";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
@@ -90,7 +91,7 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads, dms } = data;
+  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads, dms, open_tasks: openTasks } = data;
 
   // A customer with an existing Lead already has a reachable conversation
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
@@ -166,6 +167,7 @@ export default function CustomerDetail({ customerId }) {
         onOpenTab={setActiveTab}
       />
 
+      <OpenTasks tasks={openTasks} />
       <DmsDetails dms={dms} />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>

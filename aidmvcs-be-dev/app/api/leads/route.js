@@ -256,10 +256,7 @@ export async function GET(req) {
         orConditions.push(sourceMatchConditions);
       }
     }
-    if (department) {
-      if (department.$or) orConditions.push(department.$or);
-      else Object.assign(query, department);
-    }
+    if (department) Object.assign(query, department);
     if (source) {
       // Special handling for "Unknown" - match null, undefined, empty string, or literal "Unknown"
       if (source.toLowerCase() === 'unknown') {

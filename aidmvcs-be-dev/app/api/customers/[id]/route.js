@@ -78,7 +78,7 @@ export async function PUT(req, { params }) {
     }
 
     const existingCustomer = await Customer.findOne({ _id: id, dealer_id: dealerId })
-      .select("assigned_to name followup_preference preferred_communication_mode user_language")
+      .select("assigned_to name followup_preference preferred_communication_mode user_language details")
       .lean();
     if (!existingCustomer) return jsonError("Customer not found", 404);
 
@@ -92,6 +92,21 @@ export async function PUT(req, { params }) {
     if (body.preferred_communication_mode !== undefined) {
       updates.preferred_communication_mode = body.preferred_communication_mode;
       updates.preferred_communication_mode_selected = true;
+    }
+
+    // Staff-typed details (13 Nov 2026 meeting 10.14): { details: { <field>: text } }, each one on its own.
+    const DETAIL_FIELDS = { title: 20, nickname: 60, gender: 20, marital_status: 20, birthday: 10, anniversary: 10,
+      spouse_name: 120, note: 1000 };
+    const detailChanges = [];
+    const unsets = {};
+    if (body.details && typeof body.details === "object") {
+      for (const [f, raw] of Object.entries(body.details)) {
+        if (!DETAIL_FIELDS[f]) return jsonError(`${f} cannot be changed here`, 400);
+        const v = String(raw ?? "").replace(f === "note" ? /[ \t]+/g : /\s+/g, " ").trim().slice(0, DETAIL_FIELDS[f]);
+        if (["birthday", "anniversary"].includes(f) && v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return jsonError(`The ${f} is not a date`, 422);
+        if (v) updates[`details.${f}`] = v; else unsets[`details.${f}`] = "";
+        detailChanges.push({ f, from: existingCustomer.details?.[f] ?? null, to: v || null });
+      }
     }
 
     // TODO(customer-assignment-permission): unlike the leads dropdown (gated
@@ -124,7 +139,7 @@ export async function PUT(req, { params }) {
 
     const customer = await Customer.findOneAndUpdate(
       { _id: id, dealer_id: dealerId },
-      { $set: updates },
+      { ...(Object.keys(updates).length ? { $set: updates } : {}), ...(Object.keys(unsets).length ? { $unset: unsets } : {}) },
       { new: true }
     ).lean();
     if (!customer) return jsonError("Customer not found", 404);
@@ -139,6 +154,14 @@ export async function PUT(req, { params }) {
       await logActivity({ dealer_id: dealerId, customer_id: id, actor_type: "staff", actor_id: currentUser._id,
         actor_name: currentUser.name || null, action: "customer_edited", from: existingCustomer[f] ?? null,
         to: updates[f] ?? null, detail: label });
+    }
+    const DETAIL_LABELS = { title: "title", nickname: "nickname", gender: "gender", marital_status: "marital status",
+      birthday: "birthday", anniversary: "anniversary", spouse_name: "spouse", note: "customer note" };
+    for (const c of detailChanges) {
+      if (String(c.from ?? "") === String(c.to ?? "")) continue;
+      await logActivity({ dealer_id: dealerId, customer_id: id, actor_type: "staff", actor_id: currentUser._id,
+        actor_name: currentUser.name || null, action: "customer_edited", from: c.f === "note" ? null : c.from,
+        to: c.f === "note" ? (c.to ? "a new note" : null) : c.to, detail: DETAIL_LABELS[c.f] });
     }
     if (updates.name && updates.name !== (existingCustomer.name || "")) {
       const oldName = (existingCustomer.name || "").trim();

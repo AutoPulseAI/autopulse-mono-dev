@@ -4,6 +4,7 @@ import User from '@models/User';
 import moment from 'moment-timezone';
 import { messageActivity } from '@lib/contactedLeads';
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { departmentMatch } from '@lib/departmentNames';
 
 // The dashboard's Messages card (Betsy, 27 Oct 2026 meeting): messages sent and received in the picked range, in the
 // dealer's own days (app/lib/contactedLeads.js messageActivity).
@@ -25,7 +26,8 @@ export async function GET(request) {
       from = moment.tz(start, 'YYYY-MM-DD', tz).startOf('day').utc().toDate();
       to = moment.tz(end, 'YYYY-MM-DD', tz).endOf('day').utc().toDate();
     }
-    const ids = (await Lead.find({ dealer_id: dealerId }).select('_id').lean()).map((l) => l._id);
+    const ids = (await Lead.find({ dealer_id: dealerId, ...(departmentMatch(searchParams.get('department')) || {}) })
+      .select('_id').lean()).map((l) => l._id);
     return Response.json(await messageActivity(ids, from, to));
   } catch (error) {
     console.error('[message-activity]', error);

@@ -35,6 +35,17 @@ const EMAIL_LABELS = [["home", "Personal"], ["work", "Work"], ["other", "Other"]
 const CONTACT_MODES = [["sms", "Text"], ["email", "Email"], ["phone", "Phone call"]];
 const FOLLOWUP = [["sms", "Text"], ["email", "Email"]];
 const LANGUAGES = [["english", "English"], ["spanish", "Spanish"]];
+// Details staff type in (13 Nov 2026 meeting 10.14, BB's VinSolutions "Edit customer"), each with its own pencil.
+const TITLES = [["mr", "Mr"], ["mrs", "Mrs"], ["ms", "Ms"], ["miss", "Miss"], ["dr", "Dr"]];
+const GENDERS = [["female", "Female"], ["male", "Male"], ["other", "Other"]];
+const MARITAL = [["married", "Married"], ["single", "Single"], ["other", "Other"]];
+const DETAILS = [
+  ["title", "Title", "fa-id-badge", { options: TITLES }], ["nickname", "Nickname", "fa-user-tag", {}],
+  ["gender", "Gender", "fa-venus-mars", { options: GENDERS }], ["marital_status", "Married", "fa-ring", { options: MARITAL }],
+  ["birthday", "Birthday", "fa-cake-candles", { inputType: "date" }], ["anniversary", "Anniversary", "fa-heart", { inputType: "date" }],
+  ["spouse_name", "Spouse", "fa-user-group", {}], ["note", "Customer note", "fa-note-sticky", {}],
+];
+const shortDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? new Date(`${v}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : v);
 const fmtPhone = (v) => (/^\d{10}$/.test(String(v)) ? `(${v.slice(0, 3)}) ${v.slice(3, 6)}-${v.slice(6)}` : v);
 const nameOf = (options, v) => options.find(([k]) => k === String(v || "").toLowerCase())?.[1] || v || "Not set";
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
@@ -47,7 +58,7 @@ function Pencil({ onClick, title }) {
 }
 
 // One field shown as text with a pencil; the pencil turns it into an input / select with Save and Cancel.
-function InlineField({ label, value, display, options, onSave, inputType = "text", placeholder }) {
+function InlineField({ label, value, display, options, onSave, inputType = "text", placeholder, allowEmpty = false }) {
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -78,7 +89,7 @@ function InlineField({ label, value, display, options, onSave, inputType = "text
           maxLength={120} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setDraft(null); }} />
       )}
-      <Button size="sm" variant="custom" onClick={save} disabled={busy || (!options && !draft.trim())}>
+      <Button size="sm" variant="custom" onClick={save} disabled={busy || (!options && !allowEmpty && !draft.trim())}>
         {busy ? <Spinner size="sm" /> : "Save"}</Button>
       <Button size="sm" variant="outline-secondary" onClick={() => setDraft(null)} disabled={busy}>Cancel</Button>
       {error && <small className="text-danger w-100">{error}</small>}
@@ -225,6 +236,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   dealerId, onChanged, onOpenTab, counts }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
+  const primaryAddress = primaryContact(customer.addresses);
   // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
   // SMS whenever a phone is on file, otherwise email, otherwise no button at all.
   const sendLabel = primaryPhone ? "Send SMS" : primaryEmail ? "Send Mail" : null;
@@ -305,6 +317,20 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
           </div>
         </div>
+        {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
+        <div className="cp_group">
+          <span className="cp_group_label">Search</span>
+          <div className="cp_tools">
+            {[["Google", "fa-brands fa-google", (q) => `https://www.google.com/search?q=${q}`],
+              ["Facebook", "fa-brands fa-facebook-f", (q) => `https://www.facebook.com/search/top?q=${q}`],
+              ["LinkedIn", "fa-brands fa-linkedin-in", (q) => `https://www.linkedin.com/search/results/all/?keywords=${q}`]]
+              .map(([label, icon, url]) => (
+                <a key={label} className="cp_tool" target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
+                  href={url(encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" ")))}>
+                  <i className={icon} />{label}</a>
+              ))}
+          </div>
+        </div>
         <div className="cp_group">
           <span className="cp_group_label">Open</span>
           <div className="cp_tools">
@@ -349,6 +375,16 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <InlineField label="Language" value={customer.user_language}
               display={nameOf(LANGUAGES, customer.user_language)} options={LANGUAGES}
               onSave={(v) => putCustomer({ user_language: v })} /></div>
+          <h6 className="cp_section_title mt-3"><i className="fa-solid fa-address-book" />More details</h6>
+          {DETAILS.map(([key, label, icon, opts]) => {
+            const v = customer.details?.[key] || "";
+            return (
+              <div className="cp_pref" key={key}><i className={`fa-solid ${icon}`} />
+                <InlineField label={label} value={v} options={opts.options} inputType={opts.inputType} allowEmpty
+                  display={v ? (opts.options ? nameOf(opts.options, v) : opts.inputType === "date" ? shortDate(v) : v) : "Not set"}
+                  onSave={(nv) => putCustomer({ details: { [key]: nv } })} /></div>
+            );
+          })}
         </section>
         <section className="cp_section">
           <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>

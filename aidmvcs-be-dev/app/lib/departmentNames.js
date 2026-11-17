@@ -19,12 +19,21 @@ export function validDepartments(list) {
   return [...new Set(arr.map(validDepartment).filter(Boolean))];
 }
 
-/** Mongo match for leads of one department (sales also matches leads with no department). */
+/** Mongo match for leads of one department, safe to spread into another query (sales also matches leads with no
+ * department). null = every department. */
 export function departmentMatch(dept) {
   const d = validDepartment(dept);
   if (!d) return null;
-  return d === 'sales'
-    ? { $or: [{ department: 'sales' }, { department: null }, { department: { $exists: false } }, { department: '' }] }
-    : { department: d };
+  return d === 'sales' ? { department: { $nin: ['service', 'parts'] } } : { department: d };
 }
 
+/**
+ * May this person reply to a lead of this department? (13 Nov 2026 meeting, 6.2: Sales can read a Service
+ * conversation on the customer's profile but answers it from the Service side.) Staff with no department set, the
+ * dealership account and super admins can reply to any lead.
+ */
+export function canReplyInDepartment(user, lead) {
+  const mine = Array.isArray(user?.departments) ? user.departments.map(validDepartment).filter(Boolean) : [];
+  if (!mine.length || !user?.parent_id || user?.type === 'admin') return true;
+  return mine.includes(leadDepartment(lead));
+}
