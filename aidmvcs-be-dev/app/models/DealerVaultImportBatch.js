@@ -5,6 +5,13 @@ const outcomeSchema = new mongoose.Schema({
   status: { type: String, enum: ['processed', 'failed'], required: true },
   code: { type: String, required: true },
   warnings: { type: [String], default: undefined },
+  // SOW G-086: the decision on this row and why (common/batchProcessor.js): ACCEPT / RETAIN / REVIEW / REJECT,
+  // the file it took effect from, and the fields a blank in this file did not overwrite.
+  decision: { type: String, enum: ['ACCEPT', 'RETAIN', 'REVIEW', 'REJECT'], default: undefined },
+  reason: { type: String, default: undefined },
+  effective: { type: String, default: undefined },
+  retained_fields: { type: [String], default: undefined },
+  review: { type: [String], default: undefined },
 }, { _id: false });
 
 const schema = new mongoose.Schema({

@@ -21,6 +21,17 @@ export function isNaturalKeyDuplicate(error, key) {
   return String(detail.errmsg || error.message || '').includes(`index: ${indexName} dup key:`);
 }
 
+// SOW G-084 / G-087 (17 Nov 2026): a newer file with a field left blank never blanks a value already on file - blank
+// fields are written only when the record is new ($setOnInsert). A field that was cleared on purpose in the DMS stays
+// as it was here; that is the safe side (the SOW: "older late feed and blanks cannot undo protected current data";
+// "never mass blank"). Everything with a value is written as before.
+export const isBlank = (v) => v === '' || v === null || v === undefined || (typeof v === 'string' && !v.trim());
+export function blankSafeUpdate(document) {
+  const set = {}; const onInsert = {};
+  for (const [field, value] of Object.entries(document)) (isBlank(value) ? onInsert : set)[field] = value;
+  return { $set: set, ...(Object.keys(onInsert).length ? { $setOnInsert: onInsert } : {}) };
+}
+
 function resultCounts(result = {}) {
   return {
     matched: result.matchedCount || 0,
@@ -44,7 +55,7 @@ export async function writeTimestampedUpserts(Model, entries) {
     }
     return { updateOne: {
       filter: timestampFilter(key, document.source_file_timestamp),
-      update: { $set: document }, upsert: true,
+      update: blankSafeUpdate(document), upsert: true,
     } };
   });
   try {
@@ -73,7 +84,7 @@ export async function writeTimestampedUpserts(Model, entries) {
       try {
         const result = await Model.updateOne(
           timestampFilter(key, document.source_file_timestamp),
-          { $set: document }, { upsert: true },
+          blankSafeUpdate(document), { upsert: true },
         );
         counts.matched += result.matchedCount || 0;
         counts.modified += result.modifiedCount || 0;
