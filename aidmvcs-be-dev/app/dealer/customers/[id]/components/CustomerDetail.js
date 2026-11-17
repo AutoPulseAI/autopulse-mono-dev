@@ -95,6 +95,13 @@ export default function CustomerDetail({ customerId }) {
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
   // button) - just land there. Only a customer with zero leads needs the
   // create-lead-and-send-first-message flow (LeadForm, pre-filled).
+  // Counts on the tabs and the toolbar (17 Nov 2026, BB: "Sales (4) · Appts (2)" at a glance).
+  const counts = { leads: leads?.length || 0, sales: deals?.length || 0, service: repair_orders?.length || 0,
+    appointments: all_appointments?.length || 0, vehicles: vehicles?.length || 0 };
+  const tabTitle = (icon, label, n) => (
+    <span className="cp_tab"><i className={icon} />{label}{n ? <span className="cp_tab_count">{n}</span> : null}</span>
+  );
+
   const handleSendMessage = () => {
     if ((leads?.length || 0) > 0) {
       setActiveTab("leads");
@@ -130,7 +137,7 @@ export default function CustomerDetail({ customerId }) {
   };
 
   return (
-    <>
+    <div className="cust_profile">
       <div className="d-flex align-items-center justify-content-end mb-3">
         <Button variant="custom" size="sm" onClick={() => router.push("/dealer/customers")}>
           <i className="fa-solid fa-arrow-left me-2" />Back to Customers
@@ -153,28 +160,30 @@ export default function CustomerDetail({ customerId }) {
         // G-059: a call from the profile is logged on the customer's newest lead.
         callLeadId={leads?.[0]?._id}
         dealerId={customer.dealer_id}
+        counts={counts}
+        onOpenTab={setActiveTab}
       />
 
-      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
-        <Tab eventKey="overview" title="Overview">
+      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>
+        <Tab eventKey="overview" title={tabTitle("fa-solid fa-clock-rotate-left", "Overview")}>
           <OverviewTab overview={overview} activity={activity || []} />
         </Tab>
-        <Tab eventKey="leads" title="Leads & Communications">
+        <Tab eventKey="leads" title={tabTitle("fa-solid fa-comments", "Leads & Communications", counts.leads)}>
           <LeadsTab customerId={customerId} onChanged={fetchCustomer360} />
         </Tab>
-        <Tab eventKey="sales" title="Sales">
+        <Tab eventKey="sales" title={tabTitle("fa-solid fa-key", "Sales", counts.sales)}>
           <SalesTab deals={deals} />
         </Tab>
-        <Tab eventKey="service" title="Service">
+        <Tab eventKey="service" title={tabTitle("fa-solid fa-wrench", "Service", counts.service)}>
           <ServiceTab repairOrders={repair_orders} appointments={appointments} />
         </Tab>
-        <Tab eventKey="appointments" title="Appointments">
+        <Tab eventKey="appointments" title={tabTitle("fa-regular fa-calendar-check", "Appointments", counts.appointments)}>
           <AppointmentsTab appointments={all_appointments} />
         </Tab>
-        <Tab eventKey="vehicles" title="Vehicles">
+        <Tab eventKey="vehicles" title={tabTitle("fa-solid fa-car-side", "Vehicles", counts.vehicles)}>
           <VehiclesTab vehicles={vehicles} leads={leads} />
         </Tab>
-        <Tab eventKey="tradeins" title="Trade In">
+        <Tab eventKey="tradeins" title={tabTitle("fa-solid fa-right-left", "Trade In")}>
           <TradeInTab customerId={customerId} />
         </Tab>
       </Tabs>
@@ -187,7 +196,6 @@ export default function CustomerDetail({ customerId }) {
           {messageLead && <LeadForm editLead={messageLead} setEditLead={handleMessageLeadChange} />}
         </Modal.Body>
       </Modal>
-
-    </>
+    </div>
   );
 }

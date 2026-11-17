@@ -28,6 +28,8 @@ const BADGE_COLOR = {
   "Manual": "#5a67d8",
   "Unknown": "#fc9009",
 };
+// Each phone shows what kind it is by its icon (17 Nov 2026, BB: things defined with icons).
+const PHONE_ICON = { mobile: "fa-mobile-screen-button", home: "fa-house", work: "fa-briefcase", other: "fa-phone" };
 const PHONE_LABELS = [["mobile", "Cell"], ["home", "Home"], ["work", "Work"], ["other", "Other"]];
 const EMAIL_LABELS = [["home", "Personal"], ["work", "Work"], ["other", "Other"]];
 const CONTACT_MODES = [["sms", "Text"], ["email", "Email"], ["phone", "Phone call"]];
@@ -96,12 +98,14 @@ function ContactList({ kind, entries, labels, send }) {
     try { await send({ kind, ...body }); done?.(); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const title = kind === "phone" ? "Phones" : "Emails";
+  const icon = (e) => (kind === "phone" ? PHONE_ICON[e.label] || "fa-phone" : e.label === "work" ? "fa-briefcase" : "fa-envelope");
   return (
     <div>
-      <strong>{title}:</strong>
+      <div className="cp_sub">{title}</div>
       <ul className="list-unstyled mb-1 mt-1">
         {(entries || []).map((e) => (
-          <li key={e.value} className="d-flex flex-wrap align-items-center gap-1 mb-1">
+          <li key={e.value} className="cp_row d-flex flex-wrap align-items-center gap-1 mb-1">
+            <i className={`fa-solid ${icon(e)} cp_row_icon`} title={nameOf(labels, e.label)} />
             {editing?.value === e.value ? (
               <>
                 <Form.Control size="sm" className="w-auto" autoFocus value={editing.to} type={kind === "phone" ? "tel" : "email"}
@@ -174,10 +178,11 @@ function AddressList({ entries, send }) {
   };
   return (
     <div>
-      <strong>Addresses:</strong>
+      <div className="cp_sub">Addresses</div>
       <ul className="list-unstyled mb-1 mt-1">
         {(entries || []).map((a) => (
-          <li key={a._id} className="d-flex flex-wrap align-items-center gap-1 mb-1">
+          <li key={a._id} className="cp_row d-flex flex-wrap align-items-center gap-1 mb-1">
+            <i className="fa-solid fa-location-dot cp_row_icon" />
             <span>{[a.line1, a.line2, a.city, a.state, a.zip].filter(Boolean).join(", ")}</span>
             <Badge bg="light" text="dark">{nameOf(ADDRESS_LABELS, a.label)}</Badge>
             {a.is_primary ? <Badge bg="custom">Main</Badge> : (
@@ -217,7 +222,7 @@ function AddressList({ entries, send }) {
 }
 
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged }) {
+  dealerId, onChanged, onOpenTab, counts }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
@@ -245,83 +250,112 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
     onChanged?.();
   };
 
+  const initials = String(customer.name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  const go = (tab) => () => onOpenTab?.(tab);
+  const count = (n) => (n ? <span className="cp_tool_count">{n}</span> : null);
+
   return (
-    <div className="w_card mb-3">
-      <div className="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
-        <div>
-          <h3 className="w_card_title mb-1">
+    <div className="cp_card mb-3">
+      {/* Blue band: who the customer is, where they came from, who looks after them. */}
+      <div className="cp_band">
+        <div className="cp_avatar" aria-hidden="true">{initials}</div>
+        <div className="cp_ident">
+          <div className="cp_name">
             <InlineField value={customer.name || ""} display={customer.name || "Unnamed customer"}
               placeholder="Customer name" onSave={(name) => putCustomer({ name })} />
-          </h3>
-          <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
-            {customer.origin_badge}
-          </Badge>
+          </div>
+          <div className="cp_meta">
+            <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
+              {customer.origin_badge}
+            </Badge>
+            <span><i className="fa-regular fa-calendar me-1" />Customer since {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</span>
+            <span><i className="fa-regular fa-clock me-1" />Last activity {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</span>
+          </div>
         </div>
-        <div className="d-flex align-items-center flex-wrap gap-2">
-          {canAssignLeads && (
-            <Form.Select
-              size="sm"
-              style={{ width: "auto" }}
-              value={customer.assigned_to || ""}
-              onChange={(e) => onAssignmentChange(e.target.value)}
-              aria-label="Assigned to"
-            >
+        {canAssignLeads && (
+          <label className="cp_assign">
+            <span><i className="fa-solid fa-user-tie me-1" />Assigned to</span>
+            <Form.Select size="sm" value={customer.assigned_to || ""} onChange={(e) => onAssignmentChange(e.target.value)}
+              aria-label="Assigned to">
               <option value="">Unassigned</option>
-              {staffList?.map((staff) => (
-                <option key={staff._id} value={staff._id}>{staff.name}</option>
-              ))}
+              {staffList?.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
             </Form.Select>
-          )}
-          {primaryPhone && (
-            <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} />
-          )}
-          {/* The dealership's forms with this customer's data filled in (Forms Library). */}
-          <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} />
-          {sendLabel && (
-            <Button variant="custom" size="sm" onClick={onSendMessage}>
-              <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
-              {sendLabel}
-            </Button>
-          )}
-        </div>
-      </div>
-      {notice && <Alert variant="success" className="py-1 small mb-2" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
-
-      <div className="row gy-3">
-        <div className="col-md-6">
-          <ContactList kind="phone" entries={customer.phones} labels={PHONE_LABELS} send={sendContact} />
-        </div>
-        <div className="col-md-6">
-          <ContactList kind="email" entries={customer.emails} labels={EMAIL_LABELS} send={sendContact} />
-        </div>
-        <div className="col-12">
-          <AddressList entries={customer.addresses} send={sendContact} />
-        </div>
-        <div className="col-md-4">
-          <InlineField label="Preferred contact" value={customer.preferred_communication_mode}
-            display={nameOf(CONTACT_MODES, customer.preferred_communication_mode)} options={CONTACT_MODES}
-            onSave={(v) => putCustomer({ preferred_communication_mode: v })} />
-        </div>
-        <div className="col-md-4">
-          <InlineField label="Follow-up preference" value={customer.followup_preference}
-            display={nameOf(FOLLOWUP, customer.followup_preference)} options={FOLLOWUP}
-            onSave={(v) => putCustomer({ followup_preference: v })} />
-        </div>
-        <div className="col-md-4">
-          <InlineField label="Language" value={customer.user_language}
-            display={nameOf(LANGUAGES, customer.user_language)} options={LANGUAGES}
-            onSave={(v) => putCustomer({ user_language: v })} />
-        </div>
+          </label>
+        )}
       </div>
 
-      <hr />
+      {/* Icon toolbar: every action on one row, grouped. Only actions the profile already had, plus jumps to its tabs. */}
+      <div className="cp_toolbar">
+        <div className="cp_group">
+          <span className="cp_group_label">Connect</span>
+          <div className="cp_tools">
+            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool" />
+              : <button type="button" className="cp_tool" disabled title="No phone on file"><i className="fa-solid fa-phone" />Call</button>}
+            <button type="button" className="cp_tool" onClick={onSendMessage} disabled={!sendLabel}
+              title={sendLabel || "No phone or email on file"}>
+              <i className={`fa-solid ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
+            </button>
+          </div>
+        </div>
+        <div className="cp_group">
+          <span className="cp_group_label">Documents</span>
+          <div className="cp_tools">
+            {/* The dealership's forms with this customer's data filled in (Forms Library). */}
+            <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool />
+          </div>
+        </div>
+        <div className="cp_group">
+          <span className="cp_group_label">Open</span>
+          <div className="cp_tools">
+            <button type="button" className="cp_tool" onClick={go("leads")}><i className="fa-solid fa-comments" />Leads{count(counts?.leads)}</button>
+            <button type="button" className="cp_tool" onClick={go("appointments")}><i className="fa-regular fa-calendar-check" />Appts{count(counts?.appointments)}</button>
+            <button type="button" className="cp_tool" onClick={go("sales")}><i className="fa-solid fa-key" />Sales{count(counts?.sales)}</button>
+            <button type="button" className="cp_tool" onClick={go("service")}><i className="fa-solid fa-wrench" />Service{count(counts?.service)}</button>
+            <button type="button" className="cp_tool" onClick={go("tradeins")}><i className="fa-solid fa-right-left" />Trade-in</button>
+            <button type="button" className="cp_tool" onClick={go("overview")}><i className="fa-solid fa-clock-rotate-left" />History</button>
+          </div>
+        </div>
+      </div>
+      {notice && <Alert variant="success" className="py-1 small mx-3 mt-2 mb-0" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
 
-      <div className="row gy-2 small">
-        <div className="col-md-3"><strong>Last activity:</strong> {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</div>
-        <div className="col-md-3"><strong>Customer since:</strong> {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</div>
-        <div className="col-md-2"><strong>Total sales:</strong> {formatCurrency(valueSnapshot.total_deal_price)}</div>
-        <div className="col-md-2"><strong>Service (all-pay):</strong> {formatCurrency(valueSnapshot.total_repair_order_sale)}</div>
-        <div className="col-md-2"><strong>Service (customer-pay):</strong> {formatCurrency(valueSnapshot.total_repair_order_customer_sale)}</div>
+      <div className="cp_body">
+        <section className="cp_section cp_contact">
+          <h6 className="cp_section_title"><i className="fa-solid fa-address-card" />Contact</h6>
+          <div className="row gy-2">
+            <div className="col-md-6">
+              <ContactList kind="phone" entries={customer.phones} labels={PHONE_LABELS} send={sendContact} />
+            </div>
+            <div className="col-md-6">
+              <ContactList kind="email" entries={customer.emails} labels={EMAIL_LABELS} send={sendContact} />
+            </div>
+            <div className="col-12">
+              <AddressList entries={customer.addresses} send={sendContact} />
+            </div>
+          </div>
+        </section>
+        <section className="cp_section">
+          <h6 className="cp_section_title"><i className="fa-solid fa-sliders" />Preferences</h6>
+          <div className="cp_pref"><i className="fa-solid fa-headset" />
+            <InlineField label="Preferred contact" value={customer.preferred_communication_mode}
+              display={nameOf(CONTACT_MODES, customer.preferred_communication_mode)} options={CONTACT_MODES}
+              onSave={(v) => putCustomer({ preferred_communication_mode: v })} /></div>
+          <div className="cp_pref"><i className="fa-solid fa-reply" />
+            <InlineField label="Follow-up by" value={customer.followup_preference}
+              display={nameOf(FOLLOWUP, customer.followup_preference)} options={FOLLOWUP}
+              onSave={(v) => putCustomer({ followup_preference: v })} /></div>
+          <div className="cp_pref"><i className="fa-solid fa-language" />
+            <InlineField label="Language" value={customer.user_language}
+              display={nameOf(LANGUAGES, customer.user_language)} options={LANGUAGES}
+              onSave={(v) => putCustomer({ user_language: v })} /></div>
+        </section>
+        <section className="cp_section">
+          <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>
+          <div className="cp_tiles">
+            <div className="cp_tile"><i className="fa-solid fa-car" /><span>Total sales</span><strong>{formatCurrency(valueSnapshot.total_deal_price)}</strong></div>
+            <div className="cp_tile"><i className="fa-solid fa-screwdriver-wrench" /><span>Service (all-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_sale)}</strong></div>
+            <div className="cp_tile"><i className="fa-solid fa-user-check" /><span>Service (customer-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_customer_sale)}</strong></div>
+          </div>
+        </section>
       </div>
     </div>
   );

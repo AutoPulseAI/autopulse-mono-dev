@@ -9,7 +9,8 @@ const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("dealertoken
 const leadLabel = (l) => [[l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(" ") || "No vehicle",
   l.fe_lead_status, l.createdAt ? new Date(l.createdAt).toLocaleDateString() : null].filter(Boolean).join(" · ");
 
-export default function ExportFormButton({ customerId, dealerId }) {
+// asTool: shown as an icon tool in the profile's toolbar (icon over a short label).
+export default function ExportFormButton({ customerId, dealerId, asTool = false }) {
   const [forms, setForms] = useState(null);
   const [leads, setLeads] = useState([]);
   const [picking, setPicking] = useState(null); // { form, lead_id }
@@ -56,8 +57,9 @@ export default function ExportFormButton({ customerId, dealerId }) {
   return (
     <>
       <Dropdown onToggle={(open) => { if (open) loadLists(); }}>
-        <Dropdown.Toggle variant="outline-custom" size="sm" disabled={busy}>
-          {busy ? <Spinner size="sm" /> : <><i className="fa-regular fa-file-pdf me-2" />Export to form</>}
+        <Dropdown.Toggle variant={asTool ? "link" : "outline-custom"} size="sm" disabled={busy} className={asTool ? "cp_tool" : ""}
+          title="Export to form">
+          {busy ? <Spinner size="sm" /> : <><i className={`fa-regular fa-file-pdf${asTool ? "" : " me-2"}`} />{asTool ? "Forms" : "Export to form"}</>}
         </Dropdown.Toggle>
         <Dropdown.Menu style={{ maxHeight: 320, overflowY: "auto" }}>
           {forms === null && <Dropdown.ItemText><Spinner size="sm" /></Dropdown.ItemText>}
