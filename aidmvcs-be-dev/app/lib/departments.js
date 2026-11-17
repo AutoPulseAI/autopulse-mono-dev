@@ -16,7 +16,7 @@ import { DEPARTMENT_NAMES, departmentMatch, validDepartment } from './department
 /**
  * Email the staff of a department that a lead is now theirs. Never throws; returns { status, sent: [emails] }.
  */
-export async function notifyDepartment({ dealerId, lead, department, fromDepartment, byName }, {
+export async function notifyDepartment({ dealerId, lead, department, fromDepartment, byName, arrived = false }, {
   findStaff = (id, dept) => User.find({ parent_id: id, type: 'dealer', departments: dept }).select('name email').lean(),
   findDealer = (id) => User.findById(id).select('name dealer_account_information branding_information').lean(),
   findSender = (id) => EmailAccount.findOne({ dealer_id: String(id) }).select('email_address').lean(),
@@ -31,7 +31,8 @@ export async function notifyDepartment({ dealerId, lead, department, fromDepartm
     const name = lead?.name || [lead?.first_name, lead?.last_name].filter(Boolean).join(' ') || lead?.phone || 'A customer';
     const subject = `New ${DEPARTMENT_NAMES[dept]} lead: ${name}`;
     const body = [
-      `${byName || 'Someone'} moved this lead${fromDepartment ? ` from ${DEPARTMENT_NAMES[fromDepartment] || fromDepartment}` : ''} to ${DEPARTMENT_NAMES[dept]}.`,
+      arrived ? `A new ${DEPARTMENT_NAMES[dept]} lead came in${lead?.lead_source ? ` from ${lead.lead_source}` : ''}.`
+        : `${byName || 'Someone'} moved this lead${fromDepartment ? ` from ${DEPARTMENT_NAMES[fromDepartment] || fromDepartment}` : ''} to ${DEPARTMENT_NAMES[dept]}.`,
       '',
       `Customer: ${name}`,
       lead?.phone ? `Phone: ${lead.phone}` : null,

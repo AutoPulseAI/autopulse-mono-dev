@@ -123,8 +123,17 @@ def lead_type_for(lead: dict | None) -> LeadType:
     explicit = (lead.get("data") or {}).get("lead_type") or lead.get("lead_type")
     if explicit in LeadType._value2member_map_:
         return LeadType(explicit)
+    # 17 Nov 2026: the CRM lead's department (set from the source, by the AI's service judgement, a service
+    # appointment, the Desk Log or staff) is the one source of truth: a Service lead is a service lead for the AI too,
+    # and a lead staff put in Sales is not read as service from its source words.
+    department = lead.get("department")
+    if department == "service":
+        return LeadType.SERVICE
+    staff_sales = department == "sales" and lead.get("department_set_by") == "staff"
     source = " ".join(str(lead.get(k) or "") for k in ("source", "lead_source")).lower()
     for pattern, lead_type in LEAD_SOURCE_TO_TYPE:
         if re.search(pattern, source):
+            if lead_type == LeadType.SERVICE and staff_sales:
+                return LeadType.SALES
             return lead_type
     return LeadType.GENERAL

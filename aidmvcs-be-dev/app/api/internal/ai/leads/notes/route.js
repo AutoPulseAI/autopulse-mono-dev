@@ -29,9 +29,10 @@ export async function POST(req) {
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
     // The AI's judgement (17 Nov 2026): a customer asking for a service visit makes the lead a Service lead, with a
     // note on the lead (app/lib/departmentRouting.js; staff placement and sold leads are left alone).
-    if (body.kind === 'service_request' && result.created !== false) {
+    if (['service_request', 'service_lead'].includes(body.kind) && result.created !== false) {
       await moveLeadToDepartment({ leadId: body.lead_id, to: 'service', by: 'ai',
-        why: 'the customer asked for a service visit' });
+        why: body.kind === 'service_request' ? 'the customer asked for a service visit'
+          : 'the AI read from the conversation that the customer wants service' });
     }
     const title = MANAGER_ALERT_NOTE_KINDS[body.kind];
     if (title && result.created !== false) {

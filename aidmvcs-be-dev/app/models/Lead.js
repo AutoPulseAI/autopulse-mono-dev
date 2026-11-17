@@ -56,6 +56,15 @@
     const dept = departmentFromSource(this.toObject());
     if (dept) { this.set('department', dept); this.set('department_set_by', 'source'); this.set('department_at', new Date()); }
   });
+  leadSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
+  // A new Service / Parts lead: that department's staff are emailed (17 Nov 2026, the user: "if a new service lead
+  // came in, we need to email the service team"). Sales leads are not (that is today's flow).
+  leadSchema.post('save', function newDepartmentLead(doc) {
+    if (!doc?.$locals?.wasNew || !['service', 'parts'].includes(doc.department)) return;
+    doc.$locals.wasNew = false;
+    import('../lib/departments.js').then((m) => m.notifyDepartment({ dealerId: doc.dealer_id, lead: doc.toObject(),
+      department: doc.department, arrived: true })).catch(() => null);
+  });
 
   const Lead = mongoose.models.Lead || mongoose.model('Lead', leadSchema);
 
