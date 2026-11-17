@@ -20,7 +20,7 @@ import { leadStatusLabel } from '@lib/statusLabels';
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CLOSED = Object.freeze(['Closed - Lost', 'Closed - No Longer Owns', 'Sold', 'Sold Delivered', 'DND']);
-const FIELDS = 'name phone email createdAt lead_source source contact_type fe_lead_status lead_status status customer_id '
+const FIELDS = 'name phone email createdAt lead_source source contact_type fe_lead_status lead_status status customer_id department '
   + 'vehicle_year vehicle_make vehicle_model appointment_showed_at booking.booking_at';
 
 export async function GET(req) {
@@ -57,7 +57,8 @@ export async function GET(req) {
       phone: l.phone || '', email: l.email || '', created_at: l.createdAt, source: normalizeProvider(l.lead_source, l.source),
       lead_type: upType(l), status, status_label: leadStatusLabel(l), open: !CLOSED.includes(status),
       appointment_today: apptToday.has(String(l._id)) ? apptToday.get(String(l._id)) : null,
-      vehicle: [l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(' ') };
+      vehicle: [l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(' '),
+      department: ['service', 'parts'].includes(l.department) ? l.department : 'sales' };
   };
 
   // Grouped by customer, in the order the search found them (a lead with no customer is its own group).

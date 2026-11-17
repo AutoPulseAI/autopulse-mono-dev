@@ -109,6 +109,8 @@ export async function PATCH(req, { params }) {
 
   // Only if those fields still hold what was read (nobody wrote them between the read and this write).
   const guard = Object.fromEntries(edits.map((e) => [e.field, lead[e.field] ?? null]));
+  // Staff placing a lead in a department wins over the automatic moves (app/lib/departmentRouting.js).
+  if (set.department !== undefined) Object.assign(set, { department_set_by: 'staff', department_at: new Date() });
   const res = await Lead.updateOne({ _id: lead._id, ...guard }, { $set: { ...set, updatedAt: new Date() } });
   if (!res.matchedCount) return fail('This lead was changed by someone else just now - reload it and save again.', 409);
 

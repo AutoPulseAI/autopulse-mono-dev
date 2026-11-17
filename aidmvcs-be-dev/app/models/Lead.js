@@ -14,6 +14,10 @@
       contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
       // Betsy, 14 Nov 2026: the lead's department (app/lib/departments.js). Missing = sales.
       department: { type: String, enum: ['sales', 'service', 'parts', null], default: undefined },
+      // Who set it last (app/lib/departmentRouting.js): 'source' (on arrival), 'ai', 'system' (an appointment, the
+      // Desk Log) or 'staff' (by hand - automatic moves then leave the lead alone).
+      department_set_by: { type: String, default: undefined },
+      department_at: { type: Date, default: undefined },
 
       dealer_id:{ type: String },
       customer_id: {
@@ -42,6 +46,28 @@
   );
 
   leadSchema.index({ dealer_id: 1, customer_id: 1 });
+  // One department's leads, newest first (the Dashboard / reports per department; 17 Nov 2026).
+  leadSchema.index({ dealer_id: 1, department: 1, createdAt: -1 });
+  // A new lead takes its department from its source (app/lib/departmentRouting.js): a service / parts source is that
+  // department from the start; anything else is Sales - stored, so every lead carries its tag.
+  leadSchema.pre('save', async function departmentOnArrival() {
+    if (!this.isNew || this.get('department')) return;
+    const { departmentFromSource } = await import('../lib/departmentRouting.js');
+    // Every lead is tagged (the user, 17 Nov 2026): its source's department, else Sales.
+    const dept = departmentFromSource(this.toObject());
+    this.set('department', dept || 'sales');
+    this.set('department_set_by', dept ? 'source' : 'default');
+    this.set('department_at', new Date());
+  });
+  leadSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
+  // A new Service / Parts lead: that department's staff are emailed (17 Nov 2026, the user: "if a new service lead
+  // came in, we need to email the service team"). Sales leads are not (that is today's flow).
+  leadSchema.post('save', function newDepartmentLead(doc) {
+    if (!doc?.$locals?.wasNew || !['service', 'parts'].includes(doc.department)) return;
+    doc.$locals.wasNew = false;
+    import('../lib/departments.js').then((m) => m.notifyDepartment({ dealerId: doc.dealer_id, lead: doc.toObject(),
+      department: doc.department, arrived: true })).catch(() => null);
+  });
 
   const Lead = mongoose.models.Lead || mongoose.model('Lead', leadSchema);
 
