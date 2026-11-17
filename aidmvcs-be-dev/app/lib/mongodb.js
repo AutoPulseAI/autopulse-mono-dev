@@ -67,8 +67,9 @@ async function dbConnect({ reportErrors = true } = {}) {
       bufferCommands: true,
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      minPoolSize: 1,
+      maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 50,
+      minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE) || 5,
+      maxIdleTimeMS: Number(process.env.MONGO_MAX_IDLE_TIME_MS) || 60000,
     });
 
     await new Promise((resolve, reject) => {

@@ -9,6 +9,8 @@ Mongoose models across the language boundary, so schema shape is kept in sync
 by convention + docs/architecture/architecture.md §10, not by shared code.
 """
 
+import os
+
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 
@@ -20,7 +22,12 @@ _db: AsyncIOMotorDatabase | None = None
 
 async def init_mongo(settings: Settings) -> None:
     global _client, _db
-    _client = AsyncIOMotorClient(settings.mongodb_uri)
+    _client = AsyncIOMotorClient(
+        settings.mongodb_uri,
+        maxPoolSize=int(os.getenv("MONGO_MAX_POOL_SIZE", "20")),
+        minPoolSize=int(os.getenv("MONGO_MIN_POOL_SIZE", "5")),
+        maxIdleTimeMS=int(os.getenv("MONGO_MAX_IDLE_TIME_MS", "60000")),
+    )
     _db = _client.get_default_database()
 
 
