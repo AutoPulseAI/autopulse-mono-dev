@@ -7,6 +7,7 @@ import User from '@models/User';
 import jwt from 'jsonwebtoken';
 import moment from 'moment-timezone';
 import { requireDealerAccess } from '@lib/apiGuard';
+import { departmentLeadIds } from '@lib/departments';
 
 export async function GET(request) {
   try {
@@ -55,6 +56,9 @@ export async function GET(request) {
 
     // Create base query
     const query = { dealer_id };
+    // 13 Nov 2026 meeting (6.4): one department's messages = the messages of its leads.
+    const deptIds = await departmentLeadIds(dealer_id, searchParams.get('department'));
+    if (deptIds) query.lead_id = { $in: deptIds };
     
     // Add date range if provided - convert from dealer timezone to UTC
     if (start_date && end_date) {

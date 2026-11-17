@@ -5,6 +5,7 @@ import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
 import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
+import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
@@ -121,7 +122,9 @@ export default function ViewConversations({
   const [hasOlderConversations, setHasOlderConversations] = useState(false);
   const [loadingOlderConversations, setLoadingOlderConversations] = useState(false);
 
-  const {  dealerParent } = useUser();
+  const { dealerParent, user: me } = useUser();
+  // 13 Nov 2026 meeting (6.2): Sales reads a Service conversation but Service staff answer it.
+  const replyAllowed = canReplyInDepartment(me, lead);
 
   // Get dealer timezone
   const dealerTimezone = dealerParent?.dealer_account_information?.time_zone || 'America/New_York';
@@ -865,7 +868,12 @@ export default function ViewConversations({
 
                   {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place"). */}
                   <div className="lead_actions mt-2">
-                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && (
+                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
+                      <span className="small text-muted align-self-center" title="Reply from the department's own staff">
+                        <i className="fa-solid fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
+                      </span>
+                    )}
+                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
                       <Button variant="custom" size="sm" onClick={() => setShowReplyModal(true)}>
                         <i className="fa-regular fa-reply me-1"></i>
                         {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}

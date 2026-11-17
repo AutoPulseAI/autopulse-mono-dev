@@ -106,6 +106,7 @@ export async function GET(req) {
         subscription: subscriptionData,
         parent_id:user.parent_id||null,
         vendor_id:user.vendor_id||null,
+        departments: user.departments || [], // sales / service / parts (Employee Management)
         dealer_account_information: user.dealer_account_information || null,
         setting: user.setting || null,
         package_expiry: user.package_expiry,

@@ -84,7 +84,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
 
   // From the dashboard card: only the appointments it counted (status, made / funnel dates). The card's booking dates
   // are the date range below.
-  const cardFilter = ['madeStartDate', 'madeEndDate', 'fe_lead_status', 'funnel', 'funnelStartDate', 'funnelEndDate']
+  const cardFilter = ['madeStartDate', 'madeEndDate', 'fe_lead_status', 'funnel', 'funnelStartDate', 'funnelEndDate', 'department']
     .filter((k) => urlSearchParams.get(k))
     .map((k) => `&${k}=${encodeURIComponent(urlSearchParams.get(k))}`).join('');
   // The user, 3 Nov 2026 (Nov 2 - Nov 4 showed only 3 appointments, all of leads that came in those days): on the

@@ -8,9 +8,10 @@
 import User from '../models/User.js';
 import EmailAccount from '../models/EmailAccount.js';
 import { sendEmail } from './email.js';
+import Lead from '../models/Lead.js';
 
 export { DEPARTMENTS, DEPARTMENT_NAMES, validDepartment, leadDepartment, validDepartments, departmentMatch } from './departmentNames.js';
-import { DEPARTMENT_NAMES, validDepartment } from './departmentNames.js';
+import { DEPARTMENT_NAMES, departmentMatch, validDepartment } from './departmentNames.js';
 
 /**
  * Email the staff of a department that a lead is now theirs. Never throws; returns { status, sent: [emails] }.
@@ -48,4 +49,14 @@ export async function notifyDepartment({ dealerId, lead, department, fromDepartm
     logger.error('[departments] notify failed', { dealer_id: String(dealerId), error: error?.message });
     return { status: 'failed', error: error?.message };
   }
+}
+
+/**
+ * The ids of a dealer's leads in one department (17 Nov 2026, Service Dashboard: every number for that department
+ * only). null = no department picked (every lead counts).
+ */
+export async function departmentLeadIds(dealerId, dept, { LeadModel = Lead } = {}) {
+  const match = departmentMatch(dept);
+  if (!match) return null;
+  return (await LeadModel.find({ dealer_id: String(dealerId), ...match }).select('_id').lean()).map((l) => l._id);
 }

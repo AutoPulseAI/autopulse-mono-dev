@@ -4,6 +4,7 @@ import Email from "@models/Email";
 import User from "@models/User";
 import moment from "moment-timezone";
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { departmentLeadIds } from '@lib/departments';
 
 
 export async function GET(request) {
@@ -28,6 +29,10 @@ export async function GET(request) {
     // Only apply date filter if both start_date and end_date are provided
     // If not provided, return all messages without date filtering
     let dateQuery = {};
+    // 13 Nov 2026 meeting (6.4): one department's messages = the messages of its leads.
+    const deptIds = dealer_id ? await departmentLeadIds(dealer_id, searchParams.get('department')) : null;
+    const deptMatch = deptIds ? { lead_id: { $in: deptIds } } : {};
+    Object.assign(dateQuery, deptMatch);
     if (dealer_id) {
       dateQuery.dealer_id = dealer_id;
     }
@@ -60,7 +65,7 @@ export async function GET(request) {
       };
       
       // Get daily stats with date range
-      dailyStats = await getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone);
+      dailyStats = await getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone, deptMatch);
     } else {
       // When no date range provided, get daily stats for all messages
       // Find the earliest and latest message dates for this dealer
@@ -80,7 +85,7 @@ export async function GET(request) {
         // Use the actual date range from the data
         startDate = dateBounds[0].minDate;
         endDate = dateBounds[0].maxDate;
-        dailyStats = await getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone);
+        dailyStats = await getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone, deptMatch);
       } else {
         // No messages found, return empty daily stats
         dailyStats = [];
@@ -127,7 +132,7 @@ export async function GET(request) {
   }
 }
 
-async function getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone) {
+async function getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezone, extra = {}) {
   // Get dealer timezone if not provided
   if (!dealerTimezone) {
     const User = (await import('@models/User')).default;
@@ -175,6 +180,7 @@ async function getDailyMessageStats(startDate, endDate, dealer_id, dealerTimezon
   };
 
   // Add dealer_id if provided
+  Object.assign(baseMatch, extra); // one department's leads only (the dashboard for a department)
   if (dealer_id) {
     baseMatch.dealer_id = dealer_id;
   }

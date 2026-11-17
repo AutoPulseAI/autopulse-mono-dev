@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useUser } from "../context/UserContext";
 import useFetch from "../../hooks/useFetch";
 import { Spinner, Alert } from "react-bootstrap";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { openFromDashboard, takeBackRange, keepRange } from "../components/backLink";
 import moment from "moment-timezone";
 import {
@@ -33,6 +33,19 @@ function Dashboard() {
   const { fetchData } = useFetch();
   // Chart and source clicks open the Leads list in this tab (client, 11 Nov 2026), with a way back.
   const router = useRouter();
+  // 13 Nov 2026 meeting (6.4, 9.2): the dashboard for one department - "Service Dashboard" is this page with Service
+  // picked (?department=service). Every count, chart and list it opens is that department's leads only, so Sales is
+  // not counted for service leads. Empty = every department.
+  const searchParams = useSearchParams();
+  const [department, setDepartment] = useState(searchParams.get("department") || "");
+  const dq = department ? `&department=${department}` : "";
+  const deptLink = (url) => (department && url ? `${url}${url.includes("?") ? "&" : "?"}department=${department}` : url);
+  const pickDepartment = (d) => {
+    setDepartment(d);
+    const params = new URLSearchParams(window.location.search);
+    if (d) params.set("department", d); else params.delete("department");
+    router.replace(`/dealer/dashboard${params.toString() ? `?${params}` : ""}`);
+  };
   // The report sections: only where the reports are visible to this session (null while that is checked).
   const [reportsAllowed, setReportsAllowed] = useState(null);
   const reportsDealerId = dealerParent?.id || dealerParent?._id || null;
@@ -165,14 +178,14 @@ function Dashboard() {
   const fetchRangeCounts = useCallback(async (startDate, endDate) => {
     const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
     const range = startDate && endDate ? `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}` : '';
-    const base = `/api/leads/stats?dealer_id=${dealerParent.id}`;
+    const base = `/api/leads/stats?dealer_id=${dealerParent.id}${dq}`;
     const [leadsRes, contactedRes, funnelRes, activityRes] = await Promise.all([
       fetchData(`${base}${range}`, auth),
       fetchData(`${base}&fe_lead_status=Contacted${range}`, auth),
       // Betsy, 23 Oct 2026: appointments counted from the bookings themselves (made, set for these dates, showed,
       // sold), so one stays counted when its lead moves on to Visited or Sold.
       fetchData(`${base}&appointment_funnel=true${range}`, auth),
-      fetchData(`/api/leads/message-activity?dealer_id=${dealerParent.id}${range}`, auth),
+      fetchData(`/api/leads/message-activity?dealer_id=${dealerParent.id}${range}${dq}`, auth),
     ]);
     for (const res of [leadsRes, contactedRes, funnelRes]) {
       if (!res.ok) throw new Error('Failed to fetch dashboard counts');
@@ -181,7 +194,7 @@ function Dashboard() {
     // A failed message count never blanks the dashboard: the card shows a dash.
     const activity = activityRes.ok ? await activityRes.json().catch(() => null) : null;
     return { leads, contacted, funnel, activity };
-  }, [dealerParent?.id, fetchData]);
+  }, [dealerParent?.id, fetchData, dq]);
 
   const fetchDashboardData = useCallback(async (startDate, endDate, compare) => {
     try {
@@ -191,19 +204,19 @@ function Dashboard() {
 
       // Everything follows the range picked at the top (Betsy, 21 Oct 2026: default Today, "All time" sends no
       // dates), except Today's Leads (always today) and Dealer Action Required (open now).
-      let queryParams = `dealer_id=${dealerParent.id}`;
+      let queryParams = `dealer_id=${dealerParent.id}${dq}`;
       if (startDate && endDate) {
         queryParams += `&start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`;
       }
       const todayRange = getTodayDateRange();
-      const todayQueryParams = `dealer_id=${dealerParent.id}&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
+      const todayQueryParams = `dealer_id=${dealerParent.id}${dq}&start_date=${todayRange.startDate.toISOString()}&end_date=${todayRange.endDate.toISOString()}`;
       const auth = { headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } };
 
       const [commRes, messageStatsRes, managerialReviewRes, todayLeadsRes, counts, compared] = await Promise.all([
         fetchData(`/api/conversations/stats?${queryParams}&limit=50`, auth),
         fetchData(`/api/admin/message-stats?${queryParams}`, auth),
         // Managerial review: open now, no date filter
-        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}&managerial_review_only=true`, auth),
+        fetchData(`/api/leads/stats?dealer_id=${dealerParent.id}${dq}&managerial_review_only=true`, auth),
         fetchData(`/api/leads/stats?${todayQueryParams}`, auth),
         fetchRangeCounts(startDate, endDate),
         compare ? fetchRangeCounts(compare.startDate, compare.endDate) : Promise.resolve(null),
@@ -237,7 +250,7 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [dealerParent?.id, fetchData, fetchRangeCounts, getTodayDateRange]);
+  }, [dealerParent?.id, fetchData, fetchRangeCounts, getTodayDateRange, dq]);
 
   useEffect(() => {
     fetchDashboardData(dateRange.startDate, dateRange.endDate, dateRange.compare);
@@ -297,7 +310,8 @@ function Dashboard() {
         <div className="col col-12">
           <div className="d-flex align-items-center">
             <h3 className="page_title mb-0 me-auto">
-              Leads Dashboard
+              {department === "service" ? "Service Dashboard" : department === "parts" ? "Parts Dashboard"
+                : department === "sales" ? "Sales Dashboard" : "Leads Dashboard"}
               {dateRange.startDate && dateRange.endDate && (
                 <small className="text-muted ms-2">
                   ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
@@ -305,6 +319,13 @@ function Dashboard() {
               )}
             </h3>
             <div className="d-flex align-items-center gap-2 flex-wrap">
+              <select className="form-select form-select-sm w-auto" value={department} aria-label="Department"
+                onChange={(e) => pickDepartment(e.target.value)} title="Show one department's leads only">
+                <option value="">All departments</option>
+                <option value="sales">Sales</option>
+                <option value="service">Service</option>
+                <option value="parts">Parts</option>
+              </select>
               <DashboardDatePicker
                 value={dateRange}
                 onChange={handleDateRangeChange}
@@ -610,7 +631,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?source=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      openFromDashboard(url, router);
+      openFromDashboard(deptLink(url), router);
     }
   };
 
@@ -618,7 +639,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?lead_source=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      openFromDashboard(url, router);
+      openFromDashboard(deptLink(url), router);
     }
   };
 
@@ -627,7 +648,7 @@ function Dashboard() {
     if (data && data.name) {
       let url = `/dealer/leads?status=${encodeURIComponent(data.name)}`;
       url = buildUrlWithDateRange(url);
-      openFromDashboard(url, router);
+      openFromDashboard(deptLink(url), router);
     }
   };
 
@@ -663,7 +684,7 @@ function Dashboard() {
       }
 
       const url = `/dealer/leads?startDate=${encodeURIComponent(startDate.toISOString())}&endDate=${encodeURIComponent(endDate.toISOString())}`;
-      openFromDashboard(url, router);
+      openFromDashboard(deptLink(url), router);
     }
   };
 
@@ -702,7 +723,7 @@ function Dashboard() {
       if (messageType) {
         url += `&response_mode=${messageType}`;
       }
-      openFromDashboard(url, router);
+      openFromDashboard(deptLink(url), router);
     }
   };
 
@@ -806,14 +827,14 @@ function Dashboard() {
               iconClass="fa-regular fa-magnifying-glass"
               count={leadStats?.total_leads || 0}
               label="Total Leads"
-              link={buildUrlWithDateRange("/dealer/leads")}
+              link={deptLink(buildUrlWithDateRange("/dealer/leads"))}
               description={`${getTotalLeadsDescription()}${compareText('leads')}`}
             />
            {/* <CountCard
               iconClass="fa-regular fa-magnet"
               count={mtdTotalLeads}
               label="Total Leads"
-              link={buildUrlWithMtdRange("/dealer/leads")}
+              link={deptLink(buildUrlWithMtdRange("/dealer/leads"))}
               description={getTotalLeadsDescription()}
             />
             */}
@@ -822,7 +843,7 @@ function Dashboard() {
               iconClass="fa-regular fa-comment-plus"
               count={newThisWeekCount}
               label="New Lead This Week"
-              link={`/dealer/leads?${getCurrentWeekDateParams()}`}
+              link={deptLink(`/dealer/leads?${getCurrentWeekDateParams()}`)}
             />
             */}
             {/* Hidden when the range is today: it would repeat Total Leads (Betsy, 21 Oct 2026). */}
@@ -831,7 +852,7 @@ function Dashboard() {
                 iconClass="fa-regular fa-calendar-day"
                 count={todayLeadsCount}
                 label="Today's Leads"
-                link={`/dealer/leads?${getTodayDateParams()}`}
+                link={deptLink(`/dealer/leads?${getTodayDateParams()}`)}
                 description={moment.tz(dealerTimezone).format('MMM D, YYYY')}
               />
             )}
@@ -841,7 +862,7 @@ function Dashboard() {
               count={contactedCount}
               label="Customer Replied"
               tone="orange"
-              link={withRange('/dealer/leads?status=Contacted')}
+              link={deptLink(withRange('/dealer/leads?status=Contacted'))}
               // Today's / older leads are the boxes under "Customer replies by lead age" (13 Nov 2026 meeting).
               description={`${contactedSplit ? `SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · ` : ''}`
                 + `${cardRangeText()}${compareText('contacted')}`}
@@ -852,7 +873,7 @@ function Dashboard() {
               // The user, 28 Oct 2026: SMS and email each with its own number, small, like the other cards' lines.
               count={activity ? activity.delivered.total : '–'}
               label="Messages Delivered"
-              link={withRange('/dealer/leads?messages=sent')}
+              link={deptLink(withRange('/dealer/leads?messages=sent'))}
               description={activity
                 ? `SMS: ${activity.delivered.texts} (MMS: ${activity.delivered.mms || 0}) · Email: ${activity.delivered.emails}`
                   + `${activity.sent?.blasts ? ` · Staff blasts: ${activity.sent.blasts}` : ''} · ${cardRangeText()}`
@@ -888,7 +909,7 @@ function Dashboard() {
               iconClass="fa-solid fa-calendar-days"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
-              link={getAppointmentsMadeLink()}
+              link={deptLink(getAppointmentsMadeLink())}
               description={[splitText(step('made')), `${cardRangeText()}${compareText('made')}`].filter(Boolean).join(" · ")}
             />
 
@@ -897,7 +918,7 @@ function Dashboard() {
               iconClass="fa-regular fa-calendar-check"
               count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
-              link={getAppointmentsForLink()}
+              link={deptLink(getAppointmentsForLink())}
               description={[splitText(step('scheduled')), `${cardRangeText()}${compareText('forDay')}`].filter(Boolean).join(" · ")}
             />
 
@@ -906,7 +927,7 @@ function Dashboard() {
               iconClass="fa-solid fa-person-walking"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
-              link={getFunnelLink('showed')}
+              link={deptLink(getFunnelLink('showed'))}
               description={[splitText(step('showed')), `${cardRangeText()}${compareText('showed')}`].filter(Boolean).join(" · ")}
             />
 
@@ -915,7 +936,7 @@ function Dashboard() {
               iconClass="fa-solid fa-handshake"
               count={step('sold')?.total || 0}
               label="Appointments Sold"
-              link={getFunnelLink('sold')}
+              link={deptLink(getFunnelLink('sold'))}
               description={['Marked Sold by staff', splitText(step('sold')), `${cardRangeText()}${compareText('sold')}`].filter(Boolean).join(" · ")}
             />
           </div>
@@ -934,11 +955,11 @@ function Dashboard() {
             <div className="row gx-2 gx-lg-4">
               <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-calendar-day"
                 count={contactedSplit.new_leads} label={isTodayRange ? "Replied from Today's Leads" : "Replied from These Dates' Leads"}
-                link={withRange('/dealer/leads?status=Contacted&reply_age=new')}
+                link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=new'))}
                 description={`${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} leads that came in ${isTodayRange ? 'today' : 'in these dates'}`} />
               <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-clock-rotate-left"
                 count={contactedSplit.older_leads} label="Replied from Past Leads"
-                link={withRange('/dealer/leads?status=Contacted&reply_age=older')}
+                link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=older'))}
                 description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'}`} />
             </div>
             <small className="text-muted d-block mb-2">
@@ -949,7 +970,7 @@ function Dashboard() {
                 ['d61_plus', 'Over 60 days old']].map(([key, age]) => (
                 <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" iconClass="fa-light fa-hourglass-half"
                   count={contactedSplit.by_lead_day[key] ?? 0} label={`Lead ${age}`}
-                  link={withRange(`/dealer/leads?status=Contacted&reply_age=${key}`)} />
+                  link={deptLink(withRange(`/dealer/leads?status=Contacted&reply_age=${key}`))} />
               ))}
             </div>
           </div>
