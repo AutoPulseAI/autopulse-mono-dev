@@ -1,6 +1,8 @@
 // Staff finished a call task (Call Tasks page outcome prompt).
 //   POST /api/dealer-ai/call-tasks/<taskId>
 //   { action: "complete" | "dismiss", outcome?, note?, dealer_id?, lead_outcome?, follow_up?, opt_out_scope? }
+//   { action: "reopen", dealer_id? } - undo a dismiss (BB, 14 Nov 2026): the task is open again (409 if it was not
+//   dismissed or the lead has another open task).
 // outcome (complete only): connected | no_answer | voicemail | wrong_number | other.
 // lead_outcome (complete only) reaches the AI (app/lib/ai/aiCallOutcome.js; agentic-upsell
 // agent/call_outcomes.py): a specific follow-up becomes its dated next step, "contact, no next step" keeps the
@@ -24,6 +26,12 @@ export async function POST(req, { params }) {
   const session = await requireDealerSession(req, body?.dealer_id);
   if (session.error) return session.error;
 
+  if (body?.action === "reopen") {
+    const back = await callAiService(`/v1/call-tasks/${id}/reopen`, { method: "POST",
+      body: { dealer_id: session.dealerId, by: await staffName(session.user) } });
+    if (!back.ok) return aiServiceError(back, "That call task was not found.");
+    return NextResponse.json(back.body);
+  }
   const built = callTaskResolution(body, { dealerId: session.dealerId, by: await staffName(session.user) });
   if (built.error) return jsonError(built.error, built.status);
 

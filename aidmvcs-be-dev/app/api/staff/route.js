@@ -10,6 +10,7 @@ import { normalizeUserEmail } from "@utils/userEmail";
 import { parseWorkSchedule } from "@lib/workSchedule";
 import mongoose from "mongoose";
 import { requireUser, denied } from "@lib/apiGuard";
+import { validDepartments } from "@lib/departments";
 
 // The signed-in caller and the account its employees belong to: a dealer or agency owner's own id, or for their
 // staff the owner (parent_id). Super admins (type "admin") manage every account as before.
@@ -81,7 +82,7 @@ export async function GET(req) {
 
     const staff = await User.find(query)
       .populate("role", "name")
-      .select("email role name work_schedule")
+      .select("email role name work_schedule departments")
       .skip((page - 1) * limit)
       .limit(limit)
       .exec();
@@ -102,7 +103,7 @@ export async function POST(req) {
   try {
     await dbConnect();
     const body = await req.json();
-    const { name, email, password, role, work_schedule } = body;
+    const { name, email, password, role, work_schedule, departments } = body;
     let { type, parent_id } = body;
     const emailNorm = normalizeUserEmail(email);
     // Staff work schedule (app/lib/workSchedule.js); unset = the dealership's opening hours.
@@ -131,7 +132,8 @@ export async function POST(req) {
     const hashedPassword = await bcrypt.hash(password, 10); 
     // Create a new user
     const newStaff = new User({ name, email: emailNorm, password:hashedPassword, role, type,parent_id:parent_id||null,
-      ...(schedule.value ? { work_schedule: schedule.value } : {}) });
+      ...(schedule.value ? { work_schedule: schedule.value } : {}),
+      ...(validDepartments(departments).length ? { departments: validDepartments(departments) } : {}) });
     await newStaff.save();
 
     // Populate role details
@@ -163,7 +165,7 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     await dbConnect();
-    const { staffId, name, role, email, password, work_schedule } = await req.json();
+    const { staffId, name, role, email, password, work_schedule, departments } = await req.json();
     const schedule = work_schedule === undefined ? null : parseWorkSchedule(work_schedule);
     if (schedule?.error) return new Response(JSON.stringify({ message: schedule.error }), { status: 422 });
 
@@ -203,6 +205,7 @@ export async function PUT(req) {
     staff.role = role || staff.role;
     if (emailNorm) staff.email = emailNorm;
     if (schedule) staff.work_schedule = schedule.value ?? undefined; // null: back to the dealership's hours
+    if (departments !== undefined) staff.departments = validDepartments(departments); // [] = no department
 
     const plainPassword =
       password && String(password).trim() ? String(password).trim() : null;

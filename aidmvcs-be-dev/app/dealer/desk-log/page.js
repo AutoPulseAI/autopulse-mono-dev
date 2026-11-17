@@ -92,8 +92,8 @@ export default function DeskLogPage() {
 
   useEffect(() => { load(); }, [load]);
   // G-083: check-ins, stages and outcomes other people enter show up without a refresh (paused while a visit or the
-  // check-in form is open).
-  useLiveRefresh(() => load({ silent: true }), { paused: loading || checkIn || !!opened });
+  // check-in form is open). 13 Nov 2026 meeting (3.9): every 10 s, and at once when the tab is shown again.
+  useLiveRefresh(() => load({ silent: true }), { everyMs: 10000, paused: loading || checkIn || !!opened });
 
   if (loadingParent || !dealerParent || !range) {
     return <div className="page_content d-flex justify-content-center p-5"><Spinner animation="border" /></div>;

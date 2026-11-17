@@ -72,7 +72,8 @@ export async function POST(req) {
       if (!res.modifiedCount) { results.failed.push({ lead_id: r.lead_id, reason: 'Changed by someone else meanwhile - not touched' }); continue; }
       await logActivity({ dealer_id: dealerId, lead_id: l._id, customer_id: l.customer_id || null, actor_type: 'staff',
         actor_id: actor._id, actor_name: actor.name || null, action: 'lead_reassigned',
-        from: l.assigned_to ? r.current : null, to: assignee ? newName : null, detail: 'bulk' });
+        from: l.assigned_to ? r.current : null, to: assignee ? newName : null, detail: 'bulk',
+        ...(l.assigned_to ? { from_id: l.assigned_to } : {}), ...(to ? { to_id: to } : {}) });
       results.updated.push(r.lead_id);
     } catch (error) {
       results.failed.push({ lead_id: r.lead_id, reason: 'Could not be saved' });

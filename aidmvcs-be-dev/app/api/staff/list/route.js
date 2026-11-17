@@ -29,7 +29,7 @@ export async function GET(req) {
       parent_id: dealerId,
       type: "dealer" // Staff have same type as dealer
     })
-      .select("_id name email role")
+      .select("_id name email role departments")
       .populate({
         path: "role",
         select: "name",

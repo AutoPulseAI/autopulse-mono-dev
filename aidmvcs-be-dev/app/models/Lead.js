@@ -12,6 +12,8 @@
       sub_source: { type: String, default: null },
       // Betsy, 27 Oct 2026 meeting: how the lead came in - internet, phone-up or walk-in (app/lib/leadContactType.js).
       contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
+      // Betsy, 14 Nov 2026: the lead's department (app/lib/departments.js). Missing = sales.
+      department: { type: String, enum: ['sales', 'service', 'parts', null], default: undefined },
 
       dealer_id:{ type: String },
       customer_id: {

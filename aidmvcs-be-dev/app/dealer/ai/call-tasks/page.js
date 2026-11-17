@@ -248,6 +248,16 @@ function CallTasksContent() {
     load();
   };
 
+  // Undo a dismiss (BB, 14 Nov 2026): the task goes back to the open list.
+  const bringBack = async (task) => {
+    setError(""); setSuccess("");
+    try {
+      await aiFetch(`/api/dealer-ai/call-tasks/${task.id}`, { method: "POST", body: JSON.stringify({ action: "reopen", dealer_id: dealerParent?.id }) });
+      setSuccess(`The call task for ${task.customer_name || "the customer"} is open again.`);
+      load();
+    } catch (err) { setError(err.message); }
+  };
+
   const notCalled = () => {
     writePending(null);
     setPending(null);
@@ -387,6 +397,12 @@ function CallTasksContent() {
                         {task.status === "missed" && (
                           <Button size="sm" variant="outline-custom" className="me-1" onClick={() => recordOutcome(task)}>
                             Record late call
+                          </Button>
+                        )}
+                        {task.status === "dismissed" && (
+                          <Button size="sm" variant="outline-custom" className="me-1" onClick={() => bringBack(task)}
+                            title="Undo the dismiss: the task goes back to the open list">
+                            <i className="fa-solid fa-rotate-left me-1" />Undo dismiss
                           </Button>
                         )}
                         <Button size="sm" variant="outline-custom" className="me-1" as={Link} href={leadHref(task.lead_id)}>

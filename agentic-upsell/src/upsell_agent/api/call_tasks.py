@@ -5,6 +5,8 @@
                                                    follow_up?, opt_out_scope?} - the lead outcome reaches the AI
                                                    (agent/call_outcomes.py, PLAN_4 stream H)
   POST /v1/call-tasks/{id}/dismiss                 staff will not call: {dealer_id, note?, by?}
+  POST /v1/call-tasks/{id}/reopen                  undo a dismiss: {dealer_id, by?} - 409 if not dismissed or the
+                                                   lead has another open task
 
 Shared-secret auth like the other /v1 routes. The platform's own screen for these (a task list with
 click-to-call) is a platform change this service does not make; until then the same data shows in the
@@ -116,3 +118,19 @@ async def complete(task_id: str, body: Resolution) -> dict[str, Any]:
 @router.post("/{task_id}/dismiss")
 async def dismiss(task_id: str, body: Resolution) -> dict[str, Any]:
     return await _resolve(task_id, body, call_tasks.DISMISSED)
+
+
+class Reopen(BaseModel):
+    dealer_id: str
+    by: str | None = None
+
+
+@router.post("/{task_id}/reopen")
+async def reopen(task_id: str, body: Reopen) -> dict[str, Any]:
+    """Undo a dismiss: the task is open again (agent/call_tasks.py reopen)."""
+    task, why = await call_tasks.reopen(dealer_scoped_db(body.dealer_id), task_id, by=body.by)
+    if task is None:
+        raise HTTPException(status_code=404, detail=why or "no call task with that id")
+    if why:
+        raise HTTPException(status_code=409, detail=why)
+    return view(task)

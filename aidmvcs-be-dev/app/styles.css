@@ -1692,3 +1692,18 @@ background-color: var(--white);
   .cp_section + .cp_section { border-left: 0; border-top: 1px solid var(--cp-blue-line); }
   .cp_group + .cp_group { padding-left: 0; border-left: 0; }
 }
+/* Key information from the DMS + end-of-lease bar (17 Nov 2026) */
+.cp_lease_bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 0.9rem; border-radius: 6px;
+  background: #fff6c2; border: 1px solid #f0dc7a; color: #5c4a00; font-size: 0.9rem; }
+.cp_lease_bar small { color: #7a6500; }
+.cp_keyinfo_head { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.6rem 1rem; border: 0;
+  background: var(--cp-blue-soft); color: var(--cp-blue-dark); font-weight: 700; text-align: left; flex-wrap: wrap; }
+.cp_keyinfo_head small { font-weight: 400; color: var(--secondary); }
+.cp_keyinfo .cp_body { border-top: 1px solid var(--cp-blue-line); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cp_kv { display: grid; grid-template-columns: 18px 80px 1fr; gap: 0.4rem; align-items: baseline; font-size: 0.85rem;
+  margin-bottom: 0.3rem; overflow-wrap: anywhere; }
+.cp_kv i { color: var(--cp-blue); text-align: center; }
+.cp_kv_label { color: var(--secondary); font-size: 0.78rem; }
+.cp_fin { padding: 0.4rem 0; border-bottom: 1px dashed var(--cp-blue-line); }
+.cp_fin:last-child { border-bottom: 0; }
+@media (max-width: 991.98px) { .cp_keyinfo .cp_body { grid-template-columns: 1fr; } }

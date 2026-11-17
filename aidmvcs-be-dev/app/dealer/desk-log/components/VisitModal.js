@@ -12,6 +12,21 @@ const FIELD_LABEL = { checked_in: "Checked in", stage: "Stage", outcome: "Outcom
   salesperson_id: "Salesperson", sales_manager_id: "Sales manager", bdc_agent_id: "BDC agent",
   stock_number: "Stock #", department: "Department", next_step_at: "Next step" };
 const fieldLabel = (f) => FIELD_LABEL[f] || f.replace("vehicle.", "Vehicle ").replace("trade.", "Trade ");
+// Minutes the visit spent in the stage each stage change left (keyed by the change's place in `history`): from the
+// previous stage change, or from the check-in for the first one.
+function stageMinutes(history = []) {
+  const order = history.map((h, i) => [h, i]).sort((a, b) => new Date(a[0].at) - new Date(b[0].at));
+  const out = {};
+  let since = null;
+  for (const [h, i] of order) {
+    if (h.field === "checked_in" && since == null) since = new Date(h.at);
+    if (h.field !== "stage") continue;
+    if (since != null) out[i] = Math.max(0, Math.round((new Date(h.at) - since) / 60000));
+    since = new Date(h.at);
+  }
+  return out;
+}
+const spentText = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
 const VEHICLE = [["year", "Year"], ["make", "Make"], ["model", "Model"], ["trim", "Trim"], ["vin", "VIN"]];
 
 export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
@@ -91,6 +106,8 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
     </div>
   );
 
+  const stageSpent = data?.history ? stageMinutes(data.history) : {};
+
   return (
     <Modal show onHide={close} size="lg" centered scrollable>
       <Modal.Header closeButton><Modal.Title as="h5">{name ? `${name}: visit details` : "Visit details"}</Modal.Title></Modal.Header>
@@ -165,6 +182,8 @@ export default function VisitModal({ id, name, staff, tz, onHide, onChanged }) {
               {data.history.map((h, i) => (
                 <li key={i}><strong>{fieldLabel(h.field)}</strong>
                   {h.field === "checked_in" ? `: ${show(h.field, h.to)}` : `: ${show(h.field, h.from)} → ${show(h.field, h.to)}`}
+                  {/* 13 Nov 2026 meeting (3.8): how long the visit spent in the stage it just left. */}
+                  {stageSpent[i] != null && <span className="text-muted"> · {show("stage", h.from) || "No stage"} took {spentText(stageSpent[i])}</span>}
                   <small className="d-block text-muted">{h.by || "Staff"}, {moment(h.at).tz(tz).format("MMM D, h:mm A")}</small>
                 </li>
               ))}
