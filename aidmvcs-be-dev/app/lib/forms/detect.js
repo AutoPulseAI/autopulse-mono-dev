@@ -224,6 +224,9 @@ function drawnBlanks(p, taken) {
     const width = s.x1 - s.x0;
     if (width > p.width * 0.9) continue; // a full-width rule between sections
     if (taken(p.page, s)) continue;
+    // The top edge of a drawn input box (a rectangle): its bottom edge, just below with the same ends, is the blank
+    // (17 Nov 2026: every boxed blank was found twice and the value printed twice, 6 pt apart).
+    if (pieces.some((o) => o !== s && o.y < s.y && s.y - o.y <= 26 && Math.abs(o.x0 - s.x0) <= 3 && Math.abs(o.x1 - s.x1) <= 3)) continue;
     // The box above it (a cell): the nearest line above that spans most of it.
     const ceiling = pieces.filter((o) => o !== s && o.y > s.y + 6 && o.y - s.y <= 45
       && Math.min(o.x1, s.x1) - Math.max(o.x0, s.x0) >= 0.5 * width).sort((a, b) => a.y - b.y)[0];
@@ -286,6 +289,11 @@ export async function detectFields(buffer) {
     const opens = await getDocumentProxy(new Uint8Array(buffer)).then(() => true, () => false);
     throw fail(opens ? 'This PDF is locked against changes, so it can\'t be filled in. Open it, choose Print > Save as PDF '
       + '(or remove its security in Acrobat), and upload that copy.' : 'The PDF is password-protected: upload an unlocked copy', 400);
+  }
+  // A copy downloaded from "Export to form" (lib/forms/fill.js EXPORT_MARK): it holds a customer's data and no blanks.
+  if (String(doc.getKeywords() || '').includes('autopulse-filled-copy')) {
+    throw fail('This PDF is a copy already filled in for a customer (downloaded with Export to form). Upload the blank '
+      + 'original form instead.', 422);
   }
   const form = doc.getForm();
   const acro = form.getFields();

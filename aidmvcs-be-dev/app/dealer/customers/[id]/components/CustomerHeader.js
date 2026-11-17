@@ -232,6 +232,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   // their leads, so it belongs to the same permission as assigning a lead.
   const canAssignLeads = useCan("Assign Leads");
   const [notice, setNotice] = useState(null);
+  const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
 
   const putCustomer = async (body) => {
     const res = await fetch(`/api/customers/${customer._id}`, { method: "PUT", headers: auth(),
@@ -301,7 +302,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           <span className="cp_group_label">Documents</span>
           <div className="cp_tools">
             {/* The dealership's forms with this customer's data filled in (Forms Library). */}
-            <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool />
+            <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
           </div>
         </div>
         <div className="cp_group">
@@ -316,7 +317,8 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           </div>
         </div>
       </div>
-      {notice && <Alert variant="success" className="py-1 small mx-3 mt-2 mb-0" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
+      {formMessage && <Alert variant={formMessage.variant} className="py-1 small cp_notice" dismissible onClose={() => setFormMessage(null)}>{formMessage.text}</Alert>}
+      {notice && <Alert variant="success" className="py-1 small cp_notice" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
 
       <div className="cp_body">
         <section className="cp_section cp_contact">
