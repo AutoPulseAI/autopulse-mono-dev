@@ -7,6 +7,7 @@ import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
 import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
 import LeadForm from "../../../leads/components/LeadForm";
@@ -49,6 +50,27 @@ function Milestones({ times }) {
           <div className={`text-break ${times[key] ? "" : "text-muted"}`}>{times[key] ? formatTimestamp(times[key]) : "-"}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// The lead (opportunity) at a glance above its conversation (13 Nov 2026 meeting 10.13, DealerSocket's opportunity
+// header): its number, department, owner, how old it is against the 90-day follow-up period, and Hot (10.11).
+const FOLLOW_UP_DAYS = 90;
+function OpportunityHeader({ lead, owner, onHot }) {
+  const days = lead.createdAt ? Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt)) / 86400000)) : 0;
+  const pct = Math.min(100, Math.round((days / FOLLOW_UP_DAYS) * 100));
+  return (
+    <div className="cp_opp mb-2">
+      <span className="fw-semibold">Opportunity #{String(lead._id).slice(-6).toUpperCase()}</span>
+      <span className="badge text-bg-light">{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
+      <span className="small text-muted">{getLeadSource(lead)}</span>
+      {owner && <span className="small"><i className="fa-solid fa-user-tie me-1" />{owner}</span>}
+      <button type="button" className={`cp_hot${lead.hot ? " on" : ""}`} onClick={() => onHot(!lead.hot)}
+        title={lead.hot ? "Marked hot - click to unmark" : "Mark this lead hot"}>
+        <i className="fa-solid fa-fire me-1" />{lead.hot ? "HOT" : "Mark hot"}</button>
+      <span className="cp_age ms-auto" title={`${days} of ${FOLLOW_UP_DAYS} follow-up days`}>
+        <span className="cp_age_bar"><span style={{ width: `${pct}%` }} /></span>{days === 1 ? "1 day old" : `${days} days old`}</span>
     </div>
   );
 }
@@ -115,6 +137,17 @@ export default function LeadsTab({ customerId, onChanged }) {
     }
   }, [leads]);
 
+  const setHot = async (lead, hot) => {
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/details`, { method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        body: JSON.stringify({ changes: { hot: { from: lead.hot ?? null, to: String(hot) } } }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save");
+      setLeads((list) => list.map((l) => (l._id === lead._id ? { ...l, hot } : l)));
+    } catch (e) { setLeadsError(e.message); }
+  };
+
   const handleLeadsPageChange = (page) => {
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);
   };
@@ -140,23 +173,31 @@ export default function LeadsTab({ customerId, onChanged }) {
       ) : leads.length === 0 ? (
         <div className="text-center py-4 text-muted">No leads found for this customer.</div>
       ) : (
+        <>
+        {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
+            created, source, vehicle, owner; click a row to open that lead. */}
+        <Row className="cp_leads_head d-none d-md-flex small text-muted mx-0 me-2 px-3">
+          <Col md={2}>Status</Col><Col md={1}>Dept</Col><Col md={2}>Created</Col><Col md={2}>Type · Source</Col>
+          <Col md={3}>Vehicle</Col><Col md={2}>Owner</Col>
+        </Row>
         <Accordion activeKey={activeLeadId} onSelect={(key) => setActiveLeadId(key)}>
           {leads.map((lead) => {
+            const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
             return (
               <Accordion.Item eventKey={lead._id} key={lead._id}>
                 <Accordion.Header>
                   <Row className="align-items-center w-100 me-2 small">
-                    <Col md={3} className="p_bold">{lead.name || "Unnamed lead"}</Col>
+                    <Col md={2} className="p_bold">{leadStatusLabel(lead) || "N/A"}
+                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</Col>
+                    <Col md={1}>{DEPARTMENT_NAMES[leadDepartment(lead)]}</Col>
+                    <Col md={2} className="text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
                     <Col md={2}>{getLeadSource(lead)}</Col>
-                    <Col md={2}>{leadStatusLabel(lead) || "N/A"}
-                      {details[lead._id] && <div className="text-muted">{details[lead._id].owner}</div>}</Col>
-                    <Col md={3}>{lead.email || lead.phone || "No contact"}</Col>
-                    <Col md={2} className="text-md-end text-muted">
-                      {lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}
-                    </Col>
+                    <Col md={3}>{vehicle || <span className="text-muted">No vehicle</span>}</Col>
+                    <Col md={2}>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</Col>
                   </Row>
                 </Accordion.Header>
                 <Accordion.Body>
+                  <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
                   <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">
@@ -204,6 +245,7 @@ export default function LeadsTab({ customerId, onChanged }) {
             );
           })}
         </Accordion>
+        </>
       )}
 
       {leadsPagination.totalPages > 1 && (

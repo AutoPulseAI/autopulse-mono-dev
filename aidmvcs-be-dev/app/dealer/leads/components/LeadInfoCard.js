@@ -217,6 +217,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
               {DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
             <span className="small text-muted me-1">{lead?.lead_source || lead?.source || "Unknown source"}</span>
             <StatusPill lead={lead} onStatusClick={onStatusClick} />
+            {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
           </div>
         </div>
         <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">

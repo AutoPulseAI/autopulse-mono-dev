@@ -29,7 +29,7 @@ const fail = (error, status, extra = {}) => Response.json({ error, message: erro
 const clean = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 const LABELS = Object.freeze({ name: 'name', phone: 'phone', email: 'email', contact_type: 'lead type',
-  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department' });
+  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag' });
 const TYPE_NAMES = { internet: 'Internet', phone: 'Phone Up', walk_in: 'Walk-In' };
 
 /** The stored value of one field from what staff typed, or { error }. Empty = cleared (null). */
@@ -38,6 +38,8 @@ function parseField(field, raw) {
   if (!s) return { value: null };
   switch (field) {
     case 'name': return { value: s };
+    // 13 Nov 2026 meeting (10.11 / 10.13, DealerSocket's HOT): staff mark a lead hot; shown on the profile and lead.
+    case 'hot': return /^(true|false)$/i.test(s) ? { value: /^true$/i.test(s) } : { error: 'Hot must be true or false' };
     case 'department': return validDepartment(s) ? { value: validDepartment(s) } : { error: 'Department must be Sales, Service or Parts' };
     case 'phone': {
       const d = normalizePhone(s);
@@ -64,13 +66,14 @@ function parseField(field, raw) {
 const same = (field, a, b) => {
   const norm = (v) => {
     if (field === 'department') return leadDepartment({ department: v });
+    if (field === 'hot') return v === true || String(v).toLowerCase() === 'true' ? 'true' : 'false';
     if (v == null || v === '') return '';
     if (field === 'phone') return normalizePhone(String(v)) || '';
     return String(v).trim().toLowerCase();
   };
   return norm(a) === norm(b);
 };
-const shown = (field, v) => (field === 'department' ? DEPARTMENT_NAMES[leadDepartment({ department: v })]
+const shown = (field, v) => (field === 'hot' ? (v === true ? 'hot' : 'not hot') : field === 'department' ? DEPARTMENT_NAMES[leadDepartment({ department: v })]
   : v == null || v === '' ? 'empty' : field === 'contact_type' ? TYPE_NAMES[v] || v : String(v));
 
 export async function PATCH(req, { params }) {
