@@ -38,6 +38,9 @@ function Dashboard() {
   // not counted for service leads. Empty = every department.
   const searchParams = useSearchParams();
   const [department, setDepartment] = useState(searchParams.get("department") || "");
+  // The sidebar's Service Dashboard link (or Back) changes the address without reloading the page.
+  const urlDepartment = searchParams.get("department") || "";
+  useEffect(() => { setDepartment(urlDepartment); }, [urlDepartment]);
   const dq = department ? `&department=${department}` : "";
   const deptLink = (url) => (department && url ? `${url}${url.includes("?") ? "&" : "?"}department=${department}` : url);
   const pickDepartment = (d) => {
