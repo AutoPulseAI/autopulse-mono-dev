@@ -10,6 +10,7 @@ const formExportSchema = new mongoose.Schema({
   customer_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   lead_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null },
   filled: Number,
+  typed: { type: Number, default: 0 }, // blanks staff typed or changed in the check box before downloading
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   by_name: String,
   at: { type: Date, default: Date.now },
