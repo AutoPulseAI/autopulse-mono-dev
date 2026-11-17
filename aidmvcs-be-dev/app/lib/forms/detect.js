@@ -295,8 +295,16 @@ export async function detectFields(buffer) {
     throw fail('This PDF is a copy already filled in for a customer (downloaded with Export to form). Upload the blank '
       + 'original form instead.', 422);
   }
+  const hadAcroForm = Boolean(doc.catalog.lookup(PDFName.of('AcroForm'))); // getForm() below adds one when missing
   const form = doc.getForm();
   const acro = form.getFields();
+  // A fill-in form whose boxes were all removed (flattened): a copy filled in for someone - every copy downloaded
+  // before 17 Nov 2026 has no mark, but this shape - or flattened by a PDF tool. Its printed values would go on every
+  // export. (A form never fillable has no AcroForm at all and reads as usual.)
+  if (!acro.length && hadAcroForm) {
+    throw fail('This PDF\'s fill-in boxes were removed: it is a copy already filled in (or flattened). Upload the blank '
+      + 'original form instead.', 422);
+  }
   const pages = await readPages(buffer);
   const lines = textLines(pages);
   const textChars = lines.reduce((t, l) => t + l.items.reduce((s, i) => s + i.str.trim().length, 0), 0);

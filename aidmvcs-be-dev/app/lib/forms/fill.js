@@ -41,7 +41,11 @@ function shift(x, y, rot, along, up) {
 /** @returns {Promise<{ pdf: Buffer, filled: number, empty: string[], unprintable: string[] }>} */
 export const EXPORT_MARK = 'autopulse-filled-copy';
 
-export async function fillForm(buffer, fields, values, { preview = false, describe = (k) => k } = {}) {
+// Typed by staff in the check box before downloading (17 Nov 2026): { [field id]: text }. Never for signatures,
+// initials or checkboxes (signed / ticked by hand).
+export const HAND_ONLY = ['signature', 'initials', 'checkbox'];
+
+export async function fillForm(buffer, fields, values, { preview = false, describe = (k) => k, overrides = {} } = {}) {
   const doc = await PDFDocument.load(buffer, { updateMetadata: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const pages = doc.getPages();
@@ -66,9 +70,10 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
       page.drawText(text, { x: tx, y: ty, size, font, color, rotate: degrees(f.kind === 'pdf_field' ? 0 : rot) });
       continue;
     }
-    if (!f.source || f.fill_policy === 'person') continue;
-    const raw = String(values[f.source] ?? '').trim();
-    if (!raw) { empty.push(f.label); continue; }
+    const typed = !HAND_ONLY.includes(f.field_type) && Object.hasOwn(overrides || {}, f.id);
+    if (!typed && (!f.source || f.fill_policy === 'person')) continue;
+    const raw = String(typed ? overrides[f.id] : values[f.source] ?? '').trim();
+    if (!raw) { if (!typed) empty.push(f.label); continue; }
     let value = printable(font, raw);
     if (!value) { unprintable.push(f.label); continue; }
     if (f.kind === 'pdf_field') {

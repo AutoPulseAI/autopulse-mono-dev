@@ -1,7 +1,9 @@
 // "Export to form" from a customer's profile (the user, 16 Nov 2026): the dealer's own PDF with this customer's data
 // written into its blanks, downloaded. The lead (deal) picked gives the vehicle, its trade-ins and the salesperson.
-//   POST { dealer_id, template_id, customer_id, lead_id? } -> application/pdf (X-Filled / X-Empty / X-Unprintable
-//        headers: how many blanks were filled, which had no data, which had letters the form's font can't print)
+//   POST { dealer_id, template_id, customer_id, lead_id?, overrides? } -> application/pdf (X-Filled / X-Empty /
+//        X-Unprintable headers: how many blanks were filled, which had no data, which had letters the font can't print)
+//   POST { ..., check: true } -> { fields: [{ id, n, label, page, value, auto, hand }] }: what each blank will get,
+//        shown to staff before downloading (17 Nov 2026); what they type comes back as overrides { [id]: text }.
 // The customer and lead must be this dealership's (merged customers included); the form switched on and allowed for
 // the caller. Payoff / lienholder only for "Manage Leads". Every export is logged (FormExport).
 import mongoose from 'mongoose';
@@ -12,7 +14,8 @@ import Lead from '@models/Lead';
 import TradeIn from '@models/TradeIn';
 import { actorOf, canSeeFinance, canUseTemplate, fail, formsAccess } from '@lib/forms/access';
 import { collectValues } from '@lib/forms/sources';
-import { fillForm } from '@lib/forms/fill';
+import { HAND_ONLY, fillForm } from '@lib/forms/fill';
+import { sourceLabel } from '@lib/forms/sources';
 import { readFile } from '@lib/forms/storage';
 import { customerFamily } from '@lib/customerFamily';
 import { getDealerTimezone } from '@lib/reporting/time';
@@ -47,10 +50,21 @@ export async function POST(req) {
       user, canSeeFinance: await canSeeFinance(user), tz: await getDealerTimezone(dealerId) }));
   } catch (e) { return fail(e.message, e.status || 500); }
 
-  const { pdf, filled, empty, unprintable } = await fillForm(await readFile(v.source_file_id), v.fields, values);
+  if (body.check) {
+    return Response.json({ fields: v.fields.map((f, i) => {
+      const auto = Boolean(f.source) && f.fill_policy !== 'person';
+      return { id: f.id, n: i + 1, label: f.label || `Blank ${i + 1}`, page: f.page, field_type: f.field_type || 'text',
+        hand: HAND_ONLY.includes(f.field_type), auto, fills_with: auto ? sourceLabel(f.source) : null,
+        value: auto ? String(values[f.source] ?? '') : '' };
+    }) });
+  }
+  const overrides = body.overrides && typeof body.overrides === 'object' && !Array.isArray(body.overrides)
+    ? Object.fromEntries(Object.entries(body.overrides).filter(([k]) => v.fields.some((f) => f.id === k))
+      .map(([k, val]) => [k, String(val ?? '').slice(0, 300)])) : {};
+  const { pdf, filled, empty, unprintable } = await fillForm(await readFile(v.source_file_id), v.fields, values, { overrides });
   const actor = actorOf(user);
   await FormExport.create({ dealer_id: dealerId, template_id: t._id, template_name: t.name, template_version: v.version,
-    customer_id: customerId, lead_id: lead?._id || null, filled, by: actor.by, by_name: actor.by_name });
+    customer_id: customerId, lead_id: lead?._id || null, filled, typed: Object.keys(overrides).length, by: actor.by, by_name: actor.by_name });
   const name = `${t.name} - ${String(values['customer.full_name'] || 'customer').replace(/[^\w .-]+/g, '')}.pdf`;
   return new Response(pdf, { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
     'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`, 'X-Filled': String(filled),
