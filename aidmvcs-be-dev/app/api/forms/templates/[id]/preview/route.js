@@ -1,30 +1,26 @@
-// "This is how it will look": the form being edited (unsaved changes included) as a PDF, blank - no customer data.
-//   POST { dealer_id, schema }
+// Preview of a form: the dealer's PDF with a box on every blank and what fills it (blue) or "left blank" (orange), so
+// the places can be checked before staff use the form - above all one whose blanks the AI found (a scan).
+//   GET ?dealer_id -> application/pdf
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import FormTemplate from '@models/FormTemplate';
-import User from '@models/User';
 import { fail, formsAccess } from '@lib/forms/access';
-import { normalizeSchema } from '@lib/forms/schema';
-import { isSource } from '@lib/forms/sources';
-import { formPdf } from '@lib/forms/formPdf';
+import { fillForm } from '@lib/forms/fill';
+import { sourceLabel } from '@lib/forms/sources';
+import { readFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
 
-export async function POST(req, { params }) {
+export async function GET(req, { params }) {
   await dbConnect();
-  let body;
-  try { body = await req.json(); } catch { return fail('The request body must be JSON', 400); }
-  const access = await formsAccess(req, body?.dealer_id);
+  const q = new URL(req.url).searchParams;
+  const access = await formsAccess(req, q.get('dealer_id'));
   if (access.response) return access.response;
   const { id } = await params;
-  if (!mongoose.isValidObjectId(id) || !(await FormTemplate.exists({ _id: id, dealer_id: access.dealerId, deleted_at: null }))) {
-    return fail('Form not found', 404);
-  }
-  let schema;
-  try { schema = normalizeSchema(body.schema, { isSource }); } catch (e) { return fail(e.message, 400); }
-  const dealer = await User.findById(access.dealerId).select('name dealer_account_information').lean();
-  const pdf = await formPdf(schema, {}, { dealer: dealer?.dealer_account_information?.store_name || dealer?.name || '',
-    trades: 1, stamp: 'PREVIEW', footer: 'Preview of the form - blank' });
-  return new Response(pdf, { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store' } });
+  const t = mongoose.isValidObjectId(id) ? await FormTemplate.findOne({ _id: id, dealer_id: access.dealerId, deleted_at: null }).lean() : null;
+  const v = t?.versions.find((x) => x.version === t.current_version);
+  if (!v?.source_file_id) return fail('No uploaded PDF for this form', 404);
+  const { pdf } = await fillForm(await readFile(v.source_file_id), v.fields || [], {}, { preview: true, describe: sourceLabel });
+  return new Response(pdf, { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
+    'Content-Disposition': `inline; filename="${encodeURIComponent(`${t.name} - preview.pdf`)}"` } });
 }

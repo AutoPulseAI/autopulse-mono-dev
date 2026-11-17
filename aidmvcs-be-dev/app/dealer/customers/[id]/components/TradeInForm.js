@@ -32,10 +32,15 @@ function validateField(name, value, allowMissingVin = false) {
   }
 }
 
-export default function TradeInForm({ customerId, dealerId, editTradeIn, setEditTradeIn, canSeeFinance = false }) {
+const leadLabel = (l) => [[l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(" ") || "No vehicle",
+  l.fe_lead_status, l.createdAt ? new Date(l.createdAt).toLocaleDateString() : null].filter(Boolean).join(" · ");
+
+export default function TradeInForm({ customerId, dealerId, editTradeIn, setEditTradeIn, canSeeFinance = false, leads = [] }) {
   const isEditMode = !!editTradeIn?._id;
 
   const [formData, setFormData] = useState({
+    // G-062: the lead (opportunity) this trade-in is proposed on; a lead can have several trade-ins.
+    lead_id: editTradeIn?.lead_id ? String(editTradeIn.lead_id) : (editTradeIn?._id ? "" : leads[0]?._id || ""),
     vin: editTradeIn?.vin || "",
     year: editTradeIn?.year ?? "",
     make: editTradeIn?.make || "",
@@ -112,6 +117,14 @@ export default function TradeInForm({ customerId, dealerId, editTradeIn, setEdit
 
       <Form onSubmit={handleSubmit}>
         <Row>
+          <Form.Group as={Col} lg={12} className="mb-3">
+            <Form.Label>Lead (the deal this trade-in is proposed on)</Form.Label>
+            <Form.Select name="lead_id" value={formData.lead_id} onChange={handleChange}>
+              <option value="">Not tied to a lead</option>
+              {leads.map((l) => <option key={l._id} value={l._id}>{leadLabel(l)}</option>)}
+            </Form.Select>
+            <Form.Text>A proposed trade-in belongs to its lead; it is not added to the customer&apos;s own vehicles.</Form.Text>
+          </Form.Group>
           <Form.Group as={Col} lg={4} md={6} className="mb-3">
             <Form.Label>VIN</Form.Label>
             <Form.Control

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Accordion, Alert, Badge, Button, Col, Modal, Pagination, Row, Spinner } from "react-bootstrap";
+import { Accordion, Form, Alert, Badge, Button, Col, Modal, Pagination, Row, Spinner } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { formatTimestamp } from "../../../../utils/dateUtils";
@@ -45,6 +45,9 @@ export default function TradeInTab({ customerId }) {
   const [canSeeFinance, setCanSeeFinance] = useState(false);
   const [warnings, setWarnings] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(null);
+  // G-062: trade-ins belong to a lead (opportunity) - the customer's leads, and a filter by lead.
+  const [leads, setLeads] = useState([]);
+  const [leadFilter, setLeadFilter] = useState("");
   const hasAutoOpenedRef = useRef(false);
   const requestIdRef = useRef(0);
 
@@ -69,6 +72,7 @@ export default function TradeInTab({ customerId }) {
         dealer_id: activeEntity.id,
         page: String(page),
         limit: String(defaultTradeInsPagination.itemsPerPage),
+        ...(leadFilter ? { lead_id: leadFilter } : {}),
       });
       const response = await fetch(`/api/customers/${customerId}/trade-ins?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
@@ -88,11 +92,21 @@ export default function TradeInTab({ customerId }) {
     } finally {
       if (requestIdRef.current === requestId) setTradeInsLoading(false);
     }
-  }, [activeEntity?.id, customerId, loadingParent]);
+  }, [activeEntity?.id, customerId, loadingParent, leadFilter]);
 
   useEffect(() => {
     fetchTradeIns(1);
   }, [fetchTradeIns]);
+
+  useEffect(() => {
+    if (loadingParent || !activeEntity?.id || !customerId) return;
+    const q = new URLSearchParams({ dealer_id: activeEntity.id, customer_id: customerId, page: "1", limit: "50" });
+    fetch(`/api/leads?${q}`, { headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` } })
+      .then((r) => r.json()).then((d) => setLeads(d.data || [])).catch(() => setLeads([]));
+  }, [activeEntity?.id, customerId, loadingParent]);
+  const leadOf = (id) => leads.find((l) => String(l._id) === String(id));
+  const leadText = (l) => [[l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(" ") || "Lead",
+    l.createdAt ? new Date(l.createdAt).toLocaleDateString() : null].filter(Boolean).join(" · ");
 
   // Land on the most-recent trade-in's detail instead of making the dealer
   // expand the accordion themselves - fires once, guarded by a ref (not
@@ -123,8 +137,16 @@ export default function TradeInTab({ customerId }) {
   return (
     <div className="w_card">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h3 className="w_card_title mb-0">Trade In</h3>
-        <Button variant="custom" size="sm" onClick={() => setEditTradeIn({})}>
+        <h3 className="w_card_title mb-0 me-auto">Trade In</h3>
+        {leads.length > 0 && (
+          <Form.Select size="sm" className="w-auto me-2" value={leadFilter} aria-label="Trade-ins of which lead"
+            onChange={(e) => { setLeadFilter(e.target.value); hasAutoOpenedRef.current = false; }}>
+            <option value="">All leads</option>
+            {leads.map((l) => <option key={l._id} value={l._id}>{leadText(l)}</option>)}
+            <option value="none">Not tied to a lead</option>
+          </Form.Select>
+        )}
+        <Button variant="custom" size="sm" onClick={() => setEditTradeIn(leadFilter && leadFilter !== "none" ? { lead_id: leadFilter } : {})}>
           <i className="fa-solid fa-plus me-2" />Add Trade In
         </Button>
       </div>
@@ -148,7 +170,9 @@ export default function TradeInTab({ customerId }) {
             <Accordion.Item eventKey={tradeIn._id} key={tradeIn._id}>
               <Accordion.Header>
                 <Row className="align-items-center w-100 me-2 small">
-                  <Col md={3} className="p_bold">{vehicleSummary(tradeIn)}</Col>
+                  <Col md={3} className="p_bold">{vehicleSummary(tradeIn)}
+                    <div className="fw-normal text-muted">{tradeIn.lead_id && leadOf(tradeIn.lead_id)
+                      ? `On: ${leadText(leadOf(tradeIn.lead_id))}` : "Not tied to a lead"}</div></Col>
                   <Col md={3}>
                     {tradeIn.vin || "VIN not provided"}
                     {tradeIn.duplicate_vin && <Badge bg="warning" text="dark" className="ms-1" title="This VIN is on another trade-in at this dealership">Same VIN elsewhere</Badge>}
@@ -235,6 +259,7 @@ export default function TradeInTab({ customerId }) {
               editTradeIn={editTradeIn}
               setEditTradeIn={handleTradeInFormChange}
               canSeeFinance={canSeeFinance}
+              leads={leads}
             />
           )}
         </Modal.Body>

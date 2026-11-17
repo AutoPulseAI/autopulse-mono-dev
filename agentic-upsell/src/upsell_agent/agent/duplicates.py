@@ -62,12 +62,46 @@ async def _same_customer_leads(db: DealerScopedDatabase, lead: dict) -> list[dic
         {"$or": ors, "_id": {"$lt": lead["_id"]}}).to_list(None)
 
 
+def _vehicle(lead: dict) -> tuple[str, str] | None:
+    """What the lead is about: its VIN, else year / make / model; None when it names no vehicle."""
+    vin = re.sub(r"[^A-Z0-9]", "", str(lead.get("vin") or "").upper())
+    if len(vin) >= 11:
+        return ("vin", vin)
+    model = str(lead.get("vehicle_model") or "").strip().lower()
+    if not model:
+        return None
+    return ("ymm", " ".join(x for x in (str(lead.get("vehicle_year") or "").strip(),
+                                       str(lead.get("vehicle_make") or "").strip().lower(), model) if x))
+
+
+def same_vehicle(a: dict, b: dict) -> bool:
+    """Betsy, 6 Nov 2026 (G-005): "When the same customer submits a true duplicate inquiry for the same vehicle, it
+    should be identified and deduplicated ... Different vehicle inquiries must remain independent opportunities."
+    Two leads are about different vehicles only when both name one and they differ (VIN, else year / make / model);
+    a lead that names no vehicle is the same inquiry."""
+    va, vb = _vehicle(a), _vehicle(b)
+    if va is None or vb is None:
+        return True
+    if va[0] != vb[0]:
+        # One has a VIN, the other only a model: compare the model words they share.
+        ma = str(a.get("vehicle_model") or "").strip().lower()
+        mb = str(b.get("vehicle_model") or "").strip().lower()
+        return bool(ma and mb and ma == mb)
+    if va[0] == "ymm":
+        # A year on one side only doesn't make it another car.
+        return va[1].split(" ")[-1] == vb[1].split(" ")[-1] and (
+            not str(a.get("vehicle_year") or "").strip() or not str(b.get("vehicle_year") or "").strip()
+            or str(a.get("vehicle_year")).strip() == str(b.get("vehicle_year")).strip())
+    return va[1] == vb[1]
+
+
 async def find_primary(db: DealerScopedDatabase, lead: dict | None) -> dict | None:
-    """The oldest open lead with an AI workflow for the same customer, as its state; None when this
-    lead is the one to run."""
+    """The oldest open lead with an AI workflow for the same customer AND the same vehicle, as its state; None when
+    this lead is the one to run. A lead about a different vehicle is its own opportunity with its own follow-up
+    (Betsy, 6 Nov 2026, G-005)."""
     if not lead or lead.get("_id") is None:
         return None
-    candidates = await _same_customer_leads(db, lead)
+    candidates = [c for c in await _same_customer_leads(db, lead) if same_vehicle(lead, c)]
     if not candidates:
         return None
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(

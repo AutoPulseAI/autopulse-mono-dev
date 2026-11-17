@@ -1,5 +1,5 @@
 "use client";
-import { statusLabel } from "@lib/statusLabels";
+import { leadStatusLabel, statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -1251,7 +1251,7 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {statusLabel(lead.fe_lead_status) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        {leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stage_label && (
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).

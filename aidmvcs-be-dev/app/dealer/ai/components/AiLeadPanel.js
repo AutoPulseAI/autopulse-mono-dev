@@ -36,7 +36,7 @@ function Section({ title, icon, children }) {
 }
 
 function Row({ label, children }) {
-  if (children === null || children === undefined || children === "") return null;
+  if (children === null || children === undefined || children === "" || children === false) return null;
   // The AI service's profile grows as workflows are added. A section that arrives as a record where this
   // panel expected plain text must not take the whole lead screen down: skip the row instead.
   if (typeof children === "object" && !Array.isArray(children) && !isValidElement(children)) return null;

@@ -1,21 +1,18 @@
-// The dealership's Forms Library (SOW v6 Deliverable K, gap G-064).
-//   GET  ?dealer_id                      -> { templates, can_manage, categories }
-//   GET  ?dealer_id&usable=1&lead_id=... -> { templates } the caller may fill for that lead: switched on, their role,
-//                                           the lead's department (service if it has a service booking) and status
-//   POST multipart: dealer_id, name, category, file (PDF) -> the AI reads the PDF into a first draft of the form
-//        (lib/forms/aiParse.js), saved switched off for the dealer to check and edit in the builder
-//   POST JSON { dealer_id, name, category, blank: true }  -> an empty form to build from scratch
-// Errors: 400 bad input / not a PDF · 422 unreadable · 502 the AI failed · 503 no AI key · 401 · 403.
+// The dealership's Forms Library (SOW v6 Deliverable K).
+//   GET  ?dealer_id[&usable=1]  -> { templates, can_manage }  (usable: switched on and allowed for the caller - the
+//                                  list behind the customer profile's "Export to form")
+//   POST multipart: dealer_id, name, file (PDF, or a JPG / PNG of the form) -> the form is stored as uploaded and its
+//        blanks found and matched to customer data (lib/forms/read.js). A form whose blanks the AI had to find (a scan)
+//        starts switched off, to be checked with Preview first. Library managers only ("Manage Account Information" /
+//        dealer account).
+// Errors: 400 not a PDF / picture, locked, damaged · 422 nothing to fill / XFA / scan with no AI set up · 502 AI down
+// · 401 · 403.
 import dbConnect from '@lib/mongodb';
-import FormTemplate, { FORM_CATEGORIES } from '@models/FormTemplate';
-import Lead from '@models/Lead';
-import Booking from '@models/Booking';
+import FormTemplate from '@models/FormTemplate';
 import { actorOf, canManageForms, canUseTemplate, fail, formsAccess, json, templateSummary } from '@lib/forms/access';
-import { parseFormWithAi } from '@lib/forms/aiParse';
-import { fillables, newId } from '@lib/forms/schema';
-
-const countFields = (schema) => fillables(schema).length;
-import { saveFile } from '@lib/forms/storage';
+import { redetectEmpty } from '@lib/forms/detect';
+import { readForm } from '@lib/forms/read';
+import { readFile, saveFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
 
@@ -24,51 +21,33 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const access = await formsAccess(req, params.get('dealer_id'));
   if (access.response) return access.response;
-  const templates = await FormTemplate.find({ dealer_id: access.dealerId, deleted_at: null }).select('-history').sort({ name: 1 }).lean();
-  if (params.get('usable') !== '1') {
-    return json({ templates: templates.map(templateSummary), can_manage: await canManageForms(access.user),
-      categories: FORM_CATEGORIES });
-  }
-  const lead = params.get('lead_id') ? await Lead.findOne({ _id: params.get('lead_id'), dealer_id: access.dealerId })
-    .select('fe_lead_status').lean() : null;
-  const service = lead ? Boolean(await Booking.exists({ lead_id: String(lead._id), appointment_type: 'service' })) : false;
-  const usable = templates.filter((t) => t.active && canUseTemplate(access.user, t)
-    && t.versions.some((v) => v.version === t.current_version && v.schema)
-    && (!t.departments?.length || t.departments.includes(service ? 'service' : 'sales'))
-    && (!t.statuses?.length || (lead && t.statuses.includes(lead.fe_lead_status))));
-  return json({ templates: usable.map(templateSummary) });
+  const all = await FormTemplate.find({ dealer_id: access.dealerId, deleted_at: null }).select('-history').sort({ name: 1 }).lean();
+  await redetectEmpty(all, { readFile, Model: FormTemplate });
+  const list = params.get('usable') === '1'
+    ? all.filter((t) => t.active !== false && canUseTemplate(access.user, t)).map(templateSummary).filter((t) => t.ready)
+    : all.map(templateSummary);
+  return json({ templates: list, can_manage: await canManageForms(access.user) });
 }
 
 export async function POST(req) {
   await dbConnect();
-  const isJson = (req.headers.get('content-type') || '').includes('application/json');
-  let input;
-  try { input = isJson ? await req.json() : Object.fromEntries((await req.formData()).entries()); }
-  catch { return fail('Send a PDF (multipart) or { blank: true }', 400); }
-  const access = await formsAccess(req, input.dealer_id);
+  let form;
+  try { form = await req.formData(); } catch { return fail('Send the PDF as multipart/form-data', 400); }
+  const access = await formsAccess(req, form.get('dealer_id'));
   if (access.response) return access.response;
   if (!(await canManageForms(access.user))) return fail('You do not have permission to manage forms', 403);
-  const category = String(input.category || 'Other');
-  if (!FORM_CATEGORIES.includes(category)) return fail(`category must be one of: ${FORM_CATEGORIES.join(', ')}`, 400);
-  const file = input.file;
+  const file = form.get('file');
+  if (!file || typeof file.arrayBuffer !== 'function') return fail('Choose the form\'s PDF', 400);
+  const name = String(form.get('name') || file.name || 'Form').replace(/\.pdf$/i, '').trim().slice(0, 120) || 'Form';
+  let found;
+  try { found = await readForm(Buffer.from(await file.arrayBuffer()), file.name); } catch (e) { return fail(e.message, e.status || 400); }
+  const fileId = await saveFile(found.buffer, { filename: found.filename, dealerId: access.dealerId, kind: 'form' });
   const actor = actorOf(access.user);
-  let schema; let sourceId = null; let detail; let found = null;
-  if (file && typeof file.arrayBuffer === 'function') {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    try { schema = await parseFormWithAi(buffer, { filename: file.name }); }
-    catch (e) { return fail(e.message, e.status || 400); }
-    found = { sections: schema.sections.length, fields: countFields(schema) };
-    sourceId = await saveFile(buffer, { filename: file.name, dealerId: access.dealerId, kind: 'template_source' });
-    detail = `drafted by the AI from ${file.name || 'a PDF'}: ${found.sections} sections, ${found.fields} fields`;
-  } else if (String(input.blank) === 'true') {
-    schema = { title: String(input.name || 'New form').trim(), description: null,
-      sections: [{ id: newId('s'), title: '', repeat: null, fields: [] }] };
-    detail = 'started blank';
-  } else return fail('Choose the PDF to upload, or start a blank form', 400);
-  const name = String(input.name || '').trim().slice(0, 120) || schema.title.slice(0, 120);
-  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, category, active: false, current_version: 1,
-    versions: [{ version: 1, schema, source_file_id: sourceId, source_filename: file?.name || null,
-      created_by: actor.by, created_by_name: actor.by_name }],
-    history: [{ ...actor, action: 'created', detail }] });
-  return json({ template: templateSummary(t.toObject()), found }, 201);
+  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, active: !found.found_by_ai, current_version: 1,
+    versions: [{ version: 1, source_file_id: fileId, source_filename: found.filename || null, fillable: found.fillable,
+      pages: found.pages, fields: found.fields, found_by_ai: found.found_by_ai, created_by: actor.by, created_by_name: actor.by_name }],
+    history: [{ ...actor, action: 'uploaded', detail: `${found.filename || 'PDF'}: ${found.fields.length} blanks`
+      + `${found.found_by_ai ? ' (found by the AI; switched off until checked)' : ''}, `
+      + `${found.fields.filter((f) => f.source).length} filled from the customer's data` }] });
+  return json({ template: templateSummary(t.toObject()) }, 201);
 }

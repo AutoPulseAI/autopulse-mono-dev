@@ -7,7 +7,17 @@ import moment from "moment-timezone";
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 import { outcomeEffect } from "./deskLogUi";
 
-export default function OutcomeModal({ row, choice, tz, onHide, onSave }) {
+// The dealership's Desk Log settings for this outcome, said before saving.
+function ruleText(rule, checklistItems) {
+  const parts = [];
+  if (rule?.alert_managers) parts.push("your managers get an alert");
+  if (checklistItems) parts.push(`a delivery checklist (${checklistItems} items) is added`);
+  return parts.length ? parts.join("; ") + "." : null;
+}
+
+export default function OutcomeModal({ row, choice, tz, onHide, onSave, rules }) {
+  const ruleKey = choice.outcome === "UNSOLD" ? `UNSOLD|${choice.reason}` : choice.outcome;
+  const rule = rules?.rules?.[ruleKey];
   const needsDate = choice.reason === UNSOLD_REASONS.FUTURE_FOLLOW_UP;
   const [when, setWhen] = useState(row.next_step_at ? moment(row.next_step_at).tz(tz).format("YYYY-MM-DDTHH:mm") : "");
   const [note, setNote] = useState("");
@@ -32,7 +42,11 @@ export default function OutcomeModal({ row, choice, tz, onHide, onSave }) {
     <Modal show onHide={onHide} centered>
       <Modal.Header closeButton><Modal.Title as="h5">{row.customer || "Visit"}: {choice.label}</Modal.Title></Modal.Header>
       <Modal.Body>
-        <p className="mb-3">{outcomeEffect(choice)}</p>
+        <p className="mb-2">{outcomeEffect(choice)}</p>
+        {ruleText(rule, choice.outcome === "SOLD PENDING" ? (rules?.checklist || []).length : 0) && (
+          <p className="mb-3 small text-muted">Also: {ruleText(rule, choice.outcome === "SOLD PENDING"
+            ? (rules?.checklist || []).length : 0)}</p>
+        )}
         {needsDate && (
           <Form.Group className="mb-3">
             <Form.Label>Follow-up date and time (dealership time)</Form.Label>

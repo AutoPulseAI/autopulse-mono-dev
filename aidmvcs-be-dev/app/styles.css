@@ -147,12 +147,17 @@ input[type=number] {
 }
 
 /* Button */
+/* A button never lets its text spill past its border (the user, 17 Nov 2026): heights are minimums, so a label that
+   wraps grows the button instead of overflowing it, and a button is never wider than the space it sits in. */
 .btn {
   line-height: 1.2;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .btn-sm {
   min-width: 31px;
-  height: 31px;
+  min-height: 31px;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +191,8 @@ input[type=number] {
 }
 .btn:not(.btn-sm) {
   font-size: var(--f15);
-  height: 34px;
+  min-height: 34px;
+  height: auto;
 }
 .btn.btn-lg {
   font-size: var(--f16) !important;
@@ -1127,7 +1133,7 @@ hr {
 }
 
 @media (min-width: 992px) and (max-width: 1300px) {
-  .lead_fltr button i {
+  .lead_fltr .btn i {
     display: none;
   }
 }
@@ -1539,3 +1545,78 @@ background-color: var(--white);
   border-radius: 999px;
   transition: width 0.4s ease;
 }
+
+/* Lead page (BB, 17 Nov 2026): the lead list on the left and the lead's details in the middle stay in view while the
+   conversation scrolls; each scrolls on its own when it is taller than the screen. Actions sit together. */
+@media (min-width: 768px) {
+  .lead_center_col {
+    max-height: calc(100vh - var(--header-height) - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+}
+@media (min-width: 993px) {
+  .dealer-sidebar > .dealer_info {
+    max-height: calc(100vh - var(--header-height) - 80px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+.lead_actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.lead_actions .btn {
+  width: 100%;
+}
+.lead_view .badge {
+  font-weight: 600;
+}
+
+/* The lead's status pill on the lead card (17 Nov 2026): tinted in the status colour, click to change it. */
+.lead_status_pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.lead_status_pill:disabled {
+  cursor: default;
+}
+.lead_status_dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.lead_fltr .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead_view .min-w-0 {
+  min-width: 0;
+}
+
+/* Dashboard colours (13 Nov 2026 meeting, Betsy: "they can just glance and know"). */
+.d_counts_card.tone_orange { background: #fff1e0; border-left: 4px solid #f7931e; }
+.d_counts_card.tone_orange .d_counts_icon { background-color: #f7931e; }
+.d_counts_card.tone_light_orange { background: #fff8ef; border-left: 4px solid #ffc98a; }
+.d_counts_card.tone_light_orange .d_counts_icon { background-color: #ffb45c; }
+.d_counts_card.tone_red { background: #fdecec; border-left: 4px solid #e5383b; }
+.d_counts_card.tone_red .d_counts_icon { background-color: #e5383b; }
+.d_counts_card.tone_green { background: #ecf8ee; border-left: 4px solid #6cc77a; }
+.d_counts_card.tone_green .d_counts_icon { background-color: #2fb344; }
+/* "CUSTOMER REPLIES BY LEAD AGE": a thick line and a capital heading set it apart from the cards above. */
+.reply_breakdown { border-top: 4px solid #f7931e; padding-top: 12px; margin-top: 4px; }
+.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #b45f06; margin-bottom: 10px; }
+.reply_breakdown_title small { font-weight: 500; letter-spacing: 0; color: var(--dark); font-size: 0.8rem; }

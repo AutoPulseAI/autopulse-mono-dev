@@ -9,6 +9,7 @@ import Email from '../models/Email.js';
 import Lead from '../models/Lead.js';
 import { AiConfigItem, AiConfigVersion } from '../models/AiConfig.js';
 import { BLAST_MIN_LEADS } from './blasts.js';
+import { calendarDayDiff } from './reporting/time.js';
 
 const INBOUND = ['received', 'incoming'];
 const ADF = /<\?adf|<adf[\s>]/i;
@@ -98,7 +99,30 @@ const CHANNEL_MATCH = {
 // Customer Replied split by channel (Betsy, 2 Nov 2026 meeting): leads whose customer texted / emailed in [from, to]
 // (a lead that did both is in both), and how many of the replied leads came in within [from, to] (today's leads vs
 // older ones). `leads`: [{ _id, createdAt }].
-export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadModel = Lead } = {}) {
+// The breakdown of the Dashboard's Customer Replied card (13 Nov 2026 meeting, 77:00-82:00, Betsy): the replied leads
+// split into the range's own leads ("Replied from today's leads") and older leads ("Replied from past leads"), and ALL
+// of them by the lead's day when the customer replied - groups that never overlap, so
+//   new + older = Customer Replied   and   d1_7 + d8_15 + d16_30 + d31_60 + d61_plus = Customer Replied.
+// Lead day = the day the lead came in is Day 1 (as the AI's "Day 1 of 91"; the user, 17 Nov 2026: a lead that came in
+// today is in "1-7 days"): calendar days (dealer time) from the lead coming in to the customer's first reply in the
+// range, plus one.
+export const REPLY_AGE_GROUPS = Object.freeze([
+  ['d1_7', 1, 7], ['d8_15', 8, 15], ['d16_30', 16, 30], ['d31_60', 31, 60], ['d61_plus', 61, Infinity],
+]);
+
+/** Whether the lead came in during the range ('new') or before it ('older'). */
+export function replySplitGroup(createdAt, from, to) {
+  const created = createdAt ? new Date(createdAt) : null;
+  return created && (!from || created >= new Date(from)) && (!to || created <= new Date(to)) ? 'new' : 'older';
+}
+
+/** The lead's day group at the customer's first reply in the range (Day 1 = the day it came in). */
+export function replyAgeGroup(createdAt, firstReplyAt, tz = 'America/New_York') {
+  const day = createdAt && firstReplyAt ? calendarDayDiff(new Date(createdAt), firstReplyAt, tz) + 1 : 1;
+  return (REPLY_AGE_GROUPS.find(([, lo, hi]) => day >= lo && day <= hi) || REPLY_AGE_GROUPS[0])[0];
+}
+
+export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadModel = Lead, tz } = {}) {
   const ids = leads.map((l) => l._id);
   const [all, texts, emails] = await Promise.all([
     repliedLeadIds(ids, from, to, { EmailModel, LeadModel }),
@@ -108,10 +132,12 @@ export async function repliedSplit(leads, from, to, { EmailModel = Email, LeadMo
   const created = new Map(leads.map((l) => [String(l._id), l.createdAt ? new Date(l.createdAt) : null]));
   const inRange = (at) => at && (!from || at >= new Date(from)) && (!to || at <= new Date(to));
   const fresh = all.filter((r) => inRange(created.get(String(r._id)))).length;
+  const by_lead_day = Object.fromEntries(REPLY_AGE_GROUPS.map(([k]) => [k, 0]));
+  for (const r of all) by_lead_day[replyAgeGroup(created.get(String(r._id)), r.first_reply_at, tz)] += 1;
   // The user, 3 Nov 2026: "5 leads came in today, 2 of them replied, 40 older leads replied" - in_range_leads is the 5.
   const inRangeLeads = leads.filter((l) => inRange(l.createdAt ? new Date(l.createdAt) : null)).length;
   return { sms: texts.length, email: emails.length, new_leads: fresh, older_leads: all.length - fresh,
-    in_range_leads: inRangeLeads };
+    in_range_leads: inRangeLeads, by_lead_day };
 }
 
 export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, LeadModel = Lead, direction = 'received',
@@ -135,7 +161,7 @@ export async function repliedLeadIds(leadIds, from, to, { EmailModel = Email, Le
         regex: ADF.source, options: 'i' } },
       lead_msg: { $regexMatch: { input: { $ifNull: ['$message_id', ''] }, regex: '^lead-' } } } },
     { $match: { adf: false, lead_msg: false } },
-    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' } } },
+    { $group: { _id: '$lead_id', last_reply_at: { $max: '$timestamp' }, first_reply_at: { $min: '$timestamp' } } },
     { $sort: { last_reply_at: -1 } },
   ]);
   return rows;

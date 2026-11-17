@@ -1,5 +1,5 @@
 "use client";
-import { statusLabel } from "@lib/statusLabels";
+import { leadStatusLabel, statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -1280,56 +1280,37 @@ useImperativeHandle(ref, () => ({
             ))}
           </div>
         )}
-        <div className="d-flex gap-2 mb-3 align-items-center">
+        {/* Sort, and Stopped (an extra filter, on or off) beside it; then whose leads, as one segmented control
+            (17 Nov 2026: the four buttons overlapped in the narrow list). */}
+        <div className="d-flex gap-2 mb-2 align-items-center">
           <span className="small text-muted">Sort:</span>
-          <Form.Select size="sm" style={{ width: 220 }} value={filters.sort || ''}
+          <Form.Select size="sm" style={{ flex: '1 1 0', minWidth: 0, maxWidth: 240 }} value={filters.sort || ''}
             onChange={(e) => setFilters((prev) => ({ ...prev, sort: e.target.value, page: 1 }))}>
             <option value="">{filters.status === 'Contacted' ? 'Latest reply first' : 'Newest lead first'}</option>
             <option value="created_desc">Created: newest first</option>
             <option value="created_asc">Created: oldest first</option>
           </Form.Select>
-        </div>
-        {/* Assignment Filter Tabs */}
-        <div className="d-flex gap-2 mb-3 lead_fltr">
-        <Button size="sm" className="text-nowrap" variant={filters.stopped ? 'custom' : 'outline-custom'}
-          onClick={() => setFilters((prev) => ({ ...prev, stopped: prev.stopped ? '' : '1', page: 1 }))}>
-          <i className="fa-regular fa-ban me-1"></i>Stopped
-        </Button>
-        {canManageLeads && (
-          <Button
-            size="sm"
-            variant={assignmentFilter === 'all' ? 'custom' : 'outline-custom'}
-            onClick={() => setAssignmentAndSync('all')}
-            className="text-nowrap"
-          >
-            <i className="fa-regular fa-users me-1"></i>
-            All Leads
+          <Button size="sm" className="text-nowrap ms-auto flex-shrink-0" variant={filters.stopped ? 'danger' : 'outline-secondary'}
+            aria-pressed={Boolean(filters.stopped)} title="Leads the AI has stopped messaging"
+            onClick={() => setFilters((prev) => ({ ...prev, stopped: prev.stopped ? '' : '1', page: 1 }))}>
+            <i className="fa-regular fa-ban me-1"></i>Stopped
           </Button>
-        )}
+        </div>
         {(canManageLeads || canViewAssignedLeads) && (
-          <Button
-            size="sm"
-            variant={assignmentFilter === 'my' ? 'custom' : 'outline-custom'}
-            onClick={() => setAssignmentAndSync('my')}
-            className="text-nowrap"
-          >
-            <i className="fa-regular fa-user me-1"></i>
-            My Leads
-          </Button>
+          <div className={`btn-group mb-3 lead_fltr ${compact ? "w-100" : ""}`} role="group" aria-label="Whose leads">
+            {[
+              ['all', 'All', 'fa-users', canManageLeads, 'All leads'],
+              ['my', 'Mine', 'fa-user', canManageLeads || canViewAssignedLeads, 'My leads'],
+              ['unassigned', 'Unassigned', 'fa-user-slash', canManageLeads, 'Unassigned leads'],
+            ].filter(([, , , allowed]) => allowed).map(([key, label, icon, , title]) => (
+              <Button key={key} size="sm" title={title} aria-pressed={assignmentFilter === key}
+                variant={assignmentFilter === key ? 'custom' : 'outline-custom'} onClick={() => setAssignmentAndSync(key)}>
+                <i className={`fa-regular ${icon} me-1`}></i>{label}
+              </Button>
+            ))}
+          </div>
         )}
-        {canManageLeads && (
-          <Button
-            size="sm"
-            variant={assignmentFilter === 'unassigned' ? 'custom' : 'outline-custom'}
-            onClick={() => setAssignmentAndSync('unassigned')}
-            className="text-nowrap"
-          >
-            <i className="fa-regular fa-user-slash me-1"></i>
-            Unassigned
-          </Button>
-        )}
-        </div>
-      
+
       {!compact && (
         <Row className="align-items-center g-0">
           <Col lg={9} md={3} xs={12}>
@@ -1880,7 +1861,7 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {statusLabel(lead.fe_lead_status) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        {leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stop_label && (
                         // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.

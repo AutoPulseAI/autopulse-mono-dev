@@ -5,24 +5,27 @@
 // with stage, people and outcome changed in place. While the 'desk_log' feature is at level 'admin', only a super
 // admin (also through "login as") can open it.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Form, Spinner } from "react-bootstrap";
+import { Alert, Button, Dropdown, Form, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import { useUser } from "../context/UserContext";
 import DashboardDatePicker, { presetRange } from "../dashboard/components/DashboardDatePicker";
 import { reportDates } from "../reports/components/DownloadReport";
-import { deskLogGet, staffList } from "./deskLogApi";
+import { deskLogGet, deskLogRules, staffList } from "./deskLogApi";
 import DeskCards from "./components/DeskCards";
 import DeskTable from "./components/DeskTable";
 import CheckInModal from "./components/CheckInModal";
 import VisitModal from "./components/VisitModal";
+import RulesModal from "./components/RulesModal";
 import useLiveRefresh from "../../hooks/useLiveRefresh";
 import "./deskLog.css";
 
 const EMPTY_FILTERS = { department: "", lead_type: "", source: "", stage: "", outcome: "", salesperson_id: "",
-  sales_manager_id: "", bdc_agent_id: "" };
+  sales_manager_id: "", bdc_agent_id: "", dnd: "" };
 const STAGE_OPTIONS = ["QUALIFY", "TEST DRIVE", "APPRAISAL", "PROPOSAL", "T.O.", "VERBAL AGREEMENT"];
-const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "Sold pending"],
-  ["SOLD DELIVERED", "Sold delivered"], ["UNSOLD", "Unsold"]];
+const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "Sold Pending"],
+  ["SOLD DELIVERED", "Sold Delivered"], ["UNSOLD", "Unsold (any reason)"],
+  ...["Negative Equity", "Price/Payment", "Credit", "Hot", "Future Follow-Up", "Car Finder", "DND"]
+    .map((r) => [`UNSOLD|${r}`, `Unsold - ${r}`])];
 const LEAD_TYPES = [["Internet", "Internet"], ["Phone", "Phone Up"], ["Walk-in", "Walk-In"], ["Campaign", "Campaign"],
   ["Other", "Other"]];
 
@@ -33,6 +36,7 @@ export default function DeskLogPage() {
   const [range, setRange] = useState(null);
   const [view, setView] = useState("all");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [notice, setNotice] = useState(null);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
@@ -41,6 +45,8 @@ export default function DeskLogPage() {
   const [loading, setLoading] = useState(false);
   const [checkIn, setCheckIn] = useState(false);
   const [opened, setOpened] = useState(null); // { id, name }
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rules, setRules] = useState(null);
 
   // Today in the dealership's time zone (only once the dealer, and so its time zone, is loaded).
   useEffect(() => {
@@ -51,6 +57,13 @@ export default function DeskLogPage() {
     }
   }, [range, tz, dealerParent]);
 
+  // Opened from a customer's profile: "Check in to the showroom" (?check_in=<lead>) or a visit (?visit=<visit>).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (/^[0-9a-f]{24}$/i.test(p.get("check_in") || "")) setCheckIn({ leadId: p.get("check_in") });
+    if (/^[0-9a-f]{24}$/i.test(p.get("visit") || "")) setOpened({ id: p.get("visit"), name: "" });
+  }, []);
+
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 350);
     return () => clearTimeout(t);
@@ -59,6 +72,7 @@ export default function DeskLogPage() {
   useEffect(() => {
     if (!dealerId) return;
     staffList(dealerId).then(setStaff).catch(() => setStaff([]));
+    deskLogRules(dealerId).then(setRules).catch(() => setRules(null));
   }, [dealerId]);
 
   const dates = useMemo(() => (range ? reportDates(range, tz) : null), [range, tz]);
@@ -90,7 +104,7 @@ export default function DeskLogPage() {
   }
 
   const setFilter = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
-  const staffOptions = staff.map((s) => <option key={s._id} value={s._id}>{s.name || s.email}</option>);
+  const staffPairs = staff.map((x) => [x._id, x.name || x.email]);
   const filtered = Object.values(filters).some(Boolean) || q || view !== "all";
   const isToday = data?.cards?.day === moment.tz(tz).format("YYYY-MM-DD");
   const dayWord = isToday ? "TODAY" : (data?.cards?.day ? moment.tz(data.cards.day, "YYYY-MM-DD", tz).format("MMM D")
@@ -102,13 +116,25 @@ export default function DeskLogPage() {
         <div className="d-flex align-items-center flex-wrap gap-2">
           <div className="me-auto">
             <h3 className="page_title mb-0">Desk Log</h3>
-            <small className="text-muted">Every customer in the showroom: who is working the deal, how far it got
-              and how it ended.</small>
+            <small className="text-muted">Manage, follow up, and convert your sales and service opportunities.</small>
+          </div>
+          {/* Betsy's top bar: search, date, Customer Check-in (with its menu). */}
+          <div className="dl_top_search">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <Form.Control id="dl-search" size="sm" placeholder="Search by name, phone, email, VIN, stock #..." value={search}
+              aria-label="Search" onChange={(e) => setSearch(e.target.value)} />
           </div>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
-          <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
-            <i className="fa-solid fa-plus me-1"></i>Check in customer
-          </Button>
+          <Dropdown as="div" className="btn-group">
+            <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
+              <i className="fa-solid fa-right-to-bracket me-1"></i>Customer Check-in
+            </Button>
+            <Dropdown.Toggle split size="sm" variant="custom" aria-label="More" />
+            <Dropdown.Menu align="end">
+              <Dropdown.Item onClick={() => setCheckIn(true)}>Check in a customer</Dropdown.Item>
+              <Dropdown.Item onClick={() => setRulesOpen(true)}>Desk Log settings</Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown>
         </div>
       </div>
 
@@ -122,73 +148,58 @@ export default function DeskLogPage() {
         )}
 
         <div className="w_card my-3">
+          {/* Betsy's filter row: "All ..." menus, then Stage, Outcome and DND (13 Nov 2026 meeting). */}
           <div className="dl_filters">
-            <div className="dl_filter_search">
-              <label htmlFor="dl-search">Search</label>
-              <Form.Control id="dl-search" size="sm" placeholder="Name, phone, VIN, stock #" value={search}
-                onChange={(e) => setSearch(e.target.value)} />
+            {[
+              ["department", "All Departments", [["sales", "Sales"], ["service", "Service"]]],
+              ["lead_type", "All Lead Types", LEAD_TYPES],
+              ["source", "All Lead Sources", [...new Set([...(data?.sources || []), filters.source].filter(Boolean))].map((x) => [x, x])],
+              ["salesperson_id", "All Salespeople", staffPairs],
+              ["sales_manager_id", "All Sales Managers", staffPairs],
+              ["bdc_agent_id", "All BDC Agents", staffPairs],
+              ["stage", "All Stages", [["none", "No stage yet"], ...STAGE_OPTIONS.map((x) => [x, x])]],
+              ["outcome", "All Outcomes", OUTCOME_OPTIONS],
+              ["dnd", "DND: all customers", [["only", "DND only"], ["exclude", "Hide DND"]]],
+            ].map(([key, all, options]) => (
+              <div key={key}>
+                <Form.Select size="sm" value={filters[key]} onChange={setFilter(key)} aria-label={all}
+                  className={filters[key] ? "active_filter" : ""}>
+                  <option value="">{all}</option>
+                  {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </Form.Select>
+              </div>
+            ))}
+            <div className="text-end">
+              <Button size="sm" variant="link" className="p-0 fw-semibold" disabled={!filtered}
+                onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear Filters</Button>
             </div>
-            <div><label>Department</label>
-              <Form.Select size="sm" value={filters.department} onChange={setFilter("department")} aria-label="Department">
-                <option value="">All</option><option value="sales">Sales</option><option value="service">Service</option>
-              </Form.Select></div>
-            <div><label>Stage</label>
-              <Form.Select size="sm" value={filters.stage} onChange={setFilter("stage")} aria-label="Stage">
-                <option value="">All stages</option><option value="none">No stage yet</option>
-                {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Form.Select></div>
-            <div><label>Outcome</label>
-              <Form.Select size="sm" value={filters.outcome} onChange={setFilter("outcome")} aria-label="Outcome">
-                <option value="">All outcomes</option>
-                {OUTCOME_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Form.Select></div>
-            <div><label>Lead type</label>
-              <Form.Select size="sm" value={filters.lead_type} onChange={setFilter("lead_type")} aria-label="Lead type">
-                <option value="">All</option>
-                {LEAD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Form.Select></div>
-            <div><label>Lead source</label>
-              <Form.Select size="sm" value={filters.source} onChange={setFilter("source")} aria-label="Lead source">
-                <option value="">All</option>
-                {[...new Set([...(data?.sources || []), filters.source].filter(Boolean))]
-                  .map((s) => <option key={s} value={s}>{s}</option>)}
-              </Form.Select></div>
-            <div><label>Salesperson</label>
-              <Form.Select size="sm" value={filters.salesperson_id} onChange={setFilter("salesperson_id")}
-                aria-label="Salesperson"><option value="">All</option>{staffOptions}</Form.Select></div>
-            <div><label>Sales manager</label>
-              <Form.Select size="sm" value={filters.sales_manager_id} onChange={setFilter("sales_manager_id")}
-                aria-label="Sales manager"><option value="">All</option>{staffOptions}</Form.Select></div>
-            <div><label>BDC agent</label>
-              <Form.Select size="sm" value={filters.bdc_agent_id} onChange={setFilter("bdc_agent_id")}
-                aria-label="BDC agent"><option value="">All</option>{staffOptions}</Form.Select></div>
           </div>
           <div className="dl_views mt-3">
             {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => (
               <Button key={key} size="sm" variant={view === key ? "custom" : "outline-custom"}
                 onClick={() => setView(key)}>{label}</Button>
             ))}
-            {filtered && (
-              <Button size="sm" variant="link" className="ms-auto"
-                onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear filters</Button>
-            )}
             {loading && <Spinner animation="border" size="sm" className="ms-2" />}
           </div>
         </div>
 
         {error && <Alert variant="danger">{error}</Alert>}
+        {notice && <Alert variant="success" dismissible onClose={() => setNotice(null)} className="py-2">{notice}</Alert>}
         {data && (
-          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId}
+          <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId} rules={rules}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
         )}
         {data?.truncated && <small className="text-muted">Showing the latest 500 visits. Pick fewer days to see the
           rest.</small>}
       </div>
 
-      {checkIn && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} onHide={() => setCheckIn(false)}
-        onDone={() => { setCheckIn(false); load(); }} />}
+      {checkIn && dealerId && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} initialLeadId={checkIn.leadId || null}
+        onHide={() => setCheckIn(false)}
+        onDone={(msg) => { setCheckIn(false); setNotice(msg || null); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}
+      {rulesOpen && <RulesModal dealerId={dealerId} onHide={() => setRulesOpen(false)}
+        onSaved={() => deskLogRules(dealerId).then(setRules).catch(() => {})} />}
     </div>
   );
 }

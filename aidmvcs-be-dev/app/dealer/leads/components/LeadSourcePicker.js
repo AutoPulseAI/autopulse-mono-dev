@@ -2,13 +2,16 @@
 // Lead Source on the manual lead form, from the dealer's own list (gap G-009, /api/lead-sources). Staff with
 // "Manage Leads" can edit the list here ("Edit list"): add, rename (the dealer's leads with that source are renamed
 // too, so reports don't split it) or remove (leads keep their source; it's only no longer offered).
+// The dropdown also offers every source already on the dealer's leads and the usual providers, so it is never empty,
+// and "+ Add a new source" right in it (same permission) adds one to the list and picks it (17 Nov 2026).
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Form, InputGroup, Modal, Spinner, Table } from "react-bootstrap";
 
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 
 export default function LeadSourcePicker({ dealerId, value, onChange, disabled }) {
-  const [list, setList] = useState({ sources: [], can_edit: false, history: [] });
+  const [list, setList] = useState({ sources: [], used: [], common: [], can_edit: false, history: [] });
+  const [quick, setQuick] = useState(null); // the "+ Add a new source" box under the dropdown: its text
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -32,24 +35,56 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
       if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
       setList(data); setAdding(""); setEditing(null);
       if (body.action === "rename" && value === body.name) onChange(body.to);
+      return true;
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
   const names = list.sources.map((s) => s.name);
-  const options = value && !names.some((n) => n.toLowerCase() === String(value).toLowerCase()) ? [value, ...names] : names;
+  const used = (list.used || []).map((s) => s.name);
+  const common = list.common || [];
+  const all = [...names, ...used, ...common];
+  const extra = value && !all.some((n) => n.toLowerCase() === String(value).toLowerCase()) ? [value] : [];
+  const ADD = "__add_new_source__";
+  const pick = (v) => {
+    if (v === ADD) { setError(null); setQuick(""); return; }
+    onChange(v);
+  };
+  const addQuick = async () => {
+    const name = quick.trim().replace(/\s+/g, " ");
+    const existing = all.find((n) => n.toLowerCase() === name.toLowerCase());
+    if (existing && names.includes(existing)) { onChange(existing); setQuick(null); return; }
+    if (await change({ action: "add", name })) { onChange(name); setQuick(null); }
+  };
 
   return (
     <>
       <InputGroup>
-        <Form.Select value={value || ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}
+        <Form.Select value={value || ""} onChange={(e) => pick(e.target.value)} disabled={disabled}
           aria-label="Lead source">
-          <option value="">{names.length ? "Choose..." : "No sources yet"}</option>
-          {options.map((n) => <option key={n} value={n}>{n}</option>)}
+          <option value="">Choose...</option>
+          {extra.map((n) => <option key={n} value={n}>{n}</option>)}
+          {names.length > 0 && <optgroup label="Your sources">{names.map((n) => <option key={n} value={n}>{n}</option>)}</optgroup>}
+          {used.length > 0 && <optgroup label="On your leads">{used.map((n) => <option key={n} value={n}>{n}</option>)}</optgroup>}
+          {common.length > 0 && <optgroup label="Common sources">{common.map((n) => <option key={n} value={n}>{n}</option>)}</optgroup>}
+          {list.can_edit ? <option value={ADD}>+ Add a new source...</option>
+            : <option disabled>Not listed? A manager can add it</option>}
         </Form.Select>
         {list.can_edit && (
           <Button variant="outline-custom" onClick={() => { setError(null); setShow(true); }}>Edit list</Button>
         )}
       </InputGroup>
+      {quick != null && (
+        <>
+          <InputGroup size="sm" className="mt-1">
+            <Form.Control autoFocus placeholder="New source, e.g. Referral" value={quick} maxLength={60}
+              onChange={(e) => setQuick(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && quick.trim()) { e.preventDefault(); addQuick(); } }} />
+            <Button variant="custom" disabled={busy || !quick.trim()} onClick={addQuick}>{busy ? <Spinner size="sm" /> : "Add"}</Button>
+            <Button variant="outline-custom" onClick={() => setQuick(null)}>Cancel</Button>
+          </InputGroup>
+          {error && !show && <small className="text-danger">{error}</small>}
+        </>
+      )}
 
       <Modal show={show} onHide={() => setShow(false)} centered>
         <Modal.Header closeButton><Modal.Title as="h6">Lead sources</Modal.Title></Modal.Header>

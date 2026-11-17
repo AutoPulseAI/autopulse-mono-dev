@@ -1,5 +1,9 @@
 // The dealer's lead source list (gap G-009), picked on the manual lead form.
-//   GET ?dealer_id                         -> { sources: [{ name, leads }], can_edit, history: [last 20] }
+//   GET ?dealer_id                         -> { sources: [{ name, leads }], used: [{ name, leads }], common: [names],
+//                                             can_edit, history: [last 20] }
+//       used:   every other source already on the dealer's leads (ADF / provider / imported leads), so the picker is
+//               never empty for a dealer whose list nobody has typed in yet (17 Nov 2026: "No sources yet");
+//       common: the usual providers (lib/reporting/normalize.js PROVIDER_ALIASES) that are in neither.
 //   PUT { dealer_id, action: 'add', name }
 //       { dealer_id, action: 'rename', name, to }   also renames the source on the dealer's leads that carry it, so
 //                                                   reports don't split one source in two (count in the history)
@@ -12,6 +16,7 @@ import LeadSourceList from '@models/LeadSourceList';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
 import { dealerForms } from '@lib/reporting/kpis/common';
+import { PROVIDER_ALIASES, UNKNOWN_SOURCE, normalizeProvider } from '@lib/reporting/normalize';
 
 export const runtime = 'nodejs';
 const fail = (error, status) => Response.json({ error }, { status });
@@ -24,7 +29,21 @@ async function listFor(dealerId, user) {
   const sources = doc?.sources || [];
   const counts = await Promise.all(sources.map((name) => Lead.countDocuments({ dealer_id: { $in: dealerForms(dealerId) },
     lead_source: exact(name) })));
-  return { sources: sources.map((name, i) => ({ name, leads: counts[i] })), can_edit: await hasPermission(user, 'Manage Leads'),
+  const onList = new Set(sources.map((n) => n.toLowerCase()));
+  // Sources on the dealer's leads, as the reports name them (one name per provider), most used first.
+  const raw = await Lead.aggregate([{ $match: { dealer_id: { $in: dealerForms(dealerId) } } },
+    { $group: { _id: { ls: '$lead_source', s: '$source' }, n: { $sum: 1 } } }]);
+  const usedCount = new Map();
+  for (const r of raw) {
+    const name = normalizeProvider(r._id.ls, r._id.s);
+    if (name === UNKNOWN_SOURCE || name === 'Campaign' || onList.has(name.toLowerCase()) || name.length > 60) continue;
+    usedCount.set(name, (usedCount.get(name) || 0) + r.n);
+  }
+  const used = [...usedCount].map(([name, leads]) => ({ name, leads })).sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name));
+  const taken = new Set([...onList, ...used.map((u) => u.name.toLowerCase())]);
+  const common = [...new Set(PROVIDER_ALIASES.map(([, n]) => n))].filter((n) => !taken.has(n.toLowerCase()));
+  return { sources: sources.map((name, i) => ({ name, leads: counts[i] })), used, common,
+    can_edit: await hasPermission(user, 'Manage Leads'),
     history: (doc?.history || []).slice(-20).reverse() };
 }
 

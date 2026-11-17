@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, Form, Nav, Pagination, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CallOutcomeModal from "../components/CallOutcomeModal";
+import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker";
 import LeadAiDrawer from "../components/LeadAiDrawer";
 import { aiFetch, callOutcomeLabel, formatDateTime, fromNow, leadHref, stageVariant, telHref } from "../components/aiShared";
 
@@ -142,6 +143,20 @@ function CallTasksContent() {
     setDateTo((d) => (d === defaultDay.current ? today : d));
     defaultDay.current = today;
   }, [today]);
+  // The user, 13 Nov 2026: one date picker - the Dashboard's (Today, Yesterday, Last 7 days, a range...) - instead of
+  // two date boxes and a strip of day cards; the picked period's totals in one line.
+  const [pickedPreset, setPickedPreset] = useState("custom");
+  const pickerValue = {
+    startDate: dateFrom ? moment.tz(dateFrom, "YYYY-MM-DD", dealerTimezone).startOf("day").toDate() : null,
+    endDate: dateTo ? moment.tz(dateTo, "YYYY-MM-DD", dealerTimezone).endOf("day").toDate() : null,
+    preset: dateFrom === today && dateTo === today ? "today" : pickedPreset,
+  };
+  const onPick = (r) => {
+    setPickedPreset(r?.preset || "custom");
+    const day = (d) => moment(d).tz(dealerTimezone).format("YYYY-MM-DD");
+    setDateFrom(r?.startDate ? day(r.startDate) : "");
+    setDateTo(r?.endDate ? day(r.endDate) : "");
+  };
   const [stage, setStage] = useState("");
   const [reason, setReason] = useState("");
   const [byDay, setByDay] = useState([]);
@@ -167,7 +182,10 @@ function CallTasksContent() {
       if (dateTo) params.set("date_to", dateTo);
       const [data, days] = await Promise.all([
         aiFetch(`/api/dealer-ai/call-tasks?${params.toString()}`),
-        aiFetch(`/api/dealer-ai/call-tasks/by-day?days=14&tz_offset_minutes=${tzOffset}`).catch(() => ({ days: [] })),
+        // Days back to the start of the picked period (at most 90), to total the period.
+        aiFetch(`/api/dealer-ai/call-tasks/by-day?days=${Math.min(90, Math.max(1,
+          moment.tz(dealerTimezone).startOf("day").diff(moment.tz(dateFrom || today, "YYYY-MM-DD", dealerTimezone), "days") + 1))}`
+          + `&tz_offset_minutes=${tzOffset}`).catch(() => ({ days: [] })),
       ]);
       setTasks(data.tasks || []);
       setMissed(data.missed_by_agent || null);
@@ -177,7 +195,7 @@ function CallTasksContent() {
     } finally {
       setLoading(false);
     }
-  }, [view, dateFrom, dateTo, tzOffset]);
+  }, [view, dateFrom, dateTo, tzOffset, dealerTimezone, today]);
 
   const needle = query.trim().toLowerCase();
   const stages = [...new Set(tasks.map((t) => t.stage_label).filter(Boolean))].sort();
@@ -188,11 +206,10 @@ function CallTasksContent() {
   const current = Math.min(page, pages);
   const shown = filtered.slice((current - 1) * perPage, current * perPage);
   useEffect(() => setPage(1), [view, needle, perPage, stage, reason, dateFrom, dateTo]);
-  const pickDay = (day) => {
-    const same = dateFrom === day && dateTo === day;
-    setDateFrom(same ? "" : day);
-    setDateTo(same ? "" : day);
-  };
+  // The picked period's totals, from the per-day counts.
+  const inPeriod = byDay.filter((d) => (!dateFrom || d.day >= dateFrom) && (!dateTo || d.day <= dateTo));
+  const totals = inPeriod.reduce((t, d) => ({ opened: t.opened + (d.opened || 0), called: t.called + (d.called || 0),
+    missed: t.missed + (d.missed || 0), open: t.open + (d.open || 0) }), { opened: 0, called: 0, missed: 0, open: 0 });
 
   useEffect(() => {
     load();
@@ -267,35 +284,10 @@ function CallTasksContent() {
         {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
         {view === "missed" && <MissedCounts missed={missed} />}
 
-        {/* Client, 4 Nov 2026: "what are these messy filters" - the day and its count ran together ("Tue Nov 328").
-            One row of day cards, the day on top and its numbers labelled underneath. */}
-        {byDay.length > 0 && (
-          <div className="d-flex gap-2 mb-2 pb-1" style={{ overflowX: "auto" }}>
-            {byDay.map((d) => {
-              const picked = dateFrom === d.day && dateTo === d.day;
-              return (
-                <Button key={d.day} size="sm" variant={picked ? "custom" : "outline-secondary"} onClick={() => pickDay(d.day)}
-                  title={`${d.opened} call tasks: ${d.called} called, ${d.missed} missed, ${d.open} open`}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", flex: "0 0 auto", lineHeight: 1.25 }}>
-                  <strong>{d.day === today ? "Today" : moment(d.day).format("ddd MMM D")}</strong>
-                  <small style={{ whiteSpace: "nowrap" }}>
-                    {d.opened} task{d.opened === 1 ? "" : "s"}
-                    {" · "}<span className={picked ? "" : "text-success"}>{d.called} called</span>
-                    {" · "}<span className={picked ? "" : "text-danger"}>{d.missed} missed</span>
-                  </small>
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
           <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Search name, phone, vehicle or reason"
             value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Form.Control size="sm" type="date" style={{ width: 150 }} value={dateFrom} title="From"
-            onChange={(e) => setDateFrom(e.target.value)} />
-          <Form.Control size="sm" type="date" style={{ width: 150 }} value={dateTo} title="To"
-            onChange={(e) => setDateTo(e.target.value)} />
+          <DashboardDatePicker value={pickerValue} onChange={onPick} timezone={dealerTimezone} />
           <Form.Select size="sm" style={{ width: 170 }} value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="">All stages</option>
             {stages.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -303,16 +295,25 @@ function CallTasksContent() {
           <Form.Select size="sm" style={{ width: 210 }} value={reason} onChange={(e) => setReason(e.target.value)}>
             {REASONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
           </Form.Select>
-          {(dateFrom || dateTo || stage || reason || needle) && (
-            <Button size="sm" variant="link" onClick={() => { setDateFrom(""); setDateTo(""); setStage(""); setReason(""); setQuery(""); }}>
+          {(dateFrom !== today || dateTo !== today || stage || reason || needle) && (
+            <Button size="sm" variant="link" onClick={() => { setDateFrom(today); setDateTo(today); setStage(""); setReason(""); setQuery(""); }}>
               Clear filters
             </Button>
           )}
-          <small className="text-secondary-light ms-auto">{filtered.length} task{filtered.length === 1 ? "" : "s"}</small>
+          <small className="text-secondary-light ms-auto">{filtered.length} task{filtered.length === 1 ? "" : "s"} shown</small>
           <Form.Select size="sm" style={{ width: 100 }} value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
             {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
           </Form.Select>
         </div>
+        {byDay.length > 0 && (
+          <div className="small mb-2">
+            <strong>{dateFrom === dateTo ? (dateFrom === today ? "Today" : moment(dateFrom).format("ddd MMM D")) : "This period"}:</strong>
+            {" "}{totals.opened} call task{totals.opened === 1 ? "" : "s"}
+            {" · "}<span className="text-success">{totals.called} called</span>
+            {" · "}<span className="text-danger">{totals.missed} missed</span>
+            {totals.open ? <>{" · "}{totals.open} still open</> : null}
+          </div>
+        )}
 
         <div className="w_card mb-5">
           {view === "open" && (

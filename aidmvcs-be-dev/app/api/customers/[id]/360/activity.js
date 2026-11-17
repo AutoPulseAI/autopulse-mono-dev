@@ -63,6 +63,7 @@ export function staffEntry(a) {
     : a.action === "email_added_by_ai" || a.action === "phone_added_by_ai"
       ? `added the ${a.action.split("_")[0]} ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action === "customer_merged" ? `merged the customer ${a.from || ""} into this one${a.detail ? ` (${a.detail})` : ""}`
+    : a.action === "lead_edited" ? `changed the lead's ${a.detail || "details"} from ${a.from} to ${a.to}`
     : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
     : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
     : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`
@@ -73,6 +74,10 @@ export function staffEntry(a) {
     : a.action === "not_duplicate" ? "marked this customer as a different person from a possible duplicate"
     : a.action === "lead_reassigned"
       ? (a.to ? `reassigned the lead${a.from ? ` from ${a.from}` : ""} to ${a.to}` : `unassigned the lead${a.from ? ` from ${a.from}` : ""}`)
+    : a.action === "desk_log_stage" ? `moved the showroom visit to ${a.to}${a.from ? ` (was ${a.from})` : ""} on the Desk Log`
+    : a.action === "desk_log_person" ? `set the ${a.detail} to ${a.to} on the Desk Log`
+    : a.action === "desk_log_note" ? `added a Desk Log note: "${a.detail}"`
+    : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,

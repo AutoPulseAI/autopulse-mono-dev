@@ -10,6 +10,7 @@ import { localDayRange } from '../reporting/time.js';
 import { staffNames, dealerForms } from '../reporting/kpis/common.js';
 import { STALLED_MINUTES, UNSOLD_REASONS, isOpen, minutesInStage } from './deskLog.js';
 import { dealDate } from '../reporting/dealGross.js';
+import { leadStatusLabel } from '../statusLabels.js';
 
 export const VIEWS = Object.freeze({
   all: 'All visits',
@@ -17,6 +18,7 @@ export const VIEWS = Object.freeze({
   stalled: `Stalled (same stage for ${STALLED_MINUTES} minutes or more)`,
   no_next_step: 'No next step set',
   unsold_follow_up: 'Unsold - to follow up',
+  handoff: 'Handed to a manager',
 });
 
 export const MAX_ROWS = 500;
@@ -27,7 +29,8 @@ function matchesSearch(row, q) {
   if (!q) return true;
   const text = q.toLowerCase();
   const d = digits(q);
-  const hay = [row.customer, row.email, row.stock_number, row.vehicle?.vin, row.trade?.vin]
+  const hay = [row.customer, row.email, row.stock_number, row.vehicle?.vin, row.trade?.vin, row.lead_id,
+    [row.vehicle?.year, row.vehicle?.make, row.vehicle?.model].filter(Boolean).join(' ')]
     .filter(Boolean).map((s) => String(s).toLowerCase());
   return hay.some((s) => s.includes(text)) || (d.length >= 4 && digits(row.phone).includes(d));
 }
@@ -37,6 +40,7 @@ function inView(row, view, now) {
   if (view === 'stalled') return isOpen(row) && minutesInStage(row, now) >= STALLED_MINUTES;
   if (view === 'no_next_step') return (isOpen(row) || row.outcome === 'UNSOLD') && !row.next_step_at;
   if (view === 'unsold_follow_up') return row.outcome === 'UNSOLD' && row.unsold_reason !== UNSOLD_REASONS.DND;
+  if (view === 'handoff') return Boolean(row.handoff);
   return true;
 }
 
@@ -55,8 +59,13 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
   const entries = await DeskLogEntry.find(match).sort({ checked_in_at: -1, _id: -1 }).limit(MAX_ROWS * 2).lean();
   const leads = new Map((await Lead.find({ _id: { $in: entries.map((e) => e.lead_id) },
     dealer_id: { $in: dealerForms(dealerId) } })
-    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin')
+    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin appointment_showed_at booking.booking_at')
     .lean()).map((l) => [String(l._id), l]));
+  // Handoffs (SOW Deliverable C manager view): the lead is waiting for a manager - Managerial Review, or the AI handed
+  // it over and nobody has picked it up yet (ai_lead_state, the same as AI Assistant > Dealer Action Required).
+  const handed = new Map((await mongoose.connection.db.collection('ai_lead_state').find(
+    { lead_id: { $in: entries.map((e) => String(e.lead_id)) }, status: 'handoff' },
+    { projection: { lead_id: 1, status_reason: 1, status_at: 1 } }).toArray()).map((s) => [String(s.lead_id), s]));
   const names = await staffNames(entries.flatMap((e) => [e.salesperson_id, e.sales_manager_id, e.bdc_agent_id,
     ...(e.notes || []).map((n) => n.by)]).filter(Boolean).map(String), {});
   const name = (id) => (id ? names.get(String(id)) || null : null);
@@ -73,6 +82,7 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
       id: String(e._id), lead_id: String(e.lead_id), customer_id: lead.customer_id ? String(lead.customer_id) : null,
       customer: lead.name || '', phone: lead.phone || '', email: lead.email || '',
       lead_type: upType(lead), source, sub_source: lead.sub_source || null, lead_status: lead.fe_lead_status || null,
+      lead_status_label: leadStatusLabel(lead) || null,
       department: e.department, checked_in_at: e.checked_in_at, stock_number: e.stock_number || null,
       vehicle: e.vehicle || {}, trade: e.trade || {},
       salesperson_id: e.salesperson_id ? String(e.salesperson_id) : null, salesperson: name(e.salesperson_id),
@@ -82,13 +92,26 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
       unsold_reason: e.unsold_reason || null, next_step_at: e.next_step_at || null,
       latest_note: latest ? { text: latest.text, at: latest.at, by: latest.by_name || name(latest.by) } : null,
       notes_count: (e.notes || []).length,
+      updated_at: e.updatedAt || null,
+      checklist: (e.checklist || []).length ? { done: e.checklist.filter((c) => c.done).length, total: e.checklist.length } : null,
+      car_finder_matches: (e.car_finder_matches || []).length,
+      handoff: lead.fe_lead_status === 'Managerial Review' || handed.has(String(e.lead_id))
+        ? { reason: handed.get(String(e.lead_id))?.status_reason || 'Managerial Review',
+          at: handed.get(String(e.lead_id))?.status_at || null } : null,
     };
     row.minutes_in_stage = isOpen(row) ? minutesInStage(row, now) : null;
     if (filters.lead_type && row.lead_type !== filters.lead_type) continue;
     if (filters.source && row.source !== filters.source) continue;
     // Stage and outcome filters (user, 13 Nov 2026). stage 'none' = no stage yet; outcome 'none' = still open.
     if (filters.stage && (filters.stage === 'none' ? row.stage : row.stage !== filters.stage)) continue;
-    if (filters.outcome && (filters.outcome === 'none' ? row.outcome : row.outcome !== filters.outcome)) continue;
+    if (filters.outcome) {
+      const [outcome, reason] = filters.outcome.split('|');
+      if (outcome === 'none' ? row.outcome : (row.outcome !== outcome || (reason && row.unsold_reason !== reason))) continue;
+    }
+    // DND customers only / hidden (Betsy's filter row, 13 Nov 2026 meeting).
+    const isDnd = row.lead_status === 'DND' || row.unsold_reason === UNSOLD_REASONS.DND;
+    if (filters.dnd === 'only' && !isDnd) continue;
+    if (filters.dnd === 'exclude' && isDnd) continue;
     if (!inView(row, view, now) || !matchesSearch(row, q)) continue;
     rows.push(row);
     if (rows.length >= MAX_ROWS) break;

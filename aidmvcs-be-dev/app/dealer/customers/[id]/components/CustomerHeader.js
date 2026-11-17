@@ -5,6 +5,7 @@ import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import CallButton from "../../../components/CallButton";
+import ExportFormButton from "./ExportFormButton";
 
 export function primaryContact(entries) {
   if (!entries?.length) return null;
@@ -38,7 +39,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             {customer.origin_badge}
           </Badge>
         </div>
-        <div className="d-flex align-items-center gap-2">
+        <div className="d-flex align-items-center flex-wrap gap-2">
           {canAssignLeads && (
             <Form.Select
               size="sm"
@@ -60,6 +61,8 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           {primaryPhone && (
             <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} />
           )}
+          {/* The dealership's forms with this customer's data filled in (Forms Library). */}
+          <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} />
           {sendLabel && (
             <Button variant="custom" size="sm" onClick={onSendMessage}>
               <i className={`fa-solid ${primaryPhone ? "fa-comment-sms" : "fa-envelope"} me-2`} />
@@ -69,10 +72,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
         </div>
       </div>
       <Row className="gy-3">
-        <Col md={3}><strong>Email:</strong> {primaryEmail?.value || "N/A"}</Col>
-        <Col md={3}><strong>Phone:</strong> {primaryPhone?.value || "N/A"}</Col>
-        <Col md={3}><strong>Preferred contact:</strong> {customer.preferred_communication_mode || "N/A"}</Col>
-        <Col md={3}><strong>Last activity:</strong> {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</Col>
+        {/* Phones and emails are listed once, below (BB, 17 Nov 2026: "too many duplication"). */}
+        <Col md={6}><strong>Preferred contact:</strong> {customer.preferred_communication_mode || "N/A"}</Col>
+        <Col md={6}><strong>Last activity:</strong> {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</Col>
         <Col md={4}><strong>Total sales:</strong> {formatCurrency(valueSnapshot.total_deal_price)}</Col>
         <Col md={4}>
           <strong>Total service (all-pay):</strong> {formatCurrency(valueSnapshot.total_repair_order_sale)}

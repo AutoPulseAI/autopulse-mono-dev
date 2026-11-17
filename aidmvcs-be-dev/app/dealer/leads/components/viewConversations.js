@@ -1,4 +1,5 @@
 "use client";
+import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
@@ -9,6 +10,8 @@ import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
 import CallButton from "../../components/CallButton";
+import LeadInfoCard from "./LeadInfoCard";
+import { deskLogMenuVisible } from "../../desk-log/deskLogAccess";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
 import { useUser } from "../../context/UserContext";
@@ -77,6 +80,9 @@ export default function ViewConversations({
   const [refreshKey, setRefreshKey] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [leadData, setLeadData] = useState(lead); // Local lead state for auto-reply updates
+  // The Desk Log check-in button: only where the Desk Log menu shows (deskLogAccess.js).
+  const [showCheckIn, setShowCheckIn] = useState(false);
+  useEffect(() => { setShowCheckIn(deskLogMenuVisible()); }, []);
   const [dateRange, setDateRange] = useState({
     startDate: null,
     endDate: null
@@ -797,8 +803,10 @@ export default function ViewConversations({
 
         <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
           <Row className="gx-3">
-            <Col xxl={4} lg={12} md={5}>
-              <div className="dealer_info position-sticky mb-3">
+            <Col xxl={4} lg={5} md={5}>
+              {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
+                  column shifts to the bottom"); scrolls on its own when taller than the screen. */}
+              <div className="dealer_info position-sticky mb-3 lead_center_col">
                 {/* Auto-Reply Toggle Component */}
                 {/* <AutoReplyToggle 
                   lead={leadData} 
@@ -814,24 +822,11 @@ export default function ViewConversations({
                 )} */}
                 
                 <div className="w_card leadinfo_card mb-2 row gx-1">
-                  <p className="col col-xxl-12 col-lg-6 col-12"><strong>Name:</strong> {lead?.name  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-12 text-break"><strong>Email:</strong> {lead?.email  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-12"><strong>Phone:</strong> {lead?.phone  || "N/A"}
-                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id}
-                      className="ms-2 py-0" iconOnly />}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-6"><strong>Source Type:</strong> {lead?.source  || "N/A"}</p>
-
-                  <p className="col col-xxl-12 col-lg-6 col-6">
-                    <strong>Lead Status:</strong> {lead?.fe_lead_status  || "N/A"}
-                  </p>
-                  <p className="col col-xxl-12 col-lg-6 col-12"><strong>Lead Source:</strong> {lead?.lead_source  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-6"><strong>Vin:</strong> {lead?.vin  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-6"><strong>Year:</strong> {lead?.vehicle_year  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-6"><strong>Make:</strong> {lead?.vehicle_make  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-6"><strong>Model:</strong> {lead?.vehicle_model  || "N/A"}</p>
-                  <p className="col col-xxl-12 col-lg-6 col-12 mb-0"><strong>Lead Date:</strong> {formatTimestamp(lead.createdAt, dealerTimezone)}
-                   </p>
-                   <p className="col col-xxl-12 col-lg-6 col-12 mb-0"><strong>Lead Date:</strong> {formatTimestamp(lead.createdAt.toLocaleString())}</p>
+                  {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
+                  <div className="col-12">
+                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
+                      onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); }} />
+                  </div>
 
                   {lead.booking_status && lead.booking && (
                     <div className="mt-3 px-3 py-2 bg-light rounded border">
@@ -866,75 +861,42 @@ export default function ViewConversations({
                     </div>
                   )}
 
-                  <div className="position-relative mt-3">
-                    <Row className="align-items-center g-1">
-                    <Col xxl={12} lg={3} md={12} xs={6}>
-                      {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && (
-                        <Button
-                          variant="custom"
-                          className="w-100"
-                          onClick={() => setShowReplyModal(true)}
-                        >
-                          <i className="fa-regular fa-reply me-2"></i>
-                          {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
-                        </Button>
-                      )}
-                    </Col>
-
-                    <Col xxl={12} lg={3} md={12} xs={6}>
-                    <Button
-                      variant="outline-warning"
-                      className="w-100 text-nowrap"
-                      onClick={() => setShowNotesModal(true)}
-                    >
-                      <i className="fa-solid fa-sticky-note me-2"></i>
-                      Add Note
-                    </Button>
-                    </Col>
-
-                    <Col xxl={12} lg={3} md={12} xs={6}>
-                    <Button
-                      variant="outline-custom"
-                      className="w-100 text-nowrap"
-                      onClick={() => setShowStatusModal(true)}
-                    >
-                      <i className="fa-solid fa-pen me-2"></i>
-                      Update Status
-                    </Button>
-                    </Col>
-
-                    {lead?.customer_id && (
-                    <Col xxl={12} lg={3} md={12} xs={6}>
-                    {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (all their leads). */}
-                    <Button
-                      variant="outline-secondary"
-                      className="w-100 text-nowrap"
-                      href={`/dealer/customers/${lead.customer_id}`}
-                    >
-                      <i className="fa-regular fa-user me-2"></i>
-                      View customer profile
-                    </Button>
-                    </Col>
+                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place"). */}
+                  <div className="lead_actions mt-2">
+                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && (
+                      <Button variant="custom" size="sm" onClick={() => setShowReplyModal(true)}>
+                        <i className="fa-regular fa-reply me-1"></i>
+                        {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
+                      </Button>
                     )}
-
+                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" />}
+                    <Button variant="outline-warning" size="sm" className="text-nowrap" onClick={() => setShowNotesModal(true)}>
+                      <i className="fa-solid fa-sticky-note me-1"></i>Add Note
+                    </Button>
+                    <Button variant="outline-custom" size="sm" className="text-nowrap" onClick={() => setShowStatusModal(true)}>
+                      <i className="fa-solid fa-pen me-1"></i>Update Status
+                    </Button>
+                    {/* The Desk Log check-in, with this lead picked. */}
+                    {showCheckIn && (
+                      <Button variant="outline-custom" size="sm" className="text-nowrap" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                        <i className="fa-solid fa-right-to-bracket me-1"></i>Check in
+                      </Button>
+                    )}
+                    {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (not shown on the profile itself). */}
+                    {lead?.customer_id && !embedded && (
+                      <Button variant="outline-secondary" size="sm" className="text-nowrap" href={`/dealer/customers/${lead.customer_id}`}>
+                        <i className="fa-regular fa-user me-1"></i>Customer profile
+                      </Button>
+                    )}
                     {!embedded && (
-                    <Col xxl={12} lg={3} md={12} xs={6}>
-                    <Button
-                      variant="outline-secondary"
-                      className="w-100"
-                      onClick={handleClose}
-                    >
-                      <i className="fa-solid fa-arrow-left me-2"></i>
-                      Back to List
-                    </Button>
-                    </Col>
+                      <Button variant="outline-secondary" size="sm" className="text-nowrap" onClick={handleClose}>
+                        <i className="fa-solid fa-arrow-left me-1"></i>Back to List
+                      </Button>
                     )}
-                    </Row>
                   </div>
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id}
-                  leadStatus={lead.fe_lead_status || lead.lead_status || lead.status || null} />}
+                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}
                 {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
@@ -974,7 +936,7 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={8} lg={12} md={7}>
+            <Col xxl={8} lg={7} md={7}>
               <div className="position-relative mb-xl-3 mb-2">
                 {isNavigating && (
                   <div 
