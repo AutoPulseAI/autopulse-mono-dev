@@ -49,12 +49,15 @@
   // One department's leads, newest first (the Dashboard / reports per department; 17 Nov 2026).
   leadSchema.index({ dealer_id: 1, department: 1, createdAt: -1 });
   // A new lead takes its department from its source (app/lib/departmentRouting.js): a service / parts source is that
-  // department from the start; anything else is Sales (no department stored).
+  // department from the start; anything else is Sales - stored, so every lead carries its tag.
   leadSchema.pre('save', async function departmentOnArrival() {
     if (!this.isNew || this.get('department')) return;
     const { departmentFromSource } = await import('../lib/departmentRouting.js');
+    // Every lead is tagged (the user, 17 Nov 2026): its source's department, else Sales.
     const dept = departmentFromSource(this.toObject());
-    if (dept) { this.set('department', dept); this.set('department_set_by', 'source'); this.set('department_at', new Date()); }
+    this.set('department', dept || 'sales');
+    this.set('department_set_by', dept ? 'source' : 'default');
+    this.set('department_at', new Date());
   });
   leadSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
   // A new Service / Parts lead: that department's staff are emailed (17 Nov 2026, the user: "if a new service lead

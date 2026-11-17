@@ -26,6 +26,7 @@ AI_CRM_NOTES_COLLECTION = "ai_crm_notes"
 LABELS = {
     "service_request": "Service request",
     "service_lead": "Service lead",
+    "sales_lead": "Sales lead",
     "call_requested": "Customer asked for a call",
     "sold_pending_escalation": "Sold Pending - question for a person",
     "sold_pending_info": "Sold Pending - information from the customer",

@@ -34,6 +34,12 @@ export async function POST(req) {
         why: body.kind === 'service_request' ? 'the customer asked for a service visit'
           : 'the AI read from the conversation that the customer wants service' });
     }
+    // And the other way (the user, 17 Nov 2026: a customer serviced before can become a sales customer): the AI reads
+    // that a customer on a Service lead wants to buy or trade -> Sales, with a note.
+    if (body.kind === 'sales_lead' && result.created !== false) {
+      await moveLeadToDepartment({ leadId: body.lead_id, to: 'sales', by: 'ai',
+        why: 'the AI read from the conversation that the customer wants to buy or trade a vehicle' });
+    }
     const title = MANAGER_ALERT_NOTE_KINDS[body.kind];
     if (title && result.created !== false) {
       // The alert needs a person now: the dealer's manager gets an email and a text (client, 8 Oct 2026).
