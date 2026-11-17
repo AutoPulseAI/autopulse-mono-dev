@@ -83,4 +83,14 @@ for (const index of BOOKING_REPORT_INDEXES) {
   bookingSchema.index(index.key, { ...index.options, _autoIndex: false });
 }
 
+// A service appointment booked on a lead makes it a Service lead (app/lib/departmentRouting.js, 17 Nov 2026).
+bookingSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
+bookingSchema.post('save', function serviceAppointment(doc) {
+  if (!doc?.$locals?.wasNew || doc.appointment_type !== 'service' || !doc.lead_id) return;
+  doc.$locals.wasNew = false;
+  import('../lib/departmentRouting.js').then((m) => m.moveLeadToDepartment({ leadId: doc.lead_id, to: 'service',
+    why: `a service appointment was booked${doc.created_by === 'ai' ? ' by the AI' : ''}`, by: doc.created_by === 'ai' ? 'ai' : 'system' }))
+    .catch(() => null);
+});
+
 export default mongoose.models.Booking || mongoose.model('Booking', bookingSchema);

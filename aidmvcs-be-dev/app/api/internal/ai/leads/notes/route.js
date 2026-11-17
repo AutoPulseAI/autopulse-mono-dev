@@ -11,6 +11,7 @@ import { addAiLeadNote, validateNotePayload } from '@lib/ai/aiDnd';
 import Email from '@models/Email';
 import Lead from '@models/Lead';
 import { MANAGER_ALERT_NOTE_KINDS, notifyManagers } from '@lib/ai/managerAlerts';
+import { moveLeadToDepartment } from '@lib/departmentRouting';
 
 export async function POST(req) {
   if (!verifyInternalServiceToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -26,6 +27,12 @@ export async function POST(req) {
     await dbConnect();
     const result = await addAiLeadNote(body, { Lead, Email });
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
+    // The AI's judgement (17 Nov 2026): a customer asking for a service visit makes the lead a Service lead, with a
+    // note on the lead (app/lib/departmentRouting.js; staff placement and sold leads are left alone).
+    if (body.kind === 'service_request' && result.created !== false) {
+      await moveLeadToDepartment({ leadId: body.lead_id, to: 'service', by: 'ai',
+        why: 'the customer asked for a service visit' });
+    }
     const title = MANAGER_ALERT_NOTE_KINDS[body.kind];
     if (title && result.created !== false) {
       // The alert needs a person now: the dealer's manager gets an email and a text (client, 8 Oct 2026).
