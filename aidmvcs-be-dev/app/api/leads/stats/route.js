@@ -260,28 +260,37 @@ export async function GET(request) {
       }
     };
     
-    // Get counts for different stats
-    const [total_leads, new_this_week, visit_requested, converted,managerial_review, appointment_booked, sources, lead_sources, statuses] = await Promise.all([
-      Lead.countDocuments(baseQuery),
+    // Get counts for different stats.
+    // DB-SCALING #2 (B1): fold sources + lead_sources + statuses into ONE $facet over baseQuery (one pass
+    // instead of three), and DERIVE the five status-based counts from the `statuses` group in JS instead of
+    // five separate countDocuments. Byte-identical to the previous 9-op version:
+    //   - total_leads      = sum of every status bucket (every doc lands in exactly one bucket, incl. null)
+    //   - visit_requested  = the 'Contacted' bucket        (== countDocuments fe_lead_status:'Contacted')
+    //   - converted        = the 'visited' bucket
+    //   - managerial_review= the 'Managerial Review' bucket
+    //   - appointment_booked = the 'Appointment Booked' bucket
+    // new_this_week keeps its OWN query (a different date window), so it stays a separate pass. Net: 9 -> 2.
+    const [facetResult, new_this_week] = await Promise.all([
+      Lead.aggregate([
+        { $match: baseQuery },
+        { $facet: {
+          sources: [{ $group: { _id: '$source', count: { $sum: 1 } } }],
+          lead_sources: [{ $group: { _id: '$lead_source', count: { $sum: 1 } } }],
+          statuses: [{ $group: { _id: '$fe_lead_status', count: { $sum: 1 } } }],
+        } },
+      ]),
       Lead.countDocuments(newThisWeekQuery),
-      Lead.countDocuments({ ...baseQuery, fe_lead_status: 'Contacted' }),
-      Lead.countDocuments({ ...baseQuery, fe_lead_status: 'visited' }),
-      Lead.countDocuments({ ...baseQuery, fe_lead_status: 'Managerial Review' }),
-      Lead.countDocuments({ ...baseQuery, fe_lead_status: 'Appointment Booked' }),
-     // Lead.countDocuments({ ...baseQuery, booking_status: true }),
-      Lead.aggregate([
-        { $match: baseQuery },
-        { $group: { _id: '$source', count: { $sum: 1 } } }
-      ]),
-      Lead.aggregate([
-        { $match: baseQuery },
-        { $group: { _id: '$lead_source', count: { $sum: 1 } } }
-      ]),
-      Lead.aggregate([
-        { $match: baseQuery },
-        { $group: { _id: '$fe_lead_status', count: { $sum: 1 } } }
-      ])
     ]);
+
+    const sources = facetResult[0]?.sources || [];
+    const lead_sources = facetResult[0]?.lead_sources || [];
+    const statuses = facetResult[0]?.statuses || [];
+    const statusBucket = (value) => statuses.find((s) => s._id === value)?.count || 0;
+    const total_leads = statuses.reduce((sum, s) => sum + s.count, 0);
+    const visit_requested = statusBucket('Contacted');
+    const converted = statusBucket('visited');
+    const managerial_review = statusBucket('Managerial Review');
+    const appointment_booked = statusBucket('Appointment Booked');
 
     // Get communication types
     const communication_types = await Email.aggregate([

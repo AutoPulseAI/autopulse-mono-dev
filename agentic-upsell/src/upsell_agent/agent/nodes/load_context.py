@@ -16,6 +16,7 @@ Stock is not loaded here: Search stock (agent/nodes/search_stock.py) runs
 after Validate so it sees this turn's message (MASTER_PLAN_3 Phase 2).
 """
 
+import asyncio
 from typing import Any
 
 from upsell_agent import clock
@@ -165,8 +166,14 @@ async def load_context(state: AgentState, span: NodeSpan, ctx: TurnContext) -> d
         summary_text = f"{previous}\n{summary_text}".strip()
         reasoning.append("Returning customer: their previous lead's conversation is summarised in context.")
 
-    campaign = await find_campaign_context(ctx.db, customer_id=state.customer_id)
-    dealer = await dealer_profile(state.dealer_id)
+    # A2 (DB-SCALING #2): these two reads are independent (different collections, no shared input), so run
+    # them concurrently instead of serially. gather preserves result order, so the values are unchanged.
+    # NOT parallelized across the real dependencies: sync_lead_history before the history find (above),
+    # and prefill/360 before load_profile (above).
+    campaign, dealer = await asyncio.gather(
+        find_campaign_context(ctx.db, customer_id=state.customer_id),
+        dealer_profile(state.dealer_id),
+    )
     conversation = load_conversation(ctx.lead_state)
     now = clock.now()
     opens = None if dealer.is_open(now) else dealer.next_opening(now)

@@ -412,11 +412,9 @@ export async function processEmail(job) {
     if (parent_message_id) {
         try {
             // Find the lead associated with this conversation
-            existingparent = await Email.findOne({ 
-                $or: [
-                   
-                    { 'message_id': parent_message_id }
-                ] 
+            existingparent = await Email.findOne({
+                // B6 (DB-SCALING #2): single-branch $or unwrapped to a plain equality — identical match.
+                'message_id': parent_message_id
             });
             console.log('existingparent');
           
@@ -424,11 +422,9 @@ export async function processEmail(job) {
 
             
             if (existingparent) {
-                const existingLead = await Lead.findOne({ 
-                    $or: [
-                        
-                      { _id: existingparent.lead_id }
-                    ] 
+                const existingLead = await Lead.findOne({
+                    // B6 (DB-SCALING #2): single-branch $or unwrapped to a plain equality — identical match.
+                    _id: existingparent.lead_id
                 });
                 console.log('existingLead',existingLead);
                 if(existingLead){

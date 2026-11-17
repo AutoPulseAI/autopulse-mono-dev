@@ -140,11 +140,9 @@ export async function processSMS(job) {
     if (parent_message_id) {
         try {
             // Find the lead associated with this conversation
-            const existingparent = await Email.findOne({ 
-                $or: [
-                    
-                    { 'message_id': parent_message_id }
-                ] 
+            const existingparent = await Email.findOne({
+                // B6 (DB-SCALING #2): single-branch $or unwrapped to a plain equality — identical match, cleaner plan.
+                'message_id': parent_message_id
             });
             
             
