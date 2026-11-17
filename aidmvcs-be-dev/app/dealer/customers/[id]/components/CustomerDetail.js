@@ -13,7 +13,6 @@ import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import TradeInTab from "./TradeInTab";
 import LeadForm from "../../../leads/components/LeadForm";
-import CustomerForm from "../../components/CustomerForm";
 
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
@@ -30,7 +29,6 @@ export default function CustomerDetail({ customerId }) {
   const [messageLead, setMessageLead] = useState(null);
   // Same convention: setEditCustomer({}) opens the create form (not used here,
   // see CustomerList.js), setEditCustomer(customer) opens it pre-filled to edit.
-  const [editCustomer, setEditCustomer] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [assignmentError, setAssignmentError] = useState(null);
 
@@ -115,10 +113,6 @@ export default function CustomerDetail({ customerId }) {
     if (!value) fetchCustomer360(); // picks up the newly created lead, if any
   };
 
-  const handleEditCustomerChange = (value) => {
-    setEditCustomer(value);
-    if (!value) fetchCustomer360(); // picks up the saved edits
-  };
 
   const handleAssignmentChange = async (assignedToId) => {
     setAssignmentError(null);
@@ -153,7 +147,7 @@ export default function CustomerDetail({ customerId }) {
         customer={customer}
         valueSnapshot={value_snapshot}
         onSendMessage={handleSendMessage}
-        onEdit={() => setEditCustomer(customer)}
+        onChanged={fetchCustomer360}
         staffList={staffList}
         onAssignmentChange={handleAssignmentChange}
         // G-059: a call from the profile is logged on the customer's newest lead.
@@ -166,7 +160,7 @@ export default function CustomerDetail({ customerId }) {
           <OverviewTab overview={overview} activity={activity || []} />
         </Tab>
         <Tab eventKey="leads" title="Leads & Communications">
-          <LeadsTab customerId={customerId} />
+          <LeadsTab customerId={customerId} onChanged={fetchCustomer360} />
         </Tab>
         <Tab eventKey="sales" title="Sales">
           <SalesTab deals={deals} />
@@ -194,14 +188,6 @@ export default function CustomerDetail({ customerId }) {
         </Modal.Body>
       </Modal>
 
-      <Modal show={!!editCustomer} onHide={() => handleEditCustomerChange(null)} centered size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>Edit Customer</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {editCustomer && <CustomerForm editCustomer={editCustomer} setEditCustomer={handleEditCustomerChange} />}
-        </Modal.Body>
-      </Modal>
     </>
   );
 }

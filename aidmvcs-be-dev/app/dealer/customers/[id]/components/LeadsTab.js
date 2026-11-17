@@ -53,7 +53,7 @@ function Milestones({ times }) {
   );
 }
 
-export default function LeadsTab({ customerId }) {
+export default function LeadsTab({ customerId, onChanged }) {
   const { dealerParent, user, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
 
@@ -187,7 +187,7 @@ export default function LeadsTab({ customerId }) {
                   )}
                   {/* Only mount the (self-fetching, self-polling) conversation panel while
                       this accordion item is actually open. */}
-                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded />}
+                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded onLeadSaved={onChanged} />}
                   {isAdfLead(lead) && (
                     <div className="d-flex justify-content-end mt-3">
                       <Button

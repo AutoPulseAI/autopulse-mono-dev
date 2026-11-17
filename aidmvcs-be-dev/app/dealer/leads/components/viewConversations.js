@@ -69,6 +69,8 @@ export default function ViewConversations({
   // lead accordion on the customer detail page) where there's no "whole dealer
   // lead list" to navigate.
   embedded = false,
+  // Called after the lead card saves an edit (the customer profile reloads, so its name / phone / email follow).
+  onLeadSaved,
 }) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
@@ -825,7 +827,7 @@ export default function ViewConversations({
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
                     <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
-                      onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); }} />
+                      onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); onLeadSaved?.(saved); }} />
                   </div>
 
                   {lead.booking_status && lead.booking && (

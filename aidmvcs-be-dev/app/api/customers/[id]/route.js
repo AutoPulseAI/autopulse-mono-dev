@@ -6,6 +6,7 @@ import Customer from "@models/Customer";
 import Lead from "@models/Lead";
 import User from "@models/User";
 import { isAuthorizedForDealer } from "@lib/customerListing";
+import { logActivity } from "@lib/activityLog";
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
@@ -77,12 +78,15 @@ export async function PUT(req, { params }) {
     }
 
     const existingCustomer = await Customer.findOne({ _id: id, dealer_id: dealerId })
-      .select("assigned_to")
+      .select("assigned_to name followup_preference preferred_communication_mode user_language")
       .lean();
     if (!existingCustomer) return jsonError("Customer not found", 404);
 
     const updates = {};
-    if (body.name !== undefined) updates.name = body.name?.toString().trim() || "";
+    if (body.name !== undefined) {
+      updates.name = body.name?.toString().replace(/\s+/g, " ").trim().slice(0, 120) || "";
+      if (!updates.name) return jsonError("The customer needs a name", 400);
+    }
     if (body.followup_preference !== undefined) updates.followup_preference = body.followup_preference;
     if (body.user_language !== undefined) updates.user_language = body.user_language;
     if (body.preferred_communication_mode !== undefined) {
@@ -124,6 +128,25 @@ export async function PUT(req, { params }) {
       { new: true }
     ).lean();
     if (!customer) return jsonError("Customer not found", 404);
+
+    // Edited on the profile (17 Nov 2026, Betsy: "we should be able to make changes to the customer profile"): every
+    // change on the customer's timeline; a new name also goes on the customer's leads that had the old name (or
+    // none), so the lead pages, lists and messages use it too.
+    const fieldNames = { name: "name", followup_preference: "follow-up preference",
+      preferred_communication_mode: "preferred contact", user_language: "language" };
+    for (const [f, label] of Object.entries(fieldNames)) {
+      if (updates[f] === undefined || String(existingCustomer[f] ?? "") === String(updates[f] ?? "")) continue;
+      await logActivity({ dealer_id: dealerId, customer_id: id, actor_type: "staff", actor_id: currentUser._id,
+        actor_name: currentUser.name || null, action: "customer_edited", from: existingCustomer[f] ?? null,
+        to: updates[f] ?? null, detail: label });
+    }
+    if (updates.name && updates.name !== (existingCustomer.name || "")) {
+      const oldName = (existingCustomer.name || "").trim();
+      const sameName = oldName ? new RegExp(`^\\s*${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i") : null;
+      await Lead.updateMany({ customer_id: id, dealer_id: dealerId,
+        $or: [{ name: { $in: [null, ""] } }, { name: { $exists: false } }, ...(sameName ? [{ name: sameName }] : [])] },
+      { $set: { name: updates.name, updatedAt: new Date() } });
+    }
 
     const previousAssignedTo = existingCustomer.assigned_to ? String(existingCustomer.assigned_to) : null;
     const hasAssignmentChanged = isAssigning && previousAssignedTo !== (assignedTo || null);

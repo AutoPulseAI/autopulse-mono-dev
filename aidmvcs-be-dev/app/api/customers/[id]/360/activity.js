@@ -66,6 +66,8 @@ export function staffEntry(a) {
     : a.action === "lead_edited" ? `changed the lead's ${a.detail || "details"} from ${a.from} to ${a.to}`
     : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
     : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
+    : a.action === "contact_replace" ? `changed the ${a.from} ${a.to}`
+    : a.action === "customer_edited" ? `changed the customer's ${a.detail || "details"} from ${a.from || "empty"} to ${a.to || "empty"}`
     : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`
     : a.action === "contact_set_primary" ? `made ${a.to} the main ${a.from}`
     : a.action === "contact_label" ? `relabelled the ${a.from} ${a.to}`
