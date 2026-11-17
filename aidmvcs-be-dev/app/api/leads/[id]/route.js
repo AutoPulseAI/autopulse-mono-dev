@@ -130,6 +130,8 @@ export async function PUT(request, { params }) {
         actor_type: 'staff', actor_id: currentUser._id, actor_name: currentUser.name || null,
         action: 'lead_reassigned', from: before ? (names.get(before) || 'a removed user') : null,
         to: after ? (names.get(after) || 'a removed user') : null,
+        ...(before && mongoose.isValidObjectId(before) ? { from_id: before } : {}),
+        ...(after && mongoose.isValidObjectId(after) ? { to_id: after } : {}),
       });
     }
 

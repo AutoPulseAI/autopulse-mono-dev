@@ -161,6 +161,34 @@ async def resolve(db: DealerScopedDatabase, task_id: str, *, status: str, outcom
     return await tasks.find_one({"_id": task["_id"]})
 
 
+
+async def reopen(db: DealerScopedDatabase, task_id: str, *, by: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
+    """Undo a dismiss (BB, 14 Nov 2026: "undo delete" for tasks): a dismissed task is open again, as it was.
+    Returns (task, None), or (task or None, why not): only a dismissed task, and only while the lead has no other
+    open task."""
+    if not ObjectId.is_valid(task_id):
+        return None, "no call task with that id"
+    tasks = db.collection(AI_CALL_TASKS_COLLECTION)
+    task = await tasks.find_one({"_id": ObjectId(task_id)})
+    if task is None:
+        return None, "no call task with that id"
+    if task["status"] != DISMISSED:
+        return task, "only a dismissed task can be brought back"
+    if await tasks.find_one({"lead_id": task["lead_id"], "status": OPEN, "_id": {"$ne": task["_id"]}}):
+        return task, "this lead already has an open call task"
+    now = clock.now()
+    res = await tasks.update_one({"_id": task["_id"], "status": DISMISSED}, {
+        "$set": {"status": OPEN, "reopened_at": now, "reopened_by": by},
+        "$unset": {"outcome": "", "note": "", "closed_by": "", "closed_at": ""}})
+    if not res.modified_count:
+        return await tasks.find_one({"_id": task["_id"]}), "the task changed meanwhile"
+    text = f"Please call {task.get('customer_name') or 'the customer'} at {task.get('phone')} (call task brought back)."
+    await db.collection(AI_LEAD_STATE_COLLECTION).update_one({"lead_id": task["lead_id"]}, {"$set": {
+        "call_task": {"id": str(task["_id"]), "status": OPEN, "phone": task.get("phone"),
+                      "opened_at": task.get("opened_at") or now, "reason": task.get("reason")},
+        "staff_notice": {"at": now, "kind": "call_task", "text": text, "reason": task.get("reason")}}})
+    return await tasks.find_one({"_id": task["_id"]}), None
+
 # --- PLAN_4 stream T: who calls, and missed tasks ---------------------------------------------
 
 async def assigned_agent(db: DealerScopedDatabase, lead_id: str) -> str | None:

@@ -72,7 +72,9 @@ export async function POST(req) {
     if (body.new_customer) {
       const checked = checkNewCustomer(body.new_customer);
       if (checked.errors) return json({ message: checked.errors.join('; '), errors: checked.errors }, 400);
-      lead = await createLeadAtCheckIn(String(dealerId), checked.value, { user: access.user });
+      // A new customer checked in at the service desk is a service lead (Lead.department; missing = sales).
+      lead = await createLeadAtCheckIn(String(dealerId), { ...checked.value, department: body.department === 'service' ? 'service' : null },
+        { user: access.user });
     } else {
       if (!mongoose.isValidObjectId(String(body.lead_id || ''))) return json({ message: 'Pick the customer' }, 400);
       lead = await Lead.findOne({ _id: body.lead_id, dealer_id: { $in: dealerForms(dealerId) } })

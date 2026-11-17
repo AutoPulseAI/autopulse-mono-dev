@@ -45,6 +45,7 @@ export async function createLeadAtCheckIn(dealerId, v, { user } = {}) {
   const lead = await new Lead({
     dealer_id: String(dealerId), name: v.name, email: v.email, phone: v.phone,
     contact_type: v.contact_type, ...(v.lead_source ? { lead_source: v.lead_source } : {}),
+    ...(v.department ? { department: v.department } : {}),
     source: 'manual', followup_preference: v.phone ? 'sms' : 'email',
     vehicle_year: v.vehicle_year, vehicle_make: v.vehicle_make, vehicle_model: v.vehicle_model, vin: v.vin,
     lead_status: 'New', fe_lead_status: 'Lead', status: 'New', user_language: 'english',

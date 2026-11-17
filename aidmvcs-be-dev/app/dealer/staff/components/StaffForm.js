@@ -5,6 +5,8 @@ import { Form, Button, Spinner } from "react-bootstrap";
 import useFetch from "../../../hooks/useFetch";
 import { WEEKDAYS, fromPicker, toPicker } from "@lib/workSchedule";
 
+const DEPARTMENTS = [["sales", "Sales"], ["service", "Service"], ["parts", "Parts"]];
+
 // Work schedule rows for the form: [{ day, active, start: "09:00", end: "17:00" }]; a new employee starts on
 // Monday-Friday 9-5 once "Same as the dealership's hours" is unticked.
 function scheduleRows(saved) {
@@ -35,6 +37,7 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
   const [submitting, setSubmitting] = useState(false);
   const [dealerHours, setDealerHours] = useState(true); // no own schedule: works the dealership's hours
   const [schedule, setSchedule] = useState(scheduleRows(null));
+  const [departments, setDepartments] = useState([]); // Betsy, 14 Nov 2026: sales / service / parts
 
   useEffect(() => {
     if (editStaff) {
@@ -43,6 +46,7 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
       setRole(editStaff.role?._id || "");
       setDealerHours(!editStaff.work_schedule);
       setSchedule(scheduleRows(editStaff.work_schedule));
+      setDepartments(editStaff.departments || []);
     }
   }, [editStaff]);
 
@@ -93,6 +97,7 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
         work_schedule: dealerHours ? null : Object.fromEntries(schedule.map((r) => [r.day, r.active
           ? { active: true, start: fromPicker(r.start), end: fromPicker(r.end) }
           : { active: false }])),
+        departments,
       };
 
       const method = editStaff ? "PUT" : "POST";
@@ -127,6 +132,7 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
         setRole("");
         setDealerHours(true);
         setSchedule(scheduleRows(null));
+        setDepartments([]);
         setEditStaff(null);
       } else {
         setMessage(data.message);
@@ -233,6 +239,20 @@ export default function StaffForm({ roles, setStaff, editStaff, setEditStaff, ha
             <Form.Control.Feedback type="invalid">
               {errors.role}
             </Form.Control.Feedback>
+          </Form.Group>
+
+          <Form.Group className="mb-4">
+            <Form.Label>Departments</Form.Label>
+            <div className="d-flex flex-wrap gap-3">
+              {DEPARTMENTS.map(([k, l]) => (
+                <Form.Check key={k} type="checkbox" id={`staff-dept-${k}`} label={l} disabled={submitting}
+                  checked={departments.includes(k)}
+                  onChange={(e) => setDepartments((d) => (e.target.checked ? [...d, k] : d.filter((x) => x !== k)))} />
+              ))}
+            </div>
+            <Form.Text className="text-muted d-block">
+              A lead moved to one of these departments emails this person.
+            </Form.Text>
           </Form.Group>
 
           <Form.Group className="mb-4">
