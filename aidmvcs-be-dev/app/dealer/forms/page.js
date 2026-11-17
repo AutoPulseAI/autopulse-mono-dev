@@ -3,15 +3,14 @@
 // PDF forms (or a JPG / PNG of a paper form); nothing to build or map by hand. Each form's blanks are found and matched
 // to customer data on upload (lib/forms/read.js; a scan's blanks by the AI). Staff export any customer into any form
 // from the customer's profile ("Export to form"). Here: upload, open a form (its preview beside the list of every blank
-// found, with Retry - FormPanel.js), rename, switch on / off, upload a new version, delete.
+// found, each correctable - FormPanel.js), rename, switch on / off, upload a new version, delete.
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Dropdown, Form, Modal, Spinner, Table } from "react-bootstrap";
 import FormPanel from "./FormPanel";
 import { useUser } from "../context/UserContext";
 import { formsGet, formsSend, openPdf } from "./formsApi";
 
 const ACCEPT = "application/pdf,image/jpeg,image/png";
-const AI_NOTE = " The AI found its blanks: open it to check them.";
 
 export default function FormsLibraryPage() {
   const { dealerParent, loadingParent } = useUser();
@@ -23,6 +22,7 @@ export default function FormsLibraryPage() {
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(null); // { id, name }
   const [open, setOpen] = useState(null); // the form shown in its panel
+  const [standard, setStandard] = useState([]); // standard forms that can be added (13 Nov meeting 7.4)
 
   const load = useCallback(async () => {
     if (!dealerId) return;
@@ -30,6 +30,17 @@ export default function FormsLibraryPage() {
     catch (e) { setError(e.message); }
   }, [dealerId]);
   useEffect(() => { load(); }, [load]);
+  const loadStandard = useCallback(async () => {
+    if (!dealerId) return;
+    try { setStandard((await formsGet(`/api/forms/templates/standard?dealer_id=${dealerId}`)).forms || []); } catch { setStandard([]); }
+  }, [dealerId]);
+  useEffect(() => { loadStandard(); }, [loadStandard]);
+  const addStandard = (f) => run(async () => {
+    const { template } = await formsSend("/api/forms/templates/standard", "POST", { dealer_id: dealerId, key: f.key });
+    setNotice(`"${template.name}" added: ${template.auto_filled} of ${template.blanks} blanks filled from the customer's data. `
+      + "It is a generic layout - check its wording with your own counsel before using it with customers.");
+    await loadStandard();
+  });
 
   const run = async (fn, done) => {
     setBusy(true); setError(null); setNotice(null);
@@ -41,12 +52,13 @@ export default function FormsLibraryPage() {
     const { template } = await formsSend("/api/forms/templates", "POST", fd);
     setUpload(null);
     setNotice(`"${template.name}" uploaded: ${template.blanks} blanks found, ${template.auto_filled} filled from the customer's data.`
-      + (template.found_by_ai ? AI_NOTE : ""));
+      + (template.reused ? " This form was set up before: its blanks and corrections were reused." : "")
+      + (template.to_check ? ` Check ${template.to_check} blank(s) marked "check" (Open).` : ""));
   });
   const newVersion = (t, file) => run(async () => {
     const fd = new FormData(); fd.set("dealer_id", dealerId); fd.set("file", file);
     const d = await formsSend(`/api/forms/templates/${t.id}`, "POST", fd);
-    setNotice(`New version of "${t.name}" uploaded.${d.template?.found_by_ai ? AI_NOTE : ""}`);
+    setNotice(`New version of "${t.name}" uploaded.${d.template?.reused ? " Same form as before: saved blanks reused." : ""}`);
   });
   const patch = (t, body, done) => run(() => formsSend(`/api/forms/templates/${t.id}`, "PATCH", { dealer_id: dealerId, ...body }), done);
   const remove = (t) => {
@@ -63,6 +75,18 @@ export default function FormsLibraryPage() {
     <div className="page_content">
       <div className="page_head d-flex align-items-center">
         <h3 className="page_title mb-0 me-auto">Forms Library</h3>
+        {can && standard.length > 0 && (
+          <Dropdown className="me-2">
+            <Dropdown.Toggle variant="outline-custom" size="sm" disabled={busy}><i className="fa-solid fa-file-circle-plus me-1" />Add a standard form</Dropdown.Toggle>
+            <Dropdown.Menu>
+              {standard.map((f) => (
+                <Dropdown.Item key={f.key} onClick={() => addStandard(f)}>
+                  {f.name} <span className="text-muted small">· {f.category}{f.added ? " · already added" : ""}</span>
+                </Dropdown.Item>
+              ))}
+            </Dropdown.Menu>
+          </Dropdown>
+        )}
         {can && <Button variant="custom" size="sm" onClick={() => setUpload({ name: "", file: null })}>
           <i className="fa-solid fa-upload me-1" />Upload a form</Button>}
       </div>
@@ -70,7 +94,7 @@ export default function FormsLibraryPage() {
         {error && <Alert variant="danger" className="py-2">{error}</Alert>}
         {notice && <Alert variant="success" className="py-2">{notice}</Alert>}
         <p className="small text-muted">
-          Upload your dealership&apos;s forms as they are: a PDF, or a scan / photo of a paper form. The customer&apos;s
+          Upload your dealership&apos;s forms as they are (a digital PDF), or add a standard form. The customer&apos;s
           name, contact details, address, vehicle, trade-in, salesperson and the date are filled into the right blanks
           automatically. Click a form to see every blank found and where it goes. To use a form, open a customer and click
           {" "}<strong>Export to form</strong>.
@@ -98,7 +122,7 @@ export default function FormsLibraryPage() {
                     </td>
                     <td>{t.ready ? <>{t.auto_filled} of {t.blanks} <Button size="sm" variant="link" className="p-0 ms-1"
                       onClick={() => setOpen(t)}>see which</Button>
-                      {t.found_by_ai && <div><Badge bg="info" text="dark">Found by AI</Badge></div>}</>
+                      {t.to_check > 0 && <div><Badge bg="warning" text="dark">{t.to_check} to check</Badge></div>}</>
                       : <span className="text-danger">Upload this form again</span>}</td>
                     <td>{t.active ? <Badge bg="success">On</Badge> : <Badge bg="secondary">Off</Badge>}</td>
                     <td className="text-end text-nowrap">

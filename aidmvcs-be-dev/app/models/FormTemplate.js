@@ -49,6 +49,7 @@ const formTemplateSchema = new mongoose.Schema({
   current_version: { type: Number, default: 1 },
   versions: { type: [versionSchema], default: [] },
   history: { type: [historySchema], default: [] },
+  standard_key: { type: String, default: null }, // added from lib/forms/standardForms.js (e.g. 'buyers_order')
   deleted_at: { type: Date, default: null },
   deleted_by_name: { type: String, default: null },
 }, { timestamps: true, strict: false });
