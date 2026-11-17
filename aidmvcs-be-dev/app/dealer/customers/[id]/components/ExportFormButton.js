@@ -10,12 +10,16 @@ const leadLabel = (l) => [[l.vehicle_year, l.vehicle_make, l.vehicle_model].filt
   l.fe_lead_status, l.createdAt ? new Date(l.createdAt).toLocaleDateString() : null].filter(Boolean).join(" · ");
 
 // asTool: shown as an icon tool in the profile's toolbar (icon over a short label).
-export default function ExportFormButton({ customerId, dealerId, asTool = false }) {
+export default function ExportFormButton({ customerId, dealerId, asTool = false, onMessage }) {
   const [forms, setForms] = useState(null);
   const [leads, setLeads] = useState([]);
   const [picking, setPicking] = useState(null); // { form, lead_id }
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(null); // { variant, text }
+  const [ownMessage, setOwnMessage] = useState(null); // { variant, text }
+  // In the profile toolbar the message is shown by the header, full width under the toolbar (17 Nov 2026: it was
+  // squeezed inside the toolbar and pushed the icons onto a new line).
+  const message = onMessage ? null : ownMessage;
+  const setMessage = (m) => (onMessage ? onMessage(m) : setOwnMessage(m));
 
   const loadLists = async () => {
     if (forms || !dealerId) return;
@@ -61,14 +65,15 @@ export default function ExportFormButton({ customerId, dealerId, asTool = false 
           title="Export to form">
           {busy ? <Spinner size="sm" /> : <><i className={`fa-regular fa-file-pdf${asTool ? "" : " me-2"}`} />{asTool ? "Forms" : "Export to form"}</>}
         </Dropdown.Toggle>
-        <Dropdown.Menu style={{ maxHeight: 320, overflowY: "auto" }}>
+        <Dropdown.Menu className="cp_forms_menu" style={{ maxHeight: 320, overflowY: "auto" }}
+          popperConfig={{ strategy: "fixed" }} renderOnMount>
           {forms === null && <Dropdown.ItemText><Spinner size="sm" /></Dropdown.ItemText>}
           {forms?.length === 0 && <Dropdown.ItemText className="small text-muted">No forms yet - upload them in Admin → Forms Library.</Dropdown.ItemText>}
           {forms?.map((f) => <Dropdown.Item key={f.id} onClick={() => choose(f)}>{f.name}</Dropdown.Item>)}
         </Dropdown.Menu>
       </Dropdown>
       {message && (
-        <Alert variant={message.variant} dismissible onClose={() => setMessage(null)} className="py-1 px-2 small mb-0 mt-1 w-100">
+        <Alert variant={message.variant} dismissible onClose={() => setOwnMessage(null)} className="py-1 px-2 small mb-0 mt-1 w-100">
           {message.text}
         </Alert>
       )}

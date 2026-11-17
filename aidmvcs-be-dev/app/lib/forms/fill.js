@@ -39,6 +39,8 @@ function shift(x, y, rot, along, up) {
 }
 
 /** @returns {Promise<{ pdf: Buffer, filled: number, empty: string[], unprintable: string[] }>} */
+export const EXPORT_MARK = 'autopulse-filled-copy';
+
 export async function fillForm(buffer, fields, values, { preview = false, describe = (k) => k } = {}) {
   const doc = await PDFDocument.load(buffer, { updateMetadata: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -94,5 +96,8 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
       }
     }
   }
+  // Marked as a filled copy, so it is refused if someone uploads it back as a form (17 Nov 2026: a downloaded copy was
+  // uploaded as the form; its printed customer data then went on every export).
+  if (!preview) doc.setKeywords([EXPORT_MARK]);
   return { pdf: Buffer.from(await doc.save()), filled, empty, unprintable };
 }
