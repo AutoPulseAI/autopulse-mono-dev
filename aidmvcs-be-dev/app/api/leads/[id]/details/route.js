@@ -6,7 +6,7 @@
 //   `from` is what the screen showed: a field someone else (or the AI) changed meanwhile is refused (409) instead of
 //   overwritten. The lead date (createdAt) cannot be changed.
 // The customer record follows the lead, so the profile shows the same details:
-//   - name: the customer's name too, when it was empty or the same as the lead's old name;
+//   - name: the customer's name too, when it was empty, the same as the lead's old name, or this is their only lead;
 //   - phone / email: added to the customer's phones / emails (the old one is kept on file, as on the profile) and made
 //     primary when the old one was the primary.
 // Every change goes on the customer timeline (ActivityLog 'lead_edited') and in Customer.contact_history.
@@ -110,7 +110,9 @@ export async function PATCH(req, { params }) {
     const now = new Date();
     const history = (entry) => ({ at: now, by: user._id, by_name: user.name || null, ...entry });
     const name = edits.find((e) => e.field === 'name');
-    if (name?.to && (!customer.name || same('name', customer.name, name.from))) {
+    // The customer's name follows when it was empty, the same as the lead's old name, or this is their only lead.
+    const onlyLead = name?.to ? (await Lead.countDocuments({ customer_id: customer._id })) <= 1 : false;
+    if (name?.to && (!customer.name || same('name', customer.name, name.from) || onlyLead)) {
       await Customer.updateOne({ _id: customer._id }, { $set: { name: name.to },
         $push: { contact_history: history({ field: 'name', action: 'changed', from: customer.name || null, to: name.to }) } });
     }

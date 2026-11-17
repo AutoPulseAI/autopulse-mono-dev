@@ -7,6 +7,8 @@
 //                                     lead or import never adds them back (lib/customerResolver.js)
 //     set_primary  { value }          (address: { address_id })
 //     label        { value, label }
+//     replace      { value, to }      (phone / email) correct a number or address in place: same label and main-ness,
+//                                     the old one is remembered as removed, open leads on it get the new one
 //   update_open_leads (default true, phone / email): the customer's open leads that use the old primary (or the
 //   removed value) get the new primary - that is where texts and emails go. Sold / closed / opted-out leads are not
 //   touched. Every change is in Customer.contact_history and on the timeline.
@@ -49,7 +51,8 @@ export async function POST(req, { params }) {
   const user = access.user;
   const { kind, action } = body;
   if (!["phone", "email", "address"].includes(kind)) return fail("kind must be phone, email or address", 400);
-  if (!["add", "remove", "set_primary", "label"].includes(action)) return fail("action must be add, remove, set_primary or label", 400);
+  if (!["add", "remove", "set_primary", "label", "replace"].includes(action)) return fail("action must be add, remove, set_primary, label or replace", 400);
+  if (action === "replace" && kind === "address") return fail("replace is for a phone or an email", 400);
 
   const customer = await Customer.findOne({ _id: id, dealer_id: dealerId }).lean();
   if (!customer) return fail("Customer not found", 404);
@@ -97,7 +100,21 @@ export async function POST(req, { params }) {
   let newPrimary = oldPrimary;
   let replaced = [];
 
-  if (action === "add") {
+  if (action === "replace") {
+    if (!current) return fail(`${show(kind, value)} is not on file`, 404);
+    const to = normalize(kind, body.to);
+    if (!to) return fail(kind === "phone" ? "Enter a 10-digit US phone number" : "Enter a valid email address", 422);
+    if (to === value) return Response.json({ ok: true, customer });
+    if (list.some((e) => e.value === to)) return fail(`${show(kind, to)} is already on file`, 409);
+    await Customer.updateOne({ _id: id }, { $pull: { removed_contacts: { kind, value: to } } });
+    const res = await Customer.updateOne({ _id: id, [`${field}.value`]: value }, {
+      $set: { [`${field}.$.value`]: to, [`${field}.$.source`]: "staff" },
+      $push: { removed_contacts: { kind, value, at: now, by: user._id },
+        contact_history: history({ field: kind, action: "replaced", from: value, to }) } });
+    if (!res.modifiedCount) return fail("Changed by someone else meanwhile - reload and try again", 409);
+    newPrimary = to;
+    replaced = [value];
+  } else if (action === "add") {
     if (current) return fail(`${show(kind, value)} is already on file`, 409);
     const label = LABELS[kind].includes(body.label) ? body.label : undefined;
     const entry = { value, is_primary: !list.length || body.make_primary === true, source: "staff", added_at: now,
@@ -158,6 +175,7 @@ export async function POST(req, { params }) {
     }
   }
   await logActivity({ dealer_id: dealerId, customer_id: id, actor_type: "staff", actor_id: user._id,
-    actor_name: user.name || null, action: `contact_${action}`, from: kind, to: show(kind, value) });
+    actor_name: user.name || null, action: `contact_${action}`, from: kind,
+    to: action === "replace" ? `${show(kind, value)} → ${show(kind, normalize(kind, body.to))}` : show(kind, value) });
   return Response.json({ ok: true, leads_updated: leadsUpdated, customer: await Customer.findById(id).lean() });
 }
