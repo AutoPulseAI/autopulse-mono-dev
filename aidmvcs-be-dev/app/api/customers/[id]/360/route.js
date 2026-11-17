@@ -26,6 +26,7 @@ import {
   buildValueSnapshot,
   getOriginBadge,
 } from "./assemble.js";
+import { dmsProfile } from "@lib/dmsProfile";
 
 // Caps how many of this customer's own records feed the Overview feed / value
 // snapshot. Not full history pagination (there is none on this endpoint,
@@ -191,6 +192,8 @@ export async function GET(req, { params }) {
         })),
         vehicles,
         trade_ins: tradeIns,
+        // The DMS sales file's details for the profile (birthday, co-buyer, finance / lease, DMS do-not flags).
+        dms: dmsProfile(deals, customer.extra?.dealervault?.customer_numbers || []),
       },
     });
   } catch (error) {

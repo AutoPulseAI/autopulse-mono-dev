@@ -6,6 +6,7 @@ import { Alert, Button, Modal, Tab, Tabs } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
+import DmsDetails, { LeaseBar } from "./DmsDetails";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
@@ -89,7 +90,7 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads } = data;
+  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads, dms } = data;
 
   // A customer with an existing Lead already has a reachable conversation
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
@@ -150,6 +151,7 @@ export default function CustomerDetail({ customerId }) {
         </Alert>
       )}
 
+      <LeaseBar dms={dms} />
       <CustomerHeader
         customer={customer}
         valueSnapshot={value_snapshot}
@@ -163,6 +165,8 @@ export default function CustomerDetail({ customerId }) {
         counts={counts}
         onOpenTab={setActiveTab}
       />
+
+      <DmsDetails dms={dms} />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>
         <Tab eventKey="overview" title={tabTitle("fa-solid fa-clock-rotate-left", "Overview")}>
