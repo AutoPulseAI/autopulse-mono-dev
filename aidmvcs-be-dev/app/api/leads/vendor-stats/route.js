@@ -3,6 +3,7 @@ import User from "@models/User";
 import { NextResponse } from "next/server";
 import dbConnect from "@lib/mongodb";
 import { requireAgencyAccess } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 
 export async function GET(request) {
@@ -24,6 +25,13 @@ export async function GET(request) {
         { status: 400 }
       );
     }
+
+    // Dashboard read cache (DB-SCALING #4): output = f(vendor, dealer, date range). Fail-safe; DASHBOARD_CACHE=off.
+    const statsCacheKey = dashboardCacheKey('leads:vendor-stats', {
+      vendor_id, dealer_id: dealer_id || null, start_date: start_date || null, end_date: end_date || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) return NextResponse.json(statsCached);
 
     // Get all dealer IDs for this vendor if no specific dealer is selected
     let dealerIds = [];
@@ -127,7 +135,7 @@ export async function GET(request) {
       },
     ]);
 
-    return NextResponse.json({
+    const payload = {
       total_leads: totalLeads,
       new_this_week: newThisWeek,
       converted,
@@ -138,7 +146,9 @@ export async function GET(request) {
       statuses,
       activity_over_time: activityOverTime,
       dealer_performance: dealerPerformance,
-    });
+    };
+    await setCached(statsCacheKey, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("Error fetching vendor lead stats:", error);
     return NextResponse.json(

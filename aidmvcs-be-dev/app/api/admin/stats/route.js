@@ -4,6 +4,7 @@ import User from '@models/User';
 import Subscription from '@models/Subscription';
 import dbConnect from '@lib/mongodb';
 import { requireSuperAdmin } from "@lib/apiGuard";
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 export async function GET(request) {
   // Security fix (Nov 2026): super admin only (it had no sign-in check).
@@ -17,6 +18,14 @@ export async function GET(request) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const currentDate = new Date();
+
+    // Dashboard stats cache (DB-SCALING #4): ~16 sequential count ops; output depends only on
+    // vendor_id + date range. Short-TTL cache; fail-safe (Redis down => compute). DASHBOARD_CACHE=off to disable.
+    const statsCacheKey = dashboardCacheKey('admin:stats', {
+      vendor_id: vendorId || null, start_date: startDate || null, end_date: endDate || null,
+    });
+    const cached = await getCached(statsCacheKey);
+    if (cached) return NextResponse.json(cached);
 
     // Base query conditions
     const baseConditions = {};
@@ -231,6 +240,7 @@ export async function GET(request) {
       }
     };
 
+    await setCached(statsCacheKey, response);
     return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching admin stats:', error);

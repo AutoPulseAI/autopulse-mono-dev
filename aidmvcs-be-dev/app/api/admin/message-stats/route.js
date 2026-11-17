@@ -4,6 +4,7 @@ import Email from "@models/Email";
 import User from "@models/User";
 import moment from "moment-timezone";
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 
 export async function GET(request) {
@@ -18,6 +19,17 @@ export async function GET(request) {
     const access = await requireDealerOrSuperAdmin(request, dealer_id);
     if (access.response) return access.response;
     
+    // Dashboard read cache (DB-SCALING #4): daily email/sms stats, output = f(dealer, date range). Fail-safe; DASHBOARD_CACHE=off.
+    const statsCacheKey = dashboardCacheKey('admin:message-stats', {
+      dealer_id: dealer_id || null, start_date: start_date || null, end_date: end_date || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) {
+      return new Response(JSON.stringify(statsCached), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Get dealer timezone if dealer_id is provided
     let dealerTimezone = 'America/New_York';
     if (dealer_id) {
@@ -105,7 +117,7 @@ export async function GET(request) {
       }
     }
     
-    return new Response(JSON.stringify({ 
+    const payload = {
       emailCount,
       smsCount,
       dailyStats,
@@ -113,7 +125,9 @@ export async function GET(request) {
         min_date: messageMinDate,
         max_date: messageMaxDate
       }
-    }), {
+    };
+    await setCached(statsCacheKey, payload);
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });

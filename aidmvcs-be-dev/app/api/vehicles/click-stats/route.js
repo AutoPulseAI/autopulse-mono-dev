@@ -5,6 +5,7 @@ import Vehicle from '@models/Vehicle';
 import User from '@models/User';
 import moment from 'moment-timezone';
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 export async function GET(request) {
   try {
@@ -21,7 +22,16 @@ export async function GET(request) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const groupBy = searchParams.get('group_by') || 'day'; // 'day', 'vehicle', 'dealer'
-    
+
+    // Dashboard read cache (DB-SCALING #4): click analytics, output = f(all filters below). Fail-safe; DASHBOARD_CACHE=off.
+    const statsCacheKey = dashboardCacheKey('vehicles:click-stats', {
+      dealer_id: dealerId || null, vehicle_id: vehicleId || null, vin: vin || null,
+      short_code: shortCode || null, start_date: startDate || null, end_date: endDate || null,
+      group_by: groupBy, include_bots: searchParams.get('include_bots') || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) return NextResponse.json(statsCached);
+
     // Build query
     const query = {};
     
@@ -230,7 +240,7 @@ export async function GET(request) {
         break;
     }
     
-    return NextResponse.json({
+    const payload = {
       success: true,
       groupBy: groupBy,
       stats: stats,
@@ -242,7 +252,9 @@ export async function GET(request) {
         start_date: startDate || null,
         end_date: endDate || null
       }
-    });
+    };
+    await setCached(statsCacheKey, payload);
+    return NextResponse.json(payload);
     
   } catch (error) {
     console.error('Error fetching vehicle click stats:', error);

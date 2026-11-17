@@ -7,6 +7,7 @@ import moment from "moment-timezone";
 import { bookingCreatorSplit } from "@lib/bookingCreator";
 import { appointmentFunnel } from "@lib/appointmentFunnel";
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 export async function GET(request) {
   try {
@@ -190,6 +191,21 @@ export async function GET(request) {
         const monthStart = endMomentInDealer.clone().startOf('month');
         start_date = monthStart.utc().toISOString();
       }
+    }
+
+    // Dashboard stats cache (DB-SCALING #4): this main path runs ~11 aggregate/count ops over the leads.
+    // Its output depends only on dealer_id + the (now MTD-resolved) date range, so cache it briefly. The
+    // lightweight single-count branches above already returned and are never cached. Fail-safe: if Redis
+    // is down the helper returns null and we compute as normal. Disable with DASHBOARD_CACHE=off.
+    const statsCacheKey = dashboardCacheKey('leads:stats', {
+      dealer_id, start_date: start_date || null, end_date: end_date || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) {
+      return new Response(JSON.stringify(statsCached), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Create base query with dealer_id
@@ -413,7 +429,7 @@ export async function GET(request) {
       }
     }
 
-    return new Response(JSON.stringify({
+    const payload = {
       total_leads,
       new_this_week,
       visit_requested,
@@ -429,7 +445,12 @@ export async function GET(request) {
         min_date: minDate,
         max_date: maxDate
       }
-    }), {
+    };
+
+    // Cache this computed result for the short TTL (fail-safe: a Redis error just skips the write).
+    await setCached(statsCacheKey, payload);
+
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });

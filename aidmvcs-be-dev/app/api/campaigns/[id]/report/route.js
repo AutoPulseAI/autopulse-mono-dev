@@ -6,6 +6,7 @@ import CampaignTracking from "@models/CampaignTracking";
 import jwt from "jsonwebtoken";
 import User from "@models/User";
 import { requireDealerAccess } from "@lib/apiGuard";
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 /**
  * GET /api/campaigns/[id]/report
@@ -59,6 +60,12 @@ export async function GET(req, { params }) {
 
     // Convert campaign_id to string for queries
     const campaignIdStr = campaign._id.toString();
+
+    // Dashboard read cache (DB-SCALING #4): report = 3 aggregates + leads assembly; output = f(campaign).
+    // Auth (requireDealerAccess) already ran above, so a cache hit is only served to an authorized caller.
+    const statsCacheKey = dashboardCacheKey('campaigns:report', { campaign_id: campaignIdStr });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) return NextResponse.json(statsCached);
 
     // Get all campaign leads with their stats
     const campaignLeads = await CampaignLead.find({
@@ -281,10 +288,9 @@ export async function GET(req, { params }) {
       }))
     };
 
-    return NextResponse.json({
-      success: true,
-      report: report
-    });
+    const responseBody = { success: true, report };
+    await setCached(statsCacheKey, responseBody);
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error("Error generating campaign report:", error);
     return NextResponse.json(

@@ -4,6 +4,7 @@ import Lead from '@models/Lead';
 import User from '@models/User';
 import dbConnect from '@lib/mongodb';
 import { requireSuperAdmin } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 export async function GET(request) {
   // Every dealer's lead counts: super admin only (no sign-in check before).
@@ -16,6 +17,13 @@ export async function GET(request) {
     const vendorId = searchParams.get('vendor_id');
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
+
+    // Dashboard read cache (DB-SCALING #4): super-admin stats, output = f(vendor, date range). Fail-safe; DASHBOARD_CACHE=off.
+    const statsCacheKey = dashboardCacheKey('leads:admin-stats', {
+      vendor_id: vendorId || null, start_date: startDate || null, end_date: endDate || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) return NextResponse.json(statsCached);
 
     // Build query conditions
     const leadQuery = {};
@@ -133,14 +141,16 @@ export async function GET(request) {
       { $sort: { _id: 1 } }
     ]);
 
-    return NextResponse.json({
+    const payload = {
       total_leads: totalLeads,
       converted_leads: convertedLeads,
       sources,
       statuses,
       vendor_performance: vendorPerformance,
       activity_over_time: activityOverTime
-    });
+    };
+    await setCached(statsCacheKey, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('Error fetching lead stats:', error);
     return NextResponse.json(

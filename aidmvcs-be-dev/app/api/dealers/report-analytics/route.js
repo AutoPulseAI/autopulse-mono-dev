@@ -7,6 +7,7 @@ import ReportSchedule from "@models/ReportSchedule";
 import moment from "moment-timezone";
 import { contactedLeadIds } from "@lib/contactedLeads";
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
+import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
 
 export async function GET(req) {
   try {
@@ -43,6 +44,18 @@ export async function GET(req) {
     // Get dealer timezone
     const dealerTimezone = dealer?.dealer_account_information?.time_zone || 'America/New_York';
     console.log('🌍 Using dealer timezone:', dealerTimezone);
+
+    // Dashboard read cache (DB-SCALING #4): heavy report (loads all emails/leads/vehicles, filters in JS).
+    // Output = f(dealer_id, date range). Fail-safe; DASHBOARD_CACHE=off to disable.
+    const statsCacheKey = dashboardCacheKey('dealers:report-analytics', {
+      dealer_id: dealerId, start_date: startDate || null, end_date: endDate || null,
+    });
+    const statsCached = await getCached(statsCacheKey);
+    if (statsCached) {
+      return new Response(JSON.stringify(statsCached), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // Only apply date filter if both startDate and endDate are provided
     // If not provided, return all data without date filtering
@@ -112,6 +125,7 @@ export async function GET(req) {
     
     console.log('📤 Final response:', JSON.stringify(response, null, 2));
 
+    await setCached(statsCacheKey, response);
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: { "Content-Type": "application/json" },

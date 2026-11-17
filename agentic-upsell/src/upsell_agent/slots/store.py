@@ -52,6 +52,30 @@ async def fact_history(db: DealerScopedDatabase, customer_id: str, lead_id: str 
     return await cursor.to_list(None)
 
 
+async def current_and_history_facts(
+    db: DealerScopedDatabase, customer_id: str, lead_id: str | None
+) -> tuple[list[dict], list[dict]]:
+    """`current_facts` + `fact_history` in ONE round-trip (DB-SCALING #2 query optimization).
+
+    Returns `(current, history)`, identical to calling the two functions separately:
+    - A fact is *current* when `doc.get("valid_to") is None` - this matches both an
+      explicit null AND a missing field, exactly as Mongo's `{"valid_to": None}` filter
+      in `current_facts()` does. `history` is the complement (a non-null `valid_to`),
+      exactly as `{"valid_to": {"$ne": None}}` in `fact_history()` does (which also
+      excludes missing-field docs). So the Python split reproduces the same partition.
+    - The single unsorted `find` traverses the collection in the same natural order the
+      two separate finds would, so the relative order within each list is unchanged.
+    - `save_fact()` keeps at most one current fact per scope (it closes the old one
+      before inserting the new), so there is no ambiguity between duplicate current facts.
+    """
+    cursor = db.collection(QUALIFICATION_FACTS_COLLECTION).find(
+        {"customer_id": customer_id, "lead_id": {"$in": [None, lead_id]}})
+    rows = await cursor.to_list(None)
+    current = [f for f in rows if f.get("valid_to") is None]
+    history = [f for f in rows if f.get("valid_to") is not None]
+    return current, history
+
+
 async def save_fact(
     db: DealerScopedDatabase,
     *,

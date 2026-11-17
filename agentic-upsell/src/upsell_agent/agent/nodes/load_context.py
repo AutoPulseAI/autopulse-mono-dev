@@ -43,7 +43,7 @@ from upsell_agent.observability.trace import NodeSpan
 from upsell_agent.slots.prefill import prefill_from_360
 from upsell_agent.slots.profile import build_profile
 from upsell_agent.slots.requirements import lead_type_for
-from upsell_agent.slots.store import current_facts, fact_history
+from upsell_agent.slots.store import current_and_history_facts
 
 # Only what the customer actually received, plus everything they sent, plus staff's internal notes from the CRM
 # (PLAN_4 stream X3 item 5, agent/history_sync.py).
@@ -52,8 +52,7 @@ _THREAD = {"$or": [{"direction": "inbound"}, {"direction": "outbound", "status":
 
 async def load_profile(ctx: TurnContext, state: AgentState):
     lead_type = lead_type_for(ctx.lead)
-    current = await current_facts(ctx.db, state.customer_id, state.lead_id)
-    history = await fact_history(ctx.db, state.customer_id, state.lead_id)
+    current, history = await current_and_history_facts(ctx.db, state.customer_id, state.lead_id)
     return build_profile(lead_type, current, history)
 
 
