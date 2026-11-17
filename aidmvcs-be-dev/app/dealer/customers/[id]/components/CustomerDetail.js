@@ -187,7 +187,7 @@ export default function CustomerDetail({ customerId }) {
           <AppointmentsTab appointments={all_appointments} />
         </Tab>
         <Tab eventKey="vehicles" title={tabTitle("fa-solid fa-car-side", "Vehicles", counts.vehicles)}>
-          <VehiclesTab vehicles={vehicles} leads={leads} />
+          <VehiclesTab vehicles={vehicles} leads={leads} customerId={customerId} dealerId={customer.dealer_id} onChanged={fetchCustomer360} />
         </Tab>
         <Tab eventKey="tradeins" title={tabTitle("fa-solid fa-right-left", "Trade In")}>
           <TradeInTab customerId={customerId} />

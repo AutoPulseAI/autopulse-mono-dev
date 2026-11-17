@@ -128,6 +128,12 @@ const customerSchema = new mongoose.Schema(
     // Details staff type in on the profile (13 Nov 2026 meeting 10.14, BB's VinSolutions "Edit customer"): title,
     // nickname, gender, married, birthday, anniversary, spouse, a customer note. The DMS's own values are shown
     // beside them (app/lib/dmsProfile.js); nothing here is filled into forms automatically.
+    // Ownership confirmed by the customer (the AI's ownership check) or marked by staff; the DMS feed can't undo it
+    // with an older record (SOW G-085, app/lib/ownership.js).
+    ownership_overrides: {
+      type: [{ vin: String, owns: Boolean, at: Date, by: String, by_name: String, note: String, _id: false }],
+      default: undefined,
+    },
     details: {
       title: { type: String, default: undefined }, nickname: { type: String, default: undefined },
       gender: { type: String, default: undefined }, marital_status: { type: String, default: undefined },

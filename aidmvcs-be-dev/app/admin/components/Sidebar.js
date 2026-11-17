@@ -59,6 +59,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-chart-column"></i>Dashboard
           </Link>
         </li>
+        {/* SOW G-084 to G-087: what the DMS feed did, and files held back. */}
+        <li>
+          <Link href="/admin/dms-feed" className={getLinkClass("/admin/dms-feed")}>
+            <i className="fa-regular fa-database"></i>DMS feed
+          </Link>
+        </li>
         {/* Client, 13 Oct 2026: everything the AI uses, editable with full history (super admin). */}
         <li>
           <Link href="/admin/ai-studio" className={getLinkClass("/admin/ai-studio")}>

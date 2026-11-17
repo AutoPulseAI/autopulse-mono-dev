@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Card, Col, Row, Button } from "react-bootstrap";
 import { interestedVehicles } from "../../../../lib/interestedVehicles";
@@ -9,7 +10,21 @@ function vehicleTitle(vehicle) {
   return parts.length ? parts.join(" ") : vehicle.vin;
 }
 
-export default function VehiclesTab({ vehicles, leads = [] }) {
+export default function VehiclesTab({ vehicles, leads = [], customerId, dealerId, onChanged }) {
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  // SOW G-085: staff mark whether the customer still owns it; kept over older DMS records.
+  const markOwnership = async (vin, owns) => {
+    setBusy(vin); setError(null);
+    try {
+      const res = await fetch(`/api/customers/${customerId}/ownership`, { method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        body: JSON.stringify({ dealer_id: dealerId, vin, owns }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save");
+      onChanged?.();
+    } catch (e) { setError(e.message); } finally { setBusy(null); }
+  };
   const router = useRouter();
   const interested = interestedVehicles(leads);
 
@@ -39,6 +54,7 @@ export default function VehiclesTab({ vehicles, leads = [] }) {
         </>
       )}
       <h3 className="w_card_title mb-3">Vehicles</h3>
+      {error && <div className="alert alert-danger py-1 small">{error}</div>}
       <p className="text-muted small">
         Vehicles referenced in this customer&apos;s sales and service records — not necessarily
         vehicles they currently own, since a VIN can pass between customers over time.
@@ -56,7 +72,12 @@ export default function VehiclesTab({ vehicles, leads = [] }) {
                     <Badge bg="secondary">Referenced</Badge>
                   </div>
                   <div className="text-muted small mb-2">VIN: {vehicle.vin}</div>
-                  {!vehicle.is_current_owner && vehicle.current_owner_customer_id && (
+                  {vehicle.ownership_source && vehicle.ownership_source !== "dms" && (
+                    <div className={`small mb-2 ${vehicle.is_current_owner ? "text-success" : "text-muted"}`}>
+                      <i className="fa-solid fa-user-check me-1" />{vehicle.ownership_note}
+                    </div>
+                  )}
+                  {!vehicle.is_current_owner && vehicle.current_owner_customer_id && vehicle.ownership_source === "dms" && (
                     <div className="small text-warning mb-2">
                       <i className="fa-solid fa-triangle-exclamation me-1" />
                       Currently associated with a different customer
@@ -77,6 +98,13 @@ export default function VehiclesTab({ vehicles, leads = [] }) {
                     >
                       View Service
                     </Button>
+                    {customerId && (
+                      <Button variant="link" size="sm" className="p-0 ms-auto" disabled={busy === vehicle.vin}
+                        onClick={() => markOwnership(vehicle.vin, !vehicle.is_current_owner)}
+                        title="Kept even if an older DMS record says otherwise">
+                        {vehicle.is_current_owner ? "No longer owns" : "Still owns"}
+                      </Button>
+                    )}
                   </div>
                 </Card.Body>
               </Card>

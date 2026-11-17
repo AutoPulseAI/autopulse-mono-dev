@@ -28,6 +28,7 @@ import {
 } from "./assemble.js";
 import { dmsProfile } from "@lib/dmsProfile";
 import { openTasks } from "@lib/customerTasks";
+import { applyOwnership, overridesByVin } from "@lib/ownership";
 
 // Caps how many of this customer's own records feed the Overview feed / value
 // snapshot. Not full history pagination (there is none on this endpoint,
@@ -139,11 +140,15 @@ export async function GET(req, { params }) {
         .filter((record) => record.vin && (record["Year"] || record["Make"] || record["Model"]))
         .map((record) => [record.vin, record])
     );
-    const vehicles = vins.map((vin) => ({
+    // SOW G-085: the customer's own "no longer owns" (or a staff mark) is kept over older DMS records.
+    const familyDocs = await Customer.find({ _id: { $in: family }, dealer_id: dealerId }).select("ownership_overrides").lean();
+    const marks = overridesByVin(familyDocs);
+    const vehicles = vins.map((vin) => applyOwnership({
       ...hydrateVehicle(vin, vehicleDocByVin.get(vin), fallbackByVin.get(vin)),
       current_owner_customer_id: ownerByVin.get(vin)?.customer_id ?? null,
       is_current_owner: family.some((f) => String(f) === String(ownerByVin.get(vin)?.customer_id ?? "")),
-    }));
+      owner_at: ownerByVin.get(vin)?.at ?? null,
+    }, marks.get(String(vin).toUpperCase().replace(/[^A-Z0-9]/g, ""))));
 
     const overviewFeed = buildOverviewFeed({
       leads,

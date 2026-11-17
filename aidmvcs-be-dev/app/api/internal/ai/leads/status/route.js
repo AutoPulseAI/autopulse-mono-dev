@@ -13,6 +13,7 @@ import Email from '@models/Email';
 import Lead from '@models/Lead';
 import Booking from '@models/Booking';
 import { notifyManagers } from '@lib/ai/managerAlerts';
+import { setOwnership } from '@lib/ownership';
 
 export async function POST(req) {
   if (!verifyInternalServiceToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -29,6 +30,15 @@ export async function POST(req) {
     const result = await markLeadClosedFromAi(body, { Lead, Email, Booking, clearPendingJobs, cancelAllRemindersForLead,
       createManagerialReviewMessages, notifyManagers });
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
+    // SOW G-085: the customer told the AI they no longer own the vehicle - kept on the customer, so an older DMS
+    // record never shows them as its owner again (app/lib/ownership.js).
+    if (body.status === 'Closed - No Longer Owns') {
+      const lead = await Lead.findById(body.lead_id).select('customer_id dealer_id vin').lean();
+      if (lead?.customer_id && lead.vin) {
+        await setOwnership({ customerId: lead.customer_id, dealerId: lead.dealer_id, vin: lead.vin, owns: false,
+          by: 'customer', note: body.reason || null, at: body.closed_at ? new Date(body.closed_at) : new Date() });
+      }
+    }
     return NextResponse.json(result);
   } catch (error) {
     console.error('[ai] lead status from the AI failed', { lead_id: body?.lead_id, error: error?.message });
