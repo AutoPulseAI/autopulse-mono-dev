@@ -82,6 +82,11 @@ export function staffEntry(a) {
     : a.action === "desk_log_person" ? `set the ${a.detail} to ${a.to} on the Desk Log`
     : a.action === "desk_log_note" ? `added a Desk Log note: "${a.detail}"`
     : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
+    : a.action === "reminder_set" ? `set a reminder for ${a.to ? new Date(a.to).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "later"}`
+    : a.action === "reminder_done" ? "marked a reminder done"
+    : a.action === "in_market_changed" ? `marked the opportunity ${a.to}`
+    : a.action === "vehicle_of_interest_added" ? `added ${a.to} to the vehicles of interest`
+    : a.action === "vehicle_of_interest_removed" ? `removed ${a.to} from the vehicles of interest`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,

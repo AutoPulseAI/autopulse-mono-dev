@@ -4,19 +4,21 @@
 // call went, and it is saved as a note on the lead - so it shows in the conversation, the customer timeline and the
 // appointment's "customer agreed" check ("Called the customer ...", lib/bookingCreator.js CALL_LOGGED).
 // Calls from the Call Tasks page keep their own outcome flow (ai/components/CallOutcomeModal.js).
+// logOnly (19 Nov 2026, SOW B3 "Log > Phone Call"): a call already made from another phone - no dialing, the same
+// "how did it go" box and the same note, so it counts the same everywhere.
 import { useState } from "react";
 import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import { CALL_OUTCOMES, aiFetch, callOutcomeLabel, telHref } from "../ai/components/aiShared";
 
 export default function CallButton({ phone, leadId, dealerId, size = "sm", variant = "outline-custom", label = "Call",
-  className = "", iconOnly = false, onLogged }) {
+  className = "", iconOnly = false, onLogged, logOnly = false }) {
   const [show, setShow] = useState(false);
   const [outcome, setOutcome] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const href = telHref(phone);
-  if (!href) return null;
+  if (!href && !logOnly) return null;
 
   const open = () => {
     // The phone opens from the link itself; the "how did it go" box comes up right after.
@@ -30,7 +32,7 @@ export default function CallButton({ phone, leadId, dealerId, size = "sm", varia
       await aiFetch("/api/conversations/notes", {
         method: "POST",
         body: JSON.stringify({ lead_id: leadId, dealer_id: dealerId, internal_use: true,
-          content: `Called the customer (${phone}): ${callOutcomeLabel(outcome)}.${notes.trim() ? ` Notes: ${notes.trim()}` : ""}` }),
+          content: `Called the customer${phone ? ` (${phone})` : ""}: ${callOutcomeLabel(outcome)}.${notes.trim() ? ` Notes: ${notes.trim()}` : ""}` }),
       });
       setShow(false);
       onLogged?.();
@@ -43,10 +45,17 @@ export default function CallButton({ phone, leadId, dealerId, size = "sm", varia
 
   return (
     <>
-      <Button as="a" href={href} size={size} variant={variant} className={className} onClick={open}
-        title={`Call ${phone}`} aria-label={`Call ${phone}`}>
-        <i className={`fa-solid fa-phone${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
-      </Button>
+      {logOnly ? (
+        <Button size={size} variant={variant} className={className} title="Log a call made from another phone"
+          onClick={() => { setOutcome(""); setNotes(""); setError(""); setShow(true); }}>
+          <i className={`fa-solid fa-phone-volume${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
+        </Button>
+      ) : (
+        <Button as="a" href={href} size={size} variant={variant} className={className} onClick={open}
+          title={`Call ${phone}`} aria-label={`Call ${phone}`}>
+          <i className={`fa-solid fa-phone${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
+        </Button>
+      )}
       <Modal show={show} onHide={() => setShow(false)} centered>
         <Modal.Header closeButton><Modal.Title as="h6">How did the call go?</Modal.Title></Modal.Header>
         <Modal.Body>
@@ -60,7 +69,7 @@ export default function CallButton({ phone, leadId, dealerId, size = "sm", varia
           <small className="text-muted d-block mt-2">Saved as a note on the lead. Closing this box saves nothing.</small>
         </Modal.Body>
         <Modal.Footer>
-          <Button size="sm" variant="outline-custom" onClick={() => setShow(false)}>I didn&apos;t call</Button>
+          <Button size="sm" variant="outline-custom" onClick={() => setShow(false)}>{logOnly ? "Cancel" : "I didn\u0027t call"}</Button>
           <Button size="sm" variant="custom" disabled={saving} onClick={save}>{saving ? <Spinner size="sm" /> : "Save"}</Button>
         </Modal.Footer>
       </Modal>
