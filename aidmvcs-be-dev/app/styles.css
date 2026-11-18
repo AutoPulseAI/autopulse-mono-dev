@@ -1730,3 +1730,23 @@ background-color: var(--white);
 .cp_age { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--secondary); }
 .cp_age_bar { display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
 .cp_age_bar > span { display: block; height: 100%; background: #f7931e; }
+
+/* Side menu (18 Nov 2026): the menu button sits right beside the logo, open or closed. On wide screens, closing the
+   menu keeps it as a narrow bar of icons (still clickable, the name on hover - app/hooks/useSidebar.js); small screens
+   keep the slide-in menu. */
+:root { --sidebar-narrow-w: 66px; }
+.topbar_main .topbar_brand { width: auto; margin-left: 12px; }
+.topbar_main .toggle_sidebar { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: 6px !important; }
+@media (min-width: 992px) {
+  .sidebar.narrow { left: 0; width: var(--sidebar-narrow-w); padding: 12px 8px 46px; overflow-x: hidden; z-index: 1023; }
+  .sidebar.narrow ul li a, .sidebar.narrow ul li.submenu button { font-size: 0; padding: 7px 0; display: flex;
+    justify-content: center; align-items: center; position: relative; }
+  .sidebar.narrow ul li a i, .sidebar.narrow ul li.submenu button i { margin-right: 0; width: 32px; height: 32px; }
+  .sidebar.narrow ul li a:hover i, .sidebar.narrow ul li.submenu button:hover i,
+  .sidebar.narrow ul li a.active i { color: var(--primary); background-color: #e7f1fa; }
+  .sidebar.narrow .fa-chevron-up, .sidebar.narrow .fa-chevron-down { display: none !important; }
+  .sidebar.narrow .badge { position: absolute; top: 0; right: 2px; font-size: 9px; padding: 2px 4px; margin: 0 !important; }
+  .sidebar.narrow ul li.submenu ul.submenu-list { padding-left: 0; border-left: 2px solid var(--border); }
+  .content_main { margin-left: var(--sidebar-narrow-w); }
+}

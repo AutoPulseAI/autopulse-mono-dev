@@ -126,10 +126,10 @@ const handleCopy = async () => {
   return (
     <Navbar className="topbar_main">
       <Container fluid>
-        <Button className="toggle_sidebar order-lg-2 me-lg-auto" onClick={toggleSidebar}>
+        <Button className="toggle_sidebar" onClick={toggleSidebar} title="Show / hide the menu names" aria-label="Menu">
           <i className="fa-solid fa-bars"></i>
         </Button>
-        <Navbar.Brand href="#home" className="topbar_brand order-lg-1 me-lg-0 me-auto">
+        <Navbar.Brand href="#home" className="topbar_brand me-auto">
           <img src="/Images/logo-220.png" className="d-inline-block align-top" alt="Logo" />
         </Navbar.Brand>
         <Navbar.Toggle />

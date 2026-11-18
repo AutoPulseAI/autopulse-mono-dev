@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useCan } from "../../hooks/AdminPermissionsContext";
 import { usePathname } from "next/navigation";  // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
+import { useSidebarTitles } from "../../hooks/useSidebar";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const manage_role = useCan("Manage Employee's  Role");
   const manage_staff = useCan("Manage Employee");
   const pathname = usePathname();  // Use pathname from usePathname hook
   const sidebarRef = useRef();
+  useSidebarTitles(sidebarRef, isOpen); // narrow menu: the name on hover
 
   // Automatically open collapse if current route matches admin links
   const adminLinks = ["/admin/roles", "/admin/staff"];
@@ -52,7 +54,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   }, [isOpen, onClose]);
 
   return (
-    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : ""}`}>
+    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
         <li>
           <Link href="/admin/dashboard" className={getLinkClass("/admin/dashboard")}>

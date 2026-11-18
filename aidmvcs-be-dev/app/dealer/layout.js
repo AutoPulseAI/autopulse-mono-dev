@@ -2,7 +2,7 @@
 import { UserProvider } from "./context/UserContext";
 
 // Import GlobalLoader
-import { useState, useEffect } from "react";
+import { useSidebar } from "../hooks/useSidebar";
 import Sidebar from "./components/Sidebar";
 import AiPausedBanner from "../components/AiPausedBanner";
 import Topbar from "./components/Topbar";
@@ -10,23 +10,8 @@ import { PermissionsProvider } from '../hooks/PermissionsContext';
 import "../styles.css";
 
 export default function AdminLayout({ children }) {
-  const [isOpen, setIsOpen] = useState(true);
-
-  useEffect(() => {
-    // Set sidebar state based on screen width
-    const handleResize = () => {
-      setIsOpen(window.innerWidth > 991);
-    };
-
-    handleResize(); // Call initially to set the correct state
-    window.addEventListener("resize", handleResize); // Listen for window resize
-
-    return () => window.removeEventListener("resize", handleResize); // Cleanup on unmount
-  }, []);
-
-  const toggleSidebar = () => {
-    setIsOpen(!isOpen);
-  };
+  // The side menu: open or narrow (icons only) on wide screens, slides in on small ones (app/hooks/useSidebar.js).
+  const [isOpen, toggleSidebar, closeSidebar] = useSidebar();
 
   return (
     <div className="main-wrapper">
@@ -35,7 +20,7 @@ export default function AdminLayout({ children }) {
         <UserProvider>
           <PermissionsProvider>
             <Topbar toggleSidebar={toggleSidebar} />
-            <Sidebar isOpen={isOpen} onClose={() => setIsOpen(false)} />
+            <Sidebar isOpen={isOpen} onClose={closeSidebar} />
             <div className={`content_main ${isOpen ? "shifted" : ""}`}>
               <AiPausedBanner />
               {children}
