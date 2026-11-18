@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import User from "@models/User";
 import moment from "moment-timezone";
 import { requireUser, requireDealerAccess } from "@lib/apiGuard";
+import { moveToTrash } from '@lib/trash';
 
 // GET: Fetch a single campaign by ID
 export async function GET(req, { params }) {
@@ -365,8 +366,14 @@ export async function DELETE(req, { params }) {
 
     console.log(`🗑️ Deleting campaign: ${campaign.name} (ID: ${id}, Status: ${campaign.status})`);
 
-    // Delete all associated campaign leads first
+    // Undo delete (BB, 14 Nov 2026): a copy goes to the trash first, with its leads (app/lib/trash.js).
     const campaignIdStr = id.toString();
+    const trashId = await moveToTrash({ kind: 'campaign', dealerId: String(campaign.dealer_id?._id || campaign.dealer_id),
+      doc: await Campaign.findById(id).lean(), label: campaign.name,
+      children: { [CampaignLead.collection.collectionName]: await CampaignLead.find({ campaign_id: campaignIdStr }).lean() },
+      user: signedIn.user });
+
+    // Delete all associated campaign leads first
     await CampaignLead.deleteMany({ campaign_id: campaignIdStr });
 
     // Then delete the campaign
@@ -375,7 +382,7 @@ export async function DELETE(req, { params }) {
     console.log(`✅ Campaign deleted successfully: ${campaign.name}`);
 
     return NextResponse.json(
-      { message: "Campaign deleted successfully" },
+      { message: "Campaign deleted successfully", trash_id: trashId },
       { status: 200 }
     );
   } catch (error) {

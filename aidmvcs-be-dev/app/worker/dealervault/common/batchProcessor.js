@@ -4,7 +4,7 @@ import Batch from '../../../models/DealerVaultImportBatch.js';
 import { resolveDealer } from './dealerResolver.js';
 import { validateJob } from './validation.js';
 import { stageBatch, markProcessing, finishBatch, failBatch, saveValidationFailures, isCompleted, storedResult } from './staging.js';
-import { writeTimestampedUpserts } from './upserts.js';
+import { writeTimestampedUpserts, isBlank } from './upserts.js';
 import { logEvent, safeError, safeCode } from './logger.js';
 
 export function createBatchProcessor({
@@ -56,6 +56,32 @@ export function createBatchProcessor({
           }
         }
       }
+      // SOW G-086 (17 Nov 2026): what was decided for every row, and why - so a record's history can be rebuilt.
+      //   ACCEPT  new record, or a newer file updating it (blank fields left as they were: retained_fields)
+      //   RETAIN  this file is older than the one already applied: nothing changed
+      //   REVIEW  written, but its customer could not be matched safely (ambiguous / not found): a person checks it
+      //   REJECT  the row was invalid (outcome already 'failed' above)
+      phase = 'DATABASE_FAILURE';
+      const existing = entries.length && Model?.find ? await Model.find({ $or: entries.map((e) => e.key) })
+        .select({ ...Object.fromEntries(Object.keys(entries[0].key).map((k) => [k, 1])), source_file_timestamp: 1 })
+        .lean().catch(() => []) : [];
+      const keyOf = (k) => JSON.stringify(Object.keys(k).sort().map((f) => [f, String(k[f])]));
+      const before = new Map(existing.map((d) => [keyOf(Object.fromEntries(Object.keys(entries[0].key).map((f) => [f, d[f]]))), d]));
+      for (const entry of entries) {
+        const prev = before.get(keyOf(entry.key));
+        const outcome = outcomes[entry.rowIndex];
+        const blanks = Object.entries(entry.document).filter(([, v]) => isBlank(v)).map(([f]) => f);
+        if (prev && prev.source_file_timestamp && prev.source_file_timestamp > entry.document.source_file_timestamp) {
+          Object.assign(outcome, { decision: 'RETAIN', reason: `a newer file (${prev.source_file_timestamp}) is already applied` });
+        } else {
+          Object.assign(outcome, { decision: (entry.warnings || []).length ? 'REVIEW' : 'ACCEPT',
+            reason: prev ? `updated from file ${prev.source_file_timestamp || 'without a date'}` : 'new record',
+            ...(prev && blanks.length ? { retained_fields: blanks.slice(0, 40) } : {}),
+            ...((entry.warnings || []).length ? { review: entry.warnings } : {}) });
+        }
+        outcome.effective = entry.document.source_file_timestamp;
+      }
+      for (const outcome of outcomes) if (outcome.status === 'failed') Object.assign(outcome, { decision: 'REJECT', reason: outcome.code });
       phase = 'UPSERT_FAILURE';
       const writes = await write(Model, entries);
       const result = {

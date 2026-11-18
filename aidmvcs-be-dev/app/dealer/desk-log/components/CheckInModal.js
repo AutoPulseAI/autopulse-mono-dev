@@ -24,7 +24,11 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
   const [customer, setCustomer] = useState(null); // the picked customer, with all their leads
   const pickCustomer = (c, leadId = null) => {
     setCustomer(c);
-    setLead(c.leads.find((l) => l.id === (leadId || c.default_lead_id)) || c.leads[0]);
+    const picked = c.leads.find((l) => l.id === (leadId || c.default_lead_id)) || c.leads[0];
+    setLead(picked);
+    // The visit's department follows the lead's (17 Nov 2026); staff can still pick the other desk.
+    setForm((f) => ({ ...f, department: picked?.department === "service" || picked?.department === "parts" ? "service" : "sales",
+      move_lead: false }));
   };
   const clearCustomer = () => { setCustomer(null); setLead(null); };
   const [form, setForm] = useState({ department: "sales", salesperson_id: "", sales_manager_id: "", stage: "",
@@ -98,6 +102,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
     try {
       const who = fresh ? { new_customer: fresh } : { lead_id: lead.id };
       const res = await deskLogCheckIn({ dealer_id: dealerId, ...who, department: form.department,
+        ...(form.move_lead ? { move_lead_to_service: true } : {}),
         checked_in_at: moment.tz(form.at, "YYYY-MM-DDTHH:mm", tz).toISOString(),
         ...(form.salesperson_id ? { salesperson_id: form.salesperson_id } : {}),
         ...(form.sales_manager_id ? { sales_manager_id: form.sales_manager_id } : {}),
@@ -207,7 +212,12 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
                 <Form.Control type="datetime-local" value={form.at} onChange={set("at")} /></Form.Group>
               <Form.Group className="col-md-6"><Form.Label>Department</Form.Label>
                 <Form.Select value={form.department} onChange={set("department")}>
-                  <option value="sales">Sales</option><option value="service">Service</option></Form.Select></Form.Group>
+                  <option value="sales">Sales</option><option value="service">Service</option></Form.Select>
+                {!fresh && lead && form.department === "service" && lead.department !== "service" && (
+                  <Form.Check type="checkbox" id="checkin-move-lead" className="mt-1 small" checked={Boolean(form.move_lead)}
+                    onChange={(e) => setForm((f) => ({ ...f, move_lead: e.target.checked }))}
+                    label="Move this lead to Service too (it is a Sales lead now)" />
+                )}</Form.Group>
               <Form.Group className="col-md-6"><Form.Label>Salesperson</Form.Label>
                 <Form.Select value={form.salesperson_id} onChange={set("salesperson_id")}>
                   <option value="">-</option>{staffOptions}</Form.Select></Form.Group>

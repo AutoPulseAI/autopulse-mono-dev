@@ -35,8 +35,10 @@ export function messageEntry(m) {
   const actor = inbound ? "customer" : m.ai_generated ? "ai" : m.message_by ? "staff" : "system";
   const verb = inbound ? `${channel} from the customer` : `${channel} sent${m.status && !["sent", "delivered"].includes(m.status) ? ` (${m.status})` : ""}`;
   const subject = m.communication_type === "email" && m.subject ? `${m.subject} — ` : "";
-  const text = `${verb}: ${subject}${short(m.mail_content)}`;
-  const full = `${verb}: ${subject}${short(m.mail_content, 4000)}`;
+  // 13 Nov 2026 meeting (6.1, 6.2): a Service / Parts message is tagged, so Sales sees it on the profile for what it is.
+  const dept = m.department === "service" ? "[Service] " : m.department === "parts" ? "[Parts] " : "";
+  const text = `${dept}${verb}: ${subject}${short(m.mail_content)}`;
+  const full = `${dept}${verb}: ${subject}${short(m.mail_content, 4000)}`;
   // G-026: the whole message is one click away ("more") when the line is cut short.
   return { type: "activity", kind: inbound ? "message_in" : "message_out", actor, at: m.timestamp || m.date,
     lead_id: m.lead_id, text, ...(full !== text ? { full } : {}) };
@@ -66,6 +68,8 @@ export function staffEntry(a) {
     : a.action === "lead_edited" ? `changed the lead's ${a.detail || "details"} from ${a.from} to ${a.to}`
     : a.action === "contact_corrected" ? `changed the lead's ${a.detail || "contact"}${a.from ? ` from ${a.from}` : ""} to ${a.to}`
     : a.action === "contact_add" ? `added the ${a.from} ${a.to}`
+    : a.action === "contact_replace" ? `changed the ${a.from} ${a.to}`
+    : a.action === "customer_edited" ? `changed the customer's ${a.detail || "details"} from ${a.from || "empty"} to ${a.to || "empty"}`
     : a.action === "contact_remove" ? `removed the ${a.from} ${a.to}`
     : a.action === "contact_set_primary" ? `made ${a.to} the main ${a.from}`
     : a.action === "contact_label" ? `relabelled the ${a.from} ${a.to}`
@@ -116,7 +120,7 @@ export async function buildActivity({ dealerId, customerId, customerIds = null, 
     ActivityLog.find({ dealer_id: String(dealerId), $or: [{ customer_id: { $in: customerIds || [customerId] } }, { lead_id: { $in: ids } }] })
       .sort({ at: -1 }).limit(MAX).lean(),
     ids.length ? db.collection("emails").find({ lead_id: { $in: ids } })
-      .project({ mail_content: 1, subject: 1, status: 1, communication_type: 1, ai_generated: 1, message_by: 1,
+      .project({ mail_content: 1, subject: 1, status: 1, communication_type: 1, ai_generated: 1, message_by: 1, department: 1,
         is_note: 1, timestamp: 1, date: 1, lead_id: 1 })
       .sort({ timestamp: -1, _id: -1 }).limit(MAX).toArray() : [],
     strIds.length ? db.collection("ai_lead_state").find({ lead_id: { $in: strIds } }).project({ lead_id: 1, stage_history: 1 }).toArray() : [],

@@ -2,11 +2,13 @@
 // 94:40-97:00: "edit the customer's name and phone from the lead page without going into the profile"; lead type and
 // lead source editable; date and time stamps never editable).
 //   body { changes: { <field>: { from, to } } }   field: name, phone, email, contact_type, lead_source, vin,
-//                                                vehicle_year, vehicle_make, vehicle_model
+//                                                vehicle_year, vehicle_make, vehicle_model, department
+// department (Betsy, 14 Nov 2026; BB: convert a sales lead to service by changing its department, not closing it):
+// sales / service / parts; empty = sales. A change emails the new department's staff (app/lib/departments.js).
 //   `from` is what the screen showed: a field someone else (or the AI) changed meanwhile is refused (409) instead of
 //   overwritten. The lead date (createdAt) cannot be changed.
 // The customer record follows the lead, so the profile shows the same details:
-//   - name: the customer's name too, when it was empty or the same as the lead's old name;
+//   - name: the customer's name too, when it was empty, the same as the lead's old name, or this is their only lead;
 //   - phone / email: added to the customer's phones / emails (the old one is kept on file, as on the profile) and made
 //     primary when the old one was the primary.
 // Every change goes on the customer timeline (ActivityLog 'lead_edited') and in Customer.contact_history.
@@ -20,13 +22,14 @@ import { requireDealerAccess } from '@lib/apiGuard';
 import { validContactType } from '@lib/leadContactType';
 import { normalizeEmail, normalizePhone } from '@lib/customerResolver';
 import { logActivity } from '@lib/activityLog';
+import { DEPARTMENT_NAMES, leadDepartment, notifyDepartment, validDepartment } from '@lib/departments';
 
 export const runtime = 'nodejs';
 const fail = (error, status, extra = {}) => Response.json({ error, message: error, ...extra }, { status });
 const clean = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 const LABELS = Object.freeze({ name: 'name', phone: 'phone', email: 'email', contact_type: 'lead type',
-  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model' });
+  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag' });
 const TYPE_NAMES = { internet: 'Internet', phone: 'Phone Up', walk_in: 'Walk-In' };
 
 /** The stored value of one field from what staff typed, or { error }. Empty = cleared (null). */
@@ -35,6 +38,9 @@ function parseField(field, raw) {
   if (!s) return { value: null };
   switch (field) {
     case 'name': return { value: s };
+    // 13 Nov 2026 meeting (10.11 / 10.13, DealerSocket's HOT): staff mark a lead hot; shown on the profile and lead.
+    case 'hot': return /^(true|false)$/i.test(s) ? { value: /^true$/i.test(s) } : { error: 'Hot must be true or false' };
+    case 'department': return validDepartment(s) ? { value: validDepartment(s) } : { error: 'Department must be Sales, Service or Parts' };
     case 'phone': {
       const d = normalizePhone(s);
       return d && d.length === 10 ? { value: `+1${d}` } : { error: 'The phone number needs 10 digits' };
@@ -59,13 +65,16 @@ function parseField(field, raw) {
 
 const same = (field, a, b) => {
   const norm = (v) => {
+    if (field === 'department') return leadDepartment({ department: v });
+    if (field === 'hot') return v === true || String(v).toLowerCase() === 'true' ? 'true' : 'false';
     if (v == null || v === '') return '';
     if (field === 'phone') return normalizePhone(String(v)) || '';
     return String(v).trim().toLowerCase();
   };
   return norm(a) === norm(b);
 };
-const shown = (field, v) => (v == null || v === '' ? 'empty' : field === 'contact_type' ? TYPE_NAMES[v] || v : String(v));
+const shown = (field, v) => (field === 'hot' ? (v === true ? 'hot' : 'not hot') : field === 'department' ? DEPARTMENT_NAMES[leadDepartment({ department: v })]
+  : v == null || v === '' ? 'empty' : field === 'contact_type' ? TYPE_NAMES[v] || v : String(v));
 
 export async function PATCH(req, { params }) {
   await dbConnect();
@@ -100,6 +109,8 @@ export async function PATCH(req, { params }) {
 
   // Only if those fields still hold what was read (nobody wrote them between the read and this write).
   const guard = Object.fromEntries(edits.map((e) => [e.field, lead[e.field] ?? null]));
+  // Staff placing a lead in a department wins over the automatic moves (app/lib/departmentRouting.js).
+  if (set.department !== undefined) Object.assign(set, { department_set_by: 'staff', department_at: new Date() });
   const res = await Lead.updateOne({ _id: lead._id, ...guard }, { $set: { ...set, updatedAt: new Date() } });
   if (!res.matchedCount) return fail('This lead was changed by someone else just now - reload it and save again.', 409);
 
@@ -110,7 +121,9 @@ export async function PATCH(req, { params }) {
     const now = new Date();
     const history = (entry) => ({ at: now, by: user._id, by_name: user.name || null, ...entry });
     const name = edits.find((e) => e.field === 'name');
-    if (name?.to && (!customer.name || same('name', customer.name, name.from))) {
+    // The customer's name follows when it was empty, the same as the lead's old name, or this is their only lead.
+    const onlyLead = name?.to ? (await Lead.countDocuments({ customer_id: customer._id })) <= 1 : false;
+    if (name?.to && (!customer.name || same('name', customer.name, name.from) || onlyLead)) {
       await Customer.updateOne({ _id: customer._id }, { $set: { name: name.to },
         $push: { contact_history: history({ field: 'name', action: 'changed', from: customer.name || null, to: name.to }) } });
     }
@@ -142,5 +155,10 @@ export async function PATCH(req, { params }) {
       actor_type: 'staff', actor_id: user._id, actor_name: user.name || null, action: 'lead_edited',
       from: shown(e.field, e.from), to: shown(e.field, e.to), detail: LABELS[e.field] });
   }
-  return Response.json({ ok: true, lead: await Lead.findById(lead._id).lean(), changed: edits.map((e) => e.field) });
+  // A lead moved to another department: that department's staff hear about it (email).
+  const dept = edits.find((e) => e.field === 'department');
+  const notified = dept ? await notifyDepartment({ dealerId: lead.dealer_id, lead: after, department: dept.to,
+    fromDepartment: leadDepartment({ department: dept.from }), byName: user.name }) : null;
+  return Response.json({ ok: true, lead: await Lead.findById(lead._id).lean(), changed: edits.map((e) => e.field),
+    ...(notified ? { notified } : {}) });
 }

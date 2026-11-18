@@ -8,6 +8,8 @@ import { bookingCreatorSplit } from "@lib/bookingCreator";
 import { appointmentFunnel } from "@lib/appointmentFunnel";
 import { requireDealerOrSuperAdmin } from '@lib/apiGuard';
 import { dashboardCacheKey, getCached, setCached } from '@lib/dashboardCache';
+import { departmentMatch } from '@lib/departmentNames';
+import { departmentLeadIds } from '@lib/departments';
 
 export async function GET(request) {
   try {
@@ -28,6 +30,10 @@ export async function GET(request) {
     const use_booking_date = searchParams.get('use_booking_date') === 'true';
     // Appointment cards show who booked (Betsy, 21 Oct 2026): AI vs staff, from the lead's latest booking.
     const split_by_creator = searchParams.get('split_by') === 'created_by';
+    // 13 Nov 2026 meeting (6.4, 9.2): the dashboard for one department - Sales is not counted for service leads.
+    // Spread into every lead query; empty = every department.
+    const department = searchParams.get('department');
+    const dept = departmentMatch(department) || {};
     
     if (!dealer_id) {
       return new Response(JSON.stringify({ error: 'Dealer ID is required' }), {
@@ -43,7 +49,7 @@ export async function GET(request) {
     // If only managerial review is requested, return just that count without date filter
     if (managerial_review_only) {
       const managerial_review_count = await Lead.countDocuments({ 
-        dealer_id, 
+        dealer_id, ...dept,
         fe_lead_status: 'Managerial Review' 
       });
       
@@ -56,7 +62,7 @@ export async function GET(request) {
     }
     if (all_appointment_booked) {
       const all_appointment_booked_count = await Lead.countDocuments({ 
-        dealer_id, 
+        dealer_id, ...dept,
         booking_status: true 
       });
       return new Response(JSON.stringify({
@@ -75,7 +81,7 @@ export async function GET(request) {
       const startOfWeekUTC = startOfWeek.utc().toDate();
       
       const new_this_week_count = await Lead.countDocuments({ 
-        dealer_id,
+        dealer_id, ...dept,
         createdAt: { 
           $gte: startOfWeekUTC
         }
@@ -99,14 +105,15 @@ export async function GET(request) {
         start = moment.tz(s, 'YYYY-MM-DD', dealerTimezone).startOf('day').utc().toDate();
         end = moment.tz(e, 'YYYY-MM-DD', dealerTimezone).endOf('day').utc().toDate();
       }
-      return new Response(JSON.stringify(await appointmentFunnel({ dealerId: dealer_id, start, end })), {
+      return new Response(JSON.stringify(await appointmentFunnel({ dealerId: dealer_id, start, end,
+        leadIds: await departmentLeadIds(dealer_id, department) })), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }
 
     // If fe_lead_status filter is provided, return that status count (optionally date-filtered)
     if (fe_lead_status) {
-      const statusQuery = { dealer_id, fe_lead_status };
+      const statusQuery = { dealer_id, ...dept, fe_lead_status };
 
       if (start_date && end_date) {
         const startMomentInDealer = moment.utc(start_date).tz(dealerTimezone);
@@ -209,7 +216,7 @@ export async function GET(request) {
     }
 
     // Create base query with dealer_id
-    const baseQuery = { dealer_id };
+    const baseQuery = { dealer_id, ...dept };
     
     // Only apply date filter if both start_date and end_date are provided
     // If not provided, return all leads without date filtering
@@ -293,8 +300,10 @@ export async function GET(request) {
     const appointment_booked = statusBucket('Appointment Booked');
 
     // Get communication types
+    const { department: _deptOnLeads, ...emailQuery } = baseQuery; // messages carry no department; theirs is the lead's
+    const deptIds = department ? await departmentLeadIds(dealer_id, department) : null;
     const communication_types = await Email.aggregate([
-      { $match: baseQuery },
+      { $match: { ...emailQuery, ...(deptIds ? { lead_id: { $in: deptIds } } : {}) } },
       { $group: { _id: '$communication_type', count: { $sum: 1 } } }
     ]);
 
@@ -327,7 +336,7 @@ export async function GET(request) {
       const activity_over_time_raw = await Lead.aggregate([
         { 
           $match: { 
-            dealer_id,
+            dealer_id, ...dept,
             createdAt: dateRangeForActivity
           } 
         },
@@ -381,7 +390,7 @@ export async function GET(request) {
     } else {
       // No date filter - get all leads and find min/max dates
       const dateBounds = await Lead.aggregate([
-        { $match: { dealer_id } },
+        { $match: { dealer_id, ...dept } },
         {
           $group: {
             _id: null,
@@ -410,7 +419,7 @@ export async function GET(request) {
         
         // Get activity data for all dates - group by dealer timezone
         const activity_over_time_raw = await Lead.aggregate([
-          { $match: { dealer_id } },
+          { $match: { dealer_id, ...dept } },
           { 
             $group: { 
               _id: { 

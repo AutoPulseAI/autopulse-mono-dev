@@ -35,6 +35,7 @@ import { evaluateKpi, getKpi, isLeadLinked } from '@lib/reporting/registry';
 import { CARD_KPIS } from '@lib/deskLog/cards';
 import { REPORTS, parseFilterSpec } from '@lib/reporting/filters';
 import { callerSeesFeature, localRange } from '../reports/reply-cohorts/reportAccess.js';
+import { departmentMatch } from '@lib/departmentNames';
 
 // Helper function to normalize phone numbers for search
 // Removes +1, spaces, dashes, parentheses, and other formatting
@@ -104,6 +105,7 @@ export async function GET(req) {
     const phone = url.searchParams.get("phone");
     const status = url.searchParams.get("fe_lead_status");
     const leadSources = url.searchParams.getAll("lead_source");
+    const department = departmentMatch(url.searchParams.get("department")); // Sales / Service / Parts (missing = sales)
     const source = url.searchParams.get("source");
     const responseMode = url.searchParams.getAll("response_mode"); // Get all values for multi-select
     const followupPreference = url.searchParams.getAll("followup_preference"); // Get all values for multi-select
@@ -254,6 +256,7 @@ export async function GET(req) {
         orConditions.push(sourceMatchConditions);
       }
     }
+    if (department) Object.assign(query, department);
     if (source) {
       // Special handling for "Unknown" - match null, undefined, empty string, or literal "Unknown"
       if (source.toLowerCase() === 'unknown') {

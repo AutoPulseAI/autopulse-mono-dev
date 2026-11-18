@@ -117,6 +117,22 @@ emailSchema.index(EMAIL_SMS_PAIR_INDEX.key, { ...EMAIL_SMS_PAIR_INDEX.options, _
 emailSchema.index(EMAIL_MESSAGE_ID_INDEX.key, { ...EMAIL_MESSAGE_ID_INDEX.options, _autoIndex: false });
 emailSchema.index(EMAIL_DEALER_CREATEDAT_INDEX.key, { ...EMAIL_DEALER_CREATEDAT_INDEX.options, _autoIndex: false });
 
+// Sales / Service on every message (13 Nov 2026 meeting, 6.1 / 6.3; app/lib/departmentMessages.js): a new message
+// for a lead takes the lead's department; a customer's message on a Service / Parts lead alerts that department.
+emailSchema.pre('save', async function stampDepartment() {
+  this.$locals.wasNew = this.isNew; // the alert below is for new messages only
+  if (!this.isNew || !this.lead_id || this.get('department')) return;
+  const { departmentForLead } = await import('../lib/departmentMessages.js');
+  const dept = await departmentForLead(this.lead_id);
+  if (dept) this.set('department', dept);
+});
+emailSchema.post('save', function alertDepartment(doc) {
+  if (!doc?.$locals?.wasNew || !doc.lead_id || !['received', 'incoming'].includes(doc.status)) return;
+  doc.$locals.wasNew = false;
+  import('../lib/departmentMessages.js').then((m) => m.alertDepartmentOfReply(doc.toObject ? doc.toObject() : doc))
+    .catch(() => null);
+});
+
 const Email = mongoose.models.Email || mongoose.model('Email', emailSchema);
 
 export default Email;

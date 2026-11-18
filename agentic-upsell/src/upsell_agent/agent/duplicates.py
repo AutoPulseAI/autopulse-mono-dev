@@ -95,13 +95,22 @@ def same_vehicle(a: dict, b: dict) -> bool:
     return va[1] == vb[1]
 
 
+def department(lead: dict) -> str:
+    """The CRM lead's department: service / parts, else sales (a lead without one is a sales lead)."""
+    d = str(lead.get("department") or "").lower()
+    return d if d in ("service", "parts") else "sales"
+
+
 async def find_primary(db: DealerScopedDatabase, lead: dict | None) -> dict | None:
     """The oldest open lead with an AI workflow for the same customer AND the same vehicle, as its state; None when
     this lead is the one to run. A lead about a different vehicle is its own opportunity with its own follow-up
     (Betsy, 6 Nov 2026, G-005)."""
     if not lead or lead.get("_id") is None:
         return None
-    candidates = [c for c in await _same_customer_leads(db, lead) if same_vehicle(lead, c)]
+    # 17 Nov 2026 (the user: a customer we sold to comes back with a service lead): a lead of another department is
+    # never a duplicate - a Service lead is not paused behind the customer's open Sales lead, and runs on its own.
+    candidates = [c for c in await _same_customer_leads(db, lead)
+                  if same_vehicle(lead, c) and department(c) == department(lead)]
     if not candidates:
         return None
     states = await db.collection(AI_LEAD_STATE_COLLECTION).find(

@@ -39,7 +39,13 @@ function shift(x, y, rot, along, up) {
 }
 
 /** @returns {Promise<{ pdf: Buffer, filled: number, empty: string[], unprintable: string[] }>} */
-export async function fillForm(buffer, fields, values, { preview = false, describe = (k) => k } = {}) {
+export const EXPORT_MARK = 'autopulse-filled-copy';
+
+// Typed by staff in the check box before downloading (17 Nov 2026): { [field id]: text }. Never for signatures,
+// initials or checkboxes (signed / ticked by hand).
+export const HAND_ONLY = ['signature', 'initials', 'checkbox'];
+
+export async function fillForm(buffer, fields, values, { preview = false, describe = (k) => k, overrides = {} } = {}) {
   const doc = await PDFDocument.load(buffer, { updateMetadata: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const pages = doc.getPages();
@@ -47,15 +53,16 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
   // A LiveCycle (XFA) copy of the form would be shown instead of the filled fields in Adobe Reader.
   try { if (form.hasXFA()) form.deleteXFA(); } catch { /* none */ }
   let filled = 0; const empty = []; const unprintable = [];
-  for (const f of fields) {
+  for (const [i, f] of fields.entries()) {
     const page = pages[f.page - 1];
     const rot = Number(f.rot) || 0;
     if (preview) {
       if (!page) continue;
-      const tag = printable(font, f.source ? describe(f.source) : 'left blank');
+      const auto = f.source && f.fill_policy !== 'person';
+      const tag = printable(font, `${i + 1}. ${auto ? describe(f.source) : 'left blank'}`);
       const w = Math.max(20, f.w || 60); const h = Math.max(8, (f.kind === 'pdf_field' ? f.h : f.size + 3) || 10);
       const [bx, by] = f.kind === 'pdf_field' ? [f.x, f.y] : shift(f.x, f.y, rot, -1, -2);
-      const color = f.source ? rgb(0.1, 0.35, 0.85) : rgb(0.9, 0.5, 0.1);
+      const color = auto ? rgb(0.1, 0.35, 0.85) : rgb(0.9, 0.5, 0.1);
       page.drawRectangle({ x: bx, y: by, width: w, height: h, borderColor: color, borderWidth: 0.8, opacity: 0, borderOpacity: 0.9,
         rotate: degrees(f.kind === 'pdf_field' ? 0 : rot) });
       const { text, size } = fit(font, tag, Math.min(8, h - 1), w - 2);
@@ -63,9 +70,10 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
       page.drawText(text, { x: tx, y: ty, size, font, color, rotate: degrees(f.kind === 'pdf_field' ? 0 : rot) });
       continue;
     }
-    if (!f.source) continue;
-    const raw = String(values[f.source] ?? '').trim();
-    if (!raw) { empty.push(f.label); continue; }
+    const typed = !HAND_ONLY.includes(f.field_type) && Object.hasOwn(overrides || {}, f.id);
+    if (!typed && (!f.source || f.fill_policy === 'person')) continue;
+    const raw = String(typed ? overrides[f.id] : values[f.source] ?? '').trim();
+    if (!raw) { if (!typed) empty.push(f.label); continue; }
     let value = printable(font, raw);
     if (!value) { unprintable.push(f.label); continue; }
     if (f.kind === 'pdf_field') {
@@ -93,5 +101,8 @@ export async function fillForm(buffer, fields, values, { preview = false, descri
       }
     }
   }
+  // Marked as a filled copy, so it is refused if someone uploads it back as a form (17 Nov 2026: a downloaded copy was
+  // uploaded as the form; its printed customer data then went on every export).
+  if (!preview) doc.setKeywords([EXPORT_MARK]);
   return { pdf: Buffer.from(await doc.save()), filled, empty, unprintable };
 }

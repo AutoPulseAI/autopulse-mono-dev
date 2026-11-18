@@ -15,6 +15,10 @@ const activityLogSchema = new mongoose.Schema({
   from: { type: String, default: null },
   to: { type: String, default: null },
   detail: { type: String, default: null },
+  // Reassignments (lead_reassigned): who it was with and who it went to, so it can be undone (BB, 14 Nov 2026).
+  from_id: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  to_id: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  undone_at: { type: Date, default: undefined },
   at: { type: Date, default: Date.now },
 }, { timestamps: false });
 

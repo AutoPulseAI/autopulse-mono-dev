@@ -12,6 +12,7 @@ import {  onFollowUpEvent} from '@lib/followupService.js';
 import { notifyAiOfStaffReply } from '@lib/ai/aiStaff';
 import jwt from 'jsonwebtoken';
 import { requireUser, requireDealerAccess } from "@lib/apiGuard";
+import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from '@lib/departmentNames';
 
 function normalizeUserLanguage(raw) {
   const v = raw == null ? '' : String(raw).trim();
@@ -106,6 +107,14 @@ export async function POST(request) {
     }
     const dealerGuard = await requireDealerAccess(request, conversationDealerId ? String(conversationDealerId) : null);
     if (dealerGuard.response) return dealerGuard.response;
+    // 13 Nov 2026 meeting (6.2): a Service / Parts lead is answered by that department (Sales can read it).
+    if (parentMessage.lead_id) {
+      const replyLead = await Lead.findById(parentMessage.lead_id).select('department').lean();
+      if (replyLead && !canReplyInDepartment(currentUser, replyLead)) {
+        return new Response(JSON.stringify({ message: `This is a ${DEPARTMENT_NAMES[leadDepartment(replyLead)]} lead: `
+          + `${DEPARTMENT_NAMES[leadDepartment(replyLead)]} staff answer it.` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
   
      const dealer = await User.findOne({
             '_id': parentMessage.dealer_id

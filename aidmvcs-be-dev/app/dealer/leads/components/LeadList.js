@@ -114,6 +114,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       phone: params.get('phone') || '',
       status: params.get('status') || '',
       lead_source: params.get('lead_source') || '',
+      department: params.get('department') || '', // Betsy, 14 Nov 2026: Sales / Service / Parts
       source: params.get('source') || '',
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
@@ -147,6 +148,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     phone: filters.phone,
     status: filters.status,
     lead_source: filters.lead_source,
+    department: filters.department,
     source: filters.source,
     message_filter: filters.message_filter
   });
@@ -239,6 +241,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
+      if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -498,6 +501,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
       url += drillQuery(filters);
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
+      if (filters.department) url += `&department=${encodeURIComponent(filters.department)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) url += `&endDate=${filters.dateRange.endDate.toISOString()}`;
@@ -556,7 +560,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
   const applyFilters = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
-    const textKeys = ['name', 'email', 'phone', 'status', 'lead_source', 'source', 'message_filter'];
+    const textKeys = ['name', 'email', 'phone', 'status', 'lead_source', 'department', 'source', 'message_filter'];
     textKeys.forEach(key => {
       if (inputValues[key]) params.set(key, inputValues[key]);
       else params.delete(key);
@@ -576,6 +580,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       phone: inputValues.phone,
       status: inputValues.status,
       lead_source: inputValues.lead_source,
+      department: inputValues.department,
       source: inputValues.source,
       message_filter: inputValues.message_filter,
       page: 1
@@ -610,6 +615,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     inputValues.phone,
     inputValues.status,
     inputValues.lead_source,
+    inputValues.department,
     inputValues.source,
     inputValues.message_filter,
   ]);
@@ -650,6 +656,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       phone: "",
       status: "",
       lead_source: "",
+      department: "",
       source: "",
       message_filter: ""
     });
@@ -659,6 +666,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       phone: "",
       status: "",
       lead_source: "",
+      department: "",
       source: "",
       message_filter: "",
       dateRange: {
@@ -772,6 +780,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     else params.delete('status');
     if (filters.lead_source) params.set('lead_source', filters.lead_source);
     else params.delete('lead_source');
+    if (filters.department) params.set('department', filters.department);
+    else params.delete('department');
     if (filters.source) params.set('source', filters.source);
     else params.delete('source');
     if (filters.message_filter) params.set('message_filter', filters.message_filter);
@@ -826,6 +836,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
+      if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -970,7 +981,10 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       });
 
       if (res.ok) {
-        showAlert('Lead assignment updated successfully', 'success');
+        // Undo a reassignment (BB, 14 Nov 2026): one click puts the lead back with whoever had it.
+        showAlert(<span className="d-inline-flex align-items-center flex-wrap gap-2">Lead assignment updated.
+          <Button size="sm" variant="outline-success" className="py-0" onClick={() => undoReassign(leadId)}>
+            <i className="fa-solid fa-rotate-left me-1" />Undo</Button></span>, 'success');
         fetchLeads(); // Refresh leads
       } else {
         showAlert('Failed to update assignment', 'danger');
@@ -978,6 +992,17 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     } catch (err) {
       showAlert('Error updating assignment', 'danger');
     }
+  };
+
+  const undoReassign = async (leadId) => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/undo-reassign`, { method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('dealertoken')}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not undo');
+      showAlert(`Undone - the lead is back with ${data.name || 'nobody (unassigned)'}.`, 'success');
+      fetchLeads();
+    } catch (err) { showAlert(err.message, 'danger'); }
   };
 
   const handleCloseDeleteModal = () => {
@@ -1423,6 +1448,15 @@ useImperativeHandle(ref, () => ({
                   {leadSourceOptions.map(source => (
                     <option key={source} value={source}>{source}</option>
                   ))}
+                </Form.Select>
+              </Col>
+              <Col xxl={6} xl={6} lg={6} md={6} xs={6}>
+                <Form.Select name="department" value={inputValues.department || ""} onChange={handleInputChange} size="sm"
+                  aria-label="Department">
+                  <option value="">All Departments</option>
+                  <option value="sales">Sales</option>
+                  <option value="service">Service</option>
+                  <option value="parts">Parts</option>
                 </Form.Select>
               </Col>
               <Col xxl={6} xl={6} lg={6} md={6} xs={6}>

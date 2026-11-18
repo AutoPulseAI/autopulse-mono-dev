@@ -88,6 +88,9 @@ const UserSchema = new mongoose.Schema(
     // Staff work schedule (app/lib/workSchedule.js): { monday: { active, start, end }, ... } or unset = the
     // dealership's opening hours. The AI never gives a call task to someone outside it.
     work_schedule: { type: Object, default: undefined },
+    // Betsy, 14 Nov 2026: the departments a staff member works in (sales / service / parts; app/lib/departments.js).
+    // A lead moved to a department emails its staff.
+    departments: { type: [String], enum: ['sales', 'service', 'parts'], default: undefined },
     // AI service mode for this dealer (app/lib/ai/aiMode.js): 'off' = today's
     // n8n behaviour, 'shadow' = n8n replies and the AI drafts alongside,
     // 'live' = the AI replies instead of n8n. Changed via /api/admin/ai-mode.

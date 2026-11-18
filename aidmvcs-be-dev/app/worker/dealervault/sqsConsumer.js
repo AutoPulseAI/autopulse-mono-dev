@@ -8,6 +8,10 @@ import { Queue } from 'bullmq';
 import csv from 'csv-parser';
 
 import { MAX_JOB_BYTES, MAX_RECORDS } from './common/validation.js';
+import dbConnect from '../../lib/mongodb.js';
+import HeldFile from '../../models/DealerVaultHeldFile.js';
+import { checkFeedFile, recentFileSizes } from './feedCheck.js';
+import { sendEmail } from '../../lib/email.js';
 import {
   PARTS_QUEUE,
   SALES_QUEUE,
@@ -213,19 +217,49 @@ function jobIdForBatch(jobData) {
     .digest('hex');
 }
 
-async function processMessage({ message, expectedBucket, s3, sqs, queueByFileType }) {
-  const body = parseMessage(message, expectedBucket);
-  const metadata = parseFileName(body.key);
-  const object = await s3.getObject({ Bucket: body.bucket, Key: body.key }).promise();
+// Reads one feed file from S3 and queues its batches. `force` (a super admin released a held file) skips the check.
+export async function importFeedFile({ bucket, key, s3, queueByFileType, force = false }) {
+  const metadata = parseFileName(key);
+  const object = await s3.getObject({ Bucket: bucket, Key: key }).promise();
   const records = await parseRecords(objectBodyToUtf8(object.Body), metadata.fileType);
+  if (!force) {
+    // SOW G-087 (17 Nov 2026): a malformed or cut-short file is held, never imported (feedCheck.js).
+    let check = { ok: true, reasons: [], expected: null };
+    try {
+      await dbConnect({ reportErrors: false });
+      check = checkFeedFile({ fileType: metadata.fileType, records,
+        recentSizes: await recentFileSizes(metadata.dvDealerId, metadata.fileType) });
+    } catch (error) {
+      log('warn', 'dealervault_feed_check_skipped', { fileName: metadata.fileName, code: error?.code || 'CHECK_FAILED' });
+    }
+    if (!check.ok) {
+      await HeldFile.updateOne({ fileName: metadata.fileName }, { $setOnInsert: {
+        dvDealerId: metadata.dvDealerId, fileName: metadata.fileName, fileType: metadata.fileType, bucket, key,
+        records: records.length, expected: check.expected, reasons: check.reasons, status: 'held' } }, { upsert: true });
+      log('warn', 'dealervault_file_held', { fileName: metadata.fileName, reasons: check.reasons });
+      const to = process.env.DEALERVAULT_ALERT_EMAIL || process.env.ADMIN_EMAIL;
+      if (to) {
+        await sendEmail(to, `DMS feed file held: ${metadata.fileName}`,
+          `The DMS feed file ${metadata.fileName} was not imported: ${check.reasons.join('; ')}.\n\nNothing from it `
+          + 'was written. Release or discard it on Admin > DMS feed.').catch(() => null);
+      }
+      return { held: true, metadata, records: records.length };
+    }
+  }
   const batches = splitIntoBatches(records, metadata);
   const queue = queueByFileType[metadata.fileType];
-
   for (const jobData of batches) {
     await queue.add(metadata.fileType, jobData, {
       jobId: jobIdForBatch(jobData),
     });
   }
+  return { held: false, metadata, records: records.length, batches: batches.length };
+}
+
+async function processMessage({ message, expectedBucket, s3, sqs, queueByFileType }) {
+  const body = parseMessage(message, expectedBucket);
+  const { metadata, records, batches, held } = await importFeedFile({ bucket: body.bucket, key: body.key, s3,
+    queueByFileType });
 
   await sqs
     .deleteMessage({
@@ -237,8 +271,9 @@ async function processMessage({ message, expectedBucket, s3, sqs, queueByFileTyp
   log('info', 'dealervault_sqs_message_processed', {
     fileName: metadata.fileName,
     fileType: metadata.fileType,
-    records: records.length,
-    batches: batches.length,
+    records,
+    batches: batches || 0,
+    held: Boolean(held),
   });
 }
 
@@ -285,6 +320,26 @@ const s3 = new AWS.S3({
   );
 
   log('info', 'dealervault_sqs_ingestion_started', { region });
+
+  // Held files a super admin released (Admin > DMS feed): imported here, where S3 and the queues are (SOW G-087).
+  setInterval(async () => {
+    try {
+      await dbConnect({ reportErrors: false });
+      const asked = await HeldFile.find({ status: 'release_requested' }).limit(5).lean();
+      for (const f of asked) {
+        const claimed = await HeldFile.updateOne({ _id: f._id, status: 'release_requested' }, { $set: { status: 'releasing' } });
+        if (!claimed.modifiedCount) continue;
+        try {
+          await importFeedFile({ bucket: f.bucket, key: f.key, s3, queueByFileType, force: true });
+          await HeldFile.updateOne({ _id: f._id }, { $set: { status: 'released', decided_at: new Date() } });
+          log('info', 'dealervault_held_file_released', { fileName: f.fileName });
+        } catch (error) {
+          await HeldFile.updateOne({ _id: f._id }, { $set: { status: 'release_requested' } });
+          log('error', 'dealervault_held_file_release_failed', { fileName: f.fileName, code: sanitizedErrorCode(error) });
+        }
+      }
+    } catch { /* next minute */ }
+  }, 60000).unref?.();
 
   void (async () => {
     while (true) {

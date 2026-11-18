@@ -1,7 +1,7 @@
 // Desk Log (Betsy's Priority 3; SOW v6 Deliverable C).
 //   GET  ?dealer_id &start_date &end_date (dealer-local YYYY-MM-DD) [&view &q &department &lead_type &source
 //        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1]  -> { rows, sources, truncated, cards? }
-//   POST { dealer_id, lead_id, checked_in_at?, department?, stock_number?, vehicle?, trade?, salesperson_id?,
+//   POST { dealer_id, lead_id, checked_in_at?, department? (default: the lead's), move_lead_to_service?, stock_number?, vehicle?, trade?, salesperson_id?,
 //        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit); their
 //        appointment that day is marked showed and the AI told they came in (app/lib/deskLog/checkIn.js)
 //        new_customer: { name, phone?, email?, contact_type, lead_source?, vehicle_year/make/model?, vin? } in place of
@@ -72,18 +72,23 @@ export async function POST(req) {
     if (body.new_customer) {
       const checked = checkNewCustomer(body.new_customer);
       if (checked.errors) return json({ message: checked.errors.join('; '), errors: checked.errors }, 400);
-      lead = await createLeadAtCheckIn(String(dealerId), checked.value, { user: access.user });
+      // A new customer checked in at the service desk is a service lead (Lead.department; missing = sales).
+      lead = await createLeadAtCheckIn(String(dealerId), { ...checked.value, department: body.department === 'service' ? 'service' : null },
+        { user: access.user });
     } else {
       if (!mongoose.isValidObjectId(String(body.lead_id || ''))) return json({ message: 'Pick the customer' }, 400);
       lead = await Lead.findOne({ _id: body.lead_id, dealer_id: { $in: dealerForms(dealerId) } })
-        .select('dealer_id customer_id fe_lead_status assigned_to vehicle_year vehicle_make vehicle_model vin').lean();
+        .select('dealer_id customer_id fe_lead_status assigned_to vehicle_year vehicle_make vehicle_model vin department').lean();
       if (!lead) return json({ message: 'Customer not found' }, 404);
     }
     // Filled from the lead (vehicle of interest, its BDC owner) and its latest open trade-in, unless sent.
     const trade = await TradeIn.findOne({ dealer_id: String(dealerId), status: 'open',
       $or: [{ lead_id: lead._id }, ...(lead.customer_id ? [{ customer_id: lead.customer_id }] : [])] })
       .sort({ updatedAt: -1 }).select('year make model trim vin').lean();
+    // The visit's department follows the lead's unless the desk picked one (17 Nov 2026: one source of truth).
+    const leadDept = ['service', 'parts'].includes(lead.department) ? 'service' : 'sales';
     const input = {
+      department: leadDept,
       vehicle: { year: lead.vehicle_year || null, make: lead.vehicle_make || null, model: lead.vehicle_model || null,
         vin: lead.vin || null },
       trade: trade ? { year: trade.year ?? null, make: trade.make ?? null, model: trade.model ?? null,
@@ -108,11 +113,18 @@ export async function POST(req) {
       ...plan.history.filter((h) => h.field === 'stage').map((h) => ({ ...h, at: now, by, by_name: actorName(access.user) }))];
     if (plan.note) doc.notes = [{ text: plan.note, at: now, by, by_name: actorName(access.user) }];
     const entry = await DeskLogEntry.create(doc);
+    // Checked in at the Service desk and staff ticked "move this lead to Service" (17 Nov 2026).
+    let moved = null;
+    if (!body.new_customer && entry.department === 'service' && body.move_lead_to_service && leadDept !== 'service') {
+      const { moveLeadToDepartment } = await import('@lib/departmentRouting');
+      moved = await moveLeadToDepartment({ leadId: lead._id, to: 'service', by: 'system', byName: actorName(access.user),
+        why: `checked in at the Service desk by ${actorName(access.user) || 'staff'}` });
+    }
     // Connected to the CRM: the day's appointment marked showed, the lead and timeline updated, the AI told.
     const visit = await recordShowroomVisit({ lead, dealerId: String(dealerId), user: access.user, checkedIn,
       department: entry.department || 'sales' });
     return json({ entry: { id: String(entry._id) }, appointment: visit.appointment, lead_id: String(lead._id),
-      created: Boolean(body.new_customer) }, 201);
+      created: Boolean(body.new_customer), lead_moved: Boolean(moved?.moved) }, 201);
   } catch (error) {
     console.error('desk-log POST failed:', error?.message);
     return json({ message: 'Could not check the customer in' }, 500);

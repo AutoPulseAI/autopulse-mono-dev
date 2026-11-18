@@ -251,6 +251,25 @@ async def validate(state: AgentState, span: NodeSpan, ctx: TurnContext) -> dict[
                         source_message_id=ctx.source_message_id, quote=value.get("quote"),
                         confidence=value.get("confidence"), pending=not confident, turn_id=state.turn_id)
         item["value"] = outcome["value"]
+        if confident and value["path"] == "interest.lead_type" and outcome["value"] in ("sales", "trade_in") \
+                and state.lead_id:
+            # And the other way: a customer on a Service lead who wants to buy or trade -> the CRM lead moves to Sales
+            # (only when it is a Service lead now; the CRM's note kind 'sales_lead').
+            from upsell_agent.agent import crm_notes
+            from upsell_agent.agent.duplicates import department
+            from upsell_agent.agent.turn import find_lead
+            if department(await find_lead(ctx.db, state.lead_id) or {}) == "service":
+                await crm_notes.write(ctx.db, lead_id=state.lead_id, customer_id=state.customer_id, kind="sales_lead",
+                                      text=f"The customer wants to buy or trade: {str(value.get('quote') or '')[:200]!r}",
+                                      key=f"sales_lead:{state.lead_id}")
+        if confident and value["path"] == "interest.lead_type" and outcome["value"] == "service" and state.lead_id:
+            # 17 Nov 2026 (the user: sales and service are already part of the AI): the AI's own reading that this is
+            # a service customer moves the CRM lead to Service (the CRM's note kind 'service_lead',
+            # app/lib/departmentRouting.js there) - one lead type for the AI and the CRM.
+            from upsell_agent.agent import crm_notes
+            await crm_notes.write(ctx.db, lead_id=state.lead_id, customer_id=state.customer_id, kind="service_lead",
+                                  text=f"The customer is asking about service: {str(value.get('quote') or '')[:200]!r}",
+                                  key=f"service_lead:{state.lead_id}")
         (accepted if confident else needs_confirming).append(item)
         reasoning.append(f"{'✓' if confident else '?'} {value['path']} = {outcome['value']!r} "
                          + ("saved" if confident else f"saved, needs confirming (confidence {value.get('confidence')})"))

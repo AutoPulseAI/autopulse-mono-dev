@@ -81,7 +81,7 @@ export default function StaffList({
                       <p className="p_bold"><small>Email</small></p>
                     </Col>
                     <Col xl={4} lg={3} sm={3} xs={12}>
-                      <p className="p_bold"><small>Roles</small></p>
+                      <p className="p_bold"><small>Role / departments</small></p>
                     </Col>
                   </Row>
                 </Col>
@@ -111,6 +111,11 @@ export default function StaffList({
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Roles:</small></p>
                             <p>{s?.role?.name || "N/A"}</p>
+                            {s?.departments?.length > 0 && (
+                              <p className="small text-muted mb-0">
+                                {s.departments.map((d) => d[0].toUpperCase() + d.slice(1)).join(" · ")}
+                              </p>
+                            )}
                           </div>
                         </Col>
                       </Row>

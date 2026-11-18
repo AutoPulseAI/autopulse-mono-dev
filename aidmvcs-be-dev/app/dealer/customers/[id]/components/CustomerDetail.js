@@ -6,6 +6,8 @@ import { Alert, Button, Modal, Tab, Tabs } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
+import DmsDetails, { LeaseBar } from "./DmsDetails";
+import OpenTasks from "./OpenTasks";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
@@ -13,7 +15,6 @@ import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import TradeInTab from "./TradeInTab";
 import LeadForm from "../../../leads/components/LeadForm";
-import CustomerForm from "../../components/CustomerForm";
 
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
@@ -30,7 +31,6 @@ export default function CustomerDetail({ customerId }) {
   const [messageLead, setMessageLead] = useState(null);
   // Same convention: setEditCustomer({}) opens the create form (not used here,
   // see CustomerList.js), setEditCustomer(customer) opens it pre-filled to edit.
-  const [editCustomer, setEditCustomer] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [assignmentError, setAssignmentError] = useState(null);
 
@@ -91,12 +91,19 @@ export default function CustomerDetail({ customerId }) {
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads } = data;
+  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads, dms, open_tasks: openTasks } = data;
 
   // A customer with an existing Lead already has a reachable conversation
   // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
   // button) - just land there. Only a customer with zero leads needs the
   // create-lead-and-send-first-message flow (LeadForm, pre-filled).
+  // Counts on the tabs and the toolbar (17 Nov 2026, BB: "Sales (4) · Appts (2)" at a glance).
+  const counts = { leads: leads?.length || 0, sales: deals?.length || 0, service: repair_orders?.length || 0,
+    appointments: all_appointments?.length || 0, vehicles: vehicles?.length || 0 };
+  const tabTitle = (icon, label, n) => (
+    <span className="cp_tab"><i className={icon} />{label}{n ? <span className="cp_tab_count">{n}</span> : null}</span>
+  );
+
   const handleSendMessage = () => {
     if ((leads?.length || 0) > 0) {
       setActiveTab("leads");
@@ -115,10 +122,6 @@ export default function CustomerDetail({ customerId }) {
     if (!value) fetchCustomer360(); // picks up the newly created lead, if any
   };
 
-  const handleEditCustomerChange = (value) => {
-    setEditCustomer(value);
-    if (!value) fetchCustomer360(); // picks up the saved edits
-  };
 
   const handleAssignmentChange = async (assignedToId) => {
     setAssignmentError(null);
@@ -136,7 +139,7 @@ export default function CustomerDetail({ customerId }) {
   };
 
   return (
-    <>
+    <div className="cust_profile">
       <div className="d-flex align-items-center justify-content-end mb-3">
         <Button variant="custom" size="sm" onClick={() => router.push("/dealer/customers")}>
           <i className="fa-solid fa-arrow-left me-2" />Back to Customers
@@ -149,38 +152,44 @@ export default function CustomerDetail({ customerId }) {
         </Alert>
       )}
 
+      <LeaseBar dms={dms} />
       <CustomerHeader
         customer={customer}
         valueSnapshot={value_snapshot}
         onSendMessage={handleSendMessage}
-        onEdit={() => setEditCustomer(customer)}
+        onChanged={fetchCustomer360}
         staffList={staffList}
         onAssignmentChange={handleAssignmentChange}
         // G-059: a call from the profile is logged on the customer's newest lead.
         callLeadId={leads?.[0]?._id}
         dealerId={customer.dealer_id}
+        counts={counts}
+        onOpenTab={setActiveTab}
       />
 
-      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3" mountOnEnter unmountOnExit>
-        <Tab eventKey="overview" title="Overview">
+      <OpenTasks tasks={openTasks} />
+      <DmsDetails dms={dms} />
+
+      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>
+        <Tab eventKey="overview" title={tabTitle("fa-solid fa-clock-rotate-left", "Overview")}>
           <OverviewTab overview={overview} activity={activity || []} />
         </Tab>
-        <Tab eventKey="leads" title="Leads & Communications">
-          <LeadsTab customerId={customerId} />
+        <Tab eventKey="leads" title={tabTitle("fa-solid fa-comments", "Leads & Communications", counts.leads)}>
+          <LeadsTab customerId={customerId} onChanged={fetchCustomer360} />
         </Tab>
-        <Tab eventKey="sales" title="Sales">
+        <Tab eventKey="sales" title={tabTitle("fa-solid fa-key", "Sales", counts.sales)}>
           <SalesTab deals={deals} />
         </Tab>
-        <Tab eventKey="service" title="Service">
+        <Tab eventKey="service" title={tabTitle("fa-solid fa-wrench", "Service", counts.service)}>
           <ServiceTab repairOrders={repair_orders} appointments={appointments} />
         </Tab>
-        <Tab eventKey="appointments" title="Appointments">
+        <Tab eventKey="appointments" title={tabTitle("fa-regular fa-calendar-check", "Appointments", counts.appointments)}>
           <AppointmentsTab appointments={all_appointments} />
         </Tab>
-        <Tab eventKey="vehicles" title="Vehicles">
-          <VehiclesTab vehicles={vehicles} leads={leads} />
+        <Tab eventKey="vehicles" title={tabTitle("fa-solid fa-car-side", "Vehicles", counts.vehicles)}>
+          <VehiclesTab vehicles={vehicles} leads={leads} customerId={customerId} dealerId={customer.dealer_id} onChanged={fetchCustomer360} />
         </Tab>
-        <Tab eventKey="tradeins" title="Trade In">
+        <Tab eventKey="tradeins" title={tabTitle("fa-solid fa-right-left", "Trade In")}>
           <TradeInTab customerId={customerId} />
         </Tab>
       </Tabs>
@@ -193,15 +202,6 @@ export default function CustomerDetail({ customerId }) {
           {messageLead && <LeadForm editLead={messageLead} setEditLead={handleMessageLeadChange} />}
         </Modal.Body>
       </Modal>
-
-      <Modal show={!!editCustomer} onHide={() => handleEditCustomerChange(null)} centered size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>Edit Customer</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {editCustomer && <CustomerForm editCustomer={editCustomer} setEditCustomer={handleEditCustomerChange} />}
-        </Modal.Body>
-      </Modal>
-    </>
+    </div>
   );
 }

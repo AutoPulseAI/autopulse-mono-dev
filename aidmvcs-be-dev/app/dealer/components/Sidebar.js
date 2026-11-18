@@ -95,6 +95,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-chart-column"></i>Dashboard
           </Link>
         </li>
+        {/* 13 Nov 2026 meeting (6.4): the Service Dashboard - the Dashboard with Service picked. */}
+        <li>
+          <Link href="/dealer/dashboard?department=service" className="nav-link">
+            <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
+          </Link>
+        </li>
 
         {showDeskLog && (
           <li>

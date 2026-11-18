@@ -34,6 +34,36 @@ const CampaignList = ({ onCreate, onEdit, refreshKey = 0 }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  // Undo delete (BB, 14 Nov 2026): campaigns deleted in the last 30 days can be put back (as drafts).
+  const [deleted, setDeleted] = useState([]);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [justDeleted, setJustDeleted] = useState(null); // { trash_id, name }
+  const [restoreNote, setRestoreNote] = useState(null);
+
+  const fetchDeleted = useCallback(async () => {
+    if (!activeEntity?.id) return;
+    try {
+      const res = await fetch(`/api/campaigns/deleted?dealer_id=${activeEntity.id}`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem('dealertoken')}` } });
+      const data = await res.json();
+      if (res.ok) setDeleted(data.deleted || []);
+    } catch { /* the list just stays as it was */ }
+  }, [activeEntity?.id]);
+  useEffect(() => { fetchDeleted(); }, [fetchDeleted, refreshKey]);
+
+  const restoreCampaign = async (trashId, name) => {
+    setError(null); setRestoreNote(null);
+    try {
+      const res = await fetch(`/api/campaigns/deleted/${trashId}`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('dealertoken')}` },
+        body: JSON.stringify({ dealer_id: activeEntity.id }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not put the campaign back');
+      setJustDeleted(null);
+      setRestoreNote(`"${name}" is back as a draft - check its date and schedule it again to send.`);
+      await Promise.all([fetchCampaigns(pagination.currentPage), fetchDeleted()]);
+    } catch (err) { setError(err.message); }
+  };
 
   // Fetch dealer timezone
   useEffect(() => {
@@ -128,8 +158,9 @@ const CampaignList = ({ onCreate, onEdit, refreshKey = 0 }) => {
 
       // Close modal and refresh list
       setShowDeleteModal(false);
+      setJustDeleted(data.trash_id ? { trash_id: data.trash_id, name: campaignToDelete.name } : null);
       setCampaignToDelete(null);
-      await fetchCampaigns(pagination.currentPage);
+      await Promise.all([fetchCampaigns(pagination.currentPage), fetchDeleted()]);
     } catch (err) {
       console.error('Error deleting campaign:', err);
       setError(err.message || 'Failed to delete campaign');
@@ -287,7 +318,35 @@ const CampaignList = ({ onCreate, onEdit, refreshKey = 0 }) => {
   return (
     <>
       <div className="w_card">
-        <h3 className="w_card_title">Campaign List</h3>                
+        <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <h3 className="w_card_title mb-0 me-auto">Campaign List</h3>
+          {deleted.length > 0 && (
+            <Button size="sm" variant="outline-secondary" onClick={() => setShowDeleted((v) => !v)}>
+              <i className="fa-solid fa-trash-can-arrow-up me-1" />Recently deleted ({deleted.length})
+            </Button>
+          )}
+        </div>
+        {justDeleted && (
+          <Alert variant="secondary" className="py-2 small d-flex align-items-center gap-2" dismissible onClose={() => setJustDeleted(null)}>
+            <span className="me-auto">&quot;{justDeleted.name}&quot; deleted.</span>
+            <Button size="sm" variant="custom" onClick={() => restoreCampaign(justDeleted.trash_id, justDeleted.name)}>
+              <i className="fa-solid fa-rotate-left me-1" />Undo</Button>
+          </Alert>
+        )}
+        {restoreNote && <Alert variant="success" className="py-2 small" dismissible onClose={() => setRestoreNote(null)}>{restoreNote}</Alert>}
+        {showDeleted && deleted.length > 0 && (
+          <div className="border rounded p-2 mb-3 small">
+            <div className="fw-semibold mb-1">Deleted in the last 30 days - put back as a draft</div>
+            {deleted.map((d) => (
+              <div key={d._id} className="d-flex align-items-center flex-wrap gap-2 py-1 border-top">
+                <span className="me-auto">{d.label || "Unnamed campaign"}
+                  <span className="text-muted"> · deleted {formatTimestamp(d.deleted_at, dealerTimezone)}{d.deleted_by_name ? ` by ${d.deleted_by_name}` : ""}</span></span>
+                <Button size="sm" variant="outline-custom" onClick={() => restoreCampaign(d._id, d.label || "The campaign")}>
+                  <i className="fa-solid fa-rotate-left me-1" />Put back</Button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="w_card_list">
           <ListGroup as="ul" variant="flush">

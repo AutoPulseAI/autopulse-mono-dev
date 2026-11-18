@@ -12,8 +12,9 @@
 // Each blank is matched to a customer-data key by its label (and the section it is in: a "Trade-in" heading makes
 // Year / Make / VIN the trade-in's). A blank nothing matches stays empty on export - nothing is made up.
 // A scan (a picture of the page: a photo, a scanned PDF, a JPG) has no text or drawing to read: detectFields says so
-// (scan: true) and lib/forms/read.js asks the AI to find its blanks (lib/forms/aiLocate.js).
-import { PDFDocument, PDFName, PDFTextField } from 'pdf-lib';
+// (scan: true) and lib/forms/read.js refuses it with a plain message (no AI; a scan reader is still to be chosen).
+import { createHash } from 'node:crypto';
+import { PDFCheckBox, PDFDocument, PDFName, PDFTextField } from 'pdf-lib';
 import { getDocumentProxy, getResolvedPDFJS } from 'unpdf';
 
 export const MAX_BYTES = 15 * 1024 * 1024;
@@ -223,6 +224,9 @@ function drawnBlanks(p, taken) {
     const width = s.x1 - s.x0;
     if (width > p.width * 0.9) continue; // a full-width rule between sections
     if (taken(p.page, s)) continue;
+    // The top edge of a drawn input box (a rectangle): its bottom edge, just below with the same ends, is the blank
+    // (17 Nov 2026: every boxed blank was found twice and the value printed twice, 6 pt apart).
+    if (pieces.some((o) => o !== s && o.y < s.y && s.y - o.y <= 26 && Math.abs(o.x0 - s.x0) <= 3 && Math.abs(o.x1 - s.x1) <= 3)) continue;
     // The box above it (a cell): the nearest line above that spans most of it.
     const ceiling = pieces.filter((o) => o !== s && o.y > s.y + 6 && o.y - s.y <= 45
       && Math.min(o.x1, s.x1) - Math.max(o.x0, s.x0) >= 0.5 * width).sort((a, b) => a.y - b.y)[0];
@@ -286,8 +290,21 @@ export async function detectFields(buffer) {
     throw fail(opens ? 'This PDF is locked against changes, so it can\'t be filled in. Open it, choose Print > Save as PDF '
       + '(or remove its security in Acrobat), and upload that copy.' : 'The PDF is password-protected: upload an unlocked copy', 400);
   }
+  // A copy downloaded from "Export to form" (lib/forms/fill.js EXPORT_MARK): it holds a customer's data and no blanks.
+  if (String(doc.getKeywords() || '').includes('autopulse-filled-copy')) {
+    throw fail('This PDF is a copy already filled in for a customer (downloaded with Export to form). Upload the blank '
+      + 'original form instead.', 422);
+  }
+  const hadAcroForm = Boolean(doc.catalog.lookup(PDFName.of('AcroForm'))); // getForm() below adds one when missing
   const form = doc.getForm();
   const acro = form.getFields();
+  // A fill-in form whose boxes were all removed (flattened): a copy filled in for someone - every copy downloaded
+  // before 17 Nov 2026 has no mark, but this shape - or flattened by a PDF tool. Its printed values would go on every
+  // export. (A form never fillable has no AcroForm at all and reads as usual.)
+  if (!acro.length && hadAcroForm) {
+    throw fail('This PDF\'s fill-in boxes were removed: it is a copy already filled in (or flattened). Upload the blank '
+      + 'original form instead.', 422);
+  }
   const pages = await readPages(buffer);
   const lines = textLines(pages);
   const textChars = lines.reduce((t, l) => t + l.items.reduce((s, i) => s + i.str.trim().length, 0), 0);
@@ -307,7 +324,8 @@ export async function detectFields(buffer) {
   // 1. A fillable PDF's own fields.
   for (const f of acro) {
     // instanceof, not the class name: the live build shortens class names, so a name check matched nothing.
-    if (!(f instanceof PDFTextField)) continue; // checkboxes, choices, signatures: left for the person
+    const check = f instanceof PDFCheckBox;
+    if (!(f instanceof PDFTextField) && !check) continue; // choices, signature fields: not blanks we list
     const widget = f.acroField.getWidgets()[0];
     if (!widget) continue;
     const r = widget.getRectangle();
@@ -326,7 +344,8 @@ export async function detectFields(buffer) {
     fields.push({ id: `f${(n += 1)}`, kind: 'pdf_field', pdf_field: f.getName(), label: tip || near || humanize(f.getName()),
       page, x: r.x, y: r.y, w: r.width, h: r.height, size: Math.min(11, Math.max(7, r.height * 0.6)), rot: p.rotate,
       vx: box.x, vy: box.y, vw: box.w,
-      source: (tip && matchSource(tip, { trade })) || matchSource(near, { trade }) || matchSource(humanize(f.getName()), { trade }) });
+      _trade: trade, _how: check ? 'checkbox' : tip ? 'tooltip' : 'field',
+      source: check ? null : (tip && matchSource(tip, { trade })) || matchSource(near, { trade }) || matchSource(humanize(f.getName()), { trade }) });
   }
   const taken = (page, s) => fields.some((f) => f.page === page && Math.abs((f.vy ?? f.y) - s.y) < 10
     && Math.min((f.vx ?? f.x) + (f.vw ?? f.w), s.x1) - Math.max(f.vx ?? f.x, s.x0) > 0.4 * Math.min(f.vw ?? f.w, s.x1 - s.x0));
@@ -359,6 +378,7 @@ export async function detectFields(buffer) {
         const size = Math.min(10, Math.max(7, it.size * 0.9));
         fields.push({ id: `f${(n += 1)}`, kind: 'blank', label, ...blankAt(p, { x: x + 1, y: line.y + 1, w, size }),
           h: it.size, vx: x, vy: line.y, vw: w,
+          _trade: tradeDoc || /trade/i.test(heading), _party: party, _how: 'underscore',
           source: matchSource(label, { trade: tradeDoc || /trade/i.test(heading), party }) });
       }
       before += ` ${it.str.slice(last)}`;
@@ -374,15 +394,47 @@ export async function detectFields(buffer) {
       const party = /\b(releasee|seller|dealer|dealership|lessor)\b/i.test(before.slice(-120))
         && !/\b(consentee|buyer|customer|purchaser)\b/i.test(b.label) ? 'dealer' : 'customer';
       fields.push({ id: `f${(n += 1)}`, kind: 'blank', label: b.label, ...blankAt(p, b), vx: b.x, vy: b.y, vw: b.w,
+        _trade: trade, _party: /\b(dealer|seller|releasee)\b/i.test(b.label) ? 'dealer' : party, _how: 'line',
         source: matchSource(b.label, { trade, party: /\b(dealer|seller|releasee)\b/i.test(b.label) ? 'dealer' : party }) });
     }
   }
 
-  for (const f of fields) { delete f.vx; delete f.vy; delete f.vw; }
+  for (const f of fields) { Object.assign(f, describe(f)); for (const k of ['vx', 'vy', 'vw', '_trade', '_party', '_how']) delete f[k]; }
   fields.sort((a, b) => a.page - b.page);
   // Nothing written on the page and nothing to fill: a picture of a form.
   const scan = !fields.length && textChars < 20;
-  return { fillable: acro.length > 0, pages: pages.length, scan, fields };
+  // The form's fingerprint: the same form uploaded again (by this or another dealership) reuses its saved blanks.
+  const words = lines.flatMap((l) => l.items.map((i) => i.str)).join(' ').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const fingerprint = { sha256: createHash('sha256').update(buffer).digest('hex'),
+    text_hash: words.length >= 40 ? createHash('sha256').update(words).digest('hex') : null,
+    page_sizes: pages.map((p) => `${Math.round(p.width)}x${Math.round(p.height)}`).join(','),
+    field_names: acro.length ? createHash('sha256').update(acro.map((f) => f.getName()).sort().join('|')).digest('hex') : null };
+  return { fillable: acro.length > 0, pages: pages.length, scan, fields, fingerprint };
+}
+
+// What every blank is, besides where: its type, the part of the form it is in, whether it is filled automatically, and
+// how sure the reading is (fillable field / tooltip > underscores > drawn line; an unmatched label is left for the person).
+const NEVER = /\b(sign|signature|initial|initials|ssn|social security|dob|birth|licen[cs]e|bank|routing|account|credit|co ?buyer|co ?applicant|co ?signer|price|fee|fees|tax|payment|amount|total|due|down|rebate|cost|deposit)\b/;
+const HOW_SURE = { tooltip: 0.95, field: 0.9, underscore: 0.85, line: 0.75, checkbox: 0.9 };
+export function describe(f) {
+  const l = clean(f.label).toLowerCase();
+  const fieldType = f._how === 'checkbox' ? 'checkbox' : /\binitials?\b/.test(l) ? 'initials'
+    : /\b(sign|signature)\b/.test(l) ? 'signature' : /\bdate\b/.test(l) || f.source?.startsWith('date.') ? 'date' : 'text';
+  const vehicleWord = /\b(year|make|model|trim|vin|stock|mileage|miles|odometer|colou?r|vehicle)\b/.test(l);
+  const context = /\bco ?(buyer|applicant|signer)\b/.test(l) ? 'co_buyer'
+    : f.source?.startsWith('customer.') ? 'buyer'
+      : f.source?.startsWith('trade.') || (f._trade && vehicleWord) ? 'trade_in'
+        : f.source?.startsWith('vehicle.') || vehicleWord ? 'vehicle_being_bought'
+          : f.source?.startsWith('dealer.') || f.source?.startsWith('staff.') || f._party === 'dealer' ? 'dealer'
+            : f._trade ? 'trade_in' : 'buyer';
+  // Payoff / lienholder / ACV / trade offer are trade-in values (managers only), not prices.
+  const tradeMoney = /\b(payoff|acv|lien ?holder|trade (offer|value))\b/.test(l);
+  const never = (NEVER.test(l) && !tradeMoney) || ['signature', 'initials', 'checkbox'].includes(fieldType) || context === 'co_buyer';
+  const source = never ? null : f.source;
+  const sure = HOW_SURE[f._how] ?? f.confidence ?? 0.7;
+  return { source, field_type: fieldType, context, fill_policy: source ? 'automatic' : 'person',
+    confidence: Math.round((source || never ? sure : sure * 0.6) * 100) / 100,
+    bbox: [f.x, f.y, f.x + (f.w || 0), f.y + (f.h || f.size || 0)].map((v) => Math.round(v * 10) / 10) };
 }
 
 // A fillable field's own description (its tooltip, "TU"), when the form's author gave one.

@@ -2,16 +2,16 @@
 //   GET  ?dealer_id[&usable=1]  -> { templates, can_manage }  (usable: switched on and allowed for the caller - the
 //                                  list behind the customer profile's "Export to form")
 //   POST multipart: dealer_id, name, file (PDF, or a JPG / PNG of the form) -> the form is stored as uploaded and its
-//        blanks found and matched to customer data (lib/forms/read.js). A form whose blanks the AI had to find (a scan)
-//        starts switched off, to be checked with Preview first. Library managers only ("Manage Account Information" /
-//        dealer account).
-// Errors: 400 not a PDF / picture, locked, damaged · 422 nothing to fill / XFA / scan with no AI set up · 502 AI down
-// · 401 · 403.
+//        blanks found and matched to customer data (lib/forms/read.js; no AI). The same form uploaded before reuses its
+//        saved blanks and corrections (lib/forms/reuse.js). Library managers only ("Manage Account Information" /
+//        dealer account). Standard forms: api/forms/templates/standard.
+// Errors: 400 not a PDF / picture, locked, damaged · 422 nothing to fill / XFA / a scan · 401 · 403.
 import dbConnect from '@lib/mongodb';
 import FormTemplate from '@models/FormTemplate';
 import { actorOf, canManageForms, canUseTemplate, fail, formsAccess, json, templateSummary } from '@lib/forms/access';
 import { redetectEmpty } from '@lib/forms/detect';
 import { readForm } from '@lib/forms/read';
+import { savedFieldsFor } from '@lib/forms/reuse';
 import { readFile, saveFile } from '@lib/forms/storage';
 
 export const runtime = 'nodejs';
@@ -41,13 +41,18 @@ export async function POST(req) {
   const name = String(form.get('name') || file.name || 'Form').replace(/\.pdf$/i, '').trim().slice(0, 120) || 'Form';
   let found;
   try { found = await readForm(Buffer.from(await file.arrayBuffer()), file.name); } catch (e) { return fail(e.message, e.status || 400); }
+  // Parse once per form (the user, 16 Nov 2026): the same form uploaded before takes its saved blanks, corrections
+  // included (lib/forms/reuse.js).
+  const saved = await savedFieldsFor(found.fingerprint, access.dealerId);
+  const fields = saved ? saved.fields : found.fields;
   const fileId = await saveFile(found.buffer, { filename: found.filename, dealerId: access.dealerId, kind: 'form' });
   const actor = actorOf(access.user);
-  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, active: !found.found_by_ai, current_version: 1,
+  const t = await FormTemplate.create({ dealer_id: access.dealerId, name, active: true, current_version: 1,
     versions: [{ version: 1, source_file_id: fileId, source_filename: found.filename || null, fillable: found.fillable,
-      pages: found.pages, fields: found.fields, found_by_ai: found.found_by_ai, created_by: actor.by, created_by_name: actor.by_name }],
-    history: [{ ...actor, action: 'uploaded', detail: `${found.filename || 'PDF'}: ${found.fields.length} blanks`
-      + `${found.found_by_ai ? ' (found by the AI; switched off until checked)' : ''}, `
-      + `${found.fields.filter((f) => f.source).length} filled from the customer's data` }] });
+      pages: found.pages, fields, fingerprint: found.fingerprint, ...(saved ? { reused_from: saved.reused_from } : {}),
+      created_by: actor.by, created_by_name: actor.by_name }],
+    history: [{ ...actor, action: 'uploaded', detail: `${found.filename || 'PDF'}: ${fields.length} blanks`
+      + `${saved ? ' (the same form was set up before: its blanks and corrections reused)' : ''}, `
+      + `${fields.filter((f) => f.source && f.fill_policy !== 'person').length} filled from the customer's data` }] });
   return json({ template: templateSummary(t.toObject()) }, 201);
 }
