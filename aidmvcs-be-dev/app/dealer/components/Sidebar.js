@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCan } from "../../hooks/PermissionsContext";
 import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
+import { useSidebarTitles } from "../../hooks/useSidebar";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
 import { deskLogMenuVisible } from "../desk-log/deskLogAccess";
 
@@ -25,6 +26,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const pathname = usePathname(); // Use pathname from usePathname hook
   const sidebarRef = useRef();
+  useSidebarTitles(sidebarRef, isOpen); // narrow menu: the name on hover
 
   const leadsHref = hasManageLeads ? "/dealer/leads" : "/dealer/leads?assignment=my";
   const bookingHref = hasManageLeads ? "/dealer/booking" : "/dealer/booking?assignment=my";
@@ -88,7 +90,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   }, [isOpen, onClose]);
 
   return (
-    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : ""}`}>
+    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
         <li>
           <Link href="/dealer/dashboard" className={getLinkClass("/dealer/dashboard")}>
