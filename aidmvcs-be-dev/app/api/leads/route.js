@@ -177,9 +177,10 @@ export async function GET(req) {
         { assigned_to: { $exists: false } }
       ];
     } else if (assignmentFilter === 'all') {
-      // Only allow viewing all leads if user has Manage Leads
+      // Only allow viewing all leads if user has Manage Leads (or the read-only role's "View All Leads (Read Only)",
+      // SOW G-054 - it sees every lead and the server refuses its changes)
       if (currentUser && currentUser.parent_id) {
-        const hasManageLeads = userPermissions.includes("Manage Leads");
+        const hasManageLeads = userPermissions.includes("Manage Leads") || userPermissions.includes("View All Leads (Read Only)");
         if (!hasManageLeads) {
           // Restrict to only user's assigned leads
           query.assigned_to = currentUser._id;
@@ -189,7 +190,7 @@ export async function GET(req) {
       // No assignment filter specified - apply permission-based filtering for staff
       if (currentUser && currentUser.parent_id) {
         // User is staff (has parent_id)
-        const hasManageLeads = userPermissions.includes("Manage Leads");
+        const hasManageLeads = userPermissions.includes("Manage Leads") || userPermissions.includes("View All Leads (Read Only)");
         const hasViewAssigned = userPermissions.includes("View Assigned Leads");
         
         if (!hasManageLeads && hasViewAssigned) {

@@ -86,6 +86,17 @@ export default function RoleManagement() {
               >
                 <i className="fa fa-plus me-1"></i> Add Role
               </Button>
+              {/* SOW G-054: the standard dealership roles in one click (app/lib/standardRoles.js). */}
+              <Button variant="outline-custom" size="sm" className="ms-2" onClick={async () => {
+                if (!window.confirm("Add the standard roles - Rooftop Admin, Executive, Sales Manager, BDC / Sales, Service and Read-only? Roles you already have are kept as they are; nobody's role changes.")) return;
+                const res = await fetch("/api/roles/standard", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` } });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { window.alert(data.message || "Could not add the roles"); return; }
+                window.alert(data.created.length ? `Added: ${data.created.join(", ")}${data.skipped.length ? `. Already there: ${data.skipped.join(", ")}` : ""}` : "You already have all the standard roles.");
+                fetchRolesAndPermissions();
+              }}>
+                <i className="fa-regular fa-users-gear me-1"></i> Add standard roles
+              </Button>
             </div>
           </div>
         </div>

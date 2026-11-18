@@ -14,7 +14,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const manage_role = useCan("Manage Employee's  Role");
   const manage_staff = useCan("Manage Employee");
   const hasManageLeads = useCan("Manage Leads");
-  const hasViewAssigned = useCan("View Assigned Leads");
+  // A read-only role (SOW G-054, app/lib/standardRoles.js) sees the same pages; the server refuses its changes.
+  const viewAssignedOnly = useCan("View Assigned Leads");
+  const viewAllReadOnly = useCan("View All Leads (Read Only)");
+  const hasViewAssigned = viewAssignedOnly || viewAllReadOnly;
   const canFollowupSettings = useCan("Manage Follow-up setting");
   const canMessageTemplate = useCan("Manage Message Template");
   const canSubscription = useCan("Manage Subscription");
