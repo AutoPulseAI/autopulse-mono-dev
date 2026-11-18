@@ -8,6 +8,9 @@ const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const HEX = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i;
 const DASH = '—';
+// Every label and number is this dark grey. The dealer's title colour is for the store name only, so a dealer whose
+// brand colour is red (Victory Cars Central, 19 Nov 2026) doesn't get an email where every number looks like an alarm.
+const INK = '#1f2937';
 
 function color(value, fallback) {
   return HEX.test(String(value || '').trim()) ? String(value).trim() : fallback;
@@ -118,9 +121,9 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
 
   const row = (label, value, note = '') => `
             <tr>
-              <td style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:16px;color:${b.text}">${esc(label)}${note
+              <td style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:16px;color:${INK}">${esc(label)}${note
     ? `<div style="font-size:12px;color:#6b7280">${esc(note)}</div>` : ''}</td>
-              <td align="right" style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:18px;font-weight:bold;color:${b.text}">${esc(value)}</td>
+              <td align="right" style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:18px;font-weight:bold;color:${INK}">${esc(value)}</td>
             </tr>`;
   const heading = (title, sub = '') => `
           <tr><td style="padding:24px 24px 4px 24px">
@@ -153,7 +156,7 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
   // the right. Each line is its own count - they are never added into one "wins" total (SOW F2).
   const win = (icon, bg, fg, label, value, kpi) => {
     const href = kpi ? drill(kpi) : null;
-    const num = `<span style="font-size:20px;font-weight:bold;color:${b.text}">${esc(value)}</span>`;
+    const num = `<span style="font-size:20px;font-weight:bold;color:${INK}">${esc(value)}</span>`;
     return `
                 <tr>
                   <td width="40" valign="middle" style="padding:12px 0 12px 14px;border-bottom:1px solid #eceff1">
@@ -231,7 +234,13 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     row('Cancelled', n(a.cancelled, aStale), 'Of the appointments set this day'),
     row('Rescheduled', unavailable.has('appointments.rescheduled') ? DASH : n(a.rescheduled, aStale),
       unavailable.has('appointments.rescheduled') ? 'Not tracked yet' : ''),
+    ...(v4 ? [row('Sold', n(m.sold?.count, soldStale), 'Leads set to a sold status this day (CRM status)')] : []),
   ].join(''))}
+        ${v4 && dept && (dept.service?.total || 0) > 0 ? `${heading('Sales and service', "Appointments set this day, by the lead's department")}
+        ${table([
+    row('Sales', n(dept.sales?.total, deptStale), `AI ${n(dept.sales?.ai, deptStale)} · AI-assisted ${n(dept.sales?.ai_assisted, deptStale)}`),
+    row('Service', n(dept.service?.total, deptStale), `AI ${n(dept.service?.ai, deptStale)} · AI-assisted ${n(dept.service?.ai_assisted, deptStale)}`),
+  ].join(''))}` : ''}
         ${heading('Customers who replied', 'Each customer counted once for the day')}
         ${table([
     row("From today's leads", n(r.todays_leads, rStale)),
