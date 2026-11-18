@@ -14,6 +14,7 @@
 // Sends go through app/lib/email.js sendEmail, so PROVIDER_SEND_STUB (app/lib/providerStub.js) applies.
 // Imports are relative so the worker (plain Node) can load this module.
 import mongoose from 'mongoose';
+import { csvLink } from './dailyCsv.js';
 import moment from 'moment-timezone';
 import DailyReportDelivery from '../../models/DailyReportDelivery.js';
 import User from '../../models/User.js';
@@ -45,6 +46,12 @@ export function dashboardUrl(env = process.env) {
   const base = env.DAILY_REPORT_DASHBOARD_URL || env.NEXT_PUBLIC_APP_URL || env.APP_URL || env.NEXT_PUBLIC_BASE_URL;
   if (!base || !/^https?:\/\//i.test(base)) return null;
   return `${String(base).replace(/\/+$/, '')}/dealer/dashboard`;
+}
+
+// The signed CSV link for a day (app/lib/reports/dailyCsv.js), on the CRM's own address.
+export function csvUrlFor(dealerId, reportDate, env = process.env, now = Date.now()) {
+  const dash = dashboardUrl(env);
+  return dash ? csvLink(dash.replace(/\/dealer\/dashboard$/, ''), String(dealerId), reportDate, now) : null;
 }
 
 export function fromAddress(env = process.env) {
@@ -118,7 +125,7 @@ export async function runDailyReport({ dealerId, reportDate, now = new Date(), e
   }
   const snapshot = await getOrBuildSnapshot({ dealerId, reportDate, now, dealer });
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env), mode,
-    liveRecipientCount: dealerRecipients(dealer).length });
+    liveRecipientCount: dealerRecipients(dealer).length, csvUrl: csvUrlFor(dealerId, reportDate, env) });
 
   const results = [];
   for (const recipient of recipients) {
@@ -162,7 +169,7 @@ export async function resendDailyReport({ dealerId, reportDate, requestedBy, now
   if (!recipients.length) return { ok: false, status: 409, message: 'No recipients for this dealer in its current mode' };
   const snapshot = await getOrBuildSnapshot({ dealerId, reportDate, now, dealer });
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env), mode,
-    liveRecipientCount: dealerRecipients(dealer).length });
+    liveRecipientCount: dealerRecipients(dealer).length, csvUrl: csvUrlFor(dealerId, reportDate, env) });
   const requestId = `resend-${new mongoose.Types.ObjectId()}`;
   const originals = await DailyReportDelivery.find({ dealer_id: dealer._id, report_date: reportDate,
     resend_of: null }).select('_id recipient').lean();
@@ -188,7 +195,8 @@ export async function previewDailyReport({ dealerId, reportDate, now = new Date(
   const snapshot = saved || await computeDailySnapshot({ dealerId, reportDate, now, dealer });
   const mode = dailyEmailMode(dealer);
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env),
-    mode: mode === 'internal' ? 'internal' : 'live', liveRecipientCount: dealerRecipients(dealer).length });
+    mode: mode === 'internal' ? 'internal' : 'live', liveRecipientCount: dealerRecipients(dealer).length,
+    csvUrl: saved ? csvUrlFor(dealerId, reportDate, env) : null });
   return { ok: true, ...rendered, mode, snapshot_saved: Boolean(saved),
     day_finished: isFinishedDay(reportDate, dealerTimezone(dealer), now),
     recipients: resolveRecipients(dealer, { env, mode }) };
