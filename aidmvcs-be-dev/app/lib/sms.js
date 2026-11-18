@@ -1,6 +1,7 @@
 import twilio from 'twilio';
 import { isProviderSendStubbed, recordStubSend } from './providerStub.js';
 import { dealerAllowed } from './ai/aiMode.js';
+import { blockedError, contactGate } from './compliance/eligibility.js';
 
 // Initialize Twilio client
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -25,8 +26,13 @@ function isLiveSmsOptIn(env = process.env) {
   return ['true', '1', 'yes'].includes(String(env.PROVIDER_SEND_LIVE_SMS || '').toLowerCase());
 }
 
-export async function sendSMS(to, body, dealer, mediaUrls = []) {
+// meta (optional): { origin: 'ai' | 'staff' | 'automation', reply: true when answering the customer's message, leadId }
+// for the contact-eligibility check (app/lib/compliance/eligibility.js; SOW Deliverable L), which every text passes.
+export async function sendSMS(to, body, dealer, mediaUrls = [], meta = {}) {
   try {
+    const gate = await contactGate({ dealerId: dealer?._id, channel: 'sms', to, origin: meta?.origin || 'unknown',
+      reply: Boolean(meta?.reply), leadId: meta?.leadId || null });
+    if (gate.stop) throw blockedError(gate);
     // Local/dev runs never reach Twilio (app/lib/providerStub.js), unless the
     // run opts in to real SMS (PROVIDER_SEND_LIVE_SMS, `make crm-local-sms`).
     // On the live database (CRM_LIVE_DB) only the allowlisted test dealer's texts are really sent.
@@ -109,6 +115,11 @@ export async function sendSMS(to, body, dealer, mediaUrls = []) {
   } catch (error) {
     // Classify Twilio errors to help workers decide retry vs. no-retry
     const code = error?.code;
+    if (code === 'CONTACT_BLOCKED') {
+      // Stopped by the contact-eligibility check (enforce mode only): never retried.
+      console.warn('SMS not sent:', error.message);
+      throw error;
+    }
     if (code === 21610) {
       // Unsubscribed (STOP) — permanent failure until user opts back in
       error.retryable = false;

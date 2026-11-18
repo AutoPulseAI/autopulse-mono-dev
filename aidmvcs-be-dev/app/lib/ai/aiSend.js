@@ -147,7 +147,7 @@ export async function sendAiMessage(body, {
       throw new AiSendError('Dealer has no Twilio number (sms_conversion_phone)', { httpStatus: 422, retryable: false });
     }
     try {
-      providerId = await sendSMS(body.to, body.text, dealer, mediaUrls);
+      providerId = await sendSMS(body.to, body.text, dealer, mediaUrls, { origin: 'ai', leadId: lead._id });
     } catch (error) {
       throw classifyProviderError(error);
     }
@@ -167,7 +167,7 @@ export async function sendAiMessage(body, {
         { ...dealer, branding_information: dealer.branding_information || {},
           dealer_account_information: dealer.dealer_account_information || {} },
         // 28 Oct 2026 meeting: an unsubscribe link and open tracking on every AI email (app/lib/ai/emailTracking.js).
-        [], emailLinks(body.idempotency_key));
+        [], { ...emailLinks(body.idempotency_key), eligibility: { origin: 'ai', leadId: lead._id } });
     } catch (error) {
       throw classifyProviderError(error);
     }
