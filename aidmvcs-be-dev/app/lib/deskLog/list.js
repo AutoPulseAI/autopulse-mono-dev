@@ -23,7 +23,10 @@ export const VIEWS = Object.freeze({
   handoff: 'Handed to a manager',
 });
 
-export const MAX_ROWS = 500;
+// Visits read for one list (18 Nov 2026: paged - the page shows PAGE_SIZES rows at a time, newest first). A range with
+// more visits than this says so (truncated) and asks for fewer days.
+export const MAX_ROWS = 5000;
+export const PAGE_SIZES = Object.freeze([25, 50, 100]);
 
 const digits = (s) => String(s || '').replace(/\D/g, '');
 
@@ -51,7 +54,8 @@ function inView(row, view, now) {
  *   now?: Date}} args  filters: { department, lead_type, source, salesperson_id, sales_manager_id, bdc_agent_id,
  *   stage, outcome }
  */
-export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = '', filters = {}, now = new Date() }) {
+export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = '', filters = {}, now = new Date(),
+  page = 1, limit = PAGE_SIZES[0] }) {
   const { start, end } = localDayRange(from, to, tz);
   const match = { dealer_id: String(dealerId), checked_in_at: { $gte: start, $lte: end } };
   if (filters.department) match.department = filters.department;
@@ -59,7 +63,7 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
   for (const k of ['salesperson_id', 'sales_manager_id']) {
     if (filters[k] && mongoose.isValidObjectId(filters[k])) match[k] = new mongoose.Types.ObjectId(filters[k]);
   }
-  const entries = await DeskLogEntry.find(match).sort({ checked_in_at: -1, _id: -1 }).limit(MAX_ROWS * 2).lean();
+  const entries = await DeskLogEntry.find(match).sort({ checked_in_at: -1, _id: -1 }).limit(MAX_ROWS).lean();
   const leads = new Map((await Lead.find({ _id: { $in: entries.map((e) => e.lead_id) },
     dealer_id: { $in: dealerForms(dealerId) } })
     .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin appointment_showed_at booking.booking_at '
@@ -152,10 +156,15 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     if (filters.dnd === 'exclude' && isDnd) continue;
     if (!inView(row, view, now) || !matchesSearch(row, q)) continue;
     rows.push(row);
-    if (rows.length >= MAX_ROWS) break;
   }
-  await checkSoldAgainstDms(dealerId, rows, leads, tz);
-  return { rows, sources: [...sources].sort((a, b) => a.localeCompare(b)), truncated: rows.length >= MAX_ROWS };
+  // One page of the matching visits; the DMS check runs for the rows shown.
+  const size = PAGE_SIZES.includes(Number(limit)) ? Number(limit) : PAGE_SIZES[0];
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  const at = Math.min(Math.max(1, Number.parseInt(page, 10) || 1), pages);
+  const shown = rows.slice((at - 1) * size, at * size);
+  await checkSoldAgainstDms(dealerId, shown, leads, tz);
+  return { rows: shown, total: rows.length, page: at, pages, limit: size,
+    sources: [...sources].sort((a, b) => a.localeCompare(b)), truncated: entries.length >= MAX_ROWS };
 }
 
 // G-016 "DMS-backed delivered verification; DMS discrepancies flagged": each SOLD visit is looked up in the dealer's

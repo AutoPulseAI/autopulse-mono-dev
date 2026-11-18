@@ -3,6 +3,7 @@
 // checks the customer in (their appointment is marked showed, the visit starts on the table below); "Status" changes
 // the lead's status the same way as the Leads page (No Show, move the appointment, Visited with its outcome, ...), so
 // the follow-ups that status starts run as usual.
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -17,7 +18,11 @@ const STATE = {
 };
 const timeText = (t) => { const m = moment(String(t || ""), ["HH:mm", "H:mm", "h:mm A"], true); return m.isValid() ? m.format("h:mm A") : t || ""; };
 
+// A busy day: the first SHOWN appointments, then "Show all".
+const SHOWN = 10;
+
 export default function AppointmentsToday({ day, items, tz, onCheckIn, onStatus, loading }) {
+  const [all, setAll] = useState(false);
   if (!items) return null;
   const today = day === moment.tz(tz).format("YYYY-MM-DD");
   const counts = items.reduce((c, a) => ({ ...c, [a.status]: (c[a.status] || 0) + 1 }), {});
@@ -39,7 +44,7 @@ export default function AppointmentsToday({ day, items, tz, onCheckIn, onStatus,
           <table className="table table-sm align-middle mb-0 small">
             <thead><tr><th>Time</th><th>Customer</th><th>Type</th><th>Booked by</th><th>Lead status</th><th>Arrival</th><th /></tr></thead>
             <tbody>
-              {items.map((a) => {
+              {(all ? items : items.slice(0, SHOWN)).map((a) => {
                 const st = STATE[a.status] || STATE.waiting;
                 return (
                   <tr key={a.booking_id}>
@@ -67,6 +72,10 @@ export default function AppointmentsToday({ day, items, tz, onCheckIn, onStatus,
               })}
             </tbody>
           </table>
+          {items.length > SHOWN && (
+            <button type="button" className="btn btn-link btn-sm p-0 mt-1" onClick={() => setAll((v) => !v)}>
+              {all ? "Show fewer" : `Show all ${items.length} appointments`}</button>
+          )}
         </div>
       )}
     </div>
