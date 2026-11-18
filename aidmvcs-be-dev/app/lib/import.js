@@ -16,6 +16,28 @@ async function ensureDb() {
 export class VehicleImportService {
   // Rows per dealer in this run's feeds (markGone uses it).
   seen = new Map();
+  // New / Used per dealer in this run's feeds. 19 Nov 2026 (Pristine Mitsubishi: "two feed providers, one will send us
+  // new cars and one will send us used cars"): a run that only brought the dealer's new-car file must not mark its
+  // used cars gone (and the other way round) - only cars of the kind this run brought are checked.
+  conditions = new Map();
+
+  // The kind of car a feed row is ('new' | 'used'), or null.
+  static conditionOf(record) {
+    const c = String(record?.condition ?? '').trim().toLowerCase();
+    if (c === 'new' || c === 'n') return 'new';
+    if (c === 'used' || c === 'u' || c === 'certified' || c === 'cpo' || c.startsWith('pre-owned') || c.startsWith('preowned')) return 'used';
+    return null;
+  }
+
+  // The cars markGone may touch for a dealer: all of them, or only the new / only the used ones when every row this run
+  // brought for the dealer was that kind.
+  goneScope(dealerId) {
+    const kinds = this.conditions.get(dealerId);
+    if (!kinds || kinds.size !== 1 || kinds.has(null)) return {};
+    return [...kinds][0] === 'new'
+      ? { condition: { $regex: /^\s*(new|n)\s*$/i } }
+      : { condition: { $not: /^\s*(new|n)\s*$/i, $exists: true, $nin: [null, ''] } };
+  }
 
   // 25 Oct 2026 (Betsy: a vehicle link opened search results - the car was sold, 740 sold cars still listed): a car
   // missing from its dealer's feed in this run is gone - marked, never deleted, so its links and history stay. A
@@ -24,11 +46,12 @@ export class VehicleImportService {
     const out = {};
     for (const [dealerId, rows] of this.seen) {
       // Its feeds over the last week (this run included): a file far smaller than that is partial - nothing is marked.
-      const recent = await Vehicle.countDocuments({
+      const scope = this.goneScope(dealerId);
+      const recent = await Vehicle.countDocuments({ ...scope,
         dealerId, removedAt: null, updatedAt: { $gte: new Date(runStart.getTime() - 7 * 24 * 3600 * 1000) } });
       if (rows < Math.max(5, recent * 0.2)) { out[dealerId] = `skipped: ${rows} rows vs ${recent} recent`; continue; }
       const res = await Vehicle.updateMany(
-        { dealerId, removedAt: null, updatedAt: { $lt: runStart } },
+        { ...scope, dealerId, removedAt: null, updatedAt: { $lt: runStart } },
         { $set: { removedAt: new Date() } });
       out[dealerId] = res.modifiedCount;
     }
@@ -111,6 +134,8 @@ export class VehicleImportService {
     for (const op of bulkOps) {
       const id = String(op.updateOne.filter.dealerId);
       this.seen.set(id, (this.seen.get(id) || 0) + 1);
+      if (!this.conditions.has(id)) this.conditions.set(id, new Set());
+      this.conditions.get(id).add(VehicleImportService.conditionOf(op.updateOne.update.$set));
     }
     if (bulkOps.length) {
       const result = await Vehicle.bulkWrite(bulkOps);
