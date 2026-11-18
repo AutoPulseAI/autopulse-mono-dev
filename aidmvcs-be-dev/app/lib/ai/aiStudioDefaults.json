@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-12T22:57:12.385654+00:00",
- "revision": 40,
+ "exported_at": "2026-11-18T18:39:03.781056+00:00",
+ "revision": 41,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -2329,6 +2329,10 @@
      {
       "reason_starts_with": "Customer says they're not interested any more",
       "why": "a person decides whether to close the lead"
+     },
+     {
+      "reason_starts_with": "Customer found or bought a car elsewhere",
+      "why": "the customer bought elsewhere: the dealer closes the lead as lost"
      }
     ]
    },
