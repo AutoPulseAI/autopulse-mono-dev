@@ -32,3 +32,17 @@ export const staffList = (dealerId) => call(`/api/staff/list?${query({ dealer_id
 export const deskLogRules = (dealerId) => call(`/api/desk-log/rules?${query({ dealer_id: dealerId })}`);
 export const saveDeskLogRules = (body) => call("/api/desk-log/rules", { method: "PUT", body: JSON.stringify(body),
   headers: { "Content-Type": "application/json" } });
+// The day's appointments (api/desk-log/appointments).
+export const deskLogAppointments = (params) => call(`/api/desk-log/appointments?${query(params)}`);
+
+/**
+ * A lead's status changed from the Desk Log (No Show, Appointment Booked, Visited with its outcome, ...): the same
+ * status route as the Leads page, so its workflows run. A full appointment slot throws the StatusModal's
+ * "Book {next available}" answer (app/lib/bookingConflict.js).
+ */
+export async function changeLeadStatus(leadId, status, extra = {}) {
+  const { throwIfStatusFailed } = await import("../../lib/bookingConflict");
+  const res = await fetch("/api/conversations/lead/status", { method: "PUT",
+    headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: leadId, status, ...extra }) });
+  await throwIfStatusFailed(res, extra);
+}

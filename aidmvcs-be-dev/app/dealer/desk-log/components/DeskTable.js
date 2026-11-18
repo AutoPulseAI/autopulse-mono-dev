@@ -28,7 +28,7 @@ function appliedText(a) {
   return parts.length ? `Saved: ${parts.join(", ")}.` : null;
 }
 
-export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId, rules }) {
+export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId, rules, onStatus = null }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -104,8 +104,6 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
     await onChanged();
   };
 
-  if (!rows.length) return <div className="dl_table_wrap p-4 text-center text-muted">{empty}</div>;
-
   return (
     <>
       {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -140,6 +138,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
             </tr>
           </thead>
           <tbody>
+            {/* 18 Nov 2026: the columns always show, also before anyone is checked in for these dates. */}
+            {!rows.length && <tr><td colSpan={16} className="p-4 text-center text-muted">{empty}</td></tr>}
             {shown.map((row) => {
               const at = moment(row.checked_in_at).tz(tz);
               const choice = choiceOf(row);
@@ -169,6 +169,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       <i className="fa-solid fa-car me-1" />Car found ({row.car_finder_matches}) - see details</small>}
                     {row.lead_status === "Opted Out" && <small className="d-block text-muted">Opted out (see the lead for which channel)</small>}
                     {row.department === "service" && <span className="dl_type mt-1">Service</span>}
+                    {row.created_via === "leads_page" && <small className="d-block text-muted">Recorded on the Leads page</small>}
+                    {row.created_via === "appointments" && <small className="d-block text-muted">Marked showed on Appointments</small>}
                   </td>
                   <td className="text-nowrap">{row.stock_number || <span className="text-muted">-</span>}</td>
                   <td className="dl_vehicle">{vehicle || <span className="text-muted">-</span>}</td>
@@ -199,6 +201,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   <td>{person(row, "sales_manager_id")}</td>
                   <td>{person(row, "bdc_agent_id")}</td>
                   <td className="dl_note">{row.latest_note?.text || <span className="text-muted">-</span>}
+                    {row.latest_note?.from_lead && <small className="d-block text-muted">Note on the lead{row.latest_note.by ? ` - ${row.latest_note.by}` : ""}</small>}
                     {row.next_step_at && (
                       <small className="d-block text-muted">Next step: {moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}</small>
                     )}
@@ -211,10 +214,11 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                         onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
                         <i className="fa-regular fa-comment-dots"></i></Link>
                     )}
-                    {!dnd && (
-                      <Link href={leadLink(row.lead_id)} title="Book an appointment (opens the lead, set its status to Appointment Set)"
-                        aria-label="Appointment" onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}>
-                        <i className="fa-regular fa-calendar-plus"></i></Link>
+                    {/* 18 Nov 2026: book an appointment (or any status) right here, through the Leads page's status window. */}
+                    {!dnd && onStatus && (
+                      <button type="button" title="Book an appointment / change the lead's status" aria-label="Appointment"
+                        onClick={() => onStatus({ leadId: row.lead_id, name: row.customer, status: row.lead_status })}>
+                        <i className="fa-regular fa-calendar-plus"></i></button>
                     )}
                     <button type="button" title="Details, notes and history" aria-label="Details"
                       onClick={() => onOpen({ id: row.id, name: row.customer })}><i className="fa-solid fa-ellipsis-vertical"></i></button>
@@ -229,6 +233,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       {!choice && <option value="">Pick outcome</option>}
                       {OUTCOME_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </Form.Select>
+                    {row.outcome_from_lead && <small className="d-block text-muted">Set on the Leads page</small>}
                     {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}
                     {row.dms?.flag === "not_in_dms" && <small className="d-block text-danger">Not in the DMS yet</small>}
                     {row.dms?.flag === "dms_delivered" && (

@@ -14,6 +14,7 @@ import Lead from '@models/Lead';
 import Booking from '@models/Booking';
 import { notifyManagers } from '@lib/ai/managerAlerts';
 import { setOwnership } from '@lib/ownership';
+import { logActivity } from '@lib/activityLog';
 
 export async function POST(req) {
   if (!verifyInternalServiceToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,7 +29,7 @@ export async function POST(req) {
   try {
     await dbConnect();
     const result = await markLeadClosedFromAi(body, { Lead, Email, Booking, clearPendingJobs, cancelAllRemindersForLead,
-      createManagerialReviewMessages, notifyManagers });
+      createManagerialReviewMessages, notifyManagers, logActivity });
     if (!result.found) return NextResponse.json({ error: 'Lead not found for this dealer' }, { status: 404 });
     // SOW G-085: the customer told the AI they no longer own the vehicle - kept on the customer, so an older DMS
     // record never shows them as its owner again (app/lib/ownership.js).

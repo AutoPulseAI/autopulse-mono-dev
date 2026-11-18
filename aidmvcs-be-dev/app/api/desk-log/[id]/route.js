@@ -19,6 +19,8 @@ import { notifyManagers } from '@lib/ai/managerAlerts';
 import dbConnect from '@lib/mongodb';
 import { logActivity } from '@lib/activityLog';
 import { PUT as changeLeadStatus } from '../../conversations/lead/status/route.js';
+import { PUT as updateLead } from '../../leads/[id]/route.js';
+import { noteOnLead } from '@lib/deskLog/sync';
 
 async function staffName(id) {
   if (!id || !mongoose.isValidObjectId(String(id))) return null;
@@ -50,10 +52,24 @@ async function setLeadStatus(req, leadId, change) {
   const headers = new Headers({ 'content-type': 'application/json' });
   for (const h of ['authorization', 'cookie']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
   const res = await changeLeadStatus(new Request(new URL('/api/conversations/lead/status', req.url), {
-    method: 'PUT', headers, body: JSON.stringify({ id: String(leadId), ...change }) }));
+    method: 'PUT', headers, body: JSON.stringify({ id: String(leadId), ...change, from_desk_log: true }) }));
   if (res.ok) return null;
   const data = await res.json().catch(() => ({}));
   return { status: res.status, message: data.error || data.message || 'The lead status could not be changed' };
+}
+
+/**
+ * The BDC agent is the lead's owner (18 Nov 2026: "the BDC agent is a one-time copy" - now one value): changing it
+ * here reassigns the lead through the Leads page's own route (its timeline entry and undo), with this sign-in.
+ */
+async function reassignLead(req, leadId, assignedTo) {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  for (const h of ['authorization', 'cookie']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
+  const res = await updateLead(new Request(new URL(`/api/leads/${leadId}`, req.url), {
+    method: 'PUT', headers, body: JSON.stringify({ assigned_to: assignedTo || null }) }), { params: { id: String(leadId) } });
+  if (res.ok) return null;
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, message: data.error || data.message || 'The lead could not be reassigned' };
 }
 
 export async function PATCH(req, { params }) {
@@ -83,6 +99,11 @@ export async function PATCH(req, { params }) {
   const plan = planChanges(entry, body || {}, { now });
   if (plan.errors) return json({ message: plan.errors.join('; '), errors: plan.errors }, 400);
   if (!Object.keys(plan.set).length && !plan.note) return json({ entry: { id: String(entry._id) }, changed: false });
+
+  if ('bdc_agent_id' in plan.set) {
+    const refused = await reassignLead(req, entry.lead_id, plan.set.bdc_agent_id ? String(plan.set.bdc_agent_id) : null);
+    if (refused) return json({ message: refused.message }, refused.status >= 500 ? 502 : 409);
+  }
 
   let applied = null;
   if (plan.outcomeChanged) {
@@ -120,6 +141,8 @@ export async function PATCH(req, { params }) {
   const base = { dealer_id: entry.dealer_id, customer_id: entry.customer_id || null, lead_id: entry.lead_id,
     actor_type: 'staff', actor_id: by, actor_name: byName };
   for (const h of plan.history) {
+    // The BDC agent change is already on the timeline as the lead's reassignment.
+    if (h.field === 'bdc_agent_id') continue;
     if (h.field === 'stage') {
       await logActivity({ ...base, action: 'desk_log_stage', from: h.from || null, to: h.to || 'No stage' });
     } else if (people[h.field]) {
@@ -127,7 +150,8 @@ export async function PATCH(req, { params }) {
         to: (await staffName(h.to)) || 'nobody' });
     }
   }
-  if (plan.note) await logActivity({ ...base, action: 'desk_log_note', detail: plan.note.slice(0, 500) });
+  // The note is on the lead's conversation too (and so on the customer timeline as a note).
+  if (plan.note) await noteOnLead({ entry, text: plan.note, at: now, by, byName });
   return json({ entry: { id: String(entry._id) }, changed: true, applied });
 }
 

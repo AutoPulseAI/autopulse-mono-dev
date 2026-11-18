@@ -912,6 +912,13 @@ export async function PUT(request) {
       }
     }
 
+    // 18 Nov 2026: staff marked the customer as showed here - that visit is on the Desk Log too (app/lib/deskLog/sync.js).
+    if (showed === true && caller.kind === 'staff' && existingBooking.showed !== true) {
+      const { syncDeskLogFromLead } = await import('@lib/deskLog/sync');
+      await syncDeskLogFromLead({ leadId: existingBooking.lead_id, status: null, via: 'appointments',
+        actorId: caller.user?._id || null, actorName: caller.user?.name || caller.user?.email || null });
+    }
+
     return json({ success: true, booking: updatedBooking });
   } catch (error) {
     console.error('Booking update error:', error);

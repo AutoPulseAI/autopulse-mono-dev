@@ -129,7 +129,8 @@ export async function buildActivity({ dealerId, customerId, customerIds = null, 
       .project({ lead_id: 1, history: 1, createdAt: 1, created_by: 1, bookingTime: 1, appointment_type: 1 }).limit(MAX).toArray() : [],
   ]);
   const entries = [
-    ...staff.map(staffEntry),
+    // The AI's status changes are shown by their note ("Set to ... by the AI"); its ActivityLog copy is for Reports.
+    ...staff.filter((a) => !(a.actor_type === "ai" && a.action === "status_changed")).map(staffEntry),
     ...messages.filter((m) => !isRawLeadFile(m.mail_content)).map(messageEntry),
     ...states.flatMap(stageEntries),
     ...consents.map(consentEntry),

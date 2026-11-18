@@ -26,7 +26,7 @@ export const STATE = Object.freeze({ LIVE: 'live', BLOCKED: 'blocked', NEEDS_DAT
 export const KIND = Object.freeze({ COUNT: 'count', RATE: 'rate', MEDIAN: 'median' });
 
 // Filters a KPI can apply, by what its rows are linked to.
-export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'assigned_to']);
+export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'assigned_to', 'department']);
 export const BOOKING_FILTERS = Object.freeze([...LEAD_FILTERS, 'actor', 'appointment_type']);
 export const MESSAGE_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);
 export const REPLY_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);
@@ -336,12 +336,22 @@ export function pct(num, den) {
 export async function firstStatusChangeLeads(args, ctx, key, regex) {
   return memo(ctx, `status_change:${key}`, async () => {
     const w = await windowFor(args);
-    const firsts = await collection('activitylogs').aggregate([
+    let firsts = await collection('activitylogs').aggregate([
       { $match: { dealer_id: { $in: dealerForms(args.dealerId) }, action: 'status_changed', to: regex,
         lead_id: { $ne: null } } },
       { $group: { _id: '$lead_id', at: { $min: '$at' }, to: { $first: '$to' } } },
-      { $match: { at: { $gte: w.start, $lte: w.end } } },
     ]).toArray();
+    // 18 Nov 2026 (Desk Log "Dealership Action Required" 0 while the AI had escalated leads): a status the AI set is
+    // counted too. From now on the AI's change is in ActivityLog as well (app/lib/ai/aiDnd.js); before that only the
+    // lead itself says so (status_source 'ai', statusChangedAt) - those leads are added, at their earliest date.
+    const byLead = new Map(firsts.map((r) => [String(r._id), r]));
+    const aiSet = await collection('leads').find({ dealer_id: { $in: dealerForms(args.dealerId) }, status_source: 'ai',
+      fe_lead_status: regex, statusChangedAt: { $lte: w.end } }).project({ _id: 1, fe_lead_status: 1, statusChangedAt: 1 }).toArray();
+    for (const l of aiSet) {
+      const had = byLead.get(String(l._id));
+      if (!had || l.statusChangedAt < had.at) byLead.set(String(l._id), { _id: l._id, at: l.statusChangedAt, to: l.fe_lead_status });
+    }
+    firsts = [...byLead.values()].filter((r) => r.at >= w.start && r.at <= w.end);
     const ids = firsts.map((r) => String(r._id));
     const pass = await passingLeads(args, ids);
     const keep = firsts.filter((r) => !pass || pass.has(String(r._id)));
