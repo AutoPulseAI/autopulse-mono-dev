@@ -57,20 +57,30 @@ function Pencil({ onClick, title }) {
   );
 }
 
-// One field shown as text with a pencil; the pencil turns it into an input / select with Save and Cancel.
+// One field shown as text with a pencil; the pencil turns it into an input or a menu that saves by itself (SOW G-082):
+// a menu at once, typed text when the field loses focus or on Enter; Escape puts the saved value back. "Saving /
+// Saved / Not saved + Try again" shows beside it; a failed save keeps what was typed.
 function InlineField({ label, value, display, options, onSave, inputType = "text", placeholder, allowEmpty = false }) {
   const [draft, setDraft] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const save = async () => {
-    setBusy(true); setError(null);
-    try { await onSave(draft); setDraft(null); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  const [state, setState] = useState(null); // null | 'saving' | 'saved' | { error }
+  const commit = async (v) => {
+    const next = String(v ?? "");
+    if (next === String(value ?? "")) { setDraft(null); return; }
+    if (!options && !allowEmpty && !next.trim()) { setState({ error: "Can't be empty - put back" }); setDraft(null); return; }
+    setState("saving");
+    try { await onSave(next); setDraft(null); setState("saved"); setTimeout(() => setState((s) => (s === "saved" ? null : s)), 2500); }
+    catch (e) { setState({ error: e.message || "Could not save" }); }
   };
+  const status = state === "saving" ? <small className="text-muted">Saving…</small>
+    : state === "saved" ? <small className="text-success">Saved</small>
+    : state?.error ? <small className="text-danger">Not saved: {state.error}{draft !== null && <> · <Button size="sm"
+        variant="link" className="p-0 align-baseline" onClick={() => commit(draft)}>Try again</Button></>}</small> : null;
   if (draft === null) {
     return (
-      <span className="d-inline-flex align-items-center">
+      <span className="d-inline-flex flex-wrap align-items-center gap-1">
         {label && <strong className="me-1">{label}:</strong>}{display ?? value ?? "Not set"}
-        <Pencil onClick={() => { setError(null); setDraft(String(value ?? "")); }} title={`Edit ${label || "name"}`} />
+        <Pencil onClick={() => { setState(null); setDraft(String(value ?? "")); }} title={`Edit ${label || "name"}`} />
+        {status}
       </span>
     );
   }
@@ -79,20 +89,21 @@ function InlineField({ label, value, display, options, onSave, inputType = "text
     <span className="d-inline-flex flex-wrap align-items-center gap-1">
       {label && <strong className="me-1">{label}:</strong>}
       {options ? (
-        <Form.Select size="sm" className="w-auto" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}>
+        <Form.Select size="sm" className="w-auto" autoFocus value={draft} disabled={state === "saving"}
+          onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
+          onBlur={() => state !== "saving" && !state?.error && setDraft(null)}
+          onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }}>
           {current && !options.some(([k]) => k === current) && <option value={value}>{value}</option>}
           {!current && <option value="">Choose...</option>}
           {options.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </Form.Select>
       ) : (
         <Form.Control size="sm" className="w-auto" autoFocus type={inputType} value={draft} placeholder={placeholder}
-          maxLength={120} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setDraft(null); }} />
+          maxLength={120} disabled={state === "saving"} onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commit(draft)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setState(null); setDraft(null); } }} />
       )}
-      <Button size="sm" variant="custom" onClick={save} disabled={busy || (!options && !allowEmpty && !draft.trim())}>
-        {busy ? <Spinner size="sm" /> : "Save"}</Button>
-      <Button size="sm" variant="outline-secondary" onClick={() => setDraft(null)} disabled={busy}>Cancel</Button>
-      {error && <small className="text-danger w-100">{error}</small>}
+      {status}
     </span>
   );
 }
@@ -119,13 +130,15 @@ function ContactList({ kind, entries, labels, send }) {
             <i className={`fa-solid ${icon(e)} cp_row_icon`} title={nameOf(labels, e.label)} />
             {editing?.value === e.value ? (
               <>
+                {/* Saves when the field loses focus or on Enter (SOW G-082); Escape keeps the old value. */}
                 <Form.Control size="sm" className="w-auto" autoFocus value={editing.to} type={kind === "phone" ? "tel" : "email"}
-                  onChange={(ev) => setEditing({ ...editing, to: ev.target.value })}
-                  onKeyDown={(ev) => { if (ev.key === "Escape") setEditing(null); }} />
-                <Button size="sm" variant="custom" disabled={busy || !editing.to.trim()}
-                  onClick={() => run({ action: "replace", value: e.value, to: editing.to }, () => setEditing(null))}>
-                  {busy ? <Spinner size="sm" /> : "Save"}</Button>
-                <Button size="sm" variant="outline-secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</Button>
+                  disabled={busy} onChange={(ev) => setEditing({ ...editing, to: ev.target.value })}
+                  onBlur={() => {
+                    if (!editing.to.trim() || editing.to.trim() === show(e.value)) { setEditing(null); return; }
+                    run({ action: "replace", value: e.value, to: editing.to }, () => setEditing(null));
+                  }}
+                  onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); if (ev.key === "Escape") { setError(null); setEditing(null); } }} />
+                {busy && <small className="text-muted">Saving…</small>}
               </>
             ) : (
               <>

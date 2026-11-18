@@ -3,15 +3,18 @@
 // meeting: edit the customer's name and phone from the lead page; lead type and lead source viewable and editable;
 // the lead date is never editable. BB, 17 Nov 2026: "too many duplication").
 //   - Lead Type is shown (Internet / Phone Up / Walk-In, or Campaign / Other as the lead came in) next to its source;
-//   - Edit turns the card into a form; Save sends only what changed (PATCH /api/leads/[id]/details), and the customer
-//     record follows (name, phone, email); a field someone else changed meanwhile is refused, not overwritten;
+//   - Edit turns the card into a form that saves by itself (SOW G-082): a typed field when it loses focus or on Enter,
+//     a menu at once; only what changed is sent (PATCH /api/leads/[id]/details) and the customer record follows (name,
+//     phone, email); a field someone else changed meanwhile is refused, not overwritten. "Saving / All changes saved /
+//     Not saved + Try again" shows beside Done; Escape in a field puts back the saved value;
 //   - the lead date shows once, with a lock;
 //   - the lead's status is a pill beside its type and source, in view and edit mode alike; clicking it opens Update
 //     Status (17 Nov 2026: "the status is hidden among all of these things");
 //   - VIN: typing a VIN or stock # searches the dealer's inventory (api/inventory/lookup); picking a car fills the VIN,
 //     year, make and model. Any VIN can still be typed by hand.
-import { useEffect, useState } from "react";
-import { Alert, Button, Form, Spinner } from "react-bootstrap";
+import { useEffect, useRef, useState } from "react";
+import { Button, Form } from "react-bootstrap";
+import useAutosave, { SaveStatus } from "../../../hooks/useAutosave";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import { leadStatusLabel } from "@lib/statusLabels";
 import { upType } from "@lib/reporting/normalize";
@@ -58,7 +61,7 @@ function StatusPill({ lead, onStatusClick }) {
 }
 
 // The VIN box: free text, plus cars from the dealer's inventory matching what is typed (VIN or stock #).
-function VinLookup({ dealerId, value, onChange, onPick }) {
+function VinLookup({ dealerId, value, onChange, onPick, onCommit }) {
   const [cars, setCars] = useState([]);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -80,7 +83,7 @@ function VinLookup({ dealerId, value, onChange, onPick }) {
     <div className="position-relative">
       <Form.Control size="sm" value={value} maxLength={17} placeholder="Type a VIN or stock # to search the inventory"
         autoComplete="off" onChange={(e) => { setOpen(true); onChange(e.target.value.toUpperCase()); }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)} />
+        onBlur={() => { setTimeout(() => setOpen(false), 150); setTimeout(() => onCommit?.(), 250); }} />
       {open && cars.length > 0 && (
         <div className="list-group position-absolute w-100 shadow-sm" style={{ zIndex: 5 }}>
           {cars.map((c) => (
@@ -131,29 +134,41 @@ function UndoReassign({ lead, onSaved }) {
 export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onStatusClick }) {
   const [lead, setLead] = useState(given);
   const [form, setForm] = useState(null); // null = viewing
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const leadRef = useRef(given); // the saved lead the next save compares against (a save can finish after a re-render)
+  leadRef.current = lead;
   // A different lead (or a newer copy of it) replaces what is shown; a re-render with the same copy keeps a saved edit.
-  useEffect(() => { setLead(given); setForm(null); setError(null); }, [given?._id, given?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setLead(given); setForm(null); }, [given?._id, given?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startEdit = () => { setError(null); setForm({ ...Object.fromEntries(FIELDS.map((f) => [f, str(lead?.[f])])), department: leadDepartment(lead) }); };
   // The value a field holds now, as the form shows it (a lead with no department is a sales lead).
-  const current = (f) => (f === "department" ? leadDepartment(lead) : str(lead?.[f]).trim());
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const save = async () => {
+  const current = (l, f) => (f === "department" ? leadDepartment(l) : str(l?.[f]).trim());
+  const auto = useAutosave(async (values) => {
+    const saved = leadRef.current;
     const changes = {};
-    for (const f of FIELDS) if (form[f].trim() !== current(f)) changes[f] = { from: lead?.[f] ?? null, to: form[f] };
-    if (!Object.keys(changes).length) { setForm(null); return; }
-    setBusy(true); setError(null);
-    try {
-      const res = await fetch(`/api/leads/${lead._id}/details`, { method: "PATCH", headers: auth(), body: JSON.stringify({ changes }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
-      const next = { ...lead, ...Object.fromEntries(FIELDS.map((f) => [f, data.lead?.[f]])) };
-      setLead(next); setForm(null);
-      onSaved?.(next);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
+    for (const f of FIELDS) if (values[f].trim() !== current(saved, f)) changes[f] = { from: saved?.[f] ?? null, to: values[f] };
+    if (!Object.keys(changes).length) return;
+    const res = await fetch(`/api/leads/${saved._id}/details`, { method: "PATCH", headers: auth(), body: JSON.stringify({ changes }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
+    const next = { ...saved, ...Object.fromEntries(FIELDS.map((f) => [f, data.lead?.[f]])) };
+    leadRef.current = next; setLead(next);
+    onSaved?.(next);
+  }, { delayMs: null });
+
+  const startEdit = () => { setForm({ ...Object.fromEntries(FIELDS.map((f) => [f, str(lead?.[f])])), department: leadDepartment(lead) }); };
+  // Typing keeps the change; it is saved when the field loses focus (or Enter). A menu or a picked car saves at once.
+  const put = (patch, now = false) => setForm((f) => {
+    const next = { ...f, ...patch };
+    auto.change(next);
+    if (now) setTimeout(() => auto.flush(), 0);
+    return next;
+  });
+  const set = (k) => (e) => put({ [k]: e.target.value });
+  const pick = (k) => (e) => put({ [k]: e.target.value }, true);
+  const typed = { onBlur: () => auto.flush(), onKeyDown: (e) => {
+    if (e.key === "Enter") { e.preventDefault(); auto.flush(); }
+    if (e.key === "Escape") { auto.discard(); setForm({ ...Object.fromEntries(FIELDS.map((f) => [f, str(leadRef.current?.[f])])), department: leadDepartment(leadRef.current) }); }
+  } };
+  const done = async () => { await auto.flush(); if (!auto.unsaved()) setForm(null); };
 
   const type = leadTypeName(lead);
   const vehicle = [lead?.vehicle_year, lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(" ");
@@ -164,43 +179,40 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
         <div className="mb-2"><StatusPill lead={lead} onStatusClick={onStatusClick} /></div>
         <div className="row g-2 small">
           <Form.Group className="col-12"><Form.Label className="mb-0">Name</Form.Label>
-            <Form.Control size="sm" autoFocus value={form.name} maxLength={120} onChange={set("name")} /></Form.Group>
+            <Form.Control size="sm" autoFocus value={form.name} maxLength={120} onChange={set("name")} {...typed} /></Form.Group>
           <Form.Group className="col-6"><Form.Label className="mb-0">Phone</Form.Label>
-            <Form.Control size="sm" type="tel" value={form.phone} maxLength={40} onChange={set("phone")} /></Form.Group>
+            <Form.Control size="sm" type="tel" value={form.phone} maxLength={40} onChange={set("phone")} {...typed} /></Form.Group>
           <Form.Group className="col-6"><Form.Label className="mb-0">Email</Form.Label>
-            <Form.Control size="sm" type="email" value={form.email} maxLength={200} onChange={set("email")} /></Form.Group>
+            <Form.Control size="sm" type="email" value={form.email} maxLength={200} onChange={set("email")} {...typed} /></Form.Group>
           <Form.Group className="col-12"><Form.Label className="mb-0">Lead type</Form.Label>
-            <Form.Select size="sm" value={form.contact_type} onChange={set("contact_type")}>
+            <Form.Select size="sm" value={form.contact_type} onChange={pick("contact_type")}>
               {!lead?.contact_type && <option value="">{type} (as it came in)</option>}
               <option value="internet">Internet</option><option value="phone">Phone Up</option><option value="walk_in">Walk-In</option>
             </Form.Select></Form.Group>
           <Form.Group className="col-12"><Form.Label className="mb-0">Department</Form.Label>
-            <Form.Select size="sm" value={form.department} onChange={set("department")}>
+            <Form.Select size="sm" value={form.department} onChange={pick("department")}>
               {Object.entries(DEPARTMENT_NAMES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </Form.Select>
-            {form.department !== leadDepartment(lead) && (
-              <Form.Text>{DEPARTMENT_NAMES[form.department]} staff get an email that this lead is theirs.</Form.Text>
-            )}</Form.Group>
+            <Form.Text>Changing it emails that department&apos;s staff that this lead is theirs.</Form.Text></Form.Group>
           <Form.Group className="col-12"><Form.Label className="mb-0">Lead source</Form.Label>
             <LeadSourcePicker dealerId={lead?.dealer_id} value={form.lead_source}
-              onChange={(v) => setForm((f) => ({ ...f, lead_source: v }))} /></Form.Group>
+              onChange={(v) => put({ lead_source: v }, true)} /></Form.Group>
           <Form.Group className="col-12"><Form.Label className="mb-0">Vehicle (year / make / model)</Form.Label>
             <div className="d-flex gap-1">
-              <Form.Control size="sm" style={{ maxWidth: 70 }} placeholder="Year" value={form.vehicle_year} maxLength={4} onChange={set("vehicle_year")} />
-              <Form.Control size="sm" placeholder="Make" value={form.vehicle_make} maxLength={60} onChange={set("vehicle_make")} />
-              <Form.Control size="sm" placeholder="Model" value={form.vehicle_model} maxLength={60} onChange={set("vehicle_model")} />
+              <Form.Control size="sm" style={{ maxWidth: 70 }} placeholder="Year" value={form.vehicle_year} maxLength={4} onChange={set("vehicle_year")} {...typed} />
+              <Form.Control size="sm" placeholder="Make" value={form.vehicle_make} maxLength={60} onChange={set("vehicle_make")} {...typed} />
+              <Form.Control size="sm" placeholder="Model" value={form.vehicle_model} maxLength={60} onChange={set("vehicle_model")} {...typed} />
             </div></Form.Group>
           <Form.Group className="col-12"><Form.Label className="mb-0">VIN</Form.Label>
-            <VinLookup dealerId={lead?.dealer_id} value={form.vin} onChange={(v) => setForm((f) => ({ ...f, vin: v }))}
-              onPick={(c) => setForm((f) => ({ ...f, vin: c.vin || f.vin, vehicle_year: c.year ? String(c.year) : f.vehicle_year,
-                vehicle_make: c.make || f.vehicle_make, vehicle_model: c.model || f.vehicle_model }))} /></Form.Group>
+            <VinLookup dealerId={lead?.dealer_id} value={form.vin} onChange={(v) => put({ vin: v })} onCommit={() => auto.flush()}
+              onPick={(c) => put({ vin: c.vin || form.vin, vehicle_year: c.year ? String(c.year) : form.vehicle_year,
+                vehicle_make: c.make || form.vehicle_make, vehicle_model: c.model || form.vehicle_model }, true)} /></Form.Group>
           <div className="col-12 text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)} - can&apos;t be changed.
             {lead?.customer_id && " The customer's profile is updated too; an old phone or email stays on file."}</div>
         </div>
-        {error && <Alert variant="danger" className="py-1 px-2 small mt-2 mb-0">{error}</Alert>}
-        <div className="d-flex gap-2 mt-2">
-          <Button size="sm" variant="custom" onClick={save} disabled={busy}>{busy ? <Spinner size="sm" /> : "Save"}</Button>
-          <Button size="sm" variant="outline-secondary" onClick={() => { setForm(null); setError(null); }} disabled={busy}>Cancel</Button>
+        <div className="d-flex align-items-center gap-2 mt-2">
+          <Button size="sm" variant="custom" onClick={done} disabled={auto.status === "saving"}>Done</Button>
+          <SaveStatus status={auto.status} error={auto.error} onRetry={() => auto.flush()} />
         </div>
       </div>
     );
