@@ -67,6 +67,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-database"></i>DMS feed
           </Link>
         </li>
+        {/* SOW G-058: every store's connectors at a glance. */}
+        <li>
+          <Link href="/admin/integration-health" className={getLinkClass("/admin/integration-health")}>
+            <i className="fa-regular fa-heart-pulse"></i>Integration health
+          </Link>
+        </li>
         {/* SOW G-068 to G-071: contact eligibility checks (log-only) and each dealer's Do-Not-Contact list. */}
         <li>
           <Link href="/admin/contact-compliance" className={getLinkClass("/admin/contact-compliance")}>
