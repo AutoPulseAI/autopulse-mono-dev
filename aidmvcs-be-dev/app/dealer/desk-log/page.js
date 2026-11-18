@@ -52,6 +52,10 @@ export default function DeskLogPage() {
   // The picked day's appointments, and a lead whose status is being changed from here ({ leadId, name, status }).
   const [appts, setAppts] = useState(null);
   const [statusFor, setStatusFor] = useState(null);
+  // Paging (18 Nov 2026): the table shows one page of visits, newest first; any filter, search or date change goes
+  // back to page 1.
+  const [paging, setPaging] = useState({ page: 1, limit: 25 });
+  useEffect(() => { setPaging((p) => (p.page === 1 ? p : { ...p, page: 1 })); }, [range, view, q, filters]);
   const [rules, setRules] = useState(null);
 
   // Today in the dealership's time zone (only once the dealer, and so its time zone, is loaded).
@@ -95,7 +99,7 @@ export default function DeskLogPage() {
     try {
       // Appointments: the day the cards show (one day picked, or the last day of the range).
       const [list, ap] = await Promise.all([
-        deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters }),
+        deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters, page: paging.page, limit: paging.limit }),
         deskLogAppointments({ dealer_id: dealerId, day: dates.end_date, department: filters.department }).catch(() => null),
       ]);
       setData(list);
@@ -106,7 +110,7 @@ export default function DeskLogPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [dealerId, dates, view, q, filters, loadActionNow]);
+  }, [dealerId, dates, view, q, filters, loadActionNow, paging]);
 
   useEffect(() => { load(); }, [load]);
   // G-083: check-ins, stages and outcomes other people enter show up without a refresh (paused while a visit or the
@@ -225,8 +229,30 @@ export default function DeskLogPage() {
             onStatus={setStatusFor}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
         )}
-        {data?.truncated && <small className="text-muted">Showing the latest 500 visits. Pick fewer days to see the
-          rest.</small>}
+        {data && data.total > 0 && (
+          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 small text-muted">
+            <span>{(data.page - 1) * data.limit + 1}-{Math.min(data.total, data.page * data.limit)} of {data.total} visits</span>
+            <div className="d-flex align-items-center gap-2">
+              <Form.Select size="sm" style={{ width: "auto" }} value={paging.limit} aria-label="Rows per page"
+                onChange={(e) => setPaging({ page: 1, limit: Number(e.target.value) })}>
+                {[25, 50, 100].map((n) => <option key={n} value={n}>{n} per page</option>)}
+              </Form.Select>
+              {data.pages > 1 && <>
+                <Button size="sm" variant="outline-custom" disabled={data.page <= 1}
+                  onClick={() => setPaging((p) => ({ ...p, page: 1 }))}>First</Button>
+                <Button size="sm" variant="outline-custom" disabled={data.page <= 1}
+                  onClick={() => setPaging((p) => ({ ...p, page: data.page - 1 }))}>Previous</Button>
+                <span>Page {data.page} of {data.pages}</span>
+                <Button size="sm" variant="outline-custom" disabled={data.page >= data.pages}
+                  onClick={() => setPaging((p) => ({ ...p, page: data.page + 1 }))}>Next</Button>
+                <Button size="sm" variant="outline-custom" disabled={data.page >= data.pages}
+                  onClick={() => setPaging((p) => ({ ...p, page: data.pages }))}>Last</Button>
+              </>}
+            </div>
+          </div>
+        )}
+        {data?.truncated && <small className="text-muted d-block mt-1">These dates have more than 5,000 visits - only the
+          latest 5,000 are listed. Pick fewer days to see the rest.</small>}
       </div>
 
       {checkIn && dealerId && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} initialLeadId={checkIn.leadId || null}

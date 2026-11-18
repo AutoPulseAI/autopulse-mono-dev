@@ -1,6 +1,7 @@
 // Desk Log (Betsy's Priority 3; SOW v6 Deliverable C).
 //   GET  ?dealer_id &start_date &end_date (dealer-local YYYY-MM-DD) [&view &q &department &lead_type &source
-//        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1]  -> { rows, sources, truncated, cards? }
+//        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1] [&page &limit=25|50|100]
+//        -> { rows (one page, newest first), total, page, pages, limit, sources, truncated, cards? }
 //   POST { dealer_id, lead_id, checked_in_at?, department? (default: the lead's), move_lead_to_service?, stock_number?, vehicle?, trade?, salesperson_id?,
 //        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit); their
 //        appointment that day is marked showed and the AI told they came in (app/lib/deskLog/checkIn.js)
@@ -43,7 +44,7 @@ export async function GET(req) {
     if (!VIEWS[view]) return json({ message: `view must be one of ${Object.keys(VIEWS).join(', ')}` }, 400);
     const filters = Object.fromEntries(FILTERS.map((k) => [k, params.get(k) || null]));
     const list = await deskLogList({ dealerId, tz, from, to, view, q: (params.get('q') || '').trim().slice(0, 80),
-      filters });
+      filters, page: params.get('page'), limit: params.get('limit') });
     const cards = params.get('cards') === '1' ? await deskLogCards(dealerId, tz, to > today ? today : to, filters.department) : undefined;
     return json({ ...list, cards, tz, views: VIEWS });
   } catch (error) {
