@@ -35,7 +35,7 @@ function statusColor(label) {
   return "#1d6fe0";
 }
 
-const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
+const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
 const DEPT_COLOR = { sales: "#1f5ea8", service: "#0ea5a5", parts: "#7c5a2e" };
 
 export function leadTypeName(lead) {
@@ -61,6 +61,25 @@ function StatusPill({ lead, onStatusClick }) {
 }
 
 // The VIN box: free text, plus cars from the dealer's inventory matching what is typed (VIN or stock #).
+// The dealer's campaigns (Lead sources > Edit list > Campaigns) to put the lead in; shown only when it has some.
+function CampaignPicker({ dealerId, value, onChange }) {
+  const [names, setNames] = useState(null);
+  useEffect(() => {
+    if (!dealerId) return;
+    fetch(`/api/lead-sources?dealer_id=${encodeURIComponent(dealerId)}`, { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => setNames((d?.campaigns || []).map((c) => c.name))).catch(() => setNames([]));
+  }, [dealerId]);
+  if (!names || (!names.length && !value)) return null;
+  return (
+    <Form.Group className="col-12"><Form.Label className="mb-0">Campaign</Form.Label>
+      <Form.Select size="sm" value={value || ""} onChange={(e) => onChange(e.target.value)}>
+        <option value="">No campaign</option>
+        {value && !names.includes(value) && <option value={value}>{value}</option>}
+        {names.map((n) => <option key={n} value={n}>{n}</option>)}
+      </Form.Select></Form.Group>
+  );
+}
+
 function VinLookup({ dealerId, value, onChange, onPick, onCommit }) {
   const [cars, setCars] = useState([]);
   const [open, setOpen] = useState(false);
@@ -197,6 +216,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
           <Form.Group className="col-12"><Form.Label className="mb-0">Lead source</Form.Label>
             <LeadSourcePicker dealerId={lead?.dealer_id} value={form.lead_source}
               onChange={(v) => put({ lead_source: v }, true)} /></Form.Group>
+          <CampaignPicker dealerId={lead?.dealer_id} value={form.campaign} onChange={(v) => put({ campaign: v }, true)} />
           <Form.Group className="col-12"><Form.Label className="mb-0">Vehicle (year / make / model)</Form.Label>
             <div className="d-flex gap-1">
               <Form.Control size="sm" style={{ maxWidth: 70 }} placeholder="Year" value={form.vehicle_year} maxLength={4} onChange={set("vehicle_year")} {...typed} />
@@ -228,6 +248,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
             <span className="badge" title="Department" style={{ background: DEPT_COLOR[leadDepartment(lead)] }}>
               {DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
             <span className="small text-muted me-1">{lead?.lead_source || lead?.source || "Unknown source"}</span>
+            {lead?.campaign && <span className="badge bg-light text-dark" title="Campaign">{lead.campaign}</span>}
             <StatusPill lead={lead} onStatusClick={onStatusClick} />
             {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
           </div>
