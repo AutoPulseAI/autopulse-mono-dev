@@ -3,7 +3,7 @@
 // "put it all under one" - no separate AI Settings, Followup Setting and Reminder Setting pages). Dealers see it
 // view-only; only an AutoPulse super admin edits it (signed in inside the dealer account), and the server refuses
 // any other save (app/lib/apiAuth.js loadSettingsEditor).
-//   /dealer/settings?tab=followups | reminders | ai | intelligence
+//   /dealer/settings?tab=followups | reminders | ai | intelligence | scheduler
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -12,6 +12,7 @@ import FollowupSettings from "./components/FollowupSettings";
 import ReminderSettings from "./components/ReminderSettings";
 import AiSettings from "./components/AiSettings";
 import DealerIntelligence from "./components/DealerIntelligence";
+import SchedulerSettings from "./components/SchedulerSettings";
 import { canEditDealerSettings } from "./settingsAccess";
 
 const TABS = [
@@ -20,6 +21,8 @@ const TABS = [
   ["ai", "AI", AiSettings],
   // SOW v6 Appendix A section 02: the rooftop's policies (fees, new / used, service, delivery...).
   ["intelligence", "Dealer Intelligence", DealerIntelligence],
+  // SOW v6 Appendix A 1A (G-072): Dealer-FX / Xtime settings; pending vendor access (18 Nov 2026).
+  ["scheduler", "Service scheduler", SchedulerSettings],
 ];
 
 function SettingsTabs() {
@@ -36,7 +39,7 @@ function SettingsTabs() {
         <h3 className="page_title mb-0">Settings</h3>
       </div>
       <div className="page_body">
-        {!canEdit && tab !== "intelligence" && (
+        {!canEdit && tab !== "intelligence" && tab !== "scheduler" && (
           <Alert variant="info" className="small">
             <i className="fa-regular fa-lock me-2"></i>
             These settings are managed by AutoPulse. You can view them here (and turn the AI on or off in the AI
@@ -52,7 +55,7 @@ function SettingsTabs() {
         {/* A disabled fieldset greys out and blocks every input and button inside for a dealer. */}
         {/* The AI tab decides itself what a dealer may change (the On/Off switch, client 9 Oct 2026). */}
         {/* Dealer Intelligence: the dealer edits its own policies (the server checks who may). */}
-        <fieldset disabled={!canEdit && tab !== "ai" && tab !== "intelligence"} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <fieldset disabled={!canEdit && tab !== "ai" && tab !== "intelligence" && tab !== "scheduler"} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <Current />
         </fieldset>
       </div>
