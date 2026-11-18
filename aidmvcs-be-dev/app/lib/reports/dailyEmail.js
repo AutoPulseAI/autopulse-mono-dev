@@ -231,7 +231,13 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     row('Cancelled', n(a.cancelled, aStale), 'Of the appointments set this day'),
     row('Rescheduled', unavailable.has('appointments.rescheduled') ? DASH : n(a.rescheduled, aStale),
       unavailable.has('appointments.rescheduled') ? 'Not tracked yet' : ''),
+    ...(v4 ? [row('Sold', n(m.sold?.count, soldStale), 'Leads set to a sold status this day (CRM status)')] : []),
   ].join(''))}
+        ${v4 && dept && (dept.service?.total || 0) > 0 ? `${heading('Sales and service', "Appointments set this day, by the lead's department")}
+        ${table([
+    row('Sales', n(dept.sales?.total, deptStale), `AI ${n(dept.sales?.ai, deptStale)} · AI-assisted ${n(dept.sales?.ai_assisted, deptStale)}`),
+    row('Service', n(dept.service?.total, deptStale), `AI ${n(dept.service?.ai, deptStale)} · AI-assisted ${n(dept.service?.ai_assisted, deptStale)}`),
+  ].join(''))}` : ''}
         ${heading('Customers who replied', 'Each customer counted once for the day')}
         ${table([
     row("From today's leads", n(r.todays_leads, rStale)),
