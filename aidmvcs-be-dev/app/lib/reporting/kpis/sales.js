@@ -18,8 +18,8 @@ const blocked = (id, label, numerator, denominator = null) => notYet(STATE.BLOCK
 const proxy = (id, label, groups, what) => ({
   id, label, dashboard: D, grain: 'lead', kind: KIND.COUNT, proxy: true,
   dateBasis: 'ActivityLog.at of the first status change to that status',
-  numerator: `Leads first set to ${what} in the range (staff status changes, ActivityLog status_changed). `
-    + 'Interim proxy until the Desk Log exists.',
+  numerator: `Leads first set to ${what} in the range, by staff or by the AI (ActivityLog status_changed; for the `
+    + 'AI before 18 Nov 2026, the lead\'s own AI-set status and its date).',
   denominator: null, inclusions: 'Any spelling of the status (app/lib/reporting/normalize.js).',
   exclusions: 'A lead set to it again later is counted once.', source: ['activitylogs', 'leads'],
   filters: LEAD_FILTERS, breakdowns: ['staff', 'lead_source'], columns: [...LEAD_COLUMNS, ['changed_at', 'Changed on']],

@@ -283,7 +283,9 @@ export async function PUT(request) {
       status,
       lead_status: status,
       fe_lead_status: status,
-      statusChangedAt: new Date()
+      statusChangedAt: new Date(),
+      // Who set the status now (the AI writes 'ai', app/lib/ai/aiDnd.js; Reports read it, kpis/common.js).
+      status_source: 'staff',
     };
     if (manager_outcome) {
       // The visit ends at its outcome: the lead shows "Sold Pending" / "Sold Delivered" / "Unsold" from now on.

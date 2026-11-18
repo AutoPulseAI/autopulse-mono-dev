@@ -104,8 +104,6 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
     await onChanged();
   };
 
-  if (!rows.length) return <div className="dl_table_wrap p-4 text-center text-muted">{empty}</div>;
-
   return (
     <>
       {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -140,6 +138,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
             </tr>
           </thead>
           <tbody>
+            {/* 18 Nov 2026: the columns always show, also before anyone is checked in for these dates. */}
+            {!rows.length && <tr><td colSpan={16} className="p-4 text-center text-muted">{empty}</td></tr>}
             {shown.map((row) => {
               const at = moment(row.checked_in_at).tz(tz);
               const choice = choiceOf(row);

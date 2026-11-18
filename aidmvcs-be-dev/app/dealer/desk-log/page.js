@@ -17,6 +17,7 @@ import CheckInModal from "./components/CheckInModal";
 import VisitModal from "./components/VisitModal";
 import RulesModal from "./components/RulesModal";
 import useLiveRefresh from "../../hooks/useLiveRefresh";
+import { aiFetch } from "../ai/components/aiShared";
 import "./deskLog.css";
 
 const EMPTY_FILTERS = { department: "", lead_type: "", source: "", stage: "", outcome: "", salesperson_id: "",
@@ -77,8 +78,14 @@ export default function DeskLogPage() {
 
   const dates = useMemo(() => (range ? reportDates(range, tz) : null), [range, tz]);
 
+  // The AI Assistant's open Dealership Action Required count (DeskCards); no number when the AI service can't be read.
+  const [actionNow, setActionNow] = useState(null);
+  const loadActionNow = useCallback(() => aiFetch("/api/dealer-ai/alerts?count_only=1")
+    .then((d) => setActionNow(d.unhandled_count || 0)).catch(() => setActionNow(null)), []);
+
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!dealerId || !dates) return;
+    loadActionNow();
     if (!silent) setLoading(true);
     try {
       setData(await deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters }));
@@ -88,7 +95,7 @@ export default function DeskLogPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [dealerId, dates, view, q, filters]);
+  }, [dealerId, dates, view, q, filters, loadActionNow]);
 
   useEffect(() => { load(); }, [load]);
   // G-083: check-ins, stages and outcomes other people enter show up without a refresh (paused while a visit or the
@@ -141,7 +148,7 @@ export default function DeskLogPage() {
       <div className="page_body">
         {data?.cards && (
           <div className="mb-1">
-            <DeskCards cards={data.cards.cards} dayWord={dayWord} />
+            <DeskCards cards={data.cards.cards} dayWord={dayWord} actionNow={actionNow} />
             {!isToday && <small className="text-muted d-block mt-1">Cards show the last picked day and its month up
               to that day.</small>}
           </div>
