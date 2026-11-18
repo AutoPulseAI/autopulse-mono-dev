@@ -99,6 +99,16 @@ export const LEAD_SOURCE_KPIS = [
     evaluate: async (args, ctx) => ({ rows: await shared.soldRows(args, ctx) }),
   },
   {
+    id: 'source.tracked_campaign_leads', label: 'Leads by campaign (tracking code)', dashboard: D, grain: 'lead',
+    kind: KIND.COUNT, dateBasis: 'Lead.createdAt', numerator: 'Leads received in the range that carry one of the '
+      + 'dealer\'s campaigns (Lead.campaign: tagged on arrival when the sub-source or lead source is the campaign\'s '
+      + 'tracking code, or set by staff), by campaign.', denominator: null,
+    inclusions: 'Leads with a campaign.', exclusions: 'Leads with no campaign.',
+    source: ['leads', 'leadsourcelists'], filters: LEAD_FILTERS, breakdowns: ['tracked_campaign'], columns: LEAD_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: (await shared.leadsReceivedRows(args, ctx))
+      .filter((r) => r._g.tracked_campaign && r._g.tracked_campaign !== 'No campaign') }),
+  },
+  {
     id: 'source.campaign_leads', label: 'Campaign leads', dashboard: D, grain: 'lead', kind: KIND.COUNT,
     dateBasis: 'Lead.createdAt', numerator: 'Leads received in the range whose lead source is "campaign_<name>" '
       + '(created by a campaign, worker/campaignWorker.js), by campaign name.', denominator: null,

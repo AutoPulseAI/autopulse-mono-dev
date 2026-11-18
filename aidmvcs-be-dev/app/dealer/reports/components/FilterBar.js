@@ -1,7 +1,8 @@
 "use client";
 // One filter bar for every report tab of the Dashboard. Only the filters app/lib/reporting/filters.js supports for the
 // reports (REPORTS.KPI_REPORTS): source, lead source, assigned staff, AI / human and sales / service. The dates are the
-// Dashboard's own picker at the top of the page. Campaign and new / used are not offered: the data isn't there yet.
+// Dashboard's own picker at the top of the page. Campaign shows when the dealer has campaign-tagged leads
+// (app/lib/leadCampaign.js). New / used is not offered: the data isn't there yet.
 import { Button, Form } from "react-bootstrap";
 
 export default function FilterBar({ filters, onFilters, options }) {
@@ -20,6 +21,13 @@ export default function FilterBar({ filters, onFilters, options }) {
           <option value="">All lead sources</option>
           {(options.lead_sources || []).map((s) => <option key={s} value={s}>{s}</option>)}
         </Form.Select>
+        {(options.campaigns || []).length > 0 && (
+          <Form.Select size="sm" style={{ width: "auto" }} value={filters.campaign || ""} onChange={set("campaign")}
+            aria-label="Campaign">
+            <option value="">All campaigns</option>
+            {options.campaigns.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Form.Select>
+        )}
         <Form.Select size="sm" style={{ width: "auto" }} value={filters.assigned_to} onChange={set("assigned_to")}
           aria-label="Assigned staff">
           <option value="">All staff</option>
@@ -38,7 +46,7 @@ export default function FilterBar({ filters, onFilters, options }) {
           <option value="service">Service</option>
         </Form.Select>
         {any && (
-          <Button size="sm" variant="link" onClick={() => onFilters({ source: "", lead_source: "", assigned_to: "",
+          <Button size="sm" variant="link" onClick={() => onFilters({ source: "", lead_source: "", campaign: "", assigned_to: "",
             actor: "", appointment_type: "" })}>Clear filters</Button>
         )}
       </div>

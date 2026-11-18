@@ -10,6 +10,10 @@
       // What the lead provider says beyond its own name, e.g. CarGurus "Reengagement" (ADF provider name / service;
       // app/lib/adfLeadParser.js adfSubSource). Null = no sub-source. For the source / sub-source report.
       sub_source: { type: String, default: null },
+      // The dealer's campaign this lead came from (app/lib/leadCampaign.js): set when the lead arrives and its
+      // sub-source / lead source is a campaign's tracking code, or by staff on the lead card. Null = none.
+      campaign: { type: String, default: null },
+      campaign_set_by: { type: String, default: undefined }, // 'code' (on arrival) | 'staff'
       // Betsy, 27 Oct 2026 meeting: how the lead came in - internet, phone-up or walk-in (app/lib/leadContactType.js).
       contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
       // Betsy, 14 Nov 2026: the lead's department (app/lib/departments.js). Missing = sales.
@@ -58,6 +62,16 @@
     this.set('department', dept || 'sales');
     this.set('department_set_by', dept ? 'source' : 'default');
     this.set('department_at', new Date());
+  });
+  // A new lead whose sub-source / lead source is one of the dealer's campaign tracking codes gets that campaign
+  // (app/lib/leadCampaign.js). A lookup problem never stops the lead being saved.
+  leadSchema.pre('save', async function campaignOnArrival() {
+    if (!this.isNew || this.get('campaign') || !this.get('dealer_id')) return;
+    try {
+      const { campaignForLead } = await import('../lib/leadCampaign.js');
+      const name = await campaignForLead(this.get('dealer_id'), this.toObject());
+      if (name) { this.set('campaign', name); this.set('campaign_set_by', 'code'); }
+    } catch { /* the lead is saved without a campaign */ }
   });
   leadSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
   // A new Service / Parts lead: that department's staff are emailed (17 Nov 2026, the user: "if a new service lead

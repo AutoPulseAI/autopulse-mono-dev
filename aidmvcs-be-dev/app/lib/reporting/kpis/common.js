@@ -26,7 +26,7 @@ export const STATE = Object.freeze({ LIVE: 'live', BLOCKED: 'blocked', NEEDS_DAT
 export const KIND = Object.freeze({ COUNT: 'count', RATE: 'rate', MEDIAN: 'median' });
 
 // Filters a KPI can apply, by what its rows are linked to.
-export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'assigned_to', 'department']);
+export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'campaign', 'assigned_to', 'department']);
 export const BOOKING_FILTERS = Object.freeze([...LEAD_FILTERS, 'actor', 'appointment_type']);
 export const MESSAGE_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);
 export const REPLY_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);
@@ -93,7 +93,7 @@ export function replies(args, ctx) {
 
 // Lead fields the rows show.
 const LEAD_FIELDS = { name: 1, email: 1, phone: 1, source: 1, lead_source: 1, fe_lead_status: 1, assigned_to: 1,
-  customer_id: 1, createdAt: 1, dealer_id: 1, contact_type: 1, sub_source: 1 };
+  customer_id: 1, createdAt: 1, dealer_id: 1, contact_type: 1, sub_source: 1, campaign: 1 };
 
 export async function leadsByIds(ids, ctx) {
   const want = [...new Set(ids.filter(isOid).map(String))];
@@ -175,7 +175,8 @@ export async function leadRows(leads, args, ctx, extra = () => ({})) {
       status: l.fe_lead_status || '',
       assigned_to: staff,
       _day: localDay(l.createdAt, w.tz),
-      _g: { lead_source: provider, staff, status: normalizeStatus(l.fe_lead_status).label },
+      _g: { lead_source: provider, staff, status: normalizeStatus(l.fe_lead_status).label,
+        tracked_campaign: l.campaign || 'No campaign' },
       ...extra(l),
     };
   });

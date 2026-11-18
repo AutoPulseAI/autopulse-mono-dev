@@ -8,6 +8,12 @@
 //       { dealer_id, action: 'rename', name, to }   also renames the source on the dealer's leads that carry it, so
 //                                                   reports don't split one source in two (count in the history)
 //       { dealer_id, action: 'remove', name }       leads keep the source they have; it's only no longer offered
+//   PUT { dealer_id, action: 'campaign_add', campaign: { name, code, lead_source? } }
+//       { dealer_id, action: 'campaign_update', id, campaign: { name?, code?, lead_source?, active? } }
+//       { dealer_id, action: 'campaign_remove', id }
+//       Campaigns / tracking codes (13 Nov 2026 meeting 4.4, "admin only"): the dealer account or a super admin, not
+//       staff. Adding a code (or changing it) also tags the dealer's leads that already carry it and have no campaign
+//       (count in the history); removing a campaign leaves its leads tagged. GET returns campaigns + can_edit_campaigns.
 // Errors: 401 not signed in · 403 not this dealership's staff, or (PUT) no "Manage Leads" permission · 400 bad name
 // or action · 404 (rename/remove) not on the list · 409 (add/rename) already on the list.
 import dbConnect from '@lib/mongodb';
@@ -17,6 +23,7 @@ import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
 import { dealerForms } from '@lib/reporting/kpis/common';
 import { PROVIDER_ALIASES, UNKNOWN_SOURCE, normalizeProvider } from '@lib/reporting/normalize';
+import mongoose from 'mongoose';
 
 export const runtime = 'nodejs';
 const fail = (error, status) => Response.json({ error }, { status });
@@ -42,9 +49,73 @@ async function listFor(dealerId, user) {
   const used = [...usedCount].map(([name, leads]) => ({ name, leads })).sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name));
   const taken = new Set([...onList, ...used.map((u) => u.name.toLowerCase())]);
   const common = [...new Set(PROVIDER_ALIASES.map(([, n]) => n))].filter((n) => !taken.has(n.toLowerCase()));
+  const campaigns = await Promise.all((doc?.campaigns || []).map(async (c) => ({ id: String(c._id), name: c.name,
+    code: c.code, lead_source: c.lead_source || null, active: c.active !== false,
+    leads: await Lead.countDocuments({ dealer_id: { $in: dealerForms(dealerId) }, campaign: c.name }) })));
   return { sources: sources.map((name, i) => ({ name, leads: counts[i] })), used, common,
     can_edit: await hasPermission(user, 'Manage Leads'),
+    campaigns, can_edit_campaigns: canEditCampaigns(user),
     history: (doc?.history || []).slice(-20).reverse() };
+}
+
+// Campaigns are admin-only: the dealer account (rooftop admin; also a super admin inside it through "login as") or a
+// super admin. Staff, even with Manage Leads, can't change them.
+function canEditCampaigns(user) { return ['admin', 'dealer'].includes(user?.type); }
+
+// Tags the dealer's leads that carry `code` as sub-source or lead source and have no campaign yet.
+async function tagExisting(dealerId, code, name) {
+  const res = await Lead.updateMany({ dealer_id: { $in: dealerForms(dealerId) }, campaign: { $in: [null, ''] },
+    $or: [{ sub_source: exact(code) }, { lead_source: exact(code) }] }, { $set: { campaign: name, campaign_set_by: 'code' } });
+  return res.modifiedCount || 0;
+}
+
+async function campaignAction(req, body, dealerId, user) {
+  if (!canEditCampaigns(user)) return fail('Only the dealership admin can change campaigns', 403);
+  const action = body.action;
+  const given = body.campaign || {};
+  const doc = await LeadSourceList.findOne({ dealer_id: dealerId }).lean();
+  const list = doc?.campaigns || [];
+  const entry = { at: new Date(), by: user._id, by_name: user.name || null, action, from: null, to: null, leads_renamed: 0 };
+  const check = (c) => {
+    if (!c.name || c.name.length > 60) return 'A campaign name is 1 to 60 characters';
+    if (!c.code || c.code.length > 60) return 'A tracking code is 1 to 60 characters';
+    return null;
+  };
+  if (action === 'campaign_add') {
+    const c = { name: clean(given.name), code: clean(given.code), lead_source: clean(given.lead_source) || null, active: true };
+    const bad = check(c); if (bad) return fail(bad, 400);
+    if (list.some((x) => same(x.name, c.name))) return fail(`"${c.name}" is already a campaign`, 409);
+    if (list.some((x) => same(x.code, c.code))) return fail(`The code "${c.code}" is already used`, 409);
+    await LeadSourceList.updateOne({ dealer_id: dealerId }, { $push: { campaigns: c } }, { upsert: true });
+    entry.to = `${c.name} (${c.code})`;
+    entry.leads_renamed = await tagExisting(dealerId, c.code, c.name);
+  } else {
+    const id = String(body.id || '');
+    const at = list.findIndex((x) => String(x._id) === id);
+    if (!mongoose.isValidObjectId(id) || at < 0) return fail('That campaign is not on the list', 404);
+    const old = list[at];
+    entry.from = `${old.name} (${old.code})`;
+    if (action === 'campaign_remove') {
+      await LeadSourceList.updateOne({ dealer_id: dealerId }, { $pull: { campaigns: { _id: old._id } } });
+    } else {
+      const c = { name: given.name != null ? clean(given.name) : old.name, code: given.code != null ? clean(given.code) : old.code,
+        lead_source: given.lead_source !== undefined ? (clean(given.lead_source) || null) : (old.lead_source || null),
+        active: given.active !== undefined ? Boolean(given.active) : old.active !== false };
+      const bad = check(c); if (bad) return fail(bad, 400);
+      if (list.some((x, i) => i !== at && same(x.name, c.name))) return fail(`"${c.name}" is already a campaign`, 409);
+      if (list.some((x, i) => i !== at && same(x.code, c.code))) return fail(`The code "${c.code}" is already used`, 409);
+      await LeadSourceList.updateOne({ dealer_id: dealerId, 'campaigns._id': old._id }, { $set: {
+        'campaigns.$.name': c.name, 'campaigns.$.code': c.code, 'campaigns.$.lead_source': c.lead_source, 'campaigns.$.active': c.active } });
+      // A renamed campaign keeps its leads under the new name, so reports don't split it in two.
+      if (c.name !== old.name) {
+        await Lead.updateMany({ dealer_id: { $in: dealerForms(dealerId) }, campaign: old.name }, { $set: { campaign: c.name } });
+      }
+      entry.to = `${c.name} (${c.code})${c.active ? '' : ' - off'}`;
+      if (c.active) entry.leads_renamed = await tagExisting(dealerId, c.code, c.name);
+    }
+  }
+  await LeadSourceList.updateOne({ dealer_id: dealerId }, { $push: { history: entry } });
+  return Response.json(await listFor(dealerId, user));
 }
 
 export async function GET(req) {
@@ -62,6 +133,7 @@ export async function PUT(req) {
   const dealerId = String(body?.dealer_id || '');
   const access = await requireDealerAccess(req, dealerId);
   if (access.response) return access.response;
+  if (String(body.action || '').startsWith('campaign_')) return campaignAction(req, body, dealerId, access.user);
   if (!(await hasPermission(access.user, 'Manage Leads'))) return fail('You do not have permission to change the source list', 403);
 
   const action = String(body.action || '');

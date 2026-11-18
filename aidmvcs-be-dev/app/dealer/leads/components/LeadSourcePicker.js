@@ -4,13 +4,16 @@
 // too, so reports don't split it) or remove (leads keep their source; it's only no longer offered).
 // The dropdown also offers every source already on the dealer's leads and the usual providers, so it is never empty,
 // and "+ Add a new source" right in it (same permission) adds one to the list and picks it (17 Nov 2026).
+// The dealer account / super admin also sees Campaigns and tracking codes in the same window (CampaignList.js).
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Form, InputGroup, Modal, Spinner, Table } from "react-bootstrap";
+import CampaignList from "./CampaignList";
 
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 
 export default function LeadSourcePicker({ dealerId, value, onChange, disabled }) {
-  const [list, setList] = useState({ sources: [], used: [], common: [], can_edit: false, history: [] });
+  const [list, setList] = useState({ sources: [], used: [], common: [], can_edit: false, history: [], campaigns: [],
+    can_edit_campaigns: false });
   const [quick, setQuick] = useState(null); // the "+ Add a new source" box under the dropdown: its text
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,7 +72,7 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
           {list.can_edit ? <option value={ADD}>+ Add a new source...</option>
             : <option disabled>Not listed? A manager can add it</option>}
         </Form.Select>
-        {list.can_edit && (
+        {(list.can_edit || list.can_edit_campaigns) && (
           <Button variant="outline-custom" onClick={() => { setError(null); setShow(true); }}>Edit list</Button>
         )}
       </InputGroup>
@@ -87,7 +90,7 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
       )}
 
       <Modal show={show} onHide={() => setShow(false)} centered>
-        <Modal.Header closeButton><Modal.Title as="h6">Lead sources</Modal.Title></Modal.Header>
+        <Modal.Header closeButton><Modal.Title as="h6">Lead sources{list.can_edit_campaigns ? " and campaigns" : ""}</Modal.Title></Modal.Header>
         <Modal.Body>
           <p className="small text-muted mb-2">
             The sources staff can pick on a lead they enter by hand. Internet leads keep the source their provider sends.
@@ -140,6 +143,7 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
               </tbody>
             </Table>
           )}
+          {list.can_edit_campaigns && <CampaignList campaigns={list.campaigns || []} busy={busy} change={change} />}
           {list.history.length > 0 && (
             <details className="mt-3 small">
               <summary className="text-muted">Changes</summary>
@@ -148,6 +152,9 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
                   <li key={i}>
                     {new Date(h.at).toLocaleString()} · {h.by_name || "Staff"} ·{" "}
                     {h.action === "add" ? `added "${h.to}"` : h.action === "remove" ? `removed "${h.from}"`
+                      : h.action === "campaign_add" ? `added campaign ${h.to}${h.leads_renamed ? ` (${h.leads_renamed} leads tagged)` : ""}`
+                      : h.action === "campaign_remove" ? `removed campaign ${h.from}`
+                      : h.action === "campaign_update" ? `changed campaign ${h.from} to ${h.to}${h.leads_renamed ? ` (${h.leads_renamed} leads tagged)` : ""}`
                       : `renamed "${h.from}" to "${h.to}"${h.leads_renamed ? ` (${h.leads_renamed} leads)` : ""}`}
                   </li>
                 ))}
