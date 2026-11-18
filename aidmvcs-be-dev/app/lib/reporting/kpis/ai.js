@@ -24,6 +24,7 @@ export const MANAGER_ESCALATIONS = Object.freeze([
   ["Customer asked for something the AI can't supply", 'Asked for something only staff can provide'],
   ['AI stuck in a loop', 'AI going round in circles'],
   ["Customer says they're not interested any more", 'Not interested any more'],
+  ['Customer found or bought a car elsewhere', 'Bought elsewhere'],
 ]);
 
 export function escalationLabel(reason) {

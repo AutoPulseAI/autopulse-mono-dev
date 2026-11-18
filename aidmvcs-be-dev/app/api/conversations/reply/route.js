@@ -266,16 +266,14 @@ export async function POST(request) {
           contentToSend,
           from,
           latestMessageId,
-          dealer
+          dealer,
+          [],
+          { eligibility: { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null } }
         );
         console.log('Email sent successfully. Message ID:', sentMessageId);
       } else if (communicationType === 'sms') {
-        sentMessageId = await sendSMS(
-          to,
-          
-          contentToSend,
-          dealer
-        );
+        sentMessageId = await sendSMS(to, contentToSend, dealer, [],
+          { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null });
         console.log('SMS sent successfully. Message ID:', sentMessageId);
       }
     } catch (error) {

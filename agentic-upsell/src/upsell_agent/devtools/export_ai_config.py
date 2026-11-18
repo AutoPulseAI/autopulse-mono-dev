@@ -595,7 +595,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 40
+DEFAULTS_REVISION = 41  # 41: bought-elsewhere escalation (18 Nov 2026)
 
 
 def export() -> dict[str, Any]:

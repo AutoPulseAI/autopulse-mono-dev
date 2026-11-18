@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { blockedError, contactGate } from './compliance/eligibility.js';
 import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { normalizeMessageId } from './messageIdUtils.js';
 import { isProviderSendStubbed, recordStubSend } from './providerStub.js';
@@ -459,6 +460,12 @@ async function sendEmailViaSesRaw(to, subject, text, from, parentMessageId, deal
 export const sendEmail = async (to, subject, text, from, parentMessageId = null, dealer = null, attachments = [],
   options = {}) => {
   console.log(to, subject, from, parentMessageId);
+  // Contact eligibility (app/lib/compliance/eligibility.js; SOW Deliverable L): DND, an email stop, the dealer's
+  // Do-Not-Contact list. Log-only unless the dealer's policy is 'enforce'. options.eligibility: { origin, reply, leadId }.
+  const gate = await contactGate({ dealerId: dealer?._id || options?.dealerId, channel: 'email', to,
+    origin: options?.eligibility?.origin || 'unknown', reply: Boolean(options?.eligibility?.reply || parentMessageId),
+    leadId: options?.eligibility?.leadId || null });
+  if (gate.stop) throw blockedError(gate);
   const emailSubject = subject.startsWith('Re: ') ? subject.slice(4) : subject;
   console.log('Subject before sending:', emailSubject);
 

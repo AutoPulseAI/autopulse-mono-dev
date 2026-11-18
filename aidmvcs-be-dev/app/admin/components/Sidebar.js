@@ -67,6 +67,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <i className="fa-regular fa-database"></i>DMS feed
           </Link>
         </li>
+        {/* SOW G-068 to G-071: contact eligibility checks (log-only) and each dealer's Do-Not-Contact list. */}
+        <li>
+          <Link href="/admin/contact-compliance" className={getLinkClass("/admin/contact-compliance")}>
+            <i className="fa-regular fa-shield-check"></i>Contact compliance
+          </Link>
+        </li>
         {/* Client, 13 Oct 2026: everything the AI uses, editable with full history (super admin). */}
         <li>
           <Link href="/admin/ai-studio" className={getLinkClass("/admin/ai-studio")}>
