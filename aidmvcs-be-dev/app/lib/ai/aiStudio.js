@@ -117,6 +117,15 @@ const ALIGNMENTS = [
       ].filter((r) => !rules.some((x) => x.reason_starts_with === r.reason_starts_with));
       return add.length ? { ...c, rules: [...rules, ...add] } : null;
     } },
+  { id: 'bought_elsewhere_13nov', type: 'status_rules', key: 'escalations',
+    note: 'Updated by AutoPulse to match the AI: a customer who found or bought a car elsewhere goes to the dealer, who '
+      + 'closes the lead as lost (13 Nov 2026 meeting)',
+    change: (c) => {
+      const rules = Array.isArray(c.rules) ? c.rules : [];
+      const row = { reason_starts_with: 'Customer found or bought a car elsewhere',
+        why: 'the customer bought elsewhere: the dealer closes the lead as lost' };
+      return rules.some((x) => x.reason_starts_with === row.reason_starts_with) ? null : { ...c, rules: [...rules, row] };
+    } },
   { id: 'meeting_2nov', type: 'compliance', key: 'conversation_rules',
     note: 'Updated by AutoPulse to match the AI: a loop goes to a manager, the website when no one car fits, and two '
       + 'real times instead of "what day works?" (2 Nov 2026 meeting)',

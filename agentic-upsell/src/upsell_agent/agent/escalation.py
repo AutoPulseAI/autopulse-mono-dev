@@ -31,6 +31,8 @@ MANAGER_ESCALATIONS: tuple[tuple[str, str], ...] = (
     # Client, 1 Oct 2026 (scope answer 10): "not interested" with a reason - only a human can close-lost it.
     # (Not in Betsy's 12 Oct list; kept until she confirms - open question.)
     ("Customer says they're not interested any more", "a person decides whether to close the lead"),
+    # Betsy, 13 Nov 2026 meeting (5.1): "I got a car, thank you" goes to the dealer, who closes it as lost.
+    ("Customer found or bought a car elsewhere", "the customer bought elsewhere: the dealer closes the lead as lost"),
 )
 # Not an escalation: "AI couldn't write a safe reply" (a soft handoff the AI takes back) - client, 12 Oct 2026 (Dylan
 # Kirsch): a lead nobody has talked to stays in its follow-up, it isn't Dealership Action Required.
