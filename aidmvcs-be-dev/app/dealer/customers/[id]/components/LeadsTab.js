@@ -11,6 +11,7 @@ import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
 import LeadForm from "../../../leads/components/LeadForm";
+import OpportunityActions from "./OpportunityActions";
 
 const defaultLeadsPagination = {
   currentPage: 1,
@@ -198,6 +199,7 @@ export default function LeadsTab({ customerId, onChanged }) {
                 </Accordion.Header>
                 <Accordion.Body>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
+                  {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
                   <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">

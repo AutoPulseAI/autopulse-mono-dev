@@ -10,6 +10,15 @@
       // What the lead provider says beyond its own name, e.g. CarGurus "Reengagement" (ADF provider name / service;
       // app/lib/adfLeadParser.js adfSubSource). Null = no sub-source. For the source / sub-source report.
       sub_source: { type: String, default: null },
+      // The reference CRM's "Active / Not in Market" (SOW B3; 13 Nov 2026 meeting 10.11): staff mark an opportunity
+      // not in the market any more. A flag for staff and lists only - it does not change the AI's follow-ups or the
+      // status. Missing = active.
+      in_market: { type: Boolean, default: undefined },
+      in_market_at: { type: Date, default: undefined },
+      // Vehicles of interest on this opportunity besides its main vehicle (SOW B3 "Vehicles of Interest"; Deliverable
+      // I: each opportunity keeps its own vehicle of interest). Added by staff, usually from the dealer's inventory.
+      vehicles_of_interest: { type: [new mongoose.Schema({ year: String, make: String, model: String, trim: String,
+        vin: String, stock: String, added_by_name: String, at: { type: Date, default: Date.now } })], default: undefined },
       // The dealer's campaign this lead came from (app/lib/leadCampaign.js): set when the lead arrives and its
       // sub-source / lead source is a campaign's tracking code, or by staff on the lead card. Null = none.
       campaign: { type: String, default: null },

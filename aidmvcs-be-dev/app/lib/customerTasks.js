@@ -4,9 +4,11 @@
 //   call      an open AI call task (ai_call_tasks, written by the AI service), with who should call
 //   appt      an upcoming sales / service appointment (Booking) that is not cancelled
 //   followup  the AI's next planned message to the customer (scheduled_followups, pending)
+//   reminder  a reminder staff set on the opportunity (LeadReminder, not done yet; 19 Nov 2026, SOW B3)
 import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import User from '../models/User.js';
+import LeadReminder from '../models/LeadReminder.js';
 
 const FOLLOWUP_KINDS = ['cadence_touch', 'next_action', 'visit_followup', 'owner_touch', 'channel_switch'];
 
@@ -14,7 +16,7 @@ const FOLLOWUP_KINDS = ['cadence_touch', 'next_action', 'visit_followup', 'owner
 export async function openTasks({ leadIds = [], now = new Date(), db = mongoose.connection.db } = {}) {
   const ids = leadIds.map(String);
   if (!ids.length) return [];
-  const [calls, bookings, followups] = await Promise.all([
+  const [calls, bookings, followups, reminders] = await Promise.all([
     db.collection('ai_call_tasks').find({ lead_id: { $in: ids }, status: 'open' })
       .project({ lead_id: 1, reason: 1, due_by: 1, opened_at: 1, assigned_to: 1, phone: 1 }).limit(10).toArray().catch(() => []),
     Booking.find({ lead_id: { $in: ids }, bookingDate: { $gte: new Date(now.getTime() - 12 * 3600000) },
@@ -22,6 +24,8 @@ export async function openTasks({ leadIds = [], now = new Date(), db = mongoose.
       .select('lead_id bookingDate bookingTime appointment_type booking_status').sort({ bookingDate: 1 }).limit(5).lean(),
     db.collection('scheduled_followups').find({ lead_id: { $in: ids }, status: 'pending', kind: { $in: FOLLOWUP_KINDS } })
       .project({ lead_id: 1, due_at: 1, to_channel: 1, kind: 1 }).sort({ due_at: 1 }).limit(1).toArray().catch(() => []),
+    LeadReminder.find({ lead_id: { $in: ids.filter((i) => mongoose.isValidObjectId(i)) }, done_at: null })
+      .select('lead_id due_at note assigned_name').sort({ due_at: 1 }).limit(10).lean().catch(() => []),
   ]);
   const staffIds = calls.map((c) => c.assigned_to).filter((x) => x && mongoose.isValidObjectId(String(x)));
   const names = new Map((staffIds.length ? await User.find({ _id: { $in: staffIds } }).select('name').lean() : [])
@@ -34,6 +38,8 @@ export async function openTasks({ leadIds = [], now = new Date(), db = mongoose.
     ...bookings.map((b) => ({ kind: 'appt', at: day(b.bookingDate), lead_id: String(b.lead_id),
       text: `${b.appointment_type === 'service' ? 'Service' : 'Sales'} appointment${b.bookingTime ? ` at ${b.bookingTime}` : ''}`
         + `${b.booking_status === 'confirmed' ? ' (confirmed)' : ''}`, who: null })),
+    ...reminders.map((r) => ({ kind: 'reminder', at: day(r.due_at), lead_id: String(r.lead_id), text: `Reminder: ${r.note}`,
+      who: r.assigned_name || null })),
     ...followups.map((f) => ({ kind: 'followup', at: f.due_at ? day(f.due_at) : null, lead_id: String(f.lead_id),
       text: `AI follow-up by ${f.to_channel === 'email' ? 'email' : 'text'}`, who: 'AI' })),
   ];

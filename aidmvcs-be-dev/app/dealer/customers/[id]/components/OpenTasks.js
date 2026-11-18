@@ -9,6 +9,7 @@ const KIND = {
   call: { icon: "fa-phone-volume", color: "#e5383b", href: () => "/dealer/ai/call-tasks" },
   appt: { icon: "fa-calendar-check", color: "#1f5ea8", href: () => "/dealer/booking" },
   followup: { icon: "fa-robot", color: "#7c3aed", href: (t) => `/dealer/leads?lead=${t.lead_id}` },
+  reminder: { icon: "fa-bell", color: "#d97706", href: (t) => `/dealer/leads?lead=${t.lead_id}` },
 };
 
 export default function OpenTasks({ tasks }) {
@@ -23,7 +24,7 @@ export default function OpenTasks({ tasks }) {
             <li key={`${t.kind}-${t.lead_id}-${i}`} className="cp_task">
               <i className={`fa-solid ${k.icon}`} style={{ color: k.color }} />
               <span className="me-auto">{t.text}
-                {t.who && <span className="text-muted"> · {t.kind === "call" ? "Assigned to " : ""}{t.who}</span>}</span>
+                {t.who && <span className="text-muted"> · {t.kind === "call" || t.kind === "reminder" ? "Assigned to " : ""}{t.who}</span>}</span>
               {t.at && <span className="text-muted small text-nowrap">{t.kind === "call" ? "due " : ""}{formatTimestamp(t.at)}</span>}
               <Link href={k.href(t)} className="small text-nowrap">Open</Link>
             </li>
