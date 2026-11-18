@@ -202,6 +202,7 @@ export default function DmsFeedPage() {
   };
 
   const s = data?.summary;
+  const decided = s ? s.accept + s.retain + s.review + s.reject : 0;
   const files = data?.files;
   const dealers = data?.dealers || [];
 
@@ -246,8 +247,9 @@ export default function DmsFeedPage() {
           <Tile value={s ? n(s.files) : "…"} label="Files imported" sub={s ? `${n(s.problem_files)} with problems` : null} />
           <Tile value={s ? n(s.rows) : "…"} label="Rows read" sub={`Last ${data?.period_days || filters.days} days`} />
           {Object.entries(DECISION).map(([k, d]) => (
-            <Tile key={k} value={s ? n(s[k.toLowerCase()]) : "…"} label={d.label} color={d.color}
-              sub={s && s.rows ? `${Math.round((s[k.toLowerCase()] / Math.max(1, s.accept + s.retain + s.review + s.reject)) * 100)}% of decided rows` : null} />
+            // Before 18 Nov 2026 no row decisions were recorded: a dash, not a misleading 0.
+            <Tile key={k} value={!s ? "…" : decided ? n(s[k.toLowerCase()]) : "–"} label={d.label} color={d.color}
+              sub={!s ? null : decided ? `${Math.round((s[k.toLowerCase()] / decided) * 100)}% of decided rows` : "Not recorded yet"} />
           ))}
         </div>
 
@@ -316,7 +318,11 @@ export default function DmsFeedPage() {
                         {recorded ? <>
                           <td><DecisionBar f={f} /></td>
                           <Num v={f.accept} /><Num v={f.retain} /><Num v={f.review} strong="#b7791f" /><Num v={f.reject} strong="#c53030" />
-                        </> : <td colSpan={5} className="text-muted">Not recorded (imported before 18 Nov 2026)</td>}
+                        </> : <>
+                          {/* Files from before the decisions were recorded (18 Nov 2026): one short note, a dash per count. */}
+                          <td className="text-nowrap dmsf_sub" title="Imported before 18 Nov 2026, when row decisions started being recorded">Not recorded</td>
+                          <td className="num zero">–</td><td className="num zero">–</td><td className="num zero">–</td><td className="num zero">–</td>
+                        </>}
                         <td className="text-nowrap"><Badge bg={bg} text={bg === "warning" ? "dark" : undefined}>{label}</Badge></td>
                       </tr>
                       {isOpen && <tr><td colSpan={10} className="dmsf_detail"><FileDetail f={f} detail={open[f.key]} /></td></tr>}
