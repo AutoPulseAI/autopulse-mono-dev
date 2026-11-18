@@ -14,7 +14,7 @@ const fieldSchema = new mongoose.Schema({
   bbox: { type: [Number], default: undefined }, // [x0, y0, x1, y1] in the PDF's own points
   corrected: { type: Boolean, default: false }, // changed by staff in the form's panel
   rot: { type: Number, default: 0 }, // the page is turned (/Rotate): the text is written turned with it, so it reads upright
-  found_by: { type: String, default: null }, // 'ai': placed by the AI (a scanned form, lib/forms/aiLocate.js)
+  found_by: { type: String, default: null }, // a scanned form: 'ocr' (our reader, lib/forms/scanRead.js) or 'ai' (once, lib/forms/aiLocate.js)
 }, { _id: false });
 
 const versionSchema = new mongoose.Schema({

@@ -2,7 +2,8 @@
 //   GET  ?dealer_id[&usable=1]  -> { templates, can_manage }  (usable: switched on and allowed for the caller - the
 //                                  list behind the customer profile's "Export to form")
 //   POST multipart: dealer_id, name, file (PDF, or a JPG / PNG of the form) -> the form is stored as uploaded and its
-//        blanks found and matched to customer data (lib/forms/read.js; no AI). The same form uploaded before reuses its
+//        blanks found and matched to customer data (lib/forms/read.js: from the PDF; a scan by our OCR reader, the AI
+//        only once when that finds nothing). The same form uploaded before reuses its
 //        saved blanks and corrections (lib/forms/reuse.js). Library managers only ("Manage Account Information" /
 //        dealer account). Standard forms: api/forms/templates/standard.
 // Errors: 400 not a PDF / picture, locked, damaged · 422 nothing to fill / XFA / a scan · 401 · 403.
@@ -52,7 +53,8 @@ export async function POST(req) {
       pages: found.pages, fields, fingerprint: found.fingerprint, ...(saved ? { reused_from: saved.reused_from } : {}),
       created_by: actor.by, created_by_name: actor.by_name }],
     history: [{ ...actor, action: 'uploaded', detail: `${found.filename || 'PDF'}: ${fields.length} blanks`
-      + `${saved ? ' (the same form was set up before: its blanks and corrections reused)' : ''}, `
+      + `${saved ? ' (the same form was set up before: its blanks and corrections reused)' : ''}`
+      + `${!saved && found.found_by ? { ocr: ' (a scan: read on our server)', ai: ' (a scan: read once by the AI)', reused: ' (the same scan was read before: its blanks reused)' }[found.found_by] || '' : ''}, `
       + `${fields.filter((f) => f.source && f.fill_policy !== 'person').length} filled from the customer's data` }] });
   return json({ template: templateSummary(t.toObject()) }, 201);
 }
