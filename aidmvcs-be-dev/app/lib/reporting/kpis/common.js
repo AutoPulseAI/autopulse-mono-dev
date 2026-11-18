@@ -26,7 +26,7 @@ export const STATE = Object.freeze({ LIVE: 'live', BLOCKED: 'blocked', NEEDS_DAT
 export const KIND = Object.freeze({ COUNT: 'count', RATE: 'rate', MEDIAN: 'median' });
 
 // Filters a KPI can apply, by what its rows are linked to.
-export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'assigned_to']);
+export const LEAD_FILTERS = Object.freeze(['source', 'lead_source', 'assigned_to', 'department']);
 export const BOOKING_FILTERS = Object.freeze([...LEAD_FILTERS, 'actor', 'appointment_type']);
 export const MESSAGE_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);
 export const REPLY_FILTERS = Object.freeze([...LEAD_FILTERS, 'channel']);

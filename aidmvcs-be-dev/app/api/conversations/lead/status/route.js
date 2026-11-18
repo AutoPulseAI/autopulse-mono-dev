@@ -210,7 +210,7 @@ export async function PUT(request) {
   actorName = signedIn.user.name || signedIn.user.email || null;
   try {
     const { id, status, booking_date, booking_time, manager_outcome, allow_overbook, appointment_type, contact_note,
-      unsold_reason, follow_up_at, visit_note } = await request.json();
+      unsold_reason, follow_up_at, visit_note, from_desk_log } = await request.json();
     console.log('Lead status update payload:', { id, status, booking_date, booking_time, manager_outcome });
 
     if (!id || !status) {
@@ -440,6 +440,14 @@ export async function PUT(request) {
       } catch (showedError) {
         console.error('Error recording whether the customer showed:', showedError);
       }
+    }
+
+    // 18 Nov 2026: a visit or its outcome recorded here shows on the Desk Log too (app/lib/deskLog/sync.js). The Desk
+    // Log's own outcome changes come through here with from_desk_log and are already on the visit.
+    if (updated && !from_desk_log && String(originalLead?.fe_lead_status || '') !== String(updated.fe_lead_status || '')) {
+      const { syncDeskLogFromLead } = await import('@lib/deskLog/sync');
+      await syncDeskLogFromLead({ leadId: updated._id, status: updated.fe_lead_status, unsoldReason: updateDoc.unsold_reason,
+        via: 'leads_page', actorId: messageBy, actorName });
     }
 
     // Create appointment reminders if booking was created/updated

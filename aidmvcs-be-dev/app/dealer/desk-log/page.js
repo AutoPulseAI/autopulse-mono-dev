@@ -10,7 +10,9 @@ import moment from "moment-timezone";
 import { useUser } from "../context/UserContext";
 import DashboardDatePicker, { presetRange } from "../dashboard/components/DashboardDatePicker";
 import { reportDates } from "../reports/components/DownloadReport";
-import { deskLogGet, deskLogRules, staffList } from "./deskLogApi";
+import { changeLeadStatus, deskLogAppointments, deskLogGet, deskLogRules, staffList } from "./deskLogApi";
+import AppointmentsToday from "./components/AppointmentsToday";
+import StatusModal from "../leads/components/StatusModal";
 import DeskCards from "./components/DeskCards";
 import DeskTable from "./components/DeskTable";
 import CheckInModal from "./components/CheckInModal";
@@ -47,6 +49,9 @@ export default function DeskLogPage() {
   const [checkIn, setCheckIn] = useState(false);
   const [opened, setOpened] = useState(null); // { id, name }
   const [rulesOpen, setRulesOpen] = useState(false);
+  // The picked day's appointments, and a lead whose status is being changed from here ({ leadId, name, status }).
+  const [appts, setAppts] = useState(null);
+  const [statusFor, setStatusFor] = useState(null);
   const [rules, setRules] = useState(null);
 
   // Today in the dealership's time zone (only once the dealer, and so its time zone, is loaded).
@@ -88,7 +93,13 @@ export default function DeskLogPage() {
     loadActionNow();
     if (!silent) setLoading(true);
     try {
-      setData(await deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters }));
+      // Appointments: the day the cards show (one day picked, or the last day of the range).
+      const [list, ap] = await Promise.all([
+        deskLogGet({ dealer_id: dealerId, ...dates, view, q, cards: 1, ...filters }),
+        deskLogAppointments({ dealer_id: dealerId, day: dates.end_date, department: filters.department }).catch(() => null),
+      ]);
+      setData(list);
+      setAppts(ap);
       setError(null);
     } catch (e) {
       if (!silent) setError(e.status === 404 ? "not_available" : e.message);
@@ -100,7 +111,19 @@ export default function DeskLogPage() {
   useEffect(() => { load(); }, [load]);
   // G-083: check-ins, stages and outcomes other people enter show up without a refresh (paused while a visit or the
   // check-in form is open). 13 Nov 2026 meeting (3.9): every 10 s, and at once when the tab is shown again.
-  useLiveRefresh(() => load({ silent: true }), { everyMs: 10000, paused: loading || checkIn || !!opened });
+  useLiveRefresh(() => load({ silent: true }), { everyMs: 10000, paused: loading || checkIn || !!opened || !!statusFor });
+
+  // A status picked here goes through the lead's status route; a full slot keeps the modal open with the next time.
+  const saveStatus = async (status, extra) => {
+    try {
+      await changeLeadStatus(statusFor.leadId, status, extra);
+      setNotice(`${statusFor.name || "The lead"}: status set to ${status}.`);
+      load();
+    } catch (e) {
+      if (e?.slotConflict) throw e;
+      setError(e.message);
+    }
+  };
 
   if (loadingParent || !dealerParent || !range) {
     return <div className="page_content d-flex justify-content-center p-5"><Spinner animation="border" /></div>;
@@ -190,10 +213,16 @@ export default function DeskLogPage() {
           </div>
         </div>
 
+        {appts && (dates?.start_date === dates?.end_date || appts.appointments.length > 0) && (
+          <AppointmentsToday day={appts.day} items={appts.appointments} tz={tz} loading={loading}
+            onCheckIn={(a) => setCheckIn({ leadId: a.lead_id })} onStatus={setStatusFor} />
+        )}
+
         {error && <Alert variant="danger">{error}</Alert>}
         {notice && <Alert variant="success" dismissible onClose={() => setNotice(null)} className="py-2">{notice}</Alert>}
         {data && (
           <DeskTable rows={data.rows} staff={staff} tz={tz} onChanged={load} onOpen={setOpened} dealerId={dealerId} rules={rules}
+            onStatus={setStatusFor}
             empty={filtered ? "No visits match these filters." : "No customers checked in for these dates yet."} />
         )}
         {data?.truncated && <small className="text-muted">Showing the latest 500 visits. Pick fewer days to see the
@@ -202,9 +231,12 @@ export default function DeskLogPage() {
 
       {checkIn && dealerId && <CheckInModal dealerId={dealerId} staff={staff} tz={tz} initialLeadId={checkIn.leadId || null}
         onHide={() => setCheckIn(false)}
+        onStatus={(s) => { setCheckIn(false); setStatusFor(s); }}
         onDone={(msg) => { setCheckIn(false); setNotice(msg || null); load(); }} />}
       {opened && <VisitModal id={opened.id} name={opened.name} staff={staff} tz={tz} onHide={() => setOpened(null)}
         onChanged={load} />}
+      {statusFor && <StatusModal show onHide={() => setStatusFor(null)} currentStatus={statusFor.status || ""}
+        onStatusChange={saveStatus} />}
       {rulesOpen && <RulesModal dealerId={dealerId} onHide={() => setRulesOpen(false)}
         onSaved={() => deskLogRules(dealerId).then(setRules).catch(() => {})} />}
     </div>

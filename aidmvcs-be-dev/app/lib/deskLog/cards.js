@@ -5,12 +5,14 @@
 // and the list it opens always agree.
 import moment from 'moment-timezone';
 import { evaluateKpi } from '../reporting/registry.js';
+import { validDepartment } from '../departmentNames.js';
 
 // key -> the Reports number it is, and for the lead types the group of "Leads received" by lead type.
 export const CARDS = Object.freeze([
   { key: 'internet', label: 'Internet Leads', kpi: 'exec.leads_received', by: 'up_type', group: 'Internet' },
   { key: 'phone', label: 'Phone Ups', kpi: 'exec.leads_received', by: 'up_type', group: 'Phone' },
-  { key: 'walk_in', label: 'Walk-Ins', kpi: 'exec.leads_received', by: 'up_type', group: 'Walk-in' },
+  // 18 Nov 2026: also a customer already in the CRM who walked in with no appointment (checked in on the Desk Log).
+  { key: 'walk_in', label: 'Walk-Ins', kpi: 'sales.walk_ins' },
   { key: 'appts_set', label: 'Appointments Set', kpi: 'exec.appointments_set' },
   { key: 'appts_showed', label: 'Appointments Showed', kpi: 'exec.shown' },
   { key: 'sold_pending', label: 'Sold Pending', kpi: 'sales.proxy_sold_pending' },
@@ -33,8 +35,10 @@ async function countsFor(args) {
 }
 
 /** The Leads page list behind a card: the dealer-local days from..to as instants, as the Reports links send them. */
-export function cardLink(card, { from, to, tz }) {
+export function cardLink(card, { from, to, tz, department = null }) {
   const q = new URLSearchParams({ report_kpi: card.kpi });
+  // The Desk Log's Department filter (18 Nov 2026): the list behind the card is that department's too.
+  if (department) q.set('report_filters', new URLSearchParams({ department }).toString());
   q.set('startDate', moment.tz(from, 'YYYY-MM-DD', tz).startOf('day').toISOString());
   q.set('endDate', moment.tz(to, 'YYYY-MM-DD', tz).endOf('day').toISOString());
   if (card.by) {
@@ -44,14 +48,21 @@ export function cardLink(card, { from, to, tz }) {
   return `/dealer/leads?${q.toString()}`;
 }
 
-/** { today, mtd, day } for the day `day` (dealer-local YYYY-MM-DD, default today) and its month up to that day. */
-export async function deskLogCards(dealerId, tz, day = null) {
+/**
+ * { today, mtd, day } for the day `day` (dealer-local YYYY-MM-DD, default today) and its month up to that day.
+ * department: the Desk Log's Department filter (sales / service / parts; 18 Nov 2026) - every card counts that
+ * department's leads only, the same way the Dashboard's department picker does. Empty = every department.
+ */
+export async function deskLogCards(dealerId, tz, day = null, department = null) {
   const d = day || moment.tz(tz).format('YYYY-MM-DD');
+  const dept = validDepartment(department);
+  const spec = dept ? { department: dept } : {};
   const monthStart = moment.tz(d, 'YYYY-MM-DD', tz).startOf('month').format('YYYY-MM-DD');
   const [today, mtd] = await Promise.all([
-    countsFor({ dealerId, tz, from: d, to: d }),
-    countsFor({ dealerId, tz, from: monthStart, to: d }),
+    countsFor({ dealerId, tz, from: d, to: d, spec }),
+    countsFor({ dealerId, tz, from: monthStart, to: d, spec }),
   ]);
-  return { day: d, cards: CARDS.map(({ key, label, ...card }) => ({ key, label, today: today[key], mtd: mtd[key],
-    today_link: cardLink(card, { from: d, to: d, tz }), mtd_link: cardLink(card, { from: monthStart, to: d, tz }) })) };
+  return { day: d, department: dept, cards: CARDS.map(({ key, label, ...card }) => ({ key, label, today: today[key],
+    mtd: mtd[key], today_link: cardLink(card, { from: d, to: d, tz, department: dept }),
+    mtd_link: cardLink(card, { from: monthStart, to: d, tz, department: dept }) })) };
 }

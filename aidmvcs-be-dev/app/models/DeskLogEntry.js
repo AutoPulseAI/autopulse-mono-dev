@@ -66,6 +66,9 @@ const deskLogEntrySchema = new mongoose.Schema(
     notes: { type: [noteSchema], default: [] },
     history: { type: [historySchema], default: [] },
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Where the visit was recorded: the Desk Log check-in, or (18 Nov 2026, lib/deskLog/sync.js) a status set on the
+    // Leads page / an appointment marked showed on the Appointments page.
+    created_via: { type: String, enum: ['desk_log', 'leads_page', 'appointments'], default: 'desk_log' },
   },
   { timestamps: true },
 );

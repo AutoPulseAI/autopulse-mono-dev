@@ -11,6 +11,8 @@ import { staffNames, dealerForms } from '../reporting/kpis/common.js';
 import { STALLED_MINUTES, UNSOLD_REASONS, isOpen, minutesInStage } from './deskLog.js';
 import { dealDate } from '../reporting/dealGross.js';
 import { leadStatusLabel } from '../statusLabels.js';
+import TradeIn from '../../models/TradeIn.js';
+import { latestLeadNotes, outcomeForLeadStatus } from './sync.js';
 
 export const VIEWS = Object.freeze({
   all: 'All visits',
@@ -53,21 +55,35 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
   const { start, end } = localDayRange(from, to, tz);
   const match = { dealer_id: String(dealerId), checked_in_at: { $gte: start, $lte: end } };
   if (filters.department) match.department = filters.department;
-  for (const k of ['salesperson_id', 'sales_manager_id', 'bdc_agent_id']) {
+  // The BDC agent is the lead's owner (filtered below, on the lead).
+  for (const k of ['salesperson_id', 'sales_manager_id']) {
     if (filters[k] && mongoose.isValidObjectId(filters[k])) match[k] = new mongoose.Types.ObjectId(filters[k]);
   }
   const entries = await DeskLogEntry.find(match).sort({ checked_in_at: -1, _id: -1 }).limit(MAX_ROWS * 2).lean();
   const leads = new Map((await Lead.find({ _id: { $in: entries.map((e) => e.lead_id) },
     dealer_id: { $in: dealerForms(dealerId) } })
-    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin appointment_showed_at booking.booking_at')
+    .select('name email phone contact_type lead_source source sub_source fe_lead_status customer_id vin appointment_showed_at booking.booking_at '
+      + 'assigned_to vehicle_year vehicle_make vehicle_model statusChangedAt unsold_reason')
     .lean()).map((l) => [String(l._id), l]));
+  // 18 Nov 2026 - one value everywhere, read where it lives:
+  //   trade: the lead's / customer's open trade-in now (unless it was changed on this visit);
+  //   notes: the newest of the visit's notes and the staff notes on the lead's conversation.
+  const leadIdList = [...leads.keys()];
+  const customerIds = [...leads.values()].map((l) => l.customer_id).filter(Boolean);
+  const trades = await TradeIn.find({ dealer_id: String(dealerId), status: 'open',
+    $or: [{ lead_id: { $in: leadIdList } }, ...(customerIds.length ? [{ customer_id: { $in: customerIds } }] : [])] })
+    .sort({ updatedAt: -1 }).select('lead_id customer_id year make model trim vin').lean().catch(() => []);
+  const tradeOf = (lead) => trades.find((t) => String(t.lead_id) === String(lead._id))
+    || trades.find((t) => lead.customer_id && String(t.customer_id) === String(lead.customer_id)) || null;
+  const leadNotes = await latestLeadNotes(leadIdList);
+  const latestVisitOfLead = new Set();
   // Handoffs (SOW Deliverable C manager view): the lead is waiting for a manager - Managerial Review, or the AI handed
   // it over and nobody has picked it up yet (ai_lead_state, the same as AI Assistant > Dealer Action Required).
   const handed = new Map((await mongoose.connection.db.collection('ai_lead_state').find(
     { lead_id: { $in: entries.map((e) => String(e.lead_id)) }, status: 'handoff' },
     { projection: { lead_id: 1, status_reason: 1, status_at: 1 } }).toArray()).map((s) => [String(s.lead_id), s]));
-  const names = await staffNames(entries.flatMap((e) => [e.salesperson_id, e.sales_manager_id, e.bdc_agent_id,
-    ...(e.notes || []).map((n) => n.by)]).filter(Boolean).map(String), {});
+  const names = await staffNames([...entries.flatMap((e) => [e.salesperson_id, e.sales_manager_id,
+    ...(e.notes || []).map((n) => n.by)]), ...[...leads.values()].map((l) => l.assigned_to)].filter(Boolean).map(String), {});
   const name = (id) => (id ? names.get(String(id)) || null : null);
 
   const rows = [];
@@ -77,20 +93,41 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     if (!lead) continue;
     const source = normalizeProvider(lead.lead_source, lead.source);
     sources.add(source);
-    const latest = (e.notes || []).at(-1) || null;
+    const visitNote = (e.notes || []).at(-1) || null;
+    const leadNote = leadNotes.get(String(e.lead_id)) || null;
+    const latest = leadNote && (!visitNote || new Date(leadNote.at) > new Date(visitNote.at))
+      ? { text: leadNote.text, at: leadNote.at, by_name: leadNote.by, from_lead: true } : visitNote;
+    const edited = (prefix) => (e.history || []).some((h) => String(h.field || '').startsWith(`${prefix}.`));
+    // Year / Make / Model: the car on the deal (picked by stock #, or changed on this visit), else the lead's vehicle
+    // of interest as it is now.
+    const leadCar = { year: lead.vehicle_year || null, make: lead.vehicle_make || null, model: lead.vehicle_model || null,
+      vin: lead.vin || null };
+    const vehicle = e.stock_number || edited('vehicle') || !(leadCar.year || leadCar.make || leadCar.model)
+      ? e.vehicle || {} : leadCar;
+    const t = edited('trade') ? null : tradeOf(lead);
+    const trade = t ? { year: t.year ?? null, make: t.make ?? null, model: t.model ?? null, trim: t.trim ?? null, vin: t.vin ?? null }
+      : e.trade || {};
+    // The outcome set on the Leads page after this visit (before 18 Nov 2026 it wasn't written to the visit): the
+    // lead's newest visit shows it.
+    const firstOfLead = !latestVisitOfLead.has(String(e.lead_id));
+    latestVisitOfLead.add(String(e.lead_id));
+    const fromLead = !e.outcome && firstOfLead && lead.statusChangedAt && new Date(lead.statusChangedAt) >= new Date(e.checked_in_at)
+      ? outcomeForLeadStatus(lead.fe_lead_status, lead.unsold_reason) : null;
     const row = {
       id: String(e._id), lead_id: String(e.lead_id), customer_id: lead.customer_id ? String(lead.customer_id) : null,
       customer: lead.name || '', phone: lead.phone || '', email: lead.email || '',
       lead_type: upType(lead), source, sub_source: lead.sub_source || null, lead_status: lead.fe_lead_status || null,
       lead_status_label: leadStatusLabel(lead) || null,
       department: e.department, checked_in_at: e.checked_in_at, stock_number: e.stock_number || null,
-      vehicle: e.vehicle || {}, trade: e.trade || {},
+      vehicle, trade, created_via: e.created_via || 'desk_log',
       salesperson_id: e.salesperson_id ? String(e.salesperson_id) : null, salesperson: name(e.salesperson_id),
       sales_manager_id: e.sales_manager_id ? String(e.sales_manager_id) : null, sales_manager: name(e.sales_manager_id),
-      bdc_agent_id: e.bdc_agent_id ? String(e.bdc_agent_id) : null, bdc_agent: name(e.bdc_agent_id),
-      stage: e.stage || null, stage_at: e.stage_at || null, outcome: e.outcome || null,
-      unsold_reason: e.unsold_reason || null, next_step_at: e.next_step_at || null,
-      latest_note: latest ? { text: latest.text, at: latest.at, by: latest.by_name || name(latest.by) } : null,
+      bdc_agent_id: lead.assigned_to ? String(lead.assigned_to) : null, bdc_agent: name(lead.assigned_to),
+      stage: e.stage || null, stage_at: e.stage_at || null, outcome: e.outcome || fromLead?.outcome || null,
+      unsold_reason: e.unsold_reason || fromLead?.unsold_reason || null, outcome_from_lead: Boolean(fromLead),
+      next_step_at: e.next_step_at || null,
+      latest_note: latest ? { text: latest.text, at: latest.at, by: latest.by_name || name(latest.by),
+        from_lead: Boolean(latest.from_lead) } : null,
       notes_count: (e.notes || []).length,
       updated_at: e.updatedAt || null,
       checklist: (e.checklist || []).length ? { done: e.checklist.filter((c) => c.done).length, total: e.checklist.length } : null,
@@ -101,6 +138,7 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     };
     row.minutes_in_stage = isOpen(row) ? minutesInStage(row, now) : null;
     if (filters.lead_type && row.lead_type !== filters.lead_type) continue;
+    if (filters.bdc_agent_id && row.bdc_agent_id !== String(filters.bdc_agent_id)) continue;
     if (filters.source && row.source !== filters.source) continue;
     // Stage and outcome filters (user, 13 Nov 2026). stage 'none' = no stage yet; outcome 'none' = still open.
     if (filters.stage && (filters.stage === 'none' ? row.stage : row.stage !== filters.stage)) continue;
