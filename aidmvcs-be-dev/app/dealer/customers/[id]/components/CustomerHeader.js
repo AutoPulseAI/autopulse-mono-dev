@@ -283,6 +283,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   return (
     <div className="cp_card mb-3">
       {/* Blue band: who the customer is, where they came from, who looks after them. */}
+      <div className="print_only small text-muted mb-1">Customer summary · printed {new Date().toLocaleString("en-US")}</div>
       <div className="cp_band">
         <div className="cp_avatar" aria-hidden="true">{initials}</div>
         <div className="cp_ident">
@@ -328,6 +329,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           <div className="cp_tools">
             {/* The dealership's forms with this customer's data filled in (Forms Library). */}
             <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
+            {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
+            <button type="button" className="cp_tool" onClick={() => window.print()} title="Print this customer's summary">
+              <i className="fa-solid fa-print" />Print</button>
           </div>
         </div>
         {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}

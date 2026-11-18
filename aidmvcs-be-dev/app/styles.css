@@ -1750,3 +1750,28 @@ background-color: var(--white);
   .sidebar.narrow ul li.submenu ul.submenu-list { padding-left: 0; border-left: 2px solid var(--border); }
   .content_main { margin-left: var(--sidebar-narrow-w); }
 }
+
+/* Print-friendly pages (SOW Deliverable G, G-056: "print-friendly customer/opportunity summary, Desk Log summary"). The
+   Print buttons on the customer profile and the Desk Log call window.print(); on paper the menus, the top bar, buttons
+   and inputs are left out, the page uses the full width and rows don't split across pages. */
+.print_only { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  .sidebar, .topbar_main, .no-print, .cp_toolbar, .dl_top_search, .btn, button, .dropdown, .pagination, .nav-tabs,
+  .form-select, .form-control, .form-check, .alert-dismissible .btn-close { display: none !important; }
+  .print_only { display: block !important; }
+  .content_main, .content_main.shifted { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  .main-wrapper, .page_content, .page_body { padding: 0 !important; margin: 0 !important; }
+  body { background: #fff !important; font-size: 11pt; }
+  .w_card, .cp_card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; }
+  tr, li { break-inside: avoid; }
+  a { color: inherit !important; text-decoration: none !important; }
+  .accordion-collapse.collapse:not(.show) { display: none !important; }
+  table { width: 100% !important; }
+  /* Inside a table (the Desk Log's stage / outcome menus, statuses) the value stays: shown as plain text. */
+  table .btn, table button, table .dropdown, table .dropdown-toggle, table .form-select {
+    display: inline-block !important; border: 0 !important; background: none !important; padding: 0 !important;
+    box-shadow: none !important; color: inherit !important; -webkit-appearance: none; appearance: none; }
+  table .dropdown-toggle::after, table .dropdown-menu { display: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

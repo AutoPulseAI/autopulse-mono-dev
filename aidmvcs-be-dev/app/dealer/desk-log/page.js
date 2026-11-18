@@ -159,6 +159,10 @@ export default function DeskLogPage() {
               aria-label="Search" onChange={(e) => setSearch(e.target.value)} />
           </div>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ ...r, compare: null })} timezone={tz} />
+          {/* SOW G-056: the Desk Log as it is filtered now, on paper (styles.css @media print). */}
+          <Button size="sm" variant="outline-custom" onClick={() => window.print()} title="Print the Desk Log as filtered now">
+            <i className="fa-solid fa-print me-1"></i>Print
+          </Button>
           <Dropdown as="div" className="btn-group">
             <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
               <i className="fa-solid fa-right-to-bracket me-1"></i>Customer Check-in
@@ -172,6 +176,7 @@ export default function DeskLogPage() {
         </div>
       </div>
 
+      <div className="print_only small text-muted mb-2">Desk Log summary · printed {new Date().toLocaleString("en-US")} · the visits shown on screen (this page, current filters)</div>
       <div className="page_body">
         {data?.cards && (
           <div className="mb-1">
