@@ -58,11 +58,25 @@ export function fromAddress(env = process.env) {
   return env.DAILY_REPORT_FROM || env.EMAIL_FROM || 'support@autopulse.ai';
 }
 
+// The address the report goes out from: the dealer's own mailbox (its active EmailAccount) - the address the CRM and
+// the AI already send every customer email from, which AWS SES accepts. support@autopulse.ai (fromAddress) was refused
+// by SES (AccessDenied for the CRM's AWS user): Victory's daily email failed every day from 11 to 17 Nov 2026. That
+// address (or DAILY_REPORT_FROM / EMAIL_FROM) is only the fallback for a dealer without a mailbox.
+export async function senderFor(dealerId, env = process.env) {
+  if (dealerId && mongoose.isValidObjectId(String(dealerId))) {
+    const forms = [String(dealerId), new mongoose.Types.ObjectId(String(dealerId))];
+    const box = await mongoose.connection.collection('emailaccounts').findOne({ dealer_id: { $in: forms },
+      active: { $ne: false }, email_address: { $type: 'string' } }, { projection: { email_address: 1 } });
+    if (box?.email_address) return box.email_address;
+  }
+  return fromAddress(env);
+}
+
 // The real sender: app/lib/email.js sendEmail (SES raw / SMTP; stubbed when PROVIDER_SEND_STUB is on outside
 // production). Returns the provider message id.
-export async function defaultSend({ to, subject, html, env = process.env }) {
+export async function defaultSend({ to, subject, html, env = process.env, dealerId = null }) {
   const { sendEmail } = await import('../email.js');
-  return sendEmail(to, subject, html, fromAddress(env), null, null);
+  return sendEmail(to, subject, html, await senderFor(dealerId, env), null, null);
 }
 
 function isFinishedDay(reportDate, tz, now) {
@@ -93,7 +107,7 @@ async function deliverOne({ key, base, rendered, send, env }) {
   if (!claimed) return { recipient: key.recipient, status: row.status, skipped: true, delivery_id: String(row._id) };
   try {
     const providerId = await send({ to: key.recipient, subject: rendered.subject, html: rendered.html,
-      text: rendered.text, env });
+      text: rendered.text, env, dealerId: key.dealer_id });
     await DailyReportDelivery.updateOne({ _id: claimed._id }, { $set: { status: 'sent', sent_at: new Date(),
       provider_message_id: providerId ? String(providerId) : null } });
     return { recipient: key.recipient, status: 'sent', delivery_id: String(claimed._id) };
