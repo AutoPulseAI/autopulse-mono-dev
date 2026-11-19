@@ -6,7 +6,7 @@
 //   Delivery checklist   the Sold Pending checklist of the lead's Desk Log visit, ticked as on the Desk Log
 //   Change lead type     Sales / Service / Parts - the lead's department (PATCH /api/leads/[id]/details, which emails
 //                        the new department's staff), done by the card that owns the lead (onDepartment)
-//   View audit log       every logged change on the lead, who and when (/api/leads/[id]/opportunity)
+//   View audit log       every logged change on the lead, who and when (/api/leads/[id]/opportunity/menu)
 //   Add to campaign      one of the dealership's campaigns that hasn't started sending (/api/campaigns/[id]/leads)
 import { forwardRef, useState } from "react";
 import { Alert, Badge, Button, Dropdown, Form, ListGroup, Modal, Spinner } from "react-bootstrap";
@@ -40,7 +40,7 @@ const Dots = forwardRef(function Dots({ onClick }, ref) {
 
 export default function OpportunityMenu({ lead, timezone, onDepartment }) {
   const [open, setOpen] = useState(null); // "print" | "checklist" | "type" | "audit" | "campaign"
-  const [info, setInfo] = useState(null); // GET /api/leads/[id]/opportunity
+  const [info, setInfo] = useState(null); // GET /api/leads/[id]/opportunity/menu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -52,7 +52,7 @@ export default function OpportunityMenu({ lead, timezone, onDepartment }) {
   const load = async () => {
     if (!leadId) return;
     setLoading(true);
-    try { setInfo(await call(`/api/leads/${leadId}/opportunity`)); setError(""); }
+    try { setInfo(await call(`/api/leads/${leadId}/opportunity/menu`)); setError(""); }
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
