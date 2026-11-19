@@ -66,7 +66,7 @@ export async function GET(req) {
     }
     // IP restriction (lib/ipRestriction.js): checked on every page load, so a sign-in made at the dealership stops
     // working elsewhere. "login as" (AutoPulse / agency) is never restricted.
-    if (await ipBlocked(req, user, { impersonated: Boolean(decoded.impersonated_by) })) return ipBlockedResponse();
+    if (await ipBlocked(req, user, { impersonated: Boolean(decoded.impersonated_by), where: "page" })) return ipBlockedResponse();
 
     // Extract permissions
     const permissions = user.role?.permissions?.map((p) => p.permission_name) || [];

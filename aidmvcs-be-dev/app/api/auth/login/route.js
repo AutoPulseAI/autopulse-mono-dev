@@ -40,7 +40,7 @@ export async function POST(req) {
       return json({ message: "Invalid credentials." }, 401);
     }
     // IP restriction (lib/ipRestriction.js): a dealership that lists its networks lets its users sign in only from them.
-    if (await ipBlocked(req, user, { impersonated: false })) {
+    if (await ipBlocked(req, user, { impersonated: false, where: "sign-in" })) {
       return json({ message: IP_BLOCKED_MESSAGE, code: "ip_blocked" }, 403);
     }
 
