@@ -101,3 +101,6 @@
 .desk_log .dl_table thead th.dl_sort.on i { opacity: 1; }
 .desk_log .dl_table thead .form-check-input { background-color: #fff; }
 .desk_log .dl_source_logo i { font-size: 0.8rem; }
+/* 360 View side panel link under the customer's name (19 Nov 2026) */
+.desk_log .dl_360 { border: 0; background: none; padding: 0; color: var(--primary, #0272b4); font-size: 12px; display: block; }
+.desk_log .dl_360:hover { text-decoration: underline; }

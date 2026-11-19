@@ -18,6 +18,7 @@ import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
 import CallButton from "../../components/CallButton";
+import Customer360Panel from "../../components/Customer360Panel";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
   avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText } from "./deskLogUi";
 
@@ -44,6 +45,7 @@ function appliedText(a) {
 
 export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, dealerId, rules, onStatus = null }) {
   const [busy, setBusy] = useState(null);
+  const [panel360, setPanel360] = useState(null); // the 360 View side panel (19 Nov 2026)
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [pending, setPending] = useState(null); // { row, choice }
@@ -179,6 +181,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log",
                         "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
                     </Clip>
+                    <button type="button" className="dl_360" title="360 View: history, tasks, call / text without leaving the Desk Log"
+                      onClick={() => setPanel360({ customerId: row.customer_id, leadId: row.lead_id, name: row.customer, dnd })}>
+                      <i className="fa-regular fa-id-card me-1" />360 View</button>
                     {row.phone && <Clip className="text-muted small" text={row.phone} />}
                     {/* The lead's own status, as everywhere else in the CRM (changes made on the Leads page show here too). */}
                     {row.lead_status_label && <Clip className={`small ${row.lead_status_label === "Appointment Showed" ? "text-success" : "text-muted"}`}
@@ -287,6 +292,8 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
           </tbody>
         </table>
       </div>
+      <Customer360Panel show={!!panel360} onHide={() => setPanel360(null)} customerId={panel360?.customerId}
+        leadId={panel360?.leadId} name={panel360?.name} dnd={panel360?.dnd} />
       {pending && (
         <OutcomeModal row={pending.row} choice={pending.choice} tz={tz} rules={rules} onHide={() => setPending(null)}
           onSave={async (body) => {

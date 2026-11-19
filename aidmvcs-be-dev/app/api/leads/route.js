@@ -494,6 +494,9 @@ export async function GET(req) {
         lead_id: { $exists: true, $ne: null },
         status: { $in: ['received', 'incoming'] }
       };
+      // The top bar's mail / chat icons (19 Nov 2026): unread by channel.
+      const unreadChannel = url.searchParams.get("channel");
+      if (['email', 'sms'].includes(unreadChannel)) messageQuery.communication_type = unreadChannel;
       const leadsWithUnread = await Email.distinct('lead_id', { ...messageQuery, read: { $ne: true } });
       let ids = leadsWithUnread;
       if (messageFilter === 'read') {
