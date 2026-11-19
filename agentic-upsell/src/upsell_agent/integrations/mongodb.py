@@ -198,6 +198,10 @@ AI_CALL_TASKS_COLLECTION = "ai_call_tasks"
 AI_SERVICE_VEHICLES_COLLECTION = "ai_service_vehicles"
 AI_VEHICLE_RECALLS_COLLECTION = "ai_vehicle_recalls"
 AI_SERVICE_EVENTS_COLLECTION = "ai_service_events"
+# Trade-in values from Vehicle Databases (agent/trade_values.py), one row per vehicle / mileage band / state, shared by
+# every dealership and kept 30 days, so the same question isn't paid for twice (Betsy, 19 Nov 2026).
+AI_TRADE_VALUES_COLLECTION = "ai_trade_values"
+TRADE_VALUE_TTL_S = 30 * 86400
 # MASTER_PLAN_4 D3/D8 (stream A3, agent/ownership.py; SOLD-DELIVERED PDF §9-§11, §14): one ownership record per
 # vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
 AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
@@ -329,6 +333,10 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
         # The sweeps' query (cross-dealer by design, like the Day 91 sweep).
         ([("ownership_status", 1), ("recalls_next_check_at", 1)], {}),
         ([("ownership_status", 1), ("maintenance_next_check_at", 1)], {}),
+    ],
+    AI_TRADE_VALUES_COLLECTION: [
+        ([("key", 1)], {"unique": True}),
+        ([("fetched_at", 1)], {"expireAfterSeconds": TRADE_VALUE_TTL_S}),
     ],
     AI_VEHICLE_RECALLS_COLLECTION: [
         ([("dealer_id", 1), ("vin", 1), ("recall_id", 1)], {"unique": True}),
