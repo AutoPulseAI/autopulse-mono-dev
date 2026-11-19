@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge, Button, ButtonGroup, Form, ListGroup } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
+import { leadTypeName } from "../../../leads/components/LeadInfoCard";
 
 function vehicleLabel(record) {
   const parts = [record["Year"], record["Make"], record["Model"]].filter(Boolean);
@@ -18,6 +19,16 @@ const TYPE_META = {
   assignment: { label: "Assignment", variant: "secondary", icon: "fa-user-check" },
 };
 
+// A lead on the timeline by its kind (19 Nov 2026, SOW reference B6 - "Web Lead", "Phone Up"): the Lead Type the lead
+// card shows (LeadInfoCard leadTypeName), so the history reads what came in at a glance.
+const LEAD_KIND = {
+  Internet: { label: "Web Lead", variant: "info", icon: "fa-globe" },
+  "Phone Up": { label: "Phone Up", variant: "info", icon: "fa-phone" },
+  "Walk-In": { label: "Walk-In", variant: "info", icon: "fa-person-walking" },
+  Campaign: { label: "Campaign Lead", variant: "info", icon: "fa-bullhorn" },
+};
+const leadMeta = (record) => LEAD_KIND[leadTypeName(record)] || TYPE_META.lead;
+
 // Who did it, for the timeline entries (client, 10 Oct 2026: every staff and AI action is logged).
 const ACTOR_META = {
   staff: { label: "Staff", variant: "dark", icon: "fa-user" },
@@ -31,7 +42,10 @@ const PAGE = 50;
 function describeEntry(entry) {
   const { type, record } = entry;
   if (type === "lead") {
-    return `${record.name || "Unnamed lead"} via ${record.source || record.lead_source || "unknown source"}`;
+    // 19 Nov 2026 (SOW reference B6): what came in and from where - "Cars.com · Chat", the vehicle asked about.
+    const from = [record.lead_source || record.source || "unknown source", record.sub_source].filter(Boolean).join(" · ");
+    const car = [record.vehicle_year, record.vehicle_make, record.vehicle_model].filter(Boolean).join(" ");
+    return `${record.name || "Unnamed lead"} via ${from}${car ? ` - ${car}` : ""}`;
   }
   if (type === "deal") {
     const price = record.computed_price;
@@ -102,6 +116,7 @@ export default function OverviewTab({ overview, activity = [] }) {
           {visible.map((entry, index) => {
             const meta = entry.type === "activity"
               ? (ACTOR_META[entry.actor] || ACTOR_META.system)
+              : entry.type === "lead" ? leadMeta(entry.record)
               : TYPE_META[entry.type] || { label: entry.type, variant: "secondary", icon: "fa-circle" };
             return (
               <ListGroup.Item key={`${entry.type}-${entry.record?._id || entry.kind || ""}-${index}`} className="px-0">
