@@ -10,6 +10,8 @@ import csv from 'csv-parser';
 import { MAX_JOB_BYTES, MAX_RECORDS } from './common/validation.js';
 import dbConnect from '../../lib/mongodb.js';
 import HeldFile from '../../models/DealerVaultHeldFile.js';
+import User from '../../models/User.js';
+import Batch from '../../models/DealerVaultImportBatch.js';
 import { checkFeedFile, recentFileSizes } from './feedCheck.js';
 import { sendEmail } from '../../lib/email.js';
 import {
@@ -24,6 +26,7 @@ const DEFAULT_AWS_REGION = 'us-east-1';
 const FILE_NAME_PATTERN =
   /^([A-Za-z0-9-]{1,64})_(\d{8})_(\d{4})_(PTINV|SL|SV|SV_APPT)\.txt$/;
 const RECEIVE_ERROR_DELAY_MS = 1000;
+const FEED_SILENT_HOURS = 36; // files arrive once a day
 
 const QUEUE_NAMES_BY_FILE_TYPE = Object.freeze({
   PTINV: PARTS_QUEUE,
@@ -225,20 +228,31 @@ export async function importFeedFile({ bucket, key, s3, queueByFileType, force =
   if (!force) {
     // SOW G-087 (17 Nov 2026): a malformed or cut-short file is held, never imported (feedCheck.js).
     let check = { ok: true, reasons: [], expected: null };
+    let unlinked = false;
     try {
       await dbConnect({ reportErrors: false });
-      check = checkFeedFile({ fileType: metadata.fileType, records,
-        recentSizes: await recentFileSizes(metadata.dvDealerId, metadata.fileType) });
+      // 20 Nov 2026: files of a DealerVault store no AutoPulse dealer is linked to (dv_dealer_id) used to fail row by
+      // row ("Store not linked") and were lost from view; now they are held, listed on Admin > DMS feed, and imported
+      // once the store is linked there.
+      unlinked = !(await User.exists({ type: 'dealer', dv_dealer_id: metadata.dvDealerId }));
+      check = unlinked
+        ? { ok: false, expected: null, reasons: [`DealerVault store ${metadata.dvDealerId} is not linked to an AutoPulse dealer: `
+          + 'link it on Admin > DMS feed > DealerVault stores, then import its files']}
+        : checkFeedFile({ fileType: metadata.fileType, records,
+          recentSizes: await recentFileSizes(metadata.dvDealerId, metadata.fileType) });
     } catch (error) {
       log('warn', 'dealervault_feed_check_skipped', { fileName: metadata.fileName, code: error?.code || 'CHECK_FAILED' });
     }
     if (!check.ok) {
+      // One email a day per unlinked store, not one per file.
+      const quiet = unlinked && await HeldFile.exists({ dvDealerId: metadata.dvDealerId, fileName: { $ne: metadata.fileName },
+        createdAt: { $gte: new Date(Date.now() - 86400000) } }).catch(() => null);
       await HeldFile.updateOne({ fileName: metadata.fileName }, { $setOnInsert: {
         dvDealerId: metadata.dvDealerId, fileName: metadata.fileName, fileType: metadata.fileType, bucket, key,
         records: records.length, expected: check.expected, reasons: check.reasons, status: 'held' } }, { upsert: true });
       log('warn', 'dealervault_file_held', { fileName: metadata.fileName, reasons: check.reasons });
       const to = process.env.DEALERVAULT_ALERT_EMAIL || process.env.ADMIN_EMAIL;
-      if (to) {
+      if (to && !quiet) {
         await sendEmail(to, `DMS feed file held: ${metadata.fileName}`,
           `The DMS feed file ${metadata.fileName} was not imported: ${check.reasons.join('; ')}.\n\nNothing from it `
           + 'was written. Release or discard it on Admin > DMS feed.').catch(() => null);
@@ -321,11 +335,38 @@ const s3 = new AWS.S3({
 
   log('info', 'dealervault_sqs_ingestion_started', { region });
 
+  // 20 Nov 2026: Victory Mitsubishi got no DMS file for 9 days and nobody was told. Every hour: a linked store whose
+  // newest imported file is older than FEED_SILENT_HOURS gets one alert email a day (who to tell: as for held files).
+  const alerted = new Map();
+  setInterval(async () => {
+    try {
+      const to = process.env.DEALERVAULT_ALERT_EMAIL || process.env.ADMIN_EMAIL;
+      if (!to) return;
+      await dbConnect({ reportErrors: false });
+      const stores = await User.find({ type: 'dealer', dv_dealer_id: { $nin: [null, ''] } }).select('name dv_dealer_id').lean();
+      for (const store of stores) {
+        const last = await Batch.findOne({ dealer_id: String(store._id) }).sort({ createdAt: -1 }).select('createdAt').lean();
+        const since = last?.createdAt ? new Date(last.createdAt) : null;
+        if (since && Date.now() - since.getTime() < FEED_SILENT_HOURS * 3600000) continue;
+        const key = String(store._id);
+        if (Date.now() - (alerted.get(key) || 0) < 86400000) continue;
+        alerted.set(key, Date.now());
+        await sendEmail(to, `No DMS files for ${store.name} since ${since ? since.toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'ever'}`,
+          `No DealerVault file has been imported for ${store.name} (DealerVault ${store.dv_dealer_id}) `
+          + `${since ? `since ${since.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'yet'}.\n\n`
+          + 'Check the daily DealerVault copy job (scripts/dealervault/sync.py, which copies the SFTP files to S3) and '
+          + 'the store\'s feed with DealerVault. Admin > Integration health and Admin > DMS feed show the details.').catch(() => null);
+        log('warn', 'dealervault_feed_silent', { dvDealerId: store.dv_dealer_id, since: since?.toISOString() || null });
+      }
+    } catch { /* next hour */ }
+  }, 3600000).unref?.();
+
   // Held files a super admin released (Admin > DMS feed): imported here, where S3 and the queues are (SOW G-087).
   setInterval(async () => {
     try {
       await dbConnect({ reportErrors: false });
-      const asked = await HeldFile.find({ status: 'release_requested' }).limit(5).lean();
+      // Oldest file first (a store's backlog imported in order); 20 a minute.
+      const asked = await HeldFile.find({ status: 'release_requested' }).sort({ fileName: 1 }).limit(20).lean();
       for (const f of asked) {
         const claimed = await HeldFile.updateOne({ _id: f._id, status: 'release_requested' }, { $set: { status: 'releasing' } });
         if (!claimed.modifiedCount) continue;
