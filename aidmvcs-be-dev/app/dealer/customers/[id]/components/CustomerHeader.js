@@ -258,6 +258,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   const canAssignLeads = useCan("Assign Leads");
   const [notice, setNotice] = useState(null);
   const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
+  // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
+  const [showDetails, setShowDetails] = useState(false);
+  const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
 
   const putCustomer = async (body) => {
     const res = await fetch(`/api/customers/${customer._id}`, { method: "PUT", headers: auth(),
@@ -392,8 +395,15 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <InlineField label="Language" value={customer.user_language}
               display={nameOf(LANGUAGES, customer.user_language)} options={LANGUAGES}
               onSave={(v) => putCustomer({ user_language: v })} /></div>
-          <h6 className="cp_section_title mt-3"><i className="fa-solid fa-address-book" />More details</h6>
-          {DETAILS.map(([key, label, icon, opts]) => {
+          <h6 className="cp_section_title mt-3">
+            <button type="button" className="cp_fold_btn" onClick={() => setShowDetails((v) => !v)}
+              aria-expanded={showDetails} aria-controls="cp_more_details">
+              <i className="fa-solid fa-address-book" />More details
+              {detailsFilled > 0 && <span className="cp_fold_count">{detailsFilled}</span>}
+              <i className={`fa-solid fa-chevron-${showDetails ? "up" : "down"} cp_fold_chevron`} />
+            </button>
+          </h6>
+          {showDetails && <div id="cp_more_details">{DETAILS.map(([key, label, icon, opts]) => {
             const v = customer.details?.[key] || "";
             return (
               <div className="cp_pref" key={key}><i className={`fa-solid ${icon}`} />
@@ -401,7 +411,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   display={v ? (opts.options ? nameOf(opts.options, v) : opts.inputType === "date" ? shortDate(v) : v) : "Not set"}
                   onSave={(nv) => putCustomer({ details: { [key]: nv } })} /></div>
             );
-          })}
+          })}</div>}
         </section>
         <section className="cp_section">
           <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>
