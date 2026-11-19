@@ -162,6 +162,8 @@ export default function CustomerDetail({ customerId }) {
         onAssignmentChange={handleAssignmentChange}
         // G-059: a call from the profile is logged on the customer's newest lead.
         callLeadId={leads?.[0]?._id}
+        latestLead={leads?.[0]}
+        dmsPerson={dms?.person}
         dealerId={customer.dealer_id}
         counts={counts}
         onOpenTab={setActiveTab}

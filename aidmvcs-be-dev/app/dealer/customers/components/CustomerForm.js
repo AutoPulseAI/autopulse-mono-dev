@@ -3,13 +3,20 @@ import { useState } from "react";
 import { Form, Button, Row, Col, Alert, Badge } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import ContactEditor from "./ContactEditor";
+import { namePartsOf } from "../../../lib/personName";
+
+// The name in parts (19 Nov 2026): first / middle / last, as the DMS and dealership forms keep it.
+const NAME_FIELDS = [["first_name", "First name", "John"], ["middle_name", "Middle name", "Optional"], ["last_name", "Last name", "Doe"]];
 
 export default function CustomerForm({ setEditCustomer, editCustomer }) {
     const { dealerParent } = useUser();
     const isEditMode = !!editCustomer?._id;
 
+    const startParts = namePartsOf(editCustomer || {});
     const [formData, setFormData] = useState({
-        name: editCustomer?.name || "",
+        first_name: startParts.first_name || "",
+        middle_name: startParts.middle_name || "",
+        last_name: startParts.last_name || "",
         email: "",
         phone: "",
         followup_preference: editCustomer?.followup_preference || "email",
@@ -23,7 +30,9 @@ export default function CustomerForm({ setEditCustomer, editCustomer }) {
     const validateField = (name, value) => {
         const stringValue = value ? value.toString().trim() : "";
         switch (name) {
-            case "name":
+            case "first_name":
+            case "middle_name":
+            case "last_name":
                 // Letters (incl. accented), spaces, apostrophes, hyphens and
                 // periods - covers names like O'Connor, Smith-Jones, José, Jr.
                 if (stringValue && !/^[\p{L}\p{M}\s'.-]+$/u.test(stringValue))
@@ -52,13 +61,15 @@ export default function CustomerForm({ setEditCustomer, editCustomer }) {
 
     const validateForm = () => {
         const newErrors = {
-            name: validateField("name", formData.name),
+            first_name: validateField("first_name", formData.first_name),
+            middle_name: validateField("middle_name", formData.middle_name),
+            last_name: validateField("last_name", formData.last_name),
             email: isEditMode ? "" : validateField("email", formData.email),
             phone: isEditMode ? "" : validateField("phone", formData.phone),
         };
 
-        if (!formData.name?.trim()) {
-            newErrors.name = "Name is required";
+        if (!formData.first_name?.trim() && !formData.last_name?.trim()) {
+            newErrors.first_name = "A first or last name is required";
         }
 
         if (!isEditMode) {
@@ -88,7 +99,9 @@ export default function CustomerForm({ setEditCustomer, editCustomer }) {
             const body = customerId
                 ? {
                     dealer_id: dealerParent.id,
-                    name: formData.name,
+                    first_name: formData.first_name,
+                    middle_name: formData.middle_name,
+                    last_name: formData.last_name,
                     followup_preference: formData.followup_preference,
                     preferred_communication_mode: formData.preferred_communication_mode,
                     user_language: formData.user_language,
@@ -122,19 +135,21 @@ export default function CustomerForm({ setEditCustomer, editCustomer }) {
 
             <Form onSubmit={handleSubmit}>
                 <Row>
-                    <Form.Group as={Col} lg={4} md={6} className="mb-3">
-                        <Form.Label>Name</Form.Label>
-                        <Form.Control
-                            name="name"
-                            value={formData.name || ""}
-                            onChange={handleChange}
-                            isInvalid={!!errors.name}
-                            placeholder="John Doe"
-                        />
-                        <Form.Control.Feedback type="invalid">
-                            {errors.name}
-                        </Form.Control.Feedback>
-                    </Form.Group>
+                    {NAME_FIELDS.map(([field, label, placeholder]) => (
+                        <Form.Group as={Col} lg={4} md={4} className="mb-3" key={field}>
+                            <Form.Label>{label}</Form.Label>
+                            <Form.Control
+                                name={field}
+                                value={formData[field] || ""}
+                                onChange={handleChange}
+                                isInvalid={!!errors[field]}
+                                placeholder={placeholder}
+                            />
+                            <Form.Control.Feedback type="invalid">
+                                {errors[field]}
+                            </Form.Control.Feedback>
+                        </Form.Group>
+                    ))}
 
                     {isEditMode ? (
                         <>

@@ -141,15 +141,27 @@ function sanitizeAdfXml(xml) {
   return sanitized;
 }
 
-function contactName(contact) {
+function namedPartsOf(contact) {
   const names = asArray(child(contact, "name"));
-  const namedParts = new Map(
-    names.map((entry) => [String(attribute(entry, "part") || "").toLowerCase(), text(entry)])
-  );
+  return {
+    names,
+    parts: new Map(names.map((entry) => [String(attribute(entry, "part") || "").toLowerCase(), text(entry)])),
+  };
+}
+
+function contactName(contact) {
+  const { names, parts: namedParts } = namedPartsOf(contact);
   const combined = [namedParts.get("first"), namedParts.get("middle"), namedParts.get("last")]
     .filter(Boolean)
     .join(" ");
   return combined || firstText(names);
+}
+
+// The provider's own first / middle / last (19 Nov 2026: names in parts); null when it sent one-line names only.
+function contactNameParts(contact) {
+  const { parts } = namedPartsOf(contact);
+  const out = { first: parts.get("first") || "", middle: parts.get("middle") || "", last: parts.get("last") || "" };
+  return out.first || out.last ? out : null;
 }
 
 // The sub-source of a lead (Betsy, 10 Nov 2026: eLead's "Source and Sub Source Performance" report): what the
@@ -225,6 +237,7 @@ export function parseAdfLeadEmail(content) {
   return {
     xml,
     name,
+    nameParts: contactNameParts(contact),
     email,
     phone,
     source:

@@ -2,6 +2,7 @@ import Customer, { CUSTOMER_MAPPING_INDEX } from '../../../models/Customer.js';
 import { normalizeEmail, normalizePhone } from '../../../lib/customerResolver.js';
 import { requireUniqueIndex } from './indexProtection.js';
 import { mapBounded } from './bounded.js';
+import { dmsNameParts } from '../../../lib/personName.js';
 
 const mappingPath = 'extra.dealervault.customer_numbers';
 const projection = '_id dealer_id emails.value phones.value extra.dealervault.customer_numbers merged_into dealervault_upload inbound_lead';
@@ -114,10 +115,12 @@ export async function resolveCustomers(entries, context, Model = Customer) {
               });
             } else {
               const source = group.entries[0].document;
+              const parts = dmsNameParts(source);
               customer = await Model.create({
                 dealer_id,
                 name: source['Full Name']?.trim() || [source['First Name'], source['Middle Name'], source['Last Name']]
                   .filter(Boolean).join(' ').trim() || undefined,
+                ...(parts ? { ...parts, name_parts_from: 'dms' } : {}),
                 dealervault_upload: true,
                 inbound_lead: false,
                 emails: group.emails.map((value, index) => ({ value, is_primary: index === 0, source: 'dealervault' })),
@@ -138,6 +141,15 @@ export async function resolveCustomers(entries, context, Model = Customer) {
     for (const entry of group.entries) {
       entry.document.customer_id = result.id;
       if (result.warning) entry.warnings.push(result.warning);
+    }
+    // The DMS's first / middle / last go on the customer (19 Nov 2026: names in parts, so a sold customer lines up
+    // with the DMS and forms fill by part). Never over a name staff typed; never stops the import.
+    const parts = result.id ? dmsNameParts(group.entries[0].document) : null;
+    if (parts) {
+      try {
+        await Model.updateOne({ dealer_id, _id: result.id, name_parts_from: { $in: [null, 'guess', 'adf', 'dms'] } },
+          { $set: { ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v || null])), name_parts_from: 'dms' } });
+      } catch { /* the name parts are optional */ }
     }
   });
 }

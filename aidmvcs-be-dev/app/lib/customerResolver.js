@@ -1,5 +1,6 @@
 import Customer from "../models/Customer.js";
 import { survivorOf } from "./customerFamily.js";
+import { cleanPart, joinName } from "./personName.js";
 
 // The AI extraction pipeline (Ollama/n8n) emits these literal strings when a
 // field couldn't be found in the source email/SMS text, instead of omitting
@@ -205,9 +206,30 @@ async function enrichCustomer(customer, { email, phone, source, smsOptIn }) {
   };
 }
 
+// The lead provider's first / middle / last (ADF) as Customer fields, or null.
+function adfParts(nameParts) {
+  if (!nameParts) return null;
+  const parts = { first_name: cleanPart(nameParts.first), middle_name: cleanPart(nameParts.middle),
+    last_name: cleanPart(nameParts.last) };
+  return parts.first_name || parts.last_name ? parts : null;
+}
+
+// An existing customer with no name parts (or only guessed ones) takes the provider's, when it is the same name.
+async function fillAdfParts(customerId, name, nameParts) {
+  const parts = adfParts(nameParts);
+  if (!parts || !customerId) return;
+  const full = joinName(parts) || cleanPart(name);
+  const exact = new RegExp(`^\\s*${full.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+  try {
+    await Customer.updateOne({ _id: customerId, name: exact, name_parts_from: { $in: [null, "guess"] } },
+      { $set: { ...parts, name_parts_from: "adf" } });
+  } catch { /* the name parts never stop a lead being linked */ }
+}
+
 export async function resolveCustomerForLead({
   dealerId,
   name,
+  nameParts,
   email,
   phone,
   source,
@@ -257,6 +279,7 @@ export async function resolveCustomerForLead({
 
   const existingCustomer = initialMatch.customer;
   if (existingCustomer) {
+    await fillAdfParts(existingCustomer._id, name, nameParts);
     return enrichCustomer(existingCustomer, {
       email: normalizedEmail,
       phone: normalizedPhone,
@@ -286,6 +309,7 @@ export async function resolveCustomerForLead({
   if (rechecked.conflict) return unresolvedResult();
   const recheckedCustomer = rechecked.customer;
   if (recheckedCustomer) {
+    await fillAdfParts(recheckedCustomer._id, name, nameParts);
     return enrichCustomer(recheckedCustomer, {
       email: normalizedEmail,
       phone: normalizedPhone,
@@ -297,6 +321,7 @@ export async function resolveCustomerForLead({
   const customer = new Customer({
     dealer_id: String(dealerId),
     name,
+    ...(adfParts(nameParts) ? { ...adfParts(nameParts), name_parts_from: "adf" } : {}),
     dealervault_upload: false,
     inbound_lead: true,
     emails: normalizedEmail
@@ -353,6 +378,8 @@ export async function linkCustomerToLead(savedLead, { source, smsOptIn } = {}) {
     customerResolution = await resolveCustomerForLead({
       dealerId: savedLead.dealer_id,
       name: savedLead.name,
+      nameParts: savedLead.first_name || savedLead.last_name
+        ? { first: savedLead.first_name, middle: savedLead.middle_name, last: savedLead.last_name } : null,
       email: savedLead.email,
       phone: savedLead.phone,
       source: source || savedLead.source,

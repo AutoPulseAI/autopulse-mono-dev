@@ -226,6 +226,8 @@ export async function processEmail(job) {
 
       const adfLeadDocument = new Lead({
         name: adfLead.name,
+        ...(adfLead.nameParts ? { first_name: adfLead.nameParts.first || undefined,
+          middle_name: adfLead.nameParts.middle || undefined, last_name: adfLead.nameParts.last || undefined } : {}),
         email: adfLead.email,
         phone: adfLead.phone,
         source: adfLead.source,

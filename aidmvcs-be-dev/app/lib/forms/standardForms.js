@@ -58,7 +58,7 @@ export const STANDARD_FORMS = Object.freeze({
 // What fills each blank, set here rather than guessed from the label (these forms are ours). Any label not listed is
 // left for the person - signatures, SSN, birth date, income, prices, co-buyer, notes.
 const FILLS = Object.freeze({
-  'First Name': 'customer.first_name', 'Last Name': 'customer.last_name', 'Customer Name': 'customer.full_name',
+  'First Name': 'customer.first_name', 'Middle Name': 'customer.middle_name', 'Last Name': 'customer.last_name', 'Customer Name': 'customer.full_name',
   'Print Name': 'customer.full_name', Phone: 'customer.phone', Email: 'customer.email',
   'Street Address': 'customer.address_line', City: 'customer.city', State: 'customer.state', ZIP: 'customer.zip',
   Year: 'vehicle.year', Make: 'vehicle.make', Model: 'vehicle.model', VIN: 'vehicle.vin', 'Stock Number': 'vehicle.stock_number',
