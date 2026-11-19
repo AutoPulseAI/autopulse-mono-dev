@@ -48,6 +48,11 @@ export const UserProvider = ({ children }) => {
             setDealerParent(data);
            
           }
+        } else if (data?.code === "ip_blocked") {
+          // IP restriction (lib/ipRestriction.js): signed out, with the reason on the sign-in page.
+          localStorage.removeItem("dealertoken");
+          window.alert(data.message);
+          window.location.assign("/dealer");
         } else {
           console.error("Failed to fetch user:", data.message);
         }

@@ -34,6 +34,8 @@ export default function AdministrationPage() {
         about: "Roles and what each one may see and do" },
       { label: "Dealership users and work schedules", href: "/dealer/staff", show: can.staff,
         about: "Staff accounts, departments and each person's working hours" },
+      { label: "IP restriction", href: "/dealer/ip-restriction", show: can.account,
+        about: "Allow the CRM only from the dealership's own networks" },
       { label: "Do-Not-Contact list", href: "/dealer/do-not-contact", show: can.leads || can.viewLeads || can.account,
         about: "Phones and emails this dealership must not contact" },
       { label: "My links (links the AI shares)", href: "/dealer/settings?tab=ai", show: can.settings,

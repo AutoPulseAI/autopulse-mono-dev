@@ -1,5 +1,6 @@
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
+import { IP_BLOCKED_MESSAGE, ipBlocked } from "@lib/ipRestriction";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
@@ -37,6 +38,10 @@ export async function POST(req) {
     });
     if (!user || user.type !== typeNormalized) {
       return json({ message: "Invalid credentials." }, 401);
+    }
+    // IP restriction (lib/ipRestriction.js): a dealership that lists its networks lets its users sign in only from them.
+    if (await ipBlocked(req, user, { impersonated: false, where: "sign-in" })) {
+      return json({ message: IP_BLOCKED_MESSAGE, code: "ip_blocked" }, 403);
     }
 
     // === CASE 1: OTP verification ===

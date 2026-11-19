@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@lib/mongodb";
 import { loadAuthenticatedUser } from "@lib/apiAuth";
+import { IP_BLOCKED_MESSAGE, ipBlocked } from "@lib/ipRestriction";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import User from "@models/User";
 import Lead from "@models/Lead";
@@ -42,6 +43,7 @@ export async function requireDealerSession(req, requestedDealerId) {
   if (!(await isAuthorizedForDealer(user, dealerId))) {
     return { error: jsonError("You don't have access to this dealership.", 403) };
   }
+  if (await ipBlocked(req, user)) return { error: jsonError(IP_BLOCKED_MESSAGE, 403, { code: "ip_blocked" }) };
   return { user, dealerId: String(dealerId) };
 }
 
