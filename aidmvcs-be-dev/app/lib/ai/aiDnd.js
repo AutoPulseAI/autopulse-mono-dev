@@ -164,7 +164,10 @@ export function closedStatusConflict({ status, current, changedAt, closedAt, boo
   }
   if (status === 'Closed - Lost' && KEEP_FOR_CLOSED_LOST.includes(current)) return 'staff_status_kept';
   if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
-  if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)) return 'staff_status_kept';
+  // A customer who writes back reopens a Closed - Lost lead (client, 20 Oct 2026, Quincy Mack); the AI's working status
+  // replaced it in the AI but the CRM refused it, so the lead stayed Closed - Lost (19 Nov 2026).
+  if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)
+    && !CLOSED_LOST_STATUSES.includes(current)) return 'staff_status_kept';
   if (AI_ESCALATION_STATUSES.includes(status) && !ESCALATION_FROM.includes(current ?? null)) return 'staff_status_kept';
   if (AI_BOOKING_STATUSES.includes(status) && !BOOKING_FROM.includes(current ?? null)) return 'staff_status_kept';
   return null;
