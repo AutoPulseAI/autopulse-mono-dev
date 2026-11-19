@@ -1,0 +1,105 @@
+// The dealer portal's top bar (19 Nov 2026, SOW reference B4 - DealerSocket's header: mail, chat and notification
+// icons on every page). One read for the whole bar, re-read every minute while the tab is open:
+//   GET /api/topbar[?dealer_id=]
+//   unread.email / unread.sms  leads with a customer email / text nobody has opened yet - the same count as the Leads
+//                              page's "Unread" filter (app/api/leads/route.js), per channel
+//   alerts                     AI alerts that need a person (the AI Alerts page / the sidebar's count), newest first
+//   calls                      call tasks to make now (Call Tasks > Open)
+//   new_leads                  the last 24 hours: new leads (dealer / managers), or leads given to me (assigned-only
+//                              staff: created for me or reassigned to me)
+// Staff who see only their own leads get only their own leads in every number, as on the pages the icons open. An
+// AI service that can't be reached leaves its two parts empty (`ai_unavailable`); the rest still shows. Read-only.
+
+import { NextResponse } from "next/server";
+import Email from "@models/Email";
+import Lead from "@models/Lead";
+import ActivityLog from "@models/ActivityLog";
+import {
+  assignedOnlyUserId, callAiService, keepAssignedRows, leadSummaries, requireDealerSession,
+} from "../dealer-ai/_lib/dealerAi";
+
+export const dynamic = "force-dynamic";
+
+const LIST = 5; // rows per part in the bell's dropdown
+const NEW_LEADS_HOURS = 24;
+
+async function unreadLeads(dealerId, channel, onlyUserId) {
+  const ids = await Email.distinct("lead_id", {
+    dealer_id: dealerId, lead_id: { $exists: true, $ne: null }, status: { $in: ["received", "incoming"] },
+    communication_type: channel, read: { $ne: true },
+  });
+  if (!ids.length) return 0;
+  return Lead.countDocuments({ _id: { $in: ids }, dealer_id: dealerId, ...(onlyUserId ? { assigned_to: onlyUserId } : {}) });
+}
+
+async function aiPart(path, query, dealerId, onlyUserId, pick) {
+  const result = await callAiService(path, { query });
+  if (!result.ok) return null;
+  const rows = await keepAssignedRows(dealerId, onlyUserId, pick(result.body) || []);
+  rows.body = result.body;
+  return rows;
+}
+
+async function newLeads(dealerId, onlyUserId) {
+  const since = new Date(Date.now() - NEW_LEADS_HOURS * 3_600_000);
+  const mine = onlyUserId ? { assigned_to: onlyUserId } : {};
+  const created = await Lead.find({ dealer_id: dealerId, createdAt: { $gte: since }, ...mine })
+    .sort({ createdAt: -1 }).limit(50).select("name createdAt").lean();
+  const rows = created.map((l) => ({ lead_id: String(l._id), name: l.name || null, at: l.createdAt, why: "new" }));
+  if (onlyUserId) {
+    const moved = await ActivityLog.find({ dealer_id: dealerId, action: "lead_reassigned", to_id: onlyUserId,
+      at: { $gte: since }, undone_at: { $exists: false } }).sort({ at: -1 }).limit(50).select("lead_id at actor_name").lean();
+    const seen = new Set(rows.map((r) => r.lead_id));
+    const names = await leadSummaries(dealerId, moved.map((m) => String(m.lead_id)));
+    for (const m of moved) {
+      const id = String(m.lead_id);
+      if (seen.has(id) || !names[id]) continue;
+      seen.add(id);
+      rows.push({ lead_id: id, name: names[id].name, at: m.at, why: "reassigned", by: m.actor_name || null });
+    }
+  }
+  rows.sort((a, b) => new Date(b.at) - new Date(a.at));
+  const total = onlyUserId ? rows.length
+    : await Lead.countDocuments({ dealer_id: dealerId, createdAt: { $gte: since } });
+  return { count: total, items: rows.slice(0, LIST), mine: Boolean(onlyUserId) };
+}
+
+export async function GET(req) {
+  const url = new URL(req.url);
+  const session = await requireDealerSession(req, url.searchParams.get("dealer_id"));
+  if (session.error) return session.error;
+  const { dealerId, user } = session;
+  const onlyUserId = await assignedOnlyUserId(user);
+
+  const [email, sms, alerts, calls, fresh] = await Promise.all([
+    unreadLeads(dealerId, "email", onlyUserId),
+    unreadLeads(dealerId, "sms", onlyUserId),
+    aiPart("/v1/staff/notices", { dealer_id: dealerId, include_handled: "false" }, dealerId, onlyUserId,
+      (body) => (body?.notices || []).filter((n) => !n.handled)),
+    aiPart("/v1/staff/call-tasks", { dealer_id: dealerId, view: "open" }, dealerId, onlyUserId,
+      (body) => (Array.isArray(body) ? body : [])),
+    newLeads(dealerId, onlyUserId),
+  ]);
+
+  const firstRows = [...(alerts || []).slice(0, LIST), ...(calls || []).slice(0, LIST)];
+  const names = await leadSummaries(dealerId, firstRows.map((r) => r.lead_id));
+  const nameOf = (row) => row.customer_name || names[row.lead_id]?.name || null;
+
+  return NextResponse.json({
+    unread: { email, sms },
+    alerts: alerts && {
+      // Leads that need a person, once each - the count the sidebar shows (app/api/dealer-ai/alerts).
+      count: onlyUserId ? new Set(alerts.map((a) => a.lead_id)).size
+        : (alerts.body?.unhandled_count ?? new Set(alerts.map((a) => a.lead_id)).size),
+      items: alerts.slice(0, LIST).map((a) => ({ id: a.id, lead_id: a.lead_id, kind: a.kind, text: a.text || null,
+        at: a.at || null, name: nameOf(a) })),
+    },
+    calls: calls && {
+      count: calls.length,
+      items: calls.slice(0, LIST).map((t) => ({ id: t.id, lead_id: t.lead_id, reason: t.reason || null,
+        due_at: t.due_at || t.due_by || null, name: nameOf(t) })),
+    },
+    new_leads: fresh,
+    ai_unavailable: !alerts || !calls,
+  });
+}

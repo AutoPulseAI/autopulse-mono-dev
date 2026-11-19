@@ -11,6 +11,7 @@ import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
+import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BulkAssign from "./BulkAssign";
 import moment from 'moment-timezone';
@@ -75,6 +76,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState({ show: false, message: "", variant: "success" });
   const { user, dealerParent } = useUser();
+  const [panel360, setPanel360] = useState(null); // the 360 View side panel (19 Nov 2026)
   const activeEntity = dealerParent || user;
   const orignalDealer = user;
   const router = useRouter();
@@ -256,7 +258,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
-      if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if ((filters.messages || filters.message_filter === 'unread') && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
       queryParams += drillQuery(filters);
@@ -507,7 +509,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.status) url += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.stopped) url += '&stopped=1';
       if (filters.messages) url += `&messages=${encodeURIComponent(filters.messages)}`;
-      if (filters.messages && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if ((filters.messages || filters.message_filter === 'unread') && filters.messagesChannel) url += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) url += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
       url += drillQuery(filters);
@@ -851,7 +853,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
-      if (filters.messages && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+      if ((filters.messages || filters.message_filter === 'unread') && filters.messagesChannel) queryParams += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
       if (filters.status === 'Contacted' && filters.repliedBy) queryParams += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
       if (filters.sort) queryParams += `&sort=${encodeURIComponent(filters.sort)}`;
       queryParams += drillQuery(filters);
@@ -1294,6 +1296,19 @@ useImperativeHandle(ref, () => ({
           <div className="d-flex gap-2 mb-3 align-items-center">
             <span className="small text-muted">Messages sent by:</span>
             {[['', 'All'], ['sms', 'SMS'], ['mms', 'MMS'], ['email', 'Email']].map(([value, label]) => (
+              <Button key={label} size="sm" className="text-nowrap"
+                variant={(filters.messagesChannel || '') === value ? 'custom' : 'outline-custom'}
+                onClick={() => setFilters((prev) => ({ ...prev, messagesChannel: value, page: 1 }))}>
+                {label}
+              </Button>
+            ))}
+          </div>
+        )}
+        {filters.message_filter === 'unread' && !filters.messages && (
+          // The top bar's mail / chat icons open this (19 Nov 2026): unread customer messages by channel.
+          <div className="d-flex gap-2 mb-3 align-items-center">
+            <span className="small text-muted">Unread:</span>
+            {[['', 'All'], ['sms', 'Texts'], ['email', 'Emails']].map(([value, label]) => (
               <Button key={label} size="sm" className="text-nowrap"
                 variant={(filters.messagesChannel || '') === value ? 'custom' : 'outline-custom'}
                 onClick={() => setFilters((prev) => ({ ...prev, messagesChannel: value, page: 1 }))}>
@@ -1932,6 +1947,14 @@ useImperativeHandle(ref, () => ({
 
                     <Col xl={1} lg={2} sm={2} xs={5}>
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
+                        <Button variant="custom" size="sm" title="360 View: history, tasks, call / text" aria-label="360 View"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPanel360({ customerId: lead.customer_id ? String(lead.customer_id?._id || lead.customer_id) : null,
+                              leadId: lead._id, name: lead.name, dnd: lead.fe_lead_status === 'DND' });
+                          }}>
+                          <i className="fa-regular fa-id-card"></i>
+                        </Button>
                         <Button variant="custom" size="sm" onClick={(e) => {
                           e.stopPropagation();
                           handleShowDetails(lead);
@@ -2042,6 +2065,9 @@ useImperativeHandle(ref, () => ({
           onStatusChange={handleStatusChange}
         />
       )}
+
+      <Customer360Panel show={!!panel360} onHide={() => setPanel360(null)} customerId={panel360?.customerId}
+        leadId={panel360?.leadId} name={panel360?.name} dnd={panel360?.dnd} />
 
       {/* Delete Confirmation Modal */}
       {/* modal */}

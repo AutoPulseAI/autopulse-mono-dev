@@ -11,6 +11,7 @@ import Container from "react-bootstrap/Container";
 import Navbar from "react-bootstrap/Navbar";
 import { useUser } from "../context/UserContext";
 import { useCan } from "../../hooks/PermissionsContext";
+import TopbarTools from "./TopbarTools";
 
 const Topbar = ({ toggleSidebar }) => {
   const manage_account_infor = useCan("Manage Account Information");
@@ -132,6 +133,7 @@ const handleCopy = async () => {
         <Navbar.Brand href="#home" className="topbar_brand me-auto">
           <img src="/Images/logo-220.png" className="d-inline-block align-top" alt="Logo" />
         </Navbar.Brand>
+        <TopbarTools storeName={accountInfoToUse?.store_name || activeEntity?.name || ""} />
         <Navbar.Toggle />
 
         <Navbar.Collapse className="justify-content-end order-lg-5">

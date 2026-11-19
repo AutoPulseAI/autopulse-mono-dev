@@ -1789,3 +1789,42 @@ background-color: var(--white);
   table .dropdown-toggle::after, table .dropdown-menu { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Top bar quick tools (app/dealer/components/TopbarTools.js, 19 Nov 2026): store, unread email / texts, bell, help */
+.tb_tools { display: flex; align-items: center; gap: 4px; margin-right: 8px; }
+.tb_icon, .topbar_main .tb_icon.dropdown-toggle {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 38px; height: 38px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--secondary); font-size: var(--f16); text-decoration: none; text-transform: none;
+}
+.tb_icon:hover, .topbar_main .tb_icon.dropdown-toggle:hover, .tb_icon[aria-expanded="true"] {
+  color: var(--primary); border-color: var(--border-light); background: transparent;
+}
+.tb_icon.dropdown-toggle::after { display: none; }
+.tb_badge {
+  position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: #e5383b; color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+}
+.tb_store { font-size: var(--f14); gap: 6px; color: var(--dark); align-items: center; padding: 0 8px; }
+.tb_store_name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb_caret { font-size: 10px; }
+.tb_menu { min-width: 300px; max-height: 70vh; overflow-y: auto; }
+.tb_bell { width: 360px; max-width: calc(100vw - 32px); padding: 0; }
+.tb_section { padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.tb_section:last-child { border-bottom: 0; }
+.tb_section_head { display: flex; align-items: center; gap: 8px; padding: 2px 14px 6px; font-weight: 600; font-size: var(--f14); }
+.tb_section_count { background: var(--primary); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 11px; }
+.tb_row { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 6px 14px; white-space: normal; }
+.tb_row_title { font-weight: 600; font-size: var(--f14); }
+.tb_row_at { grid-column: 2; grid-row: 1; font-size: 11px; color: var(--secondary); white-space: nowrap; }
+.tb_row_text { grid-column: 1 / -1; font-size: 12px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tb_empty { padding: 2px 14px 4px; font-size: 12px; color: var(--secondary); }
+@media (max-width: 575px) {
+  .tb_tools { gap: 0; margin-right: 4px; }
+  .tb_icon { min-width: 32px; padding: 0 6px; }
+}
+
+/* 360 View side panel (app/dealer/components/Customer360Panel.js, 19 Nov 2026) */
+.offcanvas.c360_panel { width: 640px; max-width: 100vw; }
+.c360_contact > div { margin-bottom: 2px; }
