@@ -74,6 +74,9 @@ const LABELS = {
   judge_before_sending: ["A judge checks each reply before it is sent",
     "A reply that ignores what the customer said (a day they can come, a question, a day they ruled out) goes back to "
     + "the AI once to be rewritten."],
+  reply_restarts_day_91: ["A customer reply restarts the 91 days before a lead closes as Closed - Lost",
+    "On: a lead closes at Day 91 only if the customer hasn't written in the last 91 days. A lead that never replied "
+    + "still closes at Day 91. A reply after the closing reopens the lead either way."],
 };
 
 const CHOICES = {

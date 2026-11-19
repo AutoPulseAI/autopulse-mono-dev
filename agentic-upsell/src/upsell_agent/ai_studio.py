@@ -305,7 +305,7 @@ _ATTRS = {
     "buyers_order": ("ASKS", "START", "START_STEP", "_TEXT", "ESCALATE_AT", "FLOWS", "ACTIONS"),
     "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID", "SCHEDULE", "LAST_DAY"),
     "escalation": ("MANAGER_ESCALATIONS",),
-    "lifecycle": ("STAFF_STATUS_EVENTS", "OPPORTUNITY_DAYS"),
+    "lifecycle": ("STAFF_STATUS_EVENTS", "OPPORTUNITY_DAYS", "REPLY_RESTARTS_DAY_91"),
     "sold_pending": ("STUDIO_DAYS",),
     "owner_touches": ("OWNER_TOUCH_DAYS",),
     "appointment": ("DETAILS_AFTER", "NO_SHOW_AFTER", "NO_SHOW_FOLLOWUP_AFTER"),
@@ -960,6 +960,9 @@ def _apply_compliance(key: str, c: dict[str, Any], built_in: dict[str, Any] | No
             mods["open_time_question"].ON = c["never_ask_what_day_works"]
         if isinstance(c.get("judge_before_sending"), bool):
             mods["judge"].ON = c["judge_before_sending"]
+        # The user, 19 Nov 2026: a customer reply restarts the Day 91 clock.
+        if isinstance(c.get("reply_restarts_day_91"), bool):
+            mods["lifecycle"].REPLY_RESTARTS_DAY_91 = c["reply_restarts_day_91"]
         if isinstance(c.get("ai_resumes_after_staff_minutes"), (int, float)) and not isinstance(
                 c["ai_resumes_after_staff_minutes"], bool):
             from datetime import timedelta as _td

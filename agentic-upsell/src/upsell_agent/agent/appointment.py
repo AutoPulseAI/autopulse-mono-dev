@@ -300,11 +300,51 @@ COUNTDOWN_TEXTS = (
 )
 
 
+# Live, 18 Nov 2026 (Dijon Harris, the day-before countdown): "Here is a link to the vehicle in case you need to
+# reference it." went out with no link - an appointment step is sent word for word and never passed the reply
+# guard's "says link, has none" check (agent/nodes/guard.py). The same words as that check.
+_SAYS_LINK = re.compile(r"\b(?:here(?:'s| is| are)\b[^.?!]{0,40}\blinks?|links? (?:below|above|attached|here)|"
+                        r"(?:click|tap) (?:here|the link|below))\b", re.IGNORECASE)
+_URL = re.compile(r"https?://\S+", re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.!?]+[.!?]*\s*")
+
+
+def settle_links(text: str | None, vehicle_url: str | None = None) -> str | None:
+    """A sentence that says it carries a link but has none gets the vehicle's own page when it is about the vehicle
+    and we have its page (at the end of that sentence); otherwise the sentence goes. Never "here is the link" with
+    nothing attached; never a link to anything but the vehicle's page. A question offering a link ("Would you like
+    a link to our credit application?") is not a promise and stays."""
+    if not text or not _SAYS_LINK.search(text):
+        return text
+    out: list[str] = []
+    placed = bool(vehicle_url and vehicle_url in text)
+    for sentence in _SENTENCE.findall(text):
+        if not _SAYS_LINK.search(sentence) or _URL.search(sentence):
+            out.append(sentence)
+            continue
+        if vehicle_url and not placed and re.search(r"\b(vehicle|car|truck|suv|van|it)\b", sentence, re.IGNORECASE):
+            body, end = sentence.rstrip(), sentence[len(sentence.rstrip()):]
+            out.append(f"{body.rstrip('.!?')}: {vehicle_url}{end or ' '}")
+            placed = True
+    return re.sub(r"[ \t]{2,}", " ", "".join(out)).strip()
+
+
 def render_message(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
                    appt: datetime | None, model: str | None = None, address: str | None = None,
-                   agent_phone: str | None = None, variant: int = 0) -> dict[str, str]:
+                   agent_phone: str | None = None, variant: int = 0, vehicle_url: str | None = None) -> dict[str, str]:
     """The step's message: as published in AI Studio when edited there (client, 13 Oct 2026), else the built-in.
-    `variant` picks the countdown text (0 = AI Studio's / the first built-in)."""
+    `variant` picks the countdown text (0 = AI Studio's / the first built-in). `vehicle_url`: the page of the vehicle
+    the lead is about, for a {vehicle_link} or a sentence that says it has the link (settle_links)."""
+    out = _render_message(step, customer_name=customer_name, dealership=dealership, agent_name=agent_name, appt=appt,
+                          model=model, address=address, agent_phone=agent_phone, variant=variant,
+                          vehicle_url=vehicle_url)
+    return {k: settle_links(v, vehicle_url) if k in ("sms_text", "email_body") and isinstance(v, str) else v
+            for k, v in out.items()}
+
+
+def _render_message(step: str, *, customer_name: str | None, dealership: str | None, agent_name: str | None,
+                    appt: datetime | None, model: str | None, address: str | None, agent_phone: str | None,
+                    variant: int, vehicle_url: str | None) -> dict[str, str]:
     built = _render_built_in(step, customer_name=customer_name, dealership=dealership, agent_name=agent_name,
                              appt=appt, model=model, address=address, agent_phone=agent_phone, variant=variant)
     if step == STEP_COUNTDOWN and variant % len(COUNTDOWN_TEXTS):
@@ -315,7 +355,7 @@ def render_message(step: str, *, customer_name: str | None, dealership: str | No
     first = _first(customer_name)
     values = {"first_name": first if first != FALLBACK_NAME else None, "dealership": dealership or "the dealership",
               "agent_name": agent_name, "model": model, "address": address, "dealer_phone": agent_phone,
-              "date": day, "time": at}
+              "date": day, "time": at, "vehicle_link": vehicle_url}
     out = ai_studio.render(ai_studio.step_message("cadences", "appointment", step), values, built) or built
     return {k: _relative_words(v) if isinstance(v, str) else v for k, v in out.items()}
 

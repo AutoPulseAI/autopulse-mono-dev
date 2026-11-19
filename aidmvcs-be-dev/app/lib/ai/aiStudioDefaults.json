@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-18T18:39:03.781056+00:00",
- "revision": 41,
+ "exported_at": "2026-11-19T12:17:33.108627+00:00",
+ "revision": 42,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -4032,6 +4032,7 @@
     "offer_times_with_answers": true,
     "never_ask_what_day_works": true,
     "judge_before_sending": true,
+    "reply_restarts_day_91": true,
     "busy_rule": true,
     "busy_phrases": [
      "i'm busy",
