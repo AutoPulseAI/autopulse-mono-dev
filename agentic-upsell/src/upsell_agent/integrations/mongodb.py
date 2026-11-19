@@ -198,6 +198,11 @@ AI_CALL_TASKS_COLLECTION = "ai_call_tasks"
 AI_SERVICE_VEHICLES_COLLECTION = "ai_service_vehicles"
 AI_VEHICLE_RECALLS_COLLECTION = "ai_vehicle_recalls"
 AI_SERVICE_EVENTS_COLLECTION = "ai_service_events"
+# Betsy, 19 Nov 2026: "with cadences we are creating a library and saving them based on the makes models our SERVICE
+# dealers customer base have. We are not making multiple api calls for the same info". One Vehicle Databases OEM
+# schedule per model year / make / model, shared by every dealership (agent/maintenance.py). Not per dealer: an OEM
+# schedule is the same for everyone.
+AI_MAINTENANCE_LIBRARY_COLLECTION = "ai_maintenance_library"
 # MASTER_PLAN_4 D3/D8 (stream A3, agent/ownership.py; SOLD-DELIVERED PDF §9-§11, §14): one ownership record per
 # vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
 AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
@@ -329,6 +334,9 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
         # The sweeps' query (cross-dealer by design, like the Day 91 sweep).
         ([("ownership_status", 1), ("recalls_next_check_at", 1)], {}),
         ([("ownership_status", 1), ("maintenance_next_check_at", 1)], {}),
+    ],
+    AI_MAINTENANCE_LIBRARY_COLLECTION: [
+        ([("key", 1)], {"unique": True}),
     ],
     AI_VEHICLE_RECALLS_COLLECTION: [
         ([("dealer_id", 1), ("vin", 1), ("recall_id", 1)], {"unique": True}),

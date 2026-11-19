@@ -42,6 +42,7 @@ from upsell_agent.agent import service_events
 from upsell_agent.config import get_settings
 from upsell_agent.integrations.customer360 import get_deal_date, get_repair_order_date
 from upsell_agent.integrations.mongodb import (
+    AI_MAINTENANCE_LIBRARY_COLLECTION,
     AI_SERVICE_VEHICLES_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
     PLATFORM_REPAIR_ORDERS_COLLECTION,
@@ -234,25 +235,70 @@ def compute_status(schedule: MaintenanceSchedule | None, readings: list[Reading]
     return out
 
 
+def _norm(value: Any) -> str:
+    return " ".join(str(value or "").upper().replace("-", " ").split())
+
+
+def library_key(year: Any, make: Any, model: Any) -> str | None:
+    """The library's key for a model year / make / model ("2021|TOYOTA|RAV4"), or None when one is missing."""
+    try:
+        y = int(str(year).strip()[:4])
+    except (TypeError, ValueError):
+        return None
+    m, mo = _norm(make), _norm(model)
+    return f"{y}|{m}|{mo}" if 1980 <= y <= 2100 and m and mo else None
+
+
+async def _from_library(vehicle: dict[str, Any], now: datetime) -> MaintenanceSchedule | None:
+    key = library_key(vehicle.get("year"), vehicle.get("make"), vehicle.get("model"))
+    if not key:
+        return None
+    row = await get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION].find_one({"key": key})
+    fetched = _aware((row or {}).get("fetched_at"))
+    if not row or not fetched or now - fetched > SCHEDULE_REFRESH:
+        return None
+    return schedule_from_dict(row.get("schedule"))
+
+
+async def _to_library(vehicle: dict[str, Any], schedule: MaintenanceSchedule, now: datetime) -> None:
+    """Saves a fetched schedule under the vehicle's own year / make / model and, when they differ, the names Vehicle
+    Databases gave it, so the next vehicle of that model takes it from here instead of a new call."""
+    keys = {library_key(vehicle.get("year"), vehicle.get("make"), vehicle.get("model")),
+            library_key(schedule.year, schedule.make, schedule.model)} - {None}
+    for key in keys:
+        await get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION].update_one({"key": key}, {
+            "$set": {"key": key, "schedule": schedule.as_dict(), "fetched_at": now, "source": SOURCE,
+                     "from_vin": schedule.vin}, "$inc": {"fetches": 1}}, upsert=True)
+
+
 async def _schedule(db, vehicle: dict[str, Any], client: VehicleDatabasesClient, now: datetime) -> tuple[
         MaintenanceSchedule | None, str | None]:
-    """The stored schedule, fetched (or refreshed) when Vehicle Databases is on. (schedule, problem)."""
+    """The stored schedule, else the library's for this model year / make / model, else fetched by VIN when Vehicle
+    Databases is on - one paid call per model, not per vehicle (Betsy, 19 Nov 2026). (schedule, problem)."""
     stored = vehicle.get("maintenance_schedule") or {}
     fetched_at = _aware(stored.get("fetched_at"))
     schedule = schedule_from_dict(stored.get("schedule"))
-    if not client.enabled:
-        return schedule, None if schedule else "Vehicle Databases is off (VEHICLE_DATABASES_ENABLED)"
     stale = fetched_at is None or now - fetched_at > (SCHEDULE_REFRESH if schedule else NO_RECORD_RETRY)
     if not stale:
         return schedule, None if schedule else "Vehicle Databases has no schedule for this VIN"
+    vehicles = db.collection(AI_SERVICE_VEHICLES_COLLECTION)
+    shared = await _from_library(vehicle, now)
+    if shared:
+        await vehicles.update_one({"vin": vehicle["vin"]}, {"$set": {
+            "maintenance_schedule": {"source": f"{SOURCE} (library)", "fetched_at": now, "schedule": shared.as_dict()}}})
+        return shared, None
+    if not client.enabled:
+        return schedule, None if schedule else "Vehicle Databases is off (VEHICLE_DATABASES_ENABLED)"
     try:
         fresh = await client.maintenance_schedule(vehicle["vin"])
     except VehicleDatabasesError as exc:
         logger.warning("maintenance schedule for %s failed: %s", vehicle["vin"], exc)
         return schedule, f"Vehicle Databases: {exc}"
-    await db.collection(AI_SERVICE_VEHICLES_COLLECTION).update_one({"vin": vehicle["vin"]}, {"$set": {
+    await vehicles.update_one({"vin": vehicle["vin"]}, {"$set": {
         "maintenance_schedule": {"source": SOURCE, "fetched_at": now,
                                  "schedule": fresh.as_dict() if fresh else None}}})
+    if fresh:
+        await _to_library(vehicle, fresh, now)
     return fresh, None if fresh else "Vehicle Databases has no schedule for this VIN"
 
 
