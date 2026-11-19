@@ -15,6 +15,7 @@
 
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import { ipBlocked, ipBlockedResponse } from "./ipRestriction.js";
 import mongoose from "mongoose";
 import dbConnect from "./mongodb.js";
 import User from "../models/User.js";
@@ -103,6 +104,8 @@ export async function requireDealerAccess(req, dealerId) {
   if (dealerId === null || dealerId === undefined || String(dealerId) === "") return { response: denied(403) };
   for (const user of users) {
     if (await isAuthorizedForDealer(user, String(dealerId))) {
+      // IP restriction (lib/ipRestriction.js): the dealership's own users only from its listed networks, if any.
+      if (await ipBlocked(req, user)) return { response: ipBlockedResponse() };
       // A read-only role (app/lib/standardRoles.js, SOW G-054) looks and never changes: every change is refused here.
       if (await readOnlyStaffWrite(req, user)) return { response: Response.json({ error: "Your role is read-only: it can't change anything", message: "Your role is read-only: it can't change anything" }, { status: 403 }) };
       return { user };

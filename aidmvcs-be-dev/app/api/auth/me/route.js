@@ -1,5 +1,6 @@
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
+import { ipBlocked, ipBlockedResponse } from "@lib/ipRestriction";
 import Role from "@models/Role";
 import Permission from "@models/Permission";
 import jwt from "jsonwebtoken";
@@ -63,6 +64,9 @@ export async function GET(req) {
         { status: 404 }
       );
     }
+    // IP restriction (lib/ipRestriction.js): checked on every page load, so a sign-in made at the dealership stops
+    // working elsewhere. "login as" (AutoPulse / agency) is never restricted.
+    if (await ipBlocked(req, user, { impersonated: Boolean(decoded.impersonated_by) })) return ipBlockedResponse();
 
     // Extract permissions
     const permissions = user.role?.permissions?.map((p) => p.permission_name) || [];
