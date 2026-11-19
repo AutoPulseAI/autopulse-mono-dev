@@ -51,6 +51,15 @@ const handleCopy = async () => {
 
 
   // Check if we need to show the sanitized domain modal
+  // The Administration page (app/dealer/admin) opens these two windows from its list (19 Nov 2026).
+  useEffect(() => {
+    const setup = () => setDealerFormModalOpen(true);
+    const branding = () => setBrandingModalOpen(true);
+    window.addEventListener("open-dealer-setup", setup);
+    window.addEventListener("open-email-branding", branding);
+    return () => { window.removeEventListener("open-dealer-setup", setup); window.removeEventListener("open-email-branding", branding); };
+  }, []);
+
   useEffect(() => {
     if (loading || !activeEntity) return;
 

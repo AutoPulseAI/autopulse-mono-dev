@@ -11,7 +11,7 @@ import CampaignList from "./CampaignList";
 
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 
-export default function LeadSourcePicker({ dealerId, value, onChange, disabled }) {
+export default function LeadSourcePicker({ dealerId, value, onChange, disabled, editOnly = false }) {
   const [list, setList] = useState({ sources: [], used: [], common: [], can_edit: false, history: [], campaigns: [],
     can_edit_campaigns: false });
   const [quick, setQuick] = useState(null); // the "+ Add a new source" box under the dropdown: its text
@@ -61,6 +61,12 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
 
   return (
     <>
+      {/* editOnly: just the list's window, from Administration > Lead source maintenance (19 Nov 2026). */}
+      {editOnly ? (
+        (list.can_edit || list.can_edit_campaigns)
+          ? <Button variant="custom" onClick={() => { setError(null); setShow(true); }}>Edit lead sources</Button>
+          : <p className="text-muted small mb-0">Only a manager (Manage Leads) can change the lead source list.</p>
+      ) : (<>
       <InputGroup>
         <Form.Select value={value || ""} onChange={(e) => pick(e.target.value)} disabled={disabled}
           aria-label="Lead source">
@@ -76,6 +82,7 @@ export default function LeadSourcePicker({ dealerId, value, onChange, disabled }
           <Button variant="outline-custom" onClick={() => { setError(null); setShow(true); }}>Edit list</Button>
         )}
       </InputGroup>
+      </>)}
       {quick != null && (
         <>
           <InputGroup size="sm" className="mt-1">

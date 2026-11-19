@@ -35,7 +35,8 @@ const Sidebar = ({ isOpen, onClose }) => {
   const bookingHref = hasManageLeads ? "/dealer/booking" : "/dealer/booking?assignment=my";
 
   // Automatically open collapse if current route matches admin links
-  const adminLinks = ["/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings"];
+  const adminLinks = ["/dealer/admin", "/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings",
+    "/dealer/do-not-contact", "/dealer/email-domains", "/dealer/lead-sources"];
   const isAdminActive = adminLinks.includes(pathname);
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
 
@@ -305,6 +306,12 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {adminOpen && (
               <ul className="submenu-list">
+                <li>
+                  {/* Every setup screen in one place (19 Nov 2026, SOW references B7-B9). */}
+                  <Link href="/dealer/admin" className={getLinkClass("/dealer/admin")}>
+                    <i className="fa-regular fa-sliders"></i>Administration
+                  </Link>
+                </li>
                 {manage_role && (
                   <li>
                     <Link href="/dealer/roles" className={getLinkClass("/dealer/roles")}>
