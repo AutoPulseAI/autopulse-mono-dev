@@ -1,0 +1,24 @@
+/* The lead's journey bar (LeadJourney.js) and "..." menu (OpportunityMenu.js), 19 Nov 2026 */
+.lj { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; }
+.lj_track { position: relative; flex: 1 1 auto; height: 30px; margin: 0 26px 0 10px; }
+.lj_track::before { content: ""; position: absolute; left: 0; right: 0; top: 19px; height: 4px; border-radius: 2px; background: #e3e8ee; }
+.lj_fill { position: absolute; left: 0; top: 19px; height: 4px; border-radius: 2px; background: var(--primary, #0272b4);
+  transition: width .6s ease; }
+.lj_dot { position: absolute; top: 16px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%;
+  background: #fff; border: 2px solid #c5ced8; }
+.lj_dot.on { border-color: var(--primary, #0272b4); background: var(--primary, #0272b4); }
+.lj_runner { position: absolute; top: -2px; margin-left: -8px; font-size: 18px; color: var(--primary, #0272b4);
+  transition: left .6s ease; }
+.lj_car { position: absolute; right: -26px; top: 6px; font-size: 20px; color: #9aa6b2; }
+.lj_label { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--primary, #0272b4); min-width: 96px; text-align: right; }
+.lj_sold .lj_fill, .lj_sold .lj_dot.on { background: #2fb344; border-color: #2fb344; }
+.lj_sold .lj_runner, .lj_sold .lj_car, .lj_sold .lj_label { color: #2fb344; }
+.lj_lost .lj_fill, .lj_lost .lj_dot.on { background: #adb5bd; border-color: #adb5bd; }
+.lj_lost .lj_runner, .lj_lost .lj_label { color: #6c757d; }
+@media (prefers-reduced-motion: reduce) { .lj_fill, .lj_runner { transition: none; } }
+@media (max-width: 575px) { .lj_label { min-width: 0; } }
+
+.opp_dots.dropdown-toggle::after { display: none; }
+.opp_menu { min-width: 240px; }
+.opp_menu .dropdown-item { white-space: normal; }
+.opp_menu .dropdown-item > i { width: 20px; margin-right: 8px; color: var(--secondary, #565e5e); }

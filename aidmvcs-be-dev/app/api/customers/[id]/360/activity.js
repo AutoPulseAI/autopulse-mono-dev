@@ -84,6 +84,7 @@ export function staffEntry(a) {
     : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
     : a.action === "reminder_set" ? `set a reminder for ${a.to ? new Date(a.to).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "later"}`
     : a.action === "reminder_done" ? "marked a reminder done"
+    : a.action === "campaign_added" ? `added the customer to the campaign "${a.to}"`
     : a.action === "in_market_changed" ? `marked the opportunity ${a.to}`
     : a.action === "vehicle_of_interest_added" ? `added ${a.to} to the vehicles of interest`
     : a.action === "vehicle_of_interest_removed" ? `removed ${a.to} from the vehicles of interest`

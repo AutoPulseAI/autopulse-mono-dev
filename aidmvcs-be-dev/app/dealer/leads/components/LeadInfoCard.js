@@ -20,6 +20,8 @@ import { leadStatusLabel } from "@lib/statusLabels";
 import { upType } from "@lib/reporting/normalize";
 import LeadSourcePicker from "./LeadSourcePicker";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
+import LeadJourney from "../../components/LeadJourney";
+import OpportunityMenu from "../../components/OpportunityMenu";
 
 const TYPE_NAMES = { internet: "Internet", phone: "Phone Up", walk_in: "Walk-In" };
 const TYPE_COLOR = { Internet: "#1d6fe0", "Phone Up": "#7c3aed", "Walk-In": "#2fb344", Campaign: "#f7931e" };
@@ -189,6 +191,18 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
   } };
   const done = async () => { await auto.flush(); if (!auto.unsaved()) setForm(null); };
 
+  // "Change lead type" in the "..." menu: the department, saved like the form's own department menu.
+  const changeDepartment = async (dept) => {
+    const saved = leadRef.current;
+    const res = await fetch(`/api/leads/${saved._id}/details`, { method: "PATCH", headers: auth(),
+      body: JSON.stringify({ changes: { department: { from: saved?.department ?? null, to: dept } } }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
+    const next = { ...saved, department: data.lead?.department ?? dept };
+    leadRef.current = next; setLead(next);
+    onSaved?.(next);
+  };
+
   const type = leadTypeName(lead);
   const vehicle = [lead?.vehicle_year, lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(" ");
 
@@ -257,7 +271,9 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
         </div>
         <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
           <i className="fa-solid fa-pen me-1" />Edit</Button>
+        <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
       </div>
+      {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
       <p className="mb-1 small"><strong>Vehicle:</strong> {vehicle || "Not given"}{lead?.vin ? <span className="text-muted"> · VIN {lead.vin}</span> : null}</p>

@@ -3,6 +3,10 @@ import dbConnect from "@lib/mongodb";
 import CampaignLead from "@models/CampaignLead";
 import Campaign from "@models/Campaign";
 import { requireDealerAccess } from "@lib/apiGuard";
+import mongoose from "mongoose";
+import Lead from "@models/Lead";
+import { logActivity } from "@lib/activityLog";
+import { cannotAdd } from "@lib/campaignMembers";
 
 // GET: Fetch all leads for a specific campaign
 export async function GET(req, { params }) {
@@ -55,3 +59,33 @@ export async function GET(req, { params }) {
   }
 }
 
+
+// POST { lead_id }: add one lead's customer to this campaign (19 Nov 2026, the lead's "..." menu - "Add Customer to
+// Campaign"). Same dealership only, once per campaign, only before the campaign starts sending (lib/campaignMembers).
+export async function POST(req, { params }) {
+  await dbConnect();
+  const { id } = await params;
+  const campaign = mongoose.isValidObjectId(id) ? await Campaign.findById(id) : null;
+  if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+  const guard = await requireDealerAccess(req, String(campaign.dealer_id));
+  if (guard.response) return guard.response;
+  const body = await req.json().catch(() => ({}));
+  const lead = mongoose.isValidObjectId(body?.lead_id) ? await Lead.findById(body.lead_id)
+    .select("dealer_id customer_id name email phone").lean() : null;
+  if (!lead || String(lead.dealer_id) !== String(campaign.dealer_id)) {
+    return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  }
+  const why = cannotAdd(campaign, lead);
+  if (why) return NextResponse.json({ error: why }, { status: 409 });
+  const campaignId = String(campaign._id);
+  if (await CampaignLead.exists({ campaign_id: campaignId, lead_id: lead._id })) {
+    return NextResponse.json({ added: false, message: "Already in this campaign" });
+  }
+  await CampaignLead.create({ campaign_id: campaignId, name: lead.name || lead.email || lead.phone, dealer_id: String(campaign.dealer_id),
+    email: lead.email || "", phone: lead.phone || "", lead_id: lead._id, status: "pending" });
+  await Campaign.updateOne({ _id: campaign._id }, { $inc: { "stats.total_leads": 1 } });
+  await logActivity({ dealer_id: campaign.dealer_id, lead_id: lead._id, customer_id: lead.customer_id || null,
+    actor_type: "staff", actor_id: guard.user?._id || null, actor_name: guard.user?.name || null,
+    action: "campaign_added", to: campaign.name });
+  return NextResponse.json({ added: true, message: `Added to ${campaign.name}` });
+}
