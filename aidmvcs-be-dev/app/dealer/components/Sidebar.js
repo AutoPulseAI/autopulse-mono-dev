@@ -36,7 +36,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // Automatically open collapse if current route matches admin links
   const adminLinks = ["/dealer/admin", "/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings",
-    "/dealer/do-not-contact", "/dealer/email-domains", "/dealer/lead-sources"];
+    "/dealer/do-not-contact", "/dealer/email-domains", "/dealer/lead-sources", "/dealer/ip-restriction"];
   const isAdminActive = adminLinks.includes(pathname);
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
 
