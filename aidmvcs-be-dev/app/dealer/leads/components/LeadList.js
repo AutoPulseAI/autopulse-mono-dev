@@ -46,7 +46,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const [selectedIds, setSelectedIds] = useState([]);
   const toggleSelected = (id) => setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const canManageLeads = useCan("Manage Leads");
-  const canViewAssignedLeads = useCan("View Assigned Leads");
+  const canViewAllReadOnly = useCan("View All Leads (Read Only)"); // SOW G-054: sees every lead, changes nothing
+  const canViewAssignedOnly = useCan("View Assigned Leads");
+  const canViewAssignedLeads = canViewAssignedOnly || canViewAllReadOnly;
   const [leads, setLeads] = useState([]);
   const [drill, setDrill] = useState(null); // the list's drill-filter chips, from /api/leads (null = none applied)
   const [paginationDirection, setPaginationDirection] = useState(null);
