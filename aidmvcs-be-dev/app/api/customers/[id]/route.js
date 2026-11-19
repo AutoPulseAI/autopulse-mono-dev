@@ -7,6 +7,7 @@ import Lead from "@models/Lead";
 import User from "@models/User";
 import { isAuthorizedForDealer } from "@lib/customerListing";
 import { logActivity } from "@lib/activityLog";
+import { NAME_PART_FIELDS, cleanPart, joinName, splitFullName } from "@lib/personName";
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
@@ -78,14 +79,26 @@ export async function PUT(req, { params }) {
     }
 
     const existingCustomer = await Customer.findOne({ _id: id, dealer_id: dealerId })
-      .select("assigned_to name followup_preference preferred_communication_mode user_language details")
+      .select("assigned_to name first_name middle_name last_name suffix name_parts_from followup_preference preferred_communication_mode user_language details")
       .lean();
     if (!existingCustomer) return jsonError("Customer not found", 404);
 
     const updates = {};
-    if (body.name !== undefined) {
+    const unsets = {};
+    // The name in parts (19 Nov 2026): { first_name, middle_name, last_name[, suffix] } from the profile's name editor.
+    // The full name is made from them. A one-line { name } (older screens) is split, as a guess staff can correct.
+    if (NAME_PART_FIELDS.some((f) => body[f] !== undefined)) {
+      const parts = Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, cleanPart(body[f] ?? existingCustomer[f])]));
+      if (!parts.first_name && !parts.last_name) return jsonError("The customer needs a first or last name", 400);
+      for (const f of NAME_PART_FIELDS) { if (parts[f]) updates[f] = parts[f]; else unsets[f] = ""; }
+      updates.name_parts_from = "staff";
+      updates.name = joinName(parts).slice(0, 120);
+    } else if (body.name !== undefined) {
       updates.name = body.name?.toString().replace(/\s+/g, " ").trim().slice(0, 120) || "";
       if (!updates.name) return jsonError("The customer needs a name", 400);
+      const parts = splitFullName(updates.name);
+      for (const f of NAME_PART_FIELDS) { if (parts[f]) updates[f] = parts[f]; else unsets[f] = ""; }
+      updates.name_parts_from = "guess";
     }
     if (body.followup_preference !== undefined) updates.followup_preference = body.followup_preference;
     if (body.user_language !== undefined) updates.user_language = body.user_language;
@@ -98,7 +111,6 @@ export async function PUT(req, { params }) {
     const DETAIL_FIELDS = { title: 20, nickname: 60, gender: 20, marital_status: 20, birthday: 10, anniversary: 10,
       spouse_name: 120, note: 1000 };
     const detailChanges = [];
-    const unsets = {};
     if (body.details && typeof body.details === "object") {
       for (const [f, raw] of Object.entries(body.details)) {
         if (!DETAIL_FIELDS[f]) return jsonError(`${f} cannot be changed here`, 400);
@@ -155,6 +167,17 @@ export async function PUT(req, { params }) {
         actor_name: currentUser.name || null, action: "customer_edited", from: existingCustomer[f] ?? null,
         to: updates[f] ?? null, detail: label });
     }
+    // The same full name split differently (e.g. first name "Mary Ann") is still a change on the timeline.
+    if (updates.name_parts_from === "staff" && updates.name === (existingCustomer.name || "")) {
+      const show = (c) => [c.first_name, c.middle_name, c.last_name, c.suffix].map((v) => v || "-").join(" / ");
+      const before = show(existingCustomer);
+      const after = show(updates);
+      if (before !== after) {
+        await logActivity({ dealer_id: dealerId, customer_id: id, actor_type: "staff", actor_id: currentUser._id,
+          actor_name: currentUser.name || null, action: "customer_edited", from: before, to: after,
+          detail: "name (first / middle / last / suffix)" });
+      }
+    }
     const DETAIL_LABELS = { title: "title", nickname: "nickname", gender: "gender", marital_status: "marital status",
       birthday: "birthday", anniversary: "anniversary", spouse_name: "spouse", note: "customer note" };
     for (const c of detailChanges) {
@@ -168,7 +191,8 @@ export async function PUT(req, { params }) {
       const sameName = oldName ? new RegExp(`^\\s*${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i") : null;
       await Lead.updateMany({ customer_id: id, dealer_id: dealerId,
         $or: [{ name: { $in: [null, ""] } }, { name: { $exists: false } }, ...(sameName ? [{ name: sameName }] : [])] },
-      { $set: { name: updates.name, updatedAt: new Date() } });
+      { $set: { name: updates.name, updatedAt: new Date(), first_name: updates.first_name || null,
+        middle_name: updates.middle_name || null, last_name: updates.last_name || null } });
     }
 
     const previousAssignedTo = existingCustomer.assigned_to ? String(existingCustomer.assigned_to) : null;

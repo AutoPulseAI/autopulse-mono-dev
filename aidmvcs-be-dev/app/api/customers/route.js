@@ -7,6 +7,7 @@ import Customer from "@models/Customer";
 import Lead from "@models/Lead";
 import User from "@models/User";
 import { normalizeEmail, normalizePhone } from "@lib/customerResolver";
+import { NAME_PART_FIELDS, cleanPart, joinName } from "@lib/personName";
 import {
   escapeRegex,
   isAuthorizedForDealer,
@@ -70,6 +71,10 @@ export async function GET(req) {
     const phone = url.searchParams.get("phone");
 
     if (name) query.name = { $regex: escapeRegex(name), $options: "i" };
+    // Looking up by last name (19 Nov 2026): starts with what was typed; the list is then in last, first order so
+    // customers who share a last name sit together and are told apart by first / middle name.
+    const lastName = url.searchParams.get("last_name")?.trim();
+    if (lastName) query.last_name = { $regex: `^${escapeRegex(lastName)}`, $options: "i" };
 
     if (email !== null) {
       const normalizedEmail = normalizeEmail(email);
@@ -112,7 +117,7 @@ export async function GET(req) {
     const skip = (page - 1) * limit;
     const [customers, totalItems] = await Promise.all([
       Customer.find(query)
-        .sort({ updatedAt: -1, createdAt: -1 })
+        .sort(lastName ? { last_name: 1, first_name: 1, middle_name: 1 } : { updatedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -163,8 +168,11 @@ export async function POST(req) {
       return jsonError("Forbidden", 403);
     }
 
-    const name = body.name?.toString().trim() || "";
-    if (!name) return jsonError("name is required", 400);
+    // The name in parts (19 Nov 2026) from the Add Customer form; a one-line `name` still works (split as a guess).
+    const parts = Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, cleanPart(body[f])]));
+    const typedParts = Boolean(parts.first_name || parts.last_name);
+    const name = (typedParts ? joinName(parts) : body.name?.toString().replace(/\s+/g, " ").trim() || "").slice(0, 120);
+    if (!name) return jsonError("A first or last name is required", 400);
 
     let normalizedEmail = null;
     if (body.email !== undefined && body.email !== null && body.email !== "") {
@@ -202,6 +210,7 @@ export async function POST(req) {
     const customer = new Customer({
       dealer_id: dealerId,
       name,
+      ...(typedParts ? { ...Object.fromEntries(Object.entries(parts).filter(([, v]) => v)), name_parts_from: "staff" } : {}),
       manual_entry: true,
       dealervault_upload: false,
       inbound_lead: false,

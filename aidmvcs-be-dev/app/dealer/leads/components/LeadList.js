@@ -16,6 +16,15 @@ import BulkAssign from "./BulkAssign";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
+
+// The lead's source for the list: the source staff picked or the provider sent; a follow-up channel is not a source.
+const CHANNEL_WORDS = new Set(["email", "sms", "manual", ""]);
+function leadSourceName(lead) {
+  const picked = String(lead?.lead_source || "").trim();
+  if (picked) return picked;
+  const raw = String(lead?.source || "").trim();
+  return CHANNEL_WORDS.has(raw.toLowerCase()) ? "Not set" : raw;
+}
 import useLiveRefresh from "../../../hooks/useLiveRefresh";
 
 // The dashboard's admin "Customer replies by lead age" / "Appointments made" links and the Reports page's numbers
@@ -1832,7 +1841,11 @@ useImperativeHandle(ref, () => ({
                         <Col xl={1} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                           <p className="label"><small>Source:</small></p>
-                          <p>{lead.source || "N/A"}</p>
+                          {/* 19 Nov 2026 ("still not seeing the source"): the lead's source (Cars.com, Google...) and the
+                              provider's sub-source - not the follow-up channel ("email" / "sms") a hand-entered lead keeps
+                              in `source`. */}
+                          <p className="text-truncate" title={[leadSourceName(lead), lead.sub_source].filter(Boolean).join(" · ")}>
+                            {leadSourceName(lead)}{lead.sub_source ? <small className="text-muted d-block text-truncate">{lead.sub_source}</small> : null}</p>
                           <small className={`badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
                             title="How the lead came in">{contactTypeLabel(lead)}</small>
                           </div>

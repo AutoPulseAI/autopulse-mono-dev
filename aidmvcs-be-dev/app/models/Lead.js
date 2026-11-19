@@ -4,6 +4,11 @@
     {
       // Specific fields for lead creation
       name: { type: String }, // Optional: You can make this required if needed
+      // The name in parts as the lead provider sent it (ADF <name part="first|middle|last">, 19 Nov 2026); the
+      // customer record takes them (app/lib/customerResolver.js). Missing on leads that came with one-line names.
+      first_name: { type: String, default: undefined },
+      middle_name: { type: String, default: undefined },
+      last_name: { type: String, default: undefined },
       email: { type: String }, // Optional: You can make this required if needed
       phone: { type: String }, // Optional: You can make this required if needed
       source: { type: String, default: 'email' }, // Default value for source

@@ -15,6 +15,8 @@ import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import CallButton from "../../../components/CallButton";
 import ExportFormButton from "./ExportFormButton";
+import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { NAME_PART_FIELDS, namePartsOf, tidyCase } from "../../../../lib/personName";
 
 export function primaryContact(entries) {
   if (!entries?.length) return null;
@@ -105,6 +107,56 @@ function InlineField({ label, value, display, options, onSave, inputType = "text
       )}
       {status}
     </span>
+  );
+}
+
+// The name in parts (19 Nov 2026): the pencil opens First / Middle / Last / Suffix, as the DMS and dealership forms
+// keep them; the full name is made from them. Saves by itself when focus leaves the fields or on Enter (SOW G-082);
+// Escape puts the saved name back. A customer whose parts were only split from a one-line name opens with the DMS's
+// parts when the DMS has them, else the split - shown as "check it" until someone saves.
+const NAME_INPUTS = [["first_name", "First"], ["middle_name", "Middle"], ["last_name", "Last"], ["suffix", "Suffix"]];
+function NameEditor({ customer, dmsPerson, onSave }) {
+  const [draft, setDraft] = useState(null);
+  const [state, setState] = useState(null); // null | 'saving' | 'saved' | { error }
+  const stored = namePartsOf(customer);
+  const fromDms = stored.from === "guess" && (dmsPerson?.first_name || dmsPerson?.last_name);
+  const start = fromDms ? Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, tidyCase(dmsPerson[f])])) : stored;
+  const hint = stored.from === "staff" ? null : fromDms ? "From the DMS - check and save"
+    : stored.from === "guess" ? "Split from the full name - check it" : null;
+  const open = () => { setState(null); setDraft(Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, start[f] || ""]))); };
+  const commit = async () => {
+    if (!draft || state === "saving") return;
+    const same = NAME_PART_FIELDS.every((f) => (draft[f] || "").trim() === (stored[f] || "").trim()) && stored.from === "staff";
+    if (same) { setDraft(null); return; }
+    if (!draft.first_name.trim() && !draft.last_name.trim()) { setState({ error: "A first or last name is needed" }); return; }
+    setState("saving");
+    try { await onSave(draft); setDraft(null); setState("saved"); setTimeout(() => setState((v) => (v === "saved" ? null : v)), 2500); }
+    catch (e) { setState({ error: e.message || "Could not save" }); }
+  };
+  const status = state === "saving" ? <small className="cp_name_status">Saving…</small>
+    : state === "saved" ? <small className="cp_name_status">Saved</small>
+    : state?.error ? <small className="cp_name_status cp_name_error">Not saved: {state.error}</small> : null;
+  if (!draft) {
+    return (
+      <span className="d-inline-flex flex-wrap align-items-center gap-1">
+        {customer.name || "Unnamed customer"}
+        <Pencil onClick={open} title="Edit first, middle and last name" />{status}
+      </span>
+    );
+  }
+  return (
+    <div className="cp_name_edit" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) commit(); }}
+      onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setState(null); setDraft(null); } }}>
+      {NAME_INPUTS.map(([f, label], i) => (
+        <label key={f} className={`cp_name_part${f === "suffix" ? " cp_name_suffix" : ""}`}>
+          <span>{label}</span>
+          <Form.Control size="sm" value={draft[f]} autoFocus={i === 0} maxLength={60} disabled={state === "saving"}
+            placeholder={f === "middle_name" || f === "suffix" ? "Optional" : ""}
+            onChange={(e) => setDraft((d) => ({ ...d, [f]: e.target.value }))} />
+        </label>
+      ))}
+      <div className="cp_name_foot">{status || (hint && <small className="cp_name_status">{hint}</small>)}</div>
+    </div>
   );
 }
 
@@ -246,7 +298,7 @@ function AddressList({ entries, send }) {
 }
 
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged, onOpenTab, counts }) {
+  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   const primaryAddress = primaryContact(customer.addresses);
@@ -291,13 +343,21 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
         <div className="cp_avatar" aria-hidden="true">{initials}</div>
         <div className="cp_ident">
           <div className="cp_name">
-            <InlineField value={customer.name || ""} display={customer.name || "Unnamed customer"}
-              placeholder="Customer name" onSave={(name) => putCustomer({ name })} />
+            <NameEditor customer={customer} dmsPerson={dmsPerson} onSave={(parts) => putCustomer(parts)} />
           </div>
           <div className="cp_meta">
             <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
               {customer.origin_badge}
             </Badge>
+            {/* Where the customer's newest lead came from (19 Nov 2026: "still not seeing the source - Internet, and
+                Cars.com or Google"): lead type, source, sub-source and campaign, the same values the reports group by. */}
+            {latestLead && (
+              <span className="cp_source" title="The customer's newest lead: lead type · source · sub-source · campaign">
+                <i className="fa-solid fa-signs-post me-1" />
+                {[leadTypeName(latestLead), latestLead.lead_source || latestLead.source || "Unknown source",
+                  latestLead.sub_source, latestLead.campaign && `Campaign: ${latestLead.campaign}`].filter(Boolean).join(" · ")}
+              </span>
+            )}
             <span><i className="fa-regular fa-calendar me-1" />Customer since {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</span>
             <span><i className="fa-regular fa-clock me-1" />Last activity {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</span>
           </div>

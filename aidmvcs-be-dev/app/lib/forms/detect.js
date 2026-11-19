@@ -22,6 +22,7 @@ const BLANK_RUN = /_{3,}/g;
 
 // label (lower case, no punctuation) -> data key. First match wins; order matters (specific before general).
 const RULES = [
+  [/\bmiddle (name|initial)\b|^mi$/, 'customer.middle_name'],
   [/\b(sign|signature|initial|initials)\b/, null],
   [/\b(dob|birth|ssn|social security|license|licence|credit|bank|routing|account)\b/, null],
   [/\bco ?buyer\b|\bco ?applicant\b|\bco ?signer\b/, null],

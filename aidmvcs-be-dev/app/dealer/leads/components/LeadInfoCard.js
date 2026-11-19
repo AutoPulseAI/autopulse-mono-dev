@@ -247,7 +247,9 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
             <span className="badge" style={{ background: TYPE_COLOR[type] || "#6c757d" }}>{type}</span>
             <span className="badge" title="Department" style={{ background: DEPT_COLOR[leadDepartment(lead)] }}>
               {DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-            <span className="small text-muted me-1">{lead?.lead_source || lead?.source || "Unknown source"}</span>
+            {/* Source and the provider's sub-source (e.g. Cars.com · Chat), as the source / sub-source report groups them. */}
+            <span className="small text-muted me-1" title="Source · sub-source">
+              {[lead?.lead_source || lead?.source || "Unknown source", lead?.sub_source].filter(Boolean).join(" · ")}</span>
             {lead?.campaign && <span className="badge bg-light text-dark" title="Campaign">{lead.campaign}</span>}
             <StatusPill lead={lead} onStatusClick={onStatusClick} />
             {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}

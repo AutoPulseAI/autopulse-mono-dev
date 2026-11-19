@@ -11,6 +11,7 @@ import Lead from '../../models/Lead.js';
 import TradeIn from '../../models/TradeIn.js';
 import User from '../../models/User.js';
 import DeskLogEntry from '../../models/DeskLogEntry.js';
+import { namePartsOf } from '../personName.js';
 
 const TRADE_FIELDS = [['year', 'Year'], ['make', 'Make'], ['model', 'Model'], ['trim', 'Trim'], ['vin', 'VIN'],
   ['miles', 'Mileage'], ['color', 'Color'], ['description', 'Year make model'], ['offer', 'Trade offer'],
@@ -18,7 +19,8 @@ const TRADE_FIELDS = [['year', 'Year'], ['make', 'Make'], ['model', 'Model'], ['
 
 export const SOURCES = Object.freeze([
   ['customer.full_name', 'Customer', 'Full name'], ['customer.first_name', 'Customer', 'First name'],
-  ['customer.last_name', 'Customer', 'Last name'], ['customer.phone', 'Customer', 'Phone'],
+  ['customer.middle_name', 'Customer', 'Middle name'], ['customer.last_name', 'Customer', 'Last name'],
+  ['customer.phone', 'Customer', 'Phone'],
   ['customer.email', 'Customer', 'Email'], ['customer.address_line', 'Customer', 'Street address'],
   ['customer.city', 'Customer', 'City'], ['customer.state', 'Customer', 'State'], ['customer.zip', 'Customer', 'ZIP'],
   ['customer.address_full', 'Customer', 'Full address (one line)'],
@@ -50,11 +52,6 @@ function primary(list) {
   return text((items.find((x) => x.is_primary) || items[0])?.value);
 }
 
-function splitName(full) {
-  const parts = text(full).split(' ').filter(Boolean);
-  if (parts.length < 2) return { first: parts[0] || '', last: '' };
-  return { first: parts[0], last: parts.slice(1).join(' ') };
-}
 
 /**
  * Every source's value for one customer + opportunity + trade-ins, as it would print.
@@ -77,7 +74,12 @@ export async function collectValues({ dealerId, customerId, leadId, tradeInIds =
   const day = (d) => (d ? moment(d).tz(tz).format('MM/DD/YYYY') : '');
 
   const name = text(customer.name) || text(lead?.name);
-  const { first, last } = splitName(name);
+  // The customer's first / middle / last as saved (staff, the DMS or the lead provider), else split from the full name
+  // (app/lib/personName.js, 19 Nov 2026).
+  const parts = namePartsOf(customer.name || customer.first_name || customer.last_name ? customer : { name });
+  const first = text(parts.first_name);
+  const middle = text(parts.middle_name);
+  const last = text([parts.last_name, parts.suffix].filter(Boolean).join(' '));
   const address = (customer.addresses || []).find((a) => a.is_primary) || (customer.addresses || [])[0] || {};
   const street = [text(address.line1), text(address.line2)].filter(Boolean).join(', ');
   const v = { ...(desk?.vehicle || {}) };
@@ -86,7 +88,7 @@ export async function collectValues({ dealerId, customerId, leadId, tradeInIds =
     stock_number: text(desk?.stock_number) };
 
   const values = {
-    'customer.full_name': name, 'customer.first_name': first, 'customer.last_name': last,
+    'customer.full_name': name, 'customer.first_name': first, 'customer.middle_name': middle, 'customer.last_name': last,
     'customer.phone': primary(customer.phones) || text(lead?.phone), 'customer.email': primary(customer.emails) || text(lead?.email),
     'customer.address_line': street, 'customer.city': text(address.city), 'customer.state': text(address.state),
     'customer.zip': text(address.zip),
