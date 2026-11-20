@@ -19,7 +19,11 @@ export async function GET(request) {
   if (!validKey(key, searchParams.get('s'))) return page('Link not valid', 'This unsubscribe link is not valid.');
   try {
     await dbConnect();
-    const email = await Email.findOne({ ai_idempotency_key: key }).select('lead_id dealer_id ai_customer_id recipient').lean();
+    const found = await Email.findOne({ ai_idempotency_key: key }).select('lead_id dealer_id ai_customer_id recipient').lean();
+    // A campaign email (worker/campaignWorker.js, 20 Nov 2026) is recorded off the conversation: its lead in campaign_lead.
+    const campaignLead = found && !found.lead_id
+      ? (await Email.collection.findOne({ ai_idempotency_key: key }, { projection: { campaign_lead: 1 } }))?.campaign_lead : null;
+    const email = found ? { ...found, lead_id: found.lead_id || campaignLead || null } : null;
     if (!email) return page('Link not valid', 'We could not find this email.');
     const lead = await Lead.findById(email.lead_id).select('email dealer_id email_unsubscribed').lean();
     const address = String(lead?.email || email.recipient || '').trim().toLowerCase() || null;
