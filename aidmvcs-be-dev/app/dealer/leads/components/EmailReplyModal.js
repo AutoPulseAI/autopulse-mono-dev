@@ -9,9 +9,7 @@ export default function EmailReplyModal({
     onClose,
     selectedConversation,
     communicationType = "email", // "email" or "sms",
-    agentViewLanguage = "English",
     leadUserLanguage = "English",
-    showTranslationEnabled = false,
     onReplySuccess,
     conversationThread = [],
     lead = null
@@ -138,48 +136,9 @@ export default function EmailReplyModal({
             let contentToSend = content;
             let subjectToSend = subject;
 
-            const shouldTranslateOutgoing =
-                (communicationType === "email" || communicationType === "sms") &&
-                leadUserLanguage &&
-                agentViewLanguage &&
-                leadUserLanguage.toLowerCase() !== agentViewLanguage.toLowerCase();
-
-            if (shouldTranslateOutgoing) {
-                setTranslating(true);
-                const token = localStorage.getItem("dealertoken");
-                const headers = { "Content-Type": "application/json" };
-                if (token) headers["Authorization"] = `Bearer ${token}`;
-
-                const messages = [{ id: "body", text: contentToSend }];
-                if (communicationType === "email") {
-                    messages.push({ id: "subject", text: subjectToSend });
-                }
-
-                const trRes = await fetch("/api/conversations/translate", {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                        targetLanguage: leadUserLanguage,
-                        sourceHint: agentViewLanguage,
-                        messages
-                    })
-                });
-                const trData = await trRes.json();
-                if (!trRes.ok) {
-                    throw new Error(trData?.error || "Failed to translate before sending.");
-                }
-                if (trData?.translations?.body) contentToSend = trData.translations.body;
-                if (communicationType === "email" && trData?.translations?.subject) {
-                    subjectToSend = trData.translations.subject;
-                }
-
-                if (communicationType === "sms" && contentToSend.length > 160) {
-                    setError(
-                        `Translated SMS is ${contentToSend.length}/160 characters. Please shorten the message before sending.`
-                    );
-                    return;
-                }
-            }
+            // Mercy, 19-20 Nov 2026: English customers got her texts in Spanish. The message is put into the
+            // customer's language once, on the server (reply route), from the customer's saved language - never
+            // here from this screen's reading language.
 
             const payload = {
                 dealerId: dealer_id,
@@ -462,8 +421,8 @@ export default function EmailReplyModal({
                 leadId={selectedConversation.lead_id}
                 channel={communicationType}
                 dealerId={dealer_id}
-                defaultLanguage={showTranslationEnabled ? agentViewLanguage : "English"}
-                lockLanguage={showTranslationEnabled}
+                defaultLanguage={leadUserLanguage || "English"}
+                lockLanguage
                 conversationThread={conversationThread}
                 onDraftReady={(draft, subjectLine) => {
                     setContent(draft || "");
