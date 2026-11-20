@@ -236,8 +236,13 @@ export async function POST(request) {
 
     let contentToSend = content;
     let subjectToSend = subject;
+    // Mercy, 21 Nov 2026 ("Failed to send message"): an English customer gets the text exactly as staff typed it -
+    // no translation call, so nothing can turn it into another language or stop it going out.
+    const needsTranslation = leadUserLanguageRaw !== 'english';
     try {
-      if (communicationType === 'email') {
+      if (!needsTranslation) {
+        // sent as typed
+      } else if (communicationType === 'email') {
         const translated = await translateOutgoing({
           translateUrl,
           targetLanguage: leadUserLanguageDisplay,
@@ -263,7 +268,7 @@ export async function POST(request) {
       // Not sent rather than sent in the wrong language.
       console.warn('Outgoing translation failed, message not sent:', trErr?.message || trErr);
       return NextResponse.json({ message: `Couldn't put this message into the customer's language (${leadUserLanguageDisplay}), so it was not sent. Please try again.` },
-        { status: 502 });
+        { status: 422 }); // not 5xx: Cloudflare swaps a 5xx for its own page and staff only saw "Failed to send message"
     }
 
     try {
