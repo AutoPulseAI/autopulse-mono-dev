@@ -9,7 +9,6 @@ import { requireDealerAccess } from "@lib/apiGuard";
 
 const { ObjectId } = Types;
 
-const SMS_MAX_CHARS = 160;
 const PROVIDER_TIMEOUT_MS = 30000;
 
 /** Build conversation thread for a lead (same logic as GET /api/conversations/lead) */
@@ -49,7 +48,7 @@ function draftPrompt({ lead, dealerName, dealerAddress, dealerPhone, channel, la
   const history = (thread || []).slice(-20)
     .map((m) => `${m.direction === "IN" ? "Customer" : "Dealership"}: ${m.subject ? `[${m.subject}] ` : ""}${m.body}`)
     .join("\n");
-  const kind = channel === "sms" ? `a text message (at most ${SMS_MAX_CHARS} characters, no subject)`
+  const kind = channel === "sms" ? "a text message (no subject)"
     : channel === "note" ? "a short internal note for the team (not sent to the customer)"
     : "an email (give a short subject on the first line as 'Subject: ...', then the body)";
   return [
@@ -88,7 +87,6 @@ async function callDraftProvider(payload, channel) {
       const m = draft.match(/^\s*Subject:\s*(.+)\n+/i);
       if (m) { subject = m[1].trim(); draft = draft.slice(m[0].length).trim(); }
     }
-    if (channel === "sms" && draft.length > SMS_MAX_CHARS) draft = draft.slice(0, SMS_MAX_CHARS - 3) + "...";
     return { draft, subject };
   } catch (err) {
     clearTimeout(timeoutId);

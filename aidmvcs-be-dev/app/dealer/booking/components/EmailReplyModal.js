@@ -357,11 +357,10 @@ export default function EmailReplyModal({
                             onChange={(e) => setContent(e.target.value)}
                             placeholder={`Enter your ${communicationType} content here...`}
                             isInvalid={!!error && !content.trim()}
-                            maxLength={communicationType === "sms" ? 160 : undefined}
                         />
                         {communicationType === "sms" && (
                             <Form.Text className="text-muted">
-                                {content.length}/160 characters
+                                {content.length} characters
                             </Form.Text>
                         )}
                         <Form.Control.Feedback type="invalid">{error}</Form.Control.Feedback>
