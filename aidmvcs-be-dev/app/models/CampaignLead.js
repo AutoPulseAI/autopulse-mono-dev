@@ -100,6 +100,8 @@ const CampaignLeadSchema = new mongoose.Schema(
       index: true
     },
     // Mailgun message ID for email tracking (optional)
+    // 20 Nov 2026: which service sent the email - 'mailgun', or 'crm' (the CRM's own email service; worker/campaignWorker.js)
+    sent_via: { type: String, default: null },
     mailgun_message_id: {
       type: String,
       default: null
