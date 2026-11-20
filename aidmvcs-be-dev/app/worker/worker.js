@@ -6,6 +6,7 @@ import { processLead } from './leadworker.js';
 import { setupCampaignWorker } from './campaignWorker.js';
 import { setupDealerVaultWorkers } from './dealervault/index.js';
 import { setupDealerVaultSqsConsumer } from './dealervault/sqsConsumer.js';
+import { setupSchedulerWatch } from './schedulerWatch.js';
 import { setupAdfTradeWorker } from './adfTradeWorker.js';
 import { setupDailyReportWorker } from './dailyReportWorker.js';
 import { AI_EVENT_RETRY_QUEUE, postAiEvent, processAiEventRetryJob } from '../lib/ai/aiEvents.js';
@@ -59,6 +60,7 @@ const campaignWorker = onLiveDb ? null : setupCampaignWorker(redis);
 if (!onLiveDb) {
   setupDealerVaultWorkers(redis);
   setupDealerVaultSqsConsumer(redis);
+  setupSchedulerWatch(); // a scheduled job that stopped reaching the CRM is emailed (lib/cronHeartbeat.js)
 } else {
   console.log('CRM_LIVE_DB: campaign and DealerVault workers are off (the live servers run them).');
 }

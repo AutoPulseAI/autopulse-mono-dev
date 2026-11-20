@@ -16,6 +16,7 @@ import Batch from '@models/DealerVaultImportBatch';
 import HeldFile from '@models/DealerVaultHeldFile';
 import { requireSuperAdmin } from '@lib/apiGuard';
 import { AI_OUTBOX_COLLECTION } from '@lib/ai/aiOutbox';
+import { heartbeatStatus } from '@lib/cronHeartbeat';
 
 export const runtime = 'nodejs';
 const H = 3600e3;
@@ -101,5 +102,10 @@ export async function GET(req) {
   const rank = { error: 0, warn: 1, ok: 2, none: 3 };
   const worst = (r) => Math.min(...Object.values(r.checks).map((c) => rank[c.state]));
   rows.sort((a, b) => worst(a) - worst(b) || a.name.localeCompare(b.name));
-  return Response.json({ generated_at: now, thresholds: THRESHOLDS, dealers: rows });
+  // The server's scheduled jobs (20 Nov 2026): when each one's call last reached the app (lib/cronHeartbeat.js).
+  const schedulers = await heartbeatStatus(now).catch(() => []);
+  // Settings every link and call depends on: set or not (values never shown).
+  const config = [['NEXT_PUBLIC_BASE_URL', 'links in emails, texts and campaigns'], ['UPSELL_AGENT_API_URL', 'the CRM reaching the AI service'],
+    ['CRON_SECRET', 'scheduled jobs accepted only with the secret']].map(([key, used]) => ({ key, used, set: Boolean(process.env[key]) }));
+  return Response.json({ generated_at: now, thresholds: THRESHOLDS, schedulers, config, dealers: rows });
 }

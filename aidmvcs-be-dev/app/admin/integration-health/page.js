@@ -46,6 +46,29 @@ export default function IntegrationHealthPage() {
         {data && ` Checked ${fmt(data.generated_at, "UTC")} UTC.`}
       </p>
       {error && <Alert variant="danger" className="py-2">{error}</Alert>}
+      {data?.schedulers?.length > 0 && (
+        // 20 Nov 2026: the server's scheduled jobs - when each one's call last reached the CRM (lib/cronHeartbeat.js).
+        <div className="mb-3">
+          <div className="fw-semibold small mb-1">Scheduled jobs (server crontab)</div>
+          <Table size="sm" className="small align-middle mb-1">
+            <thead><tr><th>Job</th><th>Runs every</th><th>Last call reached the CRM</th><th>State</th><th>If it stops</th></tr></thead>
+            <tbody>{data.schedulers.map((j) => {
+              const [label, bg] = j.state === "ok" ? ["OK", "success"] : j.state === "late" ? ["Not running", "danger"] : ["No call yet", "warning"];
+              return (
+                <tr key={j.name}>
+                  <td>{j.label}<div className="text-muted">{j.path}</div></td>
+                  <td>{j.every_min >= 60 ? `${j.every_min / 60} h` : `${j.every_min} min`}</td>
+                  <td>{j.last_at ? <>{fmt(j.last_at, "UTC")} UTC<div className="text-muted">{j.age_min} min ago</div></> : "-"}</td>
+                  <td><Badge bg={bg} text={bg === "warning" ? "dark" : undefined}>{label}</Badge></td>
+                  <td className="text-muted">{j.state === "ok" ? "" : j.stops}</td>
+                </tr>);
+            })}</tbody>
+          </Table>
+          {data.config?.some((c) => !c.set) && (
+            <Alert variant="warning" className="py-2 small mb-0">Not set on the server: {data.config.filter((c) => !c.set).map((c) => `${c.key} (${c.used})`).join("; ")}</Alert>
+          )}
+        </div>
+      )}
       {!data ? <Spinner size="sm" /> : (
         <Table size="sm" responsive hover className="small align-middle">
           <thead><tr><th>Store</th>{SOURCES.map(([, l]) => <th key={l}>{l}</th>)}</tr></thead>
