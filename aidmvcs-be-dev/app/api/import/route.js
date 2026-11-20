@@ -3,6 +3,7 @@ import { processDealerCSVFiles, vehicleUploadDir } from '@lib/import';
 import fs from 'fs';
 import path from 'path';
 import { requireCronCaller } from '@lib/apiGuard';
+import { beat } from '@lib/cronHeartbeat';
 
 
 
@@ -11,6 +12,7 @@ export async function GET(request) {
   // /api/cron/* scheduler routes it stays open until CRON_SECRET is set; then the crontab must send x-cron-secret.
   const guard = await requireCronCaller(request, { openUntilSecretSet: true });
   if (guard.response) return guard.response;
+  void beat('inventory-import'); // Admin > Integration health (lib/cronHeartbeat.js)
   try {
     const uploadDir = vehicleUploadDir();
     

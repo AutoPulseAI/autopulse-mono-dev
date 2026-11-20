@@ -4,6 +4,7 @@ import Campaign from '@models/Campaign.js';
 import CampaignLead from '@models/CampaignLead.js';
 import { getQueue } from '@lib/queue.js';
 import { requireCronCaller } from '@lib/apiGuard';
+import { beat } from '@lib/cronHeartbeat';
 // Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
 // are still let through, see app/lib/apiGuard.js requireCronCaller).
 
@@ -14,6 +15,7 @@ import { requireCronCaller } from '@lib/apiGuard';
 export async function POST(request) {
   const cronAuth = await requireCronCaller(request, { openUntilSecretSet: true });
   if (cronAuth.response) return cronAuth.response;
+  void beat('campaigns'); // Admin > Integration health: this job's call reached the app (lib/cronHeartbeat.js)
   try {
     await dbConnect();
     
@@ -155,6 +157,7 @@ export async function POST(request) {
 export async function GET(request) {
   const cronAuth = await requireCronCaller(request, { openUntilSecretSet: true });
   if (cronAuth.response) return cronAuth.response;
+  void beat('campaigns'); // Admin > Integration health: this job's call reached the app (lib/cronHeartbeat.js)
   try {
     await dbConnect();
     
