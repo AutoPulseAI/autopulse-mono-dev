@@ -328,7 +328,7 @@ p.label {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1024;
+  z-index: 1025; /* above the side menu (1024), so the bell's list isn't hidden under it */
   width: 100%;
 }
 .topbar_main .toggle_sidebar, .toggle_sidebar:hover {

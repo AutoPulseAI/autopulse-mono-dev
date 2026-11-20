@@ -1,12 +1,11 @@
 "use client";
 // The top bar's quick tools, on every dealer page (19 Nov 2026, SOW reference B4 - DealerSocket's header): the store
 // you are in (and, for an AutoPulse admin or agency inside a store through "login as", a menu to go to another store),
-// unread customer emails and texts, a bell with what needs a person now, and Help. Each opens the page where the work
+// a bell with what needs a person now, and Help. Each opens the page where the work
 // is done - the Leads list, AI Alerts, Call Tasks - in the same tab. Numbers come from /api/topbar, re-read every minute
 // while the tab is open.
 import { forwardRef, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { Dropdown, Form, Spinner } from "react-bootstrap";
 import { useCan } from "../../hooks/PermissionsContext";
 import useLiveRefresh from "../../hooks/useLiveRefresh";
@@ -106,8 +105,6 @@ export default function TopbarTools({ storeName }) {
   const canViewAll = useCan("View All Leads (Read Only)");
   const canSupport = useCan("Manage Support Ticket");
   const canSeeLeads = canManageLeads || canViewAssigned || canViewAll;
-  const pathname = usePathname();
-  const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -128,15 +125,7 @@ export default function TopbarTools({ storeName }) {
   }, [load]);
   useLiveRefresh(load, { everyMs: REFRESH_MS });
 
-  // The Leads page reads its filters when it opens, so from the Leads page itself the list is opened afresh.
-  const openLeads = (query) => {
-    const href = `/dealer/leads?${query}`;
-    if (pathname?.startsWith("/dealer/leads")) window.location.assign(href);
-    else router.push(href);
-  };
-  const leadsBase = canManageLeads ? "" : "assignment=my&";
 
-  const unread = data?.unread || {};
   const alerts = data?.alerts;
   const calls = data?.calls;
   const fresh = data?.new_leads;
@@ -147,15 +136,8 @@ export default function TopbarTools({ storeName }) {
       <StoreMenu storeName={storeName} />
       {canSeeLeads && (
         <>
-          <IconToggle title={`Unread emails${unread.email ? `: ${unread.email} customer(s)` : ""}`} aria-label="Unread emails"
-            onClick={() => openLeads(`${leadsBase}message_filter=unread&channel=email`)}>
-            <i className="fa-regular fa-envelope" /><Count n={unread.email} />
-          </IconToggle>
-          <IconToggle title={`Unread texts${unread.sms ? `: ${unread.sms} customer(s)` : ""}`} aria-label="Unread texts"
-            onClick={() => openLeads(`${leadsBase}message_filter=unread&channel=sms`)}>
-            <i className="fa-regular fa-comment-dots" /><Count n={unread.sms} />
-          </IconToggle>
-          <Dropdown align="end" onToggle={(open) => { if (open) load(); }}>
+          {/* Opens to the right, under the bell: it used to open left, under the side menu (21 Nov 2026). */}
+          <Dropdown align="start" onToggle={(open) => { if (open) load(); }}>
             <Dropdown.Toggle as={IconToggle} title="Notifications" aria-label="Notifications">
               <i className="fa-regular fa-bell" /><Count n={bellCount} />
             </Dropdown.Toggle>
