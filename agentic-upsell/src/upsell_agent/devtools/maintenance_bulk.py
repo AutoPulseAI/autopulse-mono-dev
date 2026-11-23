@@ -113,6 +113,12 @@ async def _run(args: argparse.Namespace) -> int:
         print(f"models: {len(models)}; in the library already: {len(models) - len(todo)}; to fetch: {len(todo)}")
         print(f"this run: {min(len(todo), args.max_calls or 0) if args.apply else len(todo)} paid call(s)"
               + ("" if args.apply else " if run with --apply (one per model)"))
+        # Credits are few (500 a month on Starter): how many of the vehicles still without a schedule the first N calls
+        # cover, most common models first.
+        cars = sum(len(m.vins) for m in todo)
+        for n in (50, 100, 250, 500, 1000):
+            if n < len(todo) and cars:
+                print(f"  first {n} calls cover {sum(len(m.vins) for m in todo[:n]) * 100 // cars}% of those vehicles")
         print("most common models to fetch (model | records | vehicles):")
         for m in todo[:25]:
             print(f"  {m.key} | {m.rows} | {len(m.vins)}")
