@@ -11,3 +11,9 @@ export async function hasPermission(user, name) {
     .populate({ path: 'role', populate: { path: 'permissions' } }).lean();
   return (full?.role?.permissions || []).some((p) => p?.permission_name === name);
 }
+
+// A manager for leads (SOW Deliverable B: manager override): super admin, the dealer account, or staff whose role can
+// both manage and assign leads (the standard "Sales Manager" / "Rooftop Admin" roles).
+export async function isLeadManager(user) {
+  return (await hasPermission(user, 'Manage Leads')) && (await hasPermission(user, 'Assign Leads'));
+}

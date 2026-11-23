@@ -129,7 +129,8 @@ export default function TopbarTools({ storeName }) {
   const alerts = data?.alerts;
   const calls = data?.calls;
   const fresh = data?.new_leads;
-  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.mine ? fresh.count || 0 : 0);
+  const taken = data?.taken;
+  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.mine ? fresh.count || 0 : 0) + (taken?.count || 0);
 
   return (
     <div className="tb_tools">
@@ -159,6 +160,14 @@ export default function TopbarTools({ storeName }) {
                   more="/dealer/ai/call-tasks" empty="No calls due">
                   {calls.items.map((t) => (
                     <Row key={t.id} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} />
+                  ))}
+                </Section>
+              )}
+              {taken?.count > 0 && (
+                <Section title="Taken over from you" icon="fa-regular fa-user-shield" count={taken.count} empty="">
+                  {taken.items.map((t) => (
+                    <Row key={`${t.lead_id}-${t.at}`} href={leadHref(t.lead_id)} title={t.name}
+                      text={`${t.by || "A manager"} took it over${t.why ? `: ${t.why}` : ""}`} at={t.at} />
                   ))}
                 </Section>
               )}

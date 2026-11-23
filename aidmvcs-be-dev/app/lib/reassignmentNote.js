@@ -9,6 +9,9 @@ export function reassignmentNoteText({ from, to, actor_name: by, detail }) {
   const now = to || 'Unassigned';
   const who = by ? ` by ${by}` : '';
   if (detail === 'undo') return `Reassignment undone${who}: back to ${now} (was ${was}).`;
+  if (String(detail || '').startsWith('override:')) {
+    return `Manager override${who}: the lead moved from ${was} to ${now}. Why: ${String(detail).slice(9).trim()}`;
+  }
   return `Reassigned from ${was} to ${now}${who}${detail === 'bulk' ? ' (bulk change)' : ''}.`;
 }
 

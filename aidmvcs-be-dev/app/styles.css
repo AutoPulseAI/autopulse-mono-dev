@@ -1946,3 +1946,39 @@ background-color: var(--white);
 
 .lead_fltr:not(.w-100) .btn { flex: 0 0 auto; overflow: visible; }
 .bulk_skeleton .placeholder { min-height: 14px; }
+
+/* Bulk actions, part 3 (24 Nov 2026): selection line for any count, side-panel pickers. New classes only. */
+.bulk_scope { padding: 10px 12px; display: block; }
+.bulk_scope_top { display: flex; align-items: center; gap: 10px; }
+.bulk_scope_icon { width: 30px; height: 30px; border-radius: 6px; background: var(--primary); color: var(--white);
+  display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.bulk_scope_icon .spinner-border { color: var(--white); }
+.bulk_scope_count { border: 0; background: none; padding: 0; font-size: 18px; font-weight: 700; color: var(--primary2); line-height: 1.1; }
+.bulk_scope_count span { font-size: 13px; font-weight: 500; color: var(--dark); }
+.bulk_scope_chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid #cfe3f1; }
+.bulk_chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #b9dcf0; background: var(--white);
+  color: var(--primary2); border-radius: 16px; padding: 3px 4px 3px 12px; font-size: 12.5px; }
+.bulk_chip_n { background: #e9f3fa; border-radius: 10px; padding: 1px 8px; font-weight: 600; }
+.bulk_chip.on { background: var(--primary); color: var(--white); border-color: var(--primary); }
+.bulk_chip.on .bulk_chip_n { background: rgba(255,255,255,.2); color: var(--white); }
+.bulk_chip i { font-size: 10px; padding-right: 8px; }
+.bulk_scope_cap { margin-top: 8px; font-size: 12px; color: #7a5a00; background: #fff8e1; border-radius: 4px; padding: 5px 8px; }
+.bulk_deptcards { display: flex; gap: 8px; }
+.bulk_deptcard { flex: 1; border: 2px solid #d6d6d6; background: var(--white); border-radius: 8px; padding: 12px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bulk_deptcard i { font-size: 20px; color: var(--primary); }
+.bulk_deptcard small { color: var(--secondary2); font-size: 11px; }
+.bulk_deptcard.on { border-color: var(--primary); background: #e9f3fa; }
+.bulk_info { background: #f1f7fb; border-left: 3px solid var(--primary); padding: 8px 10px; border-radius: 4px; font-size: 12.5px; }
+.bulk_search { position: relative; }
+.bulk_search i { position: absolute; left: 9px; top: 8px; color: var(--secondary3); font-size: 12px; }
+.bulk_search .form-control { padding-left: 26px; }
+.bulk_picklist { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.bulk_pick { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f1f1f1; margin: 0; cursor: pointer; }
+.bulk_pick:hover { background: #f1f7fb; }
+.bulk_pick small { margin-left: auto; color: var(--secondary2); }
+.bulk_pick.on span { font-weight: 600; color: var(--primary); }
+.bulk_notice.warn { border-color: #f0d58a; border-left-color: var(--warning); }
+.bulk_notice.undone { border-left-color: #6c757d; }
+@media (max-width: 991px) { .bulk_scope_chips .bulk_scope_hint { width: 100%; } }

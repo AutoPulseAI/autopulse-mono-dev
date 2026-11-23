@@ -8,13 +8,13 @@ export function validBatchId(value) {
   return typeof value === 'string' && BATCH.test(value) ? value : null;
 }
 
-export async function recordBulkCall({ dealerId, batchId, action, toId = null, toLabel = null, user, items },
+export async function recordBulkCall({ dealerId, batchId, action, toId = null, toLabel = null, toValue = null, user, items },
   { Model = BulkChange, logger = console } = {}) {
   if (!batchId || !items?.length) return null;
   const count = (r) => items.filter((i) => i.result === r).length;
   try {
     return await Model.updateOne({ dealer_id: String(dealerId), batch_id: batchId }, {
-      $setOnInsert: { action, to_id: toId, to_label: toLabel, by_id: user?._id || null, by_name: user?.name || null,
+      $setOnInsert: { action, to_id: toId, to_label: toLabel, to_value: toValue, by_id: user?._id || null, by_name: user?.name || null,
         at: new Date() },
       $inc: { updated: count('updated'), unchanged: count('unchanged'), failed: count('failed') },
       $push: { items: { $each: items } },
@@ -25,7 +25,13 @@ export async function recordBulkCall({ dealerId, batchId, action, toId = null, t
   }
 }
 
-// A bulk reassignment that changed at least one lead and was not undone yet can be undone; status changes cannot.
+// Any bulk change that changed at least one lead and was not undone yet can be undone (the user, 24 Nov 2026).
 export function canUndo(row) {
-  return row?.action === 'reassign' && !row.undone_at && (row.updated || 0) > 0;
+  return Boolean(row) && !row.undone_at && (row.updated || 0) > 0;
+}
+
+// Which failures can pass on a second try: not "not this dealership's", not "changed by someone else meanwhile"
+// (someone acted on it - look first), not a refusal of the value itself.
+export function retryable(reason = '') {
+  return !/not a lead of this dealership|changed by someone else|refused|cannot|can only|not one of|must be|permission/i.test(String(reason));
 }

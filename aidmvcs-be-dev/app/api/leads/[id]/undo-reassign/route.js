@@ -10,7 +10,7 @@ import Lead from '@models/Lead';
 import User from '@models/User';
 import ActivityLog from '@models/ActivityLog';
 import { requireDealerAccess } from '@lib/apiGuard';
-import { hasPermission } from '@lib/staffPermission';
+import { hasPermission, isLeadManager } from '@lib/staffPermission';
 import { logActivity } from '@lib/activityLog';
 
 const fail = (error, status) => Response.json({ error, message: error }, { status });
@@ -25,7 +25,7 @@ async function idByName(dealerId, name) {
   return people.length === 1 ? String(people[0]._id) : undefined; // undefined = can't tell who
 }
 
-async function lastReassignment(lead) {
+async function lastReassignment(lead, user = null) {
   const entry = await ActivityLog.findOne({ lead_id: lead._id, action: 'lead_reassigned' }).sort({ at: -1 }).lean();
   if (!entry) return null;
   const from = entry.from == null ? null : idOf(entry.from_id) ?? await idByName(String(lead.dealer_id), entry.from);
@@ -35,6 +35,8 @@ async function lastReassignment(lead) {
   if (entry.undone_at) why = 'Already undone';
   else if (from === undefined || to === undefined) why = 'The earlier owner can no longer be found';
   else if (current !== to) why = 'The lead was changed again since';
+  // A manager override can only be undone by a manager (the user, 24 Nov 2026).
+  else if (String(entry.detail || '').startsWith('override:') && !(await isLeadManager(user))) why = 'Only a manager can undo a manager override';
   return { entry, from, to, can_undo: !why, why_not: why };
 }
 
@@ -49,9 +51,9 @@ async function load(req, params) {
 }
 
 export async function GET(req, { params }) {
-  const { lead, response } = await load(req, params);
+  const { lead, user, response } = await load(req, params);
   if (response) return response;
-  const last = await lastReassignment(lead);
+  const last = await lastReassignment(lead, user);
   return Response.json({ last: last ? { at: last.entry.at, by: last.entry.actor_name, from: last.entry.from,
     to: last.entry.to, can_undo: last.can_undo, why_not: last.why_not } : null });
 }
@@ -60,7 +62,7 @@ export async function POST(req, { params }) {
   const { lead, user, response } = await load(req, params);
   if (response) return response;
   if (!(await hasPermission(user, 'Assign Leads'))) return fail('You do not have permission to assign leads', 403);
-  const last = await lastReassignment(lead);
+  const last = await lastReassignment(lead, user);
   if (!last) return fail('This lead has no reassignment to undo', 404);
   if (!last.can_undo) return fail(last.why_not, 409);
   // Only if the lead is still with the person it was moved to.

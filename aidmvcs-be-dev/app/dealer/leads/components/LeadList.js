@@ -695,6 +695,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   };
   const bulkUndo = async (batchId) => {
     const res = await undoBulk(batchId);
+    setBulkResult((r) => (r && r.batchId === batchId ? { ...r, undone: res } : r));
     fetchLeads();
     return res;
   };
@@ -2216,7 +2217,8 @@ useImperativeHandle(ref, () => ({
       {/* Bulk actions (24 Nov 2026): the side panel, and the notice after saving */}
       {!compact && bulkPanel && (
         <BulkPanel key={bulkPanel} kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
-          leads={[...selected.values()]} staffList={staffList} onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
+          leads={[...selected.values()]} staffList={staffList} timezone={dealerTimezone} userName={user?.name}
+          onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
       )}
       {!compact && <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />}
 

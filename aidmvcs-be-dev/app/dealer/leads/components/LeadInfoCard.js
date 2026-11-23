@@ -14,7 +14,7 @@
 //   - VIN: typing a VIN or stock # searches the dealer's inventory (api/inventory/lookup); picking a car fills the VIN,
 //     year, make and model. Any VIN can still be typed by hand.
 import { useEffect, useRef, useState } from "react";
-import { Button, Form } from "react-bootstrap";
+import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import useAutosave, { SaveStatus } from "../../../hooks/useAutosave";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import { leadStatusLabel } from "@lib/statusLabels";
@@ -131,6 +131,79 @@ function VinLookup({ dealerId, value, onChange, onPick, onCommit }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Who owns the lead, and - for managers - Manager override (SOW Deliverable B b3; the user, 24 Nov 2026): take the lead
+// off its owner now, with a reason the owner sees in the bell; an internal note goes into the conversation.
+function OwnerLine({ lead, onSaved }) {
+  const [info, setInfo] = useState(null); // { owner, can_override, staff }
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (!lead?._id) return undefined;
+    fetch(`/api/leads/${lead._id}/override`, { headers: auth(), cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setInfo(d); }).catch(() => null);
+    return () => { live = false; };
+  }, [lead?._id, lead?.assigned_to]);
+  if (!info) return null;
+  const others = info.staff.filter((s) => s.id !== info.owner?.id);
+  const start = () => { setTo(others[0]?.id || ""); setReason(""); setError(null); setOpen(true); };
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/override`, { method: "POST", headers: { ...auth(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to, reason, expected_owner: info.owner?.id || null }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not override");
+      setOpen(false);
+      onSaved?.({ ...lead, assigned_to: data.assigned_to });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <div className="lead_owner mt-2 small">
+        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+          <i className="fa-solid fa-user-tie text-muted" />
+          <span className="text-muted">Owner</span>
+          <strong className="text-truncate" title={info.owner?.name || "Unassigned"}>{info.owner?.name || "Unassigned"}</strong>
+        </div>
+        {info.can_override && others.length > 0 && (
+          <Button size="sm" variant="outline-danger" className="w-100 mt-1 py-0 text-nowrap" onClick={start} title="Take this lead off its owner now">
+            <i className="fa-solid fa-user-shield me-1" />Manager override
+          </Button>
+        )}
+      </div>
+      <Modal show={open} onHide={busy ? undefined : () => setOpen(false)} centered>
+        <Modal.Header closeButton={!busy}><Modal.Title as="h6"><i className="fa-solid fa-user-shield text-danger me-2" />Manager override</Modal.Title></Modal.Header>
+        <Modal.Body className="small">
+          {error && <Alert variant="danger" className="py-2">{error}</Alert>}
+          <p className="mb-2">Owned by <strong>{info.owner?.name || "nobody"}</strong>. The lead moves now, even mid-conversation.</p>
+          <Form.Label className="fw-semibold mb-1">Give the lead to</Form.Label>
+          <Form.Select size="sm" className="mb-2" value={to} onChange={(e) => setTo(e.target.value)} disabled={busy}>
+            {others.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Form.Select>
+          <Form.Label className="fw-semibold mb-1">Why ({info.owner ? `${info.owner.name} sees it` : "kept on the lead"})</Form.Label>
+          <Form.Control as="textarea" rows={2} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy}
+            placeholder="e.g. Customer asked for the manager" />
+          <ul className="text-muted mt-2 mb-0 ps-3">
+            {info.owner && <li>{info.owner.name} sees it in the bell, with your reason.</li>}
+            <li>An internal note goes into the conversation. The customer never sees it.</li>
+            <li>Only a manager can undo it. The AI is not changed.</li>
+          </ul>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" variant="danger" disabled={busy || !to || !reason.trim()} onClick={save}>
+            {busy ? <Spinner size="sm" /> : "Override"}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 
@@ -298,6 +371,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
       <p className="mb-1 small"><strong>Vehicle:</strong> {vehicle || "Not given"}{lead?.vin ? <span className="text-muted"> · VIN {lead.vin}</span> : null}</p>
       <p className="mb-0 small text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+      <OwnerLine lead={lead} onSaved={onSaved} />
       <UndoReassign lead={lead} onSaved={onSaved} />
     </div>
   );

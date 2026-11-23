@@ -64,6 +64,19 @@ async function newLeads(dealerId, onlyUserId) {
   return { count: total, items: rows.slice(0, LIST), mine: Boolean(onlyUserId) };
 }
 
+// A manager override that took one of my leads (last 7 days, not undone) - the old owner hears about it in the bell.
+async function takenFromMe(dealerId, userId) {
+  if (!userId) return { count: 0, items: [] };
+  const since = new Date(Date.now() - 7 * 24 * 3_600_000);
+  const rows = await ActivityLog.find({ dealer_id: dealerId, action: "lead_reassigned", from_id: userId,
+    detail: /^override:/, at: { $gte: since }, undone_at: { $exists: false } }).sort({ at: -1 }).limit(20)
+    .select("lead_id at actor_name detail").lean();
+  const names = await leadSummaries(dealerId, rows.map((r) => String(r.lead_id)));
+  const items = rows.filter((r) => names[String(r.lead_id)]).map((r) => ({ lead_id: String(r.lead_id),
+    name: names[String(r.lead_id)].name, at: r.at, by: r.actor_name || null, why: String(r.detail).slice(9).trim() }));
+  return { count: items.length, items: items.slice(0, LIST) };
+}
+
 export async function GET(req) {
   const url = new URL(req.url);
   const session = await requireDealerSession(req, url.searchParams.get("dealer_id"));
@@ -80,6 +93,7 @@ export async function GET(req) {
       (body) => (Array.isArray(body) ? body : [])),
     newLeads(dealerId, onlyUserId),
   ]);
+  const taken = await takenFromMe(dealerId, user?._id).catch(() => ({ count: 0, items: [] }));
 
   const firstRows = [...(alerts || []).slice(0, LIST), ...(calls || []).slice(0, LIST)];
   const names = await leadSummaries(dealerId, firstRows.map((r) => r.lead_id));
@@ -100,6 +114,7 @@ export async function GET(req) {
         due_at: t.due_at || t.due_by || null, name: nameOf(t) })),
     },
     new_leads: fresh,
+    taken,
     ai_unavailable: !alerts || !calls,
   });
 }
