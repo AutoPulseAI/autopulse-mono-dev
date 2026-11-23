@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     vehicle_databases_api_base: str = Field(default="https://api.vehicledatabases.com",
                                             alias="VEHICLE_DATABASES_API_BASE")
     vehicle_databases_min_interval_s: float = Field(default=1.0, alias="VEHICLE_DATABASES_MIN_INTERVAL_S")
+    # Pay as you go (the user, 23 Nov 2026): every call is paid, so the daily maintenance check makes at most this many
+    # Vehicle Databases calls a day (UTC) for models not in the library yet; 0 = none (only the bulk job fetches).
+    vehicle_databases_daily_call_cap: int = Field(default=20, alias="VEHICLE_DATABASES_DAILY_CALL_CAP")
     # §5 "if reliable current mileage is unavailable, use applicable time-based intervals": the Vehicle
     # Databases schedule is mileage-only, so the time interval is ours until the client gives one (open item).
     maintenance_time_interval_months: int = Field(default=6, alias="MAINTENANCE_TIME_INTERVAL_MONTHS")
