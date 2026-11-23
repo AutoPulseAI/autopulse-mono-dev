@@ -21,6 +21,10 @@ export class VehicleImportService {
   // used cars gone (and the other way round) - only cars of the kind this run brought are checked.
   conditions = new Map();
 
+  static validDealerId(id) {
+    return /^[a-f0-9]{24}$/i.test(String(id ?? '').trim());
+  }
+
   // The kind of car a feed row is ('new' | 'used'), or null.
   static conditionOf(record) {
     const c = String(record?.condition ?? '').trim().toLowerCase();
@@ -71,7 +75,16 @@ export class VehicleImportService {
 
   async importFromCSV(filePath) {
     await ensureDb();
-    const rawRecords = await parseCSV(filePath);
+    // 24 Nov 2026: a row whose dealer id isn't a real id (dealerscloud.csv: a long description spilled into the
+    // accountId column) made the dealer lookup throw, so the whole file failed every day and none of its stores' stock
+    // updated. Such a row is skipped and logged; the rest of the file imports.
+    const parsed = await parseCSV(filePath);
+    const rawRecords = parsed.filter((raw) => VehicleImportService.validDealerId(this.normalizeRecord(raw).dealerId));
+    if (rawRecords.length < parsed.length) {
+      const bad = parsed.find((raw) => !VehicleImportService.validDealerId(this.normalizeRecord(raw).dealerId));
+      console.warn(`[import] ${path.basename(filePath)}: ${parsed.length - rawRecords.length} of ${parsed.length} rows `
+        + `skipped (no valid dealer id; first: ${JSON.stringify(String(this.normalizeRecord(bad).dealerId).slice(0, 80))})`);
+    }
     
     // Get all VINs and dealerIds from the CSV to check for existing records
     const vinsAndDealers = rawRecords.map(raw => {
