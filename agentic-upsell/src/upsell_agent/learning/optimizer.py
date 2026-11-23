@@ -170,7 +170,7 @@ async def choose_for_touch(db: DealerScopedDatabase, planned: cadence.PlannedTou
     # 2. Angle (Days 8-90).
     theme = planned.theme
     drop = None
-    if planned.touch_number not in cadence.FIXED_DAYS:
+    if planned.touch_number not in cadence.FIXED_DAYS and theme.id not in cadence.SERVICE_IDS:
         drop = await price_watch.drop_for_lead(db, lead, lead_state, now)
         exclude = frozenset() if drop else frozenset({cadence.PRICE_CHANGE.id})
         default = cadence.pick_theme(planned.touch_number, state.themes_used, exclude, day=planned.day)

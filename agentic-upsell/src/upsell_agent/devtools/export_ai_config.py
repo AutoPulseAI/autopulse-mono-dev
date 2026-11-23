@@ -137,6 +137,16 @@ def cadences() -> list[dict[str, Any]]:
             "closes_after": _wait(90, "days", "start"),
             "steps": [_theme_step("31-90", t, "Monthly") for t in cadence.DEEPER_THEMES],
             "day_91": "The opportunity closes (Closed - Lost); the customer stays in the CRM."}},
+        # The user, 23 Nov 2026: a service lead's own follow-up (agent/cadence.py SERVICE_STEPS), never the sales one.
+        {"key": "service_followup", "name": "Service follow-up (service leads)", "content": {
+            "before": "First message: the service greeting (\"I am happy to help you with service for ...\", no sales "
+                      "question). No reply in 3 hours: the name nudge, as in the sales follow-up. Then these touches:",
+            "steps": [*[_theme_step(int(step["wait"]["amount"]) + 1, step["theme"], f"Day {int(step['wait']['amount']) + 1}",
+                                    dict(step["wait"]))
+                        for step in cadence.SERVICE_STEPS]],
+            "stops_when": ["customer replies (the AI answers instead)", "visit request passed to the team",
+                           "opt-out", "staff take over"],
+            "after_last": "No more automatic touches for this service lead."}},
         {"key": "sold_pending", "name": "Sold Pending", "content": {
             "steps": [{"id": f"week_{n}", "when": f"Touch {n} (day {sold_pending.touch_due_day(n)})",
                        "wait": _wait(sold_pending.touch_due_day(n), "days", "start"),
@@ -597,7 +607,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 42  # 42: a customer reply restarts Day 91 (19 Nov 2026); 41: bought-elsewhere escalation
+DEFAULTS_REVISION = 43  # 43: Service follow-up cadence for service leads (23 Nov 2026); 42: a customer reply restarts Day 91 (19 Nov 2026); 41: bought-elsewhere escalation
 
 
 def export() -> dict[str, Any]:
