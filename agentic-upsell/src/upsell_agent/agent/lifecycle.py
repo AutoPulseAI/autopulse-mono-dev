@@ -119,6 +119,10 @@ CLOSABLE_AT_DAY_91 = WORKING
 # is NOT in here: it is an active ownership lifecycle until the customer no longer owns the vehicle.
 CLOSED_STAGES = frozenset({Stage.CLOSED_LOST, Stage.CLOSED_NO_LONGER_OWNS})
 OPPORTUNITY_DAYS = 91
+# The user, 19 Nov 2026 (Nomayer Hossen: wrote on 15 Nov, closed Closed - Lost by Day 91 on 19 Nov): a customer reply
+# restarts the 91 days, the same as a reply after the closing already reopens the lead (REOPENS_CLOSED_LOST). A lead
+# that never replied still closes at Day 91 (client, 1 Oct 2026). AI Studio: Conversation rules > reply_restarts_day_91.
+REPLY_RESTARTS_DAY_91 = True
 HISTORY_LIMIT = 50
 
 # Scheduled-work kinds (scheduler/followups.py) and the stages each belongs to: a
@@ -749,11 +753,15 @@ async def close_expired(now: datetime | None = None, *, limit: int = 1000) -> di
 
     now = now or clock.now()
     cutoff = now - timedelta(days=OPPORTUNITY_DAYS)
-    rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(
-        {"stage": {"$in": [s.value for s in (*CLOSABLE_AT_DAY_91, Stage.APPOINTMENT_SET, Stage.NO_SHOW)]},
-         "$or": [{"day91_anchor": {"$lte": cutoff}},
-                 {"day91_anchor": {"$exists": False}, "opportunity_created_at": {"$lte": cutoff}}]}
-    ).to_list(limit)
+    query: dict[str, Any] = {
+        "stage": {"$in": [s.value for s in (*CLOSABLE_AT_DAY_91, Stage.APPOINTMENT_SET, Stage.NO_SHOW)]},
+        "$or": [{"day91_anchor": {"$lte": cutoff}},
+                {"day91_anchor": {"$exists": False}, "opportunity_created_at": {"$lte": cutoff}}]}
+    if REPLY_RESTARTS_DAY_91:
+        # Counted from the customer's last message when that is later: a lead that wrote within 91 days stays open.
+        query["$and"] = [{"$or": [{"last_inbound_at": {"$exists": False}}, {"last_inbound_at": None},
+                                  {"last_inbound_at": {"$lte": cutoff}}]}]
+    rows = await get_db()[AI_LEAD_STATE_COLLECTION].find(query).to_list(limit)
     summary: dict[str, Any] = {"checked": len(rows), "closed": 0, "kept": 0}
     # Closings the CRM couldn't take at an earlier sweep (stream S) are tried again first.
     from upsell_agent.agent import crm_status

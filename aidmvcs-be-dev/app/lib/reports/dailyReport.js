@@ -14,6 +14,7 @@
 // Sends go through app/lib/email.js sendEmail, so PROVIDER_SEND_STUB (app/lib/providerStub.js) applies.
 // Imports are relative so the worker (plain Node) can load this module.
 import mongoose from 'mongoose';
+import { csvLink } from './dailyCsv.js';
 import moment from 'moment-timezone';
 import DailyReportDelivery from '../../models/DailyReportDelivery.js';
 import User from '../../models/User.js';
@@ -47,15 +48,35 @@ export function dashboardUrl(env = process.env) {
   return `${String(base).replace(/\/+$/, '')}/dealer/dashboard`;
 }
 
+// The signed CSV link for a day (app/lib/reports/dailyCsv.js), on the CRM's own address.
+export function csvUrlFor(dealerId, reportDate, env = process.env, now = Date.now()) {
+  const dash = dashboardUrl(env);
+  return dash ? csvLink(dash.replace(/\/dealer\/dashboard$/, ''), String(dealerId), reportDate, now) : null;
+}
+
 export function fromAddress(env = process.env) {
   return env.DAILY_REPORT_FROM || env.EMAIL_FROM || 'support@autopulse.ai';
 }
 
+// The address the report goes out from: the dealer's own mailbox (its active EmailAccount) - the address the CRM and
+// the AI already send every customer email from, which AWS SES accepts. support@autopulse.ai (fromAddress) was refused
+// by SES (AccessDenied for the CRM's AWS user): Victory's daily email failed every day from 11 to 17 Nov 2026. That
+// address (or DAILY_REPORT_FROM / EMAIL_FROM) is only the fallback for a dealer without a mailbox.
+export async function senderFor(dealerId, env = process.env) {
+  if (dealerId && mongoose.isValidObjectId(String(dealerId))) {
+    const forms = [String(dealerId), new mongoose.Types.ObjectId(String(dealerId))];
+    const box = await mongoose.connection.collection('emailaccounts').findOne({ dealer_id: { $in: forms },
+      active: { $ne: false }, email_address: { $type: 'string' } }, { projection: { email_address: 1 } });
+    if (box?.email_address) return box.email_address;
+  }
+  return fromAddress(env);
+}
+
 // The real sender: app/lib/email.js sendEmail (SES raw / SMTP; stubbed when PROVIDER_SEND_STUB is on outside
 // production). Returns the provider message id.
-export async function defaultSend({ to, subject, html, env = process.env }) {
+export async function defaultSend({ to, subject, html, env = process.env, dealerId = null }) {
   const { sendEmail } = await import('../email.js');
-  return sendEmail(to, subject, html, fromAddress(env), null, null);
+  return sendEmail(to, subject, html, await senderFor(dealerId, env), null, null);
 }
 
 function isFinishedDay(reportDate, tz, now) {
@@ -86,7 +107,7 @@ async function deliverOne({ key, base, rendered, send, env }) {
   if (!claimed) return { recipient: key.recipient, status: row.status, skipped: true, delivery_id: String(row._id) };
   try {
     const providerId = await send({ to: key.recipient, subject: rendered.subject, html: rendered.html,
-      text: rendered.text, env });
+      text: rendered.text, env, dealerId: key.dealer_id });
     await DailyReportDelivery.updateOne({ _id: claimed._id }, { $set: { status: 'sent', sent_at: new Date(),
       provider_message_id: providerId ? String(providerId) : null } });
     return { recipient: key.recipient, status: 'sent', delivery_id: String(claimed._id) };
@@ -118,7 +139,7 @@ export async function runDailyReport({ dealerId, reportDate, now = new Date(), e
   }
   const snapshot = await getOrBuildSnapshot({ dealerId, reportDate, now, dealer });
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env), mode,
-    liveRecipientCount: dealerRecipients(dealer).length });
+    liveRecipientCount: dealerRecipients(dealer).length, csvUrl: csvUrlFor(dealerId, reportDate, env) });
 
   const results = [];
   for (const recipient of recipients) {
@@ -162,7 +183,7 @@ export async function resendDailyReport({ dealerId, reportDate, requestedBy, now
   if (!recipients.length) return { ok: false, status: 409, message: 'No recipients for this dealer in its current mode' };
   const snapshot = await getOrBuildSnapshot({ dealerId, reportDate, now, dealer });
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env), mode,
-    liveRecipientCount: dealerRecipients(dealer).length });
+    liveRecipientCount: dealerRecipients(dealer).length, csvUrl: csvUrlFor(dealerId, reportDate, env) });
   const requestId = `resend-${new mongoose.Types.ObjectId()}`;
   const originals = await DailyReportDelivery.find({ dealer_id: dealer._id, report_date: reportDate,
     resend_of: null }).select('_id recipient').lean();
@@ -188,7 +209,8 @@ export async function previewDailyReport({ dealerId, reportDate, now = new Date(
   const snapshot = saved || await computeDailySnapshot({ dealerId, reportDate, now, dealer });
   const mode = dailyEmailMode(dealer);
   const rendered = renderDailyEmail({ snapshot, dealer, dashboardUrl: dashboardUrl(env),
-    mode: mode === 'internal' ? 'internal' : 'live', liveRecipientCount: dealerRecipients(dealer).length });
+    mode: mode === 'internal' ? 'internal' : 'live', liveRecipientCount: dealerRecipients(dealer).length,
+    csvUrl: saved ? csvUrlFor(dealerId, reportDate, env) : null });
   return { ok: true, ...rendered, mode, snapshot_saved: Boolean(saved),
     day_finished: isFinishedDay(reportDate, dealerTimezone(dealer), now),
     recipients: resolveRecipients(dealer, { env, mode }) };

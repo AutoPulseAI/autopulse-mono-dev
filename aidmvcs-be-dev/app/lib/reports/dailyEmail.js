@@ -8,6 +8,9 @@ const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const HEX = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i;
 const DASH = '—';
+// Every label and number is this dark grey. The dealer's title colour is for the store name only, so a dealer whose
+// brand colour is red (Victory Cars Central, 19 Nov 2026) doesn't get an email where every number looks like an alarm.
+const INK = '#1f2937';
 
 function color(value, fallback) {
   return HEX.test(String(value || '').trim()) ? String(value).trim() : fallback;
@@ -77,11 +80,11 @@ const SOURCE_LABELS = {
 
 /**
  * @param {{snapshot: object, dealer?: object, branding?: object, dashboardUrl?: string, mode?: 'internal'|'live',
- *   liveRecipientCount?: number}} args
+ *   liveRecipientCount?: number, csvUrl?: string}} args
  * @returns {{subject: string, html: string, text: string}}
  */
 export function renderDailyEmail({ snapshot, dealer = null, branding = null, dashboardUrl = null, mode = 'live',
-  liveRecipientCount = null } = {}) {
+  liveRecipientCount = null, csvUrl = null } = {}) {
   const b = branding || brandingFrom(dealer);
   const m = snapshot?.metrics || {};
   const stale = staleSet(snapshot);
@@ -101,6 +104,16 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
   const dayLong = day.format('dddd, MMMM D, YYYY');
   const dayShort = day.format('MMM D');
   const link = httpUrl(dashboardUrl);
+  const csv = httpUrl(csvUrl);
+  const v4 = Boolean(m.ai_activity && 'cold_reactivated' in m.ai_activity); // snapshots before v4 lack the AI events
+  const soldStale = stale.has('sold') || !m.sold;
+  const dept = m.by_department || null;
+  const deptStale = stale.has('by_department') || !dept;
+  // The Leads list behind one number, for that day (the dashboard's own drill-down; sign-in required).
+  const base = link ? link.replace(/\/dealer\/dashboard$/, '') : null;
+  const drill = (kpi) => (base && snapshot?.window?.start ? `${base}/dealer/leads?report_kpi=${encodeURIComponent(kpi)}`
+    + `&startDate=${encodeURIComponent(new Date(snapshot.window.start).toISOString())}`
+    + `&endDate=${encodeURIComponent(new Date(snapshot.window.end).toISOString())}` : null);
 
   const prefix = mode === 'internal'
     ? `[Internal test${liveRecipientCount != null ? `, live would go to ${liveRecipientCount}` : ''}] ` : '';
@@ -108,9 +121,9 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
 
   const row = (label, value, note = '') => `
             <tr>
-              <td style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:16px;color:${b.text}">${esc(label)}${note
+              <td style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:16px;color:${INK}">${esc(label)}${note
     ? `<div style="font-size:12px;color:#6b7280">${esc(note)}</div>` : ''}</td>
-              <td align="right" style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:18px;font-weight:bold;color:${b.text}">${esc(value)}</td>
+              <td align="right" style="padding:10px 0;border-bottom:1px solid #eceff1;font-size:18px;font-weight:bold;color:${INK}">${esc(value)}</td>
             </tr>`;
   const heading = (title, sub = '') => `
           <tr><td style="padding:24px 24px 4px 24px">
@@ -139,6 +152,54 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
             Internal test copy - this dealer does not receive it yet.
           </td></tr>` : '';
 
+  // The B2 design (SOW Appendix B2): the headline number on the left, the AI's events as short lines with an icon on
+  // the right. Each line is its own count - they are never added into one "wins" total (SOW F2).
+  const win = (icon, bg, fg, label, value, kpi) => {
+    const href = kpi ? drill(kpi) : null;
+    const num = `<span style="font-size:20px;font-weight:bold;color:${INK}">${esc(value)}</span>`;
+    return `
+                <tr>
+                  <td width="40" valign="middle" style="padding:12px 0 12px 14px;border-bottom:1px solid #eceff1">
+                    <div style="width:32px;height:32px;line-height:32px;border-radius:8px;background:${bg};color:${fg};text-align:center;font-size:16px">${icon}</div>
+                  </td>
+                  <td valign="middle" style="padding:12px 10px;border-bottom:1px solid #eceff1;font-size:14px;line-height:1.35;color:#374151">${esc(label)}</td>
+                  <td align="right" valign="middle" style="padding:12px 14px 12px 0;border-bottom:1px solid #eceff1">${href
+    ? `<a href="${esc(href)}" style="text-decoration:none">${num}</a>` : num}</td>
+                </tr>`;
+  };
+  const winRows = [
+    win('&#8617;', '#efeafd', '#5b3fd1', 'AI replied to an inbound message', n(ai.customer_messages_answered, aiStale), null),
+    ...(v4 ? [
+      win('&#8635;', '#fde8e4', '#d0543c', 'AI follow-up reactivated a cold lead', n(ai.cold_reactivated, aiStale), 'ai.cold_reactivated'),
+      win('&#9889;', '#e6f6ec', '#2f9e5b', 'AI turned a lead into a conversation', n(ai.conversations_started, aiStale), 'ai.conversations_started'),
+      win('&#9873;', '#fdf0e1', '#c27a2c', 'AI teed up a customer for your team - qualified, needs a person to take it home',
+        n(ai.qualified_handoffs, aiStale), 'ai.qualified_handoffs'),
+    ] : []),
+    win('&#128197;', '#efeafd', '#5b3fd1', 'AI appointments (booked by the AI)', n(a.ai, aStale), 'ai.appointments_ai'),
+    win('&#129309;', '#e8f1fb', '#1d6fe0', 'AI-assisted appointments (AI talked first, staff booked)', n(a.ai_assisted, aStale),
+      'ai.appointments_assisted'),
+  ].join('');
+  const headlineHref = drill('exec.appointments_set');
+  const headlineNum = `<div style="font-size:52px;line-height:1;font-weight:bold;color:${b.primary}">${esc(n(a.total, aStale))}</div>`;
+  const winsCard = `
+        <tr><td style="padding:20px 16px 4px 16px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate">
+            <tr>
+              <td width="38%" valign="middle" style="padding:20px 16px;background:#f8f7fd;border-right:1px solid #e5e7eb;border-radius:12px 0 0 12px">
+                <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:bold;color:${b.primary}">Total appointments set</div>
+                ${headlineHref ? `<a href="${esc(headlineHref)}" style="text-decoration:none">${headlineNum}</a>` : headlineNum}
+                <div style="font-size:13px;color:#6b7280;margin-top:8px">AI-influenced: ${esc(pct(a.ai_influence_pct, aStale))}${
+  !aStale && a.ai_influenced != null ? ` (${esc(n(a.ai_influenced))} of ${esc(n(a.total))})` : ''}</div>
+              </td>
+              <td width="62%" valign="top" style="padding:0">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${winRows}
+                </table>
+              </td>
+            </tr>
+          </table>
+          <div style="font-size:12px;color:#6b7280;padding:6px 2px 0 2px">Each line is counted on its own - they are not added together. Tap a number to see the customers.</div>
+        </td></tr>`;
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -157,12 +218,7 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
           <div style="font-size:20px;font-weight:bold;color:${b.text}">${esc(b.storeName)}</div>
           <div style="font-size:14px;color:#6b7280;margin-top:4px">Daily performance - ${esc(dayLong)}</div>
         </td></tr>${banner}
-        <tr><td align="center" style="padding:24px 24px 8px 24px">
-          <div style="font-size:56px;line-height:1;font-weight:bold;color:${b.primary}">${esc(n(a.total, aStale))}</div>
-          <div style="font-size:16px;color:${b.text};margin-top:6px">Total appointments set</div>
-          <div style="font-size:14px;color:#6b7280;margin-top:4px">AI-influenced: ${esc(pct(a.ai_influence_pct, aStale))}${
-  !aStale && a.ai_influenced != null ? ` (${esc(n(a.ai_influenced))} of ${esc(n(a.total))})` : ''}</div>
-        </td></tr>
+        ${winsCard}
         ${heading('Who set the appointments')}
         ${table([
     row('Booked by AI', n(a.ai, aStale)),
@@ -178,7 +234,13 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     row('Cancelled', n(a.cancelled, aStale), 'Of the appointments set this day'),
     row('Rescheduled', unavailable.has('appointments.rescheduled') ? DASH : n(a.rescheduled, aStale),
       unavailable.has('appointments.rescheduled') ? 'Not tracked yet' : ''),
+    ...(v4 ? [row('Sold', n(m.sold?.count, soldStale), 'Leads set to a sold status this day (CRM status)')] : []),
   ].join(''))}
+        ${v4 && dept && (dept.service?.total || 0) > 0 ? `${heading('Sales and service', "Appointments set this day, by the lead's department")}
+        ${table([
+    row('Sales', n(dept.sales?.total, deptStale), `AI ${n(dept.sales?.ai, deptStale)} · AI-assisted ${n(dept.sales?.ai_assisted, deptStale)}`),
+    row('Service', n(dept.service?.total, deptStale), `AI ${n(dept.service?.ai, deptStale)} · AI-assisted ${n(dept.service?.ai_assisted, deptStale)}`),
+  ].join(''))}` : ''}
         ${heading('Customers who replied', 'Each customer counted once for the day')}
         ${table([
     row("From today's leads", n(r.todays_leads, rStale)),
@@ -197,10 +259,12 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     row('Leads received', n(l.received, lStale)),
     row('AI messages sent', n(ai.messages_sent, aiStale)),
     row('Leads the AI messaged', n(ai.leads_messaged, aiStale)),
-    row('Customer messages answered by AI', n(ai.customer_messages_answered, aiStale)),
   ].join(''))}
         ${link ? `<tr><td align="center" style="padding:28px 24px 8px 24px">
           <a href="${esc(link)}" style="display:inline-block;background:${b.primary};color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;padding:14px 28px;border-radius:8px">Open your dashboard</a>
+        </td></tr>` : ''}
+        ${csv ? `<tr><td align="center" style="padding:8px 24px 0 24px;font-size:13px">
+          <a href="${esc(csv)}" style="color:${b.primary}">Download these numbers (CSV)</a>
         </td></tr>` : ''}
         <tr><td style="padding:20px 24px 24px 24px;font-size:12px;line-height:1.5;color:#6b7280">
           Report day: ${esc(snapshot.report_date)} (${esc(snapshot.tz)}). Data as of ${esc(moment(snapshot.data_as_of).tz(snapshot.tz || 'UTC').format('MMM D, YYYY h:mm A z'))}.
@@ -223,6 +287,10 @@ export function renderDailyEmail({ snapshot, dealer = null, branding = null, das
     `By lead age (overlapping groups): 7+ ${n(cum.d7, rStale)} | 15+ ${n(cum.d15, rStale)} | 30+ ${n(cum.d30, rStale)} | 60+ ${n(cum.d60, rStale)}`,
     `Leads received: ${n(l.received, lStale)}`,
     `AI messages sent ${n(ai.messages_sent, aiStale)} | leads messaged ${n(ai.leads_messaged, aiStale)} | customer messages answered ${n(ai.customer_messages_answered, aiStale)}`,
+    v4 ? `AI (each counted on its own): cold leads reactivated ${n(ai.cold_reactivated, aiStale)} | conversations started ${n(ai.conversations_started, aiStale)} | teed up for your team ${n(ai.qualified_handoffs, aiStale)}` : null,
+    v4 ? `Sold (CRM status): ${n(m.sold?.count, soldStale)}` : null,
+    v4 && dept && (dept.service?.total || 0) > 0 ? `Sales ${n(dept.sales?.total, deptStale)} | Service ${n(dept.service?.total, deptStale)} appointments set` : null,
+    csv ? `CSV: ${csv}` : null,
     link ? `Dashboard: ${link}` : null,
   ].filter(Boolean).join('\n');
 

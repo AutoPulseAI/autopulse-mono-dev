@@ -41,6 +41,8 @@ const permissions = [
   { permission_name: "Manage Account Information", entity: "dealer", group: "Account Info" },
   { permission_name: "Manage Leads", entity: "dealer", group: "Leads Management" },
   { permission_name: "View Assigned Leads", entity: "dealer", group: "Leads Management" },
+  // SOW G-054 (app/lib/standardRoles.js): every lead, no changes (Executive / Read-only roles).
+  { permission_name: "View All Leads (Read Only)", entity: "dealer", group: "Leads Management" },
   { permission_name: "Assign Leads", entity: "dealer", group: "Leads Management" },
   { permission_name: "Manage Appoinment", entity: "dealer", group: "Booking Management" },
   { permission_name: "Manage Follow-up setting", entity: "dealer", group: "Setting Management" },

@@ -2,7 +2,8 @@
 // 94:40-97:00: "edit the customer's name and phone from the lead page without going into the profile"; lead type and
 // lead source editable; date and time stamps never editable).
 //   body { changes: { <field>: { from, to } } }   field: name, phone, email, contact_type, lead_source, vin,
-//                                                vehicle_year, vehicle_make, vehicle_model, department
+//                                                vehicle_year, vehicle_make, vehicle_model, department, campaign
+// campaign: one of the dealer's campaigns (app/lib/leadCampaign.js) or empty = none; marked set by staff.
 // department (Betsy, 14 Nov 2026; BB: convert a sales lead to service by changing its department, not closing it):
 // sales / service / parts; empty = sales. A change emails the new department's staff (app/lib/departments.js).
 //   `from` is what the screen showed: a field someone else (or the AI) changed meanwhile is refused (409) instead of
@@ -18,6 +19,7 @@ import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import Lead from '@models/Lead';
 import Customer from '@models/Customer';
+import LeadSourceList from '@models/LeadSourceList';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { validContactType } from '@lib/leadContactType';
 import { normalizeEmail, normalizePhone } from '@lib/customerResolver';
@@ -29,7 +31,7 @@ const fail = (error, status, extra = {}) => Response.json({ error, message: erro
 const clean = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 const LABELS = Object.freeze({ name: 'name', phone: 'phone', email: 'email', contact_type: 'lead type',
-  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag' });
+  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag', campaign: 'campaign' });
 const TYPE_NAMES = { internet: 'Internet', phone: 'Phone Up', walk_in: 'Walk-In' };
 
 /** The stored value of one field from what staff typed, or { error }. Empty = cleared (null). */
@@ -111,6 +113,15 @@ export async function PATCH(req, { params }) {
   const guard = Object.fromEntries(edits.map((e) => [e.field, lead[e.field] ?? null]));
   // Staff placing a lead in a department wins over the automatic moves (app/lib/departmentRouting.js).
   if (set.department !== undefined) Object.assign(set, { department_set_by: 'staff', department_at: new Date() });
+  if (set.campaign !== undefined) {
+    if (set.campaign) {
+      const list = await LeadSourceList.findOne({ dealer_id: String(lead.dealer_id) }, { campaigns: 1 }).lean();
+      const hit = (list?.campaigns || []).find((c) => String(c.name).toLowerCase() === String(set.campaign).toLowerCase());
+      if (!hit) return fail(`"${set.campaign}" is not one of this dealership's campaigns`, 422, { field: 'campaign' });
+      set.campaign = hit.name;
+    }
+    set.campaign_set_by = 'staff';
+  }
   const res = await Lead.updateOne({ _id: lead._id, ...guard }, { $set: { ...set, updatedAt: new Date() } });
   if (!res.matchedCount) return fail('This lead was changed by someone else just now - reload it and save again.', 409);
 

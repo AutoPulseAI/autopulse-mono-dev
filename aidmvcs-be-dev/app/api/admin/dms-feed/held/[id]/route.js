@@ -4,6 +4,7 @@
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import HeldFile from '@models/DealerVaultHeldFile';
+import User from '@models/User';
 import { requireSuperAdmin } from '@lib/apiGuard';
 
 export async function POST(req, { params }) {
@@ -14,6 +15,13 @@ export async function POST(req, { params }) {
   const body = await req.json().catch(() => ({}));
   if (!['release', 'discard'].includes(body.action)) return Response.json({ error: 'action must be release or discard' }, { status: 400 });
   if (!mongoose.isValidObjectId(id)) return Response.json({ error: 'Not found' }, { status: 404 });
+  if (body.action === 'release') {
+    // A file of a store no dealer is linked to would only fail again: link the store first (DealerVault stores).
+    const file = await HeldFile.findById(id).select('dvDealerId').lean();
+    if (file && !(await User.exists({ type: 'dealer', dv_dealer_id: file.dvDealerId }))) {
+      return Response.json({ error: `Link DealerVault store ${file.dvDealerId} to a dealer first (DealerVault stores, above)` }, { status: 409 });
+    }
+  }
   const res = await HeldFile.updateOne({ _id: id, status: 'held' }, { $set: {
     status: body.action === 'release' ? 'release_requested' : 'discarded',
     decided_by_name: access.user?.name || 'Super admin', decided_at: new Date() } });

@@ -462,6 +462,8 @@ def compliance() -> list[dict[str, Any]]:
             "never_ask_what_day_works": _module("open_time_question").ON,
             # The user, 3 Nov 2026: a judge checks each reply against what the customer said before it is sent.
             "judge_before_sending": _module("judge").ON,
+            # The user, 19 Nov 2026: a customer reply restarts the Day 91 clock (a lead that never replied still closes).
+            "reply_restarts_day_91": _module("lifecycle").REPLY_RESTARTS_DAY_91,
             # Betsy, 22 Oct 2026 (item 9): "I'm busy" -> what time works, and the check-back then.
             "busy_rule": _decide().BUSY_RULE, "busy_phrases": list(_decide().BUSY_PHRASES)}},
         # The user / Betsy, 25 Oct 2026: "check things at every message" - the last look before any message leaves.
@@ -595,7 +597,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 40
+DEFAULTS_REVISION = 42  # 42: a customer reply restarts Day 91 (19 Nov 2026); 41: bought-elsewhere escalation
 
 
 def export() -> dict[str, Any]:

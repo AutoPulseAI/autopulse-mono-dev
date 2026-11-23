@@ -26,6 +26,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -110,6 +111,81 @@ def schedule_from_dict(value: dict[str, Any] | None) -> MaintenanceSchedule | No
                                         months=i.get("months")) for i in value["intervals"]))
 
 
+# --- Market value (trade-in) ------------------------------------------------------------------------------------
+# Betsy, 19 Nov 2026: "sign us up for vehicle databases for cadences and for trade values"; per dealer the super admin
+# picks AutoPulse values or the dealer's own link. From the public docs (market-value, read 19 Nov 2026):
+# - GET /market-value/v2/{vin}?mileage=&state=  or  /market-value/v2/ymm/{year}/{make}/{model}?mileage=&state=
+# - 200: {"status": "success", "data": {"basic": {year, make, model, trim, state, mileage},
+#   "market_value": {"market_value_data": [{"trim": ..., "market value": [{"Condition": "Outstanding" | "Clean" |
+#   "Average" | "Rough", "Trade-In": "$6,829", "Private Party": "$...", "Dealer Retail": "$..."}]}]}}}
+# - errors as the maintenance API (400 no record, 401 key, 403 / 429 rate limit, 422 validation, 5xx).
+MARKET_VALUE_SOURCE = "vehicle_databases_market_value_v2"
+CONDITIONS = ("Outstanding", "Clean", "Average", "Rough")
+
+
+def _dollars(value: Any) -> int | None:
+    n = _int(str(value or "").replace("$", ""))
+    return n if n is not None and n > 0 else None
+
+
+@dataclass(frozen=True)
+class TrimValue:
+    trim: str | None
+    # condition -> {"trade_in", "private_party", "dealer_retail"} in whole dollars
+    by_condition: dict[str, dict[str, int | None]]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"trim": self.trim, "by_condition": self.by_condition}
+
+
+@dataclass(frozen=True)
+class MarketValue:
+    year: int | None
+    make: str | None
+    model: str | None
+    state: str | None
+    mileage: int | None
+    trims: tuple[TrimValue, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"year": self.year, "make": self.make, "model": self.model, "state": self.state,
+                "mileage": self.mileage, "trims": [t.as_dict() for t in self.trims]}
+
+
+def parse_market_value(body: dict[str, Any]) -> MarketValue | None:
+    """The 200 body as values per trim and condition. None when it holds no usable trade-in value."""
+    if (body or {}).get("status") != "success":
+        return None
+    data = body.get("data") or {}
+    basic = data.get("basic") or {}
+    trims: list[TrimValue] = []
+    for row in (data.get("market_value") or {}).get("market_value_data") or []:
+        by: dict[str, dict[str, int | None]] = {}
+        for cond in row.get("market value") or row.get("market_value") or []:
+            name = str(cond.get("Condition") or "").strip().title()
+            if name not in CONDITIONS:
+                continue
+            values = {"trade_in": _dollars(cond.get("Trade-In")), "private_party": _dollars(cond.get("Private Party")),
+                      "dealer_retail": _dollars(cond.get("Dealer Retail"))}
+            if any(values.values()):
+                by[name] = values
+        if by:
+            trims.append(TrimValue(trim=row.get("trim"), by_condition=by))
+    if not trims:
+        return None
+    return MarketValue(year=_int(basic.get("year")), make=basic.get("make"), model=basic.get("model"),
+                       state=basic.get("state"), mileage=_int(basic.get("mileage")), trims=tuple(trims))
+
+
+def market_value_from_dict(value: dict[str, Any] | None) -> MarketValue | None:
+    if not value or not value.get("trims"):
+        return None
+    return MarketValue(year=value.get("year"), make=value.get("make"), model=value.get("model"),
+                       state=value.get("state"), mileage=value.get("mileage"),
+                       trims=tuple(TrimValue(trim=t.get("trim"), by_condition=t.get("by_condition") or {})
+                                   for t in value["trims"]))
+
+
 class VehicleDatabasesClient:
     def __init__(self, *, api_key: str, enabled: bool, api_base: str = "https://api.vehicledatabases.com",
                  min_interval_s: float = 1.0, transport: httpx.AsyncBaseTransport | None = None) -> None:
@@ -133,6 +209,30 @@ class VehicleDatabasesClient:
         if not valid_vin(vin):
             # Same answer as Vehicle Databases' own 400 for an unknown VIN, without spending a credit.
             return None
+        body = await self._get(f"/vehicle-maintenance/v4/{vin}")
+        return parse_schedule(vin, body) if body is not None else None
+
+    async def market_value(self, *, mileage: int, state: str, vin: str | None = None, year: int | None = None,
+                           make: str | None = None, model: str | None = None) -> MarketValue | None:
+        """Trade-in / private party / dealer retail values by condition, from a VIN or a year / make / model, for
+        a mileage and a US state. None when Vehicle Databases has no record (400)."""
+        if not self.enabled:
+            raise VehicleDatabasesDisabled()
+        query = {"mileage": str(int(mileage)), "state": state}
+        if vin:
+            if not valid_vin(vin):
+                return None
+            path = f"/market-value/v2/{vin}"
+        elif year and make and model:
+            path = "/market-value/v2/ymm/{}/{}/{}".format(int(year), quote(str(make).strip(), safe=""),
+                                                          quote(str(model).strip(), safe=""))
+        else:
+            raise ValueError("a VIN or a year, make and model is needed")
+        body = await self._get(path, query)
+        return parse_market_value(body) if body is not None else None
+
+    async def _get(self, path: str, params: dict[str, str] | None = None) -> dict[str, Any] | None:
+        """One paid call, spaced min_interval_s from the last. The JSON body, None on 400 / 404 (no record)."""
         async with self._lock:
             wait = self._min_interval_s - (time.monotonic() - self._last_call)
             if wait > 0:
@@ -141,21 +241,21 @@ class VehicleDatabasesClient:
             self.calls += 1
             try:
                 async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=self._transport) as client:
-                    response = await client.get(f"{self._base}/vehicle-maintenance/v4/{vin}",
+                    response = await client.get(f"{self._base}{path}", params=params,
                                                 headers={"x-authkey": self._key})
             except httpx.HTTPError as exc:
                 raise VehicleDatabasesError(f"Vehicle Databases unreachable: {exc!r}") from exc
         status = response.status_code
         if status == 200:
             try:
-                return parse_schedule(vin, response.json())
+                return response.json()
             except ValueError as exc:
                 raise VehicleDatabasesError("Vehicle Databases sent a non-JSON answer") from exc
         if status in (400, 404):
             return None
         if status in (401, 402, 422):
             raise VehicleDatabasesError(f"Vehicle Databases refused the request ({status})", retryable=False)
-        # 403 / 429 rate limit, 5xx: try again on a later sweep.
+        # 403 / 429 rate limit, 5xx: try again later.
         raise VehicleDatabasesError(f"Vehicle Databases answered {status}")
 
 

@@ -1,5 +1,6 @@
 import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup, replySplitGroup } from '@lib/contactedLeads';
-import { validContactType } from '@lib/leadContactType';
+import { contactTypeLabel, validContactType } from '@lib/leadContactType';
+import { namePartsOf } from '@lib/personName';
 import { bookingDetailsForLeads } from "@lib/bookingCreator";
 import { funnelLeadIds } from "@lib/appointmentFunnel";
 import { stoppedLeadIds } from "@lib/ai/stopLabels";
@@ -177,9 +178,10 @@ export async function GET(req) {
         { assigned_to: { $exists: false } }
       ];
     } else if (assignmentFilter === 'all') {
-      // Only allow viewing all leads if user has Manage Leads
+      // Only allow viewing all leads if user has Manage Leads (or the read-only role's "View All Leads (Read Only)",
+      // SOW G-054 - it sees every lead and the server refuses its changes)
       if (currentUser && currentUser.parent_id) {
-        const hasManageLeads = userPermissions.includes("Manage Leads");
+        const hasManageLeads = userPermissions.includes("Manage Leads") || userPermissions.includes("View All Leads (Read Only)");
         if (!hasManageLeads) {
           // Restrict to only user's assigned leads
           query.assigned_to = currentUser._id;
@@ -189,7 +191,7 @@ export async function GET(req) {
       // No assignment filter specified - apply permission-based filtering for staff
       if (currentUser && currentUser.parent_id) {
         // User is staff (has parent_id)
-        const hasManageLeads = userPermissions.includes("Manage Leads");
+        const hasManageLeads = userPermissions.includes("Manage Leads") || userPermissions.includes("View All Leads (Read Only)");
         const hasViewAssigned = userPermissions.includes("View Assigned Leads");
         
         if (!hasManageLeads && hasViewAssigned) {
@@ -492,6 +494,9 @@ export async function GET(req) {
         lead_id: { $exists: true, $ne: null },
         status: { $in: ['received', 'incoming'] }
       };
+      // The top bar's mail / chat icons (19 Nov 2026): unread by channel.
+      const unreadChannel = url.searchParams.get("channel");
+      if (['email', 'sms'].includes(unreadChannel)) messageQuery.communication_type = unreadChannel;
       const leadsWithUnread = await Email.distinct('lead_id', { ...messageQuery, read: { $ne: true } });
       let ids = leadsWithUnread;
       if (messageFilter === 'read') {
@@ -547,7 +552,7 @@ export async function GET(req) {
     if (format === 'csv') {
       // Handle CSV export
       const leads = await Lead.find(query)
-        .select("name email phone source lead_source fe_lead_status vin booking booking_status createdAt")
+        .select("name first_name middle_name last_name email phone source lead_source sub_source contact_type campaign fe_lead_status vin booking booking_status createdAt")
         .lean();
 
       // Convert to CSV
@@ -579,13 +584,20 @@ export async function GET(req) {
         // Check if there's an appointment
         const hasAppointment = lead.booking_status === true || lead.booking?.booking_date ? 'Yes' : 'No';
 
+        const parts = namePartsOf(lead);
         return {
           Name: lead.name || 'N/A',
+          'First Name': parts.first_name || '',
+          'Middle Name': parts.middle_name || '',
+          'Last Name': parts.last_name || '',
           Email: lead.email || 'N/A',
           Phone: lead.phone || 'N/A',
           VIN: lead.vin || 'N/A',
           'Source Type': lead.source || 'N/A',
           'Lead Source': lead.lead_source || 'N/A',
+          'Lead Type': contactTypeLabel(lead),
+          'Sub-source': lead.sub_source || '',
+          Campaign: lead.campaign || '',
           Status: lead.fe_lead_status || 'N/A',
           'Booking Date': bookingDate,
           'Appointment Time': appointmentTime,

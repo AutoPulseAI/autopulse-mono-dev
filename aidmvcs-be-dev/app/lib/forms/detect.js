@@ -12,7 +12,7 @@
 // Each blank is matched to a customer-data key by its label (and the section it is in: a "Trade-in" heading makes
 // Year / Make / VIN the trade-in's). A blank nothing matches stays empty on export - nothing is made up.
 // A scan (a picture of the page: a photo, a scanned PDF, a JPG) has no text or drawing to read: detectFields says so
-// (scan: true) and lib/forms/read.js refuses it with a plain message (no AI; a scan reader is still to be chosen).
+// (scan: true) and lib/forms/read.js reads it another way (our OCR reader first, the AI once only if that fails).
 import { createHash } from 'node:crypto';
 import { PDFCheckBox, PDFDocument, PDFName, PDFTextField } from 'pdf-lib';
 import { getDocumentProxy, getResolvedPDFJS } from 'unpdf';
@@ -22,6 +22,7 @@ const BLANK_RUN = /_{3,}/g;
 
 // label (lower case, no punctuation) -> data key. First match wins; order matters (specific before general).
 const RULES = [
+  [/\bmiddle (name|initial)\b|^mi$/, 'customer.middle_name'],
   [/\b(sign|signature|initial|initials)\b/, null],
   [/\b(dob|birth|ssn|social security|license|licence|credit|bank|routing|account)\b/, null],
   [/\bco ?buyer\b|\bco ?applicant\b|\bco ?signer\b/, null],

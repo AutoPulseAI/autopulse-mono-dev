@@ -7,6 +7,7 @@ import { formatCurrency } from "../../../../utils/formatCurrency";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import TradeInForm from "./TradeInForm";
 import ViewAdfModal from "../../../leads/components/ViewAdfModal";
+import TradeValueButton from "./TradeValueButton";
 
 const defaultTradeInsPagination = {
   currentPage: 1,
@@ -217,6 +218,7 @@ export default function TradeInTab({ customerId }) {
                   </div>
                 )}
                 <div className="d-flex justify-content-end gap-2">
+                  <TradeValueButton tradeIn={tradeIn} dealerId={dealerParent?.id || user?.id} />
                   <Button variant="outline-custom" size="sm"
                     onClick={() => setHistoryOpen(historyOpen === tradeIn._id ? null : tradeIn._id)}>
                     <i className="fa-regular fa-clock-rotate-left me-1" />History

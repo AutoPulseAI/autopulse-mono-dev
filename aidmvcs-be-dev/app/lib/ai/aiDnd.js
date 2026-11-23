@@ -164,7 +164,10 @@ export function closedStatusConflict({ status, current, changedAt, closedAt, boo
   }
   if (status === 'Closed - Lost' && KEEP_FOR_CLOSED_LOST.includes(current)) return 'staff_status_kept';
   if (status === 'Closed - No Longer Owns' && !FROM_FOR_NO_LONGER_OWNS.includes(current)) return 'not_a_sold_lead';
-  if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)) return 'staff_status_kept';
+  // A customer who writes back reopens a Closed - Lost lead (client, 20 Oct 2026, Quincy Mack); the AI's working status
+  // replaced it in the AI but the CRM refused it, so the lead stayed Closed - Lost (19 Nov 2026).
+  if (AI_WORKING_STATUSES.includes(status) && !WORKING_FROM.includes(current ?? null)
+    && !CLOSED_LOST_STATUSES.includes(current)) return 'staff_status_kept';
   if (AI_ESCALATION_STATUSES.includes(status) && !ESCALATION_FROM.includes(current ?? null)) return 'staff_status_kept';
   if (AI_BOOKING_STATUSES.includes(status) && !BOOKING_FROM.includes(current ?? null)) return 'staff_status_kept';
   return null;
@@ -176,6 +179,7 @@ export async function markLeadClosedFromAi(body, {
   // with "createManagerialReviewMessages is not defined" - no status on the lead and no manager alert (Betsy: "said it
   // would escalate but didn't actually escalate").
   createManagerialReviewMessages = async () => {}, notifyManagers = async () => {}, Booking = null,
+  logActivity = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id })
     .select('_id fe_lead_status lead_status status statusChangedAt').lean();
@@ -200,6 +204,11 @@ export async function markLeadClosedFromAi(body, {
     status: 'sent', communication_type: 'note', is_note: true, internal_use: true,
     message_id: `note_ai_status_${body.lead_id}_${at.getTime()}`, timestamp: at, date: at, ai_generated: true,
   });
+  // 18 Nov 2026 (Desk Log cards / Reports count status changes from ActivityLog): the AI's change is recorded there
+  // too, as the staff status route records a person's, so "Dealership Action Required", "Closed Lost" etc. include
+  // what the AI set. The customer timeline already shows the note above, so it skips these entries (360/activity.js).
+  await logActivity({ dealer_id: String(body.dealer_id), lead_id: lead._id, actor_type: 'ai', actor_name: 'AutoPulse AI',
+    action: 'status_changed', from: current, to: body.status, detail: body.reason || null, at });
   if (AI_CLOSED_STATUSES.includes(body.status)) {
     // A closing ends the platform's own follow-ups and reminders; a working stage leaves them as they are.
     await clearPendingJobs(lead._id);

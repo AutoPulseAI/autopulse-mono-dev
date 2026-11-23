@@ -1,6 +1,7 @@
 // Desk Log (Betsy's Priority 3; SOW v6 Deliverable C).
 //   GET  ?dealer_id &start_date &end_date (dealer-local YYYY-MM-DD) [&view &q &department &lead_type &source
-//        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1]  -> { rows, sources, truncated, cards? }
+//        &salesperson_id &sales_manager_id &bdc_agent_id] [&cards=1] [&page &limit=25|50|100]
+//        -> { rows (one page, newest first), total, page, pages, limit, sources, truncated, cards? }
 //   POST { dealer_id, lead_id, checked_in_at?, department? (default: the lead's), move_lead_to_service?, stock_number?, vehicle?, trade?, salesperson_id?,
 //        sales_manager_id?, bdc_agent_id?, stage?, note? }  -> checks a customer in (one showroom visit); their
 //        appointment that day is marked showed and the AI told they came in (app/lib/deskLog/checkIn.js)
@@ -18,6 +19,7 @@ import { deskLogCards } from '@lib/deskLog/cards';
 import { deskLogList, VIEWS } from '@lib/deskLog/list';
 import { planChanges } from '@lib/deskLog/deskLog';
 import { recordShowroomVisit } from '@lib/deskLog/checkIn';
+import { noteOnLead } from '@lib/deskLog/sync';
 import { checkNewCustomer, createLeadAtCheckIn } from '@lib/deskLog/newCustomer';
 import { dealerForms } from '@lib/reporting/kpis/common';
 import { getDealerTimezone, isValidLocalDate } from '@lib/reporting/time';
@@ -42,8 +44,8 @@ export async function GET(req) {
     if (!VIEWS[view]) return json({ message: `view must be one of ${Object.keys(VIEWS).join(', ')}` }, 400);
     const filters = Object.fromEntries(FILTERS.map((k) => [k, params.get(k) || null]));
     const list = await deskLogList({ dealerId, tz, from, to, view, q: (params.get('q') || '').trim().slice(0, 80),
-      filters });
-    const cards = params.get('cards') === '1' ? await deskLogCards(dealerId, tz, to > today ? today : to) : undefined;
+      filters, page: params.get('page'), limit: params.get('limit') });
+    const cards = params.get('cards') === '1' ? await deskLogCards(dealerId, tz, to > today ? today : to, filters.department) : undefined;
     return json({ ...list, cards, tz, views: VIEWS });
   } catch (error) {
     console.error('desk-log GET failed:', error?.message);
@@ -113,6 +115,8 @@ export async function POST(req) {
       ...plan.history.filter((h) => h.field === 'stage').map((h) => ({ ...h, at: now, by, by_name: actorName(access.user) }))];
     if (plan.note) doc.notes = [{ text: plan.note, at: now, by, by_name: actorName(access.user) }];
     const entry = await DeskLogEntry.create(doc);
+    // A note written at check-in is on the lead's conversation too (18 Nov 2026, lib/deskLog/sync.js).
+    if (plan.note) await noteOnLead({ entry, text: plan.note, at: now, by, byName: actorName(access.user) });
     // Checked in at the Service desk and staff ticked "move this lead to Service" (17 Nov 2026).
     let moved = null;
     if (!body.new_customer && entry.department === 'service' && body.move_lead_to_service && leadDept !== 'service') {

@@ -5,7 +5,8 @@
 import { statusRegexFor } from '../normalize.js';
 import { minutesInStage } from '../../deskLog/deskLog.js';
 import { KIND, LEAD_COLUMNS, LEAD_FILTERS, STATE, collection, dealerForms, firstStatusChangeLeads, leadRows,
-  leadsByIds, localDateTime, memo, notYet, passingLeads, windowFor } from './common.js';
+  leadsByIds, localDateTime, localDay, memo, notYet, passingLeads, windowFor } from './common.js';
+import { shared } from './executive.js';
 
 const D = 'sales';
 const DESK = 'Desk Log (Priority 3)';
@@ -18,8 +19,8 @@ const blocked = (id, label, numerator, denominator = null) => notYet(STATE.BLOCK
 const proxy = (id, label, groups, what) => ({
   id, label, dashboard: D, grain: 'lead', kind: KIND.COUNT, proxy: true,
   dateBasis: 'ActivityLog.at of the first status change to that status',
-  numerator: `Leads first set to ${what} in the range (staff status changes, ActivityLog status_changed). `
-    + 'Interim proxy until the Desk Log exists.',
+  numerator: `Leads first set to ${what} in the range, by staff or by the AI (ActivityLog status_changed; for the `
+    + 'AI before 18 Nov 2026, the lead\'s own AI-set status and its date).',
   denominator: null, inclusions: 'Any spelling of the status (app/lib/reporting/normalize.js).',
   exclusions: 'A lead set to it again later is counted once.', source: ['activitylogs', 'leads'],
   filters: LEAD_FILTERS, breakdowns: ['staff', 'lead_source'], columns: [...LEAD_COLUMNS, ['changed_at', 'Changed on']],
@@ -98,7 +99,40 @@ const visitKpi = (id, label, numerator, extra) => ({
   columns: VISIT_COLUMNS, ...extra,
 });
 
+// Walk-ins (the Desk Log "Walk-Ins" card, 18 Nov 2026: "a customer just walked in, he didn't have any appointment"):
+// new leads of type Walk-In, plus customers already in the CRM checked in on the Desk Log with no appointment that day
+// (an appointment that day is an "Appointment Showed" instead). Each lead once, on its first day in the range.
+async function walkInRows(args, ctx) {
+  return memo(ctx, 'rows:walk_ins', async () => {
+    const w = await windowFor(args);
+    const fresh = (await shared.leadsReceivedRows(args, ctx)).filter((r) => r._g?.up_type === 'Walk-in');
+    const seen = new Set(fresh.map((r) => String(r.id)));
+    const visits = (await deskVisits(args, ctx)).filter((r) => !seen.has(String(r.lead_id)));
+    const leadIds = [...new Set(visits.map((r) => String(r.lead_id)))];
+    const booked = new Set((leadIds.length ? await collection('bookings').find({ lead_id: { $in: leadIds },
+      booking_status: { $ne: 'cancelled' }, bookingDate: { $gte: new Date(w.start.getTime() - 864e5), $lte: w.end } })
+      .project({ lead_id: 1, bookingDate: 1 }).toArray() : []).map((b) => `${b.lead_id}|${localDay(b.bookingDate, w.tz)}`));
+    const rows = [...fresh];
+    for (const v of visits) {
+      const id = String(v.lead_id);
+      if (seen.has(id) || booked.has(`${id}|${String(v.checked_in).slice(0, 10)}`)) continue;
+      seen.add(id);
+      rows.push({ ...v, id, _g: { ...v._g, up_type: 'Walk-in' } });
+    }
+    return rows;
+  });
+}
+
 export const SALES_KPIS = [
+  { id: 'sales.walk_ins', label: 'Walk-ins', dashboard: D, grain: 'lead', kind: KIND.COUNT,
+    dateBasis: 'Lead.createdAt for a new Walk-In lead; the Desk Log check-in for a customer already in the CRM',
+    numerator: 'New leads of type Walk-In, plus customers already in the CRM checked in on the Desk Log with no '
+      + 'appointment that day. Each lead once.', denominator: null,
+    inclusions: 'Every department (the department filter picks one).',
+    exclusions: 'A check-in for an appointment that day (counted in Appointments showed).',
+    source: ['leads', 'desklogentries', 'bookings'], filters: LEAD_FILTERS, breakdowns: ['lead_source', 'staff'],
+    columns: LEAD_COLUMNS, evaluate: async (args, ctx) => ({ rows: await walkInRows(args, ctx) }) },
+
   visitKpi('sales.showroom_visits', 'Showroom visits', 'Desk Log visits checked in during the range.', {
     breakdowns: ['lead_source', 'staff', 'stage', 'outcome'],
     evaluate: async (args, ctx) => ({ rows: await deskVisits(args, ctx) }) }),

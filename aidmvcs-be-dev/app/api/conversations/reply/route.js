@@ -40,9 +40,11 @@ async function translateOutgoing({ translateUrl, targetLanguage, sourceHint, sub
   if (!res.ok) {
     throw new Error(data?.error || 'Failed to translate outgoing message.');
   }
+  // Nothing back for the message = not translated: say so rather than send it in whatever language it was written in.
+  if (!data?.translations?.body) throw new Error('No translation came back.');
   return {
     subject: data?.translations?.subject || subject,
-    content: data?.translations?.body || content,
+    content: data.translations.body,
   };
 }
 
@@ -210,7 +212,8 @@ export async function POST(request) {
 
     // Resolve lead user language (fallback English) and translate before sending/saving.
     const leadDoc = parentMessage.lead_id ? await Lead.findById(parentMessage.lead_id).select('user_language') : null;
-    let leadUserLanguageRaw = latestReply?.user_language?latestReply.user_language:normalizeUserLanguage(leadDoc?.user_language);
+    // The customer's saved language first (an old message's tag only when the lead has none).
+    let leadUserLanguageRaw = normalizeUserLanguage(leadDoc?.user_language || latestReply?.user_language);
     // Client, 19 Oct 2026 (Bibi wrote in Spanish, replied in Spanish from AutoPulse and got English): the language the
     // customer actually writes in, as the AI detects it on every message (ai_lead_state.customer_language).
     if (parentMessage.lead_id) {
@@ -227,12 +230,19 @@ export async function POST(request) {
       } catch { /* keep the lead's own language */ }
     }
     const leadUserLanguageDisplay = toDisplayLanguageName(leadUserLanguageRaw);
-    const sourceHint = leadUserLanguageDisplay; // we don't know the agent language here; use lead language as hint
+    // Mercy, 19-20 Nov 2026: Spanish texts reached English customers. The hint said the text was already in the
+    // customer's language, so the model left the Spanish as it was. No hint: the model reads what was written.
+    const sourceHint = '';
 
     let contentToSend = content;
     let subjectToSend = subject;
+    // Mercy, 21 Nov 2026 ("Failed to send message"): an English customer gets the text exactly as staff typed it -
+    // no translation call, so nothing can turn it into another language or stop it going out.
+    const needsTranslation = leadUserLanguageRaw !== 'english';
     try {
-      if (communicationType === 'email') {
+      if (!needsTranslation) {
+        // sent as typed
+      } else if (communicationType === 'email') {
         const translated = await translateOutgoing({
           translateUrl,
           targetLanguage: leadUserLanguageDisplay,
@@ -255,7 +265,10 @@ export async function POST(request) {
         contentToSend = translated.content;
       }
     } catch (trErr) {
-      console.warn('Outgoing translation failed, sending original content:', trErr?.message || trErr);
+      // Not sent rather than sent in the wrong language.
+      console.warn('Outgoing translation failed, message not sent:', trErr?.message || trErr);
+      return NextResponse.json({ message: `Couldn't put this message into the customer's language (${leadUserLanguageDisplay}), so it was not sent. Please try again.` },
+        { status: 422 }); // not 5xx: Cloudflare swaps a 5xx for its own page and staff only saw "Failed to send message"
     }
 
     try {
@@ -266,16 +279,14 @@ export async function POST(request) {
           contentToSend,
           from,
           latestMessageId,
-          dealer
+          dealer,
+          [],
+          { eligibility: { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null } }
         );
         console.log('Email sent successfully. Message ID:', sentMessageId);
       } else if (communicationType === 'sms') {
-        sentMessageId = await sendSMS(
-          to,
-          
-          contentToSend,
-          dealer
-        );
+        sentMessageId = await sendSMS(to, contentToSend, dealer, [],
+          { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null });
         console.log('SMS sent successfully. Message ID:', sentMessageId);
       }
     } catch (error) {

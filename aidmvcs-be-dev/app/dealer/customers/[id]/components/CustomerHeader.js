@@ -15,6 +15,8 @@ import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import CallButton from "../../../components/CallButton";
 import ExportFormButton from "./ExportFormButton";
+import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { NAME_PART_FIELDS, namePartsOf, tidyCase } from "../../../../lib/personName";
 
 export function primaryContact(entries) {
   if (!entries?.length) return null;
@@ -57,20 +59,30 @@ function Pencil({ onClick, title }) {
   );
 }
 
-// One field shown as text with a pencil; the pencil turns it into an input / select with Save and Cancel.
+// One field shown as text with a pencil; the pencil turns it into an input or a menu that saves by itself (SOW G-082):
+// a menu at once, typed text when the field loses focus or on Enter; Escape puts the saved value back. "Saving /
+// Saved / Not saved + Try again" shows beside it; a failed save keeps what was typed.
 function InlineField({ label, value, display, options, onSave, inputType = "text", placeholder, allowEmpty = false }) {
   const [draft, setDraft] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const save = async () => {
-    setBusy(true); setError(null);
-    try { await onSave(draft); setDraft(null); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  const [state, setState] = useState(null); // null | 'saving' | 'saved' | { error }
+  const commit = async (v) => {
+    const next = String(v ?? "");
+    if (next === String(value ?? "")) { setDraft(null); return; }
+    if (!options && !allowEmpty && !next.trim()) { setState({ error: "Can't be empty - put back" }); setDraft(null); return; }
+    setState("saving");
+    try { await onSave(next); setDraft(null); setState("saved"); setTimeout(() => setState((s) => (s === "saved" ? null : s)), 2500); }
+    catch (e) { setState({ error: e.message || "Could not save" }); }
   };
+  const status = state === "saving" ? <small className="text-muted">Saving…</small>
+    : state === "saved" ? <small className="text-success">Saved</small>
+    : state?.error ? <small className="text-danger">Not saved: {state.error}{draft !== null && <> · <Button size="sm"
+        variant="link" className="p-0 align-baseline" onClick={() => commit(draft)}>Try again</Button></>}</small> : null;
   if (draft === null) {
     return (
-      <span className="d-inline-flex align-items-center">
+      <span className="d-inline-flex flex-wrap align-items-center gap-1">
         {label && <strong className="me-1">{label}:</strong>}{display ?? value ?? "Not set"}
-        <Pencil onClick={() => { setError(null); setDraft(String(value ?? "")); }} title={`Edit ${label || "name"}`} />
+        <Pencil onClick={() => { setState(null); setDraft(String(value ?? "")); }} title={`Edit ${label || "name"}`} />
+        {status}
       </span>
     );
   }
@@ -79,21 +91,72 @@ function InlineField({ label, value, display, options, onSave, inputType = "text
     <span className="d-inline-flex flex-wrap align-items-center gap-1">
       {label && <strong className="me-1">{label}:</strong>}
       {options ? (
-        <Form.Select size="sm" className="w-auto" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}>
+        <Form.Select size="sm" className="w-auto" autoFocus value={draft} disabled={state === "saving"}
+          onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
+          onBlur={() => state !== "saving" && !state?.error && setDraft(null)}
+          onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }}>
           {current && !options.some(([k]) => k === current) && <option value={value}>{value}</option>}
           {!current && <option value="">Choose...</option>}
           {options.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </Form.Select>
       ) : (
         <Form.Control size="sm" className="w-auto" autoFocus type={inputType} value={draft} placeholder={placeholder}
-          maxLength={120} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setDraft(null); }} />
+          maxLength={120} disabled={state === "saving"} onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commit(draft)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setState(null); setDraft(null); } }} />
       )}
-      <Button size="sm" variant="custom" onClick={save} disabled={busy || (!options && !allowEmpty && !draft.trim())}>
-        {busy ? <Spinner size="sm" /> : "Save"}</Button>
-      <Button size="sm" variant="outline-secondary" onClick={() => setDraft(null)} disabled={busy}>Cancel</Button>
-      {error && <small className="text-danger w-100">{error}</small>}
+      {status}
     </span>
+  );
+}
+
+// The name in parts (19 Nov 2026): the pencil opens First / Middle / Last / Suffix, as the DMS and dealership forms
+// keep them; the full name is made from them. Saves by itself when focus leaves the fields or on Enter (SOW G-082);
+// Escape puts the saved name back. A customer whose parts were only split from a one-line name opens with the DMS's
+// parts when the DMS has them, else the split - shown as "check it" until someone saves.
+const NAME_INPUTS = [["first_name", "First"], ["middle_name", "Middle"], ["last_name", "Last"], ["suffix", "Suffix"]];
+function NameEditor({ customer, dmsPerson, onSave }) {
+  const [draft, setDraft] = useState(null);
+  const [state, setState] = useState(null); // null | 'saving' | 'saved' | { error }
+  const stored = namePartsOf(customer);
+  const fromDms = stored.from === "guess" && (dmsPerson?.first_name || dmsPerson?.last_name);
+  const start = fromDms ? Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, tidyCase(dmsPerson[f])])) : stored;
+  const hint = stored.from === "staff" ? null : fromDms ? "From the DMS - check and save"
+    : stored.from === "guess" ? "Split from the full name - check it" : null;
+  const open = () => { setState(null); setDraft(Object.fromEntries(NAME_PART_FIELDS.map((f) => [f, start[f] || ""]))); };
+  const commit = async () => {
+    if (!draft || state === "saving") return;
+    const same = NAME_PART_FIELDS.every((f) => (draft[f] || "").trim() === (stored[f] || "").trim()) && stored.from === "staff";
+    if (same) { setDraft(null); return; }
+    if (!draft.first_name.trim() && !draft.last_name.trim()) { setState({ error: "A first or last name is needed" }); return; }
+    setState("saving");
+    try { await onSave(draft); setDraft(null); setState("saved"); setTimeout(() => setState((v) => (v === "saved" ? null : v)), 2500); }
+    catch (e) { setState({ error: e.message || "Could not save" }); }
+  };
+  const status = state === "saving" ? <small className="cp_name_status">Saving…</small>
+    : state === "saved" ? <small className="cp_name_status">Saved</small>
+    : state?.error ? <small className="cp_name_status cp_name_error">Not saved: {state.error}</small> : null;
+  if (!draft) {
+    return (
+      <span className="d-inline-flex flex-wrap align-items-center gap-1">
+        {customer.name || "Unnamed customer"}
+        <Pencil onClick={open} title="Edit first, middle and last name" />{status}
+      </span>
+    );
+  }
+  return (
+    <div className="cp_name_edit" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) commit(); }}
+      onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setState(null); setDraft(null); } }}>
+      {NAME_INPUTS.map(([f, label], i) => (
+        <label key={f} className={`cp_name_part${f === "suffix" ? " cp_name_suffix" : ""}`}>
+          <span>{label}</span>
+          <Form.Control size="sm" value={draft[f]} autoFocus={i === 0} maxLength={60} disabled={state === "saving"}
+            placeholder={f === "middle_name" || f === "suffix" ? "Optional" : ""}
+            onChange={(e) => setDraft((d) => ({ ...d, [f]: e.target.value }))} />
+        </label>
+      ))}
+      <div className="cp_name_foot">{status || (hint && <small className="cp_name_status">{hint}</small>)}</div>
+    </div>
   );
 }
 
@@ -119,13 +182,15 @@ function ContactList({ kind, entries, labels, send }) {
             <i className={`fa-solid ${icon(e)} cp_row_icon`} title={nameOf(labels, e.label)} />
             {editing?.value === e.value ? (
               <>
+                {/* Saves when the field loses focus or on Enter (SOW G-082); Escape keeps the old value. */}
                 <Form.Control size="sm" className="w-auto" autoFocus value={editing.to} type={kind === "phone" ? "tel" : "email"}
-                  onChange={(ev) => setEditing({ ...editing, to: ev.target.value })}
-                  onKeyDown={(ev) => { if (ev.key === "Escape") setEditing(null); }} />
-                <Button size="sm" variant="custom" disabled={busy || !editing.to.trim()}
-                  onClick={() => run({ action: "replace", value: e.value, to: editing.to }, () => setEditing(null))}>
-                  {busy ? <Spinner size="sm" /> : "Save"}</Button>
-                <Button size="sm" variant="outline-secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</Button>
+                  disabled={busy} onChange={(ev) => setEditing({ ...editing, to: ev.target.value })}
+                  onBlur={() => {
+                    if (!editing.to.trim() || editing.to.trim() === show(e.value)) { setEditing(null); return; }
+                    run({ action: "replace", value: e.value, to: editing.to }, () => setEditing(null));
+                  }}
+                  onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); if (ev.key === "Escape") { setError(null); setEditing(null); } }} />
+                {busy && <small className="text-muted">Saving…</small>}
               </>
             ) : (
               <>
@@ -233,7 +298,7 @@ function AddressList({ entries, send }) {
 }
 
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged, onOpenTab, counts }) {
+  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   const primaryAddress = primaryContact(customer.addresses);
@@ -245,6 +310,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   const canAssignLeads = useCan("Assign Leads");
   const [notice, setNotice] = useState(null);
   const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
+  // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
+  const [showDetails, setShowDetails] = useState(false);
+  const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
 
   const putCustomer = async (body) => {
     const res = await fetch(`/api/customers/${customer._id}`, { method: "PUT", headers: auth(),
@@ -270,17 +338,26 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   return (
     <div className="cp_card mb-3">
       {/* Blue band: who the customer is, where they came from, who looks after them. */}
+      <div className="print_only small text-muted mb-1">Customer summary · printed {new Date().toLocaleString("en-US")}</div>
       <div className="cp_band">
         <div className="cp_avatar" aria-hidden="true">{initials}</div>
         <div className="cp_ident">
           <div className="cp_name">
-            <InlineField value={customer.name || ""} display={customer.name || "Unnamed customer"}
-              placeholder="Customer name" onSave={(name) => putCustomer({ name })} />
+            <NameEditor customer={customer} dmsPerson={dmsPerson} onSave={(parts) => putCustomer(parts)} />
           </div>
           <div className="cp_meta">
             <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
               {customer.origin_badge}
             </Badge>
+            {/* Where the customer's newest lead came from (19 Nov 2026: "still not seeing the source - Internet, and
+                Cars.com or Google"): lead type, source, sub-source and campaign, the same values the reports group by. */}
+            {latestLead && (
+              <span className="cp_source" title="The customer's newest lead: lead type · source · sub-source · campaign">
+                <i className="fa-solid fa-signs-post me-1" />
+                {[leadTypeName(latestLead), latestLead.lead_source || latestLead.source || "Unknown source",
+                  latestLead.sub_source, latestLead.campaign && `Campaign: ${latestLead.campaign}`].filter(Boolean).join(" · ")}
+              </span>
+            )}
             <span><i className="fa-regular fa-calendar me-1" />Customer since {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</span>
             <span><i className="fa-regular fa-clock me-1" />Last activity {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</span>
           </div>
@@ -315,6 +392,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           <div className="cp_tools">
             {/* The dealership's forms with this customer's data filled in (Forms Library). */}
             <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
+            {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
+            <button type="button" className="cp_tool" onClick={() => window.print()} title="Print this customer's summary">
+              <i className="fa-solid fa-print" />Print</button>
           </div>
         </div>
         {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
@@ -375,8 +455,15 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <InlineField label="Language" value={customer.user_language}
               display={nameOf(LANGUAGES, customer.user_language)} options={LANGUAGES}
               onSave={(v) => putCustomer({ user_language: v })} /></div>
-          <h6 className="cp_section_title mt-3"><i className="fa-solid fa-address-book" />More details</h6>
-          {DETAILS.map(([key, label, icon, opts]) => {
+          <h6 className="cp_section_title mt-3">
+            <button type="button" className="cp_fold_btn" onClick={() => setShowDetails((v) => !v)}
+              aria-expanded={showDetails} aria-controls="cp_more_details">
+              <i className="fa-solid fa-address-book" />More details
+              {detailsFilled > 0 && <span className="cp_fold_count">{detailsFilled}</span>}
+              <i className={`fa-solid fa-chevron-${showDetails ? "up" : "down"} cp_fold_chevron`} />
+            </button>
+          </h6>
+          {showDetails && <div id="cp_more_details">{DETAILS.map(([key, label, icon, opts]) => {
             const v = customer.details?.[key] || "";
             return (
               <div className="cp_pref" key={key}><i className={`fa-solid ${icon}`} />
@@ -384,7 +471,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   display={v ? (opts.options ? nameOf(opts.options, v) : opts.inputType === "date" ? shortDate(v) : v) : "Not set"}
                   onSave={(nv) => putCustomer({ details: { [key]: nv } })} /></div>
             );
-          })}
+          })}</div>}
         </section>
         <section className="cp_section">
           <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>

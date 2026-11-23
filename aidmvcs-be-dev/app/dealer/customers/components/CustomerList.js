@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Form, ListGroup, Modal, Pagination, Row, Col } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CustomerForm from "./CustomerForm";
+import { lastFirst } from "../../../lib/personName";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 
 const defaultPagination = {
@@ -28,12 +29,13 @@ export default function CustomerList() {
   const [pagination, setPagination] = useState(defaultPagination);
   const [filters, setFilters] = useState({
     name: "",
+    last_name: "",
     email: "",
     phone: "",
     source: "",
     dateRange: { startDate: null, endDate: null },
   });
-  const [inputValues, setInputValues] = useState({ name: "", email: "", phone: "" });
+  const [inputValues, setInputValues] = useState({ name: "", last_name: "", email: "", phone: "" });
   const dealerTimezone = activeEntity?.dealer_account_information?.time_zone || "America/New_York";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -118,8 +120,8 @@ export default function CustomerList() {
 
   const clearFilters = () => {
     clearTimeout(searchDebounceRef.current);
-    setInputValues({ name: "", email: "", phone: "" });
-    setFilters({ name: "", email: "", phone: "", source: "", dateRange: { startDate: null, endDate: null } });
+    setInputValues({ name: "", last_name: "", email: "", phone: "" });
+    setFilters({ name: "", last_name: "", email: "", phone: "", source: "", dateRange: { startDate: null, endDate: null } });
   };
 
   const handleCustomerPageChange = (page) => {
@@ -196,6 +198,10 @@ export default function CustomerList() {
           <Form.Control size="sm" placeholder="Name" value={inputValues.name} onChange={(event) => setInputValues({ ...inputValues, name: event.target.value })} />
         </Col>
         <Col lg={3} md={4} sm={12}>
+          {/* 19 Nov 2026: look a customer up by last name; the list is then in last-name order. */}
+          <Form.Control size="sm" placeholder="Last name" value={inputValues.last_name} onChange={(event) => setInputValues({ ...inputValues, last_name: event.target.value })} />
+        </Col>
+        <Col lg={3} md={4} sm={12}>
           <Form.Control size="sm" placeholder="Email" value={inputValues.email} onChange={(event) => setInputValues({ ...inputValues, email: event.target.value })} />
         </Col>
         <Col lg={3} md={4} sm={12}>
@@ -257,7 +263,7 @@ export default function CustomerList() {
               <ListGroup.Item key={customer._id} className="w_card_list_box p-0">
                 <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => openCustomer(customer._id)}>
                   <Row className="align-items-center">
-                    <Col md={3} className="p_bold"><i className="fa-solid fa-chevron-right me-2" />{customer.name || "Unnamed customer"}</Col>
+                    <Col md={3} className="p_bold"><i className="fa-solid fa-chevron-right me-2" />{lastFirst(customer) || "Unnamed customer"}</Col>
                     <Col md={3}>{email || "No email"}</Col>
                     <Col md={3}>{phone || "No phone"}</Col>
                     <Col md={2}>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</Col>

@@ -9,6 +9,12 @@
 //   leads             leads received that day (Lead.createdAt), from the same replyCohorts call
 //   ai_activity       AI messages sent that day (Email.ai_generated, sent/delivered, sms|email, not a note) and the
 //                     distinct leads they went to; appointments booked by the AI (= appointments.ai)
+//   ai_activity also (v4, SOW F2 / B2): conversations_started, cold_reactivated, qualified_handoffs - the Reports
+//                     KPIs ai.conversations_started / ai.cold_reactivated / ai.qualified_handoffs, so the email and the
+//                     dashboard drill-down are the same leads; their lead ids are saved for reconciliation
+//   sold              leads first set to a sold status that day (KPI exec.crm_sold, the CRM status; DMS-delivered is
+//                     separate on the dashboard)
+//   by_department     appointments set that day, Sales / Service (the lead's department), each with AI / AI-assisted
 // A section whose query throws is saved as null and listed in stale_sources: the email shows "—", never 0. When the
 // AI service has events for this dealer waiting in ai_event_outbox from before the day ended, AI activity may be
 // incomplete: it is flagged stale too and shown as "—" with the warning.
@@ -24,9 +30,13 @@ import { AI_SENT_STATUSES, DEFINITIONS_VERSION as ATTR_VERSION, attributeAppoint
 import { DEFINITIONS_VERSION as REPLY_VERSION, replyCohorts } from '../reporting/replyCohorts.js';
 import { dealerTimezone, isValidLocalDate, localDayRange } from '../reporting/time.js';
 import { AI_OUTBOX_COLLECTION } from '../ai/aiOutbox.js';
+import { evaluateKpi } from '../reporting/registry.js';
 
 // v2: show rate = shown / past appointments; v3: no_show = marked no-show only, not_recorded = past with no outcome
-export const SNAPSHOT_DEFINITIONS = 'daily-email-v3';
+// v4: AI activity events (conversations started, cold leads reactivated, qualified handoffs), sold, Sales / Service
+export const SNAPSHOT_DEFINITIONS = 'daily-email-v4';
+export const ACTIVITY_KPIS = Object.freeze({ conversations_started: 'ai.conversations_started',
+  cold_reactivated: 'ai.cold_reactivated', qualified_handoffs: 'ai.qualified_handoffs' });
 export const UNAVAILABLE = Object.freeze(['appointments.rescheduled']);
 
 const isOid = (id) => id != null && /^[0-9a-f]{24}$/i.test(String(id));
@@ -67,6 +77,29 @@ export async function computeDailySnapshot({ dealerId, reportDate, now = new Dat
     return { messages_sent: rows.length,
       leads_messaged: new Set(rows.map((r) => r.lead_id).filter(Boolean).map(String)).size };
   });
+  const kpiArgs = { dealerId: String(dealerId), from: reportDate, to: reportDate, tz, now, spec: {} };
+  const kpiCtx = {};
+  const events = await section(stale, 'ai_events', ['ai_activity'], async () => {
+    const out = {};
+    for (const [key, id] of Object.entries(ACTIVITY_KPIS)) {
+      const r = await evaluateKpi(id, kpiArgs, kpiCtx);
+      out[key] = { count: r.count, lead_ids: r.ids };
+    }
+    return out;
+  });
+  const sold = await section(stale, 'sold', ['sold'], async () => {
+    const r = await evaluateKpi('exec.crm_sold', kpiArgs, kpiCtx);
+    return { count: r.count, lead_ids: r.ids };
+  });
+  const byDepartment = await section(stale, 'departments', ['by_department'], async () => {
+    const out = {};
+    for (const dept of ['sales', 'service']) {
+      const r = await attributeAppointments({ dealerId: String(dealerId), from: reportDate, to: reportDate,
+        basis: 'created', tz, now, filters: { department: dept } });
+      out[dept] = { total: r.totals.total, ai: r.totals.ai, ai_assisted: r.totals.ai_assisted };
+    }
+    return out;
+  });
   // Events the AI service has not received yet, from before the day ended: AI activity may be incomplete.
   try {
     const waiting = await mongoose.connection.collection(AI_OUTBOX_COLLECTION).countDocuments({
@@ -99,7 +132,13 @@ export async function computeDailySnapshot({ dealerId, reportDate, now = new Dat
     leads_messaged: aiSends ? aiSends.leads_messaged : null,
     appointments_booked: created ? created.totals.ai : null,
     customer_messages_answered: replies ? replies.handlers.ai : null,
+    conversations_started: events ? events.conversations_started.count : null,
+    cold_reactivated: events ? events.cold_reactivated.count : null,
+    qualified_handoffs: events ? events.qualified_handoffs.count : null,
   } : null;
+  // The leads behind each count, for reconciliation (no names: ids only).
+  const evidence = { ...(events ? Object.fromEntries(Object.entries(events).map(([k, v]) => [k, v.lead_ids])) : {}),
+    ...(sold ? { sold: sold.lead_ids } : {}) };
 
   return {
     dealer_id: new mongoose.Types.ObjectId(String(dealerId)),
@@ -109,7 +148,9 @@ export async function computeDailySnapshot({ dealerId, reportDate, now = new Dat
     generated_at: now,
     data_as_of: now,
     definitions: { snapshot: SNAPSHOT_DEFINITIONS, appointments: ATTR_VERSION, replies: REPLY_VERSION },
-    metrics: { appointments, appointments_due: appointmentsDue, replies: replyMetrics, leads, ai_activity: aiActivity },
+    metrics: { appointments, appointments_due: appointmentsDue, replies: replyMetrics, leads, ai_activity: aiActivity,
+      sold: sold ? { count: sold.count } : null, by_department: byDepartment },
+    evidence,
     unavailable: [...UNAVAILABLE],
     stale_sources: stale,
   };

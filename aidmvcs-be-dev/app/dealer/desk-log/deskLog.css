@@ -26,40 +26,66 @@
 .desk_log .dl_filters .form-select, .desk_log .dl_filters .form-control { font-size: 0.85rem; }
 .desk_log .dl_views { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
-/* Table */
+/* Table (18 Nov 2026: fixed column widths (DeskTable COLS) with a line between columns, as in the design; text that
+   doesn't fit is cut with "..." and shows in full on hover). */
 .desk_log .dl_table_wrap { overflow-x: auto; border: 1px solid var(--dl-line); border-radius: 8px; background: var(--white, #fff); }
-.desk_log table.dl_table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 1650px; }
-.desk_log .dl_table thead th { background: #13233a; color: #fff; font-weight: 600; font-size: 0.75rem;
-  padding: 9px 8px; border-bottom: 1px solid var(--dl-line); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
-.desk_log .dl_table td { padding: 8px; border-top: 1px solid var(--dl-line); vertical-align: top; }
-.desk_log .dl_table tbody tr:hover { background: #f6fafd; }
-.desk_log .dl_customer { min-width: 150px; max-width: 220px; }
-.desk_log .dl_table th.dl_strip { padding: 0; width: 5px; }
-.desk_log .dl_vehicle { min-width: 120px; max-width: 180px; }
-.desk_log .dl_type { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;
-  white-space: nowrap; background: #f1f3f5; color: #343a40; }
-.desk_log .dl_table td.dl_strip { padding: 0; width: 5px; min-width: 5px; }
-.desk_log .dl_source { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.desk_log table.dl_table { table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 0.82rem; }
+.desk_log .dl_table thead th { background: #13233a; color: #fff; font-weight: 600; font-size: 0.75rem; line-height: 1.2;
+  padding: 9px 8px; border-right: 1px solid rgba(255,255,255,.14); vertical-align: middle; position: sticky; top: 0; z-index: 1; }
+.desk_log .dl_table td { padding: 7px 8px; border-top: 1px solid var(--dl-line); border-right: 1px solid var(--dl-line);
+  vertical-align: middle; overflow: hidden; }
+.desk_log .dl_table th:last-child, .desk_log .dl_table td:last-child { border-right: 0; }
+.desk_log .dl_table tbody tr:hover td:not(.dl_strip) { background: #f6fafd; }
+.desk_log .dl_table th.dl_strip, .desk_log .dl_table td.dl_strip { padding: 0; border-right: 0; }
+/* One line, cut with "...", the whole text on hover (title). */
+.desk_log .dl_clip { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.desk_log .dl_clip.small { font-size: 0.72rem; line-height: 1.35; }
+/* Two lines, cut with "...". */
+.desk_log .dl_clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.3; word-break: break-word; }
+.desk_log .dl_type { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 3px 8px;
+  border-radius: 4px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; background: #f1f3f5; color: #343a40; }
+.desk_log .dl_source { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.desk_log .dl_source_text { min-width: 0; flex: 1; }
 .desk_log .dl_source_logo { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 0.7rem; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center; flex: none; }
-.desk_log .dl_avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 0.65rem; font-weight: 700;
+.desk_log .dl_avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 0.62rem; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center; flex: none; }
-.desk_log .dl_staff_cell { display: flex; align-items: center; gap: 4px; min-width: 130px; }
+.desk_log .dl_avatar_empty { background: #fff; color: #adb5bd; border: 1px dashed #ced4da; font-size: 0.6rem; }
 .desk_log .dl_bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #eef6fc;
   border: 1px solid #b6d4ea; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; font-size: 0.85rem; }
-.desk_log .dl_pill.form-select { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; border: 0;
-  padding: 5px 24px 5px 8px; min-width: 120px; border-radius: 4px; cursor: pointer; }
-.desk_log .dl_outcome.form-select { min-width: 165px; }
+/* People: avatar + "Jessica S."; the (invisible) menu covers the cell, so a click opens the staff list. */
+.desk_log .dl_staff_cell { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 4px;
+  border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.desk_log .dl_staff_cell:hover, .desk_log .dl_staff_cell:focus-within { border-color: var(--dl-line); background: #fff; }
+.desk_log .dl_staff_cell:focus-within { border-color: var(--primary, #0272b4); }
+.desk_log .dl_staff_cell.busy { opacity: .6; }
+.desk_log .dl_staff_name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.8rem; }
+.desk_log .dl_staff_caret { font-size: 0.6rem; color: #adb5bd; flex: none; }
+.desk_log .dl_staff_select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 0.85rem; }
+/* Stage and outcome: coloured menus with their arrow (white arrow on dark colours). */
+.desk_log .dl_pill.form-select { width: 100%; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; border: 0;
+  padding: 6px 22px 6px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background-position: right 6px center; background-size: 10px 8px; }
+.desk_log .dl_pill.form-select option { font-weight: 600; }
+.desk_log .dl_pill_dark.form-select { --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e"); }
 .desk_log .dl_people { min-width: 190px; }
 .desk_log .dl_person { display: flex; align-items: center; gap: 4px; }
 .desk_log .dl_person span { width: 58px; flex: none; font-size: 0.7rem; color: var(--dl-muted); }
-.desk_log .dl_staff.form-select { font-size: 0.8rem; padding: 2px 22px 2px 4px; border-color: transparent;
-  background-color: transparent; }
-.desk_log .dl_staff.form-select:hover, .desk_log .dl_staff.form-select:focus { border-color: var(--dl-line); }
-.desk_log .dl_note { min-width: 160px; max-width: 240px; white-space: normal; color: var(--secondary, #565e5e); }
-.desk_log .dl_actions { white-space: nowrap; text-align: right; }
-.desk_log .dl_actions a, .desk_log .dl_actions button { color: var(--primary, #0272b4); background: none; border: 0;
-  padding: 2px 6px; font-size: 1rem; }
+/* Notes: two lines; hover shows the whole note, a click opens the visit. */
+.desk_log .dl_note { color: var(--secondary, #565e5e); }
+.desk_log .dl_note_text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.3; word-break: break-word; background: none; border: 0; padding: 0; text-align: left; color: inherit;
+  width: 100%; cursor: pointer; font-size: inherit; }
+.desk_log .dl_note_text:hover { color: var(--primary, #0272b4); }
+/* Actions: call, message, appointment, more - four equal buttons, always in the same place. */
+.desk_log .dl_actions { display: grid; grid-template-columns: repeat(4, 26px); gap: 2px; justify-content: center; }
+.desk_log .dl_actions .dl_act { width: 26px; height: 26px; min-width: 26px; padding: 0; display: inline-flex; align-items: center;
+  justify-content: center; border: 0; border-radius: 6px; background: none; color: var(--primary, #0272b4); font-size: 0.95rem;
+  text-decoration: none; line-height: 1; }
+.desk_log .dl_actions .dl_act:hover { background: #e7f1fa; }
+.desk_log .dl_actions .dl_act.off { color: #ced4da; cursor: not-allowed; }
+.desk_log .dl_actions .dl_act.off:hover { background: none; }
 .desk_log .dl_age { font-size: 0.7rem; color: var(--dl-muted); display: block; margin-top: 3px; }
 .desk_log .dl_age.stalled { color: #b02a37; font-weight: 600; }
 .desk_log .dl_history li { border-bottom: 1px solid var(--dl-line); padding: 4px 0; font-size: 0.82rem; }
@@ -75,3 +101,6 @@
 .desk_log .dl_table thead th.dl_sort.on i { opacity: 1; }
 .desk_log .dl_table thead .form-check-input { background-color: #fff; }
 .desk_log .dl_source_logo i { font-size: 0.8rem; }
+/* 360 View side panel link under the customer's name (19 Nov 2026) */
+.desk_log .dl_360 { border: 0; background: none; padding: 0; color: var(--primary, #0272b4); font-size: 12px; display: block; }
+.desk_log .dl_360:hover { text-decoration: underline; }

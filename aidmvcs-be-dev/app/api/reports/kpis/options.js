@@ -8,9 +8,10 @@ import User from '../../../models/User.js';
 export async function filterOptions(dealerId) {
   const forms = mongoose.isValidObjectId(dealerId) && /^[0-9a-f]{24}$/i.test(dealerId)
     ? [dealerId, new mongoose.Types.ObjectId(dealerId)] : [dealerId];
-  const [sources, leadSources] = await Promise.all([
+  const [sources, leadSources, campaigns] = await Promise.all([
     Lead.collection.distinct('source', { dealer_id: { $in: forms } }),
     Lead.collection.distinct('lead_source', { dealer_id: { $in: forms } }),
+    Lead.collection.distinct('campaign', { dealer_id: { $in: forms } }),
   ]);
   const clean = (list) => [...new Set(list.filter((v) => typeof v === 'string' && v.trim()).map((v) => v))]
     .sort((a, b) => a.localeCompare(b));
@@ -19,6 +20,7 @@ export async function filterOptions(dealerId) {
   return {
     sources: clean(sources),
     lead_sources: clean(leadSources),
+    campaigns: clean(campaigns),
     staff: staff.map((u) => ({ id: String(u._id), name: u.name || String(u._id) }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   };

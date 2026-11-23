@@ -4,13 +4,26 @@
 // recomputed on dealer-local days instead of a rolling UTC window. n8n / legacy auto replies never count as AI.
 import {
   BOOKING_COLUMNS, BOOKING_FILTERS, KIND, LEAD_COLUMNS, LEAD_FILTERS, MESSAGE_COLUMNS, MESSAGE_FILTERS, REPLY_FILTERS,
-  STATE, collection, dealerForms, isOid, leadRowsForIds, leadsByIds, localDateTime, localDay, memo, messageFilterMatch,
+  STATE, ADF, INBOUND, collection, dealerForms, isOid, leadRowsForIds, leadsByIds, localDateTime, localDay, memo, messageFilterMatch,
   messageRows, messagesInWindow, notYet, oid, outboundMatch, passingLeads, replies, windowFor,
 } from './common.js';
+import { isLeadArrivalRow } from '../../contactedLeads.js';
 import { shared } from './executive.js';
 import { normalizeProvider } from '../normalize.js';
 
 const D = 'ai';
+
+// SOW F2 daily email "AI activity" (B2 design reference) - each event with its own definition, never summed into one
+// "wins" total (SOW: "do not sum activity-event counts ... or label them as unique wins without de-duplication").
+// Agreed with the user, 18 Nov 2026:
+//   conversation started  a lead's FIRST real reply ever (not the lead form / ADF email) came in the range, after the AI
+//                         had written to that lead;
+//   cold lead reactivated a lead's reply in the range came 14+ days after its previous real reply (or, never having
+//                         replied, 14+ days after the lead came in), with an AI message in between;
+//   qualified handoff     the AI handed the lead to staff in the range for a reason that needs a person
+//                         (agent/escalation.py MANAGER_ESCALATIONS) - the same leads as ai.manager_escalations.
+// One row per lead (its first qualifying reply of the range). A lead can be in both of the first two.
+export const COLD_DAYS = 14;
 
 // Start of the handoff reasons that need a manager (agentic-upsell agent/escalation.py MANAGER_ESCALATIONS, read
 // only; keep in step with it).
@@ -24,6 +37,7 @@ export const MANAGER_ESCALATIONS = Object.freeze([
   ["Customer asked for something the AI can't supply", 'Asked for something only staff can provide'],
   ['AI stuck in a loop', 'AI going round in circles'],
   ["Customer says they're not interested any more", 'Not interested any more'],
+  ['Customer found or bought a car elsewhere', 'Bought elsewhere'],
 ]);
 
 export function escalationLabel(reason) {
@@ -66,6 +80,60 @@ async function handoffRows(args, ctx) {
     return rows;
   });
 }
+
+// For each lead that replied in the range: its first reply there, its previous real reply (before the range, or
+// earlier in the range) and whether the AI wrote to it in between.
+async function replyHistory(args, ctx) {
+  return memo(ctx, 'reply_history', async () => {
+    const w = await windowFor(args);
+    const report = await replies(args, ctx);
+    const firstInRange = new Map();
+    for (const r of report.rows) {
+      if (!r.lead_id || !r.on_dealer_lead) continue;
+      const cur = firstInRange.get(r.lead_id);
+      if (!cur || new Date(r.reply_at) < new Date(cur.reply_at)) firstInRange.set(r.lead_id, r);
+    }
+    const ids = [...firstInRange.keys()].filter(isOid);
+    if (!ids.length) return [];
+    const leads = await leadsByIds(ids, ctx);
+    const earlier = await collection('emails').find({ lead_id: { $in: ids.map(oid) }, status: { $in: INBOUND },
+      timestamp: { $lt: w.end }, mail_content: { $not: ADF } },
+    { projection: { lead_id: 1, timestamp: 1, status: 1, parent_message_id: 1, parent_conversation: 1 } })
+      .sort({ timestamp: 1, _id: 1 }).toArray();
+    const ai = await collection('emails').find({ lead_id: { $in: ids.map(oid) }, ai_generated: true,
+      timestamp: { $lt: w.end }, ...outboundMatch() }, { projection: { lead_id: 1, timestamp: 1 } }).toArray();
+    const aiBy = new Map();
+    for (const m of ai) { const k = String(m.lead_id); if (!aiBy.has(k)) aiBy.set(k, []); aiBy.get(k).push(new Date(m.timestamp)); }
+    const out = [];
+    for (const id of ids) {
+      const lead = leads.get(id);
+      if (!lead) continue;
+      const reply = firstInRange.get(id);
+      const at = new Date(reply.reply_at);
+      const prev = earlier.filter((m) => String(m.lead_id) === id && new Date(m.timestamp) < at
+        && !isLeadArrivalRow(m, lead.createdAt)).pop() || null;
+      const since = prev ? new Date(prev.timestamp) : new Date(lead.createdAt);
+      const aiBetween = (aiBy.get(id) || []).some((t) => t > since && t < at);
+      const quietDays = Math.floor((at - since) / 86400000);
+      out.push({ id, reply, lead, prevAt: prev ? new Date(prev.timestamp) : null, aiBetween, quietDays, w });
+    }
+    return out;
+  });
+}
+
+async function replyHistoryRows(list, args, ctx) {
+  const by = new Map(list.map((h) => [h.id, h]));
+  const rows = await leadRowsForIds(list.map((h) => h.id), args, ctx, (l) => {
+    const h = by.get(String(l._id));
+    return { reply_at: localDateTime(h.reply.reply_at, h.w.tz),
+      previous_reply: h.prevAt ? localDateTime(h.prevAt, h.w.tz) : 'Never', quiet_days: h.quietDays };
+  });
+  for (const r of rows) r._day = by.get(r.id)?.reply.local_day || r._day;
+  return rows;
+}
+
+const REPLY_HISTORY_COLUMNS = [...LEAD_COLUMNS, ['reply_at', 'Replied'], ['previous_reply', 'Previous reply'],
+  ['quiet_days', 'Days quiet before']];
 
 async function touchRows(args, ctx) {
   return memo(ctx, 'ai_touches', async () => {
@@ -195,6 +263,38 @@ export const AI_KPIS = [
       + 'interested).', denominator: null, inclusions: 'As ai.handoffs.', exclusions: 'Soft handoffs the AI takes back.',
     source: ['ai_lead_state'], filters: LEAD_FILTERS, breakdowns: ['reason'],
     columns: [...LEAD_COLUMNS, ['handoff_at', 'Handed off'], ['escalation', 'Manager reason']],
+    evaluate: async (args, ctx) => ({ rows: (await handoffRows(args, ctx)).filter((r) => r.escalation) }),
+  },
+  {
+    id: 'ai.conversations_started', label: 'AI turned a lead into a conversation', dashboard: D, grain: 'lead',
+    kind: KIND.COUNT, dateBasis: 'emails.timestamp of the customer\'s first real reply',
+    numerator: 'Leads whose first real reply ever (not the lead form / ADF email, not staff) came in the range, after '
+      + 'the AI had written to the lead.', denominator: null,
+    inclusions: 'Qualifying replies as Customers replied (replyCohorts), on the dealer\'s leads.',
+    exclusions: 'Leads that replied before; leads the AI never wrote to before the reply.',
+    source: ['emails', 'leads'], filters: REPLY_FILTERS, breakdowns: ['lead_source'], columns: REPLY_HISTORY_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: await replyHistoryRows((await replyHistory(args, ctx))
+      .filter((h) => !h.prevAt && h.aiBetween), args, ctx) }),
+  },
+  {
+    id: 'ai.cold_reactivated', label: 'AI follow-up reactivated a cold lead', dashboard: D, grain: 'lead',
+    kind: KIND.COUNT, dateBasis: 'emails.timestamp of the customer\'s reply',
+    numerator: `Leads that replied in the range ${COLD_DAYS}+ days after their previous real reply (or, never having `
+      + `replied, ${COLD_DAYS}+ days after the lead came in), with an AI message in between.`, denominator: null,
+    inclusions: 'The lead\'s first qualifying reply of the range.', exclusions: 'Replies within '
+      + `${COLD_DAYS} days of the previous one; no AI message since the previous reply.`,
+    source: ['emails', 'leads'], filters: REPLY_FILTERS, breakdowns: ['lead_source'], columns: REPLY_HISTORY_COLUMNS,
+    evaluate: async (args, ctx) => ({ rows: await replyHistoryRows((await replyHistory(args, ctx))
+      .filter((h) => h.aiBetween && h.quietDays >= COLD_DAYS), args, ctx) }),
+  },
+  {
+    id: 'ai.qualified_handoffs', label: 'AI teed up a customer for your team', dashboard: D, grain: 'lead',
+    kind: KIND.COUNT, dateBasis: 'ai_lead_state.status_at',
+    numerator: 'Leads the AI handed to staff in the range for a reason that needs a person (the manager escalations: '
+      + 'asked for a person / call, ready for something only staff can do, ...). Same leads as Manager escalations.',
+    denominator: null, inclusions: 'As ai.manager_escalations.', exclusions: 'Opt-outs, soft handoffs, errors.',
+    source: ['ai_lead_state', 'leads'], filters: LEAD_FILTERS, breakdowns: ['reason'],
+    columns: [...LEAD_COLUMNS, ['handoff_at', 'Handed off'], ['escalation', 'Why']],
     evaluate: async (args, ctx) => ({ rows: (await handoffRows(args, ctx)).filter((r) => r.escalation) }),
   },
   {

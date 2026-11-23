@@ -232,10 +232,7 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
                     else f"Customer is clearly upset (confidence {flags.upset_confidence:.2f})" if flags.clearly_upset
                     else f"AI stuck in a loop: {flags.loop}" if flags.loop
                     else "Declined a visit more than once" if flags.visit_handoff
-                    else ("Customer says they're not interested any more: "
-                          + (f"{flags.not_interested_reason!r}" if flags.not_interested_reason
-                             else "no reason given, even after we asked")
-                          + " - a person decides whether to close the lead")),
+                    else _not_interested_reason(flags.not_interested_reason)),
         "offer_human": (flags.human_contact == "offer",
                         "Customer asked for a person without saying how: offer a call or a text, once"),
         "ask_why": (flags.not_interested == "ask_why",
@@ -334,3 +331,17 @@ def next_action(profile: Profile, flags: Flags) -> dict[str, Any]:
     elif fired == "ask":
         add_asks()
     return decision
+
+
+def _not_interested_reason(reason: str | None) -> str:
+    """The handoff reason for "not interested". Betsy, 13 Nov 2026 meeting (5.1): a customer who found or bought a car
+    elsewhere ("I got a car, thank you") is its own escalation - the dealer closes the lead as lost (agent/escalation.py
+    MANAGER_ESCALATIONS, AI Studio > Dealership Action Required: when). Only once the AI has read the message as not
+    interested (agent/nodes/decide.py not_interested_mode); the words only pick which reason it is."""
+    from upsell_agent.agent.nodes.decide import found_elsewhere  # decide imports this module
+
+    if reason and found_elsewhere(reason, None):
+        return f"Customer found or bought a car elsewhere: {reason!r} - the dealer closes the lead as lost"
+    return ("Customer says they're not interested any more: "
+            + (f"{reason!r}" if reason else "no reason given, even after we asked")
+            + " - a person decides whether to close the lead")

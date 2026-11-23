@@ -160,6 +160,74 @@ function FileDetail({ f, detail }) {
   );
 }
 
+// DealerVault stores (20 Nov 2026): every DealerVault store ID that sends us files, the dealer it is linked to (the
+// importer matches files by it) and, once linked, "Import stored files" for what arrived before. /api/admin/dms-feed/stores.
+function StoresCard({ onChanged }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [pick, setPick] = useState({}); // dv -> dealer id
+  const load = useCallback(async () => {
+    setBusy(true);
+    try { setData(await call("/api/admin/dms-feed/stores")); setMsg(null); } catch (e) { setMsg({ v: "danger", t: e.message }); }
+    finally { setBusy(false); }
+  }, []);
+  const act = async (fn, ok) => {
+    setBusy(true);
+    try { const r = await fn(); setMsg({ v: "success", t: ok(r) }); await load(); onChanged?.(); }
+    catch (e) { setMsg({ v: "danger", t: e.message }); setBusy(false); }
+  };
+  const link = (dv, dealerId) => act(() => call("/api/admin/dms-feed/stores", { method: "PUT", body: JSON.stringify({ dealer_id: dealerId, dv }) }),
+    () => (dv ? `${dv} linked.` : "Unlinked."));
+  const importStored = (dv) => act(() => call("/api/admin/dms-feed/stores", { method: "POST", body: JSON.stringify({ dv, action: "import_stored" }) }),
+    (r) => (r.queued ? `${n(r.queued)} files queued for import (about ${r.minutes} min).` : "Nothing new to import: every stored file is already imported."));
+  const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "-");
+  return (
+    <div className="w_card">
+      <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
+        <h3 className="w_card_title mb-0 me-auto">DealerVault stores</h3>
+        <Button size="sm" variant="outline-custom" onClick={load} disabled={busy}>{busy ? <Spinner size="sm" /> : data ? "Refresh" : "Show stores"}</Button>
+      </div>
+      <p className="small text-muted mb-2">Each DealerVault store ID that sends us files and the dealer it belongs to. Files of an unlinked
+        store are held (below), never imported to the wrong dealer. After linking, &quot;Import stored files&quot; imports what already arrived.</p>
+      {msg && <Alert variant={msg.v} className="py-2 small">{msg.t}</Alert>}
+      {data?.storage_error && <Alert variant="warning" className="py-2 small">Storage could not be listed ({data.storage_error}).</Alert>}
+      {data && (
+        <div className="table-responsive">
+          <Table size="sm" className="small mb-0">
+            <thead><tr><th>DealerVault ID</th><th className="num">Files</th><th>First / last file</th><th>Types</th><th>Dealer</th><th className="num">Imported</th><th className="num">Held</th><th /></tr></thead>
+            <tbody>{data.stores.map((s) => {
+              const stale = s.last && Date.now() - new Date(s.last).getTime() > 36 * 3600000;
+              return (
+                <tr key={s.dv}>
+                  <td className="text-nowrap fw-semibold">{s.dv}</td>
+                  <td className="num">{n(s.files)}</td>
+                  <td className="text-nowrap">{day(s.first)} / <span className={stale ? "text-danger fw-semibold" : ""}>{day(s.last)}</span>
+                    {stale && <div className="dmsf_sub text-danger">No new file for {Math.floor((Date.now() - new Date(s.last).getTime()) / 86400000)} days</div>}</td>
+                  <td>{s.types.join(", ")}</td>
+                  <td style={{ minWidth: 200 }}>{s.linked ? <>{s.linked.name} <Button size="sm" variant="link" className="p-0 ms-1"
+                    disabled={busy} onClick={() => window.confirm(`Unlink ${s.dv} from ${s.linked.name}?`) && link("", s.linked.id)}>unlink</Button></> : (
+                    <div className="d-flex gap-1">
+                      <Form.Select size="sm" value={pick[s.dv] || ""} onChange={(e) => setPick({ ...pick, [s.dv]: e.target.value })} aria-label={`Dealer for ${s.dv}`}>
+                        <option value="">Not linked - pick the dealer</option>
+                        {data.dealers.filter((d) => !d.dv).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </Form.Select>
+                      <Button size="sm" variant="custom" disabled={busy || !pick[s.dv]}
+                        onClick={() => window.confirm(`Link ${s.dv} to ${data.dealers.find((d) => d.id === pick[s.dv])?.name}? Its files will be imported into that dealer.`) && link(s.dv, pick[s.dv])}>Link</Button>
+                    </div>)}</td>
+                  <td className="num">{n(s.imported)}</td>
+                  <td className="num">{n(s.held)}</td>
+                  <td className="text-end">{s.linked && s.files > s.imported && (
+                    <Button size="sm" variant="outline-custom" disabled={busy} onClick={() => importStored(s.dv)}>Import stored files</Button>)}</td>
+                </tr>);
+            })}</tbody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DmsFeedPage() {
   const [filters, setFilters] = useState({ dealer: "", type: "", days: "30", problems: false });
   const [page, setPage] = useState(1);
@@ -252,6 +320,8 @@ export default function DmsFeedPage() {
               sub={!s ? null : decided ? `${Math.round((s[k.toLowerCase()] / decided) * 100)}% of decided rows` : "Not recorded yet"} />
           ))}
         </div>
+
+        <StoresCard onChanged={load} />
 
         <div className="w_card">
           <div className="d-flex align-items-center flex-wrap gap-2 mb-2">

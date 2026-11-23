@@ -1794,7 +1794,8 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
             agent_name=profile.agent_name, appt=appt_at,
             model=await _interest_model(db, doc["customer_id"], doc["lead_id"]),
             address=profile.address, agent_phone=profile.agent_phone,
-            variant=photo_start - 1 if step == appointment.STEP_COUNTDOWN and photo_start else 0)
+            variant=photo_start - 1 if step == appointment.STEP_COUNTDOWN and photo_start else 0,
+            vehicle_url=await _lead_vehicle_page(db.dealer_id, lead, state))
         outcomes = await _send_step_messages(db, deps, tracer, doc, text, photo_vin=photo_vin,
                                              photo_start=photo_start or 0)
         if any(o.status == "held" for o in outcomes) and not any(o.status in ("sent", "duplicate") for o in outcomes):
@@ -1836,6 +1837,23 @@ async def _fire_appointment_locked(db: DealerScopedDatabase, doc: dict, deps: An
         "followup_id": step_id, "step": step, "sent": [{"channel": o.channel, "status": o.status} for o in outcomes],
         "lifecycle": moved})
     return status_out
+
+
+async def _lead_vehicle_page(dealer_id: str, lead: dict | None, state: dict | None) -> str | None:
+    """The page of the vehicle this lead is about, read now (still in stock), for an appointment message that links
+    it (18 Nov 2026, Dijon Harris). None: no vehicle, sold, or no page - the message then says no link."""
+    vin = lead_vehicle_vin(lead, state)
+    if not vin:
+        return None
+    try:
+        from upsell_agent.tools.inventory_tool import get_vehicle
+        record = await get_vehicle(dealer_id, vin, get_inventory_source(get_settings()))
+    except Exception:  # noqa: BLE001 - a link is never worth a failed send
+        logger.exception("appointment step: couldn't read %s for its page", vin)
+        return None
+    url = getattr(record, "page_url", None) if record is not None and not isinstance(record, dict) else (
+        (record or {}).get("page_url"))
+    return str(url).strip() or None if url else None
 
 
 async def _interest_model(db: DealerScopedDatabase, customer_id: str, lead_id: str) -> str | None:

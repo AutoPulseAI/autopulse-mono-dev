@@ -15,6 +15,8 @@ const DailyReportSnapshotSchema = new mongoose.Schema({
   // {appointments, appointments_due, replies, leads, ai_activity}; a section that could not be computed is null and
   // listed in stale_sources, so the email shows "—" for it instead of 0.
   metrics: { type: Object, default: {} },
+  // The lead ids behind the AI activity counts and sold (v4), so a day can be reconciled record by record. Ids only.
+  evidence: { type: Object, default: {} },
   unavailable: { type: [String], default: [] }, // metric paths the CRM does not record (e.g. rescheduled)
   stale_sources: {
     type: [{ _id: false, source: String, reason: String, affects: [String] }],

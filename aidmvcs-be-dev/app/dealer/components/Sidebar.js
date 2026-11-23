@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCan } from "../../hooks/PermissionsContext";
 import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
+import { useSidebarTitles } from "../../hooks/useSidebar";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
 import { deskLogMenuVisible } from "../desk-log/deskLogAccess";
 
@@ -13,7 +14,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const manage_role = useCan("Manage Employee's  Role");
   const manage_staff = useCan("Manage Employee");
   const hasManageLeads = useCan("Manage Leads");
-  const hasViewAssigned = useCan("View Assigned Leads");
+  // A read-only role (SOW G-054, app/lib/standardRoles.js) sees the same pages; the server refuses its changes.
+  const viewAssignedOnly = useCan("View Assigned Leads");
+  const viewAllReadOnly = useCan("View All Leads (Read Only)");
+  const hasViewAssigned = viewAssignedOnly || viewAllReadOnly;
   const canFollowupSettings = useCan("Manage Follow-up setting");
   const canMessageTemplate = useCan("Manage Message Template");
   const canSubscription = useCan("Manage Subscription");
@@ -25,12 +29,14 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const pathname = usePathname(); // Use pathname from usePathname hook
   const sidebarRef = useRef();
+  useSidebarTitles(sidebarRef, isOpen); // narrow menu: the name on hover
 
   const leadsHref = hasManageLeads ? "/dealer/leads" : "/dealer/leads?assignment=my";
   const bookingHref = hasManageLeads ? "/dealer/booking" : "/dealer/booking?assignment=my";
 
   // Automatically open collapse if current route matches admin links
-  const adminLinks = ["/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings"];
+  const adminLinks = ["/dealer/admin", "/dealer/roles", "/dealer/staff", "/dealer/email-accounts", "/dealer/settings",
+    "/dealer/do-not-contact", "/dealer/email-domains", "/dealer/lead-sources", "/dealer/ip-restriction"];
   const isAdminActive = adminLinks.includes(pathname);
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
 
@@ -88,7 +94,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   }, [isOpen, onClose]);
 
   return (
-    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : ""}`}>
+    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
         <li>
           <Link href="/dealer/dashboard" className={getLinkClass("/dealer/dashboard")}>
@@ -300,6 +306,12 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {adminOpen && (
               <ul className="submenu-list">
+                <li>
+                  {/* Every setup screen in one place (19 Nov 2026, SOW references B7-B9). */}
+                  <Link href="/dealer/admin" className={getLinkClass("/dealer/admin")}>
+                    <i className="fa-regular fa-sliders"></i>Administration
+                  </Link>
+                </li>
                 {manage_role && (
                   <li>
                     <Link href="/dealer/roles" className={getLinkClass("/dealer/roles")}>

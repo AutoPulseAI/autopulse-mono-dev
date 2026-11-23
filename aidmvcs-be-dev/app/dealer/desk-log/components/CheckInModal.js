@@ -16,7 +16,9 @@ import LeadSourcePicker from "../../leads/components/LeadSourcePicker";
 import { deskLogCheckIn, deskLogSearch, deskLogStock } from "../deskLogApi";
 import { TYPE_LABEL } from "./deskLogUi";
 
-export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, initialLeadId = null }) {
+// onStatus({ leadId, name, status }): instead of checking in, change the picked lead's status (book or move an
+// appointment, No Show, ...) through the same status window as the Leads page (18 Nov 2026).
+export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, initialLeadId = null, onStatus = null }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -260,6 +262,11 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
         {error && <Alert variant="danger" className="mt-3 mb-0">{error}</Alert>}
       </Modal.Body>
       <Modal.Footer>
+        {onStatus && lead && !fresh && (
+          <Button variant="outline-custom" className="me-auto" disabled={busy}
+            onClick={() => onStatus({ leadId: lead.id, name: customer?.name || lead.name, status: lead.status })}>
+            <i className="fa-regular fa-calendar-plus me-1"></i>Book appointment / change status</Button>
+        )}
         <Button variant="outline-custom" onClick={onHide} disabled={busy}>Cancel</Button>
         <Button variant="custom" onClick={save} disabled={busy || (!lead && !(fresh && fresh.name.trim()
           && (fresh.phone.trim() || fresh.email.trim())))}>{busy ? "Saving..." : fresh ? "Add and check in" : "Check in"}</Button>

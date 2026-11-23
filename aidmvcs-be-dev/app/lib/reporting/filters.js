@@ -9,7 +9,11 @@
 //   actor            Booking.created_by (ai | staff) - appointment reports only
 //   appointment_type Booking.appointment_type (sales | service; missing = sales, app/models/Booking.js)
 //   channel          Email.communication_type (sms | email) - reply reports only
+//   campaign         Lead.campaign (the dealer's campaign name, app/lib/leadCampaign.js; 18 Nov 2026)
+//   department       Lead.department (sales | service | parts; missing = sales, app/lib/departmentNames.js) - 18 Nov
+//                    2026: the Desk Log cards and the Dashboard count one department, the same way
 import mongoose from 'mongoose';
+import { departmentMatch } from '../departmentNames.js';
 import { DEFAULT_TIMEZONE, isValidLocalDate, toLocalDate } from './time.js';
 
 export const REPORTS = Object.freeze({
@@ -31,14 +35,14 @@ export const DATE_BASES = Object.freeze({
 // Which filters each report can apply. A filter listed in KNOWN_UNSUPPORTED, or not supported by the report, comes
 // back in `unsupported` with the reason.
 const SUPPORTED = Object.freeze({
-  [REPORTS.REPLY_COHORTS]: ['source', 'lead_source', 'assigned_to', 'channel'],
-  [REPORTS.APPOINTMENT_ATTRIBUTION]: ['source', 'lead_source', 'assigned_to', 'actor', 'appointment_type'],
-  [REPORTS.KPI_REPORTS]: ['source', 'lead_source', 'assigned_to', 'actor', 'appointment_type', 'channel'],
+  [REPORTS.REPLY_COHORTS]: ['source', 'lead_source', 'campaign', 'assigned_to', 'channel', 'department'],
+  [REPORTS.APPOINTMENT_ATTRIBUTION]: ['source', 'lead_source', 'campaign', 'assigned_to', 'actor', 'appointment_type', 'department'],
+  [REPORTS.KPI_REPORTS]: ['source', 'lead_source', 'campaign', 'assigned_to', 'actor', 'appointment_type', 'channel', 'department'],
 });
 
 const NOT_FOR_REPORT = Object.freeze({
   [REPORTS.REPLY_COHORTS]: {
-    appointment_type: 'Sales/Service exists only on bookings (Booking.appointment_type); leads have no department field',
+    appointment_type: 'Sales/Service of a booking; use department for the lead\'s department',
     actor: 'a reply has no AI/human author; its handler is derived per message (see replyCohorts handler rule)',
   },
   [REPORTS.APPOINTMENT_ATTRIBUTION]: {
@@ -47,18 +51,17 @@ const NOT_FOR_REPORT = Object.freeze({
 });
 
 export const KNOWN_UNSUPPORTED = Object.freeze({
-  campaign: 'no campaign id on the lead; campaign leads are only named in lead_source ("campaign_<name>")',
   condition: 'no reliable new/used field on the lead (inventory join drops sold vehicles)',
   new_used: 'no reliable new/used field on the lead (inventory join drops sold vehicles)',
   ai_agent: 'the AI agent is only in ai_lead_state (AI service data), not on every lead',
   rooftop: 'reports are per dealer (one dealer = one rooftop); pass dealerId instead',
   dealer_ids: 'no cross-rooftop reports (decision 9 Nov)',
-  department: 'use appointment_type (bookings only); leads have no department field',
 });
 
 const ACTORS = ['ai', 'human'];
 const APPOINTMENT_TYPES = ['sales', 'service'];
 const CHANNELS = ['sms', 'email'];
+const DEPARTMENTS = ['sales', 'service', 'parts'];
 
 function list(value) {
   if (value == null || value === '') return [];
@@ -105,6 +108,7 @@ export function parseFilterSpec(input = {}, { report, tz = DEFAULT_TIMEZONE } = 
 
   take('source', list(raw.source));
   take('lead_source', list(raw.lead_source));
+  take('campaign', list(raw.campaign));
   const staff = list(raw.assigned_to ?? raw.staff_id);
   const badStaff = staff.filter((id) => !mongoose.isValidObjectId(id));
   if (badStaff.length) errors.push(`assigned_to has invalid ids: ${badStaff.join(', ')}`);
@@ -123,6 +127,7 @@ export function parseFilterSpec(input = {}, { report, tz = DEFAULT_TIMEZONE } = 
   one('actor', ACTORS);
   one('appointment_type', APPOINTMENT_TYPES);
   one('channel', CHANNELS);
+  one('department', DEPARTMENTS);
 
   for (const [key, reason] of Object.entries(KNOWN_UNSUPPORTED)) {
     if (list(raw[key]).length) unsupported.push({ key, reason });
@@ -136,9 +141,11 @@ export function leadMatch(spec = {}) {
   const m = {};
   if (spec.source?.length) m.source = { $in: spec.source };
   if (spec.lead_source?.length) m.lead_source = { $in: spec.lead_source };
+  if (spec.campaign?.length) m.campaign = { $in: spec.campaign };
   if (spec.assigned_to?.length) {
     m.assigned_to = { $in: spec.assigned_to.map((id) => new mongoose.Types.ObjectId(String(id))) };
   }
+  if (spec.department) Object.assign(m, departmentMatch(spec.department));
   return m;
 }
 
@@ -167,8 +174,8 @@ export function replyMatch(spec = {}) {
 // The validated spec as plain, echo-able JSON (for "filters applied" lines and CSV footers).
 export function describeSpec(spec = {}) {
   const out = {};
-  for (const key of ['from', 'to', 'basis', 'tz', 'source', 'lead_source', 'assigned_to', 'actor',
-    'appointment_type', 'channel']) {
+  for (const key of ['from', 'to', 'basis', 'tz', 'source', 'lead_source', 'campaign', 'assigned_to', 'actor',
+    'appointment_type', 'channel', 'department']) {
     if (spec[key] != null && !(Array.isArray(spec[key]) && !spec[key].length)) out[key] = spec[key];
   }
   return out;

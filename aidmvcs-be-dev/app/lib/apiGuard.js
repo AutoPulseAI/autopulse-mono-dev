@@ -15,10 +15,12 @@
 
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import { ipBlocked, ipBlockedResponse } from "./ipRestriction.js";
 import mongoose from "mongoose";
 import dbConnect from "./mongodb.js";
 import User from "../models/User.js";
 import { isAuthorizedForDealer } from "./customerListing.js";
+import { isReadOnly } from "./standardRoles.js";
 
 const SESSION_COOKIES = ["admintoken", "dealertoken", "vendortoken"];
 const USER_FIELDS = "_id name email type parent_id vendor_id role";
@@ -88,12 +90,26 @@ export async function requireSuperAdmin(req) {
 
 // An agency user may also name its own agency: the agency's Email Accounts and Conversations pages send the agency's
 // own id as dealer_id (its own records).
+// A change (not GET / HEAD) by a staff member whose role is read-only.
+async function readOnlyStaffWrite(req, user) {
+  const method = String(req?.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || !user?.parent_id || user.type !== 'dealer' || !user.role) return false;
+  const full = await User.findById(user._id).select('role').populate({ path: 'role', populate: { path: 'permissions' } }).lean();
+  return isReadOnly((full?.role?.permissions || []).map((p) => p?.permission_name).filter(Boolean));
+}
+
 export async function requireDealerAccess(req, dealerId) {
   const users = await requestUsers(req);
   if (!users.length) return { response: denied(401) };
   if (dealerId === null || dealerId === undefined || String(dealerId) === "") return { response: denied(403) };
   for (const user of users) {
-    if (await isAuthorizedForDealer(user, String(dealerId))) return { user };
+    if (await isAuthorizedForDealer(user, String(dealerId))) {
+      // IP restriction (lib/ipRestriction.js): the dealership's own users only from its listed networks, if any.
+      if (await ipBlocked(req, user)) return { response: ipBlockedResponse() };
+      // A read-only role (app/lib/standardRoles.js, SOW G-054) looks and never changes: every change is refused here.
+      if (await readOnlyStaffWrite(req, user)) return { response: Response.json({ error: "Your role is read-only: it can't change anything", message: "Your role is read-only: it can't change anything" }, { status: 403 }) };
+      return { user };
+    }
     if (user.type === "vendor" && String(user.parent_id || user._id) === String(dealerId)) return { user };
   }
   return { response: denied(403) };

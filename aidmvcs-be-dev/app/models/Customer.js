@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { joinName, splitFullName } from "../lib/personName.js";
 
 const customerEmailSchema = new mongoose.Schema(
   {
@@ -73,6 +74,13 @@ const customerSchema = new mongoose.Schema(
   {
     dealer_id: { type: String, required: true },
     name: { type: String },
+    // The name in parts (19 Nov 2026), as the DMS, ADF leads and dealership forms keep it; `name` stays the full name.
+    // name_parts_from: guess | adf | dms | staff - a weaker source never overwrites a stronger one (app/lib/personName.js).
+    first_name: { type: String, trim: true, default: undefined },
+    middle_name: { type: String, trim: true, default: undefined },
+    last_name: { type: String, trim: true, default: undefined },
+    suffix: { type: String, trim: true, default: undefined },
+    name_parts_from: { type: String, enum: ["guess", "adf", "dms", "staff"], default: undefined },
     emails: { type: [customerEmailSchema], default: [] },
     phones: { type: [customerPhoneSchema], default: [] },
     followup_preference: { type: String },
@@ -146,6 +154,22 @@ const customerSchema = new mongoose.Schema(
 
 customerSchema.index({ dealer_id: 1, "emails.value": 1 });
 customerSchema.index({ dealer_id: 1, "phones.value": 1 });
+// Looking a customer up by last name (customer list "Last name" search).
+customerSchema.index({ dealer_id: 1, last_name: 1, first_name: 1 });
+
+// Every saved customer has its name in parts: given parts make the full name when it has none; a full name with no
+// parts (or only guessed ones) is split. Paths that use updateOne set the parts themselves.
+customerSchema.pre("save", function nameParts() {
+  const hasParts = Boolean(this.first_name || this.last_name);
+  if (hasParts && !this.name) this.name = joinName(this);
+  if (!this.name) return;
+  if (!hasParts || (this.isModified("name") && !this.isModified("last_name") && !this.isModified("first_name")
+    && (this.name_parts_from || "guess") === "guess")) {
+    const p = splitFullName(this.name);
+    for (const f of ["first_name", "middle_name", "last_name", "suffix"]) this.set(f, p[f] || undefined);
+    this.name_parts_from = "guess";
+  }
+});
 
 export const CUSTOMER_MAPPING_INDEX = {
   key: { dealer_id: 1, "extra.dealervault.customer_numbers": 1 },

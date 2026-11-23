@@ -4,12 +4,30 @@
     {
       // Specific fields for lead creation
       name: { type: String }, // Optional: You can make this required if needed
+      // The name in parts as the lead provider sent it (ADF <name part="first|middle|last">, 19 Nov 2026); the
+      // customer record takes them (app/lib/customerResolver.js). Missing on leads that came with one-line names.
+      first_name: { type: String, default: undefined },
+      middle_name: { type: String, default: undefined },
+      last_name: { type: String, default: undefined },
       email: { type: String }, // Optional: You can make this required if needed
       phone: { type: String }, // Optional: You can make this required if needed
       source: { type: String, default: 'email' }, // Default value for source
       // What the lead provider says beyond its own name, e.g. CarGurus "Reengagement" (ADF provider name / service;
       // app/lib/adfLeadParser.js adfSubSource). Null = no sub-source. For the source / sub-source report.
       sub_source: { type: String, default: null },
+      // The reference CRM's "Active / Not in Market" (SOW B3; 13 Nov 2026 meeting 10.11): staff mark an opportunity
+      // not in the market any more. A flag for staff and lists only - it does not change the AI's follow-ups or the
+      // status. Missing = active.
+      in_market: { type: Boolean, default: undefined },
+      in_market_at: { type: Date, default: undefined },
+      // Vehicles of interest on this opportunity besides its main vehicle (SOW B3 "Vehicles of Interest"; Deliverable
+      // I: each opportunity keeps its own vehicle of interest). Added by staff, usually from the dealer's inventory.
+      vehicles_of_interest: { type: [new mongoose.Schema({ year: String, make: String, model: String, trim: String,
+        vin: String, stock: String, added_by_name: String, at: { type: Date, default: Date.now } })], default: undefined },
+      // The dealer's campaign this lead came from (app/lib/leadCampaign.js): set when the lead arrives and its
+      // sub-source / lead source is a campaign's tracking code, or by staff on the lead card. Null = none.
+      campaign: { type: String, default: null },
+      campaign_set_by: { type: String, default: undefined }, // 'code' (on arrival) | 'staff'
       // Betsy, 27 Oct 2026 meeting: how the lead came in - internet, phone-up or walk-in (app/lib/leadContactType.js).
       contact_type: { type: String, enum: ['internet', 'phone', 'walk_in', null], default: null },
       // Betsy, 14 Nov 2026: the lead's department (app/lib/departments.js). Missing = sales.
@@ -58,6 +76,16 @@
     this.set('department', dept || 'sales');
     this.set('department_set_by', dept ? 'source' : 'default');
     this.set('department_at', new Date());
+  });
+  // A new lead whose sub-source / lead source is one of the dealer's campaign tracking codes gets that campaign
+  // (app/lib/leadCampaign.js). A lookup problem never stops the lead being saved.
+  leadSchema.pre('save', async function campaignOnArrival() {
+    if (!this.isNew || this.get('campaign') || !this.get('dealer_id')) return;
+    try {
+      const { campaignForLead } = await import('../lib/leadCampaign.js');
+      const name = await campaignForLead(this.get('dealer_id'), this.toObject());
+      if (name) { this.set('campaign', name); this.set('campaign_set_by', 'code'); }
+    } catch { /* the lead is saved without a campaign */ }
   });
   leadSchema.pre('save', function rememberNew() { this.$locals.wasNew = this.isNew; });
   // A new Service / Parts lead: that department's staff are emailed (17 Nov 2026, the user: "if a new service lead

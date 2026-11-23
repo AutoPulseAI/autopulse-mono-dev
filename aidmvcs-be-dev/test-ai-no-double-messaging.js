@@ -180,7 +180,7 @@ maybe('an off dealer\'s inbound SMS is saved on a lead without n8n, and the AI h
   assert.equal(ai.hits.length, 0);
 });
 
-maybe('rule-based follow-ups: none for a live dealer (pending ones cleared), scheduled as before for off', async () => {
+maybe('rule-based follow-ups are retired: none for any dealer, live or off (23 Nov 2026)', async () => {
   const liveLead = await Lead.create({ name: 'Live', phone: '+15550009991', dealer_id: LIVE, fe_lead_status: 'Lead' });
   await FollowUpJob.create({ leadId: liveLead._id, ruleId: 'rule-1', dealer_id: LIVE, runIndex: 1, status: 'pending',
     scheduledAt: new Date(Date.now() + 86_400_000) });
@@ -191,7 +191,7 @@ maybe('rule-based follow-ups: none for a live dealer (pending ones cleared), sch
   const offLead = await Lead.create({ name: 'Off', phone: '+15550009992', dealer_id: OFF, fe_lead_status: 'Lead' });
   await onLeadStatusChange(offLead._id);
   await new Promise((r) => setTimeout(r, 300));
-  assert.equal(await FollowUpJob.countDocuments({ leadId: offLead._id, status: 'pending' }), 1);
+  assert.equal(await FollowUpJob.countDocuments({ leadId: offLead._id, status: 'pending' }), 0);
 });
 
 maybe('a staff reply reaches the AI as lead-paused (live), and not at all for off', async () => {

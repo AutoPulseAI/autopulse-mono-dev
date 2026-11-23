@@ -18,16 +18,21 @@ const ICON = {
   action_required: "fa-solid fa-triangle-exclamation", closed_lost: "fa-regular fa-circle-xmark",
 };
 
-export default function DeskCards({ cards, dayWord = "TODAY" }) {
+// actionNow: the AI Assistant's open "Dealership Action Required" count (the same number as its menu badge and the
+// Dashboard card, 18 Nov 2026) - shown on that card as NOW, opening the AI alerts; its MTD stays the leads moved to
+// Dealership Action Required this month (by staff or the AI).
+export default function DeskCards({ cards, dayWord = "TODAY", actionNow = null }) {
   return (
     <div className="dl_cards">
-      {cards.map((c) => {
+      {cards.map((card) => {
+        const c = card.key === "action_required" && actionNow != null
+          ? { ...card, today: actionNow, today_link: "/dealer/ai/alerts", now: true } : card;
         const icon = ICON[c.key] || "fa-solid fa-circle";
         return (
           <div key={c.key} className={`dl_card dl_card_${c.key}`} style={{ "--card": CARD_COLOR[c.key] || "#0272b4" }}>
             <div className="dl_card_title"><i className={icon}></i>{c.label}</div>
             <div className="dl_card_nums">
-              <div><Num link={c.today_link} className="dl_card_today">{c.today}</Num><small>{dayWord}</small></div>
+              <div><Num link={c.today_link} className="dl_card_today">{c.today}</Num><small>{c.now ? "NOW" : dayWord}</small></div>
               <div><Num link={c.mtd_link} className="dl_card_mtd">{c.mtd}</Num><small>MTD</small></div>
             </div>
           </div>

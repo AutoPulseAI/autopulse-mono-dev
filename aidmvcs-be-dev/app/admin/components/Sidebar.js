@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useCan } from "../../hooks/AdminPermissionsContext";
 import { usePathname } from "next/navigation";  // Use usePathname instead of useRouter
 import { useEffect, useRef, useState } from "react";
+import { useSidebarTitles } from "../../hooks/useSidebar";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const manage_role = useCan("Manage Employee's  Role");
   const manage_staff = useCan("Manage Employee");
   const pathname = usePathname();  // Use pathname from usePathname hook
   const sidebarRef = useRef();
+  useSidebarTitles(sidebarRef, isOpen); // narrow menu: the name on hover
 
   // Automatically open collapse if current route matches admin links
   const adminLinks = ["/admin/roles", "/admin/staff"];
@@ -52,7 +54,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   }, [isOpen, onClose]);
 
   return (
-    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : ""}`}>
+    <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
         <li>
           <Link href="/admin/dashboard" className={getLinkClass("/admin/dashboard")}>
@@ -63,6 +65,18 @@ const Sidebar = ({ isOpen, onClose }) => {
         <li>
           <Link href="/admin/dms-feed" className={getLinkClass("/admin/dms-feed")}>
             <i className="fa-regular fa-database"></i>DMS feed
+          </Link>
+        </li>
+        {/* SOW G-058: every store's connectors at a glance. */}
+        <li>
+          <Link href="/admin/integration-health" className={getLinkClass("/admin/integration-health")}>
+            <i className="fa-regular fa-heart-pulse"></i>Integration health
+          </Link>
+        </li>
+        {/* SOW G-068 to G-071: contact eligibility checks (log-only) and each dealer's Do-Not-Contact list. */}
+        <li>
+          <Link href="/admin/contact-compliance" className={getLinkClass("/admin/contact-compliance")}>
+            <i className="fa-regular fa-shield-check"></i>Contact compliance
           </Link>
         </li>
         {/* Client, 13 Oct 2026: everything the AI uses, editable with full history (super admin). */}

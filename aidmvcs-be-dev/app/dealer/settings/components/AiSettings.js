@@ -48,6 +48,7 @@ export default function AiSettingsPage() {
   const [mode, setMode] = useState("off");
   const [mms, setMms] = useState(false);
   const [daily, setDaily] = useState("on"); // stream T: Days 1-7 call tasks
+  const [tradeValues, setTradeValues] = useState("dealer_link"); // Betsy, 19 Nov 2026
   // Client, 12 Oct 2026: what the dealership offers - the AI keeps the rest off limits.
   const DEPTS = [["new", "New vehicles"], ["used", "Used vehicles"], ["service", "Service"], ["parts", "Parts"]];
   const [depts, setDepts] = useState({ new: true, used: true, service: true, parts: true });
@@ -64,6 +65,7 @@ export default function AiSettingsPage() {
         setMode(data.ai_mode);
         setMms(data.mms_enabled);
         setDaily(data.ai_daily_call_tasks || "on");
+        setTradeValues(data.trade_values || "dealer_link");
         if (data.departments) setDepts(data.departments);
         setCapacity(capacityForm(data.booking_capacity));
       } catch (err) {
@@ -78,7 +80,7 @@ export default function AiSettingsPage() {
   const capacityInvalid = CAPACITY_TYPES.some(([type]) => CAPACITY_FIELDS.some(([field, , min, max]) =>
     capacityProblem(capacity[type][field], min, max)));
   const changed = settings && (mode !== settings.ai_mode || mms !== settings.mms_enabled
-    || daily !== settings.ai_daily_call_tasks || Object.keys(capacityChanged).length > 0
+    || daily !== settings.ai_daily_call_tasks || tradeValues !== settings.trade_values || Object.keys(capacityChanged).length > 0
     || DEPTS.some(([d]) => depts[d] !== (settings.departments || {})[d]));
   const setCapacityField = (type, field, value) =>
     setCapacity((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
@@ -96,6 +98,7 @@ export default function AiSettingsPage() {
       if (mode !== settings.ai_mode) body.ai_mode = mode;
       if (mms !== settings.mms_enabled) body.mms_enabled = mms;
       if (daily !== settings.ai_daily_call_tasks) body.ai_daily_call_tasks = daily;
+      if (tradeValues !== settings.trade_values) body.trade_values = tradeValues;
       if (DEPTS.some(([d]) => depts[d] !== (settings.departments || {})[d])) body.departments = depts;
       if (Object.keys(capacityChanged).length) body.booking_capacity = capacityChanged;
       const data = await aiFetch("/api/dealer-ai/settings", { method: "PUT", body: JSON.stringify(body) });
@@ -103,6 +106,7 @@ export default function AiSettingsPage() {
       setMode(data.ai_mode);
       setMms(data.mms_enabled);
       setDaily(data.ai_daily_call_tasks || "on");
+      setTradeValues(data.trade_values || "dealer_link");
       if (data.departments) setDepts(data.departments);
       setCapacity(capacityForm(data.booking_capacity));
       setSaveStatus("success");
@@ -129,7 +133,8 @@ export default function AiSettingsPage() {
   const canToggle = canChange || settings?.can_toggle_ai;
   const canPickMode = (m) => canChange || (canToggle && (m === "off" || m === "live"));
   const onlyModeChanged = settings && mode !== settings.ai_mode && mms === settings.mms_enabled
-    && daily === settings.ai_daily_call_tasks && Object.keys(capacityChanged).length === 0;
+    && daily === settings.ai_daily_call_tasks && tradeValues === settings.trade_values
+    && Object.keys(capacityChanged).length === 0;
 
   return (
     <div className="page_content">
@@ -198,6 +203,23 @@ export default function AiSettingsPage() {
                     <Form.Check type="switch" id="ai-mms-switch" disabled={!canChange}
                       label={mms ? "On" : "Off"} checked={mms} onChange={(e) => setMms(e.target.checked)} />
                   </div>
+                </div>
+
+                <div className="w_card">
+                  <h3 className="w_card_title mb-0">Trade-in values</h3>
+                  <p className="text-secondary-light mb-2">
+                    <small>
+                      Who gives this dealership&apos;s customers a trade-in value. <strong>Dealer&apos;s link</strong>: the
+                      dealership&apos;s own Trade Estimate page (Links below). <strong>AutoPulse value</strong>: a value from
+                      Vehicle Databases by VIN or year / make / model and mileage; staff get a &quot;Get value&quot; button on
+                      the customer&apos;s Trade-In tab. Only AutoPulse changes this.
+                    </small>
+                  </p>
+                  {[["dealer_link", "Dealer's link"], ["autopulse", "AutoPulse value"]].map(([value, label]) => (
+                    <Form.Check key={value} inline type="radio" name="trade-values" id={`trade-values-${value}`}
+                      disabled={!canChange} label={label} checked={tradeValues === value}
+                      onChange={() => setTradeValues(value)} />
+                  ))}
                 </div>
 
                 <div className="w_card">

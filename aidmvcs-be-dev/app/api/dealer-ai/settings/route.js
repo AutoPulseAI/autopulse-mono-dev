@@ -35,6 +35,7 @@ import { loadSettingsEditor, SETTINGS_VIEW_ONLY_MESSAGE } from "@lib/apiAuth";
 import { bookingCapacityUpdate, bookingCapacityView } from "@lib/bookingService";
 import { dailyCallTasksUpdate, dailyCallTasksView } from "@lib/ai/aiCallTasks";
 import { dealerLinksUpdate, dealerLinksView } from "@lib/ai/dealerLinks";
+import { TRADE_VALUE_SOURCES, tradeValueSource } from "@lib/tradeValueSource";
 
 // What a dealership may switch between itself (client, 9 Oct 2026); "shadow" is AutoPulse's.
 export const DEALER_AI_MODES = ["off", "live"];
@@ -66,6 +67,8 @@ function describe(dealer) {
     // Client, 12 Oct 2026: what the dealership offers; the AI keeps the rest off limits (unset = offered).
     departments: Object.fromEntries(DEPARTMENTS.map((d) => [d, info.departments?.[d] !== false])),
     links: dealerLinksView(dealer), // Betsy, 22 Oct 2026: the links the AI can share (AutoPulse sets them)
+    // Betsy, 19 Nov 2026: per dealer, AutoPulse values (Vehicle Databases) or the dealer's own link (lib/tradeValueSource).
+    trade_values: tradeValueSource(dealer),
   };
 }
 
@@ -140,6 +143,10 @@ export async function PUT(req) {
     const links = dealerLinksUpdate(body.links);
     if (links.errors.length) return jsonError(links.errors.join("; "), 422);
     Object.assign(set, links.set);
+  }
+  if (body.trade_values !== undefined) {
+    if (!TRADE_VALUE_SOURCES.includes(body.trade_values)) return jsonError(`trade_values must be one of ${TRADE_VALUE_SOURCES.join(", ")}`, 422);
+    set["dealer_account_information.trade_value_source"] = body.trade_values;
   }
   if (!Object.keys(set).length) return jsonError("Nothing to change", 400);
 

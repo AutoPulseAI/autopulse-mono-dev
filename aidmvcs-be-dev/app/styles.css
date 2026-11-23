@@ -328,7 +328,7 @@ p.label {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1024;
+  z-index: 1025; /* above the side menu (1024), so the bell's list isn't hidden under it */
   width: 100%;
 }
 .topbar_main .toggle_sidebar, .toggle_sidebar:hover {
@@ -1639,6 +1639,14 @@ background-color: var(--white);
 .cp_band .inline_edit_btn, .cp_band .inline_edit_btn i { color: rgba(255, 255, 255, 0.85) !important; }
 .cp_band .inline_edit_btn:hover i { color: #fff !important; }
 .cp_meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.9rem; font-size: 0.8rem; opacity: 0.95; margin-top: 0.2rem; }
+.cp_source { white-space: normal; }
+.cp_name_edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.4rem; font-size: 0.9rem; font-weight: 400; }
+.cp_name_part { display: flex; flex-direction: column; gap: 2px; width: 9.5rem; }
+.cp_name_part.cp_name_suffix { width: 4.5rem; }
+.cp_name_part span { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+.cp_name_foot { flex-basis: 100%; }
+.cp_name_status { font-size: 0.75rem; color: rgba(255, 255, 255, 0.9); }
+.cp_name_error { color: #ffd2d2; }
 .cp_assign { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; margin: 0; min-width: 180px; }
 .cp_assign .form-select { border: 0; }
 
@@ -1666,6 +1674,12 @@ background-color: var(--white);
 .cp_section_title { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; color: var(--cp-blue-dark);
   font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .cp_section_title i { color: var(--cp-blue); }
+.cp_fold_btn { display: flex; align-items: center; gap: 0.45rem; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.cp_fold_btn:hover { color: var(--cp-blue); }
+.cp_fold_count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--cp-blue); color: #fff;
+  font-size: 0.65rem; line-height: 17px; text-align: center; letter-spacing: 0; }
+.cp_fold_chevron { font-size: 0.7rem; }
 .cp_sub { font-size: 0.72rem; font-weight: 600; color: var(--secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .cp_row { font-size: 0.9rem; overflow-wrap: anywhere; }
 .cp_row_icon { width: 18px; text-align: center; color: var(--cp-blue); }
@@ -1730,3 +1744,87 @@ background-color: var(--white);
 .cp_age { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--secondary); }
 .cp_age_bar { display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
 .cp_age_bar > span { display: block; height: 100%; background: #f7931e; }
+
+/* Side menu (18 Nov 2026): the menu button sits right beside the logo, open or closed. On wide screens, closing the
+   menu keeps it as a narrow bar of icons (still clickable, the name on hover - app/hooks/useSidebar.js); small screens
+   keep the slide-in menu. */
+:root { --sidebar-narrow-w: 66px; }
+.topbar_main .topbar_brand { width: auto; margin-left: 12px; }
+.topbar_main .toggle_sidebar { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: 6px !important; }
+@media (min-width: 992px) {
+  .sidebar.narrow { left: 0; width: var(--sidebar-narrow-w); padding: 12px 8px 46px; overflow-x: hidden; z-index: 1023; }
+  .sidebar.narrow ul li a, .sidebar.narrow ul li.submenu button { font-size: 0; padding: 7px 0; display: flex;
+    justify-content: center; align-items: center; position: relative; }
+  .sidebar.narrow ul li a i, .sidebar.narrow ul li.submenu button i { margin-right: 0; width: 32px; height: 32px; }
+  .sidebar.narrow ul li a:hover i, .sidebar.narrow ul li.submenu button:hover i,
+  .sidebar.narrow ul li a.active i { color: var(--primary); background-color: #e7f1fa; }
+  .sidebar.narrow .fa-chevron-up, .sidebar.narrow .fa-chevron-down { display: none !important; }
+  .sidebar.narrow .badge { position: absolute; top: 0; right: 2px; font-size: 9px; padding: 2px 4px; margin: 0 !important; }
+  .sidebar.narrow ul li.submenu ul.submenu-list { padding-left: 0; border-left: 2px solid var(--border); }
+  .content_main { margin-left: var(--sidebar-narrow-w); }
+}
+
+/* Print-friendly pages (SOW Deliverable G, G-056: "print-friendly customer/opportunity summary, Desk Log summary"). The
+   Print buttons on the customer profile and the Desk Log call window.print(); on paper the menus, the top bar, buttons
+   and inputs are left out, the page uses the full width and rows don't split across pages. */
+.print_only { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  .sidebar, .topbar_main, .no-print, .cp_toolbar, .dl_top_search, .btn, button, .dropdown, .pagination, .nav-tabs,
+  .form-select, .form-control, .form-check, .alert-dismissible .btn-close { display: none !important; }
+  .print_only { display: block !important; }
+  .content_main, .content_main.shifted { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  .main-wrapper, .page_content, .page_body { padding: 0 !important; margin: 0 !important; }
+  body { background: #fff !important; font-size: 11pt; }
+  .w_card, .cp_card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; }
+  tr, li { break-inside: avoid; }
+  a { color: inherit !important; text-decoration: none !important; }
+  .accordion-collapse.collapse:not(.show) { display: none !important; }
+  table { width: 100% !important; }
+  /* Inside a table (the Desk Log's stage / outcome menus, statuses) the value stays: shown as plain text. */
+  table .btn, table button, table .dropdown, table .dropdown-toggle, table .form-select {
+    display: inline-block !important; border: 0 !important; background: none !important; padding: 0 !important;
+    box-shadow: none !important; color: inherit !important; -webkit-appearance: none; appearance: none; }
+  table .dropdown-toggle::after, table .dropdown-menu { display: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* Top bar quick tools (app/dealer/components/TopbarTools.js, 19 Nov 2026): store, unread email / texts, bell, help */
+.tb_tools { display: flex; align-items: center; gap: 4px; margin-right: 8px; }
+.tb_icon, .topbar_main .tb_icon.dropdown-toggle {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 38px; height: 38px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--secondary); font-size: var(--f16); text-decoration: none; text-transform: none;
+}
+.tb_icon:hover, .topbar_main .tb_icon.dropdown-toggle:hover, .tb_icon[aria-expanded="true"] {
+  color: var(--primary); border-color: var(--border-light); background: transparent;
+}
+.tb_icon.dropdown-toggle::after { display: none; }
+.tb_badge {
+  position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: #e5383b; color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+}
+.tb_store { font-size: var(--f14); gap: 6px; color: var(--dark); align-items: center; padding: 0 8px; }
+.tb_store_name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb_caret { font-size: 10px; }
+.tb_menu { min-width: 300px; max-height: 70vh; overflow-y: auto; }
+.tb_bell { width: 360px; max-width: calc(100vw - 32px); padding: 0; }
+.tb_section { padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.tb_section:last-child { border-bottom: 0; }
+.tb_section_head { display: flex; align-items: center; gap: 8px; padding: 2px 14px 6px; font-weight: 600; font-size: var(--f14); }
+.tb_section_count { background: var(--primary); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 11px; }
+.tb_row { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 6px 14px; white-space: normal; }
+.tb_row_title { font-weight: 600; font-size: var(--f14); }
+.tb_row_at { grid-column: 2; grid-row: 1; font-size: 11px; color: var(--secondary); white-space: nowrap; }
+.tb_row_text { grid-column: 1 / -1; font-size: 12px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tb_empty { padding: 2px 14px 4px; font-size: 12px; color: var(--secondary); }
+@media (max-width: 575px) {
+  .tb_tools { gap: 0; margin-right: 4px; }
+  .tb_icon { min-width: 32px; padding: 0 6px; }
+}
+
+/* 360 View side panel (app/dealer/components/Customer360Panel.js, 19 Nov 2026) */
+.offcanvas.c360_panel { width: 640px; max-width: 100vw; }
+.c360_contact > div { margin-bottom: 2px; }

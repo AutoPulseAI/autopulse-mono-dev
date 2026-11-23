@@ -20,7 +20,7 @@ import { SectionCharts } from "./Charts";
 import { downloadSourceReport, reportQuery, reportsGet } from "../reportsApi";
 
 const ALL_TIME_FROM = "2015-01-01";
-const NO_FILTERS = { source: "", lead_source: "", assigned_to: "", actor: "", appointment_type: "" };
+const NO_FILTERS = { source: "", lead_source: "", campaign: "", assigned_to: "", actor: "", appointment_type: "" };
 const ACTIVE_KEY = "dashboard_report_tag";
 
 // own: the reports whose numbers the section lists under "Show all numbers". uses: also read for its charts.

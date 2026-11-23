@@ -14,11 +14,43 @@ import twilio from 'twilio';
 import { checkCampaignSend, blockReason, RETRY_UNANSWERED_MS } from '../lib/ai/aiSendCheck.js';
 import { getCampaignProcessingQueue } from '../lib/queue.js';
 import { getRateLimiter } from './rateLimit.js';
+import { sendEmail } from '../lib/email.js';
+import { emailLinks } from '../lib/ai/emailTracking.js';
 
 const mailgun = mailgunJs({
   apiKey: process.env.MAILGUN_API_KEY,
   domain: process.env.MAILGUN_DOMAIN
 });
+
+// 20 Nov 2026: Mailgun disabled our API key ("This API key is disabled") and the whole Thanks Giving blast (9,167)
+// failed "Forbidden". Campaign emails now go out through the CRM's own email service (lib/email.js sendEmail, the one
+// the AI and staff use: the dealer's AutoPulse mailbox as sender, its branding, the unsubscribe link and open pixel of
+// lib/ai/emailTracking.js) whenever Mailgun can't be used: CAMPAIGN_EMAIL_PROVIDER=crm, Mailgun not configured, or
+// Mailgun refusing our key (then it is not tried again for MAILGUN_RETRY_MS).
+const MAILGUN_RETRY_MS = 30 * 60000;
+let mailgunRefusedAt = 0;
+const mailgunUsable = () => process.env.CAMPAIGN_EMAIL_PROVIDER !== 'crm' && Boolean(process.env.MAILGUN_API_KEY)
+  && Boolean(process.env.MAILGUN_DOMAIN) && Date.now() - mailgunRefusedAt > MAILGUN_RETRY_MS;
+const mailgunAuthError = (err) => /forbidden|unauthorized|api key is disabled/i.test(String(err?.message || ''))
+  || [401, 403].includes(Number(err?.statusCode));
+
+/** One campaign email through the CRM's email service; recorded so its unsubscribe link works. */
+async function sendCampaignEmailViaCrm({ campaign, campaignLead, dealer, from, to, subject, html, attachments, leadId }) {
+  const key = `campaign-${campaignLead._id}`;
+  const providerId = await sendEmail(to, subject, html, from, null,
+    { ...(dealer.toObject ? dealer.toObject() : dealer), branding_information: dealer.branding_information || {},
+      dealer_account_information: dealer.dealer_account_information || {} },
+    (attachments || []).map((a) => ({ filename: a.filename, url: a.url, contentType: a.mimeType || a.contentType })),
+    { ...emailLinks(key), eligibility: { origin: 'campaign', leadId: leadId || null } });
+  // Not on the lead's conversation (as before, Mailgun sends weren't): the record carries the unsubscribe key only.
+  await Email.collection.updateOne({ ai_idempotency_key: key }, { $setOnInsert: {
+    ai_idempotency_key: key, campaign_id: String(campaign._id), campaign_lead_id: String(campaignLead._id),
+    campaign_lead: leadId && ObjectId.isValid(String(leadId)) ? new ObjectId(String(leadId)) : null, sender: from, recipient: to, subject,
+    communication_type: 'email', status: 'sent', dealer_id: String(dealer._id), message_id: String(providerId || key),
+    timestamp: new Date(), date: new Date(), lead_source: `campaign_${campaign.name}`, campaign_email: true,
+  } }, { upsert: true }).catch((e) => console.error('[campaign] sent but not recorded', key, e?.message));
+  return providerId;
+}
 
 // Initialize Twilio client
 const twilioClient = twilio(
@@ -174,17 +206,39 @@ export const processCampaignLead = async (job) => {
           }));
         }
 
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-          throw new Error('MAILGUN_API_KEY and MAILGUN_DOMAIN must be configured for campaign emails.');
+        // A customer who unsubscribed from our emails never gets a campaign email (either provider).
+        const unsubscribed = (savedLeadId || campaignLead.lead_id)
+          ? await Lead.exists({ _id: savedLeadId || campaignLead.lead_id, email_unsubscribed: true }) : null;
+        if (unsubscribed) {
+          campaignLead.status = 'blocked';
+          campaignLead.block_reason = 'unsubscribed from emails';
+          await campaignLead.save();
+          return { success: true, status: 'blocked', reason: campaignLead.block_reason };
         }
 
-        const result = await mailgun.messages().send(emailData);
-        messageId = result.id;
+        let viaMailgun = mailgunUsable();
+        if (viaMailgun) {
+          try {
+            const result = await mailgun.messages().send(emailData);
+            messageId = result.id;
+            campaignLead.mailgun_message_id = result.id;
+          } catch (mailgunError) {
+            if (!mailgunAuthError(mailgunError)) throw mailgunError;
+            mailgunRefusedAt = Date.now();
+            console.error('[campaign] Mailgun refused our key; sending through the CRM email service', mailgunError?.message);
+            viaMailgun = false;
+          }
+        }
+        if (!viaMailgun) {
+          if (!dealerEmail) throw new Error('No AutoPulse mailbox (Email Setup) for this dealer to send the campaign from');
+          messageId = await sendCampaignEmailViaCrm({ campaign, campaignLead, dealer, from: dealerEmail, to: leadEmail,
+            subject: personalizedSubject || campaignName, html: personalizedBody, attachments,
+            leadId: savedLeadId || campaignLead.lead_id });
+        }
 
-        // Update campaign lead with Mailgun message ID
         campaignLead.status = 'sent';
         campaignLead.sent_at = new Date();
-        campaignLead.mailgun_message_id = result.id;
+        campaignLead.sent_via = viaMailgun ? 'mailgun' : 'crm';
         await campaignLead.save();
 
         // Update campaign stats

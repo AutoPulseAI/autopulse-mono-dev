@@ -82,6 +82,12 @@ export function staffEntry(a) {
     : a.action === "desk_log_person" ? `set the ${a.detail} to ${a.to} on the Desk Log`
     : a.action === "desk_log_note" ? `added a Desk Log note: "${a.detail}"`
     : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
+    : a.action === "reminder_set" ? `set a reminder for ${a.to ? new Date(a.to).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "later"}`
+    : a.action === "reminder_done" ? "marked a reminder done"
+    : a.action === "campaign_added" ? `added the customer to the campaign "${a.to}"`
+    : a.action === "in_market_changed" ? `marked the opportunity ${a.to}`
+    : a.action === "vehicle_of_interest_added" ? `added ${a.to} to the vehicles of interest`
+    : a.action === "vehicle_of_interest_removed" ? `removed ${a.to} from the vehicles of interest`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,
@@ -129,7 +135,8 @@ export async function buildActivity({ dealerId, customerId, customerIds = null, 
       .project({ lead_id: 1, history: 1, createdAt: 1, created_by: 1, bookingTime: 1, appointment_type: 1 }).limit(MAX).toArray() : [],
   ]);
   const entries = [
-    ...staff.map(staffEntry),
+    // The AI's status changes are shown by their note ("Set to ... by the AI"); its ActivityLog copy is for Reports.
+    ...staff.filter((a) => !(a.actor_type === "ai" && a.action === "status_changed")).map(staffEntry),
     ...messages.filter((m) => !isRawLeadFile(m.mail_content)).map(messageEntry),
     ...states.flatMap(stageEntries),
     ...consents.map(consentEntry),
