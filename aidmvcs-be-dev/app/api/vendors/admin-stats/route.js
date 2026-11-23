@@ -49,17 +49,25 @@ export async function GET(request) {
       Lead.countDocuments({ ...leadQuery, status: 'converted' })
     ]);
 
-    // Get lead sources breakdown
-    const sources = await Lead.aggregate([
+    // DB-SCALING #2 / B2: the three per-request Lead groupings (sources, statuses, activity-over-time) all run over
+    // the identical leadQuery, so fold them into ONE $facet = one pass instead of three. They were already aggregates
+    // (no count->aggregate cast change), so each array is identical to before. Counts + vendor_performance unchanged.
+    const [grouped = {}] = await Lead.aggregate([
       { $match: leadQuery },
-      { $group: { _id: '$source', count: { $sum: 1 } } }
+      {
+        $facet: {
+          sources: [{ $group: { _id: '$source', count: { $sum: 1 } } }],
+          statuses: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          activity_over_time: [
+            { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } }, count: { $sum: 1 } } },
+            { $sort: { _id: 1 } },
+          ],
+        },
+      },
     ]);
-
-    // Get lead status breakdown
-    const statuses = await Lead.aggregate([
-      { $match: leadQuery },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
+    const sources = grouped.sources || [];
+    const statuses = grouped.statuses || [];
+    const activityOverTime = grouped.activity_over_time || [];
 
     // Get vendor performance (leads per vendor)
     const vendorPerformance = await User.aggregate([
@@ -127,19 +135,7 @@ export async function GET(request) {
         }
       ]);
 
-    // Get activity over time (monthly)
-    const activityOverTime = await Lead.aggregate([
-      { $match: leadQuery },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: "%Y-%m", date: "$createdAt" }
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    // activity_over_time now comes from the $facet above (same grouping, one pass).
 
     const payload = {
       total_leads: totalLeads,

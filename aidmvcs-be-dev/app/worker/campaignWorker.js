@@ -13,6 +13,7 @@ import mailgunJs from 'mailgun-js';
 import twilio from 'twilio';
 import { checkCampaignSend, blockReason, RETRY_UNANSWERED_MS } from '../lib/ai/aiSendCheck.js';
 import { getCampaignProcessingQueue } from '../lib/queue.js';
+import { getRateLimiter } from './rateLimit.js';
 
 const mailgun = mailgunJs({
   apiKey: process.env.MAILGUN_API_KEY,
@@ -548,9 +549,17 @@ function formatPhoneForTwilio(phone) {
 }
 
 export const setupCampaignWorker = (redis) => {
-  const worker = new Worker('campaignProcessingQueue', processCampaignLead, { 
+  // DB-SCALING #9 (queue buffering / rate limiting): env-driven safety valve on the
+  // campaign blast — the dominant write/send source. Default 160000/min sits at the top
+  // of the DB's proven healthy zone (~150-160k/min), far above real traffic (~10k/min)
+  // and well below the ~230k degradation point. Set CAMPAIGN_RATE_PER_MIN=off to disable,
+  // or lower it to throttle a large blast more aggressively. Rate-limited jobs wait in
+  // the queue (not dropped), so nothing is lost.
+  const limiter = getRateLimiter(process.env.CAMPAIGN_RATE_PER_MIN ?? '160000', 'CAMPAIGN_RATE_PER_MIN');
+  const worker = new Worker('campaignProcessingQueue', processCampaignLead, {
     connection: redis,
-    concurrency: 10 // Process 10 campaign leads concurrently
+    concurrency: 10, // Process 10 campaign leads concurrently
+    ...(limiter ? { limiter } : {}),
   });
 
   worker.on('completed', (job) => {

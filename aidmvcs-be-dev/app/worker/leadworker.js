@@ -1,5 +1,6 @@
 // leadworker.js
 import { Worker } from 'bullmq';
+import { getRateLimiter } from './rateLimit.js';
 import { legacyAutoReplyOn, withoutLegacyStatus } from '../lib/legacyAutoReply.js';
 
 import dbConnect from '../lib/mongodb.js';
@@ -429,9 +430,14 @@ async function stripTagsRegex(html) {
 }
 
 export const setupLeadWorker = (redis) => {
-  const worker = new Worker('leadProcessingQueue', processLead, { 
+  // DB-SCALING #9: same env-driven rate cap as the main lead worker in worker.js (BullMQ enforces
+  // the limiter as one group per queue, so both workers share the LEAD_RATE_PER_MIN cap). Default
+  // 30000/min is a backstop above real lead throughput; set LEAD_RATE_PER_MIN=off to disable.
+  const limiter = getRateLimiter(process.env.LEAD_RATE_PER_MIN ?? '30000', 'LEAD_RATE_PER_MIN');
+  const worker = new Worker('leadProcessingQueue', processLead, {
     connection: redis,
-    concurrency: 5
+    concurrency: 5,
+    ...(limiter ? { limiter } : {}),
   });
 
   worker.on('completed', (job) => {

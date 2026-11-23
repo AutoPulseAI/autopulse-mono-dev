@@ -12,6 +12,7 @@ import { AI_EVENT_RETRY_QUEUE, postAiEvent, processAiEventRetryJob } from '../li
 import { AI_OUTBOX_REPLAY_EVERY_MS, noteForStaff, replayAiOutbox } from '../lib/ai/aiOutbox.js';
 import { getDealerAiMode } from '../lib/ai/aiMode.js';
 import dbConnect from '../lib/mongodb.js';
+import { getRateLimiter } from './rateLimit.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -50,9 +51,16 @@ redis.on('close', () => {
 });
 
 // Create workers for all queues
-const emailWorker = new Worker('emailQueue', processEmail, { connection: redis });
-const smsWorker = new Worker('communicationQueue', processSMS, { connection: redis });
-const leadWorker = new Worker('leadProcessingQueue', processLead, { connection: redis });
+// DB-SCALING #9 (queue buffering / rate limiting): env-driven safety-valve caps. These queues run
+// at low concurrency (email/sms = 1, lead = default) so they can't realistically flood MongoDB — the
+// caps are backstops set well above real throughput. The campaign blast (the real flood source) is
+// capped in campaignWorker.js. Set <NAME>_RATE_PER_MIN=off to disable any one.
+const emailLimiter = getRateLimiter(process.env.EMAIL_RATE_PER_MIN ?? '30000', 'EMAIL_RATE_PER_MIN');
+const smsLimiter = getRateLimiter(process.env.SMS_RATE_PER_MIN ?? '30000', 'SMS_RATE_PER_MIN');
+const leadLimiter = getRateLimiter(process.env.LEAD_RATE_PER_MIN ?? '30000', 'LEAD_RATE_PER_MIN');
+const emailWorker = new Worker('emailQueue', processEmail, { connection: redis, ...(emailLimiter ? { limiter: emailLimiter } : {}) });
+const smsWorker = new Worker('communicationQueue', processSMS, { connection: redis, ...(smsLimiter ? { limiter: smsLimiter } : {}) });
+const leadWorker = new Worker('leadProcessingQueue', processLead, { connection: redis, ...(leadLimiter ? { limiter: leadLimiter } : {}) });
 // `make crm-live-db`: on the live database, campaigns and the DealerVault import stay with the live servers.
 const onLiveDb = ['1', 'true', 'yes'].includes(String(process.env.CRM_LIVE_DB || '').toLowerCase());
 const campaignWorker = onLiveDb ? null : setupCampaignWorker(redis);
