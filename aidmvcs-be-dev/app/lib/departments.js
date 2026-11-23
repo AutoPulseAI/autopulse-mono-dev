@@ -52,6 +52,35 @@ export async function notifyDepartment({ dealerId, lead, department, fromDepartm
   }
 }
 
+/** Bulk move (Leads > Select leads > Department): one email to the department's staff listing the leads moved. */
+export async function notifyDepartmentBulk({ dealerId, department, leads = [], byName }, {
+  findStaff = (id, dept) => User.find({ parent_id: id, type: 'dealer', departments: dept }).select('name email').lean(),
+  findDealer = (id) => User.findById(id).select('name dealer_account_information branding_information').lean(),
+  findSender = (id) => EmailAccount.findOne({ dealer_id: String(id) }).select('email_address').lean(),
+  email = sendEmail, logger = console, baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '',
+} = {}) {
+  try {
+    const dept = validDepartment(department);
+    if (!dept || !leads.length) return { status: 'skipped' };
+    const [staff, dealer, sender] = await Promise.all([findStaff(String(dealerId), dept), findDealer(dealerId), findSender(dealerId)]);
+    const to = [...new Set((staff || []).map((s) => s.email).filter(Boolean))];
+    if (!to.length) return { status: 'skipped', reason: `nobody is in ${DEPARTMENT_NAMES[dept]}` };
+    const subject = `${leads.length} lead${leads.length === 1 ? '' : 's'} moved to ${DEPARTMENT_NAMES[dept]}`;
+    const shown = leads.slice(0, 25).map((l) => `- ${l.name || 'A customer'}: ${baseUrl}/dealer/leads?lead=${l._id}`);
+    const body = [`${byName || 'Someone'} moved ${leads.length} lead${leads.length === 1 ? '' : 's'} to ${DEPARTMENT_NAMES[dept]}.`, '',
+      ...shown, ...(leads.length > 25 ? [`...and ${leads.length - 25} more (Leads, filter Department: ${DEPARTMENT_NAMES[dept]}).`] : [])].join('\n');
+    const sent = [];
+    for (const addr of to) {
+      try { await email(addr, subject, body, sender?.email_address || null, null, dealer); sent.push(addr); }
+      catch (error) { logger.error('[departments] bulk email failed', { dealer_id: String(dealerId), error: error?.message }); }
+    }
+    return { status: sent.length ? 'sent' : 'failed', sent };
+  } catch (error) {
+    logger.error('[departments] bulk notify failed', { dealer_id: String(dealerId), error: error?.message });
+    return { status: 'failed', error: error?.message };
+  }
+}
+
 /**
  * The ids of a dealer's leads in one department (17 Nov 2026, Service Dashboard: every number for that department
  * only). null = no department picked (every lead counts).

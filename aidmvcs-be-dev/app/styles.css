@@ -1943,3 +1943,6 @@ background-color: var(--white);
   .bulk_scope .bulk_scope_switch { width: 100%; order: 3; }
   .bulk_scope .bulk_scope_switch .btn { flex: 1; }
 }
+
+.lead_fltr:not(.w-100) .btn { flex: 0 0 auto; overflow: visible; }
+.bulk_skeleton .placeholder { min-height: 14px; }

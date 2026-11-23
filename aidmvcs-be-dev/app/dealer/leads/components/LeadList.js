@@ -13,7 +13,7 @@ import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
-import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk } from "./BulkAssign";
+import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
@@ -598,7 +598,16 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     || filters.replyCohort || filters.apptAttribution || filters.reportKpi || filters.dateRange.startDate
     || (assignmentFilter && assignmentFilter !== 'all'));
   const lightRow = (l) => ({ _id: String(l._id), name: l.name || null, owner: l.assigned_to?.name || null,
-    status: l.fe_lead_status || null });
+    status: l.fe_lead_status || null, department: l.department || null, lead_source: l.lead_source || null,
+    campaign: l.campaign || null });
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const bulkAction = async (kind) => {
+    if (kind !== 'export') { setBulkPanel(kind); return; }
+    setBulkExporting(true);
+    try { await exportBulk(dealerParent?.id || activeEntity?.id, [...selected.keys()]); }
+    catch (e) { showAlert(e.message || 'Export failed', 'danger'); }
+    finally { setBulkExporting(false); }
+  };
 
   // Every lead matching the filters, in the list's order (one call, capped at 2,000 by the API).
   const loadMatching = async () => {
@@ -1871,7 +1880,7 @@ useImperativeHandle(ref, () => ({
         {selectMode && !compact && (
           <div className="mt-2">
             <BulkBar count={selected.size} canAssign={canAssignLeads} canChangeStatus={canManageLeads}
-              busy={scopeLoading} onAction={setBulkPanel} onClose={stopSelecting} />
+              busy={scopeLoading} exporting={bulkExporting} onAction={bulkAction} onClose={stopSelecting} />
             <BulkScope scope={scope} count={selected.size} pageCount={leads.length} perPage={pagination.itemsPerPage || 10}
               matching={matching.leads ? matching.total : pagination.totalItems} capped={matching.capped}
               loading={scopeLoading} selected={[...selected.values()]} unticked={unticked}
@@ -2206,7 +2215,7 @@ useImperativeHandle(ref, () => ({
 
       {/* Bulk actions (24 Nov 2026): the side panel, and the notice after saving */}
       {!compact && bulkPanel && (
-        <BulkPanel kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
+        <BulkPanel key={bulkPanel} kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
           leads={[...selected.values()]} staffList={staffList} onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
       )}
       {!compact && <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />}

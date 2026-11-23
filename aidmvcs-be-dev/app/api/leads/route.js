@@ -549,6 +549,9 @@ export async function GET(req) {
       query._id = { $in: contacted };
     }
 
+    const onlyIds = (url.searchParams.get('lead_ids') || '').split(',').filter((v) => mongoose.isValidObjectId(v));
+    if (onlyIds.length) query._id = query._id ? { $in: onlyIds.filter((v) => (query._id.$in || []).map(String).includes(v)) } : { $in: onlyIds };
+
     if (format === 'ids') {
       // Bulk actions, "All leads matching your filters" (SOW Deliverable B b5): the same leads as the list with the same
       // filters and order, as light rows (id, name, owner, status) - one query, no populate beyond the owner's name.
@@ -560,7 +563,7 @@ export async function GET(req) {
         ordered = repliedOrder.slice(0, BULK_IDS_MAX).map((r) => r._id);
       }
       const rows = await Lead.find(ordered ? { ...query, _id: { $in: ordered } } : query)
-        .select('_id name assigned_to fe_lead_status createdAt')
+        .select('_id name assigned_to fe_lead_status department lead_source campaign createdAt')
         .populate({ path: 'assigned_to', select: 'name', strictPopulate: false })
         .sort({ createdAt: sort === 'created_asc' ? 1 : -1 })
         .limit(BULK_IDS_MAX + 1)
@@ -574,7 +577,8 @@ export async function GET(req) {
         total,
         capped: total > BULK_IDS_MAX,
         leads: rows.slice(0, BULK_IDS_MAX).map((l) => ({ _id: String(l._id), name: l.name || null,
-          owner: l.assigned_to?.name || null, status: l.fe_lead_status || null })),
+          owner: l.assigned_to?.name || null, status: l.fe_lead_status || null, department: l.department || null,
+          lead_source: l.lead_source || null, campaign: l.campaign || null })),
       });
     }
 

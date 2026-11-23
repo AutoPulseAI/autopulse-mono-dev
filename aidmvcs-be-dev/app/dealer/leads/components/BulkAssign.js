@@ -59,25 +59,46 @@ export function ListPages({ current, total, onPage, size }) {
   );
 }
 
-// The blue bar that takes the filter row's place while selecting.
-export function BulkBar({ count, canAssign, canChangeStatus, onAction, onClose, busy }) {
+// The blue bar that takes the filter row's place while selecting. Each button only for staff allowed to do it.
+export const BULK_ACTIONS = [
+  { kind: "reassign", label: "Reassign", icon: "fa-user-pen", needs: "assign" },
+  { kind: "status", label: "Change status", icon: "fa-flag", needs: "manage" },
+  { kind: "department", label: "Department", icon: "fa-building", needs: "manage" },
+  { kind: "source", label: "Source / Campaign", icon: "fa-tag", needs: "manage" },
+  { kind: "note", label: "Add note", icon: "fa-note-sticky", needs: "manage" },
+  { kind: "task", label: "Call task", icon: "fa-phone", needs: "manage" },
+  { kind: "export", label: "Export", icon: "fa-file-csv", needs: null },
+];
+
+export function BulkBar({ count, canAssign, canChangeStatus, onAction, onClose, busy, exporting }) {
+  const allowed = (needs) => (needs === "assign" ? canAssign : needs === "manage" ? canChangeStatus : true);
   return (
     <div className="bulk_bar d-flex flex-wrap align-items-center gap-2 mb-2">
       <strong className="me-2">{count.toLocaleString()} selected</strong>
-      {canAssign && (
-        <Button size="sm" variant="light" disabled={!count || busy} onClick={() => onAction("reassign")}>
-          <i className="fa-solid fa-user-pen me-1"></i>Reassign
+      {BULK_ACTIONS.filter((a) => allowed(a.needs)).map((a) => (
+        <Button key={a.kind} size="sm" variant="light" disabled={!count || busy || (a.kind === "export" && exporting)}
+          onClick={() => onAction(a.kind)}>
+          {a.kind === "export" && exporting ? <Spinner size="sm" className="me-1" /> : <i className={`fa-solid ${a.icon} me-1`}></i>}
+          {a.label}
         </Button>
-      )}
-      {canChangeStatus && (
-        <Button size="sm" variant="light" disabled={!count || busy} onClick={() => onAction("status")}>
-          <i className="fa-solid fa-flag me-1"></i>Change status
-        </Button>
-      )}
+      ))}
       <Button size="sm" variant="link" className="text-white ms-auto" title="Stop selecting" aria-label="Stop selecting"
         onClick={onClose}>
         <i className="fa-solid fa-xmark"></i>
       </Button>
+    </div>
+  );
+}
+
+// Grey placeholder rows while something loads (Bootstrap placeholders, the app's own CSS).
+export function SkeletonRows({ rows = 5, cols = 3 }) {
+  return (
+    <div className="placeholder-glow bulk_skeleton" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, r) => (
+        <div key={r} className="d-flex gap-2 mb-2">
+          {Array.from({ length: cols }, (_, c) => <span key={c} className={`placeholder col-${c === 0 ? 4 : 3} rounded`}></span>)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -204,28 +225,66 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
   );
 }
 
-// The side panel: check before saving, then save in calls of 100.
+// The side panel: check before saving, then save in calls of 100 (one batch id, one Bulk history row).
+//   reassign / status: the routes' own preview (what each lead is now, what can't change and why).
+//   department / source / campaign: compared here with what each selected lead holds now.
+//   note / task: added to every selected lead.
+const FIELD_OF = { department: "department", lead_source: "lead_source", campaign: "campaign" };
+const DEPARTMENTS = [["sales", "Sales"], ["service", "Service"], ["parts", "Parts"]];
+const deptName = (v) => (DEPARTMENTS.find(([k]) => k === (v || "sales")) || [null, "Sales"])[1];
+const TITLES = { reassign: "Reassign", status: "Change status of", department: "Move to a department", source: "Set source / campaign of",
+  note: "Add a note to", task: "Add a call task to" };
+
 export function BulkPanel({ kind, show, dealerId, leads, staffList, onHide, onSaved }) {
   const isStatus = kind === "status";
+  const serverPreview = kind === "reassign" || kind === "status";
   const [to, setTo] = useState("");
   const [status, setStatus] = useState(BULK_STATUSES[0]);
-  const [rows, setRows] = useState(null);
+  const [dept, setDept] = useState("service");
+  const [field, setField] = useState("lead_source"); // source panel: lead_source | campaign
+  const [fieldValue, setFieldValue] = useState("");
+  const [options, setOptions] = useState(null); // { sources, campaigns }
+  const [note, setNote] = useState("");
+  const [internal, setInternal] = useState(true);
+  const [dueAt, setDueAt] = useState(() => {
+    const d = new Date(Date.now() + 60 * 60 * 1000); d.setMinutes(0, 0, 0);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
+  const [taskFor, setTaskFor] = useState("");
+  const [serverRows, setServerRows] = useState(null);
   const [tab, setTab] = useState("change");
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   // Keyed on the ids themselves: a new array with the same leads (a parent re-render) never re-runs the preview.
   const idsKey = leads.map((l) => l._id).join(",");
   const ids = useMemo(() => (idsKey ? idsKey.split(",") : []), [idsKey]);
-  const target = isStatus ? status : to;
-  const targetName = isStatus ? statusLabel(status)
-    : (to ? staffList.find((s) => String(s._id) === String(to))?.name : "Unassigned") || "Unassigned";
+  const byId = useMemo(() => new Map(leads.map((l) => [l._id, l])), [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Preview: nothing is written. In calls of 200 (the routes' maximum), merged.
+  const targetName = isStatus ? statusLabel(status)
+    : kind === "reassign" ? ((to ? staffList.find((s) => String(s._id) === String(to))?.name : "Unassigned") || "Unassigned")
+      : kind === "department" ? deptName(dept)
+        : kind === "source" ? (fieldValue || "None")
+          : note.trim().slice(0, 60);
+
+  // The source panel's choices: the dealer's lead sources and campaigns (Leads > Lead source > Edit list).
   useEffect(() => {
-    if (!show || !ids.length) return undefined;
+    if (!show || kind !== "source" || options) return;
+    fetch(`/api/lead-sources?dealer_id=${encodeURIComponent(dealerId)}`, { headers: { Authorization: `Bearer ${token()}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setOptions({
+        sources: [...new Set([...(d?.sources || []).map((x) => x.name), ...(d?.used || []).map((x) => x.name)])],
+        campaigns: (d?.campaigns || []).filter((c) => c.active !== false).map((c) => c.name),
+      }))
+      .catch(() => setOptions({ sources: [], campaigns: [] }));
+  }, [show, kind, dealerId, options]);
+
+  // Reassign / status preview: nothing is written. In calls of 200 (the routes' maximum), merged.
+  useEffect(() => {
+    if (!show || !serverPreview || !ids.length) return undefined;
     let gone = false;
-    setBusy(true); setError(null); setRows(null); setPage(1);
+    setBusy(true); setError(null); setServerRows(null); setPage(1);
     (async () => {
       try {
         const parts = [];
@@ -234,11 +293,26 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, onHide, onSa
           parts.push(...(await post(routeOf(kind), { ...body, confirm: false })).rows);
           if (gone) return;
         }
-        if (!gone) setRows(parts);
+        if (!gone) setServerRows(parts);
       } catch (e) { if (!gone) setError(e.message); } finally { if (!gone) setBusy(false); }
     })();
     return () => { gone = true; };
-  }, [show, ids, kind, isStatus, dealerId, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [show, ids, kind, isStatus, dealerId, status, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every kind as the same rows: { lead_id, name, current, will_be, change, error }
+  const editField = kind === "department" ? "department" : kind === "source" ? field : null;
+  const rows = useMemo(() => {
+    if (serverPreview) return serverRows;
+    return ids.map((id) => {
+      const l = byId.get(id) || { _id: id };
+      if (editField) {
+        const now = editField === "department" ? deptName(l.department) : (l[FIELD_OF[editField]] || "None");
+        const next = editField === "department" ? deptName(dept) : (fieldValue || "None");
+        return { lead_id: id, name: l.name, current: now, will_be: next, change: now.toLowerCase() !== next.toLowerCase() };
+      }
+      return { lead_id: id, name: l.name, current: kind === "task" ? (l.owner || "Unassigned") : "—", will_be: kind === "note" ? "+ note" : "+ task", change: true };
+    });
+  }, [serverPreview, serverRows, ids, byId, editField, dept, fieldValue, kind]);
 
   const groups = useMemo(() => {
     const g = { change: [], already: [], cant: [] };
@@ -260,24 +334,34 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, onHide, onSa
   const list = groups[tab];
   const pages = Math.max(1, Math.ceil(list.length / PANEL_PAGE));
   const shown = list.slice((page - 1) * PANEL_PAGE, page * PANEL_PAGE);
+  const needsText = (kind === "note" || kind === "task") && !note.trim();
+  const ready = rows && groups.change.length && !needsText && !(kind === "task" && !dueAt);
+
+  const bodyFor = (part, batchId, before) => {
+    if (kind === "status") return { dealer_id: dealerId, lead_ids: part, status, confirm: true, batch_id: batchId,
+      expected: Object.fromEntries(part.map((id) => [id, before.get(id) ?? null])) };
+    if (kind === "reassign") return { dealer_id: dealerId, lead_ids: part, assigned_to: to || null, confirm: true, batch_id: batchId };
+    const base = { dealer_id: dealerId, lead_ids: part, confirm: true, batch_id: batchId };
+    if (kind === "department") return { ...base, action: "department", value: dept };
+    if (kind === "source") return { ...base, action: field, value: fieldValue };
+    if (kind === "note") return { ...base, action: "note", note, internal };
+    return { ...base, action: "task", note, due_at: new Date(dueAt).toISOString(), assigned_to: taskFor || undefined };
+  };
 
   const save = async () => {
-    setBusy(true); setError(null);
+    setSaving(true); setError(null);
     const batchId = newBatchId();
     const total = { updated: 0, unchanged: 0, failed: [] };
-    // Every selected lead is sent (the route leaves unchanged ones alone and reports why one can't change), so Bulk
-    // history counts the whole selection.
+    // Reassign / status / fields: every selected lead is sent (the route reports unchanged ones), so Bulk history
+    // counts the whole selection. Note / task: every lead gets one.
     const sendIds = (rows || []).map((r) => r.lead_id);
     const names = new Map((rows || []).map((r) => [r.lead_id, r.name]));
     const before = new Map((rows || []).map((r) => [r.lead_id, r.current ?? null]));
+    const url = serverPreview ? routeOf(kind) : "/api/leads/bulk-edit";
     try {
       for (const part of chunks(sendIds, SAVE_CHUNK)) {
-        const body = isStatus
-          ? { dealer_id: dealerId, lead_ids: part, status, confirm: true, batch_id: batchId,
-            expected: Object.fromEntries(part.map((id) => [id, before.get(id) ?? null])) }
-          : { dealer_id: dealerId, lead_ids: part, assigned_to: to || null, confirm: true, batch_id: batchId };
         try {
-          const res = await post(routeOf(kind), body);
+          const res = await post(url, bodyFor(part, batchId, before));
           total.updated += res.updated || 0;
           total.unchanged += res.unchanged || 0;
           total.failed.push(...(res.failed || []).map((f) => ({ ...f, name: f.name || names.get(f.lead_id) || null })));
@@ -289,64 +373,128 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, onHide, onSa
       // Retry only what failed for a reason that can pass next time (not "Not a lead of this dealership").
       const cant = new Set(groups.cant.map((r) => r.lead_id));
       onSaved({ kind, batchId, targetName, updated: total.updated, unchanged: total.unchanged, failed: total.failed,
-        retryIds: total.failed.map((f) => f.lead_id).filter((id) => !cant.has(id)), target: isStatus ? status : (to || null) });
-    } finally { setBusy(false); }
+        retryIds: total.failed.map((f) => f.lead_id).filter((id) => !cant.has(id)) });
+    } finally { setSaving(false); }
   };
 
+  const verb = { reassign: "Reassign", status: "Change", department: "Move", source: "Set", note: "Add note to", task: "Add task to" }[kind];
+  const sourceChoices = field === "campaign" ? (options?.campaigns || []) : (options?.sources || []);
+
   return (
-    <Offcanvas show={show} onHide={busy ? undefined : onHide} placement="end" className="bulk_panel">
-      <Offcanvas.Header closeButton={!busy}>
-        <Offcanvas.Title>{isStatus ? "Change status of" : "Reassign"} {ids.length.toLocaleString()} {ids.length === 1 ? "lead" : "leads"}</Offcanvas.Title>
+    <Offcanvas show={show} onHide={saving ? undefined : onHide} placement="end" className="bulk_panel">
+      <Offcanvas.Header closeButton={!saving}>
+        <Offcanvas.Title>{TITLES[kind]} {ids.length.toLocaleString()} {ids.length === 1 ? "lead" : "leads"}</Offcanvas.Title>
       </Offcanvas.Header>
       <Offcanvas.Body>
         {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
-        <Form.Label className="fw-semibold">{isStatus ? "New status" : "New owner"}</Form.Label>
-        {isStatus ? (
-          <Form.Select size="sm" className="mb-1" value={status} onChange={(e) => setStatus(e.target.value)} disabled={busy}>
-            {BULK_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
-          </Form.Select>
-        ) : (
-          <Form.Select size="sm" className="mb-1" value={to} onChange={(e) => setTo(e.target.value)} disabled={busy}>
-            <option value="">Unassigned</option>
-            {staffList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-          </Form.Select>
-        )}
-        {isStatus && <small className="text-muted d-block mb-2">Other statuses (appointments, sold, no show) are set one lead at a time.</small>}
 
-        {busy && !rows ? <div className="text-center py-4"><Spinner size="sm" /> Checking {ids.length.toLocaleString()} leads…</div> : rows && (
+        {kind === "reassign" && (
+          <>
+            <Form.Label className="fw-semibold">New owner</Form.Label>
+            <Form.Select size="sm" className="mb-1" value={to} onChange={(e) => setTo(e.target.value)} disabled={saving}>
+              <option value="">Unassigned</option>
+              {staffList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+            </Form.Select>
+          </>
+        )}
+        {isStatus && (
+          <>
+            <Form.Label className="fw-semibold">New status</Form.Label>
+            <Form.Select size="sm" className="mb-1" value={status} onChange={(e) => setStatus(e.target.value)} disabled={saving}>
+              {BULK_STATUSES.map((st) => <option key={st} value={st}>{statusLabel(st)}</option>)}
+            </Form.Select>
+            <small className="text-muted d-block mb-2">Other statuses (appointments, sold, no show) are set one lead at a time.</small>
+          </>
+        )}
+        {kind === "department" && (
+          <>
+            <Form.Label className="fw-semibold">Department</Form.Label>
+            <Form.Select size="sm" className="mb-1" value={dept} onChange={(e) => setDept(e.target.value)} disabled={saving}>
+              {DEPARTMENTS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+            </Form.Select>
+            <small className="text-muted d-block mb-2">The department&apos;s staff get one email listing the leads moved.</small>
+          </>
+        )}
+        {kind === "source" && (
+          <>
+            <div className="btn-group mb-2" role="group" aria-label="What to set">
+              <Button size="sm" variant={field === "lead_source" ? "custom" : "outline-custom"} onClick={() => { setField("lead_source"); setFieldValue(""); }}>Lead source</Button>
+              <Button size="sm" variant={field === "campaign" ? "custom" : "outline-custom"} onClick={() => { setField("campaign"); setFieldValue(""); }}>Campaign</Button>
+            </div>
+            {!options ? <SkeletonRows rows={1} cols={1} /> : (
+              <Form.Select size="sm" className="mb-1" value={fieldValue} onChange={(e) => setFieldValue(e.target.value)} disabled={saving}>
+                <option value="">{field === "campaign" ? "No campaign" : "Pick a lead source"}</option>
+                {sourceChoices.map((n) => <option key={n} value={n}>{n}</option>)}
+              </Form.Select>
+            )}
+            {options && !sourceChoices.length && <small className="text-muted d-block mb-2">None on the list yet (Leads &gt; Add lead &gt; Lead source &gt; Edit list).</small>}
+          </>
+        )}
+        {(kind === "note" || kind === "task") && (
+          <>
+            <Form.Label className="fw-semibold">{kind === "note" ? "Note" : "What the call is for"}</Form.Label>
+            <Form.Control as="textarea" rows={kind === "note" ? 4 : 2} size="sm" className="mb-2" value={note} maxLength={kind === "task" ? 300 : 2000}
+              onChange={(e) => setNote(e.target.value)} disabled={saving} placeholder={kind === "note" ? "Write the note" : "e.g. Call about the new inventory"} />
+            {kind === "note" ? (
+              <Form.Check type="switch" id="bulk-note-internal" className="mb-2 small" checked={internal} onChange={(e) => setInternal(e.target.checked)}
+                label="For internal use only (the AI does not read it)" />
+            ) : (
+              <div className="d-flex gap-2 mb-2">
+                <div className="flex-fill"><Form.Label className="small mb-1">Due</Form.Label>
+                  <Form.Control type="datetime-local" size="sm" value={dueAt} onChange={(e) => setDueAt(e.target.value)} disabled={saving} /></div>
+                <div className="flex-fill"><Form.Label className="small mb-1">For</Form.Label>
+                  <Form.Select size="sm" value={taskFor} onChange={(e) => setTaskFor(e.target.value)} disabled={saving}>
+                    <option value="">Each lead&apos;s owner / anyone</option>
+                    {staffList.map((st) => <option key={st._id} value={st._id}>{st.name}</option>)}
+                  </Form.Select></div>
+              </div>
+            )}
+          </>
+        )}
+
+        {busy && !rows ? <><div className="d-flex gap-2 my-2">{[0, 1, 2].map((i) => <div key={i} className="bulk_count placeholder-glow flex-fill"><span className="placeholder col-6"></span></div>)}</div><SkeletonRows rows={8} /></> : rows && (
           <>
             <div className="d-flex gap-2 my-2 bulk_counts">
-              <div className="bulk_count ok"><b>{groups.change.length.toLocaleString()}</b>will change</div>
-              <div className="bulk_count same"><b>{groups.already.length.toLocaleString()}</b>already {isStatus ? "that status" : `${targetName}'s`}</div>
-              <div className="bulk_count bad"><b>{groups.cant.length.toLocaleString()}</b>can&apos;t change</div>
+              <div className="bulk_count ok"><b>{groups.change.length.toLocaleString()}</b>{kind === "note" || kind === "task" ? "will get one" : "will change"}</div>
+              {!(kind === "note" || kind === "task") && (
+                <>
+                  <div className="bulk_count same"><b>{groups.already.length.toLocaleString()}</b>already {kind === "reassign" ? `${targetName}'s` : "so"}</div>
+                  <div className="bulk_count bad"><b>{groups.cant.length.toLocaleString()}</b>can&apos;t change</div>
+                </>
+              )}
             </div>
 
             <div className="fw-semibold mt-3 mb-1">What changes</div>
             <Table bordered size="sm" className="small mb-3">
               <thead><tr><th style={{ width: "26%" }}></th><th>Now</th><th>After</th></tr></thead>
               <tbody>
-                <tr><td className="fw-semibold">{isStatus ? "Status" : "Owner"}</td>
-                  <td>{nowBreakdown.length ? nowBreakdown.map(([k, n]) => <div key={k}>{n.toLocaleString()} · {k}</div>) : "—"}</td>
-                  <td>→ {targetName}</td></tr>
-                {isStatus ? (
-                  <tr><td className="fw-semibold">Workflows</td><td colSpan={2}>The same as changing one lead: the AI is told, follow-ups follow the new status. Nothing is sent to the customer.</td></tr>
+                {(kind === "note" || kind === "task") ? (
+                  <tr><td className="fw-semibold">{kind === "note" ? "Conversation" : "Open tasks"}</td><td>—</td>
+                    <td>+ {kind === "note" ? `${internal ? "internal " : ""}note` : "call task"}{note.trim() ? `: "${note.trim().slice(0, 60)}${note.trim().length > 60 ? "…" : ""}"` : ""}</td></tr>
                 ) : (
-                  <>
-                    <tr><td className="fw-semibold">Conversation</td><td>—</td><td>+ internal note &quot;Reassigned from … to {targetName}&quot; (the customer never sees it)</td></tr>
-                    <tr><td className="fw-semibold">AI follow-ups</td><td colSpan={2} className="text-muted">No change</td></tr>
-                  </>
+                  <tr><td className="fw-semibold">{{ reassign: "Owner", status: "Status", department: "Department", source: field === "campaign" ? "Campaign" : "Lead source" }[kind]}</td>
+                    <td>{nowBreakdown.length ? nowBreakdown.slice(0, 6).map(([k, n]) => <div key={k}>{n.toLocaleString()} · {k}</div>) : "—"}
+                      {nowBreakdown.length > 6 && <div className="text-muted">+ {nowBreakdown.length - 6} more</div>}</td>
+                    <td>→ {targetName}</td></tr>
                 )}
+                {isStatus && <tr><td className="fw-semibold">Workflows</td><td colSpan={2}>The same as changing one lead: the AI is told, follow-ups follow the new status. Nothing is sent to the customer.</td></tr>}
+                {kind === "reassign" && <tr><td className="fw-semibold">Conversation</td><td>—</td><td>+ internal note &quot;Reassigned from … to {targetName}&quot; (the customer never sees it)</td></tr>}
+                {kind !== "status" && <tr><td className="fw-semibold">Customer</td><td colSpan={2} className="text-muted">Nothing is sent to the customer</td></tr>}
               </tbody>
             </Table>
 
             <Nav variant="pills" className="mb-2 small" activeKey={tab} onSelect={(k) => { setTab(k); setPage(1); }}>
-              <Nav.Item><Nav.Link eventKey="change" className="py-1">Will change {groups.change.length}</Nav.Link></Nav.Item>
-              <Nav.Item><Nav.Link eventKey="already" className="py-1">Already {groups.already.length}</Nav.Link></Nav.Item>
-              <Nav.Item><Nav.Link eventKey="cant" className="py-1">Can&apos;t {groups.cant.length}</Nav.Link></Nav.Item>
+              <Nav.Item><Nav.Link eventKey="change" className="py-1">{kind === "note" || kind === "task" ? "Leads" : "Will change"} {groups.change.length}</Nav.Link></Nav.Item>
+              {!(kind === "note" || kind === "task") && (
+                <>
+                  <Nav.Item><Nav.Link eventKey="already" className="py-1">Already {groups.already.length}</Nav.Link></Nav.Item>
+                  <Nav.Item><Nav.Link eventKey="cant" className="py-1">Can&apos;t {groups.cant.length}</Nav.Link></Nav.Item>
+                </>
+              )}
             </Nav>
             {shown.length ? (
               <Table size="sm" className="small mb-2">
-                <thead><tr><th>Lead</th><th>Now</th><th>{tab === "cant" ? "Why" : "After"}</th></tr></thead>
+                <thead><tr><th>Lead</th><th>{kind === "task" ? "Owner" : "Now"}</th><th>{tab === "cant" ? "Why" : "After"}</th></tr></thead>
                 <tbody>
                   {shown.map((r) => (
                     <tr key={r.lead_id}>
@@ -363,9 +511,9 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, onHide, onSa
         )}
       </Offcanvas.Body>
       <div className="d-flex gap-2 justify-content-end p-3 border-top">
-        <Button size="sm" variant="secondary" disabled={busy} onClick={onHide}>Cancel</Button>
-        <Button size="sm" variant="custom" disabled={busy || !rows || !groups.change.length} onClick={save}>
-          {busy && rows ? <><Spinner size="sm" className="me-1" />Saving…</> : `${isStatus ? "Change" : "Reassign"} ${groups.change.length.toLocaleString()} ${groups.change.length === 1 ? "lead" : "leads"}`}
+        <Button size="sm" variant="secondary" disabled={saving} onClick={onHide}>Cancel</Button>
+        <Button size="sm" variant="custom" disabled={saving || busy || !ready} onClick={save}>
+          {saving ? <><Spinner size="sm" className="me-1" />Saving…</> : `${verb} ${groups.change.length.toLocaleString()} ${groups.change.length === 1 ? "lead" : "leads"}`}
         </Button>
       </div>
     </Offcanvas>
@@ -386,7 +534,7 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
     return () => clearTimeout(t);
   }, [result, sticky, hover, onClose]);
   if (!result) return null;
-  const isStatus = result.kind === "status";
+  const canUndoKind = result.kind === "reassign";
   const undo = async () => {
     setUndoing(true);
     try { setUndone(await onUndo(result.batchId)); } catch (e) { setUndone({ error: e.message }); } finally { setUndoing(false); }
@@ -397,7 +545,10 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
       <div className="d-flex">
         <i className={`fa-solid ${failed.length && !result.updated ? "fa-circle-exclamation text-danger" : "fa-circle-check text-success"} me-2 mt-1`}></i>
         <div>
-          <strong>{result.updated.toLocaleString()} {result.updated === 1 ? "lead" : "leads"} {isStatus ? `set to ${result.targetName}` : `reassigned to ${result.targetName}`}</strong>
+          <strong>{result.updated.toLocaleString()} {result.updated === 1 ? "lead" : "leads"} {{
+            reassign: `reassigned to ${result.targetName}`, status: `set to ${result.targetName}`, department: `moved to ${result.targetName}`,
+            source: `set to ${result.targetName}`, note: "got the note", task: "got the call task",
+          }[result.kind] || "changed"}</strong>
           <div className="text-muted small">
             {result.unchanged ? `${result.unchanged.toLocaleString()} unchanged` : ""}
             {result.unchanged && failed.length ? " · " : ""}
@@ -414,7 +565,7 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
         </div>
       ) : (
         <div className="d-flex flex-wrap gap-3 mt-2 small">
-          {!isStatus && result.updated > 0 && (
+          {canUndoKind && result.updated > 0 && (
             <Button variant="link" className="p-0 text-custom fw-semibold small" disabled={undoing} onClick={undo}>
               {undoing ? "Undoing…" : "Undo"}
             </Button>
@@ -441,4 +592,24 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
 
 export async function undoBulk(batchId) {
   return post(`/api/leads/bulk-history/${encodeURIComponent(batchId)}/undo`, {});
+}
+
+// Export on the bulk bar: the chosen leads as the Leads list's CSV.
+export async function exportBulk(dealerId, ids) {
+  const res = await fetch("/api/leads/bulk-export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+    body: JSON.stringify({ dealer_id: dealerId, lead_ids: ids }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || data.message || `Export failed (${res.status})`);
+  }
+  const blob = new Blob([await res.text()], { type: "text/csv" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `leads_selected_${new Date().toISOString().split("T")[0]}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
