@@ -1,5 +1,6 @@
 // app/api/followup/route.js
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb.js';
 import Lead from '@models/Lead.js';
 import Email from '@models/Email.js';
@@ -8,7 +9,7 @@ import { sendEmail } from '@lib/email.js';
 import User from '@models/User.js';
 // you’ll need to provide this yourself:
 import { sendSMS } from '@lib/sms.js';
-import {  onFollowUpCompleted, aiOwnsFollowUps, claimFollowUpJob } from '@lib/followupService.js';
+import {  onFollowUpCompleted, aiOwnsFollowUps, claimFollowUpJob, OLD_FOLLOWUPS_RETIRED } from '@lib/followupService.js';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 
 export async function PUT(request) {
@@ -70,6 +71,18 @@ export async function PUT(request) {
       subject = 'Follow-up'
     } = payload;
    
+    // Old rule-based follow-ups are retired for every dealer (the user, 23 Nov 2026): whatever still calls
+    // this (the old followup.py cron), nothing is sent to the customer. The job is closed so it is not retried.
+    if (OLD_FOLLOWUPS_RETIRED) {
+      if (followup_id && mongoose.Types.ObjectId.isValid(followup_id)) {
+        await FollowUpJob.findByIdAndUpdate(followup_id, { status: 'completed', executedAt: new Date() });
+      }
+      return NextResponse.json(
+        { skipped: true, reason: 'Old rule-based follow-ups are retired for all dealers. Nothing sent.' },
+        { status: 200 }
+      );
+    }
+
     // 1) Load the pending job
     const job = await FollowUpJob.findById(followup_id);
     //console.log(job,followup_id);
