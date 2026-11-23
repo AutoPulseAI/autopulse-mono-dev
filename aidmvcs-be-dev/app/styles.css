@@ -1990,3 +1990,4 @@ background-color: var(--white);
 .tb_row_clear { position: absolute; top: 5px; right: 8px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: transparent;
   color: var(--secondary); font-size: 11px; line-height: 1; }
 .tb_row_clear:hover, .tb_row_clear:focus-visible { background: var(--border); color: var(--dark); }
+.tb_row_whose { grid-column: 1 / -1; font-size: 11px; color: var(--primary2); }

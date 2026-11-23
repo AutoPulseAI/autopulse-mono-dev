@@ -90,12 +90,13 @@ function Section({ title, icon, count, more, children, empty }) {
 }
 
 // One notification: click opens the lead and clears it; x clears it without leaving the page.
-function Row({ href, title, text, at, onClear }) {
+function Row({ href, title, text, at, whose, onClear }) {
   return (
     <div className="tb_row_wrap">
       <Dropdown.Item as={Link} href={href} className="tb_row" onClick={onClear}>
         <span className="tb_row_title">{title || "Unknown customer"}</span>
         {text && <span className="tb_row_text">{text}</span>}
+        {whose && <span className="tb_row_whose"><i className="fa-regular fa-user me-1" />{whose}</span>}
         {at && <span className="tb_row_at">{fromNow(at)}</span>}
       </Dropdown.Item>
       <button type="button" className="tb_row_clear" title="Clear" aria-label={`Clear ${title || "notification"}`}
@@ -159,7 +160,7 @@ export default function TopbarTools({ storeName }) {
   const calls = data?.calls;
   const fresh = data?.new_leads;
   const taken = data?.taken;
-  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.mine ? fresh.count || 0 : 0) + (taken?.count || 0);
+  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.count || 0) + (taken?.count || 0);
 
   return (
     <div className="tb_tools">
@@ -186,7 +187,7 @@ export default function TopbarTools({ storeName }) {
                 <Section title="Needs a person" icon="fa-regular fa-triangle-exclamation" count={alerts.count}
                   more="/dealer/ai/alerts" empty="Nothing waiting">
                   {alerts.items.map((a) => (
-                    <Row key={a.key} href={leadHref(a.lead_id)} title={a.name} text={a.text || alertKind(a.kind).label} at={a.at} onClear={() => clearOne(a.key)} />
+                    <Row key={a.key} href={leadHref(a.lead_id)} title={a.name} text={a.text || alertKind(a.kind).label} at={a.at} whose={a.whose} onClear={() => clearOne(a.key)} />
                   ))}
                 </Section>
               )}
@@ -194,7 +195,7 @@ export default function TopbarTools({ storeName }) {
                 <Section title="Calls to make" icon="fa-regular fa-phone-volume" count={calls.count}
                   more="/dealer/ai/call-tasks" empty="No calls due">
                   {calls.items.map((t) => (
-                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} onClear={() => clearOne(t.key)} />
+                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} whose={t.whose} onClear={() => clearOne(t.key)} />
                   ))}
                 </Section>
               )}
@@ -207,8 +208,8 @@ export default function TopbarTools({ storeName }) {
                 </Section>
               )}
               {fresh && (
-                <Section title={fresh.mine ? "New leads for you (24 h)" : "New leads (24 h)"} icon="fa-regular fa-user-plus"
-                  count={fresh.count} more={`/dealer/leads${canManageLeads ? "" : "?assignment=my"}`} empty="No new leads">
+                <Section title={fresh.mine ? "New leads for you (24 h)" : "New leads to assign (24 h)"} icon="fa-regular fa-user-plus"
+                  count={fresh.count} more={`/dealer/leads?assignment=${fresh.mine ? "my" : "unassigned"}`} empty="No new leads">
                   {fresh.items.map((l) => (
                     <Row key={l.key} href={leadHref(l.lead_id)} title={l.name} onClear={() => clearOne(l.key)}
                       text={l.why === "reassigned" ? `Reassigned to you${l.by ? ` by ${l.by}` : ""}` : "New lead"} at={l.at} />
