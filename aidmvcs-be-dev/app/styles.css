@@ -1565,11 +1565,84 @@ background-color: var(--white);
 }
 .lead_actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Two buttons a row when there is room, one when the column is narrow (23 Nov 2026: button text ran over the
+     border at some screen widths). */
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 6px;
 }
 .lead_actions .btn {
   width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  white-space: normal !important; /* beats .text-nowrap: a long label wraps inside the button, never over its border */
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  text-align: center;
+}
+.lead_actions .btn > i {
+  flex-shrink: 0;
+}
+
+/* Lead card head: the name takes what is left, Edit and "..." keep their full size. */
+.lead_head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lead_head_name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lead_head_tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lead_head_tools .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Where the lead came from (23 Nov 2026): Up type / Department / Source / Sub-source / Campaign as labelled fields. */
+.lead_facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 10px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 8px;
+  background: var(--bs-tertiary-bg, #f8f9fa);
+}
+.lead_fact {
+  min-width: 0;
+}
+.lead_fact dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--bs-secondary-color, #6c757d);
+  margin: 0;
+}
+.lead_fact dd {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.lead_fact_dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 .lead_view .badge {
   font-weight: 600;

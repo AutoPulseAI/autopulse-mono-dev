@@ -1,7 +1,7 @@
 // PATCH /api/leads/[id]/details - edit a lead's details straight from the lead page, in one click (13 Nov 2026 meeting,
 // 94:40-97:00: "edit the customer's name and phone from the lead page without going into the profile"; lead type and
 // lead source editable; date and time stamps never editable).
-//   body { changes: { <field>: { from, to } } }   field: name, phone, email, contact_type, lead_source, vin,
+//   body { changes: { <field>: { from, to } } }   field: name, phone, email, contact_type, lead_source, sub_source, vin,
 //                                                vehicle_year, vehicle_make, vehicle_model, department, campaign
 // campaign: one of the dealer's campaigns (app/lib/leadCampaign.js) or empty = none; marked set by staff.
 // department (Betsy, 14 Nov 2026; BB: convert a sales lead to service by changing its department, not closing it):
@@ -31,7 +31,7 @@ const fail = (error, status, extra = {}) => Response.json({ error, message: erro
 const clean = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 const LABELS = Object.freeze({ name: 'name', phone: 'phone', email: 'email', contact_type: 'lead type',
-  lead_source: 'lead source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag', campaign: 'campaign' });
+  lead_source: 'lead source', sub_source: 'sub-source', vin: 'VIN', vehicle_year: 'year', vehicle_make: 'make', vehicle_model: 'model', department: 'department', hot: 'Hot flag', campaign: 'campaign' });
 const TYPE_NAMES = { internet: 'Internet', phone: 'Phone Up', walk_in: 'Walk-In' };
 
 /** The stored value of one field from what staff typed, or { error }. Empty = cleared (null). */
@@ -56,6 +56,8 @@ function parseField(field, raw) {
       return t ? { value: t } : { error: 'Lead type must be Internet, Phone Up or Walk-In' };
     }
     case 'lead_source': return s.length > 60 ? { error: 'A lead source is at most 60 characters' } : { value: s };
+    // The provider's sub-source (e.g. Cars.com > Chat), as the source / sub-source report groups it (23 Nov 2026).
+    case 'sub_source': return s.length > 80 ? { error: 'A sub-source is at most 80 characters' } : { value: s };
     case 'vin': return /^[A-HJ-NPR-Z0-9]{11,17}$/i.test(s) ? { value: s.toUpperCase() } : { error: 'The VIN is not valid' };
     case 'vehicle_year': {
       const y = Number(s);
