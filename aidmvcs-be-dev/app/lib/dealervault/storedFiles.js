@@ -1,6 +1,7 @@
 // Every DealerVault feed file in storage (S3 raw/, where the daily copy puts what DealerVault sends; 20 Nov 2026).
 // Used by Admin > DMS feed: the stores list, "import the files not imported yet", and the delivery calendar
 // (23 Nov 2026). Listed once and kept two minutes, so opening the page doesn't list the bucket again and again.
+import fs from 'node:fs';
 import AWS from 'aws-sdk';
 
 export const FILE = /^(DVD\d+)_(\d{8})_(\d{4})_(PTINV|SL|SV|SV_APPT|OPENRO)\.txt$/;
@@ -17,6 +18,16 @@ function s3() {
 /** [{ key, fileName, dv, type, day: 'YYYYMMDD', stamp: 'YYYYMMDDhhmm', at }] */
 export async function storedFiles({ fresh = false } = {}) {
   if (!fresh && cached && cached.at > Date.now() - TTL_MS) return cached.files;
+  // Local development only: a folder stands in for the bucket (scripts/dealervault-local).
+  if (process.env.DEALERVAULT_LOCAL_DIR && process.env.NODE_ENV !== 'production') {
+    const out = fs.readdirSync(process.env.DEALERVAULT_LOCAL_DIR).map((fileName) => {
+      const m = FILE.exec(fileName);
+      return m && { key: `raw/${fileName}`, fileName, dv: m[1], type: m[4], day: m[2], stamp: `${m[2]}${m[3]}`,
+        at: new Date(Date.UTC(+m[2].slice(0, 4), +m[2].slice(4, 6) - 1, +m[2].slice(6, 8), +m[3].slice(0, 2), +m[3].slice(2))) };
+    }).filter(Boolean);
+    cached = { at: Date.now(), files: out };
+    return out;
+  }
   const Bucket = process.env.DEALERVAULT_S3_BUCKET;
   if (!Bucket) throw new Error('DEALERVAULT_S3_BUCKET is not set');
   const out = [];

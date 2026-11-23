@@ -6,6 +6,7 @@ import { dmsNameParts } from '../../../lib/personName.js';
 import { loadPolicy, rank } from '../../../lib/reconcile/policy.js';
 import { decideUndated } from '../../../lib/reconcile/decide.js';
 import { nameRow, recordHistory } from '../../../lib/reconcile/ledger.js';
+import CustomerFieldHistory from '../../../models/CustomerFieldHistory.js';
 
 // Customer.name_parts_from -> the source it stands for in the reconciliation policy.
 const NAME_SOURCE = Object.freeze({ staff: 'DEALER_USER', dms: 'DMS', adf: 'LEAD', guess: 'GUESS' });
@@ -161,11 +162,15 @@ export async function resolveCustomers(entries, context, Model = Customer) {
         const before = await Model.findOne({ dealer_id, _id: result.id })
           .select('first_name middle_name last_name suffix name_parts_from').lean();
         const shown = (c) => [c?.first_name, c?.middle_name, c?.last_name, c?.suffix].filter(Boolean).join(' ');
+        // A name the customer said is wrong (CUSTOMER_DISPUTED, Admin > DMS feed > Customer details) never comes back.
+        const disputed = new Set((await CustomerFieldHistory.find({ customer_id: result.id, field: 'name', status: 'CUSTOMER_DISPUTED' })
+          .select('value').lean().catch(() => [])).map((r) => String(r.value).trim().toLowerCase()));
         const decision = decideUndated(policy.name, before && shown(before)
           ? { value: shown(before), source: NAME_SOURCE[before.name_parts_from] || 'GUESS' } : null,
-        { value: shown(parts), source: 'DMS' });
-        const res = await Model.updateOne({ dealer_id, _id: result.id, name_parts_from: { $in: [null, ...allowed] } },
-          { $set: { ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v || null])), name_parts_from: 'dms' } });
+        { value: shown(parts), source: 'DMS' }, { disputed });
+        const res = disputed.has(shown(parts).trim().toLowerCase()) ? { modifiedCount: 0 }
+          : await Model.updateOne({ dealer_id, _id: result.id, name_parts_from: { $in: [null, ...allowed] } },
+            { $set: { ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v || null])), name_parts_from: 'dms' } });
         if (decision) {
           await recordHistory([nameRow({ dealerId: dealer_id, customerId: result.id, value: shown(parts), prior: shown(before),
             record: group.number, file: context.fileName,
