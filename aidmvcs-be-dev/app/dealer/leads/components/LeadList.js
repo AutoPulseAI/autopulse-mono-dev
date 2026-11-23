@@ -3,7 +3,7 @@ import { leadStatusLabel, statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
-import { Button, ListGroup, Row, Col, Offcanvas, Modal, Form, Alert, Badge, Pagination, Spinner } from "react-bootstrap";
+import { Button, ListGroup, Row, Col, Offcanvas, Modal, Form, Alert, Badge, Pagination, Spinner, Dropdown } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
 import DateRangePickerComponent from "../../components/DateRangePicker";
@@ -13,7 +13,7 @@ import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
-import BulkAssign from "./BulkAssign";
+import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk } from "./BulkAssign";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
@@ -52,9 +52,19 @@ const drillRangeText = (range) => {
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
-  // SOW B b5 (G-010): leads picked on this page for a bulk reassignment.
-  const [selectedIds, setSelectedIds] = useState([]);
-  const toggleSelected = (id) => setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  // SOW B b5 (G-010), the user's design of 24 Nov 2026: Actions > Select leads turns on bulk mode (a tick column, the
+  // bulk bar and the scope line). `selected` is the truth: lead id -> { _id, name, owner, status }. `scope` only says
+  // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
+  // out of a scope by hand.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Map());
+  const [scope, setScope] = useState("page");
+  const [unticked, setUnticked] = useState(0);
+  const [matching, setMatching] = useState({ total: 0, capped: false, leads: null, key: null });
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const [bulkPanel, setBulkPanel] = useState(null); // 'reassign' | 'status'
+  const [bulkResult, setBulkResult] = useState(null);
+  const closeBulkNotice = useCallback(() => setBulkResult(null), []);
   const canManageLeads = useCan("Manage Leads");
   const canViewAllReadOnly = useCan("View All Leads (Read Only)"); // SOW G-054: sees every lead, changes nothing
   const canViewAssignedOnly = useCan("View Assigned Leads");
@@ -300,10 +310,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     }
   }, [activeEntity?.id, assignmentFilter, pagination.itemsPerPage, filters, showAlert]);
 
+  // Bulk mode, "All matching": the filters changed (a chip's x) -> select what now matches.
+  useEffect(() => {
+    if (selectMode && scope === 'all' && matching.key && matching.key !== listFilterQuery()) selectScope('all');
+  }, [filters, assignmentFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // G-083: what other users change shows up without a manual refresh (same page, filters and scroll); paused while
   // a lead, a modal or a selection is open.
   useLiveRefresh(() => (activeEntity?.id ? fetchLeadsForPage(filters.page, { silent: true }) : null), {
-    paused: loading || showDetails || showStatusModal || showDeleteModal || showImportModal || selectedIds.length > 0,
+    paused: loading || showDetails || showStatusModal || showDeleteModal || showImportModal || selectMode,
   });
 
   const fetchLeads = useCallback(async () => {
@@ -553,6 +568,135 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       console.error("Export error:", error);
       showAlert("Failed to export leads", "danger");
     }
+  };
+
+  // The list's own filters as a query string (the same parameters fetchLeadsForPage sends, without page / limit):
+  // "All leads matching your filters" asks /api/leads?format=ids with exactly these.
+  const listFilterQuery = () => {
+    let q = `dealer_id=${activeEntity.id}`;
+    if (assignmentFilter && assignmentFilter !== 'all') q += `&assignment=${assignmentFilter}`;
+    if (filters.name) q += `&name=${encodeURIComponent(filters.name)}`;
+    if (filters.email) q += `&email=${encodeURIComponent(filters.email)}`;
+    if (filters.phone) q += `&phone=${encodeURIComponent(filters.phone)}`;
+    if (filters.status) q += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
+    if (filters.stopped) q += '&stopped=1';
+    if (filters.lead_source) q += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
+    if (filters.department) q += `&department=${encodeURIComponent(filters.department)}`;
+    if (filters.source) q += `&source=${encodeURIComponent(filters.source)}`;
+    if (filters.message_filter) q += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
+    if (filters.messages) q += `&messages=${encodeURIComponent(filters.messages)}`;
+    if ((filters.messages || filters.message_filter === 'unread') && filters.messagesChannel) q += `&channel=${encodeURIComponent(filters.messagesChannel)}`;
+    if (filters.status === 'Contacted' && filters.repliedBy) q += `&replied_by=${encodeURIComponent(filters.repliedBy)}`;
+    if (filters.sort) q += `&sort=${encodeURIComponent(filters.sort)}`;
+    q += drillQuery(filters);
+    if (filters.dateRange.startDate) q += `&startDate=${filters.dateRange.startDate.toISOString()}`;
+    if (filters.dateRange.endDate) q += `&endDate=${filters.dateRange.endDate.toISOString()}`;
+    return q;
+  };
+  const filtersActive = Boolean(filters.name || filters.email || filters.phone || filters.status || filters.lead_source
+    || filters.department || filters.source || filters.message_filter || filters.messages || filters.stopped
+    || filters.replyCohort || filters.apptAttribution || filters.reportKpi || filters.dateRange.startDate
+    || (assignmentFilter && assignmentFilter !== 'all'));
+  const lightRow = (l) => ({ _id: String(l._id), name: l.name || null, owner: l.assigned_to?.name || null,
+    status: l.fe_lead_status || null });
+
+  // Every lead matching the filters, in the list's order (one call, capped at 2,000 by the API).
+  const loadMatching = async () => {
+    const key = listFilterQuery();
+    if (matching.leads && matching.key === key) return matching.leads;
+    setScopeLoading(true);
+    try {
+      const res = await fetch(`/api/leads?format=ids&${key}`, { headers: { Authorization: `Bearer ${localStorage.getItem('dealertoken')}` } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Could not load the leads');
+      setMatching({ total: data.total || 0, capped: Boolean(data.capped), leads: data.leads || [], key });
+      return data.leads || [];
+    } finally {
+      setScopeLoading(false);
+    }
+  };
+  const selectScope = async (kind, a, b) => {
+    try {
+      let rows;
+      if (kind === 'page') rows = leads.map(lightRow);
+      else {
+        const all = await loadMatching();
+        const per = pagination.itemsPerPage || 10;
+        rows = kind === 'first' ? all.slice(0, a) : kind === 'pages' ? all.slice((a - 1) * per, b * per) : all;
+      }
+      setSelected(new Map(rows.map((r) => [r._id, r])));
+      setScope(kind);
+      setUnticked(0);
+    } catch (e) {
+      showAlert(e.message || 'Could not select the leads', 'danger');
+    }
+  };
+  const startSelecting = () => {
+    setSelectMode(true);
+    setBulkResult(null);
+    selectScope(filtersActive ? 'all' : 'page');
+  };
+  const stopSelecting = () => {
+    setSelectMode(false);
+    setSelected(new Map());
+    setUnticked(0);
+    setBulkPanel(null);
+  };
+  const toggleLead = (lead) => {
+    const id = String(lead._id);
+    setSelected((cur) => {
+      const next = new Map(cur);
+      if (next.has(id)) {
+        next.delete(id);
+        if (scope !== 'manual') setUnticked((n) => n + 1);
+      } else {
+        next.set(id, lightRow(lead));
+        if (scope !== 'manual') setScope('manual');
+      }
+      return next;
+    });
+  };
+  const dropLead = (id) => {
+    setSelected((cur) => { const next = new Map(cur); next.delete(id); return next; });
+    if (scope !== 'manual') setUnticked((n) => n + 1);
+  };
+  // "Filters on": each applied filter as a chip; its x clears that filter only (the same way the field does).
+  const FILTER_CHIPS = [
+    ['name', 'Name'], ['email', 'Email'], ['phone', 'Phone'], ['status', 'Status'], ['lead_source', 'Lead source'],
+    ['department', 'Department'], ['source', 'Source type'], ['message_filter', 'Messages'],
+  ];
+  const filterChips = [
+    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : filters[key]}` })),
+    ...(filters.dateRange.startDate ? [{ key: 'dateRange', text: `Dates: ${moment(filters.dateRange.startDate).format('MMM D')} – ${moment(filters.dateRange.endDate || filters.dateRange.startDate).format('MMM D, YYYY')}` }] : []),
+    ...(filters.stopped ? [{ key: 'stopped', text: 'Stopped' }] : []),
+  ];
+  const clearChip = (key) => {
+    if (key === 'dateRange') handleDateRangeChange({ startDate: null, endDate: null });
+    else if (key === 'stopped') setFilters((prev) => ({ ...prev, stopped: '', page: 1 }));
+    else setInputValues((prev) => ({ ...prev, [key]: '' }));
+  };
+  const bulkSaved = (result) => {
+    setBulkPanel(null);
+    setBulkResult(result);
+    setSelectMode(false);
+    setSelected(new Map());
+    setUnticked(0);
+    setMatching({ total: 0, capped: false, leads: null, key: null });
+    fetchLeads();
+  };
+  const bulkUndo = async (batchId) => {
+    const res = await undoBulk(batchId);
+    fetchLeads();
+    return res;
+  };
+  const bulkRetry = (result) => {
+    const byId = new Map((result.failed || []).map((f) => [f.lead_id, { _id: f.lead_id, name: f.name || null, owner: null, status: null }]));
+    setBulkResult(null);
+    setSelectMode(true);
+    setSelected(new Map(result.retryIds.map((id) => [id, byId.get(id) || { _id: id, name: null }])));
+    setScope('manual');
+    setUnticked(0);
+    setBulkPanel(result.kind);
   };
 
   const handleInputChange = (e) => {
@@ -1383,33 +1527,33 @@ useImperativeHandle(ref, () => ({
           </Col>
           <Col lg={3} md={9} xs={12}>
             <div className="d-flex justify-content-end align-items-center mb-2">
-              <div className="d-flex gap-1">
-                <Button 
-                  variant="custom" 
-                  size="sm"
-                  onClick={() => setEditLead({})}
-                  className="text-nowrap"
-                >
-                  <i className="fa-solid fa-plus me-1"></i>Add Lead
-                </Button>
-                <Button 
-                  variant="outline-custom" 
-                  size="sm"
-                  onClick={() => setShowImportModal(true)}
-                  className="text-nowrap"
-                >
-                  <i className="fa fa-upload me-1"></i>Import CSV
-                </Button>
-                <Button 
-                  variant="outline-custom" 
-                  size="sm"
-                  onClick={exportToCSV}
-                  disabled={loading || leads.length === 0}
-                  className="text-nowrap"
-                >
-                  <i className="fa fa-download me-1"></i>Export CSV
-                </Button>
-              </div>
+              {/* One Actions menu (24 Nov 2026) in place of Add Lead / Import CSV / Export CSV: Leads and Bulk. */}
+              <Dropdown align="end" className="leads_actions">
+                <Dropdown.Toggle size="sm" variant="outline-custom" className="text-nowrap" id="leads-actions">
+                  <i className="fa-solid fa-sliders me-1"></i>Actions
+                </Dropdown.Toggle>
+                <Dropdown.Menu className="leads_actions_menu">
+                  <Dropdown.Header>Leads</Dropdown.Header>
+                  <Dropdown.Item onClick={() => setEditLead({})}><i className="fa-solid fa-plus"></i>Add lead</Dropdown.Item>
+                  <Dropdown.Item onClick={() => setShowImportModal(true)}><i className="fa fa-upload"></i>Import CSV</Dropdown.Item>
+                  <Dropdown.Item onClick={exportToCSV} disabled={loading || leads.length === 0}>
+                    <i className="fa fa-download"></i>Export CSV
+                    <small>{pagination.totalItems.toLocaleString()} with your filters</small>
+                  </Dropdown.Item>
+                  {(canAssignLeads || canManageLeads) && (
+                    <>
+                      <Dropdown.Divider />
+                      <Dropdown.Header>Bulk</Dropdown.Header>
+                      <Dropdown.Item onClick={startSelecting} disabled={selectMode || !leads.length}>
+                        <i className="fa-solid fa-list-check"></i><strong>Select leads</strong><small>change many at once</small>
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={() => router.push('/dealer/leads/bulk-history')}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>Bulk history<small>who changed what, undo</small>
+                      </Dropdown.Item>
+                    </>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
             </div>
           </Col>
         </Row>
@@ -1544,7 +1688,7 @@ useImperativeHandle(ref, () => ({
             </Row>
           </Col>
         </Row>
-      ) : (
+      ) : selectMode ? null : (
         <Row className="align-items-center g-0">
           <Col lg={12}>
             {/* Filter Controls */}
@@ -1711,25 +1855,41 @@ useImperativeHandle(ref, () => ({
           )}
         </div> */}
 
+        {!compact && filterChips.length > 0 && (
+          <div className="leads_filters_on d-flex flex-wrap align-items-center gap-1">
+            <small className="text-muted me-1">Filters on:</small>
+            {filterChips.map((c) => (
+              <span key={c.key} className="leads_filter_chip">
+                {c.text}
+                <button type="button" aria-label={`Clear ${c.text}`} onClick={() => clearChip(c.key)}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {selectMode && !compact && (
+          <div className="mt-2">
+            <BulkBar count={selected.size} canAssign={canAssignLeads} canChangeStatus={canManageLeads}
+              busy={scopeLoading} onAction={setBulkPanel} onClose={stopSelecting} />
+            <BulkScope scope={scope} count={selected.size} pageCount={leads.length} perPage={pagination.itemsPerPage || 10}
+              matching={matching.leads ? matching.total : pagination.totalItems} capped={matching.capped}
+              loading={scopeLoading} selected={[...selected.values()]} unticked={unticked}
+              onScope={(k) => selectScope(k)} onFirst={(n) => selectScope('first', n)}
+              onPages={(a, b) => selectScope('pages', a, b)} onDrop={dropLead} />
+          </div>
+        )}
+
         <div className="w_card_list mt-3">
-          {(canAssignLeads || canManageLeads) && !compact && (
-            <BulkAssign dealerId={dealerParent?.id || activeEntity?.id} selectedIds={selectedIds} staffList={staffList}
-              canAssign={canAssignLeads} canChangeStatus={canManageLeads}
-              onClear={() => setSelectedIds([])} onDone={() => { setSelectedIds([]); fetchLeads(); }} />
-          )}
           <ListGroup as="ul" variant="flush">
             {!compact && (
-            <ListGroup.Item as="li" className="w_card_list_head border-bottom-0">
+            <ListGroup.Item as="li" className={`w_card_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
+              {selectMode && <div className="bulk_tick_col"></div>}
               <Row className="align-items-center w-100 g-0">
                 <Col xl={10} lg={9} sm={9} xs={12}>
                   <Row className="align-items-center gx-2">
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label d-flex align-items-center gap-1">
-                        {(canAssignLeads || canManageLeads) && leads.length > 0 && (
-                          <Form.Check type="checkbox" aria-label="Select every lead on this page"
-                            checked={leads.every((l) => selectedIds.includes(l._id))}
-                            onChange={(e) => setSelectedIds(e.target.checked ? leads.map((l) => l._id) : [])} />
-                        )}
+                      <p className="label">
                         <small>Name</small>
                       </p>
                     </Col>
@@ -1765,7 +1925,7 @@ useImperativeHandle(ref, () => ({
 
             {leads.length > 0 ? (
               leads.map(lead => (
-                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center`} onClick={(e) => {
+                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center${selectMode && selected.has(String(lead._id)) ? ' bulk_picked' : ''}`} onClick={(e) => {
                   // Don't trigger if clicking on buttons or interactive elements
                   if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
                   handleLeadClick(lead);
@@ -1828,16 +1988,18 @@ useImperativeHandle(ref, () => ({
                       )}
                     </div>
                   ) : (
+                  <>
+                  {selectMode && (
+                    <div className="bulk_tick_col" onClick={(e) => e.stopPropagation()}>
+                      <Form.Check type="checkbox" aria-label={`Select ${lead.name || "lead"}`}
+                        checked={selected.has(String(lead._id))} onChange={() => toggleLead(lead)} />
+                    </div>
+                  )}
                   <Row className="align-items-center w-100 g-0">
                     <Col xl={10} lg={9} sm={9} xs={12}>
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <p className="p_bold d-flex align-items-center gap-1">
-                            {(canAssignLeads || canManageLeads) && (
-                              <Form.Check type="checkbox" aria-label={`Select ${lead.name || "lead"}`}
-                                checked={selectedIds.includes(lead._id)}
-                                onClick={(e) => e.stopPropagation()} onChange={() => toggleSelected(lead._id)} />
-                            )}
+                          <p className="p_bold">
                             {lead.name || "N/A"}
                           </p>
                         </Col>
@@ -1976,6 +2138,7 @@ useImperativeHandle(ref, () => ({
                       </div>
                     </Col>
                   </Row>
+                  </>
                   )}
                 </ListGroup.Item>
               ))
@@ -2040,6 +2203,13 @@ useImperativeHandle(ref, () => ({
           )}
         </div>
       </div>
+
+      {/* Bulk actions (24 Nov 2026): the side panel, and the notice after saving */}
+      {!compact && bulkPanel && (
+        <BulkPanel kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
+          leads={[...selected.values()]} staffList={staffList} onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
+      )}
+      {!compact && <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />}
 
       {/* Lead Details Sidebar */}
       <LeadDetailsSidebar
