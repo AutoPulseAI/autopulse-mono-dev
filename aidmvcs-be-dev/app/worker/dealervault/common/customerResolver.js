@@ -3,6 +3,12 @@ import { normalizeEmail, normalizePhone } from '../../../lib/customerResolver.js
 import { requireUniqueIndex } from './indexProtection.js';
 import { mapBounded } from './bounded.js';
 import { dmsNameParts } from '../../../lib/personName.js';
+import { loadPolicy, rank } from '../../../lib/reconcile/policy.js';
+import { decideUndated } from '../../../lib/reconcile/decide.js';
+import { nameRow, recordHistory } from '../../../lib/reconcile/ledger.js';
+
+// Customer.name_parts_from -> the source it stands for in the reconciliation policy.
+const NAME_SOURCE = Object.freeze({ staff: 'DEALER_USER', dms: 'DMS', adf: 'LEAD', guess: 'GUESS' });
 
 const mappingPath = 'extra.dealervault.customer_numbers';
 const projection = '_id dealer_id emails.value phones.value extra.dealervault.customer_numbers merged_into dealervault_upload inbound_lead';
@@ -143,12 +149,29 @@ export async function resolveCustomers(entries, context, Model = Customer) {
       if (result.warning) entry.warnings.push(result.warning);
     }
     // The DMS's first / middle / last go on the customer (19 Nov 2026: names in parts, so a sold customer lines up
-    // with the DMS and forms fill by part). Never over a name staff typed; never stops the import.
+    // with the DMS and forms fill by part). Only over a name from a source the dealer's policy ranks the same or below
+    // the DMS (default: never over a name staff typed); each decision goes in the field history (23 Nov 2026, SOW
+    // Appendix B). Never stops the import.
     const parts = result.id ? dmsNameParts(group.entries[0].document) : null;
     if (parts) {
       try {
-        await Model.updateOne({ dealer_id, _id: result.id, name_parts_from: { $in: [null, 'guess', 'adf', 'dms'] } },
+        const policy = await loadPolicy(dealer_id);
+        const allowed = Object.entries(NAME_SOURCE).filter(([, src]) => rank(policy.name, src) >= rank(policy.name, 'DMS'))
+          .map(([from]) => from);
+        const before = await Model.findOne({ dealer_id, _id: result.id })
+          .select('first_name middle_name last_name suffix name_parts_from').lean();
+        const shown = (c) => [c?.first_name, c?.middle_name, c?.last_name, c?.suffix].filter(Boolean).join(' ');
+        const decision = decideUndated(policy.name, before && shown(before)
+          ? { value: shown(before), source: NAME_SOURCE[before.name_parts_from] || 'GUESS' } : null,
+        { value: shown(parts), source: 'DMS' });
+        const res = await Model.updateOne({ dealer_id, _id: result.id, name_parts_from: { $in: [null, ...allowed] } },
           { $set: { ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v || null])), name_parts_from: 'dms' } });
+        if (decision) {
+          await recordHistory([nameRow({ dealerId: dealer_id, customerId: result.id, value: shown(parts), prior: shown(before),
+            record: group.number, file: context.fileName,
+            ...(res.modifiedCount || decision.decision !== 'ACCEPT' ? decision
+              : { decision: 'RETAIN', reason: 'the name changed meanwhile; kept as it is' }) })]);
+        }
       } catch { /* the name parts are optional */ }
     }
   });

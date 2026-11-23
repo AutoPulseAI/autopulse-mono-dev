@@ -26,7 +26,7 @@ import mongoose from 'mongoose';
 import Booking from '../../models/Booking.js';
 import Email from '../../models/Email.js';
 import Lead from '../../models/Lead.js';
-import { REPORTS, bookingMatch, describeSpec, hasLeadFilter, leadMatch, parseFilterSpec } from './filters.js';
+import { REPORTS, bookingMatch, describeSpec, hasLeadFilter, leadMatchAt, parseFilterSpec } from './filters.js';
 import { getDealerTimezone, localDayRange } from './time.js';
 import { appointmentPassed, bookingShowed, leadStatuses } from '../appointmentFunnel.js';
 
@@ -199,7 +199,7 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
   const leadFound = new Set(leads.map((l) => String(l._id)));
   if (hasLeadFilter(spec)) {
     const pass = new Set((leadStrs.length ? await LeadM.collection.find({ _id: { $in: leadStrs.map(oid) },
-      dealer_id: { $in: dealerForms }, ...leadMatch(spec) }, { projection: { _id: 1 } }).toArray() : [])
+      dealer_id: { $in: dealerForms }, ...(await leadMatchAt(spec, dealerForms)) }, { projection: { _id: 1 } }).toArray() : [])
       .map((l) => String(l._id)));
     population = population.filter((b) => pass.has(String(b.lead_id)));
   }
@@ -257,7 +257,7 @@ export async function attributeAppointments({ dealerId, from, to, basis, filters
   if (hasLeadFilter(spec) && changed.length) {
     const ids = [...new Set(changed.map((b) => b.lead_id).filter(isOid).map(String))];
     const pass = new Set((ids.length ? await LeadM.collection.find({ _id: { $in: ids.map(oid) },
-      dealer_id: { $in: dealerForms }, ...leadMatch(spec) }, { projection: { _id: 1 } }).toArray() : [])
+      dealer_id: { $in: dealerForms }, ...(await leadMatchAt(spec, dealerForms)) }, { projection: { _id: 1 } }).toArray() : [])
       .map((l) => String(l._id)));
     changed = changed.filter((b) => pass.has(String(b.lead_id)));
   }

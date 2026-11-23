@@ -2,7 +2,8 @@
 // The lead's details on the lead page (and on the customer profile's Leads tab), editable in one click (13 Nov 2026
 // meeting: edit the customer's name and phone from the lead page; lead type and lead source viewable and editable;
 // the lead date is never editable. BB, 17 Nov 2026: "too many duplication").
-//   - Lead Type is shown (Internet / Phone Up / Walk-In, or Campaign / Other as the lead came in) next to its source;
+//   - Up type, department, source, sub-source and campaign each show as a labelled field with an icon (23 Nov 2026,
+//     as the source / sub-source report names them: Up Type > Source > Sub-Source); sub-source is editable too;
 //   - Edit turns the card into a form that saves by itself (SOW G-082): a typed field when it loses focus or on Enter,
 //     a menu at once; only what changed is sent (PATCH /api/leads/[id]/details) and the customer record follows (name,
 //     phone, email); a field someone else changed meanwhile is refused, not overwritten. "Saving / All changes saved /
@@ -37,7 +38,7 @@ function statusColor(label) {
   return "#1d6fe0";
 }
 
-const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
+const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "sub_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
 const DEPT_COLOR = { sales: "#1f5ea8", service: "#0ea5a5", parts: "#7c5a2e" };
 
 export function leadTypeName(lead) {
@@ -48,6 +49,19 @@ export function leadTypeName(lead) {
 
 const str = (v) => (v == null ? "" : String(v));
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
+
+// One labelled field of where the lead came from: icon, small label, value (a colour dot when the value has one).
+function LeadFact({ icon, label, color, muted, children }) {
+  const text = typeof children === "string" ? children : undefined;
+  return (
+    <div className="lead_fact">
+      <dt><i className={`${icon} me-1`} aria-hidden="true" />{label}</dt>
+      <dd className={muted ? "text-muted" : undefined} title={text}>
+        {color && <span className="lead_fact_dot" style={{ background: color }} />}<span className="text-truncate">{children}</span>
+      </dd>
+    </div>
+  );
+}
 
 // The lead's status as a pill next to its type and source: tinted in its colour, click to change it.
 function StatusPill({ lead, onStatusClick }) {
@@ -230,6 +244,9 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
           <Form.Group className="col-12"><Form.Label className="mb-0">Lead source</Form.Label>
             <LeadSourcePicker dealerId={lead?.dealer_id} value={form.lead_source}
               onChange={(v) => put({ lead_source: v }, true)} /></Form.Group>
+          <Form.Group className="col-12"><Form.Label className="mb-0">Sub-source</Form.Label>
+            <Form.Control size="sm" value={form.sub_source} maxLength={80} placeholder="e.g. Chat, Text Lead"
+              onChange={set("sub_source")} {...typed} /></Form.Group>
           <CampaignPicker dealerId={lead?.dealer_id} value={form.campaign} onChange={(v) => put({ campaign: v }, true)} />
           <Form.Group className="col-12"><Form.Label className="mb-0">Vehicle (year / make / model)</Form.Label>
             <div className="d-flex gap-1">
@@ -254,25 +271,28 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
 
   return (
     <div className="lead_view mb-1">
-      <div className="d-flex align-items-start gap-2 mb-2">
-        <div className="me-auto min-w-0">
-          <div className="fw-semibold fs-6 text-truncate">{lead?.name || "No name"}</div>
-          <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
-            <span className="badge" style={{ background: TYPE_COLOR[type] || "#6c757d" }}>{type}</span>
-            <span className="badge" title="Department" style={{ background: DEPT_COLOR[leadDepartment(lead)] }}>
-              {DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-            {/* Source and the provider's sub-source (e.g. Cars.com · Chat), as the source / sub-source report groups them. */}
-            <span className="small text-muted me-1" title="Source · sub-source">
-              {[lead?.lead_source || lead?.source || "Unknown source", lead?.sub_source].filter(Boolean).join(" · ")}</span>
-            {lead?.campaign && <span className="badge bg-light text-dark" title="Campaign">{lead.campaign}</span>}
-            <StatusPill lead={lead} onStatusClick={onStatusClick} />
-            {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
-          </div>
+      <div className="lead_head mb-2">
+        <div className="lead_head_name fw-semibold fs-6 text-truncate" title={lead?.name || ""}>{lead?.name || "No name"}</div>
+        <div className="lead_head_tools">
+          <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
+            <i className="fa-solid fa-pen me-1" />Edit</Button>
+          <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
         </div>
-        <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
-          <i className="fa-solid fa-pen me-1" />Edit</Button>
-        <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
       </div>
+      <div className="d-flex flex-wrap align-items-center gap-1 mb-2">
+        <StatusPill lead={lead} onStatusClick={onStatusClick} />
+        {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
+      </div>
+      {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
+          report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
+      <dl className="lead_facts">
+        <LeadFact icon="fa-solid fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
+        <LeadFact icon="fa-solid fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
+          {DEPARTMENT_NAMES[leadDepartment(lead)]}</LeadFact>
+        <LeadFact icon="fa-solid fa-globe" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
+        <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
+        {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
+      </dl>
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>

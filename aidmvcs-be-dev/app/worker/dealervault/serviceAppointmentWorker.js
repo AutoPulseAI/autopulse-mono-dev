@@ -10,6 +10,7 @@ import { resolveRepairOrders } from './common/repairOrderResolver.js';
 import { requireUniqueIndex } from './common/indexProtection.js';
 import { preserveAbsentCustomerVehicleRelationships } from './common/partialRelationships.js';
 import { SERVICE_APPOINTMENTS_QUEUE } from './queues.js';
+import { reconcileDmsProfile } from '../../lib/reconcile/ledger.js';
 
 const dateFields = ['Appointment Date', 'Appointment Create Date', 'Last RO Date', 'Promise Date',
   'Delivery Date', 'In Service Date', 'Birth Date', 'Customer Create Date', 'Customer Last Activity Date'];
@@ -72,6 +73,8 @@ export function createServiceAppointmentProcessor({ CustomerModel, VehicleModel,
       await resolveVehicles(entries, context, VehicleModel);
       await resolveRepairOrders(entries, context, RepairOrderModel);
       preserveAbsentCustomerVehicleRelationships(entries);
+      // Field-by-field history of the contacts it carries (SOW Appendix B; never stops the import).
+      await reconcileDmsProfile(entries, context, { CustomerModel });
     },
     ...dependencies,
   });

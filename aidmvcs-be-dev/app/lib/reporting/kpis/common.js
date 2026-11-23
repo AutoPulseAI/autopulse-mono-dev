@@ -15,7 +15,7 @@ import moment from 'moment-timezone';
 import Lead from '../../../models/Lead.js';
 import User from '../../../models/User.js';
 import Booking from '../../../models/Booking.js';
-import { leadMatch, hasLeadFilter } from '../filters.js';
+import { leadMatchAt, hasLeadFilter } from '../filters.js';
 import { attributeAppointments } from '../appointmentAttribution.js';
 import { appointmentPassed, bookingShowed } from '../../appointmentFunnel.js';
 import { replyCohorts } from '../replyCohorts.js';
@@ -114,7 +114,7 @@ export async function passingLeads(args, candidates) {
   const ids = [...new Set(candidates.filter(isOid).map(String))];
   if (!ids.length) return new Set();
   const rows = await Lead.collection.find({ _id: { $in: ids.map(oid) }, dealer_id: { $in: dealerForms(args.dealerId) },
-    ...leadMatch(s) }, { projection: { _id: 1 } }).toArray();
+    ...(await leadMatchAt(s, dealerForms(args.dealerId))) }, { projection: { _id: 1 } }).toArray();
   return new Set(rows.map((r) => String(r._id)));
 }
 
@@ -123,7 +123,7 @@ export async function leadsReceived(args, ctx) {
   return memo(ctx, 'leads_received', async () => {
     const w = await windowFor(args);
     const rows = await Lead.collection.find({ dealer_id: { $in: dealerForms(args.dealerId) },
-      createdAt: { $gte: w.start, $lte: w.end }, ...leadMatch(spec(args)) }, { projection: LEAD_FIELDS })
+      createdAt: { $gte: w.start, $lte: w.end }, ...(await leadMatchAt(spec(args), dealerForms(args.dealerId))) }, { projection: LEAD_FIELDS })
       .sort({ createdAt: 1, _id: 1 }).toArray();
     if (!ctx.leads) ctx.leads = new Map();
     for (const l of rows) ctx.leads.set(String(l._id), l);

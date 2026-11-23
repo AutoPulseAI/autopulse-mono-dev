@@ -1,10 +1,12 @@
 "use client";
 // Admin > DMS feed (SOW G-084 to G-087, 17 Nov 2026; reworked 18 Nov 2026): totals for the period, files held back
 // (import anyway / discard), every imported file with its dealer and what happened to its rows (paged, filtered; click a
-// file for its reasons and the rows that need a look), and one record's full history across files.
+// file for its reasons and the rows that need a look), and one record's full history across files. 23 Nov 2026: the
+// customer side - source precedence per field and every field decision (./FieldCards.js, SOW Appendix B).
 // Times are shown in UTC with the dealer's own time beside them.
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Form, Spinner, Table } from "react-bootstrap";
+import { FieldDecisionsCard, SourcePrecedenceCard } from "./FieldCards";
 
 const call = async (url, options = {}) => {
   const res = await fetch(url, { ...options, headers: { "Content-Type": "application/json",
@@ -322,6 +324,8 @@ export default function DmsFeedPage() {
         </div>
 
         <StoresCard onChanged={load} />
+        <FieldDecisionsCard dealers={dealers} />
+        <SourcePrecedenceCard dealers={dealers} />
 
         <div className="w_card">
           <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
