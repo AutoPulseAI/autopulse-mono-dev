@@ -5,7 +5,7 @@
 // Fields used (all exist today):
 //   source           Lead.source        (strict:false model; free text, e.g. 'email', 'sms', 'csv_import', provider)
 //   lead_source      Lead.lead_source   (provider name, 'campaign_<name>')
-//   assigned_to      Lead.assigned_to   (ObjectId User; the CURRENT owner, not the owner at the time of the event)
+//   assigned_to      the lead's owner AT THE TIME: owned in the picked days (ownerAtTime.js, leadMatchAt); 23 Nov 2026
 //   actor            Booking.created_by (ai | staff) - appointment reports only
 //   appointment_type Booking.appointment_type (sales | service; missing = sales, app/models/Booking.js)
 //   channel          Email.communication_type (sms | email) - reply reports only
@@ -14,7 +14,8 @@
 //                    2026: the Desk Log cards and the Dashboard count one department, the same way
 import mongoose from 'mongoose';
 import { departmentMatch } from '../departmentNames.js';
-import { DEFAULT_TIMEZONE, isValidLocalDate, toLocalDate } from './time.js';
+import { DEFAULT_TIMEZONE, isValidLocalDate, localDayRange, toLocalDate } from './time.js';
+import { leadsOwnedDuring } from './ownerAtTime.js';
 
 export const REPORTS = Object.freeze({
   REPLY_COHORTS: 'reply_cohorts',
@@ -147,6 +148,17 @@ export function leadMatch(spec = {}) {
   }
   if (spec.department) Object.assign(m, departmentMatch(spec.department));
   return m;
+}
+
+// leadMatch with the staff filter as OWNER AT THE TIME (./ownerAtTime.js): leads the picked staff owned at some moment
+// in the spec's days, not only the leads they own now. Every report query that filters leads uses this one.
+export async function leadMatchAt(spec = {}, dealerForms = []) {
+  if (!spec.assigned_to?.length) return leadMatch(spec);
+  const m = leadMatch({ ...spec, assigned_to: undefined });
+  const { start, end } = localDayRange(spec.from, spec.to ?? spec.from, spec.tz || DEFAULT_TIMEZONE);
+  const owned = await leadsOwnedDuring({ dealerForms: dealerForms.map(String), staffIds: spec.assigned_to, start, end });
+  // $and, so a caller's own _id condition beside it is kept.
+  return { ...m, $and: [{ _id: { $in: [...owned].map((id) => new mongoose.Types.ObjectId(id)) } }] };
 }
 
 export function hasLeadFilter(spec = {}) {

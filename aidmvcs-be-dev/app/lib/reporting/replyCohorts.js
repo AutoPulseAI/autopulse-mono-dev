@@ -45,7 +45,7 @@ import Customer from '../../models/Customer.js';
 import Email from '../../models/Email.js';
 import Lead from '../../models/Lead.js';
 import { isLeadArrivalRow } from '../contactedLeads.js';
-import { REPORTS, describeSpec, hasLeadFilter, leadMatch, parseFilterSpec, replyMatch } from './filters.js';
+import { REPORTS, describeSpec, hasLeadFilter, leadMatchAt, parseFilterSpec, replyMatch } from './filters.js';
 import { calendarDayDiff, endOfLocalDayPlus, getDealerTimezone, localDate, localDayRange } from './time.js';
 
 export const DEFINITIONS_VERSION = 'reply-cohorts-v2'; // v2: 60-90 / older than 90 groups; inbound_messages on the dealer's leads only
@@ -329,7 +329,7 @@ export async function replyCohorts({ dealerId, from, to, filters = {}, tz, now =
   let passing = null;
   if (leadFilter) {
     passing = new Set((leadIdStrs.length ? await LeadM.collection.find({ _id: { $in: leadIdStrs.map(oid) },
-      ...leadMatch(spec) }, { projection: { _id: 1 } }).toArray() : []).map((l) => String(l._id)));
+      ...(await leadMatchAt(spec, dealerForms)) }, { projection: { _id: 1 } }).toArray() : []).map((l) => String(l._id)));
   }
   const customerIds = [...new Set(leads.map((l) => l.customer_id).filter(isOid).map(String))];
   const customers = customerIds.length ? await CustomerM.collection.find({ _id: { $in: customerIds.map(oid) } },
@@ -391,7 +391,7 @@ export async function replyCohorts({ dealerId, from, to, filters = {}, tz, now =
 
   // 5. New leads received in the window (Lead.createdAt; same lead filters).
   const new_leads = await LeadM.collection.countDocuments({ dealer_id: { $in: dealerForms },
-    createdAt: { $gte: start, $lte: end }, ...leadMatch(spec) });
+    createdAt: { $gte: start, $lte: end }, ...(await leadMatchAt(spec, dealerForms)) });
 
   return {
     dealer_id: dealerStr,
