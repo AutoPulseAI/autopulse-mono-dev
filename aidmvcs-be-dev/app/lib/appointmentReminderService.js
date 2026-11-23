@@ -22,6 +22,15 @@ export async function aiOwnsCustomerMessages(dealerId, { getMode = getDealerAiMo
   return (await getMode(String(dealerId))) === 'live';
 }
 
+// The user, 23 Nov 2026: no old script in any workflow, for every dealership; the only difference between
+// dealers is AI on or off. The old CRM's timed messages (appointment reminders, post-appointment texts, the
+// Managerial Review check-ins) are retired for ALL dealers: none are created, and any already queued are
+// cancelled instead of sent. (A booking's confirmation, sent when staff book, is unchanged.)
+export const OLD_TIMED_MESSAGES_RETIRED = true;
+async function oldTimedMessagesOff(dealerId) {
+  return OLD_TIMED_MESSAGES_RETIRED || await aiOwnsCustomerMessages(dealerId);
+}
+
 /**
  * Create appointment reminders for a booking
  * @param {Object} bookingData - The booking data
@@ -30,7 +39,7 @@ export async function aiOwnsCustomerMessages(dealerId, { getMode = getDealerAiMo
 export async function createAppointmentReminders(bookingData, dealerId) {
   try {
     await dbConnect();
-    if (await aiOwnsCustomerMessages(dealerId)) {
+    if (await oldTimedMessagesOff(dealerId)) {
       console.log(`Reminders skipped for dealer ${dealerId}: the AI is live and sends the appointment messages`);
       return { success: false, skipped_for_ai: true, message: 'AI owns appointment messages' };
     }
@@ -473,7 +482,7 @@ export async function createManagerialReviewMessages(leadId, dealerId) {
     // "Has someone from our team reached out?" text and email went 24h / 72h later whatever happened meanwhile -
     // Douglas Benjamin after staff closed his newer lead, an opted-out customer, a booked one, Sierra after Mercy
     // had answered her. After a handoff the customer gets no timed message; staff get the AI's alert instead.
-    if (await aiOwnsCustomerMessages(dealerId)) {
+    if (await oldTimedMessagesOff(dealerId)) {
       console.log(`Managerial review messages skipped for dealer ${dealerId}: the AI is live`);
       return { success: false, skipped_for_ai: true, message: 'AI owns follow-up messages' };
     }
@@ -587,9 +596,9 @@ export async function processReminder(reminder) {
     // Created before the dealer's AI went live: never sent now (the AI owns
     // these messages); cancelled so the cron stops picking it up.
     // Managerial review check-ins included (the user, 3 Nov 2026: createManagerialReviewMessages).
-    if (dealerId && await aiOwnsCustomerMessages(dealerId)) {
+    if (OLD_TIMED_MESSAGES_RETIRED || (dealerId && await aiOwnsCustomerMessages(dealerId))) {
       reminder.status = 'cancelled';
-      reminder.error_message = 'Skipped: the AI is live for this dealer and sends its own messages';
+      reminder.error_message = 'Skipped: old CRM timed messages are retired (only our AI messages customers)';
       await reminder.save?.();
       return { success: true, skipped: true, reason: 'ai_live' };
     }

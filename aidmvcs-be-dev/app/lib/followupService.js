@@ -32,8 +32,14 @@ export async function aiOwnsFollowUps(dealerId, { getMode = getDealerAiMode } = 
 }
 
 // schedule a single follow‑up (runIndex) for one lead+rule
+// The user, 23 Nov 2026: no old script in any workflow, for every dealership. The old rule-based
+// follow-ups (FollowUpJobs sent by the hourly /var/www/html/follow/followup.py, the "Angelica" check-ins)
+// are retired for ALL dealers, AI on or off: none are created and any still pending are cleared. The only
+// difference between dealers is whether their AI is on; a dealer with the AI off gets no automatic messages.
+export const OLD_FOLLOWUPS_RETIRED = true;
+
 async function scheduleNext(lead, rule, runIndex, baseTs = null) {
-  if (await aiOwnsFollowUps(lead.dealer_id)) {
+  if (OLD_FOLLOWUPS_RETIRED || await aiOwnsFollowUps(lead.dealer_id)) {
     await clearPendingJobs(lead._id);
     return;
   }

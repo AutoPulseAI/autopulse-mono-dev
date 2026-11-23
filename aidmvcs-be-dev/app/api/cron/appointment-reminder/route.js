@@ -9,6 +9,7 @@ import { sendSMS } from '@lib/sms.js';
 import { checkLeadByIdentifiers } from '@lib/dealersocket-worknote.js';
 import moment from 'moment-timezone';
 import { requireCronCaller } from '@lib/apiGuard';
+import { OLD_TIMED_MESSAGES_RETIRED } from '@lib/appointmentReminderService';
 // Callers: the admin panel (super admin), the server's scheduler (CRON_SECRET; until it is set, calls without it
 // are still let through, see app/lib/apiGuard.js requireCronCaller).
 
@@ -47,6 +48,15 @@ export async function POST(request) {
     const reminder = await AppointmentReminder.findById(reminder_id);
     if (!reminder) {
       return NextResponse.json({ error: 'Reminder not found' }, { status: 404 });
+    }
+
+    // Old CRM timed messages are retired for every dealer (the user, 23 Nov 2026): whatever calls this (an old
+    // cron script), nothing is sent; the reminder is cancelled so it is not picked up again.
+    if (OLD_TIMED_MESSAGES_RETIRED && reminder.status !== 'sent') {
+      reminder.status = 'cancelled';
+      reminder.error_message = 'Skipped: old CRM timed messages are retired (only our AI messages customers)';
+      await reminder.save();
+      return NextResponse.json({ success: true, skipped: true, message: 'Old CRM timed messages are retired. Nothing sent.' });
     }
 
     // Check if reminder is already processed
