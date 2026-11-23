@@ -16,6 +16,7 @@ import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
 import { statusChangeError } from '@lib/ai/aiDnd';
 import { PUT as changeStatus } from '../../conversations/lead/status/route.js';
+import { recordBulkCall, validBatchId } from '@lib/bulkChanges';
 
 export const runtime = 'nodejs';
 const MAX = 200;
@@ -58,26 +59,32 @@ export async function POST(req) {
   const headers = new Headers({ 'Content-Type': 'application/json' });
   for (const h of ['authorization', 'cookie']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
   const results = { updated: [], unchanged: [], failed: [] };
+  const history = []; // Bulk history (app/models/BulkChange.js), when the browser sends a batch_id
+  const item = (r, result, reason = null) => history.push({ lead_id: r.lead_id, name: r.name || null, result, reason,
+    from_label: r.current ?? null });
+  const failed = (r, reason) => { results.failed.push({ lead_id: r.lead_id, name: r.name, reason }); item(r, 'failed', reason); };
   for (const r of rows) {
-    if (r.error) { results.failed.push({ lead_id: r.lead_id, name: r.name, reason: r.error }); continue; }
-    if (!r.change) { results.unchanged.push(r.lead_id); continue; }
+    if (r.error) { failed(r, r.error); continue; }
+    if (!r.change) { results.unchanged.push(r.lead_id); item(r, 'unchanged'); continue; }
     if (r.lead_id in expected && (expected[r.lead_id] ?? null) !== r.current) {
-      results.failed.push({ lead_id: r.lead_id, name: r.name, reason: 'Changed by someone else meanwhile - not touched' });
+      failed(r, 'Changed by someone else meanwhile - not touched');
       continue;
     }
     try {
       const res = await changeStatus(new Request(req.url, { method: 'PUT', headers,
         body: JSON.stringify({ id: r.lead_id, status }) }));
-      if (res.ok) results.updated.push(r.lead_id);
+      if (res.ok) { results.updated.push(r.lead_id); item(r, 'updated'); }
       else {
         const data = await res.json().catch(() => ({}));
-        results.failed.push({ lead_id: r.lead_id, name: r.name, reason: data.error || data.message || `Refused (${res.status})` });
+        failed(r, data.error || data.message || `Refused (${res.status})`);
       }
     } catch (error) {
-      results.failed.push({ lead_id: r.lead_id, name: r.name, reason: 'Could not be saved' });
+      failed(r, 'Could not be saved');
       console.error('[bulk-status] lead failed', { lead_id: r.lead_id, error: error?.message });
     }
   }
+  await recordBulkCall({ dealerId, batchId: validBatchId(body.batch_id), action: 'status', toLabel: status,
+    user: access.user, items: history });
   return Response.json({ preview: false, updated: results.updated.length, unchanged: results.unchanged.length,
     failed: results.failed });
 }

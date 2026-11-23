@@ -549,6 +549,35 @@ export async function GET(req) {
       query._id = { $in: contacted };
     }
 
+    if (format === 'ids') {
+      // Bulk actions, "All leads matching your filters" (SOW Deliverable B b5): the same leads as the list with the same
+      // filters and order, as light rows (id, name, owner, status) - one query, no populate beyond the owner's name.
+      // Capped at BULK_IDS_MAX; `capped` says when the list holds more.
+      const BULK_IDS_MAX = 2000;
+      const sort = url.searchParams.get("sort");
+      let ordered;
+      if (repliedOrder && sort !== 'created_desc' && sort !== 'created_asc') {
+        ordered = repliedOrder.slice(0, BULK_IDS_MAX).map((r) => r._id);
+      }
+      const rows = await Lead.find(ordered ? { ...query, _id: { $in: ordered } } : query)
+        .select('_id name assigned_to fe_lead_status createdAt')
+        .populate({ path: 'assigned_to', select: 'name', strictPopulate: false })
+        .sort({ createdAt: sort === 'created_asc' ? 1 : -1 })
+        .limit(BULK_IDS_MAX + 1)
+        .lean();
+      if (ordered) {
+        const byId = new Map(rows.map((l) => [String(l._id), l]));
+        rows.splice(0, rows.length, ...ordered.map((id) => byId.get(String(id))).filter(Boolean));
+      }
+      const total = ordered ? repliedOrder.length : await Lead.countDocuments(query);
+      return Response.json({
+        total,
+        capped: total > BULK_IDS_MAX,
+        leads: rows.slice(0, BULK_IDS_MAX).map((l) => ({ _id: String(l._id), name: l.name || null,
+          owner: l.assigned_to?.name || null, status: l.fe_lead_status || null })),
+      });
+    }
+
     if (format === 'csv') {
       // Handle CSV export
       const leads = await Lead.find(query)
