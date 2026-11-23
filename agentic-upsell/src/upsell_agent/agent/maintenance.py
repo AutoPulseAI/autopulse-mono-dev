@@ -44,6 +44,7 @@ from upsell_agent.integrations.customer360 import get_deal_date, get_repair_orde
 from upsell_agent.integrations.mongodb import (
     AI_MAINTENANCE_LIBRARY_COLLECTION,
     AI_SERVICE_VEHICLES_COLLECTION,
+    AI_VEHICLE_DATABASES_CALLS_COLLECTION,
     PLATFORM_DEALS_COLLECTION,
     PLATFORM_REPAIR_ORDERS_COLLECTION,
     dealer_scoped_db,
@@ -56,6 +57,7 @@ from upsell_agent.integrations.vehicle_databases import (
     VehicleDatabasesError,
     get_vehicle_databases_client,
     schedule_from_dict,
+    valid_vin,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,8 +67,11 @@ logger = logging.getLogger(__name__)
 DUE_WINDOW_MILES = 1000
 # A reading older than this is not "reliable current mileage" (§5).
 MILEAGE_CURRENT_DAYS = 120
-SCHEDULE_REFRESH = timedelta(days=180)
+# The user, 23 Nov 2026: a model's OEM schedule doesn't change, so a schedule we have is never fetched again by itself
+# (the bulk job's --refresh does it on request). A VIN Vehicle Databases had no record for is asked again after this.
 NO_RECORD_RETRY = timedelta(days=30)
+# A library entry for a model Vehicle Databases had no record for: kept so the next vehicle of it isn't paid for again.
+LIBRARY_OK, LIBRARY_NO_RECORD = "ok", "no_record"
 RECHECK = timedelta(days=1)
 
 RO_MILEAGE_FIELDS = ("Mileage Out", "RO Mileage")
@@ -249,56 +254,101 @@ def library_key(year: Any, make: Any, model: Any) -> str | None:
     return f"{y}|{m}|{mo}" if 1980 <= y <= 2100 and m and mo else None
 
 
-async def _from_library(vehicle: dict[str, Any], now: datetime) -> MaintenanceSchedule | None:
-    key = library_key(vehicle.get("year"), vehicle.get("make"), vehicle.get("model"))
-    if not key:
-        return None
-    row = await get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION].find_one({"key": key})
-    fetched = _aware((row or {}).get("fetched_at"))
-    if not row or not fetched or now - fetched > SCHEDULE_REFRESH:
-        return None
-    return schedule_from_dict(row.get("schedule"))
+def vin_pattern_key(vin: Any) -> str | None:
+    """The library's key for one build of a model: VIN positions 1-8 (maker, model, body, engine) and 10 (model year),
+    e.g. "vin:JA4J3VA8|N". Matches the next vehicle of the same build whatever names the DMS or NHTSA gave it."""
+    v = str(vin or "").strip().upper()
+    return f"vin:{v[:8]}|{v[9]}" if valid_vin(v) else None
 
 
-async def _to_library(vehicle: dict[str, Any], schedule: MaintenanceSchedule, now: datetime) -> None:
-    """Saves a fetched schedule under the vehicle's own year / make / model and, when they differ, the names Vehicle
-    Databases gave it, so the next vehicle of that model takes it from here instead of a new call."""
-    keys = {library_key(vehicle.get("year"), vehicle.get("make"), vehicle.get("model")),
-            library_key(schedule.year, schedule.make, schedule.model)} - {None}
+def library_keys(vehicle: dict[str, Any], schedule: MaintenanceSchedule | None = None) -> list[str]:
+    """Every key a vehicle (and the schedule Vehicle Databases gave for it) is filed under: its VIN build first, then
+    its year / make / model, then Vehicle Databases' own names when they differ."""
+    keys = [vin_pattern_key(vehicle.get("vin")), library_key(vehicle.get("year"), vehicle.get("make"), vehicle.get("model"))]
+    if schedule:
+        keys.append(library_key(schedule.year, schedule.make, schedule.model))
+    return list(dict.fromkeys(k for k in keys if k))
+
+
+async def from_library(keys: list[str]) -> tuple[bool, MaintenanceSchedule | None]:
+    """(found, schedule) for the first of these keys the library has a schedule for; (True, None) when the library
+    only knows Vehicle Databases has no record for it; (False, None) when it has never been asked. Never expires."""
+    if not keys:
+        return False, None
+    rows = {r["key"]: r for r in await get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION].find(
+        {"key": {"$in": keys}}).to_list(len(keys))}
     for key in keys:
-        await get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION].update_one({"key": key}, {
-            "$set": {"key": key, "schedule": schedule.as_dict(), "fetched_at": now, "source": SOURCE,
-                     "from_vin": schedule.vin}, "$inc": {"fetches": 1}}, upsert=True)
+        if schedule := schedule_from_dict((rows.get(key) or {}).get("schedule")):
+            return True, schedule
+    return any((rows.get(k) or {}).get("status") == LIBRARY_NO_RECORD for k in keys), None
+
+
+async def save_to_library(keys: list[str], schedule: MaintenanceSchedule | None, now: datetime, *,
+                          from_vin: str) -> None:
+    """Files a fetched schedule under every key (replacing what was there). A "no record" answer is filed only under
+    keys that hold nothing yet, so it never replaces a schedule."""
+    library = get_db()[AI_MAINTENANCE_LIBRARY_COLLECTION]
+    for key in keys:
+        if schedule:
+            await library.update_one({"key": key}, {
+                "$set": {"key": key, "schedule": schedule.as_dict(), "status": LIBRARY_OK, "fetched_at": now,
+                         "source": SOURCE, "from_vin": from_vin}, "$inc": {"fetches": 1}}, upsert=True)
+        else:
+            await library.update_one({"key": key}, {"$setOnInsert": {
+                "key": key, "schedule": None, "status": LIBRARY_NO_RECORD, "fetched_at": now, "source": SOURCE,
+                "from_vin": from_vin}}, upsert=True)
+
+
+async def log_call(now: datetime, *, by: str, vin: str, result: str, key: str | None = None,
+                   error: str | None = None) -> None:
+    """One paid Vehicle Databases call (by = "daily" | "bulk"; result = ok | no_record | error)."""
+    await get_db()[AI_VEHICLE_DATABASES_CALLS_COLLECTION].insert_one({
+        "at": now, "day": now.astimezone(UTC).date().isoformat(), "by": by, "api": "vehicle-maintenance/v4",
+        "vin": vin, "key": key, "result": result, "error": error})
+
+
+async def calls_today(now: datetime, *, by: str) -> int:
+    return await get_db()[AI_VEHICLE_DATABASES_CALLS_COLLECTION].count_documents(
+        {"day": now.astimezone(UTC).date().isoformat(), "by": by})
 
 
 async def _schedule(db, vehicle: dict[str, Any], client: VehicleDatabasesClient, now: datetime) -> tuple[
         MaintenanceSchedule | None, str | None]:
-    """The stored schedule, else the library's for this model year / make / model, else fetched by VIN when Vehicle
-    Databases is on - one paid call per model, not per vehicle (Betsy, 19 Nov 2026). (schedule, problem)."""
+    """The stored schedule, else the library's for this VIN build or model year / make / model, else fetched by VIN
+    when Vehicle Databases is on and today's call cap allows - one paid call per model, not per vehicle (Betsy,
+    19 Nov 2026), and a schedule once fetched is kept (the user, 23 Nov 2026). (schedule, problem)."""
     stored = vehicle.get("maintenance_schedule") or {}
     fetched_at = _aware(stored.get("fetched_at"))
     schedule = schedule_from_dict(stored.get("schedule"))
-    stale = fetched_at is None or now - fetched_at > (SCHEDULE_REFRESH if schedule else NO_RECORD_RETRY)
-    if not stale:
-        return schedule, None if schedule else "Vehicle Databases has no schedule for this VIN"
+    if schedule:
+        return schedule, None
+    if fetched_at and now - fetched_at <= NO_RECORD_RETRY:
+        return None, "Vehicle Databases has no schedule for this VIN"
     vehicles = db.collection(AI_SERVICE_VEHICLES_COLLECTION)
-    shared = await _from_library(vehicle, now)
-    if shared:
-        await vehicles.update_one({"vin": vehicle["vin"]}, {"$set": {
-            "maintenance_schedule": {"source": f"{SOURCE} (library)", "fetched_at": now, "schedule": shared.as_dict()}}})
-        return shared, None
+    found, shared = await from_library(library_keys(vehicle))
+    if found:
+        await vehicles.update_one({"vin": vehicle["vin"]}, {"$set": {"maintenance_schedule": {
+            "source": f"{SOURCE} (library)", "fetched_at": now, "schedule": shared.as_dict() if shared else None}}})
+        return shared, None if shared else "Vehicle Databases has no schedule for this model (library)"
     if not client.enabled:
-        return schedule, None if schedule else "Vehicle Databases is off (VEHICLE_DATABASES_ENABLED)"
+        return None, "Vehicle Databases is off (VEHICLE_DATABASES_ENABLED)"
+    cap = get_settings().vehicle_databases_daily_call_cap
+    if await calls_today(now, by="daily") >= cap:
+        return None, f"today's Vehicle Databases call cap ({cap}) is used up; asked again tomorrow"
+    key = vin_pattern_key(vehicle["vin"])
     try:
         fresh = await client.maintenance_schedule(vehicle["vin"])
     except VehicleDatabasesError as exc:
         logger.warning("maintenance schedule for %s failed: %s", vehicle["vin"], exc)
-        return schedule, f"Vehicle Databases: {exc}"
+        await log_call(now, by="daily", vin=vehicle["vin"], key=key, result="error", error=str(exc))
+        return None, f"Vehicle Databases: {exc}"
+    await log_call(now, by="daily", vin=vehicle["vin"], key=key, result=LIBRARY_OK if fresh else LIBRARY_NO_RECORD)
     await vehicles.update_one({"vin": vehicle["vin"]}, {"$set": {
         "maintenance_schedule": {"source": SOURCE, "fetched_at": now,
                                  "schedule": fresh.as_dict() if fresh else None}}})
-    if fresh:
-        await _to_library(vehicle, fresh, now)
+    # No record: filed under this VIN build only, so another engine or body of the same model is still asked.
+    await save_to_library(library_keys(vehicle, fresh) if fresh else [k for k in [key] if k], fresh, now,
+                          from_vin=vehicle["vin"])
     return fresh, None if fresh else "Vehicle Databases has no schedule for this VIN"
 
 

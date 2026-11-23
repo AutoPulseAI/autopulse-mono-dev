@@ -207,6 +207,9 @@ TRADE_VALUE_TTL_S = 30 * 86400
 # schedule per model year / make / model, shared by every dealership (agent/maintenance.py). Not per dealer: an OEM
 # schedule is the same for everyone.
 AI_MAINTENANCE_LIBRARY_COLLECTION = "ai_maintenance_library"
+# Every paid Vehicle Databases maintenance call (pay as you go, 23 Nov 2026): when, by whom (daily check or bulk job),
+# which VIN / model, and what came back - the daily cap counts these, and they show what was spent.
+AI_VEHICLE_DATABASES_CALLS_COLLECTION = "ai_vehicle_databases_calls"
 # MASTER_PLAN_4 D3/D8 (stream A3, agent/ownership.py; SOLD-DELIVERED PDF §9-§11, §14): one ownership record per
 # vehicle a customer has (several per customer, current or historical), and the customer's ACTIVE / INACTIVE status.
 AI_VEHICLE_OWNERSHIP_COLLECTION = "ai_vehicle_ownership"
