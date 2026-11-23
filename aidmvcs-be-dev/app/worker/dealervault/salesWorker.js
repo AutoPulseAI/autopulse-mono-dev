@@ -8,6 +8,7 @@ import { resolveCustomers } from './common/customerResolver.js';
 import { normalizeVin, resolveVehicles } from './common/vehicleResolver.js';
 import { requireUniqueIndex } from './common/indexProtection.js';
 import { SALES_QUEUE } from './queues.js';
+import { reconcileDmsProfile } from '../../lib/reconcile/ledger.js';
 
 const tradeFields = { VIN: 'vin', Year: 'year', Make: 'make', Model: 'model', Odometer: 'odometer',
   'Actual Cash Value': 'actual_cash_value', Gross: 'gross', Payoff: 'payoff' };
@@ -47,6 +48,8 @@ export function createSalesProcessor({ CustomerModel, VehicleModel, Model = Deal
       await requireUniqueIndex(Model, DEAL_NATURAL_KEY_INDEX);
       await resolveCustomers(entries, context, CustomerModel);
       await resolveVehicles(entries, context, VehicleModel);
+      // Field-by-field history: contacts and the sale's mileage (SOW Appendix B; never stops the import).
+      await reconcileDmsProfile(entries, context, { CustomerModel });
     },
     ...dependencies,
   });

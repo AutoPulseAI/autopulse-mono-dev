@@ -430,6 +430,16 @@ export const FIELDS = Object.freeze([
     access: 'Super admin (Admin > DMS feed).',
     usedBy: 'Admin > DMS feed, Data health > DealerVault import errors.',
   }),
+  F('customer', 'customer_field_history (field, value, prior_value, decision, reason, source, source_event_date, status)', 'documents', {
+    collection: 'customer_field_history',
+    source: 'The DealerVault import (name, phones, emails, mileage per VIN), review decisions, the customer\'s own word recorded by staff (disputed / confirmed).',
+    truth: 'Per field, by the source precedence in Admin > DMS feed (reconciliation_policies); mileage by the RO / sale date.',
+    transform: 'Current mileage of a VIN = its newest ACCEPT row by event date; older readings stay as history (APPEND).',
+    nulls: 'No rows = nothing reconciled yet for that customer.',
+    refresh: DMS_DAILY,
+    access: 'Super admin (Admin > DMS feed > Customer field decisions); the customer\'s own rows to the dealer\'s staff.',
+    usedBy: 'Reconciliation evidence (SOW Appendix B 5 and 7).',
+  }),
   F('campaign', 'campaignleads / leadsourcelists.campaigns', 'documents', {
     collection: 'campaignleads, leadsourcelists',
     source: 'Campaign sends; Lead sources > Campaigns.',
