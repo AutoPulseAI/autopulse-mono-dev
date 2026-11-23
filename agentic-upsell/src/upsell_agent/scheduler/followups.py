@@ -591,6 +591,22 @@ async def _permitted_channel(*, dealer_id: str, customer_id: str, lead_id: str, 
     return usable[0]
 
 
+def is_service_lead(lead: dict | None) -> bool:
+    """The CRM lead is a service lead (its department, else its source; slots/requirements.lead_type_for): it gets the
+    service follow-up, never the sales angles (the user, 23 Nov 2026)."""
+    from upsell_agent.agent.qualification import LeadType
+    from upsell_agent.slots.requirements import lead_type_for
+    return bool(lead) and lead_type_for(lead) == LeadType.SERVICE
+
+
+def touch_fits_lead(theme_id: str | None, service: bool) -> bool:
+    """A service theme only on a service lead, a sales theme only on a sales lead; the name nudge fits both."""
+    theme_id = str(theme_id or "")
+    if not theme_id or theme_id == cadence.NAME_NUDGE.id or theme_id not in cadence.BY_ID:
+        return True
+    return (theme_id in cadence.SERVICE_IDS) == service
+
+
 async def plan_cadence_touch(
     db: DealerScopedDatabase,
     *,
@@ -628,8 +644,19 @@ async def plan_cadence_touch(
     open_questions = bool(((state.get("conversation") or {}).get("open_questions") or []))
     replied = cadence_state.touch_number < 3 and (open_questions or bool(await db.collection(
         AI_MESSAGES_COLLECTION).find_one({"lead_id": lead_id, "direction": "inbound"}, projection={"_id": 1})))
+    if lead is None:
+        lead = await db.collection(PLATFORM_LEADS_COLLECTION).find_one({"_id": as_object_id(lead_id)})
+    service = is_service_lead(lead)
+    if service and (state or {}).get("service_requests"):
+        # The customer gave a day and it went to the service team (agent/service_request.py): the team confirms the
+        # time with them; no more automatic "still need service?" touches.
+        await db.collection(SCHEDULED_FOLLOWUPS_COLLECTION).update_many(
+            {"lead_id": lead_id, "status": "pending", "kind": KIND_CADENCE_TOUCH},
+            {"$set": {"status": "superseded", "reason": "service visit request passed to the team", "closed_at": now}})
+        return {"created": False, "reason": "No cadence touch: the service visit request went to the service team, "
+                                            "who confirm the time with the customer."}
     planned = cadence.plan_touch(
-        cadence_state, now=now, tz=profile.tz, customer_replied=replied,
+        cadence_state, now=now, tz=profile.tz, customer_replied=replied, service=service,
         # The caller knows whether the message it just sent went out; the lead's own record is only
         # updated after this runs (agent/turn.py).
         first_contact_done=(bool((state or {}).get("last_outbound_at")) if first_contact_done is None
@@ -1978,7 +2005,18 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         state = await db.collection(AI_LEAD_STATE_COLLECTION).find_one({"lead_id": doc["lead_id"]}) or {}
         status = state.get("status", "active")
         mode = await dealer_ai_mode(db.dealer_id)
+        # The user, 23 Nov 2026: a service lead never gets a sales follow-up (one planned before the service follow-up
+        # existed, or before the lead moved to Service), and a lead moved to Sales never gets a service one: the touch
+        # is cancelled and the right one planned instead.
+        service = is_service_lead(await db.collection(PLATFORM_LEADS_COLLECTION).find_one(
+            {"_id": as_object_id(doc["lead_id"])}))
+        fits = touch_fits_lead(touch.get("theme"), service)
+        request_passed = service and bool(state.get("service_requests"))
         checks = [
+            ("cadence_kind", fits, "the touch fits the lead" if fits else
+             f"a {'sales' if service else 'service'} touch on a {'service' if service else 'sales'} lead: re-planned"),
+            ("service_request_open", not request_passed,
+             "the service visit request went to the service team" if request_passed else "no service request passed"),
             ("lead_active", status not in SILENT_STATUSES,
              f"lead is {status}" + (f" ({state.get('status_reason')})" if state.get("status_reason") else "")),
             lifecycle.stage_check(state, KIND_CADENCE_TOUCH),
@@ -1991,7 +2029,7 @@ async def _fire_cadence_touch_locked(db: DealerScopedDatabase, doc: dict, deps: 
         ]
         failed = [c for c in checks if not c[1]]
         check = None
-        replan = any(c[0] == "no_reply_since" for c in failed) and len(failed) == 1
+        replan = bool(failed) and all(c[0] in ("no_reply_since", "cadence_kind") for c in failed)
         if not failed:
             # The last look (channels/presend.py): several messages in the last minutes - this touch waits.
             from upsell_agent.channels import presend

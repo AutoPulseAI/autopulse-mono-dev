@@ -106,7 +106,9 @@ def effective_lead_type(lead_type: LeadType, values: dict[str, object]) -> LeadT
 # "sell my car" / valuation sources are trade-ins. Checked in order; first match wins.
 LEAD_SOURCE_TO_TYPE: list[tuple[str, LeadType]] = [
     (r"sell\s*my\s*car|trade|kbb|kelley|accutrade|instant\s*offer|valuation|appraisal", LeadType.TRADE_IN),
-    (r"service|repair|maintenance|oil|appointment|recall", LeadType.SERVICE),
+    # The same words as the CRM (aidmvcs-be-dev app/lib/departmentRouting.js SERVICE_WORDS; the user, 23 Nov 2026):
+    # "appointment" alone made the AI read a lead as service while the CRM kept it in Sales.
+    (r"service|repair|maintenance|oil|recall", LeadType.SERVICE),
     (r"credit|financ|capital\s*one|700credit|carzing|dealercentric|eunifi|pre-?qual|approval",
      LeadType.SALES),
     ((r"cargurus|autotrader|edmunds|cars\.com|truecar|carsdirect|facebook|instagram|autoweb|website|"
