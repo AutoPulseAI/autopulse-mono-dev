@@ -4,7 +4,7 @@
 // way the DMS keeps them - Sales, Service, Appointments, Parts - filed under the dealer's own categories, every field
 // of one record, and the records that need a person (with what it means, what fixes it, and "Mark checked").
 // /api/admin/dms-feed/mirror.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Form, Offcanvas, Spinner, Table } from "react-bootstrap";
 
 const call = async (url, options = {}) => {
@@ -16,6 +16,36 @@ const call = async (url, options = {}) => {
 };
 
 const n = (v) => Number(v || 0).toLocaleString("en-US");
+
+// Where you are on the page (store, department, problem, filters, search, page, open record) lives in the address, so
+// the browser's Back button steps back through it and a link opens the same view.
+function useUrlState() {
+  const read = () => (typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search));
+  const [params, setParams] = useState(read);
+  useEffect(() => {
+    const onPop = () => setParams(read());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const go = useCallback((changes, { replace = false } = {}) => {
+    const next = new URLSearchParams(window.location.search);
+    for (const [k, v] of Object.entries(changes)) {
+      next.delete(k);
+      if (Array.isArray(v)) v.forEach((x) => next.append(k, x));
+      else if (v != null && v !== "" && v !== false) next.set(k, String(v));
+    }
+    const url = `${window.location.pathname}${next.toString() ? `?${next}` : ""}`;
+    if (replace) window.history.replaceState({ dmsm: true }, "", url);
+    else window.history.pushState({ dmsm: true }, "", url);
+    setParams(next);
+  }, []);
+  // Back inside the page when the last step was ours; otherwise go to the given view.
+  const back = useCallback((fallback) => {
+    if (window.history.state?.dmsm) window.history.back();
+    else go(fallback, { replace: true });
+  }, [go]);
+  return [params, go, back];
+}
 const money = (v) => {
   const x = Number(String(v ?? "").replace(/[$,\s]/g, ""));
   return Number.isFinite(x) ? x.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : String(v);
@@ -110,8 +140,7 @@ function DeptBook({ id, h, active, onOpen }) {
   if (id === "sales") {
     count = `${n(h.n)} deals`;
     lines = [h.last ? `Latest contract ${isoDay(h.last)}` : "No contract dates",
-      h.n ? `${n(h.new)} new, ${n(h.n - h.new)} used` : null,
-      h.n ? `Front ${money(h.front)}, back ${money(h.back)}` : null];
+      h.n ? `${n(h.new)} new, ${n(h.n - h.new)} used` : null];
   } else if (id === "service") {
     count = `${n(h.n)} repair orders`;
     lines = [h.last ? `Latest ${isoDay(h.last)}` : null];
@@ -122,7 +151,8 @@ function DeptBook({ id, h, active, onOpen }) {
     count = `${n(h.n)} part numbers`;
     lines = [`${n(h.stocked)} in stock, ${n(h.units)} units`, `${money(h.value)} on hand at cost`];
   }
-  const split = id === "service" && (h.cp || h.wty || h.int) ? [["Customer pay", h.cp, "#0272b4"], ["Warranty", h.wty, "#6b46c1"], ["Internal", h.int, "#a0aec0"]] : null;
+  const split = id === "service" && (h.cp > 0 || h.wty > 0 || h.int > 0)
+    ? [["Customer pay", Math.max(0, h.cp), "#0272b4"], ["Warranty", Math.max(0, h.wty), "#6b46c1"], ["Internal", Math.max(0, h.int), "#a0aec0"]] : null;
   const total = split ? split.reduce((s, [, v]) => s + v, 0) : 0;
   return (
     <button type="button" className={`dmsm_book ${active ? "active" : ""} ${h.n ? "" : "none"}`} onClick={onOpen} aria-pressed={active}>
@@ -130,8 +160,8 @@ function DeptBook({ id, h, active, onOpen }) {
       <span className="dmsm_book_count">{count}</span>
       {lines.filter(Boolean).map((l) => <span key={l} className="dmsm_book_line">{l}</span>)}
       {split && <>
-        <span className="dmsm_split">{split.map(([l, v, c]) => v > 0 && <i key={l} style={{ width: `${(v / total) * 100}%`, background: c }} title={`${l}: ${money(v)}`} />)}</span>
-        <span className="dmsm_split_key">{split.map(([l, v, c]) => <span key={l}><i style={{ background: c }} />{l} {money(v)}</span>)}</span>
+        <span className="dmsm_split">{split.map(([l, v, c]) => v > 0 && <i key={l} style={{ width: `${(v / total) * 100}%`, background: c }} title={`${l}: ${Math.round((v / total) * 100)}% of RO sales`} />)}</span>
+        <span className="dmsm_split_key">{split.map(([l, v, c]) => <span key={l}><i style={{ background: c }} />{l} {total ? Math.round((v / total) * 100) : 0}%</span>)}</span>
       </>}
       {!h.n && <span className="dmsm_book_line">Nothing imported yet</span>}
     </button>
@@ -139,14 +169,19 @@ function DeptBook({ id, h, active, onOpen }) {
 }
 
 function RecordDrawer({ dv, open, onHide }) {
+  // open = { dept, key } from the address
   const [rec, setRec] = useState(null);
   const [err, setErr] = useState(null);
+  const dept = open?.dept;
+  const key = open?.key;
   useEffect(() => {
-    if (!open) return;
+    if (!dept || !key) return undefined;
+    let live = true;
     setRec(null); setErr(null);
-    call(`/api/admin/dms-feed/mirror?dv=${dv}&dept=${open.dept}&key=${encodeURIComponent(open.key)}`)
-      .then((d) => setRec(d.record)).catch((e) => setErr(e.message));
-  }, [dv, open]);
+    call(`/api/admin/dms-feed/mirror?dv=${dv}&dept=${dept}&key=${encodeURIComponent(key)}`)
+      .then((d) => live && setRec(d.record)).catch((e) => live && setErr(e.message));
+    return () => { live = false; };
+  }, [dv, dept, key]);
   const groups = useMemo(() => {
     const g = new Map();
     for (const [k, v] of rec?.fields || []) {
@@ -163,18 +198,17 @@ function RecordDrawer({ dv, open, onHide }) {
         <Offcanvas.Title as="div">
           <div className="dmsm_drawer_title">{open ? `${rec?.keyLabel || ""} ${open.key}` : ""}</div>
           {rec && <div className="dmsm_sub">As the DMS sent it{rec.file_stamp ? ` in the file of ${stampText(rec.file_stamp)}` : ""}</div>}
+          <Button size="sm" variant="outline-secondary" className="mt-2" onClick={onHide}><i className="fa-solid fa-arrow-left me-1" aria-hidden="true" />Back to the list</Button>
         </Offcanvas.Title>
       </Offcanvas.Header>
       <Offcanvas.Body>
         {err && <Alert variant="danger" className="py-2 small">{err}</Alert>}
         {!rec && !err && <Spinner size="sm" />}
         {rec && <>
-          <div className="dmsm_links">
+          {rec.dept !== "parts" && <div className="dmsm_links">
             <span className={rec.linked.customer ? "ok" : "no"}><i className={`fa-solid ${rec.linked.customer ? "fa-link" : "fa-link-slash"}`} />
               {rec.linked.customer ? "Linked to a customer" : "Not linked to a customer"}</span>
-            {rec.dept !== "parts" && <span className={rec.linked.vehicle ? "ok" : "no"}><i className={`fa-solid ${rec.linked.vehicle ? "fa-link" : "fa-link-slash"}`} />
-              {rec.linked.vehicle ? "Linked to a car" : "Not linked to a car"}</span>}
-          </div>
+          </div>}
           {groups.map(([name, rows]) => (
             <section key={name} className="dmsm_fields">
               <h4>{name}</h4>
@@ -198,29 +232,35 @@ function RecordDrawer({ dv, open, onHide }) {
   );
 }
 
-function Ledger({ dv, dept, issue, issueText, onIssueClear, onChecked }) {
-  const [state, setState] = useState({ filters: [], q: "", page: 1, checked: false });
-  const [qInput, setQInput] = useState("");
+function Ledger({ dv, dept, issue, issueText, params, go, back, onChecked }) {
+  const filters = params.getAll("f").map((x) => { const i = x.indexOf("::"); return { col: x.slice(0, i), value: x.slice(i + 2) }; })
+    .filter((f) => f.col);
+  const q = params.get("q") || "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const checked = params.get("checked") === "1";
+  const rec = params.get("rec");
+  const [qInput, setQInput] = useState(q);
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
-  const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setState({ filters: [], q: "", page: 1, checked: false }); setQInput(""); }, [dv, dept, issue]);
+  useEffect(() => { setQInput(q); }, [q]);
+  const fKey = params.getAll("f").join("|");
   const load = useCallback(async () => {
     setBusy(true);
-    const p = new URLSearchParams({ dv, dept, page: String(state.page) });
-    for (const f of state.filters) p.append("f", `${f.col}::${f.value}`);
-    if (state.q) p.set("q", state.q);
-    if (issue) { p.set("issue", issue); if (state.checked) p.set("checked", "1"); }
+    const p = new URLSearchParams({ dv, dept, page: String(page) });
+    for (const f of fKey ? fKey.split("|") : []) p.append("f", f);
+    if (q) p.set("q", q);
+    if (issue) { p.set("issue", issue); if (checked) p.set("checked", "1"); }
     try { setData(await call(`/api/admin/dms-feed/mirror?${p}`)); setErr(null); } catch (e) { setErr(e.message); }
     setBusy(false);
-  }, [dv, dept, issue, state]);
+  }, [dv, dept, issue, page, q, checked, fKey]);
   useEffect(() => { load(); }, [load]);
-  const toggle = (col, value) => setState((s) => {
-    const on = s.filters.some((f) => f.col === col && f.value === value);
-    return { ...s, page: 1, filters: on ? s.filters.filter((f) => !(f.col === col && f.value === value))
-      : [...s.filters.filter((f) => f.col !== col), { col, value }] };
-  });
+  const asParam = (list) => list.map((f) => `${f.col}::${f.value}`);
+  const toggle = (col, value) => {
+    const on = filters.some((f) => f.col === col && f.value === value);
+    go({ f: asParam(on ? filters.filter((f) => !(f.col === col && f.value === value)) : [...filters.filter((f) => f.col !== col), { col, value }]),
+      page: null, rec: null });
+  };
   const mark = async (key, undo) => {
     try { await call("/api/admin/dms-feed/mirror", { method: "POST", body: JSON.stringify({ dv, dept, issue, key, undo }) }); await load(); onChecked?.(); }
     catch (e) { setErr(e.message); }
@@ -234,13 +274,10 @@ function Ledger({ dv, dept, issue, issueText, onIssueClear, onChecked }) {
             <div className="dmsm_issue_title">{DEPT[dept].label}: {text.label}</div>
             <p><strong>What it means.</strong> {text.means}</p>
             <p><strong>What fixes it.</strong> {text.fix}</p>
-            <p className="dmsm_sub mb-0">Records stay listed here until they link or someone marks them checked.</p>
+            <p className="dmsm_sub mb-0">A record leaves this list when it links on a later file, or when someone marks it checked.</p>
           </div>
-          <div className="d-flex flex-column align-items-end gap-2">
-            <Button size="sm" variant="outline-secondary" onClick={onIssueClear}>Show all {DEPT[dept].label.toLowerCase()}</Button>
-            <Form.Check type="switch" id="dmsm_checked" className="small" label="Show the ones marked checked"
-              checked={state.checked} onChange={(e) => setState((s) => ({ ...s, checked: e.target.checked, page: 1 }))} />
-          </div>
+          <Form.Check type="switch" id="dmsm_checked" className="small" label="Show the ones marked checked"
+            checked={checked} onChange={(e) => go({ checked: e.target.checked ? "1" : null, page: null }, { replace: true })} />
         </div>
       )}
       {err && <Alert variant="danger" className="py-2 small">{err}</Alert>}
@@ -251,7 +288,7 @@ function Ledger({ dv, dept, issue, issueText, onIssueClear, onChecked }) {
               <div className="dmsm_cat_name">{c.col}</div>
               <div className="dmsm_chips">
                 {c.values.map((v) => {
-                  const on = state.filters.some((f) => f.col === c.col && f.value === v.value);
+                  const on = filters.some((f) => f.col === c.col && f.value === v.value);
                   return (
                     <button key={v.value || "(blank)"} type="button" className={`dmsm_chip ${on ? "on" : ""} ${v.value ? "" : "blank"}`}
                       onClick={() => toggle(c.col, v.value)} aria-pressed={on}>
@@ -263,24 +300,26 @@ function Ledger({ dv, dept, issue, issueText, onIssueClear, onChecked }) {
           ))}
         </div>
       )}
-      <form className="dmsm_search" onSubmit={(e) => { e.preventDefault(); setState((s) => ({ ...s, q: qInput.trim(), page: 1 })); }}>
+      <form className="dmsm_search" onSubmit={(e) => { e.preventDefault(); go({ q: qInput.trim() || null, page: null, rec: null }); }}>
         <Form.Control size="sm" value={qInput} onChange={(e) => setQInput(e.target.value)}
           placeholder={dept === "parts" ? "Part number or description" : "Number, customer name or VIN"} aria-label="Search records" />
         <Button size="sm" type="submit" variant="custom">Search</Button>
-        {(state.filters.length > 0 || state.q) && <Button size="sm" variant="link" onClick={() => { setQInput(""); setState((s) => ({ ...s, filters: [], q: "", page: 1 })); }}>Clear</Button>}
+        {(filters.length > 0 || q) && <Button size="sm" variant="link" onClick={() => go({ f: [], q: null, page: null })}>Clear filters</Button>}
         {busy && <Spinner size="sm" className="ms-1" />}
         {data && <span className="dmsm_sub ms-auto">{n(data.total)} {data.total === 1 ? "record" : "records"}</span>}
       </form>
       {data && (!data.rows.length ? (
-        <div className="dmsm_empty">{issue ? (state.checked ? "Nothing marked checked yet." : "Nothing left to look at here.") : "No records match."}</div>
+        <div className="dmsm_empty">{issue ? (checked ? "Nothing marked checked yet." : "Nothing left to look at here.") : "No records match."}</div>
       ) : (
         <Table responsive hover className="dmsm_tbl small mb-0">
           <thead><tr><th>{data.keyLabel}</th>{data.columns.map((c) => <th key={c.label} className={c.kind === "money" || c.kind === "num" ? "num" : ""}>{c.label}</th>)}{issue && <th />}</tr></thead>
           <tbody>{data.rows.map((r) => (
-            <tr key={r.key} onClick={() => setOpen({ dept, key: r.key })} className="dmsm_row">
-              <td className="text-nowrap fw-semibold">{r.key}
-                {dept !== "parts" && (!r.linked.customer || !r.linked.vehicle) && (
-                  <i className="fa-solid fa-link-slash ms-2 dmsm_unlinked" title={[!r.linked.customer && "Not linked to a customer", !r.linked.vehicle && (r.linked.vin ? "VIN not matched to a car" : "No VIN")].filter(Boolean).join(", ")} />)}
+            <tr key={r.key} onClick={() => go({ rec: r.key })} className="dmsm_row">
+              <td className="text-nowrap fw-semibold">
+                <a href={`?${new URLSearchParams([...params.entries()].filter(([k]) => k !== "rec").concat([["rec", r.key]]))}`}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); go({ rec: r.key }); }}>{r.key}</a>
+                {dept !== "parts" && (!r.linked.customer || !r.linked.vin) && (
+                  <i className="fa-solid fa-link-slash ms-2 dmsm_unlinked" title={[!r.linked.customer && "Not linked to a customer", !r.linked.vin && "No VIN"].filter(Boolean).join(", ")} />)}
               </td>
               {r.cells.map((v, i) => {
                 const k = data.columns[i].kind;
@@ -297,12 +336,12 @@ function Ledger({ dv, dept, issue, issueText, onIssueClear, onChecked }) {
       ))}
       {data && data.pages > 1 && (
         <div className="dmsm_pager">
-          <Button size="sm" variant="outline-secondary" disabled={data.page <= 1} onClick={() => setState((s) => ({ ...s, page: s.page - 1 }))}>Previous</Button>
+          <Button size="sm" variant="outline-secondary" disabled={data.page <= 1} onClick={() => go({ page: data.page - 1 > 1 ? data.page - 1 : null })}>Previous</Button>
           <span>Page {n(data.page)} of {n(data.pages)}</span>
-          <Button size="sm" variant="outline-secondary" disabled={data.page >= data.pages} onClick={() => setState((s) => ({ ...s, page: s.page + 1 }))}>Next</Button>
+          <Button size="sm" variant="outline-secondary" disabled={data.page >= data.pages} onClick={() => go({ page: data.page + 1 })}>Next</Button>
         </div>
       )}
-      <RecordDrawer dv={dv} open={open} onHide={() => setOpen(null)} />
+      <RecordDrawer dv={dv} open={rec ? { dept, key: rec } : null} onHide={() => back({ rec: null })} />
     </div>
   );
 }
@@ -342,61 +381,73 @@ function LinkStore({ store, dealers, onLinked }) {
 }
 
 export default function DmsMirror({ onStoresChanged }) {
+  const [params, go, back] = useUrlState();
   const [stores, setStores] = useState(null);
   const [dealers, setDealers] = useState([]);
-  const [dv, setDv] = useState("");
   const [view, setView] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [dept, setDept] = useState(null);
-  const [issue, setIssue] = useState(null);
-  const ledgerRef = useRef(null);
+  const [round, setRound] = useState(0);
+  const dv = params.get("dv") || stores?.[0]?.dv || "";
+  const dept = DEPT[params.get("dept")] ? params.get("dept") : null;
+  const issue = dept ? params.get("issue") : null;
 
   const loadStores = useCallback(async () => {
     try {
       const d = await call("/api/admin/dms-feed/mirror");
       setStores(d.stores); setDealers(d.dealers);
-      setDv((cur) => cur || d.stores[0]?.dv || "");
       if (d.storage_error) setErr(`Storage couldn't be listed (${d.storage_error}).`);
     } catch (e) { setErr(e.message); }
   }, []);
   useEffect(() => { loadStores(); }, [loadStores]);
-  const loadView = useCallback(async () => {
-    if (!dv) return;
+  useEffect(() => {
+    if (!dv) return undefined;
+    let live = true;
     setLoading(true);
-    try { setView(await call(`/api/admin/dms-feed/mirror?dv=${dv}`)); setErr(null); } catch (e) { setErr(e.message); }
-    setLoading(false);
-  }, [dv]);
-  useEffect(() => { setView(null); setDept(null); setIssue(null); loadView(); }, [loadView]);
+    call(`/api/admin/dms-feed/mirror?dv=${dv}`).then((d) => { if (live) { setView(d); setErr(null); } })
+      .catch((e) => live && setErr(e.message)).finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, [dv, round]);
+  const reload = () => setRound((r) => r + 1);
+  // A new step in the address, so Back returns here; filters, search, page and record belong to the department.
+  const open = (changes) => go({ f: [], q: null, page: null, rec: null, checked: null, ...changes });
 
-  const openDept = (id, iss = null) => {
-    setDept(id); setIssue(iss);
-    setTimeout(() => ledgerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  };
-  const store = view?.store;
+  const store = view?.store?.dv === dv ? view.store : null;
+  const linked = (stores || []).filter((s) => s.dealer);
+  const unlinked = (stores || []).filter((s) => !s.dealer);
+  const since = daysSince(store?.last);
+  const crumbs = [
+    { label: store?.dealer?.name || dv, to: { dept: null, issue: null } },
+    dept && { label: DEPT[dept].label, to: { dept, issue: null } },
+    issue && view?.issue_text?.[issue] && { label: view.issue_text[issue].label, to: { dept, issue } },
+  ].filter(Boolean);
 
   return (
     <div className="dmsm">
       <style>{CSS}</style>
       {err && <Alert variant="warning" className="py-2 small" dismissible onClose={() => setErr(null)}>{err}</Alert>}
-      <div className="dmsm_stores" role="tablist" aria-label="DealerVault stores">
-        {!stores && <Spinner size="sm" />}
-        {stores?.map((s) => {
-          const since = daysSince(s.last);
-          return (
-            <button key={s.dv} type="button" role="tab" aria-selected={s.dv === dv} className={`dmsm_store ${s.dv === dv ? "on" : ""} ${s.dealer ? "" : "unlinked"}`}
-              onClick={() => setDv(s.dv)}>
-              <span className="dmsm_store_name">{s.dealer?.name || "Not linked"}</span>
-              <span className="dmsm_store_meta">{s.dv}{s.last ? `, last file ${since === 0 ? "today" : since === 1 ? "yesterday" : `${since} days ago`}` : ", no files"}</span>
-              {s.held > 0 && <Badge bg="danger" className="dmsm_store_held">{n(s.held)} held</Badge>}
-            </button>);
-        })}
+
+      <div className="dmsm_storebar">
+        <label htmlFor="dmsm_store" className="dmsm_storebar_label">Store</label>
+        <Form.Select id="dmsm_store" size="sm" className="dmsm_storebar_select" value={dv} disabled={!stores}
+          onChange={(e) => open({ dv: e.target.value, dept: null, issue: null })}>
+          {!stores && <option>Loading stores...</option>}
+          {linked.length > 0 && <optgroup label={`Linked to a dealer (${linked.length})`}>
+            {linked.map((s) => <option key={s.dv} value={s.dv}>{s.dealer.name} ({s.dv}){s.held ? `, ${s.held} held` : ""}</option>)}
+          </optgroup>}
+          {unlinked.length > 0 && <optgroup label={`Not linked (${unlinked.length})`}>
+            {unlinked.map((s) => <option key={s.dv} value={s.dv}>{s.dv}, not linked{s.held ? `, ${s.held} held` : ""}</option>)}
+          </optgroup>}
+        </Form.Select>
+        {store && <span className="dmsm_sub">{store.dv}{store.last ? `, last file ${since === 0 ? "today" : since === 1 ? "yesterday" : `${since} days ago`}` : ", no files yet"}
+          {store.held > 0 && <Badge bg="danger" className="ms-2 fw-normal">{n(store.held)} held</Badge>}</span>}
+        {stores && <span className="dmsm_sub ms-auto">{n(stores.length)} {stores.length === 1 ? "store" : "stores"}{unlinked.length ? `, ${unlinked.length} not linked` : ""}</span>}
+        {loading && <Spinner size="sm" />}
       </div>
 
-      {dv && !view && loading && <div className="w_card"><Spinner size="sm" /></div>}
-      {view && (
+      {store && (
         <>
-          {!store.dealer && <LinkStore store={store} dealers={dealers} onLinked={() => { loadStores(); loadView(); onStoresChanged?.(); }} />}
+          {!store.dealer && <LinkStore store={store} dealers={dealers} onLinked={() => { loadStores(); reload(); onStoresChanged?.(); }} />}
 
           <div className="w_card">
             <div className="d-flex align-items-baseline flex-wrap gap-2 mb-2">
@@ -413,22 +464,27 @@ export default function DmsMirror({ onStoresChanged }) {
                   <span className="dmsm_look_title">Needs a look</span>
                   {view.issues.map((x) => (
                     <button key={`${x.dept}|${x.issue}`} type="button" className={`dmsm_look_item ${dept === x.dept && issue === x.issue ? "on" : ""}`}
-                      onClick={() => openDept(x.dept, x.issue)} title={x.means}>
+                      onClick={() => open({ dept: x.dept, issue: x.issue })} title={x.means}>
                       <span className="d">{x.deptLabel}</span>{x.label}<span className="c">{n(x.open)}</span>
                     </button>))}
                 </div>
               )}
               <div className="dmsm_books">
-                {Object.keys(DEPT).map((id) => <DeptBook key={id} id={id} h={view.departments[id]} active={dept === id && !issue} onOpen={() => openDept(id)} />)}
+                {Object.keys(DEPT).map((id) => <DeptBook key={id} id={id} h={view.departments[id]} active={dept === id && !issue} onOpen={() => open({ dept: id, issue: null })} />)}
               </div>
-              <div ref={ledgerRef}>
-                {dept ? (
-                  <div className="w_card">
-                    {!issue && <h3 className="w_card_title">{DEPT[dept].label}, filed the way {store.dealer.name}&apos;s DMS files it</h3>}
-                    <Ledger dv={dv} dept={dept} issue={issue} issueText={view.issue_text} onIssueClear={() => setIssue(null)} onChecked={loadView} />
-                  </div>
-                ) : <div className="dmsm_hint">Open a department to see its records, filed under the DMS&apos;s own categories.</div>}
-              </div>
+              {dept ? (
+                <div className="w_card">
+                  <nav className="dmsm_crumbs" aria-label="You are here">
+                    <Button size="sm" variant="outline-secondary" onClick={() => back({ dept: null, issue: null, f: [], q: null, page: null, rec: null, checked: null })}>
+                      <i className="fa-solid fa-arrow-left me-1" aria-hidden="true" />Back</Button>
+                    <ol>{crumbs.map((c, i) => (
+                      <li key={c.label}>{i < crumbs.length - 1
+                        ? <button type="button" onClick={() => open(c.to)}>{c.label}</button>
+                        : <span aria-current="page">{c.label}</span>}</li>))}</ol>
+                  </nav>
+                  <Ledger dv={dv} dept={dept} issue={issue} issueText={view.issue_text} params={params} go={go} back={back} onChecked={reload} />
+                </div>
+              ) : <div className="dmsm_hint">Open a department to see its records, filed under the DMS&apos;s own categories.</div>}
             </>
           )}
         </>
@@ -440,17 +496,23 @@ export default function DmsMirror({ onStoresChanged }) {
 const CSS = `
 .dmsm{--ink:#1f2a44;--muted:#6b7489;--line:#e6e9ef;--soft:#f6f8fb}
 .dmsm_sub{font-size:12px;color:var(--muted)}
-.dmsm_stores{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.dmsm_store{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:200px;max-width:100%;padding:10px 14px;
-  border:1px solid var(--line);border-left:4px solid #2f855a;border-radius:8px;background:#fff;text-align:left;color:var(--ink)}
-.dmsm_store.unlinked{border-left-color:#c53030}
-.dmsm_store.on{border-color:var(--primary);border-left-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
-.dmsm_store:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
-.dmsm_store_name{font-weight:600;font-size:14px}
-.dmsm_store.unlinked .dmsm_store_name{color:#c53030}
-.dmsm_store_meta{font-size:12px;color:var(--muted)}
-.dmsm_store_held{position:absolute;top:8px;right:8px;font-weight:500}
-.dmsm_cal{overflow-x:auto}
+.dmsm_storebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:16px}
+.dmsm_storebar_label{font-weight:600;font-size:14px;color:var(--ink);margin:0}
+.dmsm_storebar_select{width:auto!important;min-width:260px;max-width:100%}
+@media (max-width:575px){.dmsm_storebar_select{min-width:0;width:100%!important}}
+.dmsm_crumbs{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dmsm_crumbs ol{display:flex;flex-wrap:wrap;align-items:center;gap:6px;list-style:none;margin:0;padding:0;font-size:14px}
+.dmsm_crumbs li+li::before{content:"/";color:#c3c9d4;margin-right:6px}
+.dmsm_crumbs li button{border:0;background:none;padding:0;color:var(--primary)}
+.dmsm_crumbs li button:hover{text-decoration:underline}
+.dmsm_crumbs li span{font-weight:600;color:var(--ink)}
+.dmsm_tbl td a{color:var(--primary);text-decoration:none}
+.dmsm_tbl td a:hover{text-decoration:underline}
+.dmsf_disclose{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #e6e9ef;border-radius:10px;padding:14px 16px;margin:8px 0 16px;color:#1f2a44}
+.dmsf_disclose i{margin-top:5px;font-size:12px;color:#6b7489}
+.dmsf_disclose:hover{border-color:#b9c6d8}
+.dmsf_disclose:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.dmsm_cal{overflow-x:auto;overflow-y:hidden}
 .dmsm_cal_grid{display:grid;column-gap:3px;row-gap:6px;align-items:center;min-width:560px}
 .dmsm_cal_type{font-size:13px;color:var(--ink);padding-right:10px;white-space:nowrap}
 .dmsm_cal_day{height:26px;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;border-radius:3px;background:var(--soft);padding:2px 1px;cursor:default}
@@ -472,7 +534,7 @@ const CSS = `
 .dmsm_look_item:focus-visible,.dmsm_book:focus-visible,.dmsm_chip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .dmsm_books{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
 @media (max-width:1199px){.dmsm_books{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:575px){.dmsm_books{grid-template-columns:1fr}.dmsm_store{min-width:0;width:100%}}
+@media (max-width:575px){.dmsm_books{grid-template-columns:1fr}}
 .dmsm_book{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;color:var(--ink);min-width:0}
 .dmsm_book:hover{border-color:#b9c6d8}
 .dmsm_book.active{border-color:var(--primary);box-shadow:inset 0 -3px 0 var(--primary)}

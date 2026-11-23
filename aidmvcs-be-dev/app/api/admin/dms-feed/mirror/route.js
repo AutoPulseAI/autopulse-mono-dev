@@ -44,7 +44,7 @@ const DEPTS = {
       { col: 'Sales Price', label: 'Price', kind: 'money' }, { col: 'Front Gross', label: 'Front gross', kind: 'money' },
       { col: 'Back Gross', label: 'Back gross', kind: 'money' },
     ],
-    issues: ['no_customer', 'no_vin', 'no_vehicle'],
+    issues: ['no_customer', 'no_vin'],
   },
   service: {
     label: 'Service', type: 'SV', Model: RepairOrder, key: 'ro_number', keyLabel: 'RO', dates: ['Close Date', 'Open Date'],
@@ -56,7 +56,7 @@ const DEPTS = {
       { col: 'Customer Total Sale', label: 'Customer pay', kind: 'money' },
       { col: 'Warranty Total Sale', label: 'Warranty', kind: 'money' }, { col: 'Internal Total Sale', label: 'Internal', kind: 'money' },
     ],
-    issues: ['no_customer', 'no_vin', 'no_vehicle'],
+    issues: ['no_customer', 'no_vin'],
   },
   appointments: {
     label: 'Appointments', type: 'SV_APPT', Model: ServiceAppointment, key: 'appointment_number', keyLabel: 'Appointment',
@@ -68,7 +68,7 @@ const DEPTS = {
       { col: 'Service Advisor Name', label: 'Advisor' }, { col: 'Operation Code Description', label: 'Work booked' },
       { col: 'Waiting Flag', label: 'Waiting' }, { col: 'Estimate Amount', label: 'Estimate', kind: 'money' },
     ],
-    issues: ['no_customer', 'no_vin', 'no_vehicle'],
+    issues: ['no_customer', 'no_vin'],
   },
   parts: {
     label: 'Parts', type: 'PTINV', Model: PartInventory, key: 'part_number', keyLabel: 'Part', dates: ['Last Sale Date'],
@@ -84,7 +84,8 @@ const DEPTS = {
   },
 };
 
-// Records that need a person to look, in plain words (shown on the page as they are here).
+// Records that need a person to look, in plain words (shown on the page as they are here). A VIN that matches no car
+// isn't one: AutoPulse's cars (Vehicle) are the dealer's for-sale inventory, so a customer's own car never matches.
 const ISSUES = {
   no_customer: {
     label: 'Not linked to a customer',
@@ -97,12 +98,6 @@ const ISSUES = {
     means: "The dealer's DMS has no VIN on it, so it can't be tied to a car.",
     fix: 'The VIN has to be added on the record in the DMS. The next file brings it in.',
     match: { vin: { $in: [null, ''] } },
-  },
-  no_vehicle: {
-    label: 'VIN not matched to a car',
-    means: 'The VIN is there, but no car in AutoPulse has it (or more than one does).',
-    fix: "It usually links when the car's sale or service history arrives. If it stays, the VIN may be mistyped in the DMS.",
-    match: { vin: { $nin: [null, ''] }, vehicle_id: null },
   },
 };
 

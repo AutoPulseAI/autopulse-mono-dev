@@ -92,9 +92,6 @@ const CSS = `
 .dmsf_reason .c{margin-left:auto;font-variant-numeric:tabular-nums;color:#1f2a44;font-weight:600}
 .dmsf_pager{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#6b7489}
 .dmsf_empty{padding:24px;text-align:center;color:#8a94a6;font-size:14px}
-.dmsf_disclose{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #e6e9ef;border-radius:10px;padding:14px 16px;margin:8px 0 16px;color:#1f2a44}
-.dmsf_disclose i{margin-top:5px;font-size:12px;color:#6b7489}
-.dmsf_disclose:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 `;
 
 function Pager({ page, pages, total, limit, onPage, noun }) {
