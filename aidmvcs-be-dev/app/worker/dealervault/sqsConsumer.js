@@ -13,6 +13,7 @@ import HeldFile from '../../models/DealerVaultHeldFile.js';
 import User from '../../models/User.js';
 import Batch from '../../models/DealerVaultImportBatch.js';
 import { checkFeedFile, recentFileSizes } from './feedCheck.js';
+import { noteFile } from '../../lib/dealervault/feedStatus.js';
 import { sendEmail } from '../../lib/email.js';
 import {
   PARTS_QUEUE,
@@ -257,6 +258,8 @@ export async function importFeedFile({ bucket, key, s3, queueByFileType, force =
           `The DMS feed file ${metadata.fileName} was not imported: ${check.reasons.join('; ')}.\n\nNothing from it `
           + 'was written. Release or discard it on Admin > DMS feed.').catch(() => null);
       }
+      await noteFile({ dvDealerId: metadata.dvDealerId, fileType: metadata.fileType, fileName: metadata.fileName, state: 'held',
+        dealerId: unlinked ? null : (await User.findOne({ type: 'dealer', dv_dealer_id: metadata.dvDealerId }).select('_id').lean().catch(() => null))?._id });
       return { held: true, metadata, records: records.length };
     }
   }
@@ -267,6 +270,9 @@ export async function importFeedFile({ bucket, key, s3, queueByFileType, force =
       jobId: jobIdForBatch(jobData),
     });
   }
+  // Admin > DMS feed: the store's newest file of this type (lib/dealervault/feedStatus.js; never stops an import).
+  await noteFile({ dvDealerId: metadata.dvDealerId, fileType: metadata.fileType, fileName: metadata.fileName, state: 'queued',
+    dealerId: (await User.findOne({ type: 'dealer', dv_dealer_id: metadata.dvDealerId }).select('_id').lean().catch(() => null))?._id });
   return { held: false, metadata, records: records.length, batches: batches.length };
 }
 
