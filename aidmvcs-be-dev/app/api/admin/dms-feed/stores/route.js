@@ -2,48 +2,22 @@
 // AutoPulse dealer each is linked to (User.dv_dealer_id - the importer matches every file by it), and a store's files
 // already in storage imported after it is linked.
 //   GET                                   -> { stores: [{ dv, files, first, last, types, linked: {id, name}|null,
-//                                               held, imported }], dealers: [{ id, name, dv }] }
+//                                               held, imported, not_imported }], dealers: [{ id, name, dv }] }
 //   PUT  { dealer_id, dv }                link (dv "DVD12345") or unlink (dv "") a dealer
 //   POST { dv, action: "import_stored" }  every stored file of that store not yet imported is queued for import
 //                                         (the worker imports oldest first, 20 a minute; worker/dealervault/sqsConsumer.js)
 import mongoose from 'mongoose';
-import AWS from 'aws-sdk';
 import dbConnect from '@lib/mongodb';
 import User from '@models/User';
 import Batch from '@models/DealerVaultImportBatch';
 import HeldFile from '@models/DealerVaultHeldFile';
 import { requireSuperAdmin } from '@lib/apiGuard';
+import { storedFiles, IMPORTABLE } from '@lib/dealervault/storedFiles';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const DV = /^DVD\d{3,10}$/;
-const FILE = /^(DVD\d+)_(\d{8})_(\d{4})_(PTINV|SL|SV|SV_APPT|OPENRO)\.txt$/;
-const IMPORTABLE = new Set(['PTINV', 'SL', 'SV', 'SV_APPT']); // the importer reads these four (OPENRO isn't imported)
 const fail = (error, status) => Response.json({ error }, { status });
-
-function s3() {
-  return new AWS.S3({ region: process.env.AWS_REGION || 'us-east-1',
-    credentials: new AWS.EC2MetadataCredentials({ httpOptions: { timeout: 5000 }, maxRetries: 3 }) });
-}
-
-/** Every stored feed file: [{ key, fileName, dv, type, at }] (S3 raw/, the daily copy's destination). */
-async function storedFiles() {
-  const Bucket = process.env.DEALERVAULT_S3_BUCKET;
-  if (!Bucket) throw new Error('DEALERVAULT_S3_BUCKET is not set');
-  const out = [];
-  let token;
-  const client = s3();
-  do {
-    const page = await client.listObjectsV2({ Bucket, Prefix: 'raw/', ContinuationToken: token }).promise();
-    for (const o of page.Contents || []) {
-      const fileName = o.Key.slice(4);
-      const m = FILE.exec(fileName);
-      if (m) out.push({ key: o.Key, fileName, dv: m[1], type: m[4], at: o.LastModified });
-    }
-    token = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (token);
-  return out;
-}
 
 export async function GET(req) {
   const access = await requireSuperAdmin(req);
@@ -57,6 +31,7 @@ export async function GET(req) {
   for (const f of files) {
     const s = byDv[f.dv] || (byDv[f.dv] = { dv: f.dv, files: 0, first: f.at, last: f.at, types: new Set() });
     s.files += 1;
+    if (IMPORTABLE.has(f.type)) (s.importable || (s.importable = new Set())).add(f.fileName);
     if (f.at < s.first) s.first = f.at;
     if (f.at > s.last) s.last = f.at;
     s.types.add(f.type);
@@ -64,12 +39,18 @@ export async function GET(req) {
   for (const d of dealers) if (d.dv_dealer_id && !byDv[d.dv_dealer_id]) byDv[d.dv_dealer_id] = { dv: d.dv_dealer_id, files: 0, types: new Set() };
   const stores = await Promise.all(Object.values(byDv).map(async (s) => {
     const linked = dealers.find((d) => d.dv_dealer_id === s.dv);
-    const [held, imported] = await Promise.all([
+    const [held, importedNames, discarded] = await Promise.all([
       HeldFile.countDocuments({ dvDealerId: s.dv, status: { $in: ['held', 'release_requested', 'releasing'] } }),
-      Batch.distinct('fileName', { dvDealerId: s.dv }).then((x) => x.length),
+      Batch.distinct('fileName', { dvDealerId: s.dv }),
+      HeldFile.distinct('fileName', { dvDealerId: s.dv, status: { $in: ['discarded', 'release_requested', 'releasing', 'released'] } }),
     ]);
+    // Files in storage the importer can read that were never imported and aren't queued or discarded: what the
+    // "Import N files" button brings in (the same rule as POST below).
+    const skip = new Set([...importedNames, ...discarded]);
+    const notImported = [...(s.importable || [])].filter((f) => !skip.has(f)).length;
     return { dv: s.dv, files: s.files, first: s.first || null, last: s.last || null, types: [...s.types].sort(),
-      linked: linked ? { id: String(linked._id), name: linked.name } : null, held, imported };
+      linked: linked ? { id: String(linked._id), name: linked.name } : null, held, imported: importedNames.length,
+      not_imported: notImported };
   }));
   return Response.json({ storage_error: storageError, stores: stores.sort((a, b) => a.dv.localeCompare(b.dv)),
     dealers: dealers.map((d) => ({ id: String(d._id), name: d.name || 'Unnamed dealer', dv: d.dv_dealer_id || null })) });
@@ -102,13 +83,13 @@ export async function POST(req) {
   if (b?.action !== 'import_stored' || !DV.test(dv)) return fail('action import_stored and a DealerVault ID are required', 400);
   const dealer = await User.findOne({ type: 'dealer', dv_dealer_id: dv }).select('_id name').lean();
   if (!dealer) return fail(`Link ${dv} to a dealer first`, 409);
-  const files = (await storedFiles()).filter((f) => f.dv === dv && IMPORTABLE.has(f.type));
+  const files = (await storedFiles({ fresh: true })).filter((f) => f.dv === dv && IMPORTABLE.has(f.type));
   const done = new Set(await Batch.distinct('fileName', { dvDealerId: dv }));
   const by = access.user?.name || 'Super admin';
   let queued = 0;
   for (const f of files.sort((x, y) => x.fileName.localeCompare(y.fileName))) {
     if (done.has(f.fileName)) continue;
-    const res = await HeldFile.updateOne({ fileName: f.fileName, status: { $nin: ['releasing', 'released'] } }, {
+    const res = await HeldFile.updateOne({ fileName: f.fileName, status: { $nin: ['releasing', 'released', 'discarded'] } }, {
       $set: { status: 'release_requested', decided_by_name: by, decided_at: new Date(), dealer_id: String(dealer._id) },
       $setOnInsert: { dvDealerId: dv, fileName: f.fileName, fileType: f.type, bucket: process.env.DEALERVAULT_S3_BUCKET, key: f.key,
         reasons: ['imported from storage after the store was linked'] },
