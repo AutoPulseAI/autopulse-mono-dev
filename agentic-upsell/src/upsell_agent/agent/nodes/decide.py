@@ -1378,7 +1378,7 @@ def plan_cadence_touch_context(lead_state: dict | None, customer_first_name: str
     # AI Studio (client, 13 Oct 2026): a touch written as fixed text goes out word for word - a touch of an added
     # cadence (its message rides on the touch), or an edited sales touch.
     message = pending.get("message") if pending.get("studio_cadence") else next(
-        (m for key in ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90")
+        (m for key in ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90", "service_followup")
          if (m := ai_studio.step_message("cadences", key, str(theme_id)))), None)
     if theme_id != cadence.NAME_NUDGE.id and (text := ai_studio.fixed_text(message)) and (
             not message or message.get("mode") == "fixed"):

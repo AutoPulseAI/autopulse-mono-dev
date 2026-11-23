@@ -303,7 +303,8 @@ _ATTRS = {
     "origin": ("INBOUND_SOURCES", "DMS_SOURCES"),
     "cannot_supply": ("_PATTERNS", "_COMPILED", "_REPLIES", "ESCALATES", "CUSTOM_LABELS"),
     "buyers_order": ("ASKS", "START", "START_STEP", "_TEXT", "ESCALATE_AT", "FLOWS", "ACTIONS"),
-    "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID", "SCHEDULE", "LAST_DAY"),
+    "cadence": ("DAY_THEMES", "NURTURE_THEMES", "DEEPER_THEMES", "EXTENDED_THEMES", "BY_ID", "SCHEDULE", "LAST_DAY",
+                "SERVICE_STEPS", "SERVICE_IDS"),
     "escalation": ("MANAGER_ESCALATIONS",),
     "lifecycle": ("STAFF_STATUS_EVENTS", "OPPORTUNITY_DAYS", "REPLY_RESTARTS_DAY_91"),
     "sold_pending": ("STUDIO_DAYS",),
@@ -635,6 +636,9 @@ def _apply_cadence(key: str, c: dict[str, Any], built_in: dict[str, Any] | None)
     if key in ("sold_pending", "owner_lifecycle", "appointment"):
         _apply_timing(key, c)  # their texts are placed where they're written (step_message)
         return
+    if key == "service_followup":
+        _apply_service_cadence(c)
+        return
     if key not in ("sales_days_1_7", "sales_days_8_30", "sales_days_31_90"):
         return  # an added cadence: scheduler/studio_cadences.py runs it
     pristine_by_id = _pristine[("cadence", "BY_ID")]
@@ -661,6 +665,33 @@ def _apply_cadence(key: str, c: dict[str, Any], built_in: dict[str, Any] | None)
         (cad.NURTURE_THEMES if key == "sales_days_8_30" else cad.DEEPER_THEMES)[:] = themes
     cad.EXTENDED_THEMES[:] = list(dict.fromkeys([*cad.NURTURE_THEMES, *cad.DEEPER_THEMES]))
     cad.BY_ID.update({t.id: t for t in (*cad.DAY_THEMES, *cad.EXTENDED_THEMES)})
+
+
+def _apply_service_cadence(c: dict[str, Any]) -> None:
+    """AI Studio -> Cadences -> "Service follow-up" (the user, 23 Nov 2026): a service lead's touches after the first
+    message, in order, each with its wait from the start, channels and message. A step removed there is not sent; a
+    step added there is sent with its own message (fixed text word for word, or the AI from its instruction)."""
+    cad = _by_name()["cadence"]
+    pristine_by_id = _pristine[("cadence", "BY_ID")]
+    steps: list[dict[str, Any]] = []
+    for step in c.get("steps") or []:
+        if not isinstance(step.get("wait"), dict) or step.get("id") in ("touch1", cad.NAME_NUDGE.id):
+            continue  # a step with no timing can't be placed
+        message_ = step.get("message") or {}
+        said = instruction(message_) or (f'Send exactly this message: "{message_.get("text")}"'
+                                         if message_.get("mode") == "fixed" and message_.get("text") else None)
+        base = pristine_by_id.get(step.get("id"))
+        if base is not None and base.id in cad.SERVICE_IDS:
+            theme = dataclasses.replace(base, label=step.get("label") or base.label, instruction=said or base.instruction)
+        elif said:
+            theme = cad.Theme(str(step.get("id")), str(step.get("label") or "Service touch"), said)
+            cad.SERVICE_IDS = frozenset({*cad.SERVICE_IDS, theme.id})
+        else:
+            continue
+        cad.BY_ID[theme.id] = theme
+        channels = [ch for ch in step.get("channels") or [] if ch in ("sms", "email", "call_task")] or None
+        steps.append({"theme": theme, "wait": {**step["wait"], "after": "start"}, "channels": channels})
+    cad.SERVICE_STEPS[:] = steps
 
 
 def _span(wait: dict[str, Any]) -> "Any":

@@ -121,6 +121,35 @@ STILL_SHOPPING = Theme("still_shopping", "Still shopping?",
                        "Ask plainly whether they're still in the market or have already bought a vehicle, so we "
                        "know whether to keep in touch. Friendly, one question.", extended=True)
 
+# Service leads (the user, 23 Nov 2026: "service leads get sales follow-ups ... these are all the mistakes that we need
+# to avoid"). A service lead's first message was already a service one (touch1_intro); its follow-ups were picked from
+# the sales angles above (vehicle visual, financing, trade-in, direct close) for 90 days. A service lead gets its own
+# short follow-up instead: the visit request, what the team still needs, "still need it?", one last check - then
+# nothing more. Visits are requested, never booked (agent/service_request.py). Edited in AI Studio -> Cadences ->
+# "Service follow-up" (ai_studio.py), like every other cadence.
+SERVICE_VISIT_REQUEST = Theme("service_visit_request", "Service visit request",
+                              "Pick up from what they told us about their vehicle and what it needs, and ask which day "
+                              "and time suit them to bring it in; the service team confirms the exact time. Never offer "
+                              "times, never say booked or confirmed, never invent a price, a diagnosis or a recall.")
+SERVICE_DETAILS = Theme("service_details", "What the service team needs",
+                        "Ask for the one thing the service team still needs from them (the vehicle, its mileage, or what "
+                        "it is doing), so the visit can be set up; if we already have all of it, offer to pass their "
+                        "preferred day to the team. One question. Never a price, a diagnosis or a booked time.")
+SERVICE_STILL_NEEDED = Theme("service_still_needed", "Still need the service?",
+                             "Ask plainly whether their vehicle still needs the service or it has been taken care of, "
+                             "and offer to pass a day that suits them to the service team. Friendly, one question.")
+SERVICE_LAST_CHECK = Theme("service_last_check", "Last check-in",
+                           "A short last check-in: we're here whenever they need service for their vehicle; they can "
+                           "reply with a day that suits them and we'll pass it to the service team. No pressure, no "
+                           "new questions.")
+SERVICE_THEMES: list[Theme] = [SERVICE_VISIT_REQUEST, SERVICE_DETAILS, SERVICE_STILL_NEEDED, SERVICE_LAST_CHECK]
+SERVICE_IDS: frozenset[str] = frozenset(t.id for t in SERVICE_THEMES)
+# Touch 3 onwards, each a wait from the cadence's start (Day 2, 4, 7 and 14 at 10:00 dealer time). The send check
+# still moves any of them out of closed hours. AI Studio replaces this list (ai_studio._apply_cadence).
+SERVICE_STEPS: list[dict[str, Any]] = [
+    {"theme": t, "wait": {"amount": d - 1, "unit": "days", "after": "start", "at": "10:00"}, "channels": None}
+    for t, d in zip(SERVICE_THEMES, (2, 4, 7, 14))]
+
 # A verified price drop comes first in both phases - the most relevant, time-sensitive reason to write; without one
 # it isn't a candidate at all (learning/optimizer.py excludes it), so the phase's own angles follow in order.
 NURTURE_THEMES: list[Theme] = [PRICE_CHANGE, SIMILAR_ARRIVALS, OBJECTION_CHECK, DAY_THEMES[4], DAY_THEMES[0]]
@@ -135,7 +164,7 @@ def themes_for_day(day: int | None) -> list[Theme]:
 
 # Every Days 8-90 angle (the learning layer's catalogue, learning/optimizer.py).
 EXTENDED_THEMES: list[Theme] = list(dict.fromkeys([*NURTURE_THEMES, *DEEPER_THEMES]))
-BY_ID: dict[str, Theme] = {t.id: t for t in (*DAY_THEMES, *EXTENDED_THEMES, NAME_NUDGE)}
+BY_ID: dict[str, Theme] = {t.id: t for t in (*DAY_THEMES, *EXTENDED_THEMES, NAME_NUDGE, *SERVICE_THEMES)}
 
 # Client, 20-21 Oct 2026 (Betsy: "email subject lines are not effective ones" - the AI-written touches had none set):
 # each follow-up's email subject; AI Studio's subject for the step wins when one is set there. (with a vehicle,
@@ -155,6 +184,10 @@ SUBJECTS: dict[str, tuple[str, str]] = {
     "trade_market": ("What your trade could be worth now", "What your trade could be worth now"),
     "still_shopping": ("Still shopping for a {vehicle}?", "Still shopping for a car?"),
     "unsold_followup": ("Thanks for stopping by, {first_name}", "Thanks for stopping by"),
+    "service_visit_request": ("Service for your {vehicle}", "Your service visit"),
+    "service_details": ("A quick question about your {vehicle}", "A quick question about your service"),
+    "service_still_needed": ("Does your {vehicle} still need service?", "Still need service?"),
+    "service_last_check": ("We're here when your {vehicle} needs us", "We're here when you need us"),
 }
 
 
@@ -275,14 +308,17 @@ def pick_theme(touch_number: int, used: list[str], exclude: frozenset[str] = fro
 
 
 def plan_touch(state: CadenceState, *, now: datetime, tz, first_contact_done: bool,
-               customer_replied: bool = False) -> PlannedTouch:
+               customer_replied: bool = False, service: bool = False) -> PlannedTouch:
     """The next touch to schedule for this lead, or a PlannedTouch saying why
     there is none. `first_contact_done`: the first reply (Touch 1) has gone out. `customer_replied`: the customer
-    has written to us - the name nudge is only for one who never answered (client, 20 Oct 2026, Nadina Singh)."""
+    has written to us - the name nudge is only for one who never answered (client, 20 Oct 2026, Nadina Singh).
+    `service`: a service lead - the service follow-up (SERVICE_STEPS), never the sales angles."""
     if not first_contact_done:
         return PlannedTouch(why="The first reply hasn't gone out yet.")
     local_now = now.astimezone(tz)
     touch = max(state.touch_number, 3 if state.reentered or customer_replied else 2)
+    if service:
+        return _plan_service(state, now=now, tz=tz, touch=touch)
     if SCHEDULE is not None:
         return _plan_from_schedule(state, now=now, tz=tz, touch=touch)
 
@@ -413,6 +449,41 @@ def _plan_from_schedule(state: CadenceState, *, now: datetime, tz, touch: int) -
         planned.channels = slot.channels
         return planned
     return PlannedTouch(touch_number=touch, day=0, why="Past the last touch of the cadence (timing set in AI Studio).")
+
+
+def _plan_service(state: CadenceState, *, now: datetime, tz, touch: int) -> PlannedTouch:
+    """A service lead's next touch: the name nudge when they never answered (unless AI Studio removed it), then the
+    next SERVICE_STEPS touch whose time hasn't passed and whose day didn't already have one. A step whose time
+    passed (they kept talking through it, or an older lead) is skipped, never sent late in a burst; after the last
+    one the service follow-up is finished."""
+    from upsell_agent.agent import timing
+    if touch == 2:
+        nudge_removed = SCHEDULE is not None and len(SCHEDULE.get("steps") or []) > 1 and SCHEDULE["steps"][1] is None
+        if not nudge_removed:
+            return PlannedTouch(touch_number=2, theme=NAME_NUDGE, day=1, due_at=now + NAME_NUDGE_AFTER,
+                                why="Touch 2, the name nudge, 3 hours after the first reply (service lead).")
+        touch = 3
+    started = _aware(state.started_at, tz) or now.astimezone(tz)
+    last_sent = _aware(state.last_touch_at, tz)
+    last_date = last_sent.date() if last_sent else None
+    if touch == 3 and last_sent is not None and (last_sent.date() <= started.date()
+                                                 or last_sent.hour < NUDGE_HELD_FROM_HOUR):
+        last_date = None  # the name nudge belongs to Day 1
+    for i, step in enumerate(SERVICE_STEPS):
+        number = i + 3
+        if number < touch or step.get("theme") is None:
+            continue
+        due = timing.due(started, step.get("wait"), tz)
+        if due <= now or (last_date is not None and due.date() <= last_date):
+            continue
+        day = (due.astimezone(tz).date() - started.date()).days + 1
+        planned = PlannedTouch(touch_number=number, theme=step["theme"], day=day, due_at=due,
+                               why=f"Touch {number} on day {day} of the service follow-up: "
+                                   f"{step['theme'].label.lower()}.")
+        planned.channels = step.get("channels")
+        return planned
+    return PlannedTouch(touch_number=touch, day=0,
+                        why="The service follow-up is finished: no more automatic touches for this service lead.")
 
 
 def _least_used(themes: list[Theme], used: list[str]) -> Theme:

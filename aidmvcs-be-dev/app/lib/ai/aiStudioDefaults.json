@@ -1,6 +1,6 @@
 {
- "exported_at": "2026-11-19T12:17:33.108627+00:00",
- "revision": 42,
+ "exported_at": "2026-11-23T13:38:15.407865+00:00",
+ "revision": 43,
  "placeholders": {
   "first_name": "Customer's first name",
   "dealership": "Dealership name",
@@ -601,6 +601,120 @@
      }
     ],
     "day_91": "The opportunity closes (Closed - Lost); the customer stays in the CRM."
+   },
+   "locked": false
+  },
+  {
+   "type": "cadences",
+   "key": "service_followup",
+   "name": "Service follow-up (service leads)",
+   "content": {
+    "before": "First message: the service greeting (\"I am happy to help you with service for ...\", no sales question). No reply in 3 hours: the name nudge, as in the sales follow-up. Then these touches:",
+    "steps": [
+     {
+      "id": "service_visit_request",
+      "day": 2,
+      "when": "Day 2",
+      "label": "Service visit request",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": "Service for your {vehicle}",
+       "instruction": "Pick up from what they told us about their vehicle and what it needs, and ask which day and time suit them to bring it in; the service team confirms the exact time. Never offer times, never say booked or confirmed, never invent a price, a diagnosis or a recall.",
+       "fallback": null
+      },
+      "wait": {
+       "amount": 1,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
+      }
+     },
+     {
+      "id": "service_details",
+      "day": 4,
+      "when": "Day 4",
+      "label": "What the service team needs",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": "A quick question about your {vehicle}",
+       "instruction": "Ask for the one thing the service team still needs from them (the vehicle, its mileage, or what it is doing), so the visit can be set up; if we already have all of it, offer to pass their preferred day to the team. One question. Never a price, a diagnosis or a booked time.",
+       "fallback": null
+      },
+      "wait": {
+       "amount": 3,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
+      }
+     },
+     {
+      "id": "service_still_needed",
+      "day": 7,
+      "when": "Day 7",
+      "label": "Still need the service?",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": "Does your {vehicle} still need service?",
+       "instruction": "Ask plainly whether their vehicle still needs the service or it has been taken care of, and offer to pass a day that suits them to the service team. Friendly, one question.",
+       "fallback": null
+      },
+      "wait": {
+       "amount": 6,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
+      }
+     },
+     {
+      "id": "service_last_check",
+      "day": 14,
+      "when": "Day 14",
+      "label": "Last check-in",
+      "channels": [
+       "sms",
+       "email"
+      ],
+      "message": {
+       "mode": "ai",
+       "text": null,
+       "email_text": null,
+       "email_subject": "We're here when your {vehicle} needs us",
+       "instruction": "A short last check-in: we're here whenever they need service for their vehicle; they can reply with a day that suits them and we'll pass it to the service team. No pressure, no new questions.",
+       "fallback": null
+      },
+      "wait": {
+       "amount": 13,
+       "unit": "days",
+       "after": "start",
+       "at": "10:00"
+      }
+     }
+    ],
+    "stops_when": [
+     "customer replies (the AI answers instead)",
+     "visit request passed to the team",
+     "opt-out",
+     "staff take over"
+    ],
+    "after_last": "No more automatic touches for this service lead."
    },
    "locked": false
   },
