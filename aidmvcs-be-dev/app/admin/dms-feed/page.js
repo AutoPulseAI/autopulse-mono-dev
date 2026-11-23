@@ -3,10 +3,14 @@
 // (import anyway / discard), every imported file with its dealer and what happened to its rows (paged, filtered; click a
 // file for its reasons and the rows that need a look), and one record's full history across files. 23 Nov 2026: the
 // customer side - source precedence per field and every field decision (./FieldCards.js, SOW Appendix B).
+// 23 Nov 2026: the page opens on the dealer's DMS as we hold it (./Mirror.js: stores, the delivery calendar, the four
+// departments in the DMS's own categories, records that need a look); the import mechanics below sit under
+// "How the files were imported".
 // Times are shown in UTC with the dealer's own time beside them.
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Form, Spinner, Table } from "react-bootstrap";
 import { FieldDecisionsCard, SourcePrecedenceCard } from "./FieldCards";
+import DmsMirror from "./Mirror";
 
 const call = async (url, options = {}) => {
   const res = await fetch(url, { ...options, headers: { "Content-Type": "application/json",
@@ -21,7 +25,8 @@ const KEY_NAME = { SL: "deal number", SV: "RO number", SV_APPT: "appointment num
 const DECISION = {
   ACCEPT: { label: "Accepted", color: "#1f9d55", bg: "success" },
   RETAIN: { label: "Kept newer data", color: "#8a94a6", bg: "secondary" },
-  REVIEW: { label: "Needs review", color: "#d69e2e", bg: "warning" },
+  // A REVIEW row was imported, but its customer or car could not be linked: the records are under "Needs a look" above.
+  REVIEW: { label: "Imported, not linked", color: "#d69e2e", bg: "warning" },
   REJECT: { label: "Rejected", color: "#d64545", bg: "danger" },
 };
 const CODE = {
@@ -87,6 +92,9 @@ const CSS = `
 .dmsf_reason .c{margin-left:auto;font-variant-numeric:tabular-nums;color:#1f2a44;font-weight:600}
 .dmsf_pager{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#6b7489}
 .dmsf_empty{padding:24px;text-align:center;color:#8a94a6;font-size:14px}
+.dmsf_disclose{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #e6e9ef;border-radius:10px;padding:14px 16px;margin:8px 0 16px;color:#1f2a44}
+.dmsf_disclose i{margin-top:5px;font-size:12px;color:#6b7489}
+.dmsf_disclose:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 `;
 
 function Pager({ page, pages, total, limit, onPage, noun }) {
@@ -183,15 +191,17 @@ function StoresCard({ onChanged }) {
     () => (dv ? `${dv} linked.` : "Unlinked."));
   const importStored = (dv) => act(() => call("/api/admin/dms-feed/stores", { method: "POST", body: JSON.stringify({ dv, action: "import_stored" }) }),
     (r) => (r.queued ? `${n(r.queued)} files queued for import (about ${r.minutes} min).` : "Nothing new to import: every stored file is already imported."));
+  useEffect(() => { load(); }, [load]);
   const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "-");
   return (
     <div className="w_card">
       <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
         <h3 className="w_card_title mb-0 me-auto">DealerVault stores</h3>
-        <Button size="sm" variant="outline-custom" onClick={load} disabled={busy}>{busy ? <Spinner size="sm" /> : data ? "Refresh" : "Show stores"}</Button>
+        <Button size="sm" variant="outline-custom" onClick={load} disabled={busy}>{busy ? <Spinner size="sm" /> : "Refresh"}</Button>
       </div>
       <p className="small text-muted mb-2">Each DealerVault store ID that sends us files and the dealer it belongs to. Files of an unlinked
-        store are held (below), never imported to the wrong dealer. After linking, &quot;Import stored files&quot; imports what already arrived.</p>
+        store are held (below), never imported to the wrong dealer. &quot;Import N files&quot; imports a linked store&apos;s files that
+        are in storage but were never imported (for example, the ones that arrived before it was linked). Discarded files stay discarded.</p>
       {msg && <Alert variant={msg.v} className="py-2 small">{msg.t}</Alert>}
       {data?.storage_error && <Alert variant="warning" className="py-2 small">Storage could not be listed ({data.storage_error}).</Alert>}
       {data && (
@@ -219,8 +229,9 @@ function StoresCard({ onChanged }) {
                     </div>)}</td>
                   <td className="num">{n(s.imported)}</td>
                   <td className="num">{n(s.held)}</td>
-                  <td className="text-end">{s.linked && s.files > s.imported && (
-                    <Button size="sm" variant="outline-custom" disabled={busy} onClick={() => importStored(s.dv)}>Import stored files</Button>)}</td>
+                  <td className="text-end">{s.linked && s.not_imported > 0 && (
+                    <Button size="sm" variant="outline-custom" disabled={busy} onClick={() => window.confirm(`Import ${s.not_imported} files of ${s.dv} into ${s.linked.name}? Oldest first, about 20 a minute.`) && importStored(s.dv)}>
+                      Import {n(s.not_imported)} {s.not_imported === 1 ? "file" : "files"}</Button>)}</td>
                 </tr>);
             })}</tbody>
           </Table>
@@ -230,7 +241,7 @@ function StoresCard({ onChanged }) {
   );
 }
 
-export default function DmsFeedPage() {
+function ImportDetails() {
   const [filters, setFilters] = useState({ dealer: "", type: "", days: "30", problems: false });
   const [page, setPage] = useState(1);
   const [held, setHeld] = useState({ page: 1, all: false });
@@ -277,15 +288,11 @@ export default function DmsFeedPage() {
   const dealers = data?.dealers || [];
 
   return (
-    <div className="page_content">
+    <div>
       <style>{CSS}</style>
-      <div className="page_head d-flex align-items-center gap-2">
-        <h3 className="page_title mb-0 me-auto">DMS feed</h3>
-        {loading && <Spinner size="sm" />}
-        <Button size="sm" variant="outline-secondary" onClick={load} disabled={loading}>Refresh</Button>
-      </div>
-      <div className="page_body">
+      <div>
         {error && <Alert variant="danger" className="py-2" dismissible onClose={() => setError(null)}>{error}</Alert>}
+        <div className="d-flex justify-content-end mb-2">{loading && <Spinner size="sm" />}</div>
         <p className="small text-muted mb-3">Each DealerVault file is checked before it&apos;s imported. A file that is broken
           or much smaller than usual is held, and nothing from it is written. An older file never overwrites newer data,
           and a blank field never wipes a value already on file.</p>
@@ -442,6 +449,30 @@ export default function DmsFeedPage() {
             </Table>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// The page: the dealer's DMS first (./Mirror.js), then how the files were imported (opened on a click; its data loads then).
+export default function DmsFeedPage() {
+  const [round, setRound] = useState(0);
+  const [details, setDetails] = useState(false);
+  return (
+    <div className="page_content">
+      <div className="page_head d-flex align-items-center gap-2">
+        <h3 className="page_title mb-0 me-auto">DMS feed</h3>
+        <Button size="sm" variant="outline-secondary" onClick={() => setRound((r) => r + 1)}>Refresh</Button>
+      </div>
+      <div className="page_body">
+        <DmsMirror key={`m${round}`} />
+        <button type="button" className="dmsf_disclose" aria-expanded={details} onClick={() => setDetails((v) => !v)}>
+          <i className={`fa-solid fa-chevron-${details ? "down" : "right"}`} aria-hidden="true" />
+          <span><strong>How the files were imported</strong>
+            <span className="d-block small text-muted">Stores and links, held files, every imported file and what happened to its rows,
+              customer field decisions, source precedence, one record&apos;s history</span></span>
+        </button>
+        {details && <ImportDetails key={`d${round}`} />}
       </div>
     </div>
   );
