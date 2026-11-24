@@ -133,3 +133,12 @@
 .desk_log .dl_type { padding: 3px 6px; font-size: 0.7rem; }
 .desk_log .dl_staff_cell { gap: 4px; padding-right: 10px; }
 .desk_log .dl_outcome.form-select { font-size: 0.62rem; letter-spacing: -0.01em; }
+/* The filter row as in the design: one plain row of "All ..." menus with Clear Filters at its end (24 Nov 2026). */
+.desk_log .dl_filter_bar { padding: 2px 0; }
+.desk_log .dl_filter_bar .dl_filters { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.desk_log .dl_filter_bar .form-select { background-color: var(--white, #fff); font-weight: 600; border-color: #e3e8ee; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.desk_log .dl_clear { display: flex; align-items: center; justify-content: flex-end; }
+.desk_log .dl_clear .btn-link { color: var(--primary, #0272b4); text-decoration: none; }
+.desk_log .dl_filter_bar .dl_filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.desk_log .dl_filter_bar .dl_filters > div { flex: 1 1 130px; min-width: 0; }
+.desk_log .dl_filter_bar .dl_filters > .dl_clear { flex: 0 0 auto; }
