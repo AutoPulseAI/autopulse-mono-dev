@@ -16,7 +16,8 @@ export default function ColorPick({ value, options, onPick, style, dark, disable
       <Dropdown.Menu className="dl_cpick_menu" popperConfig={{ strategy: "fixed" }} renderOnMount>
         {options.map((o) => (
           <Dropdown.Item key={o.value} eventKey={o.value} active={false} className={o.value === value ? "on" : ""}>
-            <span className="dl_cpick_dot" style={{ background: o.dot || "transparent", borderColor: o.dot ? o.dot : "#adb5bd" }} />
+            <span className="dl_cpick_icon" style={o.dot ? { color: o.ink || o.dot, background: `${o.dot}40` } : undefined}>
+              <i className={`fa-solid ${o.icon || "fa-minus"}`} aria-hidden="true" /></span>
             <span className="flex-grow-1">{o.label}</span>
             {o.value === value && <i className="fa-solid fa-check" aria-hidden="true" />}
           </Dropdown.Item>

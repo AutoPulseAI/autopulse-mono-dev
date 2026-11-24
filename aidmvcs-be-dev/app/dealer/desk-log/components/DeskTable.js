@@ -21,7 +21,7 @@ import ColorPick from "./ColorPick";
 import CallButton from "../../components/CallButton";
 import Customer360Panel from "../../components/Customer360Panel";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
-  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText } from "./deskLogUi";
+  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText, STAGE_ICON, OUTCOME_ICON } from "./deskLogUi";
 
 // Column widths (px), in the order of the columns. The table is laid out fixed, so a long value never pushes the
 // next column over: it is cut and shows in full on hover.
@@ -232,7 +232,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   <td>
                     <ColorPick value={row.stage || ""} disabled={busy === row.id} label="Current stage" empty="No stage"
                       style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} dark={row.stage && darkPill(STAGE_STYLE[row.stage])}
-                      options={[{ value: "", label: "No stage" }, ...STAGES.map((st) => ({ value: st, label: st, dot: STAGE_STYLE[st]?.backgroundColor }))]}
+                      options={[{ value: "", label: "No stage" }, ...STAGES.map((st) => ({ value: st, label: st, dot: STAGE_STYLE[st]?.backgroundColor, icon: STAGE_ICON[st], ink: st === "PROPOSAL" ? "#9a7b00" : undefined }))]}
                       onPick={(v) => save(row, { stage: v || null })} />
                     {row.minutes_in_stage != null && (
                       <span className={`dl_age${stalled ? " stalled" : ""}`}>{ageText(row.minutes_in_stage)}</span>
@@ -277,7 +277,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   <td className="dl_pin dl_pin_out">
                     <ColorPick value={choice?.value || ""} disabled={busy === row.id} label="Outcome" empty="Pick outcome"
                       style={choice ? choice.style : NO_OUTCOME_STYLE} dark={darkPill(choice?.style)}
-                      options={OUTCOME_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.style.backgroundColor }))}
+                      options={OUTCOME_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.style.backgroundColor, icon: OUTCOME_ICON[c.value], ink: c.style.color === "#fff" ? undefined : c.style.color }))}
                       onPick={(v) => { const next = OUTCOME_CHOICES.find((c) => c.value === v); if (next) setPending({ row, choice: next }); }} />
                     {row.outcome_from_lead && <Clip className="small text-muted" text="Set on the Leads page" />}
                     {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}

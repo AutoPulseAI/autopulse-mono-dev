@@ -176,3 +176,6 @@
 /* An open menu sits above the pinned columns and the sticky header. */
 .desk_log .dl_table td:has(.dl_cpick_menu.show) { z-index: 6; overflow: visible; }
 .desk_log .dl_table td.dl_pin:has(.dl_cpick_menu.show) { z-index: 6; }
+.dl_cpick_icon { width: 26px; height: 26px; border-radius: 7px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; color: #6c757d; background: #f1f3f5; }
+.desk_log .dl_cpick_btn_icon { font-size: 0.72rem; flex: none; opacity: .9; }
