@@ -13,16 +13,18 @@ import LeadReminder from '../models/LeadReminder.js';
 const FOLLOWUP_KINDS = ['cadence_touch', 'next_action', 'visit_followup', 'owner_touch', 'channel_switch'];
 
 /** @returns {Promise<{kind, at, text, lead_id, who}[]>} soonest first, at most 8 */
-export async function openTasks({ leadIds = [], now = new Date(), db = mongoose.connection.db } = {}) {
+// dealerId keeps the AI collections on their dealer_id indexes (24 Nov 2026: without it each call read the whole collection).
+export async function openTasks({ leadIds = [], dealerId = null, now = new Date(), db = mongoose.connection.db } = {}) {
+  const dealer = dealerId ? { dealer_id: String(dealerId) } : {};
   const ids = leadIds.map(String);
   if (!ids.length) return [];
   const [calls, bookings, followups, reminders] = await Promise.all([
-    db.collection('ai_call_tasks').find({ lead_id: { $in: ids }, status: 'open' })
+    db.collection('ai_call_tasks').find({ ...dealer, lead_id: { $in: ids }, status: 'open' })
       .project({ lead_id: 1, reason: 1, due_by: 1, opened_at: 1, assigned_to: 1, phone: 1 }).limit(10).toArray().catch(() => []),
     Booking.find({ lead_id: { $in: ids }, bookingDate: { $gte: new Date(now.getTime() - 12 * 3600000) },
       booking_status: { $ne: 'cancelled' }, showed: { $ne: false } })
       .select('lead_id bookingDate bookingTime appointment_type booking_status').sort({ bookingDate: 1 }).limit(5).lean(),
-    db.collection('scheduled_followups').find({ lead_id: { $in: ids }, status: 'pending', kind: { $in: FOLLOWUP_KINDS } })
+    db.collection('scheduled_followups').find({ ...dealer, lead_id: { $in: ids }, status: 'pending', kind: { $in: FOLLOWUP_KINDS } })
       .project({ lead_id: 1, due_at: 1, to_channel: 1, kind: 1 }).sort({ due_at: 1 }).limit(1).toArray().catch(() => []),
     LeadReminder.find({ lead_id: { $in: ids.filter((i) => mongoose.isValidObjectId(i)) }, done_at: null })
       .select('lead_id due_at note assigned_name').sort({ due_at: 1 }).limit(10).lean().catch(() => []),

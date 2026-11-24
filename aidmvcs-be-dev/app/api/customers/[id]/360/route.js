@@ -224,7 +224,7 @@ export async function GET(req, { params }) {
         // The DMS sales file's details for the profile (birthday, co-buyer, finance / lease, DMS do-not flags).
         dms: dmsProfile(deals, customer.extra?.dealervault?.customer_numbers || []),
         // What is open now: call tasks, upcoming appointments, the AI's next message (top of the profile).
-        open_tasks: await openTasks({ leadIds: leads.map((l) => l._id) }).catch(() => []),
+        open_tasks: await openTasks({ leadIds: leads.map((l) => l._id), dealerId }).catch(() => []),
       },
     });
   } catch (error) {
