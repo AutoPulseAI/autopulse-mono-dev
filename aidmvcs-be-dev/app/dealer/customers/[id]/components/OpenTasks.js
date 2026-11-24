@@ -7,14 +7,18 @@ import { formatTimestamp } from "../../../../utils/dateUtils";
 import AppIcon from "../../../components/AppIcon";
 
 const KIND = {
-  call: { icon: "phone", href: () => "/dealer/ai/actions?tab=tasks" },
+  call: { icon: "phone", href: (t) => `/dealer/ai/actions?tab=tasks${t.missed ? "&status=missed" : ""}` },
   appt: { icon: "appointment", href: () => "/dealer/booking" },
   followup: { icon: "ai", href: (t) => `/dealer/leads?lead=${t.lead_id}` },
   reminder: { icon: "task", href: (t) => `/dealer/leads?lead=${t.lead_id}` },
 };
 
 export default function OpenTasks({ tasks }) {
-  if (!tasks?.length) return null;
+  // Always shown, so "no tasks" is a clear answer rather than a missing box (25 Nov 2026).
+  if (!tasks?.length) {
+    return <div className="cp_card cp_tasks mb-3"><div className="cp_tasks_head"><AppIcon name="task" />Open tasks
+      <span className="text-muted small fw-normal ms-2" style={{ textTransform: "none" }}>None - no calls, reminders or appointments waiting</span></div></div>;
+  }
   return (
     <div className="cp_card cp_tasks mb-3">
       <div className="cp_tasks_head"><AppIcon name="task" />Open tasks <span className="cp_tab_count">{tasks.length}</span></div>
@@ -24,9 +28,9 @@ export default function OpenTasks({ tasks }) {
           return (
             <li key={`${t.kind}-${t.lead_id}-${i}`} className="cp_task">
               <AppIcon name={k.icon} />
-              <span className="me-auto">{t.text}
+              <span className="me-auto">{t.missed && <span className="badge bg-danger me-1">Missed</span>}{t.text}
                 {t.who && <span className="text-muted"> · {t.kind === "call" || t.kind === "reminder" ? "Assigned to " : ""}{t.who}</span>}</span>
-              {t.at && <span className="text-muted small text-nowrap">{t.kind === "call" ? "due " : ""}{formatTimestamp(t.at)}</span>}
+              {t.at && <span className="text-muted small text-nowrap">{t.kind === "call" ? (t.missed ? "was due " : "due ") : ""}{formatTimestamp(t.at)}</span>}
               <Link href={k.href(t)} className="small text-nowrap">Open</Link>
             </li>
           );
