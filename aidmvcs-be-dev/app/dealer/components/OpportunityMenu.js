@@ -13,6 +13,7 @@ import { Alert, Badge, Button, Dropdown, Form, ListGroup, Modal, Spinner } from 
 import ExportFormButton from "../customers/[id]/components/ExportFormButton";
 import { DEPARTMENT_NAMES, DEPARTMENTS, leadDepartment } from "@lib/departmentNames";
 import { formatTimestamp } from "../../utils/dateUtils";
+import ViewAdfModal from "../leads/components/ViewAdfModal";
 import "./opportunity.css";
 
 const auth = (json = false) => ({ ...(json ? { "Content-Type": "application/json" } : {}),
@@ -45,6 +46,7 @@ export default function OpportunityMenu({ lead, timezone, onDepartment }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(null);
+  const [adfOpen, setAdfOpen] = useState(false); // 24 Nov 2026: the lead's ADF file, from the lead page too
   const leadId = lead?._id;
   const dealerId = lead?.dealer_id ? String(lead.dealer_id) : null;
   const customerId = lead?.customer_id ? String(lead.customer_id?._id || lead.customer_id) : null;
@@ -133,6 +135,7 @@ export default function OpportunityMenu({ lead, timezone, onDepartment }) {
             <Dropdown.Item onClick={() => show("type")}><i className="fa-regular fa-arrows-rotate" />Change lead type
               <small className="d-block text-muted">Now: {DEPARTMENT_NAMES[leadDepartment(lead)]}</small></Dropdown.Item>
           )}
+          <Dropdown.Item onClick={() => setAdfOpen(true)}><i className="fa-regular fa-file-code" />View ADF</Dropdown.Item>
           <Dropdown.Item onClick={() => show("audit")}><i className="fa-regular fa-clock-rotate-left" />View audit log</Dropdown.Item>
           <Dropdown.Item onClick={() => show("campaign")}><i className="fa-regular fa-bullhorn" />Add customer to campaign</Dropdown.Item>
           {loading && <div className="px-3 small text-muted"><Spinner size="sm" className="me-1" />Loading...</div>}
@@ -140,6 +143,7 @@ export default function OpportunityMenu({ lead, timezone, onDepartment }) {
       </Dropdown>
       {error && !open && <Alert variant="danger" className="py-1 px-2 small mt-1 mb-0" dismissible onClose={() => setError("")}>{error}</Alert>}
 
+      <ViewAdfModal show={adfOpen} onHide={() => setAdfOpen(false)} leadId={leadId} />
       <Modal show={!!open} onHide={close} centered size={open === "audit" ? "lg" : undefined} scrollable>
         <Modal.Header closeButton>
           <Modal.Title className="fs-6">
