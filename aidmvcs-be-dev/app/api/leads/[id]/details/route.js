@@ -170,7 +170,8 @@ export async function PATCH(req, { params }) {
   }
   // A lead moved to another department: that department's staff hear about it (email).
   const dept = edits.find((e) => e.field === 'department');
-  const notified = dept ? await notifyDepartment({ dealerId: lead.dealer_id, lead: after, department: dept.to,
+  // Bulk changes (app/api/leads/bulk-edit) send one summary email per call instead (skip_notify).
+  const notified = dept && body.skip_notify !== true ? await notifyDepartment({ dealerId: lead.dealer_id, lead: after, department: dept.to,
     fromDepartment: leadDepartment({ department: dept.from }), byName: user.name }) : null;
   return Response.json({ ok: true, lead: await Lead.findById(lead._id).lean(), changed: edits.map((e) => e.field),
     ...(notified ? { notified } : {}) });

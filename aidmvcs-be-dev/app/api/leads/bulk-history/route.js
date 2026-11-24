@@ -1,6 +1,6 @@
 // GET /api/leads/bulk-history  Leads > Actions > Bulk history (SOW Deliverable B b5: bulk "audit trail").
 //   ?dealer_id (required) &page &limit (default 10, max 50) &from &to (ISO dates) &by (name) &action (reassign|status)
-//   &result (done|failed|undone) &q (a lead's name: changes that touched it)
+//   &result (done|failed|undone) &q (a lead's name, phone or email: changes that touched it)
 //   -> { rows: [{ _id, at, by_name, action, to_label, leads, updated, unchanged, failed, undone_at, undone_by_name,
 //                 can_undo }], people: [names for the "Done by" filter], pagination }
 //   &id=<row id> -> { row, items: one page of that change's leads (before -> after, result, reason) }
@@ -8,6 +8,7 @@
 import mongoose from 'mongoose';
 import dbConnect from '@lib/mongodb';
 import BulkChange from '@models/BulkChange';
+import Lead from '@models/Lead';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { canUndo } from '@lib/bulkChanges';
 
@@ -44,13 +45,20 @@ export async function GET(req) {
   const by = url.searchParams.get('by');
   if (by) match.by_name = by;
   const action = url.searchParams.get('action');
-  if (['reassign', 'status'].includes(action)) match.action = action;
+  if (['reassign', 'status', 'department', 'lead_source', 'campaign', 'note', 'task'].includes(action)) match.action = action;
   const result = url.searchParams.get('result');
   if (result === 'failed') match.failed = { $gt: 0 };
   if (result === 'undone') match.undone_at = { $ne: null };
   if (result === 'done') { match.failed = 0; match.undone_at = null; }
-  const q = String(url.searchParams.get('q') || '').trim();
-  if (q) match['items.name'] = { $regex: escape(q), $options: 'i' };
+  // A lead by name, phone or email: the changes that touched any matching lead of this dealer.
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
+  if (q) {
+    const rx = { $regex: escape(q), $options: 'i' };
+    const digits = q.replace(/\D/g, '');
+    const or = [{ name: rx }, { email: rx }, ...(digits.length >= 3 ? [{ phone: { $regex: digits } }] : [])];
+    const hits = await Lead.find({ dealer_id: dealerId, $or: or }).select('_id').limit(500).lean();
+    match.$or = [{ 'items.lead_id': { $in: hits.map((l) => l._id) } }, { 'items.name': rx }];
+  }
 
   const [total, rows, people] = await Promise.all([
     BulkChange.countDocuments(match),

@@ -9,11 +9,20 @@ import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import { statusLabel } from "@lib/statusLabels";
-import { ListPages } from "../components/BulkAssign";
+import { ListPages, SkeletonRows } from "../components/BulkAssign";
+import DateRangePickerComponent from "../../components/DateRangePicker";
 
-const RANGES = [["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["", "All time"]];
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
-const changeText = (r) => (r.action === "status" ? `Status → ${statusLabel(r.to_label) || r.to_label}` : `Reassign → ${r.to_label || "Unassigned"}`);
+const changeText = (r) => ({
+  reassign: `Reassign → ${r.to_label || "Unassigned"}`,
+  status: `Status → ${statusLabel(r.to_label) || r.to_label}`,
+  department: `Department → ${r.to_label}`,
+  lead_source: `Lead source → ${r.to_label || "None"}`,
+  campaign: `Campaign → ${r.to_label || "None"}`,
+  note: `Note: "${r.to_label || ""}"`,
+  task: `Call task: "${r.to_label || ""}"`,
+}[r.action] || r.action);
+const EMPTY = { q: "", by: "", action: "", result: "", dateRange: { startDate: null, endDate: null } };
 
 export default function BulkHistoryPage() {
   const router = useRouter();
@@ -21,7 +30,7 @@ export default function BulkHistoryPage() {
   const dealerId = (dealerParent || user)?.id;
   const timezone = (dealerParent || user)?.dealer_account_information?.time_zone || "America/New_York";
   const canAssign = useCan("Assign Leads");
-  const [inputs, setInputs] = useState({ q: "", range: "30", by: "", action: "", result: "" });
+  const [inputs, setInputs] = useState(EMPTY);
   const [applied, setApplied] = useState(inputs);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -37,7 +46,9 @@ export default function BulkHistoryPage() {
     setLoading(true); setError(null);
     const q = new URLSearchParams({ dealer_id: dealerId, page: String(page), limit: "10" });
     if (applied.q) q.set("q", applied.q);
-    if (applied.range) q.set("from", new Date(Date.now() - Number(applied.range) * 86400000).toISOString());
+    // The app's own date range picker (dealer-local days), as on the Leads list.
+    if (applied.dateRange?.startDate) q.set("from", applied.dateRange.startDate.toISOString());
+    if (applied.dateRange?.endDate) q.set("to", applied.dateRange.endDate.toISOString());
     if (applied.by) q.set("by", applied.by);
     if (applied.action) q.set("action", applied.action);
     if (applied.result) q.set("result", applied.result);
@@ -52,6 +63,7 @@ export default function BulkHistoryPage() {
 
   const openRow = useCallback(async (row, p = 1) => {
     setOpenPage(p);
+    setOpen({ row, items: null, pagination: null }); // skeleton while it loads
     try {
       const res = await fetch(`/api/leads/bulk-history?dealer_id=${dealerId}&id=${row._id}&page=${p}&limit=25`, { headers: auth() });
       const body = await res.json();
@@ -72,7 +84,7 @@ export default function BulkHistoryPage() {
   };
 
   const search = () => { setPage(1); setApplied(inputs); };
-  const clear = () => { const empty = { q: "", range: "30", by: "", action: "", result: "" }; setInputs(empty); setPage(1); setApplied(empty); };
+  const clear = () => { setInputs(EMPTY); setPage(1); setApplied(EMPTY); };
   const set = (key) => (e) => setInputs((prev) => ({ ...prev, [key]: e.target.value }));
   const rows = data?.rows || [];
 
@@ -92,13 +104,12 @@ export default function BulkHistoryPage() {
         <div className="w_card">
           <Row className="search_filters gx-1 gy-1">
             <Col xl={3} md={6} xs={12}>
-              <Form.Control size="sm" placeholder="Lead name" value={inputs.q} onChange={set("q")}
+              <Form.Control size="sm" placeholder="Lead name, phone or email" value={inputs.q} onChange={set("q")}
                 onKeyDown={(e) => { if (e.key === "Enter") search(); }} />
             </Col>
             <Col xl={2} md={6} xs={6}>
-              <Form.Select size="sm" value={inputs.range} onChange={set("range")} aria-label="When">
-                {RANGES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-              </Form.Select>
+              <DateRangePickerComponent dateRange={inputs.dateRange} timezone={timezone} className="w-100"
+                onDateRangeChange={({ startDate, endDate }) => setInputs((prev) => ({ ...prev, dateRange: { startDate, endDate } }))} />
             </Col>
             <Col xl={2} md={4} xs={6}>
               <Form.Select size="sm" value={inputs.by} onChange={set("by")} aria-label="Done by">
@@ -111,6 +122,11 @@ export default function BulkHistoryPage() {
                 <option value="">All changes</option>
                 <option value="reassign">Reassign</option>
                 <option value="status">Status</option>
+                <option value="department">Department</option>
+                <option value="lead_source">Lead source</option>
+                <option value="campaign">Campaign</option>
+                <option value="note">Note</option>
+                <option value="task">Call task</option>
               </Form.Select>
             </Col>
             <Col xl={2} md={4} xs={6}>
@@ -121,10 +137,10 @@ export default function BulkHistoryPage() {
                 <option value="undone">Undone</option>
               </Form.Select>
             </Col>
-            <Col xl={1} md={4} xs={12}>
+            <Col xl="auto" md={4} xs={12}>
               <div className="d-flex gap-1">
-                <Button variant="custom" size="sm" className="w-50" onClick={search}>Search</Button>
-                <Button variant="secondary" size="sm" className="w-50" onClick={clear}>Clear</Button>
+                <Button variant="custom" size="sm" onClick={search}>Search</Button>
+                <Button variant="secondary" size="sm" onClick={clear}>Clear</Button>
               </div>
             </Col>
           </Row>
@@ -142,7 +158,7 @@ export default function BulkHistoryPage() {
                 </Row>
               </ListGroup.Item>
               {loading ? (
-                <div className="text-center py-4"><Spinner size="sm" /></div>
+                <div className="py-3 px-2"><SkeletonRows rows={6} cols={5} /></div>
               ) : rows.length ? rows.map((r) => (
                 <ListGroup.Item as="li" key={r._id} className="w_card_list_box d-flex align-items-center"
                   style={r.undone_at ? { borderLeftColor: "var(--secondary3)" } : undefined}>
@@ -198,6 +214,7 @@ export default function BulkHistoryPage() {
                 {formatTimestamp(open.row.at, timezone)} · {open.row.by_name || "—"}
                 {open.row.undone_at ? <> · <Badge bg="secondary">Undone</Badge></> : null}
               </p>
+              {!open.items ? <SkeletonRows rows={8} /> : (
               <Table size="sm" className="small mb-2">
                 <thead><tr><th>Lead</th><th>Before</th><th>Result</th></tr></thead>
                 <tbody>
@@ -212,6 +229,7 @@ export default function BulkHistoryPage() {
                   ))}
                 </tbody>
               </Table>
+              )}
               <ListPages current={openPage} total={open.pagination?.totalPages || 1} onPage={(p) => openRow(open.row, p)} size="sm" />
             </>
           )}
