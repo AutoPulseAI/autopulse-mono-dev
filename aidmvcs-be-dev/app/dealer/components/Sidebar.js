@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useCan } from "../../hooks/PermissionsContext";
-import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation"; // Use usePathname instead of useRouter
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSidebarTitles } from "../../hooks/useSidebar";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
 import { deskLogMenuVisible } from "../desk-log/deskLogAccess";
@@ -96,17 +96,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   return (
     <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
-        <li>
-          <Link href="/dealer/dashboard" className={getLinkClass("/dealer/dashboard")}>
-            <i className="fa-regular fa-chart-column"></i>Dashboard
-          </Link>
-        </li>
-        {/* 13 Nov 2026 meeting (6.4): the Service Dashboard - the Dashboard with Service picked. */}
-        <li>
-          <Link href="/dealer/dashboard?department=service" className="nav-link">
-            <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
-          </Link>
-        </li>
+        {/* Betsy, 25 Nov 2026: Service has its own dashboard, so the other one is named "Sales Dashboard" and shows
+            Sales leads only (?department=sales); "All departments" stays in the Dashboard's own department picker. */}
+        <Suspense fallback={<DashboardLinks department={null} onDashboard={false} />}>
+          <DashboardLinksFromUrl onDashboard={pathname === "/dealer/dashboard"} />
+        </Suspense>
 
         {showDeskLog && (
           <li>
@@ -364,3 +358,27 @@ const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export default Sidebar;
+
+// The two dashboard links; the one for the department on screen is highlighted.
+function DashboardLinksFromUrl({ onDashboard }) {
+  const department = useSearchParams().get("department") || "";
+  return <DashboardLinks department={department} onDashboard={onDashboard} />;
+}
+
+function DashboardLinks({ department, onDashboard }) {
+  const cls = (d) => (onDashboard && department === d ? "nav-link active" : "nav-link");
+  return (
+    <>
+      <li>
+        <Link href="/dealer/dashboard?department=sales" className={cls("sales")}>
+          <i className="fa-regular fa-chart-column"></i>Sales Dashboard
+        </Link>
+      </li>
+      <li>
+        <Link href="/dealer/dashboard?department=service" className={cls("service")}>
+          <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
+        </Link>
+      </li>
+    </>
+  );
+}
