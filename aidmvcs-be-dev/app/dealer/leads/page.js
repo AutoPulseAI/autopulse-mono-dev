@@ -124,7 +124,7 @@ function LeadManagementContent() {
                   onClick={handleClose}
                   className="me-2"
                 >
-                  <i className="fa-solid fa-arrow-left"></i>
+                  <i className="fa-regular fa-arrow-left"></i>
                 </Button>
               )}
               {!selectedLead && <BackButton />}

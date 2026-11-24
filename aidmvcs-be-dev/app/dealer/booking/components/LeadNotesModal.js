@@ -141,13 +141,13 @@ export default function LeadNotesModal({
               size="sm"
               onClick={() => setShowWriteWithAI(true)}
             >
-              <i className="fa-solid fa-wand-magic-sparkles me-2"></i>
+              <i className="fa-regular fa-wand-magic-sparkles me-2"></i>
               Write with AI
             </Button>
           </div>
           <Form.Group className="mb-3">
             <Form.Label>
-              <i className="fa-solid fa-pen-to-square me-1"></i>
+              <i className="fa-regular fa-pen-to-square me-1"></i>
               Note Content
             </Form.Label>
             <Form.Control
@@ -159,7 +159,7 @@ export default function LeadNotesModal({
               isInvalid={!!error && !content.trim()}
             />
             <Form.Text className="text-muted">
-              <i className="fa-solid fa-robot me-1"></i>
+              <i className="fa-regular fa-robot me-1"></i>
               This note will help AI understand context and prepare more relevant responses.
             </Form.Text>
             <Form.Control.Feedback type="invalid">{error}</Form.Control.Feedback>
@@ -171,7 +171,7 @@ export default function LeadNotesModal({
               id="internal-use-checkbox"
               label={
                 <>
-                  <i className="fa-solid fa-lock me-1"></i>
+                  <i className="fa-regular fa-lock me-1"></i>
                   Internal Use Only
                 </>
               }
@@ -179,7 +179,7 @@ export default function LeadNotesModal({
               onChange={(e) => setInternalUse(e.target.checked)}
             />
             <Form.Text className="text-muted">
-              <i className="fa-solid fa-info-circle me-1"></i>
+              <i className="fa-regular fa-info-circle me-1"></i>
               Check this box to mark the note as internal. Internal notes won't appear in the conversation view.
             </Form.Text>
           </Form.Group>

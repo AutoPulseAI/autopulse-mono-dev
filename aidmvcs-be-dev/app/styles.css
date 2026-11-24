@@ -1682,8 +1682,8 @@ background-color: var(--white);
 
 /* Dashboard colours (13 Nov 2026 meeting, Betsy: "they can just glance and know"). */
 /* "CUSTOMER REPLIES BY LEAD AGE": a thick line and a capital heading set it apart from the cards above. */
-.reply_breakdown { border-top: 4px solid #0891b2; padding-top: 12px; margin-top: 4px; }
-.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #0b5568; margin-bottom: 10px; }
+.reply_breakdown { border-top: 4px solid #f7931e; padding-top: 12px; margin-top: 4px; }
+.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #b45f06; margin-bottom: 10px; }
 .reply_breakdown_title small { font-weight: 500; letter-spacing: 0; color: var(--dark); font-size: 0.8rem; }
 
 /* ---------- Customer profile (17 Nov 2026, BB: blue scheme, things defined by icons, one window) ---------- */
@@ -2180,3 +2180,28 @@ a .dash_card:hover .dash_card_title { color: var(--primary); }
   .appt_status_col { padding: 4px 0; }
   .appt_action_col .w_card_list_btns .btn { flex: 1 1 0; }
 }
+
+/* Appointments list on a desktop: the status badge and the four buttons each get the room they need (as on Leads) */
+@media (min-width: 1200px) {
+  .appt_main_col { flex: 0 0 calc(100% - 306px); width: calc(100% - 306px); max-width: calc(100% - 306px); }
+  .appt_status_col { flex: 0 0 160px; width: 160px; max-width: 160px; padding-right: 6px; }
+  .appt_action_col { flex: 0 0 146px; width: 146px; max-width: 146px; }
+}
+/* The side list beside a conversation: its Whose-leads buttons fit the narrow panel */
+.lead_fltr.w-100 .btn { padding-left: 4px; padding-right: 4px; font-size: 0.8rem; }
+.lead_fltr.w-100 .btn i { margin-right: 3px !important; }
+@media (min-width: 1200px) {
+  .appt_main_col > .row > :nth-child(1) { flex: 0 0 auto; width: 15%; }
+  .appt_main_col > .row > :nth-child(2) { flex: 0 0 auto; width: 17%; }
+  .appt_main_col > .row > :nth-child(3) { flex: 0 0 auto; width: 15%; }
+  .appt_main_col > .row > :nth-child(4) { flex: 0 0 auto; width: 15%; }
+  .appt_main_col > .row > :nth-child(5) { flex: 0 0 auto; width: 13%; }
+  .appt_main_col > .row > :nth-child(6) { flex: 0 0 auto; width: 25%; }
+}
+.lead_fltr.w-100 .btn { flex: 1 1 auto; }
+@media (min-width: 1200px) {
+  .appt_main_col .badge { white-space: normal; text-align: left; max-width: 100%; display: inline-block; }
+}
+/* The side list beside a conversation is narrow: one filter per line, so no dropdown text is cut */
+.dealer-sidebar .search_filters > [class*="col"] { flex: 0 0 100%; max-width: 100%; }
+@media (max-width: 1199.98px) { .w_card_list_box .appt_type { margin-left: 6px; } }

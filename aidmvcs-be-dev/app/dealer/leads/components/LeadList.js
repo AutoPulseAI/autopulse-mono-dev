@@ -1148,7 +1148,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
         // Undo a reassignment (BB, 14 Nov 2026): one click puts the lead back with whoever had it.
         showAlert(<span className="d-inline-flex align-items-center flex-wrap gap-2">Lead assignment updated.
           <Button size="sm" variant="outline-success" className="py-0" onClick={() => undoReassign(leadId)}>
-            <i className="fa-solid fa-rotate-left me-1" />Undo</Button></span>, 'success');
+            <i className="fa-regular fa-rotate-left me-1" />Undo</Button></span>, 'success');
         fetchLeads(); // Refresh leads
       } else {
         showAlert('Failed to update assignment', 'danger');
@@ -1564,10 +1564,10 @@ useImperativeHandle(ref, () => ({
                       <Dropdown.Divider />
                       <Dropdown.Header>Bulk</Dropdown.Header>
                       <Dropdown.Item onClick={startSelecting} disabled={selectMode || !leads.length}>
-                        <i className="fa-solid fa-list-check"></i><strong>Select leads</strong><small>change many at once</small>
+                        <i className="fa-regular fa-list-check"></i><strong>Select leads</strong><small>change many at once</small>
                       </Dropdown.Item>
                       <Dropdown.Item onClick={() => router.push('/dealer/leads/bulk-history')}>
-                        <i className="fa-solid fa-clock-rotate-left"></i>Bulk history<small>who changed what, undo</small>
+                        <i className="fa-regular fa-clock-rotate-left"></i>Bulk history<small>who changed what, undo</small>
                       </Dropdown.Item>
                     </>
                   )}
@@ -1581,8 +1581,12 @@ useImperativeHandle(ref, () => ({
       {compact ? (
         <Row className="align-items-center g-0">
           <Col lg={12}>
-            {/* Filter Controls */}
-            <Row className="search_filters gx-1 gy-1">
+            {/* The side list is narrow: its filters fold behind a button, like on phones */}
+            <Button variant="outline-custom" size="sm" className="w-100" aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((v) => !v)}>
+              <i className="fa-regular fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
+            </Button>
+            <Row className={`search_filters gx-1 gy-1 mt-1${filtersOpen ? "" : " d-none"}`}>
               <Col xxl={12} xl={12} lg={12} md={12}>
                 <Form.Control
                   type="text"
@@ -1879,7 +1883,7 @@ useImperativeHandle(ref, () => ({
               <span key={c.key} className="leads_filter_chip">
                 {c.text}
                 <button type="button" aria-label={`Clear ${c.text}`} onClick={() => clearChip(c.key)}>
-                  <i className="fa-solid fa-xmark"></i>
+                  <i className="fa-regular fa-xmark"></i>
                 </button>
               </span>
             ))}
@@ -2115,7 +2119,7 @@ useImperativeHandle(ref, () => ({
                       {lead.ai_admin && (
                         // AutoPulse super admins only (the API leaves this out for anyone else): bucket and next AI message.
                         <div className="small mt-1 text-info" title="AutoPulse admin view: the AI's bucket and its next scheduled message">
-                          <i className="fa-solid fa-user-shield"></i>{' '}
+                          <i className="fa-regular fa-user-shield"></i>{' '}
                           {[lead.ai_admin.bucket && `Bucket: ${lead.ai_admin.bucket}`,
                             lead.ai_admin.agent && `Agent: ${lead.ai_admin.agent}`,
                             lead.ai_admin.next && `Next: ${String(lead.ai_admin.next.step || lead.ai_admin.next.kind).replace(/_/g, ' ')} ${formatTimestamp(lead.ai_admin.next.due_at, dealerTimezone)}`]

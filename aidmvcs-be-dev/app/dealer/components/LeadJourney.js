@@ -54,7 +54,7 @@ export default function LeadJourney({ leadId, times: given = null, timezone }) {
         ))}
         <i className={`fa-solid ${sold ? "fa-person-circle-check" : "fa-person-running"} lj_runner`}
           style={{ left: `${pct}%` }} title={label} />
-        <i className="fa-solid fa-car-side lj_car" title="The car" />
+        <i className="fa-regular fa-car-side lj_car" title="The car" />
       </div>
       <div className="lj_label">{label}</div>
     </div>

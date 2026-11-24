@@ -21,7 +21,7 @@ export const MEANING = {
   closed: CARD_COLOR.closed_lost,
   // Not on the Desk Log
   lead: "#0272b4", // the brand blue
-  reply: "#0891b2", // was orange, which is the Desk Log's appointment colour
+  reply: "#f7931e", // the colour the client already had for Customer Replied; it is also the Desk Log's appointment orange
   neutral: "#5f7890",
 };
 
@@ -29,7 +29,8 @@ export const MEANING = {
 const APPT = { backgroundColor: MEANING.appointment, color: "#3a2000" };
 const SHOWED = { backgroundColor: MEANING.showed, color: "#fff" };
 const CLOSED = { backgroundColor: MEANING.closed, color: "#fff" };
-const REPLY = { backgroundColor: "#d5f0f6", color: "#0b5568" };
+// Lighter than the solid appointment orange, so the two stay apart in a list.
+const REPLY = { backgroundColor: "#ffe0b8", color: "#7a3f00" };
 const STATUS_STYLE = {
   lead: { backgroundColor: MEANING.lead, color: "#fff" },
   contacted: REPLY,
@@ -57,7 +58,7 @@ export function statusStyle(status, label) {
 }
 
 // One solid colour per status, for a chart bar.
-const CHART = { contacted: MEANING.reply, "contacted - no next action": MEANING.reply, "contacted - specific follow-up": MEANING.reply,
+const CHART = { contacted: "#ffc98a", "contacted - no next action": "#ffc98a", "contacted - specific follow-up": "#ffc98a",
   "no show": "#fbc98e", "sold pending": "#7fd08a" };
 export function statusChartColor(status) {
   const key = String(status || "").trim().toLowerCase();

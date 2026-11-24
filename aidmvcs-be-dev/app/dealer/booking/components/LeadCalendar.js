@@ -285,7 +285,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                   size="sm"
                   onClick={() => navigateCalendar(-1)}
                 >
-                  <i className="fa-solid fa-chevron-left"></i>
+                  <i className="fa-regular fa-chevron-left"></i>
                 </Button>
                 <Button
                   variant="outline-secondary"
@@ -299,7 +299,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                   size="sm"
                   onClick={() => navigateCalendar(1)}
                 >
-                  <i className="fa-solid fa-chevron-right"></i>
+                  <i className="fa-regular fa-chevron-right"></i>
                 </Button>
               </div>
             </Col>
@@ -557,7 +557,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                     setSelectedLead(null); // Close the modal
                   }}
                 >
-                  <i className="fa-solid fa-comments me-2"></i>
+                  <i className="fa-regular fa-comments me-2"></i>
                   View Conversation
                 </Button>
               </div>

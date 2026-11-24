@@ -216,7 +216,7 @@ export default function EmailReplyModal({
                             className="mb-2"
                             onClick={() => setShowWriteWithAI(true)}
                         >
-                            <i className="fa-solid fa-wand-magic-sparkles me-2"></i>
+                            <i className="fa-regular fa-wand-magic-sparkles me-2"></i>
                             Write with AI
                         </Button>
                     </div>
@@ -250,7 +250,7 @@ export default function EmailReplyModal({
                                             )}
                                         </div>
                                         <Button variant="outline-danger" size="sm" onClick={removeSelectedVehicle}>
-                                            <i className="fa-solid fa-times"></i>
+                                            <i className="fa-regular fa-times"></i>
                                         </Button>
                                     </div>
                                 </Card.Body>

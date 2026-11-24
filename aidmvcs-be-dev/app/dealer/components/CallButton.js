@@ -48,12 +48,12 @@ export default function CallButton({ phone, leadId, dealerId, size = "sm", varia
       {logOnly ? (
         <Button size={size} variant={variant} className={className} title="Log a call made from another phone"
           onClick={() => { setOutcome(""); setNotes(""); setError(""); setShow(true); }}>
-          <i className={`fa-solid fa-phone-volume${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
+          <i className={`fa-regular fa-phone-volume${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
         </Button>
       ) : (
         <Button as="a" href={href} size={size} variant={variant} className={className} onClick={open}
           title={`Call ${phone}`} aria-label={`Call ${phone}`}>
-          <i className={`fa-solid fa-phone${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
+          <i className={`fa-regular fa-phone${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}
         </Button>
       )}
       <Modal show={show} onHide={() => setShow(false)} centered>

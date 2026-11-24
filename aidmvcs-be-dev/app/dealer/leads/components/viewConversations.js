@@ -870,7 +870,7 @@ export default function ViewConversations({
                   <div className="lead_actions mt-2">
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
-                        <i className="fa-solid fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
+                        <i className="fa-regular fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
                       </span>
                     )}
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
@@ -881,15 +881,15 @@ export default function ViewConversations({
                     )}
                     {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" />}
                     <Button variant="outline-warning" size="sm" className="text-nowrap" onClick={() => setShowNotesModal(true)}>
-                      <i className="fa-solid fa-sticky-note me-1"></i>Add Note
+                      <i className="fa-regular fa-sticky-note me-1"></i>Add Note
                     </Button>
                     <Button variant="outline-custom" size="sm" className="text-nowrap" onClick={() => setShowStatusModal(true)}>
-                      <i className="fa-solid fa-pen me-1"></i>Update Status
+                      <i className="fa-regular fa-pen me-1"></i>Update Status
                     </Button>
                     {/* The Desk Log check-in, with this lead picked. */}
                     {showCheckIn && (
                       <Button variant="outline-custom" size="sm" className="text-nowrap" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                        <i className="fa-solid fa-right-to-bracket me-1"></i>Check in
+                        <i className="fa-regular fa-right-to-bracket me-1"></i>Check in
                       </Button>
                     )}
                     {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (not shown on the profile itself). */}
@@ -900,7 +900,7 @@ export default function ViewConversations({
                     )}
                     {!embedded && (
                       <Button variant="outline-secondary" size="sm" className="text-nowrap" onClick={handleClose}>
-                        <i className="fa-solid fa-arrow-left me-1"></i>Back to List
+                        <i className="fa-regular fa-arrow-left me-1"></i>Back to List
                       </Button>
                     )}
                   </div>
@@ -921,7 +921,7 @@ export default function ViewConversations({
                       </>
                     ) : (
                       <>
-                        <i className="fa-solid fa-chevron-left me-1" /> Prev
+                        <i className="fa-regular fa-chevron-left me-1" /> Prev
                       </>
                     )}
                   </Button>
@@ -937,7 +937,7 @@ export default function ViewConversations({
                       </>
                     ) : (
                       <>
-                        Next <i className="fa-solid fa-chevron-right ms-1" />
+                        Next <i className="fa-regular fa-chevron-right ms-1" />
                       </>
                     )}
                   </Button>
@@ -1126,7 +1126,7 @@ export default function ViewConversations({
                               <h6 className="w_card_title mb-1 fw-bold">
                                 {isNote ? (
                                   <>
-                                    <i className={`fa-solid fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
+                                    <i className={`fa-regular fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
                                     {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
                                   </>
                                 ) : (

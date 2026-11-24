@@ -330,7 +330,7 @@ export default function LeadDetailsSidebar({ show, onHide, lead, onLeadUpdated }
           {isAdfLead(lead) && (
             <div className="mt-2">
               <Button variant="outline-custom" size="sm" onClick={() => setShowAdfModal(true)}>
-                <i className="fa-solid fa-file-code me-1" />View ADF
+                <i className="fa-regular fa-file-code me-1" />View ADF
               </Button>
             </div>
           )}

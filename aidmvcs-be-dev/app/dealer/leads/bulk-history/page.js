@@ -95,7 +95,7 @@ export default function BulkHistoryPage() {
       <div className="page_head">
         <div className="d-flex align-items-center">
           <Button variant="secondary" size="sm" className="me-2" onClick={() => router.push("/dealer/leads")} aria-label="Back to Leads">
-            <i className="fa-solid fa-arrow-left"></i>
+            <i className="fa-regular fa-arrow-left"></i>
           </Button>
           <h3 className="page_title mb-0">Bulk history</h3>
         </div>
@@ -189,7 +189,7 @@ export default function BulkHistoryPage() {
                         </Button>
                         {r.can_undo && canAssign && (
                           <Button variant="outline-custom" size="sm" title="Undo" aria-label="Undo" onClick={() => setConfirmUndo(r)}>
-                            <i className="fa-solid fa-rotate-left"></i>
+                            <i className="fa-regular fa-rotate-left"></i>
                           </Button>
                         )}
                       </div>

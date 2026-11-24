@@ -69,12 +69,12 @@ export function LeadFacts({ lead, extra = null }) {
   const type = leadTypeName(lead);
   return (
     <dl className="lead_facts">
-      <LeadFact icon="fa-solid fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
-      <LeadFact icon="fa-solid fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
+      <LeadFact icon="fa-regular fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
+      <LeadFact icon="fa-regular fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
         {DEPARTMENT_NAMES[leadDepartment(lead)]}</LeadFact>
-      <LeadFact icon="fa-solid fa-signs-post" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
-      <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
-      {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
+      <LeadFact icon="fa-regular fa-signs-post" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
+      <LeadFact icon="fa-regular fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
+      {lead?.campaign && <LeadFact icon="fa-regular fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
       {extra}
     </dl>
   );
@@ -98,8 +98,8 @@ function LeadPlan({ lead, timezone }) {
     <>
       <LeadFacts lead={lead} extra={plan && (
         <>
-          <LeadFact icon="fa-solid fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
-          <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
+          <LeadFact icon="fa-regular fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
+          <LeadFact icon="fa-regular fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
         </>
       )} />
       {plan && (
@@ -120,7 +120,7 @@ function StatusPill({ lead, onStatusClick }) {
     <button type="button" className="lead_status_pill" onClick={onStatusClick} disabled={!onStatusClick}
       style={{ color, borderColor: `${color}55`, background: `${color}14` }} title={onStatusClick ? "Change the status" : label}>
       <span className="lead_status_dot" style={{ background: color }} />{label}
-      {onStatusClick && <i className="fa-solid fa-chevron-down ms-1" style={{ fontSize: "0.65em" }} />}
+      {onStatusClick && <i className="fa-regular fa-chevron-down ms-1" style={{ fontSize: "0.65em" }} />}
     </button>
   );
 }
@@ -217,18 +217,18 @@ function OwnerLine({ lead, onSaved }) {
     <>
       <div className="lead_owner mt-2 small">
         <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-          <i className="fa-solid fa-user-tie text-muted" />
+          <i className="fa-regular fa-user-tie text-muted" />
           <span className="text-muted">Owner</span>
           <strong className="text-truncate" title={info.owner?.name || "Unassigned"}>{info.owner?.name || "Unassigned"}</strong>
         </div>
         {info.can_override && others.length > 0 && (
           <Button size="sm" variant="outline-danger" className="w-100 mt-1 py-0 text-nowrap" onClick={start} title="Take this lead off its owner now">
-            <i className="fa-solid fa-user-shield me-1" />Manager override
+            <i className="fa-regular fa-user-shield me-1" />Manager override
           </Button>
         )}
       </div>
       <Modal show={open} onHide={busy ? undefined : () => setOpen(false)} centered>
-        <Modal.Header closeButton={!busy}><Modal.Title as="h6"><i className="fa-solid fa-user-shield text-danger me-2" />Manager override</Modal.Title></Modal.Header>
+        <Modal.Header closeButton={!busy}><Modal.Title as="h6"><i className="fa-regular fa-user-shield text-danger me-2" />Manager override</Modal.Title></Modal.Header>
         <Modal.Body className="small">
           {error && <Alert variant="danger" className="py-2">{error}</Alert>}
           <p className="mb-2">Owned by <strong>{info.owner?.name || "nobody"}</strong>. The lead moves now, even mid-conversation.</p>
@@ -283,7 +283,7 @@ function UndoReassign({ lead, onSaved }) {
     <p className="mb-0 mt-1 small text-muted">
       {msg || <>Reassigned {last.from ? `from ${last.from} ` : ""}to {last.to || "nobody"}{last.by ? ` by ${last.by}` : ""}.
         <Button size="sm" variant="link" className="p-0 ms-1" disabled={busy} onClick={undo}>
-          <i className="fa-solid fa-rotate-left me-1" />Undo</Button></>}
+          <i className="fa-regular fa-rotate-left me-1" />Undo</Button></>}
     </p>
   );
 }
@@ -380,7 +380,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
             <VinLookup dealerId={lead?.dealer_id} value={form.vin} onChange={(v) => put({ vin: v })} onCommit={() => auto.flush()}
               onPick={(c) => put({ vin: c.vin || form.vin, vehicle_year: c.year ? String(c.year) : form.vehicle_year,
                 vehicle_make: c.make || form.vehicle_make, vehicle_model: c.model || form.vehicle_model }, true)} /></Form.Group>
-          <div className="col-12 text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)} - can&apos;t be changed.
+          <div className="col-12 text-muted"><i className="fa-regular fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)} - can&apos;t be changed.
             {lead?.customer_id && " The customer's profile is updated too; an old phone or email stays on file."}</div>
         </div>
         <div className="d-flex align-items-center gap-2 mt-2">
@@ -397,22 +397,22 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
         <div className="lead_head_name fw-semibold fs-6 text-truncate" title={lead?.name || ""}>{lead?.name || "No name"}</div>
         <div className="lead_head_tools">
           <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
-            <i className="fa-solid fa-pen me-1" />Edit</Button>
+            <i className="fa-regular fa-pen me-1" />Edit</Button>
           <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
         </div>
       </div>
       <div className="d-flex flex-wrap align-items-center gap-1 mb-2">
         <StatusPill lead={lead} onStatusClick={onStatusClick} />
-        {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
+        {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-regular fa-fire me-1" />HOT</span>}
       </div>
       {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
           report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
       <LeadPlan lead={lead} timezone={dealerTimezone} />
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
-      <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
-      <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
+      <p className="mb-1 small text-break"><i className="fa-regular fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
+      <p className="mb-1 small text-break"><i className="fa-regular fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
       <p className="mb-1 small"><strong>Vehicle:</strong> {vehicle || "Not given"}{lead?.vin ? <span className="text-muted"> · VIN {lead.vin}</span> : null}</p>
-      <p className="mb-0 small text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+      <p className="mb-0 small text-muted"><i className="fa-regular fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)}</p>
       <OwnerLine lead={lead} onSaved={onSaved} />
       <UndoReassign lead={lead} onSaved={onSaved} />
     </div>

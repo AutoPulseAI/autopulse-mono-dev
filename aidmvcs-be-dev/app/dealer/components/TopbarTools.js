@@ -57,7 +57,7 @@ function StoreMenu({ storeName }) {
   return (
     <Dropdown align="end" autoClose="outside" className="d-none d-md-block">
       <Dropdown.Toggle as={IconToggle} className="tb_store" title="Switch store" aria-label="Switch store">
-        {label}<i className="fa-solid fa-chevron-down tb_caret" />
+        {label}<i className="fa-regular fa-chevron-down tb_caret" />
       </Dropdown.Toggle>
       <Dropdown.Menu className="tb_menu">
         <div className="px-3 pb-2">
@@ -101,7 +101,7 @@ function Row({ href, title, text, at, whose, onClear }) {
       </Dropdown.Item>
       <button type="button" className="tb_row_clear" title="Clear" aria-label={`Clear ${title || "notification"}`}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}>
-        <i className="fa-solid fa-xmark" />
+        <i className="fa-regular fa-xmark" />
       </button>
     </div>
   );

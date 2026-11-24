@@ -71,7 +71,7 @@ export function BackButton({ className = "me-2" }) {
   };
   return (
     <Button variant="outline-dark" size="sm" className={className} onClick={goBack}>
-      <i className="fa-solid fa-arrow-left me-1"></i>Back to {back.label}
+      <i className="fa-regular fa-arrow-left me-1"></i>Back to {back.label}
     </Button>
   );
 }

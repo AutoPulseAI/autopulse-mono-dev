@@ -33,7 +33,7 @@ const Dots = forwardRef(function Dots({ onClick }, ref) {
   return (
     <Button ref={ref} size="sm" variant="outline-custom" className="opp_dots" title="More: print, checklist, audit log, campaign..."
       aria-label="More actions" onClick={(e) => { e.preventDefault(); onClick?.(e); }}>
-      <i className="fa-solid fa-ellipsis" />
+      <i className="fa-regular fa-ellipsis" />
     </Button>
   );
 });

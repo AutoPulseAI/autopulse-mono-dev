@@ -91,7 +91,7 @@ export function BulkBar({ count, canAssign, canChangeStatus, onAction, onClose, 
       ))}
       <Button size="sm" variant="link" className="text-white ms-auto" title="Stop selecting" aria-label="Stop selecting"
         onClick={onClose}>
-        <i className="fa-solid fa-xmark"></i>
+        <i className="fa-regular fa-xmark"></i>
       </Button>
     </div>
   );
@@ -146,14 +146,14 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
       onClick={onClick} title={n != null ? `${n.toLocaleString()} leads` : undefined}>
       <span>{label}</span>
       {n != null && <span className="bulk_chip_n">{compact(n)}</span>}
-      {caret && <i className="fa-solid fa-chevron-down"></i>}
+      {caret && <i className="fa-regular fa-chevron-down"></i>}
     </button>
   );
 
   return (
     <div className="bulk_scope mb-2">
       <div className="bulk_scope_top">
-        <span className="bulk_scope_icon">{loading ? <Spinner size="sm" /> : <i className="fa-solid fa-square-check"></i>}</span>
+        <span className="bulk_scope_icon">{loading ? <Spinner size="sm" /> : <i className="fa-regular fa-square-check"></i>}</span>
         <div className="bulk_scope_what">
           <button ref={reviewRef} type="button" className="bulk_scope_count" disabled={!count} onClick={() => setShowReview((v) => !v)}>
             {count.toLocaleString()} <span>{count === 1 ? "lead" : "leads"} selected</span>
@@ -161,7 +161,7 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
           <small className="text-muted d-block">{what}{unticked ? ` · ${unticked} unticked` : ""}</small>
         </div>
         <Button variant="link" className="p-0 ms-auto text-custom small text-nowrap" disabled={!count} onClick={() => setShowReview(true)}>
-          <i className="fa-solid fa-list me-1"></i>Review
+          <i className="fa-regular fa-list me-1"></i>Review
         </Button>
       </div>
       <div className="bulk_scope_chips">
@@ -172,7 +172,7 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
         <small className="text-muted ms-md-auto bulk_scope_hint">Untick any row to leave it out</small>
       </div>
       {capped && scope === "all" && (
-        <div className="bulk_scope_cap"><i className="fa-solid fa-circle-info me-1"></i>At most {SELECT_MAX.toLocaleString()} leads at a time.
+        <div className="bulk_scope_cap"><i className="fa-regular fa-circle-info me-1"></i>At most {SELECT_MAX.toLocaleString()} leads at a time.
           Narrow the filters (for example a date range) to reach the rest.</div>
       )}
 
@@ -228,7 +228,7 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
                     <td className="text-end">
                       <Button size="sm" variant="link" className="p-0 text-muted" title="Leave this lead out"
                         aria-label={`Leave ${l.name || "this lead"} out`} onClick={() => onDrop(l._id)}>
-                        <i className="fa-solid fa-xmark"></i>
+                        <i className="fa-regular fa-xmark"></i>
                       </Button>
                     </td>
                   </tr>
@@ -273,7 +273,7 @@ function PickList({ items, value, onChange, placeholder, empty, noneLabel }) {
   return (
     <>
       <div className="bulk_search mb-2">
-        <i className="fa-solid fa-magnifying-glass"></i>
+        <i className="fa-regular fa-magnifying-glass"></i>
         <Form.Control size="sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} />
       </div>
       <div className="bulk_picklist" role="radiogroup">
@@ -484,7 +484,7 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
                 </button>
               ))}
             </div>
-            <div className="bulk_info"><i className="fa-solid fa-envelope me-1"></i>The <b>{deptName(dept)}</b> team gets <b>one email</b> listing
+            <div className="bulk_info"><i className="fa-regular fa-envelope me-1"></i>The <b>{deptName(dept)}</b> team gets <b>one email</b> listing
               these leads. Each lead gets a timeline entry. Nothing is sent to the customer.</div>
           </>
         )}
@@ -517,8 +517,8 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
         {kind === "note" && (
           <>
             <div className="btn-group w-100 mb-1" role="group" aria-label="Who sees the note">
-              <Button size="sm" variant={internal ? "custom" : "outline-custom"} onClick={() => setInternal(true)}><i className="fa-solid fa-lock me-1"></i>Internal only</Button>
-              <Button size="sm" variant={!internal ? "custom" : "outline-custom"} onClick={() => setInternal(false)}><i className="fa-solid fa-sticky-note me-1"></i>Lead note</Button>
+              <Button size="sm" variant={internal ? "custom" : "outline-custom"} onClick={() => setInternal(true)}><i className="fa-regular fa-lock me-1"></i>Internal only</Button>
+              <Button size="sm" variant={!internal ? "custom" : "outline-custom"} onClick={() => setInternal(false)}><i className="fa-regular fa-sticky-note me-1"></i>Lead note</Button>
             </div>
             <small className="text-muted d-block mb-2">{internal ? "Only staff see it. The AI never reads it." : "Staff see it, and the AI reads it as context. Never sent to the customer."}</small>
             <Form.Control as="textarea" rows={5} className="mb-1" value={note} maxLength={2000} disabled={saving}
@@ -528,7 +528,7 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
             <div className="w_card mb-2 conversation-item note-item"
               style={{ borderLeft: "4px solid #ffc107", backgroundColor: "#fff8e1", border: "1px solid #ffc107" }}>
               <div className="d-flex justify-content-between align-items-start">
-                <h6 className="w_card_title mb-1 fw-bold"><i className={`fa-solid fa-sticky-note me-2 ${internal ? "text-info" : "text-warning"}`}></i>{internal ? "Note for Internal Use Only" : "Lead Note"}</h6>
+                <h6 className="w_card_title mb-1 fw-bold"><i className={`fa-regular fa-sticky-note me-2 ${internal ? "text-info" : "text-warning"}`}></i>{internal ? "Note for Internal Use Only" : "Lead Note"}</h6>
                 <span className="badge bg-warning">Note</span>
               </div>
               <div className="small" style={{ whiteSpace: "pre-wrap" }}>{note || "…"}</div>
@@ -679,7 +679,7 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
                 undone.failed ? `${undone.failed} couldn't be undone` : null].filter(Boolean).join(" · ") || "Nothing else changed."}
             </div>
           </div>
-          <Button size="sm" variant="link" className="ms-auto p-0 text-muted" aria-label="Close" onClick={onClose}><i className="fa-solid fa-xmark"></i></Button>
+          <Button size="sm" variant="link" className="ms-auto p-0 text-muted" aria-label="Close" onClick={onClose}><i className="fa-regular fa-xmark"></i></Button>
         </div>
         {undone.reasons?.length > 0 && (
           <ul className="small mt-2 mb-0 ps-3 bulk_failed">{undone.reasons.map((f) => <li key={f.lead_id}><b>{f.name || "A lead"}</b> – {f.reason}</li>)}</ul>
@@ -700,7 +700,7 @@ export function BulkNotice({ result, onClose, onUndo, onRetry }) {
               : result.unchanged ? `${result.unchanged.toLocaleString()} ${result.unchanged === 1 ? "was" : "were"} already so` : "Done."}
           </div>
         </div>
-        <Button size="sm" variant="link" className="ms-auto p-0 text-muted" aria-label="Close" onClick={onClose}><i className="fa-solid fa-xmark"></i></Button>
+        <Button size="sm" variant="link" className="ms-auto p-0 text-muted" aria-label="Close" onClick={onClose}><i className="fa-regular fa-xmark"></i></Button>
       </div>
       {partial && (
         <ul className="small mt-1 mb-1 ps-3 bulk_failed">

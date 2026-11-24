@@ -819,7 +819,7 @@ useImperativeHandle(ref, () => ({
                   onClick={() => setEditLead({})}
                   className="text-nowrap"
                 >
-                  <i className="fa-solid fa-plus me-1"></i>Add Lead
+                  <i className="fa-regular fa-plus me-1"></i>Add Lead
                 </Button>
                 <Button 
                   variant="outline-custom" 
@@ -1251,12 +1251,12 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        {leadStatusLabel(lead) || "N/A"} <i className="fa-regular fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stage_label && (
                         // The AI's own stage for this lead, read only (app/lib/ai/aiStage.js).
                         <div className="small text-muted mt-1" title="AI stage (read only)">
-                          <i className="fa-solid fa-robot"></i> {lead.ai_stage_label}
+                          <i className="fa-regular fa-robot"></i> {lead.ai_stage_label}
                         </div>
                       )}
                     </Col>

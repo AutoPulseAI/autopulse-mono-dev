@@ -22,13 +22,14 @@ export default function LeadStatusBar({ data, onBarClick }) {
     );
     const tooltip = <Tooltip cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }} labelFormatter={(v) => statusLabel(v)} />;
 
-    if (isMobile) {
+    // Many statuses: horizontal bars, so every name stays readable
+    if (isMobile || data.length > 6) {
         return (
-            <ResponsiveContainer width="100%" height={Math.max(160, data.length * 40 + 40)}>
+            <ResponsiveContainer width="100%" height={Math.max(160, data.length * (isMobile ? 40 : 30) + 40)}>
                 <BarChart data={data} layout="vertical" margin={{ left: 0, right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" allowDecimals={false} fontSize={12} />
-                    <YAxis type="category" dataKey="name" width={118} interval={0} fontSize={12} tickFormatter={(v) => statusLabel(v)} />
+                    <YAxis type="category" dataKey="name" width={isMobile ? 118 : 170} interval={0} fontSize={12} tickFormatter={(v) => statusLabel(v)} />
                     {tooltip}{bars}
                 </BarChart>
             </ResponsiveContainer>

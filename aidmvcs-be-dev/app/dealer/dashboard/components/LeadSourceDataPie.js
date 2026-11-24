@@ -87,6 +87,8 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
         
         if (displayPercent < MIN_LABEL_PERCENT) return null;
         
+        const fullName = payload?.name || '';
+        const shortName = fullName.length > 14 ? `${fullName.slice(0, 12)}…` : fullName;
         const RADIAN = Math.PI / 180;
         const radius = outerRadius + 20;
         const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -102,7 +104,7 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
                 fontSize={11}
                 fontWeight="500"
             >
-                {`${payload?.name || ''}: ${displayPercent.toFixed(0)}%`}
+                {`${shortName}: ${displayPercent.toFixed(0)}%`}
             </text>
         );
     };

@@ -701,7 +701,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                           className="w-100 text-nowrap"
                           onClick={() => setShowNotesModal(true)}
                         >
-                          <i className="fa-solid fa-sticky-note me-2"></i>
+                          <i className="fa-regular fa-sticky-note me-2"></i>
                           Add Note
                         </Button>
                       </Col>
@@ -712,7 +712,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                           className="w-100 text-nowrap"
                           onClick={() => setShowStatusModal(true)}
                         >
-                          <i className="fa-solid fa-pen me-2"></i>
+                          <i className="fa-regular fa-pen me-2"></i>
                           Update Status
                         </Button>
                       </Col>
@@ -723,7 +723,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                           className="w-100"
                           onClick={handleClose}
                         >
-                          <i className="fa-solid fa-arrow-left me-2"></i>
+                          <i className="fa-regular fa-arrow-left me-2"></i>
                           Back to List
                         </Button>
                       </Col>
@@ -743,7 +743,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                       </>
                     ) : (
                       <>
-                        <i className="fa-solid fa-chevron-left me-1" /> Prev
+                        <i className="fa-regular fa-chevron-left me-1" /> Prev
                       </>
                     )}
                   </Button>
@@ -759,7 +759,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                       </>
                     ) : (
                       <>
-                        Next <i className="fa-solid fa-chevron-right ms-1" />
+                        Next <i className="fa-regular fa-chevron-right ms-1" />
                       </>
                     )}
                   </Button>
@@ -918,7 +918,7 @@ export default function ViewConversations({ lead, onBack, onLeadSelected, active
                           <h6 className="w_card_title mb-1 fw-bold">
                             {isNote ? (
                               <>
-                                <i className={`fa-solid fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
+                                <i className={`fa-regular fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
                                 {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
                               </>
                             ) : (

@@ -118,7 +118,7 @@ function LeadManagementContent() {
                     onClick={() => setEditLead(null)}
                     className="me-2"
                   >
-                    <i className="fa-solid fa-arrow-left"></i>
+                    <i className="fa-regular fa-arrow-left"></i>
                   </Button>
                 )} */}
                 {selectedLead && (
@@ -128,7 +128,7 @@ function LeadManagementContent() {
                     onClick={handleBack}
                     className="me-2"
                   >
-                    <i className="fa-solid fa-arrow-left"></i>
+                    <i className="fa-regular fa-arrow-left"></i>
                   </Button>
                 )}
                 <h3 className="page_title mb-0">Appointments</h3>
@@ -174,7 +174,7 @@ function LeadManagementContent() {
         {selectedLead ? (
           <>
             <Button variant="outline-secondary" className="mb-3" onClick={handleBack}>
-              <i className="fa-solid fa-arrow-left me-2"></i>Back to appointments
+              <i className="fa-regular fa-arrow-left me-2"></i>Back to appointments
             </Button>
             <ViewConversations
               lead={selectedLead}

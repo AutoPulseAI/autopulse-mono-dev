@@ -170,7 +170,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               {aiAlertCount > 0 && !aiOpen && (
                 <span className="badge rounded-pill bg-danger ms-2">{aiAlertCount}</span>
               )}
-              <i className={`fa-solid fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
+              <i className={`fa-regular fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
             </button>
 
             {aiOpen && (
@@ -296,7 +296,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               onClick={() => setAdminOpen(!adminOpen)}
             >
               <i className="fa-regular fa-user-gear"></i>Admin
-              <i className={`fa-solid fa-chevron-${adminOpen ? "up" : "down"} ms-auto`}></i>
+              <i className={`fa-regular fa-chevron-${adminOpen ? "up" : "down"} ms-auto`}></i>
             </button>
 
             {adminOpen && (

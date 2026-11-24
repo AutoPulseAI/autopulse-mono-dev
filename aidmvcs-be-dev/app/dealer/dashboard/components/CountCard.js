@@ -10,7 +10,7 @@ import { MEANING } from "../../components/meaningColors";
 export default function DashboardCard({ icon, iconClass, count, label, link, description, meaning = "neutral", soft = false,
   colClass = "col col-lg-3 col-md-6 col-6" }) {
   const card = (
-    <div className={`w_card d_counts_card dash_card${soft ? " soft" : ""}${meaning === "neutral" ? " neutral" : ""}`}
+    <div className={`w_card d_counts_card dash_card meaning_${meaning}${soft ? " soft" : ""}${meaning === "neutral" ? " neutral" : ""}`}
       style={{ "--card": MEANING[meaning] || MEANING.neutral }}>
       <p className="dash_card_title"><i className={icon ? sharedIcon(icon) : iconClass} aria-hidden="true"></i><span>{label}</span></p>
       <h3 className="dash_card_count">{count}</h3>
