@@ -1991,3 +1991,29 @@ background-color: var(--white);
   color: var(--secondary); font-size: 11px; line-height: 1; }
 .tb_row_clear:hover, .tb_row_clear:focus-visible { background: var(--border); color: var(--dark); }
 .tb_row_whose { grid-column: 1 / -1; font-size: 11px; color: var(--primary2); }
+
+/* Shared icons (app/dealer/components/AppIcon.js) */
+.ap_ic { width: 1.15em; text-align: center; flex: none; transition: transform .15s ease; }
+.ap_label { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.ap_field { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ap_field > span, .ap_field > p { min-width: 0; margin-bottom: 0; }
+.ap_person { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.ap_person > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.ap_avatar { width: 26px; height: 26px; border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; flex: none; transition: transform .15s ease; }
+.ap_avatar.sm { width: 20px; height: 20px; font-size: 8px; }
+.w_card_list_box:hover .ap_ic, .w_card_list_box:hover .ap_avatar, a .d_counts_card:hover .d_counts_icon i { transform: scale(1.12); }
+a .d_counts_card { transition: box-shadow .15s ease, transform .15s ease; }
+a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 42, 67, .12); }
+@media (prefers-reduced-motion: reduce) {
+  .ap_ic, .ap_avatar, a .d_counts_card { transition: none; }
+  .w_card_list_box:hover .ap_ic, .w_card_list_box:hover .ap_avatar, a .d_counts_card:hover .d_counts_icon i, a .d_counts_card:hover { transform: none; }
+}
+/* Lead rows: Status and the four Action buttons each get the room they need, so they never sit on top of each other. */
+@media (min-width: 1200px) {
+  .lead_main_col { flex: 0 0 calc(100% - 262px); width: calc(100% - 262px); max-width: calc(100% - 262px); }
+  .lead_status_col { flex: 0 0 116px; width: 116px; max-width: 116px; padding-right: 6px; }
+  .lead_action_col { flex: 0 0 146px; width: 146px; max-width: 146px; }
+}
+.ap_field.ap_wrap { white-space: normal; align-items: flex-start; overflow: hidden; }
+.ap_field.ap_wrap > span { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }

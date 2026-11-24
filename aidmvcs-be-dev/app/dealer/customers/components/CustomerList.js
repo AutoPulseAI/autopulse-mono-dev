@@ -7,6 +7,7 @@ import { useUser } from "../../context/UserContext";
 import CustomerForm from "./CustomerForm";
 import { lastFirst } from "../../../lib/personName";
 import DateRangePickerComponent from "../../components/DateRangePicker";
+import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
 
 const defaultPagination = {
   currentPage: 1,
@@ -247,11 +248,11 @@ export default function CustomerList() {
         <ListGroup variant="flush">
           <ListGroup.Item className="w_card_list_head border-bottom-0">
             <Row className="align-items-center">
-              <Col md={3}>Name</Col>
-              <Col md={3}>Primary Email</Col>
-              <Col md={3}>Primary Phone</Col>
-              <Col md={2}>Contact Methods</Col>
-              <Col md={1} className="text-end">Leads</Col>
+              <Col md={3}><IconLabel name="customer">Name</IconLabel></Col>
+              <Col md={3}><IconLabel name="email">Primary Email</IconLabel></Col>
+              <Col md={3}><IconLabel name="phone">Primary Phone</IconLabel></Col>
+              <Col md={2}><IconLabel name="contactMethods">Contact Methods</IconLabel></Col>
+              <Col md={1} className="text-end"><IconLabel name="lead">Leads</IconLabel></Col>
             </Row>
           </ListGroup.Item>
 
@@ -263,11 +264,11 @@ export default function CustomerList() {
               <ListGroup.Item key={customer._id} className="w_card_list_box p-0">
                 <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => openCustomer(customer._id)}>
                   <Row className="align-items-center">
-                    <Col md={3} className="p_bold"><i className="fa-solid fa-chevron-right me-2" />{lastFirst(customer) || "Unnamed customer"}</Col>
-                    <Col md={3}>{email || "No email"}</Col>
-                    <Col md={3}>{phone || "No phone"}</Col>
-                    <Col md={2}>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</Col>
-                    <Col md={1} className="text-end">{customer.lead_count ?? 0}</Col>
+                    <Col md={3} className="p_bold"><span className="ap_person"><i className="fa-solid fa-chevron-right" /><Avatar name={lastFirst(customer)} /><span>{lastFirst(customer) || "Unnamed customer"}</span></span></Col>
+                    <Col md={3}><span className="ap_field"><AppIcon name="email" /><span className="text-truncate">{email || "No email"}</span></span></Col>
+                    <Col md={3}><span className="ap_field"><AppIcon name="phone" /><span>{phone || "No phone"}</span></span></Col>
+                    <Col md={2}><span className="ap_field"><AppIcon name="contactMethods" /><span>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</span></span></Col>
+                    <Col md={1} className="text-end"><IconLabel name="lead">{customer.lead_count ?? 0}</IconLabel></Col>
                   </Row>
                 </button>
               </ListGroup.Item>

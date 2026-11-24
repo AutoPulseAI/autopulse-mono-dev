@@ -10,6 +10,7 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
+import AppIcon, { Avatar, IconLabel, statusIconName } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
@@ -1896,38 +1897,38 @@ useImperativeHandle(ref, () => ({
             <ListGroup.Item as="li" className={`w_card_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
               {selectMode && <div className="bulk_tick_col"></div>}
               <Row className="align-items-center w-100 g-0">
-                <Col xl={10} lg={9} sm={9} xs={12}>
+                <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
                   <Row className="align-items-center gx-2">
                     <Col xl={2} lg={2} sm={2} xs={12}>
                       <p className="label">
-                        <small>Name</small>
+                        <small><IconLabel name="customer">Name</IconLabel></small>
                       </p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Email</small></p>
+                      <p className="label"><small><IconLabel name="email">Email</IconLabel></small></p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Phone</small></p>
+                      <p className="label"><small><IconLabel name="phone">Phone</IconLabel></small></p>
                     </Col>
                     <Col xl={1} lg={1} sm={1} xs={12}>
-                      <p className="label"><small>Source</small></p>
+                      <p className="label"><small><IconLabel name="source">Source</IconLabel></small></p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Sender</small></p>
+                      <p className="label"><small><IconLabel name="sender">Sender</IconLabel></small></p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Assigned To</small></p>
+                      <p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p>
                     </Col>
                     <Col xl={1} lg={1} sm={1} xs={12}>
-                      <p className="label"><small>Created</small></p>
+                      <p className="label"><small><IconLabel name="date">Created</IconLabel></small></p>
                     </Col>
                   </Row>
                 </Col>
-                <Col xl={1} lg={1} sm={1} xs={12}>
-                  <p className="label"><small>Status</small></p>
+                <Col xl={1} lg={1} sm={1} xs={12} className="lead_status_col">
+                  <p className="label"><small><IconLabel name="status">Status</IconLabel></small></p>
                 </Col>
-                <Col xl={1} lg={2} sm={2} xs={12}>
-                  <p className="p_bold text-center"><small>Action</small></p>
+                <Col xl={1} lg={2} sm={2} xs={12} className="lead_action_col">
+                  <p className="p_bold text-center"><small><IconLabel name="action">Action</IconLabel></small></p>
                 </Col>
               </Row>
             </ListGroup.Item>
@@ -2006,23 +2007,23 @@ useImperativeHandle(ref, () => ({
                     </div>
                   )}
                   <Row className="align-items-center w-100 g-0">
-                    <Col xl={10} lg={9} sm={9} xs={12}>
+                    <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <p className="p_bold">
-                            {lead.name || "N/A"}
+                          <p className="p_bold ap_person">
+                            <Avatar name={lead.name} /><span>{lead.name || "N/A"}</span>
                           </p>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Email:</small></p>
-                            <p className="text-truncate">{lead.email || "N/A"}</p>
+                            <p className="ap_field"><AppIcon name="email" /><span className="text-truncate">{lead.email || "N/A"}</span></p>
                           </div>
                         </Col>
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                           <p className="label"><small>Phone:</small></p>
-                          <p>{lead.phone || "N/A"}</p>
+                          <p className="ap_field"><AppIcon name="phone" /><span>{lead.phone || "N/A"}</span></p>
                           </div>
                         </Col>
                         <Col xl={1} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
@@ -2076,19 +2077,19 @@ useImperativeHandle(ref, () => ({
                         <Col xl={1} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Created:</small></p>
-                            <p className="text-truncate">{formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+                            <p className="ap_field ap_wrap"><AppIcon name="date" /><span>{formatTimestamp(lead.createdAt, dealerTimezone)}</span></p>
                             {lead.last_reply_at && (
-                              <small className="text-success d-block text-truncate">Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
+                              <small className="text-success d-block text-truncate"><AppIcon name="reply" className="me-1" />Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
                             )}
                             {lead.last_sent_at && (
-                              <small className="text-primary d-block text-truncate">Messaged {formatTimestamp(lead.last_sent_at, dealerTimezone)}</small>
+                              <small className="text-primary d-block text-truncate"><AppIcon name="sent" className="me-1" />Messaged {formatTimestamp(lead.last_sent_at, dealerTimezone)}</small>
                             )}
                           </div>
                         </Col>
                       </Row>
                     </Col>
 
-                    <Col xl={1} lg={1} sm={1} xs={7}>
+                    <Col xl={1} lg={1} sm={1} xs={7} className="lead_status_col">
                       <Badge
                         bg={getStatusVariant(lead.fe_lead_status)}
                         onClick={() => {
@@ -2097,7 +2098,7 @@ useImperativeHandle(ref, () => ({
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        {leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        <AppIcon name={statusIconName(lead.fe_lead_status)} plain className="me-1" />{leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stop_label && (
                         // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.
@@ -2117,7 +2118,7 @@ useImperativeHandle(ref, () => ({
                       )}
                     </Col>
 
-                    <Col xl={1} lg={2} sm={2} xs={5}>
+                    <Col xl={1} lg={2} sm={2} xs={5} className="lead_action_col">
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
                         <Button variant="custom" size="sm" title="360 View: history, tasks, call / text" aria-label="360 View"
                           onClick={(e) => {
