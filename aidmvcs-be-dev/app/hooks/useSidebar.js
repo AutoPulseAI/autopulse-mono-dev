@@ -6,27 +6,35 @@
 //   - Smaller screens: the menu slides in over the page and closes again, as before.
 import { useCallback, useEffect, useState } from "react";
 
+// 24 Nov 2026 (the user: "when we are moving to the smaller screen, we should automatically close the drawer to get
+// more room"): below ROOMY (a laptop, or a big screen zoomed in) the menu goes narrow by itself; back above it, the
+// person's own choice returns. Zooming in changes the width the page sees, so it follows zoom too.
 const WIDE = 992;
+const ROOMY = 1400;
 const KEY = "sidebar_narrow";
 const isWide = () => typeof window !== "undefined" && window.innerWidth >= WIDE;
+const isRoomy = () => typeof window !== "undefined" && window.innerWidth >= ROOMY;
 const remembered = () => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } };
+const startOpen = () => isWide() && isRoomy() && !remembered();
 const remember = (narrow) => { try { localStorage.setItem(KEY, narrow ? "1" : "0"); } catch { /* private window */ } };
 
 /** [isOpen, toggle, close] for the layout. */
 export function useSidebar() {
   const [isOpen, setIsOpen] = useState(true);
   useEffect(() => {
-    let wide = isWide();
-    setIsOpen(wide && !remembered());
-    // Only crossing the breakpoint changes it (a small resize keeps what the person picked).
+    const size = () => (isRoomy() ? "roomy" : isWide() ? "wide" : "small");
+    let was = size();
+    setIsOpen(startOpen());
+    // Only crossing a breakpoint changes it (a small resize keeps what the person picked).
     const onResize = () => {
-      const now = isWide();
-      if (now !== wide) { wide = now; setIsOpen(now && !remembered()); }
+      const now = size();
+      if (now !== was) { was = now; setIsOpen(startOpen()); }
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  const toggle = useCallback(() => setIsOpen((open) => { if (isWide()) remember(open); return !open; }), []);
+  // Only a choice made with room to spare is remembered (narrowing on a small screen is not a preference).
+  const toggle = useCallback(() => setIsOpen((open) => { if (isRoomy()) remember(open); return !open; }), []);
   const close = useCallback(() => setIsOpen(false), []);
   return [isOpen, toggle, close];
 }
