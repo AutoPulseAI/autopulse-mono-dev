@@ -110,6 +110,14 @@ const Sidebar = ({ isOpen, onClose }) => {
           </li>
         )}
 
+        {/* Bibi, 25 Nov 2026: "I'm not seeing anything on the side menu that says tasks" - the task list (AI calls
+            and the team's reminders) was only inside AI Assistant > Actions. Same page, opened on its Tasks tab. */}
+        {canSeeAi && (
+          <Suspense fallback={<TasksLink active={false} />}>
+            <TasksLinkFromUrl onActions={pathname === "/dealer/ai/actions"} />
+          </Suspense>
+        )}
+
         {(hasManageLeads || hasViewAssigned) && (
           <li>
             <Link href={leadsHref} className={getLinkClass("/dealer/leads")}>
@@ -380,5 +388,20 @@ function DashboardLinks({ department, onDashboard }) {
         </Link>
       </li>
     </>
+  );
+}
+
+function TasksLinkFromUrl({ onActions }) {
+  const tab = useSearchParams().get("tab");
+  return <TasksLink active={onActions && tab === "tasks"} />;
+}
+
+function TasksLink({ active }) {
+  return (
+    <li>
+      <Link href="/dealer/ai/actions?tab=tasks" className={active ? "nav-link active" : "nav-link"}>
+        <i className="fa-regular fa-list-check"></i>Tasks
+      </Link>
+    </li>
   );
 }
