@@ -156,3 +156,23 @@
 .desk_log .dl_filter_bar .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .desk_log .dl_filter_bar .dl_filters > div { flex: none; }
 @media (max-width: 767px) { .desk_log .dl_filter_bar .dl_filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Stage / outcome menus (ColorPick): coloured button, calm white list. */
+.desk_log .dl_cpick { width: 100%; }
+.desk_log .dl_cpick_btn.btn { width: 100%; display: flex; align-items: center; gap: 4px; border: 0; border-radius: 5px; padding: 6px 8px;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em; color: #212529; box-shadow: none; }
+.desk_log .dl_cpick_btn.dark.btn { color: #fff; }
+.desk_log .dl_cpick_btn.btn:focus-visible { outline: 2px solid #0b2a4a; outline-offset: 1px; }
+.desk_log .dl_cpick_btn.btn:hover { filter: brightness(0.96); }
+.desk_log .dl_cpick_btn.btn::after { margin-left: auto; flex: none; }
+.desk_log .dl_cpick_text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dl_cpick_menu.dropdown-menu { min-width: 220px; padding: 6px; border: 1px solid #e3e8ee; border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(16, 42, 67, .16); z-index: 1060; }
+.dl_cpick_menu .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px;
+  font-size: 0.82rem; font-weight: 500; color: #212529; }
+.dl_cpick_menu .dropdown-item:hover, .dl_cpick_menu .dropdown-item:focus { background: #f1f5f9; color: #212529; }
+.dl_cpick_menu .dropdown-item.on { background: #eef6fc; font-weight: 600; }
+.dl_cpick_menu .dropdown-item i { color: var(--primary, #0272b4); font-size: 0.75rem; }
+.dl_cpick_dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); }
+/* An open menu sits above the pinned columns and the sticky header. */
+.desk_log .dl_table td:has(.dl_cpick_menu.show) { z-index: 6; overflow: visible; }
+.desk_log .dl_table td.dl_pin:has(.dl_cpick_menu.show) { z-index: 6; }

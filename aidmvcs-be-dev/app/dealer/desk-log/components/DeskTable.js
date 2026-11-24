@@ -17,6 +17,7 @@ import { STAGES, STALLED_MINUTES } from "../../../lib/deskLog/constants";
 import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
+import ColorPick from "./ColorPick";
 import CallButton from "../../components/CallButton";
 import Customer360Panel from "../../components/Customer360Panel";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
@@ -229,13 +230,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     ) : <span className="text-muted">-</span>}
                   </td>
                   <td>
-                    <Form.Select size="sm" className={`dl_pill${row.stage && darkPill(STAGE_STYLE[row.stage]) ? " dl_pill_dark" : ""}`}
-                      value={row.stage || ""} disabled={busy === row.id} title={row.stage || "No stage"}
-                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} aria-label="Current stage"
-                      onChange={(e) => save(row, { stage: e.target.value || null })}>
-                      <option value="">No stage</option>
-                      {STAGES.map((st) => <option key={st} value={st} style={STAGE_STYLE[st]}>{st}</option>)}
-                    </Form.Select>
+                    <ColorPick value={row.stage || ""} disabled={busy === row.id} label="Current stage" empty="No stage"
+                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} dark={row.stage && darkPill(STAGE_STYLE[row.stage])}
+                      options={[{ value: "", label: "No stage" }, ...STAGES.map((st) => ({ value: st, label: st, dot: STAGE_STYLE[st]?.backgroundColor }))]}
+                      onPick={(v) => save(row, { stage: v || null })} />
                     {row.minutes_in_stage != null && (
                       <span className={`dl_age${stalled ? " stalled" : ""}`}>{ageText(row.minutes_in_stage)}</span>
                     )}
@@ -277,16 +275,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     </div>
                   </td>
                   <td className="dl_pin dl_pin_out">
-                    <Form.Select size="sm" className={`dl_pill dl_outcome${darkPill(choice?.style) ? " dl_pill_dark" : ""}`}
-                      value={choice?.value || ""} disabled={busy === row.id} title={choice?.label || "Pick outcome"}
-                      style={choice ? choice.style : NO_OUTCOME_STYLE} aria-label="Outcome"
-                      onChange={(e) => {
-                        const next = OUTCOME_CHOICES.find((c) => c.value === e.target.value);
-                        if (next) setPending({ row, choice: next });
-                      }}>
-                      {!choice && <option value="">Pick outcome</option>}
-                      {OUTCOME_CHOICES.map((c) => <option key={c.value} value={c.value} style={c.style}>{c.label}</option>)}
-                    </Form.Select>
+                    <ColorPick value={choice?.value || ""} disabled={busy === row.id} label="Outcome" empty="Pick outcome"
+                      style={choice ? choice.style : NO_OUTCOME_STYLE} dark={darkPill(choice?.style)}
+                      options={OUTCOME_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.style.backgroundColor }))}
+                      onPick={(v) => { const next = OUTCOME_CHOICES.find((c) => c.value === v); if (next) setPending({ row, choice: next }); }} />
                     {row.outcome_from_lead && <Clip className="small text-muted" text="Set on the Leads page" />}
                     {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}
                     {row.dms?.flag === "not_in_dms" && <Clip className="small text-danger" text="Not in the DMS yet" />}
