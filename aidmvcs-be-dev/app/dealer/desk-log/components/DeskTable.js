@@ -9,7 +9,7 @@
 // and shows in full on hover (notes: two lines, click opens the visit); people as avatar + "Jessica S."; the four
 // actions (call, message, appointment, more) always in the same place (greyed when they can't be used); stage and
 // outcome as coloured menus with their arrow, as in the design.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Form } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -27,6 +27,9 @@ import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LA
 // 24 Nov 2026: tightened to the design so the whole row fits a laptop screen; Actions and Outcome stay pinned right.
 const COLS = [4, 30, 60, 124, 68, 112, 108, 86, 116, 112, 114, 114, 114, 140, 112, 156];
 const TABLE_WIDTH = COLS.reduce((a, b) => a + b, 0);
+// 24 Nov 2026 (responsive): each column is its share of the table, so the table fills a big screen and shrinks with
+// zoom; below TABLE_WIDTH it scrolls sideways instead of crushing, with Actions and Outcome pinned.
+const SHARE = COLS.map((w) => `${((w / TABLE_WIDTH) * 100).toFixed(3)}%`);
 
 // One line, cut with "...", the whole text on hover.
 const Clip = ({ text, className = "", children }) => (
@@ -52,7 +55,19 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   const [pending, setPending] = useState(null); // { row, choice }
   const [selected, setSelected] = useState(() => new Set());
   const [bulk, setBulk] = useState({ field: "salesperson_id", value: "" });
-  const [sort, setSort] = useState({ key: null, dir: 1 }); // the sortable columns of the design (click again = reverse)
+  const [sort, setSort] = useState({ key: null, dir: 1 });
+  // Pinned Actions sit right next to Outcome, whose width now follows the screen.
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const out = wrap?.querySelector("thead th.dl_pin_out");
+    if (!wrap || !out || typeof ResizeObserver === "undefined") return undefined;
+    const set = () => wrap.style.setProperty("--dl-out-w", `${out.getBoundingClientRect().width}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(out);
+    return () => ro.disconnect();
+  }, []); // the sortable columns of the design (click again = reverse)
 
   // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
   // reloaded, made again).
@@ -145,9 +160,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
           <button type="button" className="btn btn-link btn-sm" onClick={() => setSelected(new Set())}>Clear selection</button>
         </div>
       )}
-      <div className="dl_table_wrap">
-        <table className="dl_table" style={{ width: TABLE_WIDTH, minWidth: "100%" }}>
-          <colgroup>{COLS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <div className="dl_table_wrap" ref={wrapRef}>
+        <table className="dl_table" style={{ width: "100%", minWidth: TABLE_WIDTH }}>
+          <colgroup>{SHARE.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead>
             <tr>
               <th className="dl_strip" aria-hidden="true" />

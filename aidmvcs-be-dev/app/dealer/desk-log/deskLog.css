@@ -142,3 +142,17 @@
 .desk_log .dl_filter_bar .dl_filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .desk_log .dl_filter_bar .dl_filters > div { flex: 1 1 130px; min-width: 0; }
 .desk_log .dl_filter_bar .dl_filters > .dl_clear { flex: 0 0 auto; }
+/* Responsive (24 Nov 2026): Actions sits just left of Outcome whatever width Outcome has; bigger screens get bigger
+   text, small ones keep everything reachable. */
+.desk_log .dl_table .dl_pin_out { width: auto; }
+.desk_log .dl_table tr > .dl_pin_act { right: var(--dl-out-w, 156px); }
+@media (min-width: 2200px) { .desk_log .dl_table { font-size: 0.92rem; } .desk_log .dl_card_today { font-size: 2.1rem; } }
+@media (max-width: 1199px) { .desk_log .dl_cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+@media (max-width: 767px) {
+  .desk_log .dl_cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .desk_log .dl_filter_bar .dl_filters > div { flex: 1 1 45%; }
+  .desk_log .dl_table .dl_pin { position: static; box-shadow: none; }
+}
+.desk_log .dl_filter_bar .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.desk_log .dl_filter_bar .dl_filters > div { flex: none; }
+@media (max-width: 767px) { .desk_log .dl_filter_bar .dl_filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
