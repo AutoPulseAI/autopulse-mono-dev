@@ -16,7 +16,7 @@ export function parseBoundedInteger(value, fallback, minimum, maximum) {
   return parsed;
 }
 
-export const CUSTOMER_SOURCE_VALUES = ["inbound", "dealervault", "both", "manual", "unknown"];
+export const CUSTOMER_SOURCE_VALUES = ["inbound", "internet", "phone", "imports", "dealervault", "both", "manual", "unknown"];
 
 // Mongo-query mirror of hasDealerVaultOrigin/hasInboundOrigin/getOriginBadge
 // in app/api/customers/[id]/360/assemble.js - keep these two in sync the same
@@ -25,7 +25,9 @@ export const CUSTOMER_SOURCE_VALUES = ["inbound", "dealervault", "both", "manual
 // at least one linked Lead (Lead.distinct("customer_id", ...)), needed
 // because "Inbound Lead" counts a customer with no inbound_lead flag but a
 // linked Lead too (a rollout-gap fallback - see assemble.js's comments).
-export function buildSourceQuery(source, leadCustomerIds) {
+// internet / phone: customers with a lead of that type; imports: from a CSV lead import, a migration or the DMS
+// (DealerVault). matchIds = those customers (the caller finds them from the leads).
+export function buildSourceQuery(source, leadCustomerIds, matchIds = []) {
   const dealervaultOr = [
     { dealervault_upload: true },
     { "extra.dealervault.customer_numbers.0": { $exists: true } },
@@ -37,6 +39,11 @@ export function buildSourceQuery(source, leadCustomerIds) {
   ];
 
   switch (source) {
+    case "internet":
+    case "phone":
+      return [{ _id: { $in: matchIds } }];
+    case "imports":
+      return [{ $or: [...dealervaultOr, { migration_batch: { $nin: [null, ""] } }, { _id: { $in: matchIds } }] }];
     case "inbound":
       return [{ $or: inboundOr }, { $nor: dealervaultOr }];
     case "dealervault":

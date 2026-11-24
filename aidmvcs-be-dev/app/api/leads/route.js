@@ -259,7 +259,17 @@ export async function GET(req) {
       }
     }
     if (department) Object.assign(query, department);
-    if (source) {
+    if (source && source.startsWith('up:')) {
+      // Source type = how the lead came in, the same rule as each row's badge (app/lib/leadContactType.js).
+      const untyped = { contact_type: { $nin: ['internet', 'phone', 'walk_in'] } };
+      const manualSource = { $or: [{ source: null }, { source: { $exists: false } }, { source: { $regex: '^\\s*(email|sms|manual)?\\s*$', $options: 'i' } }] };
+      const want = source.slice(3);
+      const cond = want === 'phone' || want === 'walk_in' ? { contact_type: want }
+        : want === 'internet' ? { $or: [{ contact_type: 'internet' }, { $and: [untyped, { $nor: manualSource.$or }] }] }
+          : want === 'not_set' ? { $and: [untyped, manualSource] } : null;
+      if (!cond) return NextResponse.json({ message: 'Unknown source type' }, { status: 400 });
+      query.$and = [...(query.$and || []), cond];
+    } else if (source) {
       // Special handling for "Unknown" - match null, undefined, empty string, or literal "Unknown"
       if (source.toLowerCase() === 'unknown') {
         orConditions.push([

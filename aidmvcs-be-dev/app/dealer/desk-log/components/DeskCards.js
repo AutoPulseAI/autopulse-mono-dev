@@ -1,6 +1,7 @@
 "use client";
 // The Desk Log's headline cards: the picked day's number big, month to date small (Betsy's design). Each number opens
 // its leads on the Leads page in this tab (with Export CSV there), with a way back to the Desk Log.
+import { useRouter } from "next/navigation";
 import { rememberBack } from "../../components/backLink";
 import { CARD_COLOR } from "./deskLogUi";
 
@@ -8,7 +9,7 @@ function Num({ link, className, children }) {
   if (!link) return <div className={className}>{children}</div>;
   return (
     <a href={link} className={`${className} dl_card_link`} title="Open these leads"
-      onClick={() => rememberBack(link, "/dealer/desk-log", "Desk Log")}>{children}</a>
+      onClick={(e) => { e.stopPropagation(); rememberBack(link, "/dealer/desk-log", "Desk Log"); }}>{children}</a>
   );
 }
 const ICON = {
@@ -22,6 +23,9 @@ const ICON = {
 // Dashboard card, 18 Nov 2026) - shown on that card as NOW, opening the AI alerts; its MTD stays the leads moved to
 // Dealership Action Required this month (by staff or the AI).
 export default function DeskCards({ cards, dayWord = "TODAY", actionNow = null }) {
+  const router = useRouter();
+  // The whole card opens its day's leads (24 Nov 2026); the MTD number still opens the month's.
+  const open = (link) => { rememberBack(link, "/dealer/desk-log", "Desk Log"); router.push(link); };
   return (
     <div className="dl_cards">
       {cards.map((card) => {
@@ -29,7 +33,9 @@ export default function DeskCards({ cards, dayWord = "TODAY", actionNow = null }
           ? { ...card, today: actionNow, today_link: "/dealer/ai/actions?tab=dar", now: true } : card;
         const icon = ICON[c.key] || "fa-solid fa-circle";
         return (
-          <div key={c.key} className={`dl_card dl_card_${c.key}`} style={{ "--card": CARD_COLOR[c.key] || "#0272b4" }}>
+          <div key={c.key} className={`dl_card dl_card_${c.key}${c.today_link ? " dl_card_click" : ""}`} style={{ "--card": CARD_COLOR[c.key] || "#0272b4" }}
+            {...(c.today_link ? { role: "link", tabIndex: 0, "aria-label": `${c.label}: open these leads`, onClick: () => open(c.today_link),
+              onKeyDown: (e) => { if (e.key === "Enter") open(c.today_link); } } : {})}>
             <div className="dl_card_title"><i className={icon}></i>{c.label}</div>
             <div className="dl_card_nums">
               <div><Num link={c.today_link} className="dl_card_today">{c.today}</Num><small>{c.now ? "NOW" : dayWord}</small></div>

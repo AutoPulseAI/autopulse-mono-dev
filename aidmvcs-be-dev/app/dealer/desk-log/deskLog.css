@@ -104,3 +104,32 @@
 /* 360 View side panel link under the customer's name (19 Nov 2026) */
 .desk_log .dl_360 { border: 0; background: none; padding: 0; color: var(--primary, #0272b4); font-size: 12px; display: block; }
 .desk_log .dl_360:hover { text-decoration: underline; }
+
+/* 24 Nov 2026: closer to the design - all nine cards in one row, compact one-height rows, Actions and Outcome pinned. */
+@media (min-width: 1200px) { .desk_log .dl_cards { grid-template-columns: repeat(9, minmax(0, 1fr)); } }
+.desk_log .dl_card { padding: 9px 10px; }
+.desk_log .dl_card_title { font-size: 0.74rem; }
+.desk_log .dl_card_today { font-size: 1.75rem; }
+.desk_log .dl_table td { padding: 6px 6px; }
+.desk_log .dl_table thead th { padding: 9px 6px; }
+.desk_log .dl_cust_line { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.desk_log .dl_cust_name { font-weight: 600; color: var(--primary, #0272b4); text-decoration: none; overflow: hidden; white-space: nowrap;
+  text-overflow: ellipsis; min-width: 0; word-break: normal; }
+.desk_log .dl_cust_name:hover { text-decoration: underline; }
+.desk_log .dl_cust_line .dl_360 { display: inline-flex; flex: none; color: #6c7a89; font-size: 0.8rem; }
+.desk_log .dl_cust_line .dl_360:hover { color: var(--primary, #0272b4); }
+.desk_log .dl_flags { display: flex; gap: 7px; font-size: 0.72rem; margin-top: 2px; }
+.desk_log .dl_flags:empty { display: none; }
+.desk_log .dl_staff_caret { opacity: 0; transition: opacity .12s ease; }
+.desk_log .dl_staff_cell:hover .dl_staff_caret, .desk_log .dl_staff_cell:focus-within .dl_staff_caret { opacity: 1; }
+.desk_log .dl_table .dl_pin { position: sticky; z-index: 1; background: var(--white, #fff); }
+.desk_log .dl_table thead th.dl_pin { background: #13233a; z-index: 2; }
+.desk_log .dl_table .dl_pin_out { right: 0; }
+.desk_log .dl_table .dl_pin_act { right: 156px; box-shadow: -6px 0 6px -6px rgba(16, 42, 67, .25); }
+.desk_log .dl_table tbody tr:hover td.dl_pin { background: #f6fafd; }
+.desk_log .dl_staff_cell { padding-right: 14px; }
+.desk_log .dl_staff_caret { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); }
+.desk_log .dl_staff_name { font-size: 0.76rem; }
+.desk_log .dl_type { padding: 3px 6px; font-size: 0.7rem; }
+.desk_log .dl_staff_cell { gap: 4px; padding-right: 10px; }
+.desk_log .dl_outcome.form-select { font-size: 0.62rem; letter-spacing: -0.01em; }

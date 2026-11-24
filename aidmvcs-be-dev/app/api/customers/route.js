@@ -92,7 +92,13 @@ export async function GET(req) {
     if (source) {
       if (!CUSTOMER_SOURCE_VALUES.includes(source)) return jsonError("source is invalid", 400);
       const leadCustomerIds = await Lead.distinct("customer_id", { dealer_id: dealerId, customer_id: { $ne: null } });
-      query.$and = [...(query.$and || []), ...buildSourceQuery(source, leadCustomerIds)];
+      // How their leads came in, by the same rule as the Leads list's Source type (app/lib/leadContactType.js).
+      const manual = { $or: [{ source: null }, { source: { $exists: false } }, { source: { $regex: "^\\s*(email|sms|manual)?\\s*$", $options: "i" } }] };
+      const byLeads = source === "phone" ? { contact_type: "phone" }
+        : source === "internet" ? { $or: [{ contact_type: "internet" }, { $and: [{ contact_type: { $nin: ["internet", "phone", "walk_in"] } }, { $nor: manual.$or }] }] }
+          : source === "imports" ? { source: { $in: ["csv_import", "csv_import_auto"] } } : null;
+      const matchIds = byLeads ? await Lead.distinct("customer_id", { dealer_id: dealerId, customer_id: { $ne: null }, ...byLeads }) : [];
+      query.$and = [...(query.$and || []), ...buildSourceQuery(source, leadCustomerIds, matchIds)];
     }
 
     const startDate = url.searchParams.get("startDate");
