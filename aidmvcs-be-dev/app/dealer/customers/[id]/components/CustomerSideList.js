@@ -55,7 +55,15 @@ export default function CustomerSideList({ dealerId, currentId, onNeighbours }) 
       params.set("dealer_id", dealerId);
       params.set("page", String(page));
       params.set("limit", String(LIMIT));
-      if (search) params.set("name", search);
+      if (search) {
+        // One box for name, phone or email (user, 25 Nov 2026): an @ means email, only digits and phone signs mean
+        // a phone number (any part of it), anything else is a name. It replaces the Customers page's own search.
+        ["name", "last_name", "email", "phone"].forEach((k) => params.delete(k));
+        const digits = search.replace(/\D/g, "");
+        if (search.includes("@")) params.set("email", search);
+        else if (/^[\d\s()+.-]+$/.test(search) && digits.length >= 3) params.set("phone", search);
+        else params.set("name", search);
+      }
       const res = await fetch(`/api/customers?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
       });
@@ -90,8 +98,8 @@ export default function CustomerSideList({ dealerId, currentId, onNeighbours }) 
         <span className="p_bold"><AppIcon name="customer" />Customers</span>
         <small className="text-muted">{pages.items.toLocaleString()}</small>
       </div>
-      <Form.Control size="sm" placeholder="Search by name" value={name} onChange={(e) => setName(e.target.value)}
-        aria-label="Search customers by name" />
+      <Form.Control size="sm" placeholder="Name, phone or email" value={name} onChange={(e) => setName(e.target.value)}
+        aria-label="Search customers by name, phone or email" />
       {kept.query && !search && <small className="text-muted d-block mt-1">Same filters as the Customers page</small>}
 
       <div className="cust_side_list">
