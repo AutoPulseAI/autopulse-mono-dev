@@ -22,6 +22,7 @@ import { upType } from "@lib/reporting/normalize";
 import LeadSourcePicker from "./LeadSourcePicker";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import LeadJourney from "../../components/LeadJourney";
+import { MEANING } from "../../components/meaningColors";
 import OpportunityMenu from "../../components/OpportunityMenu";
 
 const TYPE_NAMES = { internet: "Internet", phone: "Phone Up", walk_in: "Walk-In" };
@@ -29,13 +30,13 @@ const TYPE_COLOR = { Internet: "#1d6fe0", "Phone Up": "#7c3aed", "Walk-In": "#2f
 // The status bar's colour by the kind of status (labels: app/lib/statusLabels.js).
 function statusColor(label) {
   const s = String(label || "").toLowerCase();
-  if (/sold/.test(s)) return "#2fb344";
-  if (/closed|lost|opt|dnd|no longer/.test(s)) return "#6c757d";
-  if (/dealership action|managerial/.test(s)) return "#e5383b";
-  if (/no show/.test(s)) return "#f7931e";
-  if (/appointment|visit/.test(s)) return "#0ea5a5";
-  if (/contact made|replied/.test(s)) return "#7c3aed";
-  return "#1d6fe0";
+  if (/sold/.test(s)) return MEANING.sold;
+  if (/closed|lost|opt|dnd|no longer/.test(s)) return MEANING.closed;
+  if (/dealership action|managerial/.test(s)) return MEANING.action;
+  if (/showed|visit/.test(s)) return MEANING.showed;
+  if (/appointment|no show/.test(s)) return MEANING.appointment;
+  if (/contact made|replied/.test(s)) return MEANING.reply;
+  return MEANING.lead;
 }
 
 const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "sub_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];

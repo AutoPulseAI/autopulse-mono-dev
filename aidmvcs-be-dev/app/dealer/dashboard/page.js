@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import DashboardDatePicker, { presetRange, previousPeriod } from "./components/DashboardDatePicker";
 import CountCard from "./components/CountCard";
+import useIsMobile from "../components/useIsMobile";
 import AppIcon from "../components/AppIcon";
 import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
@@ -32,6 +33,7 @@ import { reportsVisible } from "../reports/reportsAccess";
 function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
+  const isMobile = useIsMobile();
   // Chart and source clicks open the Leads list in this tab (client, 11 Nov 2026), with a way back.
   const router = useRouter();
   // 13 Nov 2026 meeting (6.4, 9.2): the dashboard for one department - "Service Dashboard" is this page with Service
@@ -312,12 +314,12 @@ function Dashboard() {
     <div className="page_head">
       <div className="row align-items-center">
         <div className="col col-12">
-          <div className="d-flex align-items-center">
+          <div className="dash_head">
             <h3 className="page_title mb-0 me-auto">
               {department === "service" ? "Service Dashboard" : department === "parts" ? "Parts Dashboard"
                 : department === "sales" ? "Sales Dashboard" : "Leads Dashboard"}
               {dateRange.startDate && dateRange.endDate && (
-                <small className="text-muted ms-2">
+                <small className="text-muted ms-2 text-nowrap">
                   ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
                 </small>
               )}
@@ -340,13 +342,10 @@ function Dashboard() {
                 <DownloadReport dealerId={reportsDealerId} tz={dealerTimezone} range={dateRange} />
               )}
               <small className="text-muted" style={{fontSize: '0.75rem'}} title={`All dates are interpreted in your business timezone: ${dealerTimezone}`}>
-                <i className="fa-solid fa-clock me-1"></i>
+                <i className="fa-regular fa-clock me-1"></i>
                 {dealerTimezone.split('/').pop()}
               </small>
             </div>
-            <small className="text-muted d-block mt-1" style={{fontSize: '0.7rem'}}>
-            
-            </small>
           </div>
         </div>
       </div>
@@ -829,6 +828,7 @@ function Dashboard() {
           <div className="row gx-2 gx-lg-4">
             <CountCard
               icon="lead"
+              meaning="lead"
               count={leadStats?.total_leads || 0}
               label="Total Leads"
               link={deptLink(buildUrlWithDateRange("/dealer/leads"))}
@@ -865,7 +865,7 @@ function Dashboard() {
               icon="reply"
               count={contactedCount}
               label="Customer Replied"
-              tone="orange"
+              meaning="reply"
               link={deptLink(withRange('/dealer/leads?status=Contacted'))}
               // Today's / older leads are the boxes under "Customer replies by lead age" (13 Nov 2026 meeting).
               description={`${contactedSplit ? `SMS: ${contactedSplit.sms} · Email: ${contactedSplit.email} · ` : ''}`
@@ -888,7 +888,7 @@ function Dashboard() {
               icon="action"
               count={aiAlertCount}
               label="Dealer Action Required"
-              tone="red"
+              meaning="action"
               link="/dealer/ai/actions?tab=dar"
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
@@ -905,11 +905,11 @@ function Dashboard() {
             /> */}
             
           </div>
-          {/* The appointment row (13 Nov 2026 meeting, Betsy: "that whole appointment row ... light green"). */}
+          {/* The appointment row (24 Nov 2026: the Desk Log's colours - set orange, showed navy, sold green). */}
           <div className="row gx-2 gx-lg-4">
             {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
-              tone="green"
+              meaning="appointment"
               icon="appointments"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
@@ -918,8 +918,8 @@ function Dashboard() {
             />
 
             <CountCard
-              tone="green"
-              icon="appointment"
+              meaning="appointment"
+              icon="appointmentDay"
               count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
               link={deptLink(getAppointmentsForLink())}
@@ -927,7 +927,7 @@ function Dashboard() {
             />
 
             <CountCard
-              tone="green"
+              meaning="showed"
               icon="showed"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
@@ -936,7 +936,7 @@ function Dashboard() {
             />
 
             <CountCard
-              tone="green"
+              meaning="sold"
               icon="sold"
               count={step('sold')?.total || 0}
               label="Appointments Sold"
@@ -947,7 +947,7 @@ function Dashboard() {
         </div>
 
         {/* CUSTOMER REPLIES BY LEAD AGE (13 Nov 2026 meeting, 77:00-82:00): a thick line and a capital heading set it apart
-            from the boxes above; light orange because it breaks down the orange Customer Replied box. The boxes never
+            from the boxes above; the Customer Replied box's own colour, lighter, because it breaks that box down. The boxes never
             overlap and add up: today's + past = Customer Replied, and the lead-day boxes = Customer Replied too (the day a
             lead came in is Day 1, so today's leads are in "1-7 days"; app/lib/contactedLeads.js repliedSplit). Each opens
             exactly the leads it counted. */}
@@ -957,11 +957,11 @@ function Dashboard() {
               <small className="ms-2">{contactedSplit.new_leads} + {contactedSplit.older_leads} = {contactedCount} customer replied</small>
             </h3>
             <div className="row gx-2 gx-lg-4">
-              <CountCard tone="light_orange" colClass="col col-md-6 col-12" icon="date"
+              <CountCard meaning="reply" soft colClass="col col-md-6 col-12" icon="date"
                 count={contactedSplit.new_leads} label={isTodayRange ? "Replied from Today's Leads" : "Replied from These Dates' Leads"}
                 link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=new'))}
                 description={`${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} leads that came in ${isTodayRange ? 'today' : 'in these dates'}`} />
-              <CountCard tone="light_orange" colClass="col col-md-6 col-12" icon="history"
+              <CountCard meaning="reply" soft colClass="col col-md-6 col-12" icon="history"
                 count={contactedSplit.older_leads} label="Replied from Past Leads"
                 link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=older'))}
                 description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'}`} />
@@ -972,7 +972,7 @@ function Dashboard() {
             <div className="row gx-2 gx-lg-4">
               {[['d1_7', '1-7 days old'], ['d8_15', '8-15 days old'], ['d16_30', '16-30 days old'], ['d31_60', '31-60 days old'],
                 ['d61_plus', 'Over 60 days old']].map(([key, age]) => (
-                <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" icon="age"
+                <CountCard key={key} meaning="reply" soft colClass="col col-lg col-md-4 col-6" icon="age"
                   count={contactedSplit.by_lead_day[key] ?? 0} label={`Lead ${age}`}
                   link={deptLink(withRange(`/dealer/leads?status=Contacted&reply_age=${key}`))} />
               ))}
@@ -1018,7 +1018,7 @@ function Dashboard() {
                   <LeadSourceDataPie data={leadSourceData} onSegmentClick={handleSourceClick} />
                 ) : (
                   <div className="text-center py-5">
-                    <i className="fa-solid fa-chart-pie fa-3x text-muted mb-3"></i>
+                    <i className="fa-regular fa-chart-pie fa-3x text-muted mb-3"></i>
                     <p className="text-muted">No lead sources data for selected period</p>
                   </div>
                 )}
@@ -1087,8 +1087,8 @@ function Dashboard() {
                   </button>
                 </div>
 
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={messageTrendChartData}>
+                <ResponsiveContainer width="100%" height={isMobile ? 260 : 400}>
+                  <BarChart data={messageTrendChartData} margin={isMobile ? { left: -24, right: 4 } : undefined}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
@@ -1173,7 +1173,7 @@ function Dashboard() {
                   <LeadSourceDistributionPie data={leadSourceFieldData} onSegmentClick={handleLeadSourceFieldClick} />
                 ) : (
                   <div className="text-center py-5">
-                    <i className="fa-solid fa-chart-pie fa-3x text-muted mb-3"></i>
+                    <i className="fa-regular fa-chart-pie fa-3x text-muted mb-3"></i>
                     <p className="text-muted">No lead_source data for selected period</p>
                   </div>
                 )}
@@ -1228,7 +1228,7 @@ function Dashboard() {
                   </div>
                 ) : (
                   <div className="text-center py-5">
-                    <i className="fa-solid fa-trophy fa-3x text-muted mb-3"></i>
+                    <i className="fa-regular fa-trophy fa-3x text-muted mb-3"></i>
                     <p className="text-muted">No lead_source performance data for selected period</p>
                   </div>
                 )}

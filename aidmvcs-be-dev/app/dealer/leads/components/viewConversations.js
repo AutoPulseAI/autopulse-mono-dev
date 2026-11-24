@@ -1183,7 +1183,7 @@ export default function ViewConversations({
                                 <div className="text-muted small mt-1">
                                   <i className="fa-light fa-user me-1"></i>
                                   <span className={`badge ${isNote ? (isAiNote(email) || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, isAiNote(email)) : author.label}</span>
-                                {bookedBy && <span className="badge bg-warning text-dark ms-1">Appointment set by staff: {bookedBy}</span>}
+                                {bookedBy && <span className="badge badge_appt ms-1">Appointment set by staff: {bookedBy}</span>}
                                 </div>
                               </div>
                             </div>

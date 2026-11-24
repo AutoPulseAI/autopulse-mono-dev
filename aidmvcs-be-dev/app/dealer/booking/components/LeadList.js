@@ -2,6 +2,7 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import { Button, ListGroup, Row, Col, Offcanvas, Form, Alert, Badge, Pagination, Spinner } from "react-bootstrap";
+import { statusStyle } from "../../components/meaningColors";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
 import DateRangePickerComponent from "../../components/DateRangePicker";
@@ -131,26 +132,6 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     phone: filters.phone
   });
 
-  const getStatusVariant = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'contacted':
-        return 'info';
-      case 'appointment booked':
-        return 'warning';
-      case 'visited':
-        return 'success';
-      case 'managerial review':
-        return 'info';
-      case 'sold':
-        return 'danger';
-      case 'new':
-        return 'custom';
-      case 'no show':
-        return 'secondary';
-      default:
-        return 'secondary';
-    }
-  };
 
   const fetchStaffList = useCallback(async () => {
     if (!activeEntity?.id) return;
@@ -1335,9 +1316,9 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                         </Col>
                       </Row>
                     </Col>
-                    <Col xl={2} lg={1} sm={1} xs={7}>
+                    <Col xl={2} lg={1} sm={1} xs={7} className="appt_status_col">
                       <Badge
-                        bg={getStatusVariant(lead.fe_lead_status)}
+                        bg="" style={statusStyle(lead.fe_lead_status)}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleShowStatusModal(lead);
@@ -1347,7 +1328,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                         {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                     </Col>
-                    <Col xl={1} lg={2} sm={2} xs={5}>
+                    <Col xl={1} lg={2} sm={2} xs={5} className="appt_action_col">
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
                         <Button variant="custom" size="sm" onClick={(e) => {
                           e.stopPropagation();

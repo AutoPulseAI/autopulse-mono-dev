@@ -1,31 +1,37 @@
 "use client";
 // The one icon list for the dealer portal (24 Nov 2026): a thing has one icon and one colour on every screen, so a phone
 // on Leads looks like a phone on Customers, Actions and the Dashboard. Add or change an icon here, never on a page.
-const BLUE = "#0272b4", GREEN = "#2fb344", ORANGE = "#f7931e", RED = "#e5383b", PURPLE = "#6f42c1", TEAL = "#0f8f83",
-  AMBER = "#d97706", SLATE = "#5f7890", INDIGO = "#4f46e5";
+// Font Awesome Regular (outline), as in the side menu. An icon is neutral unless its colour says something; those
+// colours come from meaningColors.js.
+import { MEANING } from "./meaningColors";
+const BLUE = "#0272b4", GREEN = "#2fb344", RED = "#e5383b", PURPLE = "#6f42c1", TEAL = "#0f8f83", AMBER = "#b7791f";
+const N = MEANING.neutral;
 
 export const ICONS = {
   // People
-  lead: ["fa-user-plus", BLUE], customer: ["fa-user", BLUE], customers: ["fa-users", BLUE], owner: ["fa-user-tie", SLATE],
-  noOwner: ["fa-user-slash", RED], staff: ["fa-user", SLATE], ai: ["fa-robot", INDIGO], role: ["fa-id-badge", SLATE],
+  lead: ["fa-user-plus", MEANING.lead], customer: ["fa-user", N], customers: ["fa-users", N], owner: ["fa-user-tie", N],
+  noOwner: ["fa-user-slash", RED], staff: ["fa-user", N], ai: ["fa-robot", N], role: ["fa-id-badge", N],
   // Contact
-  phone: ["fa-phone", BLUE], email: ["fa-envelope", PURPLE], sms: ["fa-comment-sms", TEAL], reply: ["fa-comments", ORANGE],
-  sent: ["fa-paper-plane", INDIGO], contactMethods: ["fa-address-book", SLATE],
+  phone: ["fa-phone", N], email: ["fa-envelope", N], sms: ["fa-comment-sms", N], reply: ["fa-comments", MEANING.reply],
+  sent: ["fa-paper-plane", N], contactMethods: ["fa-address-book", N],
   // Where and when
-  source: ["fa-signs-post", SLATE], sender: ["fa-at", SLATE], department: ["fa-building", SLATE], vehicle: ["fa-car-side", SLATE],
-  date: ["fa-calendar-day", SLATE], time: ["fa-clock", SLATE], age: ["fa-hourglass-half", ORANGE], history: ["fa-clock-rotate-left", SLATE],
+  source: ["fa-signs-post", N], sender: ["fa-at", N], department: ["fa-building", N], vehicle: ["fa-car-side", N],
+  date: ["fa-calendar-day", N], time: ["fa-clock", N], age: ["fa-hourglass-half", N], history: ["fa-clock-rotate-left", N],
   // Work
-  status: ["fa-circle-half-stroke", SLATE], priority: ["fa-flag", SLATE], task: ["fa-list-check", BLUE], action: ["fa-bell", RED],
-  stuck: ["fa-road-barrier", AMBER], team: ["fa-users", PURPLE], note: ["fa-note-sticky", AMBER], done: ["fa-circle-check", GREEN],
-  overdue: ["fa-clock", RED], missed: ["fa-circle-exclamation", RED], open: ["fa-circle-dot", AMBER], cancelled: ["fa-ban", SLATE],
-  outcome: ["fa-bullseye", SLATE], type: ["fa-tag", SLATE], info: ["fa-circle-info", SLATE], escalated: ["fa-arrow-up", RED],
-  // Sales journey
-  appointment: ["fa-calendar-check", GREEN], appointments: ["fa-calendar-days", GREEN], showed: ["fa-person-walking", GREEN],
-  sold: ["fa-handshake", GREEN], chart: ["fa-chart-pie", BLUE], trend: ["fa-chart-line", BLUE], trophy: ["fa-trophy", AMBER],
+  status: ["fa-circle-half-stroke", N], priority: ["fa-flag", N], task: ["fa-list-check", N], action: ["fa-triangle-exclamation", MEANING.action],
+  stuck: ["fa-road-barrier", AMBER], team: ["fa-users", N], note: ["fa-note-sticky", N], done: ["fa-circle-check", GREEN],
+  overdue: ["fa-clock", RED], missed: ["fa-circle-exclamation", RED], open: ["fa-circle-dot", AMBER], cancelled: ["fa-ban", N],
+  outcome: ["fa-bullseye", N], type: ["fa-tag", N], info: ["fa-circle-info", N], escalated: ["fa-arrow-up", RED],
+  // Sales journey (the Desk Log's colours and icons)
+  appointment: ["fa-calendar-check", MEANING.appointment], appointments: ["fa-calendar-plus", MEANING.appointment],
+  appointmentDay: ["fa-calendar-day", MEANING.appointment], showed: ["fa-calendar-check", MEANING.showed],
+  noShow: ["fa-calendar-xmark", MEANING.appointment],
+  sold: ["fa-handshake", MEANING.sold], chart: ["fa-chart-pie", N], trend: ["fa-chart-line", N], trophy: ["fa-trophy", N],
 };
 
 const STATUS_ICONS = {
-  lead: "lead", contacted: "reply", "appointment booked": "appointment", visited: "showed", "managerial review": "action",
+  lead: "lead", contacted: "reply", "appointment booked": "appointment", "no show": "noShow", "lead not contacted": "lead",
+  "contacted - no next action": "reply", "contacted - specific follow-up": "reply", visited: "showed", "managerial review": "action",
   sold: "sold", "sold pending": "sold", "sold delivered": "sold", unsold: "history", "closed - lost": "cancelled",
   "closed - no longer owns": "cancelled", dnd: "cancelled", "opted out": "cancelled",
 };
@@ -33,7 +39,7 @@ const STATUS_ICONS = {
 export const statusIconName = (status) => STATUS_ICONS[String(status || "").trim().toLowerCase()] || "status";
 
 export const iconColor = (name) => (ICONS[name] || ICONS.info)[1];
-export const iconClass = (name) => `fa-solid ${(ICONS[name] || ICONS.info)[0]}`;
+export const iconClass = (name) => `fa-regular ${(ICONS[name] || ICONS.info)[0]}`;
 
 // plain: takes the colour of the text around it (on a coloured badge or button).
 export default function AppIcon({ name, plain = false, className = "" }) {

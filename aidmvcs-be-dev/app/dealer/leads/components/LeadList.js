@@ -10,6 +10,7 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
+import { statusStyle } from "../../components/meaningColors";
 import AppIcon, { Avatar, IconLabel, statusIconName } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
@@ -62,6 +63,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // bulk bar and the scope line). `selected` is the truth: lead id -> { _id, name, owner, status }. `scope` only says
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
   // out of a scope by hand.
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones only
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
@@ -208,24 +210,6 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Closed - Lost",
     "Closed - No Longer Owns",
   ];
-
-  const getStatusVariant = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'contacted': return 'info';
-      case 'appointment booked': return 'warning';
-      case 'visited': return 'success';
-      case 'managerial review': return 'warning';
-      case 'sold': return 'danger';
-      case 'sold pending': return 'warning';
-      case 'sold delivered': return 'danger';
-      case 'unsold': return 'secondary';
-      case 'closed - lost': return 'dark';
-      case 'closed - no longer owns': return 'dark';
-      case 'lead': return 'custom';
-      case 'dnd': return 'secondary';
-      default: return 'secondary';
-    }
-  };
 
   const showAlert = useCallback((message, variant = "success") => {
     setAlert({ show: true, message, variant });
@@ -1535,7 +1519,7 @@ useImperativeHandle(ref, () => ({
               <Button key={key || "all"} size="sm" aria-pressed={(inputValues.department || "") === key}
                 variant={(inputValues.department || "") === key ? "custom" : "outline-custom"}
                 onClick={() => setInputValues((prev) => ({ ...prev, department: key }))}>
-                <i className={`fa-solid ${icon} me-1`} aria-hidden="true"></i>{label}
+                <i className={`fa-regular ${icon} me-1`} aria-hidden="true"></i>{label}
               </Button>
             ))}
           </div>
@@ -1565,14 +1549,14 @@ useImperativeHandle(ref, () => ({
               {/* One Actions menu (24 Nov 2026) in place of Add Lead / Import CSV / Export CSV: Leads and Bulk. */}
               <Dropdown align="end" className="leads_actions">
                 <Dropdown.Toggle size="sm" variant="outline-custom" className="text-nowrap" id="leads-actions">
-                  <i className="fa-solid fa-sliders me-1"></i>Actions
+                  <i className="fa-regular fa-sliders me-1"></i>Actions
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="leads_actions_menu">
                   <Dropdown.Header>Leads</Dropdown.Header>
-                  <Dropdown.Item onClick={() => setEditLead({})}><i className="fa-solid fa-plus"></i>Add lead</Dropdown.Item>
-                  <Dropdown.Item onClick={() => setShowImportModal(true)}><i className="fa fa-upload"></i>Import CSV</Dropdown.Item>
+                  <Dropdown.Item onClick={() => setEditLead({})}><i className="fa-regular fa-plus"></i>Add lead</Dropdown.Item>
+                  <Dropdown.Item onClick={() => setShowImportModal(true)}><i className="fa-regular fa-upload"></i>Import CSV</Dropdown.Item>
                   <Dropdown.Item onClick={exportToCSV} disabled={loading || leads.length === 0}>
-                    <i className="fa fa-download"></i>Export CSV
+                    <i className="fa-regular fa-download"></i>Export CSV
                     <small>{pagination.totalItems.toLocaleString()} with your filters</small>
                   </Dropdown.Item>
                   {(canAssignLeads || canManageLeads) && (
@@ -1723,9 +1707,13 @@ useImperativeHandle(ref, () => ({
       ) : selectMode ? null : (
         <Row className="align-items-center g-0">
           <Col lg={12}>
-            {/* Filter Controls */}
-            <Row className="search_filters gx-1 gy-xxl-0 gy-1">
-              <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
+            {/* Filter Controls (folded behind a button on phones) */}
+            <Button variant="outline-custom" size="sm" className="d-md-none w-100" aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((v) => !v)}>
+              <i className="fa-regular fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
+            </Button>
+            <Row className={`search_filters gx-1 gy-1 mt-1 mt-md-0 ${filtersOpen ? "" : "d-none d-md-flex"}`}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
                 <Form.Control
                   type="text"
                   placeholder="Name"
@@ -1735,7 +1723,7 @@ useImperativeHandle(ref, () => ({
                   size="sm"
                 />
               </Col>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
                 <Form.Control
                   type="text"
                   placeholder="Email"
@@ -1745,7 +1733,7 @@ useImperativeHandle(ref, () => ({
                   size="sm"
                 />
               </Col>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={6}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
                 <Form.Control
                   type="text"
                   placeholder="Phone"
@@ -1755,7 +1743,7 @@ useImperativeHandle(ref, () => ({
                   size="sm"
                 />
               </Col>
-              <Col xxl={1} xl={3} lg={3} md={3} xs={6}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
                 <Form.Select
                   name="status"
                   value={inputValues.status}
@@ -1768,7 +1756,7 @@ useImperativeHandle(ref, () => ({
                   ))}
                 </Form.Select>
               </Col>
-              <Col xxl={1} xl={3} lg={3} md={3} xs={6}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
                 <Form.Select
                   name="lead_source"
                   value={inputValues.lead_source}
@@ -1781,7 +1769,7 @@ useImperativeHandle(ref, () => ({
                   ))}
                 </Form.Select>
               </Col>
-              <Col xxl={1} xl={3} lg={3} md={3} xs={6}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
                 <Form.Select
                   name="source"
                   value={inputValues.source}
@@ -1793,7 +1781,7 @@ useImperativeHandle(ref, () => ({
                   {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
                 </Form.Select>
               </Col>
-              <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
+              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
                 <Form.Select
                   name="message_filter"
                   value={inputValues.message_filter}
@@ -1805,7 +1793,7 @@ useImperativeHandle(ref, () => ({
                   <option value="read">Read Messages</option>
                 </Form.Select>
               </Col>
-              <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
+              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
                 <DateRangePickerComponent
                   onDateRangeChange={handleDateRangeChange}
                   dateRange={filters.dateRange}
@@ -1813,7 +1801,7 @@ useImperativeHandle(ref, () => ({
                   className="w-100"
                 />
               </Col>
-              <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
+              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
                 <div className="d-flex gap-1">
                   <Button
                     variant="custom"
@@ -1912,7 +1900,7 @@ useImperativeHandle(ref, () => ({
         <div className="w_card_list mt-3">
           <ListGroup as="ul" variant="flush">
             {!compact && (
-            <ListGroup.Item as="li" className={`w_card_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
+            <ListGroup.Item as="li" className={`w_card_list_head lead_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
               {selectMode && <div className="bulk_tick_col"></div>}
               <Row className="align-items-center w-100 g-0">
                 <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
@@ -1946,7 +1934,7 @@ useImperativeHandle(ref, () => ({
                   <p className="label"><small><IconLabel name="status">Status</IconLabel></small></p>
                 </Col>
                 <Col xl={1} lg={2} sm={2} xs={12} className="lead_action_col">
-                  <p className="p_bold text-center"><small><IconLabel name="action">Action</IconLabel></small></p>
+                  <p className="p_bold text-center"><small>Action</small></p>
                 </Col>
               </Row>
             </ListGroup.Item>
@@ -2052,7 +2040,7 @@ useImperativeHandle(ref, () => ({
                               in `source`. */}
                           <p className="text-truncate" title={[leadSourceName(lead), lead.sub_source].filter(Boolean).join(" · ")}>
                             {leadSourceName(lead)}{lead.sub_source ? <small className="text-muted d-block text-truncate">{lead.sub_source}</small> : null}</p>
-                          <small className={`badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
+                          <small className={`badge lead_type_badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
                             title="How the lead came in">{contactTypeLabel(lead)}</small>
                           </div>
                         </Col>
@@ -2109,14 +2097,14 @@ useImperativeHandle(ref, () => ({
 
                     <Col xl={1} lg={1} sm={1} xs={7} className="lead_status_col">
                       <Badge
-                        bg={getStatusVariant(lead.fe_lead_status)}
+                        bg="" style={statusStyle(lead.fe_lead_status, leadStatusLabel(lead))}
                         onClick={() => {
                           setSelectedLead(lead);
                           setShowStatusModal(true);
                         }}
                         className="cursor-pointer text-wrap"
                       >
-                        <AppIcon name={statusIconName(lead.fe_lead_status)} plain className="me-1" />{leadStatusLabel(lead) || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
+                        <AppIcon name={statusIconName(lead.fe_lead_status)} plain className="me-1" />{leadStatusLabel(lead) || "N/A"} <i className="fa-regular fa-pen-to-square"></i>
                       </Badge>
                       {lead.ai_stop_label && (
                         // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.

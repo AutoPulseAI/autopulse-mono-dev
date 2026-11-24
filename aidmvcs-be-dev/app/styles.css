@@ -1681,17 +1681,9 @@ background-color: var(--white);
 }
 
 /* Dashboard colours (13 Nov 2026 meeting, Betsy: "they can just glance and know"). */
-.d_counts_card.tone_orange { background: #fff1e0; border-left: 4px solid #f7931e; }
-.d_counts_card.tone_orange .d_counts_icon { background-color: #f7931e; }
-.d_counts_card.tone_light_orange { background: #fff8ef; border-left: 4px solid #ffc98a; }
-.d_counts_card.tone_light_orange .d_counts_icon { background-color: #ffb45c; }
-.d_counts_card.tone_red { background: #fdecec; border-left: 4px solid #e5383b; }
-.d_counts_card.tone_red .d_counts_icon { background-color: #e5383b; }
-.d_counts_card.tone_green { background: #ecf8ee; border-left: 4px solid #6cc77a; }
-.d_counts_card.tone_green .d_counts_icon { background-color: #2fb344; }
 /* "CUSTOMER REPLIES BY LEAD AGE": a thick line and a capital heading set it apart from the cards above. */
-.reply_breakdown { border-top: 4px solid #f7931e; padding-top: 12px; margin-top: 4px; }
-.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #b45f06; margin-bottom: 10px; }
+.reply_breakdown { border-top: 4px solid #0891b2; padding-top: 12px; margin-top: 4px; }
+.reply_breakdown_title { font-size: var(--f16); font-weight: 700; letter-spacing: 0.04em; color: #0b5568; margin-bottom: 10px; }
 .reply_breakdown_title small { font-weight: 500; letter-spacing: 0; color: var(--dark); font-size: 0.8rem; }
 
 /* ---------- Customer profile (17 Nov 2026, BB: blue scheme, things defined by icons, one window) ---------- */
@@ -2120,3 +2112,71 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .dashboard_counts .col > a.d-block { height: calc(100% - 0.6rem); }
 .dashboard_counts .col > a.d-block > .d_counts_card { height: 100%; }
 .lead_main_col > .row > .col-xl-1:last-child { padding-right: 8px; }
+
+/* Dashboard number cards (app/dealer/dashboard/components/CountCard.js): the Desk Log card's look. --card: meaningColors.js */
+.dash_card { flex-direction: column; border-left: 5px solid var(--card); padding: 12px 14px; }
+.dash_card.soft { border-left-width: 3px; }
+.dash_card .dash_card_title { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; font-size: 0.85rem; font-weight: 600;
+  line-height: 1.25; color: var(--dark); }
+.dash_card .dash_card_title span { min-width: 0; overflow-wrap: break-word; }
+.dash_card .dash_card_title i { color: var(--card); font-size: 1rem; width: 1.15em; text-align: center; flex: none; line-height: 1.25; }
+.dash_card .dash_card_count { font-size: 1.75rem; font-weight: 700; line-height: 1; margin-bottom: 6px; color: var(--card); }
+.dash_card.neutral .dash_card_count, .dash_card.soft .dash_card_count { color: var(--dark); }
+.dash_card .dash_card_text { font-size: 0.75rem; line-height: 1.35; color: var(--secondary); }
+a .dash_card:hover .dash_card_title { color: var(--primary); }
+.badge_appt { background-color: #f7931e; color: #3a2000; }
+.dash_head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+
+/* Phones: the header fits, text stays readable, buttons can be tapped */
+@media (max-width: 767.98px) {
+  .topbar_main > .container-fluid { flex-wrap: nowrap; }
+  .topbar_main .navbar-collapse { flex: 0 0 auto; min-width: 0; }
+  .topbar_main .navbar-collapse .nav-item.dropdown > .dropdown-toggle { display: flex; align-items: center; max-width: 60px; font-size: 0; }
+  .topbar_main .navbar-collapse .nav-item.dropdown > .dropdown-toggle i { font-size: 18px; margin-right: 0; }
+  .topbar_main .navbar-collapse .nav-item.dropdown > .dropdown-toggle::after { font-size: 14px; margin-left: 5px; }
+  .topbar_main .navbar-collapse .dropdown-menu { position: absolute; right: 0; left: auto; max-width: calc(100vw - 24px); }
+  .dash_head > .page_title { flex: 1 1 100%; }
+  .dash_head > .page_title small { white-space: normal; }
+  .dash_card { padding: 10px; }
+  .dash_card .dash_card_title { font-size: 0.8rem; }
+  .dash_card .dash_card_count { font-size: 1.5rem; }
+  .w_card_list_box p small, .w_card_list_box small, .w_card_list_box .badge { font-size: 12px !important; }
+  .w_card_list_btns .btn { min-width: 40px; min-height: 40px; }
+  .search_filters .form-control, .search_filters .form-select, .search_filters .btn { min-height: 40px; }
+  .lead-item .form-select { min-height: 38px; }
+  .lead_fltr { display: flex; overflow-x: auto; }
+  .lead_fltr .btn { white-space: nowrap; min-height: 38px; flex: 1 0 auto; }
+}
+
+/* Leads: below a desktop width the ten columns do not fit, so each lead is a card (two columns on a tablet, one on a phone) */
+@media (max-width: 1199.98px) {
+  .lead_list_head { display: none !important; }
+  .lead-item .lead_main_col, .lead-item .lead_status_col, .lead-item .lead_action_col { flex: 0 0 auto; max-width: none; }
+  .lead-item .lead_main_col { width: 100%; }
+  .lead-item .lead_main_col > .row > [class*="col"] { flex: 0 0 auto; width: 50%; }
+  .lead-item .lead_main_col > .row > [class*="col"]:first-child { width: 100%; }
+  .lead-item .lead_main_col .w_card_list_box_label { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 3px; }
+  .lead-item .lead_main_col .w_card_list_box_label > .label { display: block; flex: 0 0 84px; min-width: 84px; margin-bottom: 0; white-space: nowrap; }
+  .lead-item .lead_main_col .w_card_list_box_label > .label small { margin-right: 0; }
+  .lead-item .lead_main_col .w_card_list_box_label > :not(.label):not(.badge) { min-width: 0; margin-bottom: 0; }
+  .lead-item .lead_type_badge { flex: none; }
+  .lead-item .lead_status_col { width: 50%; padding-top: 6px; }
+  .lead-item .lead_action_col { width: 50%; padding-top: 6px; }
+}
+@media (max-width: 767.98px) {
+  .lead-item .lead_main_col > .row > [class*="col"] { width: 100%; }
+  .lead-item .lead_status_col, .lead-item .lead_action_col { width: 100%; }
+  .lead-item .lead_action_col .w_card_list_btns .btn { flex: 1 1 0; }
+}
+@media (max-width: 767.98px) {
+  .w_card_list_box_label { flex-wrap: wrap; row-gap: 2px; }
+  .w_card_list_box_label > .label { white-space: nowrap; margin-right: 8px; }
+  .w_card_list_box_label > .badge { white-space: normal; text-align: left; max-width: 100%; }
+  .lead-item .lead_main_col .w_card_list_box_label { flex-wrap: nowrap; }
+  .w_card_list_box_label > p.ap_field, .w_card_list_box_label > .form-select { flex: 1 1 0; min-width: 0; }
+}
+@media (max-width: 575.98px) {
+  .appt_status_col, .appt_action_col { flex: 0 0 auto; width: 100%; }
+  .appt_status_col { padding: 4px 0; }
+  .appt_action_col .w_card_list_btns .btn { flex: 1 1 0; }
+}
