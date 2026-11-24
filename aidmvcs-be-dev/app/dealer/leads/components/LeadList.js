@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
+import LeadDetailsPanel from "./LeadDetailsPanel";
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
@@ -695,7 +696,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     fetchLeads();
   };
   const bulkUndo = async (batchId) => {
-    const res = await undoBulk(batchId);
+    // Lead details saves one change per field: Undo takes them all back.
+    const batches = bulkResult?.batchId === batchId && bulkResult.batchIds?.length ? bulkResult.batchIds : [batchId];
+    const res = { restored: 0, changed_since: 0, failed: 0, reasons: [] };
+    for (const id of batches) {
+      const one = await undoBulk(id);
+      res.action = one.action; res.restored = Math.max(res.restored, one.restored || 0); res.changed_since += one.changed_since || 0;
+      res.failed += one.failed || 0; res.reasons.push(...(one.reasons || []));
+    }
     setBulkResult((r) => (r && r.batchId === batchId ? { ...r, undone: res } : r));
     fetchLeads();
     return res;
@@ -2217,9 +2225,11 @@ useImperativeHandle(ref, () => ({
 
       {/* Bulk actions (24 Nov 2026): the side panel, and the notice after saving */}
       {!compact && bulkPanel && (
+        bulkPanel === "source" ? <LeadDetailsPanel show dealerId={dealerParent?.id || activeEntity?.id} leads={[...selected.values()]} onHide={() => setBulkPanel(null)} onSaved={bulkSaved} /> : (
         <BulkPanel key={bulkPanel} kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
           leads={[...selected.values()]} staffList={staffList} timezone={dealerTimezone} userName={user?.name}
           onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
+        )
       )}
       {!compact && <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />}
 

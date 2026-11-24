@@ -93,14 +93,30 @@ function kindOf(e) {
   if (/appointment|booking/.test(k)) return "appointment";
   return "other";
 }
-const whoOf = (e) => (e.type === "activity" ? (ACTOR_META[e.actor] || ACTOR_META.system) : e.type === "assignment" ? ACTOR_META.staff : ACTOR_META.system);
-const dayLabel = (at) => {
-  if (!at) return "Date unknown";
-  const d = moment(at);
-  if (d.isSame(moment(), "day")) return "Today";
-  if (d.isSame(moment().subtract(1, "day"), "day")) return "Yesterday";
-  return d.format("MMM D, YYYY");
+const KIND_TITLE = { status_changed: "Status changed", lead_edited: "Lead edited", lead_reassigned: "Owner changed", reminder_set: "Task added", reminder_done: "Task done",
+  reminder_updated: "Task changed", reminder_removed: "Task removed", note_removed: "Note removed", ai_stage: "Status changed", opt_out: "Opted out", opt_in: "Opted back in",
+  customer_merged: "Customers merged", customer_merge_undone: "Merge undone", in_market_changed: "Market status changed", appointment_created: "Appointment set" };
+const whoOf = (e) => {
+  if (e.type === "activity") return e.who || (ACTOR_META[e.actor] || ACTOR_META.system).label;
+  if (e.type === "assignment") return e.record?.assigned_by_name || "Staff";
+  return e.type === "lead" ? "System" : "DMS";
 };
+const whoMeta = (e) => (e.type === "activity" ? (ACTOR_META[e.actor] || ACTOR_META.system) : e.type === "assignment" ? ACTOR_META.staff : ACTOR_META.system);
+// One line = what happened (bold) + its detail.
+function lineFor(e, text) {
+  if (e.type === "lead") return [leadMeta(e.record).label === "Lead" ? "New lead" : `New ${leadMeta(e.record).label.toLowerCase()}`, [e.record.lead_source || e.record.source, e.record.sub_source].filter(Boolean).join(" · ") || text];
+  if (e.type === "deal") return ["Sale", text];
+  if (e.type === "repair_order") return ["Service visit", text];
+  if (e.type === "appointment") return ["Service appointment", text];
+  if (e.type === "assignment") return ["Owner changed", text];
+  if (e.kind === "note") return ["Internal note", text.replace(/^Note:\s*/, "")];
+  const m = /^(\[[^\]]+\] )?(Text|Email) (from the customer|sent[^:]*): (.*)$/s.exec(text);
+  if (m) return [`${m[1] || ""}${m[2]} ${m[3] === "from the customer" ? "received" : m[3]}`, m[4]];
+  const title = KIND_TITLE[e.kind] || String(e.kind || "Activity").replace(/^appointment_/, "Appointment ").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  const who = e.who && text.startsWith(`${e.who} `) ? text.slice(e.who.length + 1) : text;
+  return [title, who.replace(/^./, (c) => c.toUpperCase())];
+}
+const dayLabel = (at) => (at ? moment(at).format("ddd, MMM D, YYYY") : "Date unknown");
 
 export default function OverviewTab({ overview, activity = [] }) {
   const [filter, setFilter] = useState("all");
@@ -114,6 +130,10 @@ export default function OverviewTab({ overview, activity = [] }) {
     .map((e) => ({ id: String(e.record._id), label: `${e.record.lead_source || e.record.source || "Lead"}${e.at ? ` · ${moment(e.at).format("MMM D, YYYY")}` : ""}` }));
   const leadOf = (e) => String(e.type === "lead" ? e.record?._id : e.lead_id || "");
   const textOf = (e) => (e.type === "activity" ? e.text : describeEntry(e));
+  // Which opportunity a line belongs to: its vehicle, else its source.
+  const oppNames = new Map(overview.filter((e) => e.type === "lead" && e.record?._id).map((e) => [String(e.record._id),
+    [e.record.vehicle_year, e.record.vehicle_make, e.record.vehicle_model].filter(Boolean).join(" ") || e.record.lead_source || e.record.source || "Lead"]));
+  const oppOf = (e) => oppNames.get(leadOf(e)) || "";
   const all = useMemo(() => [...overview, ...activity].map((e, i) => ({ ...e, _key: `${e.type}-${e.record?._id || e.kind || ""}-${i}`, _kind: kindOf(e) }))
     .sort((a, b) => (a.at && b.at ? new Date(b.at) - new Date(a.at) : a.at ? -1 : b.at ? 1 : 0)), [overview, activity]);
   const since = days ? Date.now() - Number(days) * 864e5 : null;
@@ -164,19 +184,22 @@ export default function OverviewTab({ overview, activity = [] }) {
         lastDay = day;
         const k = KINDS[entry._kind];
         const who = whoOf(entry);
+        const meta = whoMeta(entry);
         const isOpen = open === entry._key;
-        const detail = entry.full || textOf(entry);
+        const [title, line] = lineFor(entry, textOf(entry));
+        const opp = oppOf(entry);
         return (
           <div key={entry._key}>
             {showDay && <div className="ra_day">{day}</div>}
             <button type="button" className={`ra_row${isOpen ? " on" : ""}`} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : entry._key)}>
               <span className="ra_icon" style={{ background: k[2] }}><i className={`fa-solid ${k[1]}`} aria-hidden="true" /></span>
-              <span className="ra_main">{textOf(entry)}</span>
-              <span className="ra_who"><i className={`fa-solid ${who.icon} me-1`} aria-hidden="true" />{who.label}</span>
+              <span className="ra_main"><b>{title}</b><span>{line}</span></span>
+              <span className="ra_opp" title={opp}>{opp}</span>
+              <span className="ra_who" title={who}><i className={`fa-solid ${meta.icon} me-1`} aria-hidden="true" />{who}</span>
               <span className="ra_time">{entry.at ? moment(entry.at).format("h:mm A") : ""}</span>
               <i className={`fa-solid fa-chevron-${isOpen ? "up" : "down"} text-muted`} aria-hidden="true" />
             </button>
-            {isOpen && <div className="ra_detail">{detail}<div className="text-muted mt-1">{entry.at ? formatTimestamp(entry.at) : "Date unknown"} · {who.label}</div></div>}
+            {isOpen && <div className="ra_detail"><b>Details:</b> {entry.full || entry.detail || line}<br />{opp && <><b>Opportunity:</b> {opp} · </>}<b>By:</b> {who}{entry.at ? ` · ${formatTimestamp(entry.at)}` : ""}</div>}
           </div>
         );
       })}

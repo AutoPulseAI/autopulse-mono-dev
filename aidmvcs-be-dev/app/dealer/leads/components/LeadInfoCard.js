@@ -64,7 +64,7 @@ export function LeadFact({ icon, label, color, muted, children }) {
 }
 
 // Where the lead came from, each in its own labelled field; the lead card and the customer profile show the same block.
-export function LeadFacts({ lead }) {
+export function LeadFacts({ lead, extra = null }) {
   const type = leadTypeName(lead);
   return (
     <dl className="lead_facts">
@@ -74,6 +74,7 @@ export function LeadFacts({ lead }) {
       <LeadFact icon="fa-solid fa-signs-post" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
       <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
       {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
+      {extra}
     </dl>
   );
 }
@@ -91,18 +92,21 @@ function LeadPlan({ lead, timezone }) {
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setPlan(d); }).catch(() => {});
     return () => { live = false; };
   }, [id, dealerId, lead?.fe_lead_status]);
-  if (!plan) return null;
-  const next = plan.next_step;
+  const next = plan?.next_step;
   return (
     <>
-      <dl className="lead_facts">
-        <LeadFact icon="fa-solid fa-robot" label="Sales type">{plan.sales_type}</LeadFact>
-        <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
-      </dl>
-      <p className={`small mb-2 ${next ? "" : "text-danger"}`}>
-        <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : "fa-list-check"} me-1`} aria-hidden="true" />
-        <strong>Next step:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}
-      </p>
+      <LeadFacts lead={lead} extra={plan && (
+        <>
+          <LeadFact icon="fa-solid fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
+          <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
+        </>
+      )} />
+      {plan && (
+        <div className={`lead_next${next ? "" : " none"}`}>
+          <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : next ? "fa-list-check" : "fa-road-barrier"}`} aria-hidden="true" />
+          <span><strong>Next step:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -402,7 +406,6 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
       </div>
       {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
           report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
-      <LeadFacts lead={lead} />
       <LeadPlan lead={lead} timezone={dealerTimezone} />
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>

@@ -15,7 +15,7 @@ import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import CallButton from "../../../components/CallButton";
 import ExportFormButton from "./ExportFormButton";
-import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { LeadFacts } from "../../../leads/components/LeadInfoCard";
 import { NAME_PART_FIELDS, namePartsOf, tidyCase } from "../../../../lib/personName";
 
 export function primaryContact(entries) {
@@ -349,15 +349,6 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <Badge bg={null} style={{ backgroundColor: BADGE_COLOR[customer.origin_badge] || BADGE_COLOR.Unknown, color: "#fff" }}>
               {customer.origin_badge}
             </Badge>
-            {/* Where the customer's newest lead came from (19 Nov 2026: "still not seeing the source - Internet, and
-                Cars.com or Google"): lead type, source, sub-source and campaign, the same values the reports group by. */}
-            {latestLead && (
-              <span className="cp_source" title="The customer's newest lead: lead type · source · sub-source · campaign">
-                <i className="fa-solid fa-signs-post me-1" />
-                {[leadTypeName(latestLead), latestLead.lead_source || latestLead.source || "Unknown source",
-                  latestLead.sub_source, latestLead.campaign && `Campaign: ${latestLead.campaign}`].filter(Boolean).join(" · ")}
-              </span>
-            )}
             <span><i className="fa-regular fa-calendar me-1" />Customer since {customer.createdAt ? formatTimestamp(customer.createdAt) : "N/A"}</span>
             <span><i className="fa-regular fa-clock me-1" />Last activity {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</span>
           </div>
@@ -375,6 +366,8 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
       </div>
 
       {/* Icon toolbar: every action on one row, grouped. Only actions the profile already had, plus jumps to its tabs. */}
+      {/* The newest lead, each fact in its own labelled field (approved 24 Nov 2026). */}
+      {latestLead && <div className="p-2 bg-white"><LeadFacts lead={latestLead} /></div>}
       <div className="cp_toolbar">
         <div className="cp_group">
           <span className="cp_group_label">Connect</span>

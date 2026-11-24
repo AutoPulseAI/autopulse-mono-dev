@@ -44,7 +44,7 @@ export default function DuplicateCustomersPage() {
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
   };
-  const mergeBody = (m) => ({ keep_id: m.keep, merge_id: m.customers.find((c) => c._id !== m.keep)._id, reason: m.reason });
+  const mergeBody = (m) => ({ keep_id: m.keep, merge_id: m.customers.find((c) => c._id !== m.keep)._id, picks: m.picks || {}, reason: m.reason });
   const previewMerge = async () => {
     setBusy("merge");
     try { const p = await post("/api/customers/merge", { ...mergeBody(merge), confirm: false }); setMerge({ ...merge, preview: p, error: null }); }
@@ -170,16 +170,25 @@ export default function DuplicateCustomersPage() {
         <Offcanvas.Header closeButton><Offcanvas.Title as="h6"><AppIcon name="customers" className="me-2" />Merge review</Offcanvas.Title></Offcanvas.Header>
         <Offcanvas.Body className="small d-flex flex-column">
           {merge?.error && <Alert variant="danger" className="py-2">{merge.error}</Alert>}
-          <p className="text-muted mb-2">Pick the customer to keep. Nothing merges until you confirm.</p>
+          <p className="text-muted mb-2">Pick the customer to keep and the value to keep for each field. Nothing merges until you confirm.</p>
           {merge && (
             <div className="table-responsive">
               <Table size="sm" className="align-middle">
                 <thead><tr><th />{merge.customers.map((c) => (
-                  <th key={c._id}><Form.Check type="radio" id={`keep-${c._id}`} name="keep" checked={merge.keep === c._id}
-                    onChange={() => setMerge({ ...merge, keep: c._id, preview: null })}
+                  <th key={c._id}><Form.Check type="radio" id={`keep-${c._id}`} name="keep" checked={merge.keep === c._id} aria-label={`Keep ${c.name || "this customer"}`}
+                    onChange={() => setMerge({ ...merge, keep: c._id, picks: {}, preview: null })}
                     label={<span className="ap_person"><Avatar name={c.name} small /><span>{c.name || "(no name)"}</span></span>} /></th>))}</tr></thead>
                 <tbody>
-                  <tr><td className="fw-semibold"><IconLabel name="email">Email</IconLabel></td>{merge.customers.map((c) => <td key={c._id} className="text-break">{c.emails.join(", ") || "Not set"}</td>)}</tr>
+                  {[["name", "Name", "customer", (c) => c.name], ["email", "Email", "email", (c) => c.emails[0]], ["address", "Address", "source", (c) => c.address]].map(([field, label, icon, get]) => (
+                    <tr key={field}><td className="fw-semibold"><IconLabel name={icon}>{label}</IconLabel></td>
+                      {merge.customers.map((c) => {
+                        const isKeep = c._id === merge.keep;
+                        const on = (merge.picks?.[field] === "merge") !== isKeep;
+                        return <td key={c._id} className="text-break"><Form.Check type="radio" id={`${field}-${c._id}`} name={`pick-${field}`} disabled={!get(c)} checked={!!get(c) && on}
+                          onChange={() => setMerge({ ...merge, picks: { ...merge.picks, [field]: isKeep ? "keep" : "merge" }, preview: null })} label={get(c) || "Not set"} /></td>;
+                      })}
+                    </tr>
+                  ))}
                   <tr><td className="fw-semibold"><IconLabel name="phone">Phone</IconLabel></td>{merge.customers.map((c) => <td key={c._id}>{c.phones.join(", ") || "Not set"}</td>)}</tr>
                   <tr><td className="fw-semibold"><IconLabel name="lead">Leads</IconLabel></td>{merge.customers.map((c) => <td key={c._id}>{c.leads}</td>)}</tr>
                 </tbody>
@@ -198,7 +207,7 @@ export default function DuplicateCustomersPage() {
               </Table>
               <ul className="mb-1">
                 <li>Nothing is deleted or moved: every lead keeps its own source, dates, status, owner, conversation and AI follow-ups.</li>
-                <li><strong>{merge.preview.keep.name || "(no name)"}</strong> keeps its name and contacts. {merge.preview.merge.deals} sale(s), {merge.preview.merge.service_visits} service visit(s) and {merge.preview.merge.trade_ins} trade-in(s) will show there.</li>
+                <li>The value not picked is kept on the merge, and Undo puts it back. {merge.preview.merge.deals} sale(s), {merge.preview.merge.service_visits} service visit(s) and {merge.preview.merge.trade_ins} trade-in(s) will show there.</li>
                 <li>It can be undone from &quot;Recent merges&quot;.</li>
                 {merge.preview.notes.map((n) => <li key={n}>{n}</li>)}
               </ul>

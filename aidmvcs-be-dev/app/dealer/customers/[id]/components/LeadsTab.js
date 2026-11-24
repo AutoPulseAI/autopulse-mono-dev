@@ -1,8 +1,10 @@
 "use client";
 
 import { leadStatusLabel } from "@lib/statusLabels";
+import moment from "moment-timezone";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-bootstrap";
+import { Alert, Button, Pagination, Spinner, Table } from "react-bootstrap";
+import AppIcon, { IconLabel, statusIconName } from "../../../components/AppIcon";
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
@@ -170,29 +172,32 @@ export default function LeadsTab({ customerId, onChanged }) {
         <>
         {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
             created, source, vehicle, owner; click a row to open that lead. */}
-        <Row className="cp_leads_head d-none d-md-flex small text-muted mx-0 me-2 px-3">
-          <Col md={2}>Status</Col><Col md={1}>Dept</Col><Col md={2}>Created</Col><Col md={1}>Up type</Col><Col md={2}>Source</Col>
-          <Col md={1}>Sub-source</Col><Col md={2}>Vehicle</Col><Col md={1}>Owner</Col>
-        </Row>
-        <Accordion activeKey={activeLeadId} onSelect={(key) => setActiveLeadId(key)}>
-          {leads.map((lead) => {
-            const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
-            return (
-              <Accordion.Item eventKey={lead._id} key={lead._id}>
-                <Accordion.Header>
-                  <Row className="align-items-center w-100 me-2 small">
-                    <Col md={2} className="p_bold">{leadStatusLabel(lead) || "N/A"}
-                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</Col>
-                    <Col md={1}>{DEPARTMENT_NAMES[leadDepartment(lead)]}</Col>
-                    <Col md={2} className="text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
-                    <Col md={1}>{leadTypeName(lead)}</Col>
-                    <Col md={2}>{lead.lead_source || lead.source || "Unknown"}</Col>
-                    <Col md={1}>{lead.sub_source || <span className="text-muted">None</span>}</Col>
-                    <Col md={2}>{vehicle || <span className="text-muted">No vehicle</span>}</Col>
-                    <Col md={1}>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</Col>
-                  </Row>
-                </Accordion.Header>
-                <Accordion.Body>
+        <div className="table-responsive act_table mb-2">
+          <Table hover size="sm" className="mb-0 align-middle">
+            <thead><tr><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="department">Department</IconLabel></th><th><IconLabel name="date">Created</IconLabel></th><th><IconLabel name="type">Up type</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="source">Sub-source</IconLabel></th><th><IconLabel name="vehicle">Vehicle</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th></tr></thead>
+            <tbody>
+              {leads.map((lead) => {
+                const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
+                return (
+                  <tr key={lead._id} className={activeLeadId === lead._id ? "table-primary" : undefined} style={{ cursor: "pointer" }}
+                    tabIndex={0} aria-selected={activeLeadId === lead._id} onClick={() => setActiveLeadId(lead._id)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setActiveLeadId(lead._id); }}>
+                    <td className="fw-semibold"><span className="ap_label"><AppIcon name={statusIconName(lead.fe_lead_status)} />{leadStatusLabel(lead) || "N/A"}</span>
+                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</td>
+                    <td>{DEPARTMENT_NAMES[leadDepartment(lead)]}</td>
+                    <td className="text-nowrap">{lead.createdAt ? moment(lead.createdAt).format("MMM D, YYYY") : "N/A"}</td>
+                    <td>{leadTypeName(lead)}</td><td>{lead.lead_source || lead.source || "Unknown"}</td>
+                    <td>{lead.sub_source || <span className="text-muted">None</span>}</td>
+                    <td>{vehicle || <span className="text-muted">No vehicle</span>}</td>
+                    <td>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
+        {leads.filter((lead) => lead._id === activeLeadId).map((lead) => (
+          <div key={lead._id}>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
                   <LeadFacts lead={lead} />
                   {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} />}
@@ -238,11 +243,8 @@ export default function LeadsTab({ customerId, onChanged }) {
                       </Button>
                     </div>
                   )}
-                </Accordion.Body>
-              </Accordion.Item>
-            );
-          })}
-        </Accordion>
+          </div>
+        ))}
         </>
       )}
 
